@@ -123,7 +123,7 @@ Remove QuickMail from **Settings → Apps** as usual. After the app is removed, 
 
 ## Accounts
 
-Adding an account, changing one, testing it, and removing it all happen in **Manage Accounts**. Open it from **File → Manage Accounts…**, from the **Accounts** button on the toolbar, or from the Command Palette (**Ctrl+Shift+P**) by choosing **Manage Accounts**. It has no keyboard shortcut of its own to begin with; you can give it one under **Settings → Keyboard Shortcuts**.
+Adding an account, changing one, testing it, and removing it all happen in **Manage Accounts**. Open it from **File → Manage Accounts…**, from the **Accounts** button on the toolbar, or from the Command Palette (**Ctrl+Shift+P**) by choosing **Manage Accounts**. It has no keyboard shortcut of its own to begin with; you can give it one under **File → Settings → Keyboard Shortcuts**.
 
 Manage Accounts opens with focus on the first entry in the **Accounts** list, so you can arrow through your accounts straight away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom. When you have no accounts yet there is nothing to land on, so focus goes to **New** instead.
 
@@ -259,7 +259,7 @@ App passwords are not offered if your account is enrolled in Google's Advanced P
 
 Google stopped granting QuickMail new authorizations, so for most people the sign-in route can only end in a refusal — which is why QuickMail no longer offers it by default. If your Google account was authorized before that happened, it still works, and you can turn the option back on:
 
-1. Open **Tools → Settings**, go to the **Advanced** tab, and check **Sign in with Google for Gmail accounts**. Select **Save**.
+1. Open **File → Settings**, go to the **Advanced** tab, and check **Sign in with Google for Gmail accounts**. Select **Save**.
 2. Restart QuickMail. The setting is read at startup.
 
 You now have a **Gmail (sign in with Google)** entry in the **Provider** list, sitting directly below plain **Gmail**, and a **Google OAuth (Gmail)** choice under **Advanced settings** → **Authentication**.
@@ -425,7 +425,7 @@ Two things worth knowing. QuickMail groups a conversation by its subject, ignori
 
 If you would like each row to say whether its conversation is watched, turn on the **Watched** field in [Message List Fields](#message-list-fields). It is off to begin with.
 
-**To see what you are watching**, choose **Message → Watched Conversations…**. The window lists every watch with how many cached messages it has collected and when you started it. Press **Enter** on one to jump to that conversation, **Delete** to stop watching it, or **Rename** to give it a clearer label. Renaming changes the label only — which messages the watch collects is decided by the subject and does not change. Type a letter to jump down the list. The window stays open while you work, so you can leave it up and keep going; **Escape** closes it.
+**To see what you are watching**, choose **Tools → Watched Conversations…**. The window lists every watch with how many cached messages it has collected and when you started it. Press **Enter** on one to jump to that conversation, **Delete** to stop watching it, or **Rename** to give it a clearer label. Renaming changes the label only — which messages the watch collects is decided by the subject and does not change. Type a letter to jump down the list. The window stays open while you work, so you can leave it up and keep going; **Escape** closes it.
 
 **To be told when a reply arrives**, turn on **Settings → Notifications → Show a notification when a watched conversation gets a reply**. Unlike the ordinary new-mail notification, this one applies to every folder rather than just the inbox, because a watched thread's next message can land anywhere. The two settings are independent; if a message is both new inbox mail and part of a watched conversation you get one notification, the watched one.
 
@@ -528,7 +528,7 @@ Press **Ctrl+Shift+P** to open the command palette. Type any part of a command n
 
 ### Keyboard Customization
 
-Open **Settings → Keyboard** to reassign any shortcut to a different key. Select a command's field and press the key combination you want — QuickMail captures it, shows you what it heard, and asks you to confirm with **OK**, pick another with **Change**, or **Cancel**. If the combination is already assigned to something else, a warning names the existing command so you can decide whether to reassign it. Changes take effect immediately and survive restarts.
+Open **File → Settings → Keyboard Shortcuts** to reassign any shortcut to a different key. Select a command's field and press the key combination you want — QuickMail captures it, shows you what it heard, and asks you to confirm with **OK**, pick another with **Change**, or **Cancel**. If the combination is already assigned to something else, a warning names the existing command so you can decide whether to reassign it. Changes take effect immediately and survive restarts.
 
 **Bare keys as shortcuts.** You can assign a shortcut with no modifier key using **Delete, Backspace, Insert, or any function key (F1–F24)** — for example, bare **Delete** to delete a message, or **F5** to sync. (Bare **Delete** ships as a default binding for exactly this reason.) Plain letters, digits, and the Spacebar cannot be bound on their own — they would swallow ordinary typing — so pair them with **Ctrl**, **Alt**, or **Shift**. **Enter**, **Escape**, and **Tab** are reserved for navigating dialogs and are never captured as shortcuts.
 
@@ -632,7 +632,7 @@ Press **Delete**. Deleted messages go to Trash. Press `Ctrl+Shift+E` to empty th
 
 Press **Ctrl+Shift+M** to archive the selected message — move it to your account's Archive folder instead of deleting it. Use this for mail you want out of your inbox but want to keep. **Delete** is unchanged and still moves messages to Trash.
 
-The command is named **Move to Archive** — it is on the message menu and the message context menu (Shift+F10), and in the command palette. Archiving works from every view. In the **From**, **To**, and **Conversations** groupings, archiving a group moves the whole group at once, the same way Delete does. The **Ctrl+Shift+M** shortcut can be changed in **Settings → Keyboard**.
+The command is named **Move to Archive** — it is on the message menu and the message context menu (Shift+F10), and in the command palette. Archiving works from every view. In the **From**, **To**, and **Conversations** groupings, archiving a group moves the whole group at once, the same way Delete does. The **Ctrl+Shift+M** shortcut can be changed in **File → Settings → Keyboard Shortcuts**.
 
 **Each account archives to its own folder** — there is no single shared Archive folder. QuickMail uses the folder your provider marks as the Archive folder automatically, so most accounts need no setup. To choose a different folder, select a folder in the folder tree, open its context menu (Shift+F10), and choose **Set as Archive Folder**; choose **Use Automatic Archive Folder** to return to the automatic one.
 
@@ -768,7 +768,7 @@ Inline navigation wraps around the message so it always finds misspellings where
 
 When a screen reader is active, QuickMail announces each misspelling along with up to three suggestions. By default, each suggestion is numbered — for example: "Misspelling: teh. 1: the, 2: then, 3: them." Press `Alt+1`, `Alt+2`, or `Alt+3` to replace the misspelled word with that numbered suggestion without leaving the compose area.
 
-Control announcement behavior in **Settings → Screen Reader Announcements**:
+Control announcement behavior in **File → Settings → General → Screen Reader Announcements**:
 
 - **Announce spelling suggestions** — turn off to hear only the misspelled word without suggestions.
 - **Spelling Suggestions Verbosity** — choose **Numbers with suggestions** (default) to hear "1: the, 2: then" so `Alt+1/2/3` maps directly to what is spoken, or **Just suggestions** to hear "the, then, them" without numbers.
@@ -841,7 +841,7 @@ From the contact list, you can pull up everything a person sent you, or everythi
 2. Choose **Find mail from this contact** or **Find mail to this contact**.
 3. The address book closes and the message list fills with the matches, newest first. Focus moves to the message list and the count is announced — for example, "12 messages from Bob Baker." The window title shows **Mail from Bob Baker** so you can tell the results apart from a folder.
 
-Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**. Commands that live inside the address book are not listed in Settings → Keyboard, which covers the main window's commands; reach them from the palette.
+Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**. Commands that live inside the address book are not listed in File → Settings → Keyboard Shortcuts, which covers the main window's commands; reach them from the palette.
 
 Press **Escape** with focus in the message list to close the results and go back to the folder you started from; the folder name and its message count are announced. A **Close** button at the top of the results does the same, and **Close Contact Mail Results** is in the Command Palette. Selecting any folder in the folder tree also leaves the results.
 
@@ -1039,13 +1039,13 @@ The quickest way is from the folder tree itself:
 
 QuickMail confirms the change, and opens there every time it starts from then on.
 
-You can also do it from **Tools → Settings → Startup**, where the **Opens in** field shows your current choice. Select **Choose…** to pick a different folder from the folder tree, or **Clear** to go back to All Mail. **Clear Startup Folder** in the folder context menu does the same thing.
+You can also do it from **File → Settings → Startup**, where the **Opens in** field shows your current choice. Select **Choose…** to pick a different folder from the folder tree, or **Clear** to go back to All Mail. **Clear Startup Folder** in the folder context menu does the same thing.
 
 If the folder later disappears — you delete it, rename it, or remove the account — QuickMail opens in All Mail and tells you why. Nothing is lost and nothing needs repairing.
 
 ### Choose how much is checked at startup
 
-Also under **Tools → Settings → Startup**, **Startup Sync** controls how much mail QuickMail checks while it is starting. This matters most if you have several accounts and a lot of folders.
+Also under **File → Settings → Startup**, **Startup Sync** controls how much mail QuickMail checks while it is starting. This matters most if you have several accounts and a lot of folders.
 
 - **Just my startup folder** (recommended) — checks only what your startup folder shows. If your startup folder is All Inboxes, that is every inbox; if it is All Mail, that is everything.
 - **Every account's inbox** — checks each account's inbox, whichever folder you open in.
@@ -1099,7 +1099,7 @@ Two things this does not do. It does not change which events you are *looking at
 
 **All Calendars** cannot be the default, because it is several calendars at once and so names no single place to save to. If you choose it, QuickMail says so and leaves your existing default alone.
 
-Both commands are also in the Command Palette (**Ctrl+Shift+P**) — as **Use as Default Calendar for New Appointments** and **Clear Default Calendar** — and you can assign them keys in **Settings → Keyboard**.
+Both commands are also in the Command Palette (**Ctrl+Shift+P**) — as **Use as Default Calendar for New Appointments** and **Clear Default Calendar** — and you can assign them keys in **File → Settings → Keyboard Shortcuts**.
 
 ### The four views
 
@@ -1244,7 +1244,7 @@ There is a single reminder lead time for all appointments; per-appointment remin
 
 ### Exporting an appointment
 
-To share an appointment as a standard calendar file, select it and choose **Export Appointment as .ics** from the command palette (**Ctrl+Shift+P**) or the toolbar/menu. QuickMail writes a `.ics` file you can send to someone or import elsewhere. (Exporting one occurrence of a repeating appointment exports the whole series.) This action has no default keyboard shortcut, but you can assign one in **Settings → Keyboard**.
+To share an appointment as a standard calendar file, select it and choose **Export Appointment as .ics** from the command palette (**Ctrl+Shift+P**) or the toolbar/menu. QuickMail writes a `.ics` file you can send to someone or import elsewhere. (Exporting one occurrence of a repeating appointment exports the whole series.) This action has no default keyboard shortcut, but you can assign one in **File → Settings → Keyboard Shortcuts**.
 
 ### Searching your appointments
 
@@ -1384,7 +1384,7 @@ The **Tools** menu is always available from the main window menu bar and groups 
 - **Rules…** (`Ctrl+Shift+L`) — opens the [Rules Manager](#mail-rules).
 - **Command Palette…** (`Ctrl+Shift+P`)
 
-**Choosing how QuickMail looks and reads is on the View menu**, not here — **Manage Themes…** opens the [Theme Manager](#themes), **Density** sets [message list density](#message-list-density), and **Message List Fields…** opens the [field chooser](#message-list-fields). **Next Theme** and **Previous Theme** have no menu items; run them from the Command Palette, or give them a key of your own in **Settings → Keyboard**.
+**Choosing how QuickMail looks and reads is on the View menu**, not here — **Manage Themes…** opens the [Theme Manager](#themes), **Density** sets [message list density](#message-list-density), and **Message List Fields…** opens the [field chooser](#message-list-fields). **Next Theme** and **Previous Theme** have no menu items; run them from the Command Palette, or give them a key of your own in **File → Settings → Keyboard Shortcuts**.
 
 ---
 
@@ -1611,7 +1611,7 @@ Choose **Manage Themes…** from the **View** menu, or open the Command Palette 
 
 Below the theme list and actions, a read-only **Theme description** box always shows a plain-language account of the currently selected theme — its overall look, its fonts, and every individual color together with where in the app that color is used. This box is there so you can understand and compare themes by ear or by reading, without needing to see the colors. See [Built-in Themes](#built-in-themes) below for the description of each theme that ships with QuickMail.
 
-The Command Palette also offers **Next Theme** and **Previous Theme** to cycle through themes, and a **Theme: [name]** command for each theme. None of these have a default keyboard shortcut — assign one in **Settings → Keyboard** if you want direct access.
+The Command Palette also offers **Next Theme** and **Previous Theme** to cycle through themes, and a **Theme: [name]** command for each theme. None of these have a default keyboard shortcut — assign one in **File → Settings → Keyboard Shortcuts** if you want direct access.
 
 **Editing a theme by hand:** a theme is a plain, documented JSON text file. Duplicate a built-in theme, choose **Open themes folder**, and edit the copy in any text editor. Colors are hex values like `#3D5A80`; any color you leave out is filled in from the built-in Light or Dark theme (whichever the file's `base` names). A typical minimal theme:
 
@@ -1655,7 +1655,7 @@ The four light themes are close cousins. Ember, Fjord, and Heather each change o
 
 ## Message List Fields
 
-Each row in a message list is spoken as a single line — sender, subject, date, and so on. **View → Message List Fields…** lets you decide which of those pieces are spoken and in what order. It is also in the command palette as **Message List Fields…**. It has no keyboard shortcut of its own; assign one in **Settings → Keyboard** if you want one.
+Each row in a message list is spoken as a single line — sender, subject, date, and so on. **View → Message List Fields…** lets you decide which of those pieces are spoken and in what order. It is also in the command palette as **Message List Fields…**. It has no keyboard shortcut of its own; assign one in **File → Settings → Keyboard Shortcuts** if you want one.
 
 Open it and you get a list of every available field, each one a real check box. Check a field to have it spoken, uncheck it to leave it out, and move it to change where it falls in the line.
 
@@ -1772,7 +1772,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Shift+.` | Last message in group |
 | `Escape` | Close contact mail results (message list focus) |
 
-**Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, **Message List Fields…**, **Density: Comfortable**, **Density: Compact**, **Manage Flags…**, and **Report a Bug** likewise have no default key — reach them from the menus or the command palette, or assign a shortcut yourself in Settings → Keyboard.
+**Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, **Message List Fields…**, **Density: Comfortable**, **Density: Compact**, **Manage Flags…**, and **Report a Bug** likewise have no default key — reach them from the menus or the command palette, or assign a shortcut yourself in File → Settings → Keyboard Shortcuts.
 
 `Ctrl+1`, `Ctrl+2`, and `Ctrl+3` jump to a pane when no message tabs are open; with tabs open they select tab 1, 2, and 3 instead. **`Ctrl+Alt+1`, `Ctrl+Alt+2`, and `Ctrl+Alt+3` always** go to the account list, folder tree, and message list, whatever else is open. `Ctrl+0` moves to the toolbar.
 

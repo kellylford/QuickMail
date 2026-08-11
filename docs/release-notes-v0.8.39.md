@@ -21,9 +21,9 @@ All downloads include the .NET 8 runtime — you do not need to install .NET sep
 
 QuickMail has always opened in **All Mail**. If you wanted it to open somewhere else, the only way was to save a view of that folder and then mark it as the default in the View Manager — four steps, and a saved view left behind that you never wanted. Several people have asked for something simpler.
 
-Now you set it where you already are. In the folder tree, move to the folder you want, open its context menu with **Shift+F10** or the Applications key, and choose **Set as Startup Folder**. That is it. **Clear Startup Folder** on the same menu goes back to All Mail, and both are in the Command Palette (**Ctrl+Shift+P**) and can be given keys in **Settings → Keyboard**.
+Now you set it where you already are. In the folder tree, move to the folder you want, open its context menu with **Shift+F10** or the Applications key, and choose **Set as Startup Folder**. That is it. **Clear Startup Folder** on the same menu goes back to All Mail, and both are in the Command Palette (**Ctrl+Shift+P**) and can be given keys in **File → Settings → Keyboard Shortcuts**.
 
-There is also a new **Startup** tab in **Tools → Settings**, where **Opens in** shows your current choice and **Choose…** opens the folder tree to pick a different one.
+There is also a new **Startup** tab in **File → Settings**, where **Opens in** shows your current choice, **Choose…** opens the folder tree to pick a different one, and **Clear** goes back to All Mail.
 
 You can pick any folder — one account's Inbox, a project folder buried a few levels down, or one of the views at the top of the tree such as **All Inboxes** or **All Mail**.
 
@@ -35,19 +35,19 @@ If the folder later disappears — you delete it, rename it, or remove the accou
 
 Because a startup folder is now a folder, the **Default view (applied on startup)** checkbox in the View Manager has been removed, along with the Options section that held it.
 
-If you were using it, QuickMail converts your choice to the new setting the first time it starts — including a view over several folders, which it keeps working as it did. Check **Tools → Settings → Startup** if you want to see what it picked. Your saved views themselves are untouched: they are still named filters with hotkeys, and everything else about them works as before. ([#516](https://github.com/kellylford/QuickMail/issues/516))
+If you were using it, QuickMail converts your choice to the new setting the first time it starts — including a view over several folders, which it keeps working as it did. Check **File → Settings → Startup** if you want to see what it picked. Your saved views themselves are untouched: they are still named filters with hotkeys, and everything else about them works as before. ([#516](https://github.com/kellylford/QuickMail/issues/516))
 
 ## New: choose how much mail is checked at startup
 
 If you have several accounts and a lot of folders, QuickMail used to check every one of them while starting, whether or not you were going to look at them.
 
-**Tools → Settings → Startup** now has **Startup Sync** with three choices:
+**File → Settings → Startup** now has **Startup Sync** with three choices:
 
 - **Just my startup folder** (the new default) — checks only what your startup folder shows. If your startup folder is All Inboxes that means every inbox; if it is All Mail, that still means everything, because All Mail shows everything.
 - **Every account's inbox** — checks each account's inbox whichever folder you open in.
 - **Every folder** — how QuickMail behaved before this setting existed.
 
-New mail still arrives in your inboxes straight away whichever you choose, so notifications are unaffected. Other folders are caught up by the background check — the **Check for new mail every** setting on the **General** tab. If you have that set to **Off**, other folders are only checked when you open them. ([#516](https://github.com/kellylford/QuickMail/issues/516))
+New mail still arrives in your inboxes straight away whichever you choose, so notifications are unaffected. Other folders are caught up by the background check — the **Check for new mail every** setting on the **General** tab of Settings. If you have that set to **Off**, other folders are only checked when you open them. ([#516](https://github.com/kellylford/QuickMail/issues/516))
 
 ## New: each folder remembers how you left it
 
@@ -57,7 +57,7 @@ Now the choice is per folder. Change the view mode, filter, or sort in a folder 
 
 A folder you have never changed follows the **Display mode** on the **General** tab of Settings, which also tracks the last choice you made anywhere — so a folder you open for the first time looks like the last one you set up, and one change makes it its own.
 
-**Reset Folder View**, on the **View → Views** menu and in the Command Palette, hands a folder back to the default. To turn the whole behaviour off, clear **Remember view settings for each folder** in **Settings → General**; your per-folder choices are kept, so switching it back on restores them. ([#520](https://github.com/kellylford/QuickMail/issues/520))
+**Reset Folder View**, on the **View → Views** menu and in the Command Palette, hands a folder back to the default. To turn the whole behaviour off, clear **Remember view settings for each folder** in **File → Settings → General**; your per-folder choices are kept, so switching it back on restores them. ([#520](https://github.com/kellylford/QuickMail/issues/520))
 
 ## Fixed: leaving a view left some of it behind
 

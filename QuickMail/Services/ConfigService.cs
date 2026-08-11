@@ -704,7 +704,7 @@ public class ConfigService : IConfigService
         sb.AppendLine($"StartupFolder = {config.StartupFolder}");
         sb.AppendLine("# The folder QuickMail opens in. Empty means All Mail.");
         sb.AppendLine("# Set it from the folder tree's context menu (\"Set as Startup Folder\") or");
-        sb.AppendLine("# under Tools > Settings > Startup. A virtual folder is stored by name, e.g.");
+        sb.AppendLine("# under File > Settings > Startup. A virtual folder is stored by name, e.g.");
         sb.AppendLine("# AllInboxes; a real folder is stored as its server name plus the account");
         sb.AppendLine("# below. A folder that no longer exists falls back to All Mail at launch.");
         sb.AppendLine();
