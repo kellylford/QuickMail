@@ -208,6 +208,13 @@ public class ConfigService : IConfigService
                             _               => "messages",
                         };
                         break;
+                    case "sort":
+                        // ConfigModel.ParseSort normalises anything unrecognised to dateDesc.
+                        config.Sort = ConfigModel.ToConfigString(ConfigModel.ParseSort(value));
+                        break;
+                    case "rememberviewperfolder":
+                        config.RememberViewPerFolder = ParseBool(value);
+                        break;
                     case "syncdays":
                         if (int.TryParse(value, out var sd)) config.SyncDays = Math.Max(0, sd);
                         break;
@@ -394,6 +401,17 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ViewMode = {config.ViewMode}");
         sb.AppendLine("# How to display the message list.");
         sb.AppendLine("# Values: messages (flat list), conversations (grouped by subject), from (grouped by sender).");
+        sb.AppendLine();
+
+        sb.AppendLine($"Sort = {config.Sort}");
+        sb.AppendLine("# How to sort the message list or groups.");
+        sb.AppendLine("# Values: dateDesc, dateAsc, alphaAsc, alphaDesc, countDesc, countAsc, flaggedFirst.");
+        sb.AppendLine();
+
+        sb.AppendLine($"RememberViewPerFolder = {(config.RememberViewPerFolder ? "on" : "off")}");
+        sb.AppendLine("# Remember the view mode, filter, and sort each folder was last given, and");
+        sb.AppendLine("# open that folder the same way next time. Stored in folderviews.json.");
+        sb.AppendLine("# When off, the view mode and sort above apply to every folder. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"SyncDays = {config.SyncDays}");

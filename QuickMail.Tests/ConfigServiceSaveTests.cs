@@ -29,6 +29,61 @@ public class ConfigServiceSaveTests
     }
 
     [Fact]
+    public void SaveThenLoad_RoundTripsSort()
+    {
+        // Sort had exactly the failure this class exists to catch: ConfigModel.Sort existed and
+        // MainViewModel wrote it on every sort change, but ConfigService had neither a parse case
+        // nor a writer block — so the chosen sort survived the process (cached ConfigModel) and
+        // silently reset to Newest First on every launch. Found while fixing #520.
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        config.Sort = "dateAsc";
+        service.Save(config);
+
+        Assert.Equal("dateAsc", new ConfigService(profile).Load().Sort);
+    }
+
+    [Fact]
+    public void SaveThenLoad_RoundTripsFlaggedFirstSort()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        config.Sort = "flaggedFirst";
+        service.Save(config);
+
+        Assert.Equal("flaggedFirst", new ConfigService(profile).Load().Sort);
+    }
+
+    [Fact]
+    public void LoadingAnUnrecognisedSort_FallsBackToNewestFirst()
+    {
+        var profile = MakeTempProfile();
+        File.WriteAllText(Path.Combine(profile.ProfileDir, "config.ini"),
+                          "[global]\nSort = nonsense\n");
+
+        Assert.Equal("dateDesc", new ConfigService(profile).Load().Sort);
+    }
+
+    [Fact]
+    public void SaveThenLoad_RoundTripsRememberViewPerFolder()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        Assert.True(service.Load().RememberViewPerFolder);   // on by default (#520)
+
+        var config = service.Load();
+        config.RememberViewPerFolder = false;
+        service.Save(config);
+
+        Assert.False(new ConfigService(profile).Load().RememberViewPerFolder);
+    }
+
+    [Fact]
     public void SaveThenLoad_RoundTripsFieldLabelSettings()
     {
         // Same failure shape as the calendar regression below, and RuleListShowFieldLabels really

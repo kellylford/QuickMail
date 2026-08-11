@@ -23,6 +23,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _viewMode = "messages";
 
+    /// <summary>Each folder remembers the presentation it was last given (issue #520).</summary>
+    [ObservableProperty]
+    private bool _rememberViewPerFolder = true;
+
     [ObservableProperty]
     private int _syncDays;
 
@@ -428,6 +432,7 @@ public partial class SettingsViewModel : ObservableObject
         PreviewLines = cfg.PreviewLines;
         ReadAsPlainText = cfg.ReadAsPlainText;
         ViewMode = cfg.ViewMode;
+        RememberViewPerFolder = cfg.RememberViewPerFolder;
         SyncDays = cfg.SyncDays;
         InitialSyncCount = cfg.InitialSyncCount;
         MailSyncPollMinutes = cfg.MailSyncPollMinutes;
@@ -509,6 +514,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.PreviewLines = PreviewLines;
         cfg.ReadAsPlainText = ReadAsPlainText;
         cfg.ViewMode = ViewMode;
+        cfg.RememberViewPerFolder = RememberViewPerFolder;
         cfg.SyncDays = SyncDays;
         cfg.InitialSyncCount = InitialSyncCount;
         cfg.MailSyncPollMinutes = MailSyncPollMinutes;

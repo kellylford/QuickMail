@@ -1,4 +1,4 @@
-// Minimal no-op implementations of every service interface.
+﻿// Minimal no-op implementations of every service interface.
 // These are used exclusively for constructing ViewModels and Windows in tests —
 // no IMAP/SMTP/credential calls are ever made.
 
@@ -302,6 +302,32 @@ sealed class StubViewService : IViewService
 {
     public List<SavedView> Load() => [];
     public void Save(List<SavedView> views) { }
+}
+
+/// <summary>In-memory per-folder view state (#520) — no folderviews.json, no disk. Keyed the same
+/// way the real service keys, so resolve-order and key-isolation tests exercise real behaviour.
+/// <see cref="Writes"/> counts Set calls so tests can assert that applying a saved view records
+/// nothing.</summary>
+sealed class StubFolderViewStateService : IFolderViewStateService
+{
+    private readonly Dictionary<string, ListState> _states = new(StringComparer.Ordinal);
+
+    public int Writes { get; private set; }
+
+    private static string Key(Guid accountId, string folderFullName) =>
+        $"{accountId:N}|{folderFullName}";
+
+    public ListState? Recall(Guid accountId, string folderFullName) =>
+        _states.TryGetValue(Key(accountId, folderFullName), out var s) ? s : null;
+
+    public void Remember(Guid accountId, string folderFullName, ListState state)
+    {
+        _states[Key(accountId, folderFullName)] = state;
+        Writes++;
+    }
+
+    public void Forget(Guid accountId, string folderFullName) =>
+        _states.Remove(Key(accountId, folderFullName));
 }
 
 /// <summary>In-memory watched conversations — no watches.json, no disk. Matching mirrors the real

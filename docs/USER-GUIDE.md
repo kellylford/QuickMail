@@ -483,6 +483,27 @@ Press `Ctrl+Shift+V` (or use the **View** menu) to switch how messages are group
 - **From** — messages grouped by sender
 - **To** — messages grouped by recipient
 
+### Each Folder Remembers How You Left It
+
+Folders do not all want the same treatment. An inbox reads well grouped into **Conversations**; a
+folder full of receipts that all share one subject reads terribly that way — it collapses into a
+single conversation of a hundred messages.
+
+So QuickMail remembers. Change the view mode, filter, or sort in a folder and that folder opens
+that way from then on, including after a restart. Set your inbox to Conversations and your receipts
+folder to Messages once, and each stays put.
+
+A folder you have never changed follows the **Display mode** in **Settings → General**, which also
+tracks the last choice you made anywhere. So the first time you open a new folder it looks like the
+last folder you set up — change it once and it is that folder's own setting from then on.
+
+To hand a folder back to the default, use **Reset Folder View** from the **View → Views** menu or
+the command palette. QuickMail confirms with "Folder view reset."
+
+To turn the whole behaviour off, clear **Remember view settings for each folder** in
+**Settings → General**. The view mode and sort then apply to every folder at once, as they did
+before. Your per-folder settings are kept, so switching it back on restores them.
+
 ### Message List Density
 
 **View → Density** sets how much space each message row takes: **Comfortable** (the default) leaves room around each row, **Compact** tightens them so more messages fit on screen. The change applies at once and is remembered. The same choice is in **Settings → Appearance** under **Message List Density**, and **Density: Comfortable** and **Density: Compact** are in the command palette.
@@ -984,6 +1005,23 @@ A saved view is a named filter you can return to instantly — for example, "Unr
 Open the **View Manager** from the **View** menu or the command palette. Create a view by choosing a folder (or All Inboxes), a message filter, and optionally a date limit. Assign a hotkey to jump to it directly.
 
 Press the assigned hotkey from anywhere in the main window to switch to that view immediately.
+
+### Leaving a view
+
+A view is a temporary overlay, not a change to your settings. **Clear View** — on the
+**View → Views** menu and in the command palette — puts everything back the way the folder was:
+grouping, filter, sort, and any date limit the view applied. Nothing a view does is kept once you
+leave it. (If the view spans several folders, clearing it returns you to All Mail, since the folders
+themselves were the view.)
+
+You can also just change something. Adjusting the view mode, filter, or sort while a view is active
+leaves the view — the title stops showing its name — and what you chose becomes that folder's own
+setting.
+
+Only what you changed comes with you. If you are in "Flagged this week" and you change the sort,
+you leave the view with your new sort and the folder back to its usual self — you are not left
+quietly filtered to flagged messages from the last seven days. The saved view itself is never
+altered; press its hotkey again to go back to it.
 
 ---
 
