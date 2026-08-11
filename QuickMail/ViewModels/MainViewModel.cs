@@ -768,10 +768,28 @@ public partial class MainViewModel : ObservableObject, IDisposable
             !string.IsNullOrEmpty(folder.FullName))
         {
             var remembered = _folderViewState.Recall(folder.AccountId, folder.FullName);
-            if (remembered.HasValue) return remembered.Value;
+            if (remembered.HasValue) return DropDeletedFlagFilter(remembered.Value);
         }
 
         return _defaultListState;
+    }
+
+    /// <summary>
+    /// Drops a named-flag sub-filter whose flag has since been deleted, the same degradation
+    /// <see cref="ApplyViewStateAsync"/> performs for saved views. Without it a folder remembered
+    /// as "flagged Waiting" opens empty for ever once "Waiting" is deleted, with nothing on screen
+    /// to say why — the silent-empty-state failure CLAUDE.md's feature checklist calls out.
+    ///
+    /// Checked against the loaded definitions rather than re-reading them, so this stays
+    /// synchronous; an empty collection means they have not loaded yet, and a filter is kept
+    /// rather than wrongly discarded.
+    /// </summary>
+    private ListState DropDeletedFlagFilter(ListState state)
+    {
+        if (state.FlagFilterId == null || FlagDefinitions.Count == 0) return state;
+        if (!Guid.TryParse(state.FlagFilterId, out var id)) return state with { FlagFilterId = null };
+
+        return FlagDefinitions.Any(d => d.Id == id) ? state : state with { FlagFilterId = null };
     }
 
     /// <summary>
@@ -802,6 +820,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Which presentation field a change handler owns. Passed to
+    /// <see cref="NoteListStateChanged"/> so a detach keeps only what the user actually chose.</summary>
+    private enum ListField { Mode, Filter, Sort, DayLimit }
+
     /// <summary>
     /// Called by every presentation-property change handler. A programmatic apply returns early;
     /// a user gesture detaches any active view and records the folder's new state.
@@ -811,14 +833,45 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// record here would mean that changing the sort while a Conversations view is active promotes
     /// that view's grouping to the global default, which is issue #520 in miniature.
     /// </summary>
-    private void NoteListStateChanged()
+    private void NoteListStateChanged(ListField changed)
     {
         if (_applyingListState) return;
 
-        // Detach-to-custom: adjusting anything while a view is active leaves the view.
-        if (ActiveView != null) ActiveView = null;
+        if (ActiveView != null)
+            DetachFromActiveView(changed);
 
         RememberCurrentListState();
+    }
+
+    /// <summary>
+    /// Leaves the active view, keeping the field the user just changed and dropping the rest back
+    /// to what this folder shows on its own.
+    ///
+    /// Carrying the whole on-screen state across was wrong: the view's filter and day limit were
+    /// never chosen for this folder, and writing them into its memory left the user pinned to them
+    /// with no way out — Clear View resolves to that same stored record and so changes nothing, and
+    /// there is no UI control for the day limit at all. This is the same principle as the per-field
+    /// global default in <see cref="PersistGlobalViewMode"/>: the field you touched is the field
+    /// you chose, and nothing else follows it.
+    /// </summary>
+    private void DetachFromActiveView(ListField changed)
+    {
+        var kept = CurrentListState;
+        ActiveView = null;                                  // resolver now skips the view layer
+        var basis = ResolveListState(SelectedFolder);
+
+        ApplyListState(changed switch
+        {
+            ListField.Mode     => basis with { Mode = kept.Mode },
+            ListField.Sort     => basis with { Sort = kept.Sort },
+            ListField.Filter   => basis with { Filter = kept.Filter, FlagFilterId = kept.FlagFilterId },
+            ListField.DayLimit => basis with { DayLimit = kept.DayLimit },
+            _                  => basis,
+        });
+
+        // ApplyListState suppresses the rebuild, and the fields it just changed are not the ones
+        // the calling handler is about to rebuild for — so drive one here.
+        ApplyFiltersAndSearch();
     }
 
     private void RememberCurrentListState()
@@ -830,6 +883,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // The calendar replaces the message list entirely; it has no presentation to remember.
         if (IsCalendarFolderName(folder.FullName)) return;
+
+        // A multi-folder view's sentinel folder is never resolved through ResolveListState —
+        // SelectFolderAsync intercepts view sentinels and routes to ApplyViewByIdAsync before the
+        // resolver runs — so an entry written against one could never be read back. Storing it
+        // would only add rows to a file nothing prunes.
+        if (IsViewSentinel(folder.FullName)) return;
 
         _folderViewState.Remember(folder.AccountId, folder.FullName, CurrentListState);
     }
@@ -847,6 +906,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         SelectedFolder = folder;
         ApplyListState(ResolveListState(folder));
+    }
+
+    /// <summary>
+    /// Lands on All Mail when the current folder or account has been deleted out from under the
+    /// selection. Both callers used to assign <see cref="SelectedFolder"/> bare, which left the
+    /// deleted folder's grouping and filter applied to All Mail — and, worse, live, so the next
+    /// change the user made wrote them into All Mail's own record.
+    /// </summary>
+    private void FallBackToAllMail()
+    {
+        ActiveView     = null;
+        SelectedFolder = AllMailFolder;
+        ApplyListState(ResolveListState(AllMailFolder));
     }
 
     private void PersistGlobalViewMode(ViewMode value)
@@ -4508,7 +4580,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Before the early return below: _suppressFilterRebuild suppresses the *rebuild*, not the
         // record of what the user chose. Putting this after the return would silently drop
         // per-folder writes on every path that batches its changes.
-        NoteListStateChanged();
+        NoteListStateChanged(ListField.Filter);
 
         if (_suppressFilterRebuild) return;
 
@@ -4518,7 +4590,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Day limit has no global-default form, so it records against the folder only.</summary>
-    partial void OnActiveDayLimitChanged(int? value) => NoteListStateChanged();
+    partial void OnActiveDayLimitChanged(int? value) => NoteListStateChanged(ListField.DayLimit);
 
     partial void OnActiveSortChanged(MessageSort value)
     {
@@ -4533,7 +4605,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Sort only — never ViewMode. See NoteListStateChanged.
         if (!_applyingListState) PersistGlobalSort(value);
-        NoteListStateChanged();
+        NoteListStateChanged(ListField.Sort);
+
+        // Honour _suppressFilterRebuild like OnActiveFilterChanged does. SelectFolderAsync now
+        // sets the sort while navigating, and rebuilding here would sort and re-announce the
+        // PREVIOUS folder's messages under the new folder's name — exactly what the flag exists
+        // to prevent. The fetch that follows rebuilds with the right data.
+        if (_suppressFilterRebuild) return;
 
         if (ViewMode == ViewMode.Messages)
             ApplyFiltersAndSearch();
@@ -4550,26 +4628,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ViewModeLabel));
         OnPropertyChanged(nameof(IsCountSortAvailable));
 
-        if (value == ViewMode.Conversations)
-            ScheduleConversationRebuild();
-        else
-            Conversations = [];
+        // The stale collections are always cleared; only the rebuilds are suppressed. Leaving
+        // the previous folder's groups in place while navigating is what would be read out.
+        Conversations = value == ViewMode.Conversations ? Conversations : [];
+        SenderGroups  = value == ViewMode.From          ? SenderGroups  : [];
+        ToGroups      = value == ViewMode.To            ? ToGroups      : [];
 
-        if (value == ViewMode.From)
-            ScheduleSenderGroupRebuild();
-        else
-            SenderGroups = [];
-
-        if (value == ViewMode.To)
-            ScheduleToGroupRebuild();
-        else
-            ToGroups = [];
+        if (!_suppressFilterRebuild)
+        {
+            if (value == ViewMode.Conversations) ScheduleConversationRebuild();
+            if (value == ViewMode.From)          ScheduleSenderGroupRebuild();
+            if (value == ViewMode.To)            ScheduleToGroupRebuild();
+        }
 
         // ViewMode only — never Sort. See NoteListStateChanged.
         if (!_applyingListState) PersistGlobalViewMode(value);
-        NoteListStateChanged();
+        NoteListStateChanged(ListField.Mode);
 
-        if (value == ViewMode.To && SelectedFolder?.FullName == AllMailFolder.FullName && Messages.Any(m => string.IsNullOrWhiteSpace(m.To)))
+        // Not while navigating: SelectFolderAsync is about to start its own fetch, and this one
+        // would race it. Reachable now that a folder can be remembered in To mode.
+        if (!_suppressFilterRebuild &&
+            value == ViewMode.To && SelectedFolder?.FullName == AllMailFolder.FullName && Messages.Any(m => string.IsNullOrWhiteSpace(m.To)))
             _ = RefreshAsync();
     }
 
@@ -5254,6 +5333,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var folder = SelectedFolder;
         if (folder == null || folder.IsHeader || string.IsNullOrEmpty(folder.FullName)) return;
+
+        // Nothing is ever stored for the calendar or for a view's sentinel folder, so there is
+        // nothing to reset — and confirming a reset that could not have happened is worse than
+        // staying quiet. The menu item is bound to a command, not to IsAvailable, so this is the
+        // gate that actually runs.
+        if (IsCalendarFolderName(folder.FullName) || IsViewSentinel(folder.FullName)) return;
 
         _folderViewState?.Forget(folder.AccountId, folder.FullName);
 
@@ -7508,7 +7593,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (SelectedAccount != null && removed.Any(a => a.Id == SelectedAccount.Id))
         {
             SelectedAccount  = Accounts.FirstOrDefault();
-            SelectedFolder   = AllMailFolder;
+            FallBackToAllMail();
             Messages.Clear();
         }
 
@@ -7894,7 +7979,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // If the deleted folder was selected, fall back to All Mail
             if (SelectedFolder?.FullName == node.Folder.FullName)
             {
-                SelectedFolder = AllMailFolder;
+                FallBackToAllMail();
                 await FetchAllMailAsync();
             }
 
@@ -8307,7 +8392,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Not an [ObservableProperty], so there is no generated handler to hook — note it here.
         // Guarded on an actual change so the no-op calls that clear an already-null id (every
         // SetFilterAsync, for one) do not detach an active view or write to disk.
-        if (changed) NoteListStateChanged();
+        if (changed) NoteListStateChanged(ListField.Filter);
     }
 
     [RelayCommand]

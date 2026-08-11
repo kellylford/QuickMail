@@ -1,4 +1,4 @@
-// Per-folder view state (#520).
+﻿// Per-folder view state (#520).
 //
 // Coverage:
 //  A. ListState            -- record semantics the whole design leans on.
@@ -12,6 +12,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
@@ -275,6 +276,25 @@ public class PerFolderViewStateTests
         DaysOfMail       = 7,
     };
 
+    /// <summary>A view over one real folder, so applying it stays on INBOX rather than moving to a
+    /// virtual folder — which is what the detach tests need in order to assert against INBOX.</summary>
+    private static SavedView InboxConversationsView() => new()
+    {
+        Id         = Guid.NewGuid(),
+        Name       = "Inbox unread",
+        ViewMode   = "conversations",
+        Filter     = "unread",
+        Sort       = "dateAsc",
+        DaysOfMail = 7,
+        Folders    = [new ViewFolder { AccountId = AccountA, FolderFullName = "INBOX" }],
+    };
+
+    /// <summary>Populates Folders so ApplyViewFoldersAsync resolves a single-folder view to the
+    /// real folder instead of falling back to a multi-folder sentinel.</summary>
+    private static void SeedFolders(MainViewModel vm, params string[] names)
+        => vm.Folders = new System.Collections.ObjectModel.ObservableCollection<MailFolderModel>(
+               names.Select(Folder));
+
     // -- The reported scenario ----------------------------------------------
 
     [Fact]
@@ -494,6 +514,215 @@ public class PerFolderViewStateTests
         vm.ViewMode = ViewMode.To;
 
         Assert.Null(vm.ActiveView);
+    }
+
+    // -- Detaching keeps only what the user chose ---------------------------
+
+    [Fact]
+    public async Task DetachingByChangingSort_DoesNotInheritTheViewsFilterOrDayLimit()
+    {
+        // The trap: carrying the whole on-screen state into the folder's memory wrote the VIEW's
+        // filter and 7-day limit as this folder's own setting. Clear View then resolved to that
+        // same record and changed nothing, and there is no UI control for the day limit at all —
+        // so the user was pinned to a filtered, date-limited folder with no way out but Reset.
+        var view = InboxConversationsView();     // unread, 7 days, conversations, dateAsc
+        var store = new StubFolderViewStateService();
+        var vm = MakeVm(store, new StubConfigService(), [view]);
+        SeedFolders(vm, "INBOX");
+
+        await SelectFolder(vm, Folder("INBOX"));
+        await SelectView(vm, view);
+        Assert.Equal("INBOX", vm.SelectedFolder?.FullName);
+        Assert.Equal(MessageFilter.Unread, vm.ActiveFilter);
+        Assert.Equal(7, vm.ActiveDayLimit);
+
+        vm.ActiveSort = MessageSort.AlphaDescending;   // user touches sort only
+
+        Assert.Null(vm.ActiveView);
+        Assert.Equal(MessageSort.AlphaDescending, vm.ActiveSort);   // kept — the user chose it
+        Assert.Equal(MessageFilter.All, vm.ActiveFilter);           // dropped — the view's, not theirs
+        Assert.Null(vm.ActiveDayLimit);
+        Assert.Equal(ViewMode.Messages, vm.ViewMode);
+
+        var stored = store.Recall(AccountA, "INBOX");
+        Assert.NotNull(stored);
+        Assert.Equal(MessageFilter.All, stored!.Value.Filter);
+        Assert.Null(stored.Value.DayLimit);
+    }
+
+    [Fact]
+    public async Task DetachingByChangingGrouping_KeepsTheGroupingAndNothingElse()
+    {
+        var view = InboxConversationsView();
+        var vm = MakeVm(new StubFolderViewStateService(), new StubConfigService(), [view]);
+        SeedFolders(vm, "INBOX");
+
+        await SelectFolder(vm, Folder("INBOX"));
+        await SelectView(vm, view);
+
+        vm.ViewMode = ViewMode.To;
+
+        Assert.Null(vm.ActiveView);
+        Assert.Equal(ViewMode.To, vm.ViewMode);
+        Assert.Equal(MessageFilter.All, vm.ActiveFilter);
+        Assert.Null(vm.ActiveDayLimit);
+        Assert.Equal(MessageSort.DateDescending, vm.ActiveSort);    // the view's dateAsc is dropped
+    }
+
+    [Fact]
+    public async Task DetachingRestoresTheFoldersOwnState_NotTheGlobalDefault()
+    {
+        var view = InboxConversationsView();
+        var store = new StubFolderViewStateService();
+        var config = new StubConfigService();
+        var vm = MakeVm(store, config, [view]);
+        SeedFolders(vm, "INBOX", "Other");
+
+        // INBOX is remembered as From; the GLOBAL default is then moved to To elsewhere, so a
+        // fallback to the default rather than to the folder would be visible as To.
+        await SelectFolder(vm, Folder("INBOX"));
+        vm.ViewMode = ViewMode.From;
+        await SelectFolder(vm, Folder("Other"));
+        vm.ViewMode = ViewMode.To;
+        Assert.Equal("to", config.Load().ViewMode);
+
+        await SelectFolder(vm, Folder("INBOX"));
+        await SelectView(vm, view);
+        vm.ActiveSort = MessageSort.AlphaAscending;
+
+        // Detach falls back to INBOX's own grouping, not to the global default.
+        Assert.Equal(ViewMode.From, vm.ViewMode);
+        Assert.Equal(MessageSort.AlphaAscending, vm.ActiveSort);
+    }
+
+    // -- Clear View on a multi-folder view ----------------------------------
+
+    [Fact]
+    public async Task ClearView_OnAMultiFolderView_NavigatesToAllMail()
+    {
+        // A multi-folder view leaves SelectedFolder on a \0View:{id} sentinel whose message set
+        // IS the view, so restoring presentation alone would change only the window title.
+        var view = new SavedView
+        {
+            Id       = Guid.NewGuid(),
+            Name     = "Two folders",
+            ViewMode = "conversations",
+            Folders  =
+            [
+                new ViewFolder { AccountId = AccountA, FolderFullName = "INBOX" },
+                new ViewFolder { AccountId = AccountA, FolderFullName = "Receipts" },
+            ],
+        };
+        var vm = MakeVm(new StubFolderViewStateService(), new StubConfigService(), [view]);
+
+        await SelectView(vm, view);
+        Assert.StartsWith("\x00" + "View:", vm.SelectedFolder!.FullName, StringComparison.Ordinal);
+
+        await ClearView(vm);
+
+        Assert.Equal(MainViewModel.AllMailFolder.FullName, vm.SelectedFolder?.FullName);
+        Assert.Null(vm.ActiveView);
+    }
+
+    [Fact]
+    public async Task AMultiFolderViewsSentinel_IsNeverStored()
+    {
+        // Nothing would ever read it back: SelectFolderAsync intercepts view sentinels before the
+        // resolver runs. Storing one would only add rows to a file nothing prunes.
+        var view = new SavedView
+        {
+            Id       = Guid.NewGuid(),
+            Name     = "Two folders",
+            ViewMode = "messages",
+            Folders  =
+            [
+                new ViewFolder { AccountId = AccountA, FolderFullName = "INBOX" },
+                new ViewFolder { AccountId = AccountA, FolderFullName = "Receipts" },
+            ],
+        };
+        var store = new StubFolderViewStateService();
+        var vm = MakeVm(store, new StubConfigService(), [view]);
+
+        await SelectView(vm, view);
+        vm.ActiveSort = MessageSort.AlphaAscending;   // detaches, then tries to remember
+
+        Assert.Equal(0, store.Writes);
+    }
+
+    // -- A remembered flag filter whose flag was deleted ---------------------
+
+    [Fact]
+    public async Task ARememberedFlagFilter_IsDroppedWhenTheFlagIsGone()
+    {
+        // Otherwise the folder opens empty for ever, with nothing on screen to say why — the
+        // silent-empty-state failure CLAUDE.md's feature checklist calls out. ApplyViewStateAsync
+        // has always degraded this way for saved views; the per-folder path must match.
+        var store = new StubFolderViewStateService();
+        var vm = MakeVm(store, new StubConfigService());
+
+        var live = Guid.NewGuid();
+        vm.FlagDefinitions.Add(new FlagDefinition { Id = live, Name = "Live" });
+
+        store.Remember(AccountA, "INBOX",
+                       ListState.Default with { Filter = MessageFilter.Flagged,
+                                                FlagFilterId = Guid.NewGuid().ToString() });
+
+        await SelectFolder(vm, Folder("INBOX"));
+
+        Assert.Equal(MessageFilter.Flagged, vm.ActiveFilter);   // still flagged…
+        Assert.Null(vm.ActiveFlagFilterId);                     // …but not one deleted flag
+    }
+
+    [Fact]
+    public async Task ARememberedFlagFilter_SurvivesWhenTheFlagStillExists()
+    {
+        var store = new StubFolderViewStateService();
+        var vm = MakeVm(store, new StubConfigService());
+
+        var live = Guid.NewGuid();
+        vm.FlagDefinitions.Add(new FlagDefinition { Id = live, Name = "Waiting" });
+        store.Remember(AccountA, "INBOX",
+                       ListState.Default with { Filter = MessageFilter.Flagged,
+                                                FlagFilterId = live.ToString() });
+
+        await SelectFolder(vm, Folder("INBOX"));
+
+        Assert.Equal(live.ToString(), vm.ActiveFlagFilterId);
+    }
+
+    // -- Toggling the setting at runtime ------------------------------------
+
+    [Fact]
+    public async Task TurningTheSettingOffAndOnAgain_PreservesStoredState()
+    {
+        var store = new StubFolderViewStateService();
+        var config = new StubConfigService();
+        var vm = MakeVm(store, config);
+
+        await SelectFolder(vm, Folder("Receipts"));
+        vm.ViewMode = ViewMode.From;
+
+        await SelectFolder(vm, Folder("Other"));
+        vm.ViewMode = ViewMode.Conversations;
+
+        // Off: Receipts stops getting its own grouping…
+        var cfg = config.Load();
+        cfg.RememberViewPerFolder = false;
+        config.Save(cfg);
+        vm.ApplySettings(cfg);
+
+        await SelectFolder(vm, Folder("Receipts"));
+        Assert.Equal(ViewMode.Conversations, vm.ViewMode);
+
+        // …and on again, it comes back. The file is never cleared by the toggle.
+        cfg = config.Load();
+        cfg.RememberViewPerFolder = true;
+        config.Save(cfg);
+        vm.ApplySettings(cfg);
+
+        await SelectFolder(vm, Folder("Other"));
+        await SelectFolder(vm, Folder("Receipts"));
+        Assert.Equal(ViewMode.From, vm.ViewMode);
     }
 
     // -- Per-field global-default scoping (the subtle form of #520) ----------

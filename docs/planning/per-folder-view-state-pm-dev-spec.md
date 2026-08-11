@@ -248,6 +248,15 @@ check mark clears (`MainWindow.xaml.cs:6357` already reacts to `ActiveView` chan
 Save-changes prompt, and a discard path — four concepts to solve a problem the user can solve by
 pressing the view's hotkey again.
 
+**Amended after independent review — a detach keeps only the field the user changed.** The first
+implementation wrote the whole on-screen record to the folder's memory on detach. That silently
+made the *view's* filter and day limit the folder's own permanent setting: Clear View then resolved
+to that same record and changed nothing, and since there is no UI control for `ActiveDayLimit` at
+all, the user was pinned to a date range with no way out but Reset Folder View. Detaching now takes
+`ResolveListState(folder)` with the changed field laid over it — the same per-field principle as
+Decision 3, applied to the folder layer. Pinned by
+`DetachingByChangingSort_DoesNotInheritTheViewsFilterOrDayLimit`.
+
 ---
 
 **Decision 6: `folderviews.json`, keyed `{AccountId:N}|{FullName}`, string-valued.**
@@ -256,9 +265,13 @@ Modelled directly on `ViewService`: profile-dir JSON, `AtomicFile` write, `catch
 Values are the same strings `SavedView` uses (`"conversations"`, `"dateDesc"`, `"unread"`), not
 enum ordinals, so reordering an enum cannot silently repoint existing entries.
 
-Virtual folders (`AccountId == Guid.Empty`, `FullName` starting `\x00`) and multi-folder view
-sentinels (`\0View:{id}`) key like anything else. That is deliberate: it means a multi-folder
-view's folder set can carry its own remembered presentation with no special case.
+Virtual folders (`AccountId == Guid.Empty`, `FullName` starting `\x00`) key like anything else.
+
+**Corrected after independent review:** the draft claimed multi-folder view sentinels
+(`\0View:{id}`) would do the same, letting a view's folder set carry its own presentation. They
+cannot — `SelectFolderAsync` intercepts view sentinels and routes to `ApplyViewByIdAsync` *before*
+the resolver block, so such an entry could never be read back. Writing one would only add dead rows
+to a file nothing prunes. `RememberCurrentListState` now excludes them.
 
 **Runtime cost:** one small atomic write per user-initiated presentation change. Same class of
 write as `SetListDensity` does today.

@@ -1016,7 +1016,12 @@ themselves were the view.)
 
 You can also just change something. Adjusting the view mode, filter, or sort while a view is active
 leaves the view — the title stops showing its name — and what you chose becomes that folder's own
-setting. The saved view itself is never altered; press its hotkey again to go back to it.
+setting.
+
+Only what you changed comes with you. If you are in "Flagged this week" and you change the sort,
+you leave the view with your new sort and the folder back to its usual self — you are not left
+quietly filtered to flagged messages from the last seven days. The saved view itself is never
+altered; press its hotkey again to go back to it.
 
 ---
 

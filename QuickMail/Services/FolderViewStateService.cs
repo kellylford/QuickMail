@@ -43,8 +43,11 @@ public class FolderViewStateService : IFolderViewStateService
     /// <summary>
     /// Account id is part of the key because virtual folders (All Mail, All Inboxes) carry
     /// <see cref="Guid.Empty"/> and could otherwise collide with a real folder of the same name.
-    /// View sentinels (<c>\0View:{id}</c>) key like anything else, which is what lets a
-    /// multi-folder view's folder set carry its own remembered presentation with no special case.
+    ///
+    /// Multi-folder saved views are NOT stored: their sentinel folder never reaches the resolver
+    /// (<c>SelectFolderAsync</c> intercepts <c>\0View:</c> and routes to the view), so an entry
+    /// written against one could never be read back. <c>MainViewModel.RememberCurrentListState</c>
+    /// is where that exclusion lives.
     /// </summary>
     private static string Key(Guid accountId, string folderFullName) =>
         $"{accountId:N}|{folderFullName}";
@@ -117,10 +120,13 @@ public class FolderViewStateService : IFolderViewStateService
             Directory.CreateDirectory(_dataFolder);
             Helpers.AtomicFile.WriteAllText(_stateFile, JsonSerializer.Serialize(Cache, JsonOptions));
         }
-        catch
+        catch (Exception ex)
         {
             // A presentation preference is not worth taking the app down for. The in-memory cache
             // still holds the change, so the session behaves correctly; only the restart is lost.
+            // Logged because a silent swallow here looks exactly like "the feature does not work"
+            // — a read-only profile directory would otherwise be undiagnosable.
+            LogService.Log($"FolderViewStateService: could not save folderviews.json — {ex.Message}");
         }
     }
 }
