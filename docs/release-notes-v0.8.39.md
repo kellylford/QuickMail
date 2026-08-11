@@ -49,6 +49,28 @@ If you have several accounts and a lot of folders, QuickMail used to check every
 
 New mail still arrives in your inboxes straight away whichever you choose, so notifications are unaffected. Other folders are caught up by the background check — the **Check for new mail every** setting on the **General** tab. If you have that set to **Off**, other folders are only checked when you open them. ([#516](https://github.com/kellylford/QuickMail/issues/516))
 
+## New: each folder remembers how you left it
+
+Folders do not all want the same treatment. An inbox reads well grouped into **Conversations**. A folder full of receipts that all share one subject reads terribly that way — it collapses into a single conversation of a hundred and fifty messages, which is exactly what one of you reported.
+
+Now the choice is per folder. Change the view mode, filter, or sort in a folder and that folder opens that way from then on, including after a restart. Set your inbox to Conversations and your receipts folder to Messages once, and each stays where you put it.
+
+A folder you have never changed follows the **Display mode** on the **General** tab of Settings, which also tracks the last choice you made anywhere — so a folder you open for the first time looks like the last one you set up, and one change makes it its own.
+
+**Reset Folder View**, on the **View → Views** menu and in the Command Palette, hands a folder back to the default. To turn the whole behaviour off, clear **Remember view settings for each folder** in **Settings → General**; your per-folder choices are kept, so switching it back on restores them. ([#520](https://github.com/kellylford/QuickMail/issues/520))
+
+## Fixed: leaving a view left some of it behind
+
+**Clear View** was supposed to put things back the way they were. It restored two things and left four: the grouping, the sort, the filter, and any flag filter the view applied all stayed in force after the view was gone. Worse, simply *using* a view that grouped by conversation quietly made Conversations your default for every folder, permanently and across restarts — which is how several people ended up in Conversations without ever choosing it.
+
+Both are fixed. A view is now a genuine overlay: using one changes no setting of yours, and leaving it restores everything it touched. If you change something while a view is active you leave the view, keeping the change you made and nothing else — so adjusting the sort inside "Flagged this week" no longer leaves you quietly filtered to flagged mail from the last seven days. ([#520](https://github.com/kellylford/QuickMail/issues/520))
+
+## Fixed: three smaller things in the same area
+
+- **Your sort order was forgotten at every launch.** Choosing Oldest First, or any sort other than Newest First, held for the session and then reset the next time QuickMail started. It now survives restarts, like every other preference.
+- **Saving a view while "Flagged First" was in effect stored the wrong sort.** The view came back sorted newest-first instead. Every sort order now saves faithfully.
+- **Clear View was missing from the Command Palette** and could not be given a keyboard shortcut. It is now in both, along with the new Reset Folder View. ([#520](https://github.com/kellylford/QuickMail/issues/520))
+
 ---
 
 ## Reporting Issues
