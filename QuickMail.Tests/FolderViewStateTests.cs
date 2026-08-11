@@ -221,6 +221,16 @@ public class FolderViewStateServiceTests : IDisposable
 // Part C: MainViewModel resolver, detach, and default scoping
 // ---------------------------------------------------------------------------
 
+/// <summary>Minimal account service for the startup-path tests, which resolve a startup folder
+/// scoped by account id.</summary>
+sealed class StartupAccountsStub(Guid accountId) : IAccountService
+{
+    public List<AccountModel> LoadAccounts() =>
+        [new AccountModel { Id = accountId, AccountName = "Test", Username = "test@example.com" }];
+    public void SaveAccounts(List<AccountModel> accounts) { }
+    public void SetDefaultAccount(Guid id) { }
+}
+
 public class PerFolderViewStateTests
 {
     private static readonly Guid AccountA = Guid.NewGuid();
@@ -349,6 +359,77 @@ public class PerFolderViewStateTests
 
         // Nothing was recorded, and the grouping stayed put — the pre-#520 behaviour.
         Assert.Equal(0, store.Writes);
+        Assert.Equal(ViewMode.Conversations, vm.ViewMode);
+    }
+
+    // -- Startup ------------------------------------------------------------
+
+    [Fact]
+    public async Task StartupFolder_OpensWithItsRememberedPresentation()
+    {
+        // The startup paths assign SelectedFolder directly rather than going through
+        // SelectFolderAsync, so they need the resolver applied explicitly. Without that the one
+        // folder the user opens into is the one folder that ignores its own settings — and the
+        // failure is invisible in every test that navigates rather than starts up.
+        var localStore = new StubLocalStoreService();
+        localStore.SeededFolders[AccountA] =
+        [
+            new MailFolderModel { AccountId = AccountA, FullName = "INBOX", DisplayName = "Inbox",
+                                  Kind = SpecialFolderKind.Inbox },
+            new MailFolderModel { AccountId = AccountA, FullName = "Receipts", DisplayName = "Receipts" },
+        ];
+
+        var config = new StubConfigService();
+        var cfg = config.Load();
+        cfg.StartupFolder        = "Receipts";
+        cfg.StartupFolderAccount = AccountA.ToString();
+        cfg.StartupFolderLabel   = "Receipts";
+        config.Save(cfg);
+
+        // Receipts was left grouped by sender.
+        var store = new StubFolderViewStateService();
+        store.Remember(AccountA, "Receipts", ListState.Default with { Mode = ViewMode.From });
+
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StartupAccountsStub(AccountA), new StubCredentialService(),
+            localStore, new StubOAuthService(), new StubSyncService(), config,
+            new StubCommandRegistry(), new FakeViewService(), new StubRuleService(),
+            new StubSmtpService(), folderViewState: store);
+        vm.LoadAccountList();
+
+        await vm.InitialLoadAsync();
+
+        Assert.Equal("Receipts", vm.SelectedFolder?.FullName);
+        Assert.Equal(ViewMode.From, vm.ViewMode);
+    }
+
+    [Fact]
+    public async Task StartupFolder_WithNoRememberedState_UsesTheGlobalDefault()
+    {
+        var localStore = new StubLocalStoreService();
+        localStore.SeededFolders[AccountA] =
+        [
+            new MailFolderModel { AccountId = AccountA, FullName = "INBOX", DisplayName = "Inbox",
+                                  Kind = SpecialFolderKind.Inbox },
+        ];
+
+        var config = new StubConfigService();
+        var cfg = config.Load();
+        cfg.StartupFolder        = "INBOX";
+        cfg.StartupFolderAccount = AccountA.ToString();
+        cfg.ViewMode             = "conversations";
+        config.Save(cfg);
+
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StartupAccountsStub(AccountA), new StubCredentialService(),
+            localStore, new StubOAuthService(), new StubSyncService(), config,
+            new StubCommandRegistry(), new FakeViewService(), new StubRuleService(),
+            new StubSmtpService(), folderViewState: new StubFolderViewStateService());
+        vm.LoadAccountList();
+
+        await vm.InitialLoadAsync();
+
+        Assert.Equal("INBOX", vm.SelectedFolder?.FullName);
         Assert.Equal(ViewMode.Conversations, vm.ViewMode);
     }
 

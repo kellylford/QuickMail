@@ -834,6 +834,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _folderViewState.Remember(folder.AccountId, folder.FullName, CurrentListState);
     }
 
+    /// <summary>
+    /// Selects a folder on a startup path and applies its remembered presentation.
+    ///
+    /// The startup paths assign <see cref="SelectedFolder"/> directly rather than going through
+    /// <c>SelectFolderAsync</c> (they load from the cache, not the network), so without this the
+    /// one folder the user opens into would be the one folder that ignored its own settings.
+    /// CLAUDE.md's startup rule: anything affecting what the user first sees must be applied in
+    /// the initial load, not after sync.
+    /// </summary>
+    private void SelectStartupFolder(MailFolderModel folder)
+    {
+        SelectedFolder = folder;
+        ApplyListState(ResolveListState(folder));
+    }
+
     private void PersistGlobalViewMode(ViewMode value)
     {
         var cfg = _configService.Load();
@@ -2604,7 +2619,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // against. Select what the config names anyway — the fetch that follows connect reads
             // SelectedFolder — so the choice is honoured here too. It was not before: the old
             // default-view application sat after an early return on this path.
-            SelectedFolder = ResolveOnlineStartupFolder(startupCfg) ?? AllMailFolder;
+            SelectStartupFolder(ResolveOnlineStartupFolder(startupCfg) ?? AllMailFolder);
             StatusText = "Online mode — connecting…";
             ConnectionStatusText = "Connecting…";
             return;
@@ -2659,7 +2674,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         else
         {
-            SelectedFolder = startupFolder ?? AllMailFolder;
+            SelectStartupFolder(startupFolder ?? AllMailFolder);
         }
 
         var cached = startupView != null
@@ -2729,7 +2744,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (view != null) await ApplyViewAsync(view);
         else
         {
-            SelectedFolder = resolved!;
+            SelectStartupFolder(resolved!);
             await RefreshAsync();
         }
     }

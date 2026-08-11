@@ -106,9 +106,17 @@ that fixes the bug.
   are not remembered per folder.** Search is transient by design; the rest are global by design.
 - **The calendar is untouched.** `CalendarViewModel` has its own separate view mode and is not
   part of `ListState`.
-- **The `--online` startup gap is not fixed here.** `StartBackgroundSyncAsync` returns before
-  applying `IsDefault` when `OnlineMode` is set ([:2248-2259](../../QuickMail/ViewModels/MainViewModel.cs)),
-  so the default view never applies in online mode. Real bug, unrelated cause — filed separately.
+- **The `--online` startup-view gap is not fixed here.** Rebasing onto #516/#517 retired the
+  `SavedView.IsDefault` flag in favour of a startup *folder* setting, and moved application into
+  `InitialLoadAsync` — which fixed the online-mode hole this spec originally described. A narrower
+  one remains: `ResolveOnlineStartupFolder` returns null for a `view:` key, so a saved view chosen
+  as the startup target is still ignored under `--online`. Different cause, filed separately (#523).
+
+**Added during implementation, after the rebase onto #516/#517:** the startup paths assign
+`SelectedFolder` directly rather than going through `SelectFolderAsync`, so they needed
+`SelectStartupFolder` to apply the resolver explicitly. Without it the startup folder would have
+been the one folder that ignored its own remembered presentation — invisible to every test that
+navigates rather than starts up. Pinned by `StartupFolder_OpensWithItsRememberedPresentation`.
 
 ---
 
