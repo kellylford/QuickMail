@@ -416,6 +416,8 @@ public partial class App : Application
             // setting that replaced it (#516). No-ops once a startup folder is configured, and
             // rewrites views.json so the retired IsDefault flag cannot come back.
             StartupFolderMigration.Run(profile, startupCfg, configService, viewService);
+
+            var folderViewState = new FolderViewStateService(profile);
             var watchService = new WatchService(profile);
             var rowLayoutService = new RowLayoutService(profile, configService);
             var flagService = new FlagService(profile, configService, localStore, effectiveMail);
@@ -463,7 +465,8 @@ public partial class App : Application
                 graphCalendarSyncService: probeMode ? null : graphCalendarSync,
                 truthProbe: probeMode ? null : _truthProbe,
                 rowLayoutService: rowLayoutService,
-                watchService: watchService);
+                watchService: watchService,
+                folderViewState: folderViewState);
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
             mainVm.ImmutableIdRebuildAnnouncePending = immutableIdRebuilt;   // #366 one-time re-sync notice
             // Registers/unregisters the Help command and shows or hides the menu item, and sets

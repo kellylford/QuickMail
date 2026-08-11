@@ -32,6 +32,13 @@ public class ConfigModel
     public string Sort { get; set; } = "dateDesc";
 
     /// <summary>
+    /// When true (the default) each folder remembers the message-list presentation it was last
+    /// given, and opens that way next time. When false the presentation is a single app-wide
+    /// setting, as it was before issue #520.
+    /// </summary>
+    public bool RememberViewPerFolder { get; set; } = true;
+
+    /// <summary>
     /// How many days of mail to sync. 0 = sync all mail (no date filter).
     /// Supported values: 7, 30, 180, 365, or 0 (all).
     /// </summary>
@@ -419,7 +426,13 @@ public class ConfigModel
         return PreviewLines;
     }
 
-    // ── ViewMode / Sort serialization helpers ─────────────────────────────────────
+    // ── ViewMode / Filter / Sort serialization helpers ────────────────────────────
+    //
+    // These are the single mapping between the presentation enums and the strings used by
+    // config.ini, views.json, and folderviews.json. Route every conversion through them:
+    // the copies that used to live in MainViewModel.ApplyViewAsync, MainViewModel.SetFilterAsync
+    // and ViewManagerViewModel drifted, and the drift is what made saving a view while
+    // "Flagged First" was active silently store "dateDesc".
 
     /// <summary>Converts a config-string ViewMode to the enum (case-insensitive).</summary>
     public static Models.ViewMode ParseViewMode(string? s) => (s?.ToLowerInvariant()) switch
@@ -437,6 +450,34 @@ public class ConfigModel
         Models.ViewMode.From          => "from",
         Models.ViewMode.To            => "to",
         _                             => "messages",
+    };
+
+    /// <summary>Converts a config-string filter to the enum (case-insensitive).</summary>
+    public static MessageFilter ParseFilter(string? s) => (s?.ToLowerInvariant()) switch
+    {
+        "unread"      => MessageFilter.Unread,
+        "read"        => MessageFilter.Read,
+        "attachments" => MessageFilter.WithAttachments,
+        "replied"     => MessageFilter.Replied,
+        "forwarded"   => MessageFilter.Forwarded,
+        "tome"        => MessageFilter.ToMe,
+        "flagged"     => MessageFilter.Flagged,
+        "watched"     => MessageFilter.Watched,
+        _             => MessageFilter.All,
+    };
+
+    /// <summary>Converts a MessageFilter enum to its config-string representation.</summary>
+    public static string ToConfigString(MessageFilter filter) => filter switch
+    {
+        MessageFilter.Unread          => "unread",
+        MessageFilter.Read            => "read",
+        MessageFilter.WithAttachments => "attachments",
+        MessageFilter.Replied         => "replied",
+        MessageFilter.Forwarded       => "forwarded",
+        MessageFilter.ToMe            => "tome",
+        MessageFilter.Flagged         => "flagged",
+        MessageFilter.Watched         => "watched",
+        _                             => "all",
     };
 
     /// <summary>Converts a config-string Sort to the enum (case-insensitive).</summary>

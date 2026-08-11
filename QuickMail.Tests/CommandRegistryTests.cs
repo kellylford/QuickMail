@@ -311,4 +311,36 @@ public class CommandRegistryTests
         Assert.Equal("comfortable", configService.Load().AppearanceListDensity);
         Assert.True(vm.IsListDensityComfortable);
     }
+
+    /// <summary>
+    /// Clear View shipped on the View menu but was never registered, so it was absent from the
+    /// command palette and could not be bound to a key — a standing violation of the
+    /// "register first, hardcode never" rule in CLAUDE.md. Reset Folder View is its counterpart
+    /// for per-folder view memory (#520). Neither takes a default gesture.
+    /// </summary>
+    [Fact]
+    public void ViewStateCommands_AreRegisteredUnderView_WithNoDefaultGesture()
+    {
+        var registry = new CommandRegistry();
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+            new StubConfigService(), registry, new StubViewService(), new StubRuleService(),
+            new StubSmtpService());
+        Assert.NotNull(vm);
+
+        foreach (var id in new[] { "view.clearView", "view.resetFolderView" })
+        {
+            var cmd = registry.FindById(id);
+            Assert.NotNull(cmd);
+            Assert.Equal("View", cmd!.Category);
+            Assert.Equal(Key.None, cmd.DefaultKey);
+            Assert.Equal(ModifierKeys.None, cmd.DefaultModifiers);
+        }
+
+        // Clear View is offered only when there is a view to clear.
+        var clear = registry.FindById("view.clearView")!;
+        Assert.NotNull(clear.IsAvailable);
+        Assert.False(clear.IsAvailable!());
+    }
 }

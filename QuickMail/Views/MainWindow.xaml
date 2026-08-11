@@ -595,7 +595,10 @@
                               AutomationProperties.Name="Open View Manager"/>
                     <MenuItem Header="_Clear View"
                               Command="{Binding ClearViewCommand}"
-                              AutomationProperties.Name="Deactivate the current view and return to folder navigation"/>
+                              AutomationProperties.Name="Clear View"/>
+                    <MenuItem Header="_Reset Folder View"
+                              Command="{Binding ResetFolderViewCommand}"
+                              AutomationProperties.Name="Reset Folder View"/>
                 </MenuItem>
                 <MenuItem Header="_Sync Range">
                     <MenuItem Header="Last _7 Days"

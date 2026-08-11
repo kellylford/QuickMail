@@ -103,6 +103,54 @@ public class SavedViewsManagerTests
         Assert.Null(vm.SelectedView.VirtualFolderKey);
     }
 
+    // -- Sort round-trip ------------------------------------------------------
+
+    [Theory]
+    [InlineData(MessageSort.DateDescending,  "dateDesc")]
+    [InlineData(MessageSort.DateAscending,   "dateAsc")]
+    [InlineData(MessageSort.AlphaAscending,  "alphaAsc")]
+    [InlineData(MessageSort.AlphaDescending, "alphaDesc")]
+    [InlineData(MessageSort.CountDescending, "countDesc")]
+    [InlineData(MessageSort.CountAscending,  "countAsc")]
+    [InlineData(MessageSort.FlaggedFirst,    "flaggedFirst")]
+    public void SaveAsNew_StoresEverySortFaithfully(MessageSort sort, string expected)
+    {
+        // FlaggedFirst is the one that was broken: ViewManagerViewModel had its own copy of the
+        // sort mapping with no FlaggedFirst arm, so saving a view while "Flagged First" was
+        // active silently stored "dateDesc" — even though ParseSort has always understood
+        // "flaggedFirst". Both sides now go through ConfigModel. Found while fixing #520.
+        var vm = MakeVm(currentFolder: RealFolder(AccountA, "INBOX", "Inbox"),
+                        currentAccount: MakeAccount(AccountA, "Work"),
+                        sort: sort);
+
+        vm.SaveAsNewCommand.Execute(null);
+
+        Assert.Equal(expected, vm.SelectedView!.Sort);
+        Assert.Equal(sort, ConfigModel.ParseSort(vm.SelectedView.Sort));
+    }
+
+    [Theory]
+    [InlineData(MessageFilter.All,             "all")]
+    [InlineData(MessageFilter.Unread,          "unread")]
+    [InlineData(MessageFilter.Read,            "read")]
+    [InlineData(MessageFilter.WithAttachments, "attachments")]
+    [InlineData(MessageFilter.Replied,         "replied")]
+    [InlineData(MessageFilter.Forwarded,       "forwarded")]
+    [InlineData(MessageFilter.ToMe,            "tome")]
+    [InlineData(MessageFilter.Flagged,         "flagged")]
+    [InlineData(MessageFilter.Watched,         "watched")]
+    public void SaveAsNew_StoresEveryFilterFaithfully(MessageFilter filter, string expected)
+    {
+        var vm = MakeVm(currentFolder: RealFolder(AccountA, "INBOX", "Inbox"),
+                        currentAccount: MakeAccount(AccountA, "Work"),
+                        filter: filter);
+
+        vm.SaveAsNewCommand.Execute(null);
+
+        Assert.Equal(expected, vm.SelectedView!.Filter);
+        Assert.Equal(filter, ConfigModel.ParseFilter(vm.SelectedView.Filter));
+    }
+
     [Fact]
     public void SaveAsNew_RealFolder_SecondAccount_StoresCorrectAccountId()
     {
@@ -491,17 +539,38 @@ public class SavedViewsMainViewModelTests
     }
 
     [Fact]
-    public async Task Refresh_WithActiveView_ReappliesViewMode()
+    public async Task Refresh_WithActiveView_KeepsTheViewsGroupingAndStaysAttached()
     {
         var view = MakeVirtualView("AllInboxes", viewMode: "conversations");
         var vm   = MakeVm([view]);
         await SelectView(vm, view);
 
-        vm.ViewMode = ViewMode.Messages; // simulate an external change
-
         await Refresh(vm);
 
         Assert.Equal(ViewMode.Conversations, vm.ViewMode);
+        // Re-applying a view is programmatic, so it must not trip detach-to-custom.
+        Assert.NotNull(vm.ActiveView);
+    }
+
+    [Fact]
+    public async Task ChangingGroupingWithAViewActive_Detaches_AndRefreshDoesNotRestoreTheView()
+    {
+        // Was Refresh_WithActiveView_ReappliesViewMode, which asserted the pre-#520 behaviour:
+        // changing the grouping left the view active, so the next Refresh silently undid the
+        // change. Adjusting anything now leaves the view (Decision 5 of the #520 spec), and a
+        // Refresh afterwards has no view to re-apply.
+        var view = MakeVirtualView("AllInboxes", viewMode: "conversations");
+        var vm   = MakeVm([view]);
+        await SelectView(vm, view);
+
+        vm.ViewMode = ViewMode.Messages;
+
+        Assert.Null(vm.ActiveView);
+
+        await Refresh(vm);
+
+        Assert.Equal(ViewMode.Messages, vm.ViewMode);
+        Assert.Null(vm.ActiveView);
     }
 
     [Fact]

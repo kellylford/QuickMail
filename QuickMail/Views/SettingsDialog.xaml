@@ -84,6 +84,17 @@
                                         <ComboBoxItem Tag="to" Content="By Recipient"/>
                                     </ComboBox>
                                 </StackPanel>
+
+                                <!-- Per-folder view memory (issue #520) -->
+                                <CheckBox Content="Remem_ber view settings for each folder"
+                                          IsChecked="{Binding RememberViewPerFolder, Mode=TwoWay}"
+                                          Margin="0,8,0,0"
+                                          AutomationProperties.Name="Remember view settings for each folder"/>
+                                <TextBlock Text="Each folder opens the way you last left it. The display mode above applies to folders you have not changed."
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource Theme.TextSecondary}"
+                                           FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                           Margin="0,4,0,0"/>
                             </StackPanel>
                         </GroupBox>
 

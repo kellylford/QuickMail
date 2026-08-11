@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -34,6 +34,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IContactSyncService? _contactSync;
     private readonly IConfigService _configService;
     private readonly IViewService _viewService;
+    /// <summary>Per-folder presentation memory (#520). Null in tests that do not exercise it.</summary>
+    private readonly IFolderViewStateService? _folderViewState;
     private readonly ICommandRegistry _commandRegistry;
     private readonly IRuleService _ruleService;
     private readonly ISendMailService _smtp;
@@ -638,6 +640,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return false;
     }
 
+    /// <summary>True for the synthetic folder a multi-folder saved view selects.</summary>
+    private static bool IsViewSentinel(string? fullName) =>
+        TryGetViewIdFromSentinel(fullName, out _) || TryGetViewAllIdFromSentinel(fullName, out _);
+
     /// <summary>
     /// Creates the <see cref="MailFolderModel"/> that represents the "All Mail" virtual
     /// folder for a specific account.  Used by both the main folder tree and the folder picker.
@@ -709,6 +715,140 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private int? _activeDayLimit;
 
     public bool HasSavedViews => SavedViews.Count > 0;
+
+    // ── List presentation state (#520) ────────────────────────────────────────────
+    //
+    // Grouping, filter, flag sub-filter, sort and day limit are resolved from three layers,
+    // highest first:
+    //
+    //   1. the active saved view   — an explicit, temporary overlay
+    //   2. the folder's own memory — what this folder was last given
+    //   3. the global default      — config.ini ViewMode + Sort
+    //
+    // Every navigation and every deactivation applies the resolved record wholesale, so a
+    // partial restore cannot be written by accident. Before this, "clear view" reset two of the
+    // six properties "apply view" had set, which is issue #520.
+
+    /// <summary>Set while a resolved state is being applied. Nothing persists to disk while it
+    /// is set, and an active view is not detached — a programmatic apply is never a preference.</summary>
+    private bool _applyingListState;
+
+    /// <summary>Mirrors <c>ConfigModel.RememberViewPerFolder</c>; when false layer 2 is skipped.</summary>
+    private bool _rememberViewPerFolder = true;
+
+    /// <summary>Layer 3. Filter, flag sub-filter and day limit have no global form — they always
+    /// start clear — so only Mode and Sort are read from config.</summary>
+    private ListState _defaultListState = ListState.Default;
+
+    private static ListState DefaultListStateFrom(ConfigModel cfg) => new(
+        ConfigModel.ParseViewMode(cfg.ViewMode),
+        MessageFilter.All,
+        null,
+        ConfigModel.ParseSort(cfg.Sort),
+        null);
+
+    /// <summary>The presentation currently on screen.</summary>
+    private ListState CurrentListState =>
+        new(ViewMode, ActiveFilter, _activeFlagFilterId, ActiveSort, ActiveDayLimit);
+
+    private static ListState ToListState(SavedView view) => new(
+        ConfigModel.ParseViewMode(view.ViewMode),
+        ConfigModel.ParseFilter(view.Filter),
+        string.IsNullOrEmpty(view.FlagFilterId) ? null : view.FlagFilterId,
+        ConfigModel.ParseSort(view.Sort),
+        view.DaysOfMail);
+
+    /// <summary>Walks the three layers for a folder. Callers must set <see cref="ActiveView"/> to
+    /// its intended value first — clearing a view means clearing it, then resolving.</summary>
+    private ListState ResolveListState(MailFolderModel? folder)
+    {
+        if (ActiveView != null) return ToListState(ActiveView);
+
+        if (_rememberViewPerFolder && _folderViewState != null && folder != null &&
+            !string.IsNullOrEmpty(folder.FullName))
+        {
+            var remembered = _folderViewState.Recall(folder.AccountId, folder.FullName);
+            if (remembered.HasValue) return remembered.Value;
+        }
+
+        return _defaultListState;
+    }
+
+    /// <summary>
+    /// Applies a resolved state as one unit. Does not rebuild the list — every caller either
+    /// fetches straight afterwards (which rebuilds) or calls <c>ApplyFiltersAndSearch</c> itself.
+    ///
+    /// Both guards are saved and restored rather than set and cleared: <c>SelectFolderAsync</c>
+    /// already holds <c>_suppressFilterRebuild</c> when it calls in here.
+    /// </summary>
+    private void ApplyListState(ListState state)
+    {
+        var prevApplying = _applyingListState;
+        var prevSuppress = _suppressFilterRebuild;
+        _applyingListState     = true;
+        _suppressFilterRebuild = true;
+        try
+        {
+            ViewMode     = state.Mode;
+            ActiveFilter = state.Filter;
+            SetActiveFlagFilterId(state.FlagFilterId);
+            ActiveSort     = state.Sort;
+            ActiveDayLimit = state.DayLimit;
+        }
+        finally
+        {
+            _suppressFilterRebuild = prevSuppress;
+            _applyingListState     = prevApplying;
+        }
+    }
+
+    /// <summary>
+    /// Called by every presentation-property change handler. A programmatic apply returns early;
+    /// a user gesture detaches any active view and records the folder's new state.
+    ///
+    /// The global default is deliberately NOT written here — each of ViewMode and Sort is written
+    /// by its own handler, so only the field the user actually changed moves. Writing the whole
+    /// record here would mean that changing the sort while a Conversations view is active promotes
+    /// that view's grouping to the global default, which is issue #520 in miniature.
+    /// </summary>
+    private void NoteListStateChanged()
+    {
+        if (_applyingListState) return;
+
+        // Detach-to-custom: adjusting anything while a view is active leaves the view.
+        if (ActiveView != null) ActiveView = null;
+
+        RememberCurrentListState();
+    }
+
+    private void RememberCurrentListState()
+    {
+        if (!_rememberViewPerFolder || _folderViewState == null) return;
+
+        var folder = SelectedFolder;
+        if (folder == null || folder.IsHeader || string.IsNullOrEmpty(folder.FullName)) return;
+
+        // The calendar replaces the message list entirely; it has no presentation to remember.
+        if (IsCalendarFolderName(folder.FullName)) return;
+
+        _folderViewState.Remember(folder.AccountId, folder.FullName, CurrentListState);
+    }
+
+    private void PersistGlobalViewMode(ViewMode value)
+    {
+        var cfg = _configService.Load();
+        cfg.ViewMode = ConfigModel.ToConfigString(value);
+        _configService.Save(cfg);
+        _defaultListState = _defaultListState with { Mode = value };
+    }
+
+    private void PersistGlobalSort(MessageSort value)
+    {
+        var cfg = _configService.Load();
+        cfg.Sort = ConfigModel.ToConfigString(value);
+        _configService.Save(cfg);
+        _defaultListState = _defaultListState with { Sort = value };
+    }
 
     /// <summary>Raised when the view list changes so the Views menu can be rebuilt.</summary>
     public event EventHandler? SavedViewsChanged;
@@ -1325,8 +1465,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ConnectionTruthProbe? truthProbe = null,
         IScreenshotCaptureService? screenshotCapture = null,
         IRowLayoutService? rowLayoutService = null,
-        IWatchService? watchService = null)
+        IWatchService? watchService = null,
+        IFolderViewStateService? folderViewState = null)
     {
+        _folderViewState = folderViewState;
         _watchService = watchService;
         _rowLayoutService = rowLayoutService;
         _truthProbe = truthProbe;
@@ -1365,6 +1507,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
         EnsureMessageListTab();
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
+        _rememberViewPerFolder = cfg.RememberViewPerFolder;
+        _defaultListState      = DefaultListStateFrom(cfg);
         _announceFlagStatus = cfg.AnnounceFlagStatus;
 
         // Calendar — only when a calendar service is wired (skipped in tests).
@@ -1745,36 +1889,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         ActiveView = view;
 
-        // Apply view's mode/filter/sort before clearing search so rebuild
-        // schedulers triggered by ViewMode change operate on the right data.
-        ViewMode = ConfigModel.ParseViewMode(view.ViewMode);
-        ActiveFilter = view.Filter switch
-        {
-            "unread"      => MessageFilter.Unread,
-            "read"        => MessageFilter.Read,
-            "attachments" => MessageFilter.WithAttachments,
-            "replied"     => MessageFilter.Replied,
-            "forwarded"   => MessageFilter.Forwarded,
-            "tome"        => MessageFilter.ToMe,
-            "flagged"     => MessageFilter.Flagged,
-            "watched"     => MessageFilter.Watched,
-            _             => MessageFilter.All,
-        };
-        ActiveSort = ConfigModel.ParseSort(view.Sort);
-        SetActiveFlagFilterId(string.IsNullOrEmpty(view.FlagFilterId) ? null : view.FlagFilterId);
+        var state = ToListState(view);
 
-        // Validate the flag filter id against current flag definitions.
-        // If the referenced flag has been deleted, treat it as no filter
-        // rather than showing an empty list with no explanation.
-        if (_activeFlagFilterId != null && _flagService != null &&
-            Guid.TryParse(_activeFlagFilterId, out var flagGuid))
+        // Validate the flag filter id against current flag definitions before applying.
+        // If the referenced flag has been deleted, treat it as no filter rather than
+        // showing an empty list with no explanation.
+        if (state.FlagFilterId != null && _flagService != null &&
+            Guid.TryParse(state.FlagFilterId, out var flagGuid))
         {
             var defs = await _flagService.LoadFlagDefinitionsAsync();
             if (!defs.Exists(d => d.Id == flagGuid))
-                SetActiveFlagFilterId(null);
+                state = state with { FlagFilterId = null };
         }
 
-        ActiveDayLimit = view.DaysOfMail;
+        // Apply the view's mode/filter/sort before clearing search so rebuild schedulers
+        // triggered by the ViewMode change operate on the right data. Applying through
+        // ApplyListState is what keeps the view from writing itself into the user's
+        // preferences — see NoteListStateChanged.
+        ApplyListState(state);
+
         SearchText     = string.Empty;
         IsSearchActive = false;
         MessageDetail  = null;
@@ -1990,8 +2123,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _previewLines = newPreviewLines;
         _showPreview  = newShowPreview;
 
-        var newMode = ConfigModel.ParseViewMode(cfg.ViewMode);
-        ViewMode = newMode;
+        // Settings is the one place the global default is edited directly. Take the new default,
+        // then re-resolve so a folder with its own memory (or an active view) keeps precedence.
+        // Only Mode and Sort are taken from the resolution: Settings must not clear a filter or
+        // day limit the user applied in this session, which is what a whole-record apply would do.
+        _rememberViewPerFolder = cfg.RememberViewPerFolder;
+        _defaultListState      = DefaultListStateFrom(cfg);
+        var resolved = ResolveListState(SelectedFolder);
+        ApplyListState(CurrentListState with { Mode = resolved.Mode, Sort = resolved.Sort });
 
         var prevSyncDays = _syncDays;
         _syncDays = cfg.SyncDays;
@@ -2002,7 +2141,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsSyncDaysAll));
         OnPropertyChanged(nameof(SyncRangeLabel));
 
-        ActiveSort = ConfigModel.ParseSort(cfg.Sort);
+        // (Sort is applied above, through the resolver — a bare assignment from cfg here would
+        // override the folder's own remembered sort every time Settings was closed.)
 
         var prevMode    = MessageOpenMode;
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
@@ -2109,6 +2249,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "view.density.compact", category: "View", title: "Density: Compact",
             execute: () => SetListDensity("compact")));
+
+        // Clear View has existed on the View menu since saved views shipped but was never
+        // registered, so it was absent from the palette and could not be bound to a key.
+        registry.Register(new CommandDefinition(
+            id: "view.clearView", category: "View", title: "Clear View",
+            execute: () => ClearViewCommand.Execute(null),
+            isAvailable: () => ActiveView != null));
+
+        registry.Register(new CommandDefinition(
+            id: "view.resetFolderView", category: "View", title: "Reset Folder View",
+            execute: () => ResetFolderViewCommand.Execute(null),
+            isAvailable: () => SelectedFolder != null && !SelectedFolder.IsHeader));
 
         registry.Register(new CommandDefinition(
             id: "account.manage", category: "Account", title: "Manage Accounts",
@@ -4338,12 +4490,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(FilterLabel));
         OnPropertyChanged(nameof(WindowTitle));
 
+        // Before the early return below: _suppressFilterRebuild suppresses the *rebuild*, not the
+        // record of what the user chose. Putting this after the return would silently drop
+        // per-folder writes on every path that batches its changes.
+        NoteListStateChanged();
+
         if (_suppressFilterRebuild) return;
 
         // Always rebuild Messages from _rawMessages; OnMessagesChanged then triggers
         // RebuildActiveGroupView automatically for Conversations/From/To view modes.
         ApplyFiltersAndSearch();
     }
+
+    /// <summary>Day limit has no global-default form, so it records against the folder only.</summary>
+    partial void OnActiveDayLimitChanged(int? value) => NoteListStateChanged();
 
     partial void OnActiveSortChanged(MessageSort value)
     {
@@ -4356,9 +4516,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsSortFlaggedFirst));
         OnPropertyChanged(nameof(SortLabel));
 
-        var cfg = _configService.Load();
-        cfg.Sort = ConfigModel.ToConfigString(value);
-        _configService.Save(cfg);
+        // Sort only — never ViewMode. See NoteListStateChanged.
+        if (!_applyingListState) PersistGlobalSort(value);
+        NoteListStateChanged();
 
         if (ViewMode == ViewMode.Messages)
             ApplyFiltersAndSearch();
@@ -4390,9 +4550,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         else
             ToGroups = [];
 
-        var cfg = _configService.Load();
-        cfg.ViewMode = ConfigModel.ToConfigString(value);
-        _configService.Save(cfg);
+        // ViewMode only — never Sort. See NoteListStateChanged.
+        if (!_applyingListState) PersistGlobalViewMode(value);
+        NoteListStateChanged();
 
         if (value == ViewMode.To && SelectedFolder?.FullName == AllMailFolder.FullName && Messages.Any(m => string.IsNullOrWhiteSpace(m.To)))
             _ = RefreshAsync();
@@ -4600,15 +4760,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         _suppressFilterRebuild = true;
-        ActiveFilter        = MessageFilter.All;
-        ActiveDayLimit      = null;
-        SetActiveFlagFilterId(null);
         SearchText          = string.Empty;
         IsSearchActive      = false;
         ActiveView          = null;
         SelectedFolder      = folder;
         MessageDetail       = null;
         IsMessageOpen       = false;
+        // ActiveView and SelectedFolder are set first: the resolver reads both.
+        ApplyListState(ResolveListState(folder));
         _suppressFilterRebuild = false;
 
         if (IsVirtualFolder(folder))
@@ -4632,15 +4791,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         CalendarVm.SourceFilter = folder == null ? null : CalendarFilterFor(folder.FullName);
 
         _suppressFilterRebuild = true;
-        ActiveFilter        = MessageFilter.All;
-        ActiveDayLimit      = null;
-        SetActiveFlagFilterId(null);
         SearchText          = string.Empty;
         IsSearchActive      = false;
         ActiveView          = null;
         SelectedFolder      = folder ?? CalendarFolder;
         MessageDetail       = null;
         IsMessageOpen       = false;
+        // The calendar replaces the message list, so there is no folder presentation to resolve —
+        // reset to the plain default. Returning to a mail folder resolves normally.
+        ApplyListState(ListState.Default);
         _suppressFilterRebuild = false;
 
         // Clear the message list so stale messages are not announced while the
@@ -5044,15 +5203,51 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return current.Any(f => !prevNames.Contains(f.FullName));
     }
 
+    /// <summary>
+    /// Deactivates the current saved view and restores whatever the folder would show on its own.
+    /// Every field the view set is restored, not a subset — that asymmetry was issue #520.
+    /// </summary>
     [RelayCommand]
     private async Task ClearViewAsync()
     {
-        ActiveView     = null;
-        ActiveDayLimit = null;
+        // A multi-folder view leaves SelectedFolder on a \0View:{id} sentinel whose message set
+        // *is* the view, so restoring presentation alone would change only the window title.
+        // Go home instead, which is also what the menu item has always claimed to do.
+        if (SelectedFolder != null && IsViewSentinel(SelectedFolder.FullName))
+        {
+            await SelectFolderAsync(AllMailFolder);
+            return;
+        }
+
+        ActiveView = null;
+        ApplyListState(ResolveListState(SelectedFolder));
+
         if (IsVirtualFolder(SelectedFolder))
             await FetchVirtualAsync(SelectedFolder!);
         else if (SelectedFolder != null && SelectedFolder.AccountId != Guid.Empty)
             await FetchFolderAsync();
+        else
+            ApplyFiltersAndSearch();
+    }
+
+    /// <summary>
+    /// Forgets this folder's remembered presentation so it goes back to the global default.
+    /// The escape hatch for per-folder memory (#520) — a customised folder is otherwise pinned.
+    /// </summary>
+    [RelayCommand]
+    private void ResetFolderView()
+    {
+        var folder = SelectedFolder;
+        if (folder == null || folder.IsHeader || string.IsNullOrEmpty(folder.FullName)) return;
+
+        _folderViewState?.Forget(folder.AccountId, folder.FullName);
+
+        ActiveView = null;
+        ApplyListState(_defaultListState);
+        ApplyFiltersAndSearch();
+
+        // No control reflects the deletion of stored state, so this is the only confirmation.
+        Announce("Folder view reset.", AnnouncementCategory.Result);
     }
 
     private async Task FetchAllMailAsync()
@@ -8089,26 +8284,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void SetActiveFlagFilterId(string? id)
     {
+        var changed = !string.Equals(_activeFlagFilterId, id, StringComparison.Ordinal);
         _activeFlagFilterId = id;
         OnPropertyChanged(nameof(ActiveFlagFilterId));
         OnPropertyChanged(nameof(IsFilterAllFlagged));
+
+        // Not an [ObservableProperty], so there is no generated handler to hook — note it here.
+        // Guarded on an actual change so the no-op calls that clear an already-null id (every
+        // SetFilterAsync, for one) do not detach an active view or write to disk.
+        if (changed) NoteListStateChanged();
     }
 
     [RelayCommand]
     private Task SetFilterAsync(string? filter)
     {
-        ActiveFilter = filter?.ToLowerInvariant() switch
-        {
-            "unread"      => MessageFilter.Unread,
-            "read"        => MessageFilter.Read,
-            "attachments" => MessageFilter.WithAttachments,
-            "replied"     => MessageFilter.Replied,
-            "forwarded"   => MessageFilter.Forwarded,
-            "tome"        => MessageFilter.ToMe,
-            "flagged"     => MessageFilter.Flagged,
-            "watched"     => MessageFilter.Watched,
-            _             => MessageFilter.All,
-        };
+        ActiveFilter = ConfigModel.ParseFilter(filter);
         // Clear any named-flag sub-filter from a previously applied saved view
         // so the user sees all flagged messages, not just one specific flag.
         SetActiveFlagFilterId(null);

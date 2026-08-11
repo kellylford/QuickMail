@@ -696,28 +696,12 @@ public partial class ViewManagerViewModel : ObservableObject
         _                                                   => "Newest First",
     };
 
-    private static string FilterKey(MessageFilter f) => f switch
-    {
-        MessageFilter.Unread          => "unread",
-        MessageFilter.Read            => "read",
-        MessageFilter.WithAttachments => "attachments",
-        MessageFilter.Replied         => "replied",
-        MessageFilter.Forwarded       => "forwarded",
-        MessageFilter.ToMe            => "tome",
-        MessageFilter.Flagged         => "flagged",
-        MessageFilter.Watched         => "watched",
-        _                             => "all",
-    };
+    // These were local copies of the ConfigModel mappings and they drifted: SortKey had no
+    // FlaggedFirst arm, so saving a view while "Flagged First" was active silently stored
+    // "dateDesc" — even though ParseSort has always understood "flaggedFirst".
+    private static string FilterKey(MessageFilter f) => ConfigModel.ToConfigString(f);
 
-    private static string SortKey(MessageSort s) => s switch
-    {
-        MessageSort.DateAscending   => "dateAsc",
-        MessageSort.AlphaAscending  => "alphaAsc",
-        MessageSort.AlphaDescending => "alphaDesc",
-        MessageSort.CountDescending => "countDesc",
-        MessageSort.CountAscending  => "countAsc",
-        _                           => "dateDesc",
-    };
+    private static string SortKey(MessageSort s) => ConfigModel.ToConfigString(s);
 }
 
 // ── Event args ────────────────────────────────────────────────────────────────────
