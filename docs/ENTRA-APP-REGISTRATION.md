@@ -55,7 +55,10 @@ above; the embedded view intercepts that navigation internally (no loopback list
 
 The **Graph mail** backend requests **explicit** Graph mail scopes at mail sign-in for **every** account
 type — `OAuthService.GraphMailScopesWorkSchool` (`Mail.ReadWrite`, `Mail.Send`, `MailboxSettings.ReadWrite`,
-`User.Read`, `User.ReadBasic.All`) for work/school, and `GraphMailScopesPersonal` for personal. See
+`User.Read`) for work/school, and `GraphMailScopesPersonal` for personal. `User.ReadBasic.All` stays
+**declared** on the registration (below) but is **not** in the code scope list — it's a forward
+declaration with no call site, deliberately kept out of the interactive sign-in request (a directory
+scope requested at sign-in can dead-end onboarding on a consent-restricted tenant). See
 `docs/planning/oauth-default-scope-pm-dev-spec.md`.
 
 > **Why not `.default` for work/school (changed — #511/#529).** Work/school previously used
