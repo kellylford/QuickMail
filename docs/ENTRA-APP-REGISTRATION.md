@@ -308,26 +308,25 @@ or enable the admin consent workflow so end users route requests to designated r
 ## 6. Troubleshooting
 
 ### "Prompted for consent, but there's no way to consent" (dead-end prompt)
-The tenant disables user consent **and** at least one **declared** permission (§3) has not been
-admin-granted for the tenant. Because QuickMail requests `.default` (the whole declared set), sign-in
-requires the full set to be consented — so any un-granted declared permission blocks sign-in, not
-just a single feature.
-**Fix:** ensure every needed permission is declared (§3) → **grant admin consent for the whole set**
-(§4). After adding a new permission, the admin must **re-grant** (an existing grant reflects the
-*old* set). With `.default` this is purely a registration/consent action — there is no code scope
-list to change.
+The tenant disables user consent **and** a permission the sign-in **requests** (see below) has not
+been admin-granted for the tenant.
+**Fix:** grant admin consent for the app (§4). After adding a new permission, the admin must
+**re-grant** (an existing grant reflects the *old* set).
 
-Note: with `.default`, "same account works on one build but dead-ends on another because of which
-scopes the build requests" **no longer happens** — every build requests the same full declared set.
-A dead-end is always a registration/consent gap (a declared scope not yet granted), never a
-per-build scope difference.
+Note on which scopes a build requests (changed — #511/#529): work/school Graph mail sign-in now
+requests **explicit** Graph mail scopes (`OAuthService.GraphMailScopesWorkSchool`), **not**
+`.default`. So, unlike under `.default`, a **per-build scope difference is again possible** — an
+un-granted permission blocks sign-in only if that build's scope list actually requests it. A scope
+that is merely *declared* on the registration but not in the code list (e.g. `User.ReadBasic.All`, a
+forward declaration) does **not** block sign-in. Conversely, adding a new work/school mail permission
+now requires editing `GraphMailScopesWorkSchool` **and** the registration, not the registration alone.
+(This reverts to `.default` at the end of the #529 migration, once the Exchange perms are removed.)
 
 ### Server-rules write fails with `403` even though sign-in worked
-A residual case under `.default`: the account's cached token predates a newly-declared scope, or the
-tenant granted only part of the declared set. **Fix:** confirm `MailboxSettings.ReadWrite` is
-declared (§3) and admin-granted (§4), then **sign in again** — a fresh `.default` acquisition
-refreshes the token to include it. QuickMail surfaces this as an admin-directed message, not an
-in-app re-consent (see `docs/planning/oauth-default-scope-pm-dev-spec.md` §5).
+The account's cached token predates a newly-added scope, or the tenant granted only part of the set.
+**Fix:** confirm `MailboxSettings.ReadWrite` is declared (§3), in `GraphMailScopesWorkSchool` (code),
+and admin-granted (§4), then **sign in again** to refresh the token. QuickMail surfaces this as an
+admin-directed message, not an in-app re-consent (see `docs/planning/oauth-default-scope-pm-dev-spec.md` §5).
 
 ### Sign-in lands on an unreachable `http://localhost` page, then re-prompts
 A redirect-URI misconfiguration (§2): the loopback redirect is under the wrong platform, uses a

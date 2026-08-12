@@ -43,13 +43,18 @@ public class OAuthService : IOAuthService
     // this list is mail only. This is temporary: once the Exchange permissions are removed from the app
     // registration (last step of #529), `.default` is Exchange-free and this reverts to it (restoring the
     // zero-maintenance #208 behavior). See docs/planning/oauth-default-scope-pm-dev-spec.md.
+    // Only scopes the work/school MAIL path actually calls. Deliberately NOT `User.ReadBasic.All`
+    // (a `/users` directory permission with no call site — it's a forward declaration on the app
+    // registration, see docs/ENTRA-APP-REGISTRATION.md): restrictive tenants gate directory reads
+    // behind admin consent, so requesting it at interactive sign-in could dead-end the mail sign-in on
+    // a locked-down tenant — the exact onboarding failure this change removes. Add a scope here only
+    // when a work/school mail call actually needs it.
     public static readonly string[] GraphMailScopesWorkSchool =
     [
         "https://graph.microsoft.com/Mail.ReadWrite",
         "https://graph.microsoft.com/Mail.Send",
-        "https://graph.microsoft.com/MailboxSettings.ReadWrite",  // server-side rules (#333)
-        "https://graph.microsoft.com/User.Read",
-        "https://graph.microsoft.com/User.ReadBasic.All",         // recipient / directory resolution
+        "https://graph.microsoft.com/MailboxSettings.ReadWrite",  // server-side rules (#333, GraphServerRuleService)
+        "https://graph.microsoft.com/User.Read",                  // /me profile read (GraphMailService)
     ];
 
     // Personal Microsoft accounts (Outlook.com/Hotmail/Live): `.default` under-delivers for MSA,

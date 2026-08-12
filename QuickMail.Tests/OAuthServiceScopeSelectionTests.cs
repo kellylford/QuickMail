@@ -135,7 +135,9 @@ public class OAuthServiceScopeSelectionTests
 
     [Fact]
     public void AddAccount_OnExplicitScopes_DoesNotForceConsent() // #511/#529
-        => Assert.NotEqual(Prompt.Consent,
+        // Not Prompt.Consent — with a known username it falls through to ForceLogin, which prompts for
+        // credentials but lets AAD skip consent when the org has already granted the requested scopes.
+        => Assert.Equal(Prompt.ForceLogin,
             OAuthService.PromptForSignIn(firstConnect: true, "user@contoso.com", usesDefaultScope: false));
 
     [Fact]
