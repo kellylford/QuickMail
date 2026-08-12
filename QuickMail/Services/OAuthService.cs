@@ -30,15 +30,26 @@ public class OAuthService : IOAuthService
         "https://outlook.office.com/SMTP.Send",
     ];
 
-    // Work/school (AAD) Graph accounts: `.default` requests EXACTLY the app-registration's declared
-    // permissions, matching what admin consent grants — this is what fixed the requested-vs-declared
-    // mismatch that produced the "admin granted consent but the user is still prompted" loop (#208).
-    // `.default` is per-resource and cannot be combined with other scopes. Rationale:
-    // docs/planning/oauth-default-scope-pm-dev-spec.md. (Personal Graph accounts use
-    // GraphMailScopesPersonal below — `.default` under-delivers write for them, #217.)
-    public static readonly string[] GraphMailScopes =
+    // Work/school (AAD) Graph accounts. HISTORY: this used `.default`, which requests the app's ENTIRE
+    // declared permission set. That dragged the Office 365 Exchange Online IMAP/SMTP permissions (there
+    // only for the Microsoft IMAP backend) into every fresh work/school Graph consent — and when
+    // Microsoft's validation of that legacy Exchange entitlement went intermittently bad, `.default`
+    // consent failed with AADSTS65006 (reproducible on every fresh consent, not tenant-side). #511.
+    //
+    // BRIDGE for the Graph-only migration (#529): request EXPLICIT Graph mail scopes instead, so a Graph
+    // sign-in only ever validates the Graph permissions it needs and never touches the Exchange
+    // entitlement. Contacts and calendar are NOT here — they run through their own incremental consent
+    // flows (RequestContactsConsentAsync / RequestCalendarConsentAsync), same as personal accounts, so
+    // this list is mail only. This is temporary: once the Exchange permissions are removed from the app
+    // registration (last step of #529), `.default` is Exchange-free and this reverts to it (restoring the
+    // zero-maintenance #208 behavior). See docs/planning/oauth-default-scope-pm-dev-spec.md.
+    public static readonly string[] GraphMailScopesWorkSchool =
     [
-        "https://graph.microsoft.com/.default",
+        "https://graph.microsoft.com/Mail.ReadWrite",
+        "https://graph.microsoft.com/Mail.Send",
+        "https://graph.microsoft.com/MailboxSettings.ReadWrite",  // server-side rules (#333)
+        "https://graph.microsoft.com/User.Read",
+        "https://graph.microsoft.com/User.ReadBasic.All",         // recipient / directory resolution
     ];
 
     // Personal Microsoft accounts (Outlook.com/Hotmail/Live): `.default` under-delivers for MSA,
@@ -105,23 +116,30 @@ public class OAuthService : IOAuthService
     {
         if (account.BackendKind != BackendKind.MicrosoftGraph)
             return ImapSmtpScopes;
-        // Personal accounts need explicit scopes to obtain write access; work/school uses `.default`.
-        // Prefer the persisted, tenant-derived flag; fall back to the email-domain guess only when the
-        // account hasn't been detected yet (first sign-in, or added before detection shipped).
+        // Both personal and work/school use explicit Graph scopes now — personal for write access
+        // (#217), work/school as the #529 bridge so a Graph sign-in never validates the Exchange
+        // entitlement (#511). Prefer the persisted, tenant-derived flag; fall back to the email-domain
+        // guess only when the account hasn't been detected yet (first sign-in, or added before detection).
         var isPersonal = account.IsPersonalMicrosoftAccount ?? IsPersonalMicrosoftDomain(account.Username);
-        return isPersonal ? GraphMailScopesPersonal : GraphMailScopes;
+        return isPersonal ? GraphMailScopesPersonal : GraphMailScopesWorkSchool;
     }
 
-    // Prompt for an interactive sign-in. Adding an account forces the CONSENT screen: `.default`
-    // (work/school) issues a token SILENTLY as soon as ANY grant exists on the tenant — e.g. from a
-    // prior contacts/calendar consent or an earlier partial sign-in — so without this the mail
+    // Prompt for an interactive sign-in. Forcing the CONSENT screen on add is a `.default`-only
+    // workaround: `.default` issues a token SILENTLY as soon as ANY grant exists on the tenant — e.g.
+    // from a prior contacts/calendar consent or an earlier partial sign-in — so without it the mail
     // permissions are never consented and mail calls then 403 (#391, Microsoft docs "`.default`"
-    // Example 3). Prompt.Consent makes the admin/user approve the full declared set once, up front,
-    // while STAYING on `.default` so requested-equals-declared is preserved by construction (#208).
-    // Re-auth (an already-added account whose token expired) uses the normal prompt — that account
-    // already consented at add-time, so a forced re-consent on every cache loss would just annoy.
-    internal static Prompt PromptForSignIn(bool firstConnect, string? username)
-        => firstConnect ? Prompt.Consent
+    // Example 3). Prompt.Consent makes the admin/user approve the full declared set once, up front.
+    //
+    // #511/#529: with EXPLICIT scopes (not `.default`) that workaround does not apply — requesting
+    // `Mail.ReadWrite` IS the consent trigger, and AAD shows consent only when it isn't already granted.
+    // Forcing it there just re-prompts an already-consented org on every add (the #207/#208 symptom seen
+    // when the bridge first went in). So force consent only on the `.default` path; explicit-scope adds
+    // fall through to the normal prompt, which lets AAD skip consent when the org has already granted it.
+    //
+    // Re-auth (an already-added account whose token expired) uses the normal prompt either way — that
+    // account already consented at add-time, so a forced re-consent on every cache loss would annoy.
+    internal static Prompt PromptForSignIn(bool firstConnect, string? username, bool usesDefaultScope)
+        => firstConnect && usesDefaultScope ? Prompt.Consent
            : string.IsNullOrEmpty(username) ? Prompt.SelectAccount
            : Prompt.ForceLogin;
 
@@ -256,9 +274,9 @@ public class OAuthService : IOAuthService
         }
     }
 
-    // Add-account entry point: force the CONSENT screen so the full declared permission set is
-    // approved once (see PromptForSignIn). Scopes stay `.default` for work/school (DefaultScopesFor),
-    // so requested-equals-declared holds (#208).
+    // Add-account entry point. firstConnect=true; the prompt then depends on the scopes: the `.default`
+    // path still forces consent (#391), while the explicit-scope paths (personal, and work/school since
+    // the #529 bridge) let AAD decide, so an already-consented org isn't re-prompted. See PromptForSignIn.
     public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
         => SignInInteractiveAsync(account, DefaultScopesFor(account), firstConnect: true, ct);
 
@@ -272,11 +290,14 @@ public class OAuthService : IOAuthService
         await EnsureTokenCacheAsync();
         LogService.Log($"OAuthService: starting interactive sign-in for {account.Username}");
 
+        // #511/#529: consent is force-prompted only on the `.default` path (see PromptForSignIn). With
+        // explicit scopes AAD decides, so an already-consented org isn't re-prompted on every add.
+        var usesDefaultScope = scopes.Any(s => s.EndsWith("/.default", StringComparison.Ordinal));
         var builder = _msal.AcquireTokenInteractive(scopes)
             // Embedded WebView2 window: renders in-app and closes itself on completion, returning
             // focus to QuickMail — no system-browser tab and no lingering success page.
             .WithUseEmbeddedWebView(true)
-            .WithPrompt(PromptForSignIn(firstConnect, account.Username));
+            .WithPrompt(PromptForSignIn(firstConnect, account.Username, usesDefaultScope));
 
         if (!string.IsNullOrEmpty(account.Username))
             builder = builder.WithLoginHint(account.Username);

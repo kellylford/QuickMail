@@ -53,9 +53,20 @@ above; the embedded view intercepts that navigation internally (no loopback list
 
 ## 3. API permissions (delegated, Microsoft Graph + Exchange Online)
 
-The **Graph mail** backend uses the per-resource **`.default` scope** at **mail sign-in**
-(`https://graph.microsoft.com/.default`), which asks for **exactly the delegated Graph permissions
-declared here** — nothing more. See `docs/planning/oauth-default-scope-pm-dev-spec.md`.
+The **Graph mail** backend requests **explicit** Graph mail scopes at mail sign-in for **every** account
+type — `OAuthService.GraphMailScopesWorkSchool` (`Mail.ReadWrite`, `Mail.Send`, `MailboxSettings.ReadWrite`,
+`User.Read`, `User.ReadBasic.All`) for work/school, and `GraphMailScopesPersonal` for personal. See
+`docs/planning/oauth-default-scope-pm-dev-spec.md`.
+
+> **Why not `.default` for work/school (changed — #511/#529).** Work/school previously used
+> `graph.microsoft.com/.default`, which requests the app's **entire** declared set — dragging the
+> Office 365 Exchange Online IMAP/SMTP permissions (below, there only for the Microsoft IMAP backend)
+> into every fresh Graph consent. When Microsoft's validation of that legacy Exchange entitlement went
+> intermittently bad, `.default` consent failed with `AADSTS65006` on every fresh work/school Graph
+> onboarding (#511). Explicit Graph scopes never touch the Exchange entitlement, so Graph sign-in is
+> clean. This is the **bridge** for the Graph-only migration (#529); once the Exchange permissions are
+> removed from this registration (last step of #529), work/school reverts to `.default` (Exchange-free,
+> zero-maintenance). The Graph permissions below must still be declared for AAD either way.
 
 > **`.default` is not the whole story.** Contact sync and calendar sync run **separate,
 > incremental consent flows** (`RequestContactsConsentAsync` / `RequestCalendarConsentAsync`) that
