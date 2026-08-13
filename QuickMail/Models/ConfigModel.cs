@@ -510,4 +510,21 @@ public class AccountOverrideConfig
 {
     /// <summary>Override the global PreviewLines for this account. Null = use global setting.</summary>
     public int? PreviewLines { get; set; }
+
+    /// <summary>
+    /// Full name of the folder this account's messages were last moved to, so the picker opens
+    /// there next time (issue #515). Empty until the first move.
+    ///
+    /// <para>Per account because a destination is: the backends move by folder <em>name</em> over
+    /// the source account's connection, so one account's remembered folder is meaningless — and
+    /// with a name collision, actively wrong — for another.</para>
+    /// </summary>
+    public string LastMoveFolder { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The same for copies, kept apart from <see cref="LastMoveFolder"/>. Copying to a reference
+    /// folder and filing to an archive are different habits, and letting one set the other's
+    /// starting point would make both wrong half the time.
+    /// </summary>
+    public string LastCopyFolder { get; set; } = string.Empty;
 }

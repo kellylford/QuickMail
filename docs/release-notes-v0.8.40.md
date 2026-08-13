@@ -17,6 +17,20 @@ All downloads include the .NET 8 runtime — you do not need to install .NET sep
 
 ---
 
+## New: the folder picker opens where you last filed
+
+Filing is repetitive. You move a message to **Projects/2026**, then the next one, then the one after that — and until now the picker opened each time on the folder the messages were *in*, so you walked the tree to the same destination over and over.
+
+**Move to Folder…** now opens on the folder you last moved messages to. Filing a run of messages to one place is Enter, Enter, Enter after the first. It is remembered between sessions, so tomorrow morning starts where last night left off.
+
+Some details worth knowing:
+
+- **Move and copy are remembered separately.** Copying something to a reference folder does not change where **Move to Folder…** opens.
+- **Each account keeps its own.** A folder on one account is not a destination for another, so your work account and your personal account do not tread on each other.
+- **The old behaviour is still the fallback.** Before you have moved anything, or if the remembered folder has since been deleted or renamed, the picker opens on the folder the messages are in — exactly as before. Nothing to clear up, and no error.
+
+Thanks to the person who asked for this, and for pointing at Outlook Classic as the thing to match. ([#515](https://github.com/kellylford/QuickMail/issues/515))
+
 ## Fixed: the arrow keys skipped half the Settings tabs
 
 In **File → Settings** (Ctrl+comma), Left and Right on the tab headers only ever reached three of the six tabs — pressing Right from General went to Advanced, then Keyboard Shortcuts, then straight back to General. Startup, Windowing and Appearance could not be reached with the arrow keys at all.

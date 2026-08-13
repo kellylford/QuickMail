@@ -351,6 +351,17 @@ public class ConfigService : IConfigService
                     case "previewlines":
                         if (int.TryParse(value, out var pl)) ovr.PreviewLines = Math.Max(0, pl);
                         break;
+                    // Stored as the folder's FullName. Like every value in this file it arrives
+                    // already trimmed, so a folder name with a leading or trailing space will not
+                    // match on the way back — the same limitation StartupFolder has. It costs
+                    // nothing: an unresolvable name falls back to the folder the messages came
+                    // from, exactly as if nothing had been remembered.
+                    case "lastmovefolder":
+                        ovr.LastMoveFolder = value;
+                        break;
+                    case "lastcopyfolder":
+                        ovr.LastCopyFolder = value;
+                        break;
                 }
             }
             else if (section == "features")
@@ -766,6 +777,21 @@ public class ConfigService : IConfigService
             {
                 sb.AppendLine($"PreviewLines = {ovr.PreviewLines.Value}");
                 sb.AppendLine("# Override preview lines for this account. Remove to use global setting.");
+                sb.AppendLine();
+            }
+
+            if (!string.IsNullOrEmpty(ovr.LastMoveFolder))
+            {
+                sb.AppendLine($"LastMoveFolder = {ovr.LastMoveFolder}");
+                sb.AppendLine("# The folder this account's messages were last moved to. The Move to Folder");
+                sb.AppendLine("# picker opens here. Remembered automatically; remove to forget it.");
+                sb.AppendLine();
+            }
+
+            if (!string.IsNullOrEmpty(ovr.LastCopyFolder))
+            {
+                sb.AppendLine($"LastCopyFolder = {ovr.LastCopyFolder}");
+                sb.AppendLine("# The same for Copy to Folder.");
                 sb.AppendLine();
             }
         }

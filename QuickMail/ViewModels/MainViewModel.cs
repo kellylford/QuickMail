@@ -8018,6 +8018,69 @@ public partial class MainViewModel : ObservableObject, IDisposable
         messages.All(m => m.AccountId == destination.AccountId &&
                           string.Equals(m.FolderName, destination.FullName, StringComparison.Ordinal));
 
+    // ── Last message destination (#515) ───────────────────────────────────────
+    //
+    // Filing is repetitive: a run of messages usually goes to the same place, and reopening the
+    // picker on the folder they came out of meant walking the tree to that place again every time.
+    // The destination of the last successful move (and, separately, copy) is remembered per account
+    // and becomes where the picker opens.
+
+    /// <summary>
+    /// Records where messages were just filed, so the next picker opens there. Called only after
+    /// the server operation succeeded — a move that failed is not somewhere the user filed
+    /// anything, and offering it next time would be a lie about what happened.
+    /// </summary>
+    private void RememberMessageDestination(MailFolderModel destination, bool copy)
+    {
+        // Never a virtual aggregate: those are not legal destinations, so one cannot get here.
+        // Guarded anyway, because writing a sentinel into config.ini is the shape of bug #520's
+        // saved-view corruption, and the entry point is where that is cheap to prevent.
+        if (destination.AccountId == Guid.Empty ||
+            string.IsNullOrEmpty(destination.FullName) ||
+            destination.FullName.StartsWith('\x00'))
+            return;
+
+        var cfg = _configService.Load();
+        if (!cfg.Accounts.TryGetValue(destination.AccountId, out var ovr))
+            cfg.Accounts[destination.AccountId] = ovr = new AccountOverrideConfig();
+
+        var current = copy ? ovr.LastCopyFolder : ovr.LastMoveFolder;
+        if (string.Equals(current, destination.FullName, StringComparison.Ordinal))
+            return;   // already what we would write; do not rewrite the file on every move
+
+        if (copy) ovr.LastCopyFolder = destination.FullName;
+        else      ovr.LastMoveFolder = destination.FullName;
+        _configService.Save(cfg);
+    }
+
+    /// <summary>
+    /// Where a Move/Copy to Folder picker should open for <paramref name="messages"/>: the folder
+    /// this account last filed to, when it is still there. Null means nothing is remembered that
+    /// still resolves, and the caller falls back to the folder the messages came from (#490).
+    /// </summary>
+    /// <param name="copy">Ask for the copy destination rather than the move one.</param>
+    public MailFolderModel? LastDestinationFor(IReadOnlyList<MailMessageSummary> messages, bool copy)
+    {
+        // One account only. Destinations are account-scoped — the backends move by folder name over
+        // the source account's connection — so with a selection spanning accounts there is no one
+        // remembered folder that is right for all of it.
+        var accountIds = messages.Select(m => m.AccountId).Distinct().Take(2).ToList();
+        if (accountIds.Count != 1) return null;
+
+        var accountId = accountIds[0];
+        var cfg = _configService.Load();
+        if (!cfg.Accounts.TryGetValue(accountId, out var ovr)) return null;
+
+        var remembered = copy ? ovr.LastCopyFolder : ovr.LastMoveFolder;
+        if (string.IsNullOrEmpty(remembered)) return null;
+
+        // Resolved against the folders that actually exist now. A folder the user has since
+        // deleted, renamed, or moved simply is not found, and the picker opens where it used to.
+        return _cachedFolders.TryGetValue(accountId, out var folders)
+            ? folders.FirstOrDefault(f => string.Equals(f.FullName, remembered, StringComparison.Ordinal))
+            : null;
+    }
+
     /// <summary>Moves the given messages to a destination folder and removes them from the current view.</summary>
     public async Task MoveSelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
@@ -8065,6 +8128,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Was missing the To-view branch before §2.1; helper covers all three.
             RebuildActiveGroupView();
 
+            RememberMessageDestination(destination, copy: false);
+
             StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} moved to {destination.DisplayName}.";
             Announce(StatusText);
             // Conversations/From: LandOnX in the view handles focus after rebuild.
@@ -8106,6 +8171,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     group.Key.AccountId, group.Key.FolderName,
                     group.Select(m => m.MessageId).ToList(),
                     destination.FullName, cts.Token);
+
+            RememberMessageDestination(destination, copy: true);
 
             StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} copied to {destination.DisplayName}.";
             Announce(StatusText);
