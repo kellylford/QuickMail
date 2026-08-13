@@ -164,3 +164,25 @@ These are **deliberately not registered in `CommandRegistry`**. They are in-fiel
 Stepping and free-text parsing live in `Helpers/DateTimeFieldParser.cs` (pure, unit-tested in `DateTimeFieldParserTests`). A time field holds a full instant, not a `TimeSpan`, so stepping past midnight carries into the date instead of wrapping. `TryParseTime` uses an explicit format list and **rejects date-shaped text**: `DateTime.TryParse("8/3")` succeeds with a `TimeOfDay` of zero, which used to turn a date typed into the time box into a silent midnight.
 
 **Automation surface — do not change without listening first.** The control is a plain `TextBox` with no automation peer of its own. Three shapes were built and evaluated with three screen readers before this one was chosen: an edit field, an edit field claiming `AutomationControlType.Spinner`, and a purpose-built spinner control implementing `IValueProvider` and `IRangeValueProvider`. All three announced correctly, so the one that invents nothing won — replacing `TextBox.Text` raises the UIA value-change event screen readers already act on. There is **no** `AccessibilityHelper.Announce` in the stepping path, and there must not be: a programmatic announcement is filtered by the user's announcement settings, while a native value change is not.
+
+## Tab strips
+
+Left, Right, Home and End on a tab header move through the tabs of any `TabControl` in the app, in
+declaration order, wrapping at both ends; selection follows focus, so arrowing to a tab shows it.
+`Helpers/TabStripNavigation.cs` installs this once, from `App.OnStartup`, as a class handler on
+`TabControl` — a per-control attached property can be forgotten when a window with tabs is added,
+a class handler cannot.
+
+WPF's own arrow handling here is **geometric**: Right finds the nearest focusable element to the
+right, on roughly the same line. `TabPanel` wraps headers onto as many rows as they need and then
+moves the row holding the selected tab to the bottom, so on a wrapped strip the arrows can only
+ever reach the tabs sharing a row. Settings has six tabs, wraps to two rows of three, and stranded
+Startup, Windowing and Appearance completely (issue #528). How many rows a strip takes depends on
+the window width, the font and the text-scaling setting, so a wider dialog or shorter headers is
+not a fix. Covered by `TabStripNavigationTests`, which includes a walk over the real
+`SettingsDialog`.
+
+Like the date-field stepping keys above, these are **deliberately not registered in
+`CommandRegistry`**: they are in-control navigation keys, the same kind as the arrow keys inside a
+list box, and they do nothing outside a tab header. `Ctrl+Tab` / `Ctrl+Shift+Tab` remain
+`TabControl`'s own — the handler ignores any key pressed with a modifier.

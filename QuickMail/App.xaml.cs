@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using System.Windows;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -220,6 +221,10 @@ public partial class App : Application
         }
         if (onlineMode)
             LogService.Log("Online mode enabled — SQLite cache bypassed.");
+
+        // Left/Right/Home/End through a wrapped tab strip (#528). A class handler so a window
+        // with tabs added later cannot be left out.
+        TabStripNavigation.Install();
 
         // Debug screenshot capture (#175): the real engine exists only under /debug;
         // otherwise a null object keeps the feature structurally unreachable. One
