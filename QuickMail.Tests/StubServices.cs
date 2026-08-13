@@ -87,8 +87,10 @@ class StubImapMailServiceBase : IMailService
     public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default) => _inner.AppendDraftAsync(accountId, draft, replaceMessageId, ct);
     public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => _inner.AppendToSentAsync(accountId, sent, ct);
     public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default) => _inner.DownloadAttachmentAsync(accountId, folderName, messageId, partSpecifier, ct);
-    public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => _inner.CopyMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);
-    public Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => _inner.MoveMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);
+    // Virtual: a double needs to make the server refuse, so a test can tell "it worked" from "it
+    // was recorded anyway" — which is the whole of the remembered-destination rule (#515).
+    public virtual Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => _inner.CopyMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);
+    public virtual Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => _inner.MoveMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => _inner.CreateFolderAsync(accountId, parentFolderName, name, ct);
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => _inner.DeleteFolderAsync(accountId, folderName, ct);
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => _inner.RenameFolderAsync(accountId, folderName, newName, newParentFolderName, ct);

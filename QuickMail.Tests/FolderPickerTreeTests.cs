@@ -465,4 +465,25 @@ public class FolderPickerTreeTests
         }
         finally { window.Close(); }
     }
+    /// <summary>
+    /// A message move/copy picker opens on the folder that account last filed to (#515), which —
+    /// unlike the old default of the folder the messages came from — is routinely a nested one.
+    /// Selecting a node two levels down is only useful if its ancestors are expanded first, so this
+    /// asserts the whole outcome the user gets: that node selected, keyboard focus on it, and Open
+    /// enabled. Uses the constructor rather than ForFolderMoveCopy because that factory is for
+    /// moving a FOLDER and excludes the source; a message move excludes nothing.
+    /// </summary>
+    [StaFact]
+    public void OpensOnANestedRememberedFolder()
+    {
+        var remembered = Folder("INBOX/Projects/2026", "2026");
+        var window = Shown(new FolderPickerWindow(
+            [Account()], Folders(), title: "Move to Folder", useTreeView: true,
+            initialFolder: remembered));
+        try
+        {
+            AssertOpenedOn(window, "2026");
+        }
+        finally { window.Close(); }
+    }
 }
