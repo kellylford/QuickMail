@@ -17,6 +17,16 @@ All downloads include the .NET 8 runtime — you do not need to install .NET sep
 
 ---
 
+## Fixed: the arrow keys skipped half the Settings tabs
+
+In **File → Settings** (Ctrl+comma), Left and Right on the tab headers only ever reached three of the six tabs — pressing Right from General went to Advanced, then Keyboard Shortcuts, then straight back to General. Startup, Windowing and Appearance could not be reached with the arrow keys at all.
+
+The cause was that the six headers do not fit on one line, so they are laid out on two, and the arrow keys were finding the next tab by *where it sits on screen* rather than by its place in the list. That meant they never crossed from one line to the other.
+
+Left and Right now move through the tabs in order, whatever the layout, and wrap around at both ends. **Home** goes to the first tab and **End** to the last. Arrowing to a tab shows it, as it does in any tabbed window on Windows, and **Ctrl+Tab** and **Ctrl+Shift+Tab** work as before. The Address Book's tabs behave the same way. Your open message tabs are unchanged — that strip has always had its own arrow handling, which steps onto each tab's close button and stops at the ends rather than wrapping. ([#528](https://github.com/kellylford/QuickMail/issues/528))
+
+---
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
