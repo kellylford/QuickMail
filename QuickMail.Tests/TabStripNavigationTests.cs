@@ -60,15 +60,21 @@ public class TabStripNavigationTests
         return (window, tabs, items);
     }
 
-    /// <summary>Puts focus on <paramref name="from"/> and presses <paramref name="key"/> there.</summary>
+    /// <summary>
+    /// Puts focus on <paramref name="from"/> and presses <paramref name="key"/> there.
+    ///
+    /// <para>
+    /// Seeding through <see cref="TabOrderWalker.StartAt"/> rather than a bare <c>Focus()</c> is
+    /// what keeps this deterministic, and is not optional. Focus on a window that is not the
+    /// foreground one can land after the key has already been handled, and a <c>TabItem</c>
+    /// selects itself when it is focused — so a late seed re-selects the tab the walk started
+    /// from and the assertion fails reporting a behaviour regression that did not happen.
+    /// <c>StartAt</c> verifies the seed landed and throws as a setup failure if it did not.
+    /// </para>
+    /// </summary>
     private static void Press(Window window, DependencyObject from, Key key)
     {
-        if (from is IInputElement focusable)
-        {
-            FocusManager.SetFocusedElement(window, focusable);
-            (from as FrameworkElement)?.Focus();
-            TabOrderWalker.Drain();
-        }
+        TabOrderWalker.StartAt(window, (FrameworkElement)from, Header(from) ?? from.GetType().Name);
 
         var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window)!, 0, key)
         {
@@ -177,24 +183,29 @@ public class TabStripNavigationTests
     }
 
     [StaFact]
-    public void CtrlTab_IsLeftToTheFramework()
+    public void OtherKeys_FallThroughUnhandled()
     {
-        // TabControl implements Ctrl+Tab itself; a modified key must fall straight through.
+        // Only the four navigation keys are the strip's. Down in particular must stay WPF's, so
+        // it can still move focus out of a wrapped strip's top row into the row below it.
+        //
+        // The modifier guard — what keeps Ctrl+Tab TabControl's own — deliberately has no test.
+        // It reads the live keyboard device, which a synthesized KeyEventArgs cannot set, so a
+        // test could only assert the guard against itself. Better an admitted gap than a test
+        // that looks like coverage and is not.
         EnsureApplication();
         var (window, tabs, items) = BuildStrip();
         try
         {
-            var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window)!, 0, Key.Right)
+            TabOrderWalker.StartAt(window, items[0], "Tab 0");
+            var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window)!, 0, Key.Down)
             {
                 RoutedEvent = UIElement.PreviewKeyDownEvent,
                 Source      = items[0],
             };
-            // A real Ctrl+Right cannot be simulated without holding the key down, so assert the
-            // narrower thing the handler actually checks: an already-handled event is not touched.
-            args.Handled = true;
             items[0].RaiseEvent(args);
             TabOrderWalker.Drain();
 
+            Assert.False(args.Handled);
             Assert.Equal("Tab 0", Header(tabs.SelectedItem));
         }
         finally { window.Close(); }
@@ -216,13 +227,27 @@ public class TabStripNavigationTests
             var tabs = FindTabControl(dialog);
             Assert.NotNull(tabs);
             var items = tabs!.Items.Cast<TabItem>().ToArray();
-            Assert.True(items.Length >= 4, "the dialog should still have its tabs");
+            Assert.Equal(6, items.Length);
 
-            // Guards the premise: if the headers ever stop wrapping this test still passes, but a
-            // reader should know the two-row layout is what the fix is for.
-            var rows = items.Select(i => Math.Round(i.TransformToAncestor(dialog).Transform(default).Y))
-                            .Distinct().Count();
-            Assert.True(rows >= 1);
+            // The test process merges AccessibleStyles.xaml but not ThemedControls.xaml, which is
+            // what gives a tab header its real Padding — without it the six headers are narrow
+            // enough to fit on one line, which is the layout that was never broken. Stamping the
+            // themed padding and font size on reproduces what the user has, so the walk below runs
+            // against the two-row strip #528 was reported against.
+            foreach (var item in items)
+            {
+                item.Padding  = new Thickness(12, 6, 12, 6);
+                item.FontSize = 13;
+            }
+            dialog.UpdateLayout();
+            TabOrderWalker.Drain();
+
+            // Guards the premise rather than assuming it. A wrap is a header whose left edge is
+            // further left than the one before it — reliable in a way comparing Y values is not,
+            // since the selected header is nudged vertically whether or not the strip wrapped.
+            var x = items.Select(i => Math.Round(i.TransformToAncestor(dialog).Transform(default).X)).ToList();
+            Assert.True(x.Zip(x.Skip(1)).Any(p => p.Second < p.First),
+                $"the premise of this test is that the headers wrap onto more than one row; they did not (x = {string.Join(", ", x)})");
 
             var visited = new List<string?>();
             var current = items[0];

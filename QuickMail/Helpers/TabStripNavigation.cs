@@ -60,9 +60,10 @@ public static class TabStripNavigation
     {
         if (e.Handled || sender is not TabControl tabControl) return;
 
-        // The event's own device state, not the global Keyboard.Modifiers: the latter reports
-        // whatever is physically held right now, which is not necessarily what produced this key.
-        // Ctrl+Tab and Ctrl+Shift+Tab are TabControl's own and must be left alone.
+        // Any modifier means the key is not ours: Ctrl+Tab and Ctrl+Shift+Tab are TabControl's own.
+        // This reads live device state (e.KeyboardDevice is Keyboard.PrimaryDevice, so this is the
+        // same value as Keyboard.Modifiers), which a synthesized KeyEventArgs cannot set — hence no
+        // test for this line, and none that would mean anything.
         if (e.KeyboardDevice.Modifiers != ModifierKeys.None) return;
 
         // Only when focus is on a tab header of this tab control. For a keyboard event
@@ -86,9 +87,10 @@ public static class TabStripNavigation
         };
         if (target is null) return;
 
-        // Handled either way: Home on the first tab and Left on it both mean "the strip dealt with
-        // this", and letting the key fall through to geometric navigation would move focus out of
-        // the strip entirely.
+        // Handled even when the target is where we already are — Home on the first tab, End on the
+        // last. The strip dealt with the key; letting it fall through to geometric navigation would
+        // move focus out of the strip entirely. (Left and Right always land somewhere else, because
+        // they wrap.)
         e.Handled = true;
         if (ReferenceEquals(target, current)) return;
 
@@ -104,6 +106,9 @@ public static class TabStripNavigation
         {
             // ContainerFromIndex covers tabs generated from an ItemsSource; tabs declared in XAML
             // are their own containers, so fall back to the item before the containers exist.
+            // Assumes a strip whose items are TabItems, which both of the app's are. A control
+            // bound to plain data whose containers are not yet realized would silently contribute
+            // no tab here, and Home/End/wrap would land on the wrong one rather than fail visibly.
             var tab = tabControl.ItemContainerGenerator.ContainerFromIndex(i) as TabItem
                       ?? tabControl.Items[i] as TabItem;
 

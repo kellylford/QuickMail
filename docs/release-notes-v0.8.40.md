@@ -23,7 +23,7 @@ In **File → Settings** (Ctrl+comma), Left and Right on the tab headers only ev
 
 The cause was that the six headers do not fit on one line, so they are laid out on two, and the arrow keys were finding the next tab by *where it sits on screen* rather than by its place in the list. That meant they never crossed from one line to the other.
 
-Left and Right now move through the tabs in order, whatever the layout, and wrap around at both ends. **Home** goes to the first tab and **End** to the last. Arrowing to a tab shows it, as it does in any tabbed window on Windows, and **Ctrl+Tab** and **Ctrl+Shift+Tab** work as before. Every tabbed window in QuickMail gets this, not just Settings. ([#528](https://github.com/kellylford/QuickMail/issues/528))
+Left and Right now move through the tabs in order, whatever the layout, and wrap around at both ends. **Home** goes to the first tab and **End** to the last. Arrowing to a tab shows it, as it does in any tabbed window on Windows, and **Ctrl+Tab** and **Ctrl+Shift+Tab** work as before. The Address Book's tabs behave the same way. Your open message tabs are unchanged — that strip has always had its own arrow handling, which steps onto each tab's close button and stops at the ends rather than wrapping. ([#528](https://github.com/kellylford/QuickMail/issues/528))
 
 ---
 
