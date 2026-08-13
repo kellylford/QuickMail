@@ -785,6 +785,8 @@ public class ConfigService : IConfigService
                 sb.AppendLine($"LastMoveFolder = {ovr.LastMoveFolder}");
                 sb.AppendLine("# The folder this account's messages were last moved to. The Move to Folder");
                 sb.AppendLine("# picker opens here. Remembered automatically; remove to forget it.");
+                sb.AppendLine("# On Microsoft 365 accounts this is the server's folder id, not a name, so it");
+                sb.AppendLine("# is not readable — it is still safe to delete the line.");
                 sb.AppendLine();
             }
 

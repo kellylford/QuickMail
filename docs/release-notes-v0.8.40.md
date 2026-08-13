@@ -21,7 +21,7 @@ All downloads include the .NET 8 runtime — you do not need to install .NET sep
 
 Filing is repetitive. You move a message to **Projects/2026**, then the next one, then the one after that — and until now the picker opened each time on the folder the messages were *in*, so you walked the tree to the same destination over and over.
 
-**Move to Folder…** now opens on the folder you last moved messages to. Filing a run of messages to one place is Enter, Enter, Enter after the first. It is remembered between sessions, so tomorrow morning starts where last night left off.
+**Move to Folder…** now opens on the folder you last chose in **Move to Folder…**. Filing a run of messages to one place is Enter, Enter, Enter after the first. It is remembered between sessions, so tomorrow morning starts where last night left off. (Archiving and deleting do not change it — only the folder you picked yourself.)
 
 Some details worth knowing:
 

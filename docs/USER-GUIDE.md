@@ -472,7 +472,9 @@ Select one or more messages (or a sender/recipient group, or a conversation) and
 
 **The picker opens on the folder you last filed to**, so filing several messages to the same place takes one keystroke after the first: open the picker, press Enter. Move and copy are remembered separately — copying to a reference folder does not change where Move to Folder opens — and each account keeps its own, since a folder on one account is not a destination for another.
 
-Before you have moved anything, and whenever the remembered folder is not available — you have deleted or renamed it, or the messages belong to a different account — the picker opens on the folder the messages are in instead, so you still start somewhere useful. In a combined view such as All Inboxes that is the message's own folder, not the view. If neither is available the picker opens on the first folder; it never opens with nothing selected.
+Before you have moved anything on that account, and whenever the remembered folder is no longer there — you have deleted or renamed it — the picker opens on the folder the messages are in instead, so you still start somewhere useful. The same applies when the messages you selected come from more than one account: no single remembered folder is right for all of them.
+
+Only the folder you choose in the picker is remembered. Archiving and deleting file messages away too, but they do not change where the picker opens. In a combined view such as All Inboxes that is the message's own folder, not the view. If neither is available the picker opens on the first folder; it never opens with nothing selected.
 
 Typing jumps to a folder here too, exactly as it does in the main folder tree: type the beginning of a folder name and the selection moves to it. Because a bare letter belongs to that typing, the picker's buttons take **Alt+O** for Open, **Alt+C** for Cancel, and **Alt+N** for New Folder rather than plain letter shortcuts. Enter and Escape still work as usual.
 

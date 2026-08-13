@@ -69,9 +69,21 @@ public class LastMessageDestinationTests
     /// startup once the persisted folder list has been restored (#516).</summary>
     private static async Task<(MainViewModel Vm, StubConfigService Config, FailableMailService Mail)> MakeVmAsync()
     {
-        var config = new StubConfigService();
-        var mail   = new FailableMailService();
-        var store  = new StubLocalStoreService();
+        var config     = new StubConfigService();
+        var (vm, mail) = MakeVmWith(config);
+        await vm.InitialLoadAsync();
+        return (vm, config, mail);
+    }
+
+    /// <summary>
+    /// The same VM over a caller-supplied config service, so a test can hand it a real
+    /// <see cref="ConfigService"/> and stand a second one up afterwards to play the next launch.
+    /// The folder lists come from the local store, not the config, so a "restart" keeps them.
+    /// </summary>
+    private static (MainViewModel Vm, FailableMailService Mail) MakeVmWith(IConfigService config)
+    {
+        var mail  = new FailableMailService();
+        var store = new StubLocalStoreService();
         store.SeededFolders[WorkId] =
         [
             Folder(WorkId, "INBOX"), Folder(WorkId, "Archive"), Folder(WorkId, "Projects/2026"),
@@ -88,8 +100,7 @@ public class LastMessageDestinationTests
             new StubRuleService(), new StubSmtpService());
 
         vm.LoadAccountList();
-        await vm.InitialLoadAsync();
-        return (vm, config, mail);
+        return (vm, mail);
     }
 
     [Fact]
@@ -116,14 +127,29 @@ public class LastMessageDestinationTests
     [Fact]
     public async Task ItSurvivesARestart()
     {
-        // The whole point is the second and third message, which may well be in another session:
-        // the value goes through config.ini, not a field.
-        var (vm, config, _) = await MakeVmAsync();
-        await vm.MoveSelectedMessagesToFolderAsync([Message(WorkId)], Folder(WorkId, "Archive"));
+        // The whole point is the second and third message, which may well be in another session.
+        // A real ConfigService over a temp profile, not the in-memory stub: the stub hands back the
+        // very object the VM just mutated, so asserting against it would prove only that a field
+        // was set — the file is where the value has to land.
+        var dir     = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"QM-LastDest-{Guid.NewGuid():N}");
+        var profile = new ProfileContext(dir);
+        try
+        {
+            var (vm, _) = MakeVmWith(new ConfigService(profile));
+            await vm.InitialLoadAsync();
 
-        var reloaded = config.Load();
+            await vm.MoveSelectedMessagesToFolderAsync([Message(WorkId)], Folder(WorkId, "Archive"));
 
-        Assert.Equal("Archive", reloaded.Accounts[WorkId].LastMoveFolder);
+            // A second service reading the file the first one wrote — the next launch.
+            var reloaded = new ConfigService(profile).Load();
+            Assert.Equal("Archive", reloaded.Accounts[WorkId].LastMoveFolder);
+
+            // And the restarted app resolves it back to a folder, which is what the picker needs.
+            var (restarted, _) = MakeVmWith(new ConfigService(profile));
+            await restarted.InitialLoadAsync();
+            Assert.Equal("Archive", restarted.LastDestinationFor([Message(WorkId)], copy: false)?.FullName);
+        }
+        finally { if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, recursive: true); }
     }
 
     [Fact]
@@ -220,18 +246,35 @@ public class LastMessageDestinationTests
                      !string.IsNullOrEmpty(ovr.LastMoveFolder));
     }
 
-    [Fact]
-    public async Task AVirtualAggregate_IsNeverWrittenToConfig()
+    [Theory]
+    [InlineData(false)]   // \0AccountMail:{guid} — this account's "All Mail"
+    [InlineData(true)]    // the top-level All Mail aggregate
+    public async Task AVirtualFolder_IsNeverWrittenToConfig(bool topLevelAggregate)
     {
-        // Not reachable through the picker, which does not offer aggregates as destinations — but a
+        // Not reachable through the picker, which does not offer these as destinations — but a
         // sentinel in config.ini is the shape of the saved-view corruption #520 was about, and the
         // entry point is where that is cheap to refuse.
+        //
+        // The per-account case is the one that matters and the one a hand-rolled "is the AccountId
+        // empty" test lets straight through: an account's own All Mail, a saved view, and a
+        // contact-mail result all carry a REAL AccountId and are told apart only by their sentinel
+        // FullName. Removing the sentinel clause from the guard must fail a test here.
         var (vm, config, _) = await MakeVmAsync();
+        var destination = topLevelAggregate
+            ? MainViewModel.AllMailFolder
+            : new MailFolderModel
+            {
+                AccountId   = WorkId,
+                FullName    = MainViewModel.AccountMailPrefix + WorkId,
+                DisplayName = "All Mail",
+            };
 
-        await vm.MoveSelectedMessagesToFolderAsync([Message(WorkId)], MainViewModel.AllMailFolder);
+        await vm.MoveSelectedMessagesToFolderAsync([Message(WorkId)], destination);
 
+        // Nothing at all was written: the guard returns before touching the config.
         Assert.DoesNotContain(config.Load().Accounts.Values,
-            o => o.LastMoveFolder.StartsWith('\x00') || o.LastCopyFolder.StartsWith('\x00'));
+            o => !string.IsNullOrEmpty(o.LastMoveFolder) || !string.IsNullOrEmpty(o.LastCopyFolder));
+        Assert.Null(vm.LastDestinationFor([Message(WorkId)], copy: false));
     }
 
     [Fact]
@@ -284,19 +327,28 @@ public class LastMessageDestinationCallSiteTests
         Assert.Contains("CurrentFolderOf", body, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData("Move to Folder", "copy: false")]
-    [InlineData("Copy to Folder", "copy: true")]
-    [InlineData("Move Conversation to Folder", "copy: false")]
-    [InlineData("Copy Conversation to Folder", "copy: true")]
-    public void EveryCallSitePassesTheIntentThatMatchesItsTitle(string title, string expected)
+    [Fact]
+    public void EveryCallSitePassesTheIntentThatMatchesItsTitle()
     {
+        // Every call, not a list of the titles that exist today: a new entry point with a new
+        // title, or one that leaves the flag off, is exactly what this is here to catch, and a
+        // fixed [InlineData] table would let both through by never looking at them.
         var source = File.ReadAllText(SourcePath("Views/MainWindow.xaml.cs"));
-        var calls  = Regex.Matches(source, @"BuildMessageFolderPicker\([^)]*""" + Regex.Escape(title) + @"""[^)]*\)");
+        var calls  = Regex.Matches(source, @"BuildMessageFolderPicker\(\s*[^;]*?""(?<title>[^""]*)""[^;]*?\)\s*;");
 
-        Assert.NotEmpty(calls);
+        Assert.Equal(10, calls.Count);   // update deliberately when an entry point is added or removed
+
         foreach (Match call in calls)
-            Assert.Contains(expected, call.Value, StringComparison.Ordinal);
+        {
+            var title    = call.Groups["title"].Value;
+            var isCopy   = title.StartsWith("Copy", StringComparison.Ordinal);
+            var expected = isCopy ? "copy: true" : "copy: false";
+
+            Assert.True(title.StartsWith("Move", StringComparison.Ordinal) || isCopy,
+                        $"a picker titled \"{title}\" is neither a move nor a copy — which memory should it open from?");
+            Assert.True(call.Value.Contains(expected, StringComparison.Ordinal),
+                        $"the picker titled \"{title}\" does not pass {expected}, so it would open from the other memory.");
+        }
     }
 
     private static string MethodBody(string relativePath, string methodName)

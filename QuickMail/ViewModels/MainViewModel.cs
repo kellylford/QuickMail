@@ -8032,12 +8032,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void RememberMessageDestination(MailFolderModel destination, bool copy)
     {
-        // Never a virtual aggregate: those are not legal destinations, so one cannot get here.
+        // Never a virtual folder: those are not legal destinations, so one cannot get here.
         // Guarded anyway, because writing a sentinel into config.ini is the shape of bug #520's
-        // saved-view corruption, and the entry point is where that is cheap to prevent.
+        // saved-view corruption, and the entry point is where that is cheap to prevent. Not a
+        // hand-rolled NUL test: the per-account "All Mail", saved-view and contact-mail sentinels
+        // carry a REAL AccountId, so a check for Guid.Empty passes every one of them through.
         if (destination.AccountId == Guid.Empty ||
             string.IsNullOrEmpty(destination.FullName) ||
-            destination.FullName.StartsWith('\x00'))
+            IsVirtualFolder(destination))
             return;
 
         var cfg = _configService.Load();
@@ -8050,7 +8052,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (copy) ovr.LastCopyFolder = destination.FullName;
         else      ovr.LastMoveFolder = destination.FullName;
-        _configService.Save(cfg);
+
+        // The write is the convenience, not the operation. This runs inside the move's try block,
+        // where an escaping IO exception — an antivirus holding the temp file across the rename, a
+        // full disk, a read-only profile — would be caught as "Failed to move" for a move the
+        // server completed and the list has already dropped, and would skip the focus return that
+        // follows it. Remembering where the user filed must never be able to misreport the filing.
+        try
+        {
+            _configService.Save(cfg);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("RememberMessageDestination: saving the last destination", ex);
+        }
     }
 
     /// <summary>
