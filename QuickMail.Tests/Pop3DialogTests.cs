@@ -85,6 +85,43 @@ public class Pop3DialogTests
         return string.Empty;   // unreachable; Assert.Fail throws
     }
 
+    /// <summary>
+    /// Asserts a field is labelled the way the Accessibility Checklist requires, in the two halves
+    /// that can break independently:
+    ///
+    /// <list type="number">
+    /// <item>the field's <c>AutomationProperties.LabeledBy</c> resolves to the intended Label — the
+    /// ElementName binding that #168 is about, and the half that renders perfectly when broken;</item>
+    /// <item>that Label's own automation peer carries the expected text.</item>
+    /// </list>
+    ///
+    /// <para>Both come from real automation peers, never from the XAML. Split because the composite
+    /// read (the field's peer, which delegates to the Label's) returned empty on the CI runner while
+    /// passing here, and an empty string does not say which half was missing.</para>
+    /// </summary>
+    private static void AssertLabelled(Window window, string fieldName, string labelName, string expected)
+    {
+        var field = Named<FrameworkElement>(window, fieldName);
+        var label = Named<Label>(window, labelName);
+
+        Assert.True(ReferenceEquals(AutomationProperties.GetLabeledBy(field), label),
+            $"{fieldName} is not labelled by {labelName}: LabeledBy resolved to " +
+            $"{AutomationProperties.GetLabeledBy(field)?.GetType().Name ?? "null"}. " +
+            "A field whose label binding fails looks perfect on screen and announces nothing.");
+
+        Assert.Equal(expected, SettledPeerName(label));
+
+        // The field's own peer delegates to the label's, and is what a screen reader actually reads.
+        // Reported rather than asserted a second time: when the two halves above hold and this does
+        // not, the cause is WPF's delegation in that environment, not this dialog's wiring.
+        var viaField = SettledPeerName(field);
+        Assert.True(viaField == expected,
+            $"{fieldName} is labelled by {labelName} (which reads '{expected}'), but the field's own " +
+            $"peer reads '{viaField}'. LabeledBy delegation did not resolve. " +
+            $"field: IsVisible={field.IsVisible} IsLoaded={field.IsLoaded}; " +
+            $"label: IsVisible={label.IsVisible} IsLoaded={label.IsLoaded} ActualWidth={label.ActualWidth}.");
+    }
+
     [StaFact]
     public void ChoosingPop3_ShowsThePop3FieldsAndHidesTheImapOnes()
     {
@@ -125,10 +162,10 @@ public class Pop3DialogTests
             window.UpdateLayout();
             Drain();
 
-            // Read from the automation peer, not from the XAML: a Label whose Target failed to bind
-            // renders perfectly and announces nothing (#168).
-            Assert.Equal("POP3 host:", SettledPeerName(Named<TextBox>(window, "Pop3HostBox")));
-            Assert.Equal("POP3 port:", SettledPeerName(Named<TextBox>(window, "Pop3PortBox")));
+            // What a screen reader reads, checked in the two independent halves it is made of, so a
+            // failure names the broken one instead of just reporting an empty string (#168).
+            AssertLabelled(window, "Pop3HostBox", "LblPop3Host", "POP3 host:");
+            AssertLabelled(window, "Pop3PortBox", "LblPop3Port", "POP3 port:");
 
             // A short label, with no instruction baked in — the consequence of clearing it is a Hint.
             var keep = SettledPeerName(Named<CheckBox>(window, "Pop3LeaveOnServerCheckBox"));
