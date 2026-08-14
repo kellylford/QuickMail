@@ -268,10 +268,11 @@ public sealed class GraphClient : IDisposable
         // Up to 3 attempts to ride out HTTP 429 throttling.
         for (int attempt = 0; ; attempt++)
         {
-            // Default (scopes == null): per-account default scopes (DefaultScopesFor) — `.default` for
-            // work/school, explicit Mail.ReadWrite/etc. for personal Microsoft accounts (#217). An
-            // explicit scope set is passed only by contact sync (Graph Contacts.Read/People.Read),
-            // which also asks for silent-only acquisition so it never opens an interactive window.
+            // Default (scopes == null): per-account default scopes (DefaultScopesFor) — explicit Graph
+            // mail scopes for BOTH personal (#217) and work/school (the #511/#529 bridge; `.default` is
+            // no longer used on the mail path until the Exchange perms are removed). An explicit scope
+            // set is passed only by contact sync (Graph Contacts.Read/People.Read), which also asks for
+            // silent-only acquisition so it never opens an interactive window.
             var token = scopes is null
                 ? await _oauth.GetAccessTokenAsync(account, ct)
                 : silentOnly

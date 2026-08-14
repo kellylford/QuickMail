@@ -6,18 +6,20 @@ using Xunit;
 namespace QuickMail.Tests;
 
 /// <summary>
-/// Locks the per-account scope selection (#217/#218): personal Microsoft accounts must get the
-/// explicit Graph scopes (so they can write/delete), work/school Graph accounts use `.default`, and
-/// IMAP always uses the IMAP scopes. Guards against a future refactor silently reverting the routing.
+/// Locks the per-account scope selection (#217/#218, #511/#529): personal Microsoft accounts get the
+/// explicit personal Graph scopes, work/school Graph accounts get the explicit work/school Graph scopes
+/// (the #529 bridge — so a Graph sign-in never validates the Exchange entitlement, #511), and IMAP
+/// always uses the IMAP scopes. Guards against a future refactor silently reverting the routing.
 /// </summary>
 public class OAuthServiceScopeSelectionTests
 {
-    // The account a work-or-school Microsoft address must end up as. Asserted at the scope layer
-    // because that is where the failure actually bites: the IMAP scopes below are the ones a tenant
-    // has usually never consented to, and requesting them ends sign-in at "your administrator needs
-    // to make a change" for a mailbox that signs in fine over Graph.
+    // A work-or-school Microsoft address on Graph asks for explicit Graph scopes, NOT `.default`
+    // (#511/#529 bridge). `.default` requested the whole declared set, dragging the Exchange IMAP/SMTP
+    // permissions into every fresh Graph consent — whose flaky validation produced the intermittent
+    // AADSTS65006. The explicit list requests only the Graph mail permissions, so the Exchange
+    // entitlement is never touched by a Graph sign-in.
     [Fact]
-    public void AWorkTenantOnGraphAsksForTheAdminConsentedDefaultScope()
+    public void AWorkTenantOnGraphAsksForExplicitGraphScopes()
     {
         var account = new AccountModel
         {
@@ -27,7 +29,11 @@ public class OAuthServiceScopeSelectionTests
             IsPersonalMicrosoftAccount = false,
         };
 
-        Assert.Equal(["https://graph.microsoft.com/.default"], OAuthService.DefaultScopesFor(account));
+        var scopes = OAuthService.DefaultScopesFor(account);
+        Assert.Same(OAuthService.GraphMailScopesWorkSchool, scopes);
+        Assert.Contains("https://graph.microsoft.com/Mail.ReadWrite", scopes);
+        Assert.DoesNotContain("https://graph.microsoft.com/.default", scopes);
+        Assert.DoesNotContain("https://outlook.office.com/IMAP.AccessAsUser.All", scopes);
     }
 
     [Fact]
@@ -57,10 +63,10 @@ public class OAuthServiceScopeSelectionTests
     }
 
     [Fact]
-    public void WorkSchoolGraphAccount_UsesDefaultScope()
+    public void WorkSchoolGraphAccount_UsesExplicitWorkSchoolScopes()
     {
         var account = new AccountModel { BackendKind = BackendKind.MicrosoftGraph, Username = "user@contoso.com" };
-        Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
+        Assert.Same(OAuthService.GraphMailScopesWorkSchool, OAuthService.DefaultScopesFor(account));
     }
 
     [Fact]
@@ -86,53 +92,63 @@ public class OAuthServiceScopeSelectionTests
     }
 
     [Fact]
-    public void WorkAccountOnPersonalLookingDomain_StoredFlagFalseUsesDefault()
+    public void WorkAccountOnPersonalLookingDomain_StoredFlagFalseUsesWorkSchoolScopes()
     {
-        // Flag explicitly false wins over a personal-looking domain → work/school (`.default`).
+        // Flag explicitly false wins over a personal-looking domain → work/school explicit Graph scopes.
         var account = new AccountModel
         {
             BackendKind = BackendKind.MicrosoftGraph,
             Username = "user@outlook.com",
             IsPersonalMicrosoftAccount = false,
         };
-        Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
+        Assert.Same(OAuthService.GraphMailScopesWorkSchool, OAuthService.DefaultScopesFor(account));
     }
 
     [Fact]
-    public void CustomDomainPersonalAccount_NotYetDetected_FallsBackToDefault_KnownMigrationGap()
+    public void CustomDomainPersonalAccount_NotYetDetected_FallsBackToWorkSchool_KnownMigrationGap()
     {
         // DELIBERATE, documented fallback (#234 review, concern 1): a personal account on a custom
         // domain that hasn't been detected yet (added before tenant detection shipped, never re-authed)
-        // has a null flag → the email-domain guess says "work" → `.default`. Auto-heal is deferred; new
-        // accounts are detected at sign-in, so this only affects pre-detection accounts (near-zero while
-        // the Graph backend is feature-gated). Locked as a test so it reads as intended, not an oversight.
+        // has a null flag → the email-domain guess says "work" → the work/school Graph scopes. Auto-heal
+        // is deferred; new accounts are detected at sign-in, so this only affects pre-detection accounts
+        // (near-zero while the Graph backend is feature-gated). Locked as a test so it reads as intended.
         var account = new AccountModel
         {
             BackendKind = BackendKind.MicrosoftGraph,
             Username = "me@myvanitydomain.com",
             IsPersonalMicrosoftAccount = null,
         };
-        Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
+        Assert.Same(OAuthService.GraphMailScopesWorkSchool, OAuthService.DefaultScopesFor(account));
     }
 
-    // ── Add-account forces the consent screen (#391) ────────────────────────
-    // The scope selection is unchanged (DefaultScopesFor, covered above). The fix is the PROMPT:
-    // adding an account forces Prompt.Consent so the full declared set is approved once — `.default`
-    // otherwise issues a token silently as soon as ANY grant exists (Microsoft docs Example 3), which
-    // is why a work account with contacts/calendar already enabled then 403s on mail. Re-auth keeps
-    // the normal prompt.
+    // ── Add-account consent prompt (#391, refined by #511/#529) ─────────────
+    // Forcing Prompt.Consent on add is a `.default`-only workaround (#391): `.default` issues a token
+    // silently as soon as ANY grant exists, so mail consent must be forced up front. With EXPLICIT
+    // scopes that doesn't apply — requesting them IS the consent trigger — and forcing it just
+    // re-prompts an already-consented org on every add (#207/#208). So consent is forced only on the
+    // `.default` path; explicit-scope adds fall through to the normal prompt.
 
     [Fact]
-    public void AddAccount_ForcesConsentPrompt()
-        => Assert.Equal(Prompt.Consent, OAuthService.PromptForSignIn(firstConnect: true, "user@contoso.com"));
+    public void AddAccount_OnDefaultScope_ForcesConsentPrompt()
+        => Assert.Equal(Prompt.Consent,
+            OAuthService.PromptForSignIn(firstConnect: true, "user@contoso.com", usesDefaultScope: true));
+
+    [Fact]
+    public void AddAccount_OnExplicitScopes_DoesNotForceConsent() // #511/#529
+        // Not Prompt.Consent — with a known username it falls through to ForceLogin, which prompts for
+        // credentials but lets AAD skip consent when the org has already granted the requested scopes.
+        => Assert.Equal(Prompt.ForceLogin,
+            OAuthService.PromptForSignIn(firstConnect: true, "user@contoso.com", usesDefaultScope: false));
 
     [Fact]
     public void ReAuth_ForKnownAccount_ForcesLogin_NotConsent()
-        => Assert.Equal(Prompt.ForceLogin, OAuthService.PromptForSignIn(firstConnect: false, "user@contoso.com"));
+        => Assert.Equal(Prompt.ForceLogin,
+            OAuthService.PromptForSignIn(firstConnect: false, "user@contoso.com", usesDefaultScope: true));
 
     [Fact]
     public void ReAuth_WithNoExpectedAccount_SelectsAccount()
-        => Assert.Equal(Prompt.SelectAccount, OAuthService.PromptForSignIn(firstConnect: false, null));
+        => Assert.Equal(Prompt.SelectAccount,
+            OAuthService.PromptForSignIn(firstConnect: false, null, usesDefaultScope: true));
 
     [Fact]
     public void ImapScopes_AreExplicit_NotDefault() // #239

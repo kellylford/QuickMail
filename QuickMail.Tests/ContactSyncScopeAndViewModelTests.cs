@@ -26,7 +26,7 @@ public class OAuthContactScopeTests
     [Fact]
     public void DefaultMailScopes_DoNotContainContactScopes()
     {
-        foreach (var scope in OAuthService.ImapSmtpScopes.Concat(OAuthService.GraphMailScopes).Concat(OAuthService.GraphMailScopesPersonal))
+        foreach (var scope in OAuthService.ImapSmtpScopes.Concat(OAuthService.GraphMailScopesWorkSchool).Concat(OAuthService.GraphMailScopesPersonal))
         {
             Assert.DoesNotContain("Contacts.Read", scope);
             Assert.DoesNotContain("People.Read", scope);
