@@ -17,6 +17,56 @@ All downloads include the .NET 8 runtime — you do not need to install .NET sep
 
 ---
 
+## New: POP3, for mail services that offer no IMAP
+
+Some mail services still hand out POP3 and nothing else, and until now that put QuickMail out of
+reach entirely. It can now collect mail over POP3, and send over SMTP exactly as it always has.
+
+**It is off until you turn it on.** POP3 is new here, and it works differently enough from IMAP to
+be worth choosing deliberately rather than stumbling into. In **File → Settings** (Ctrl+comma),
+**Advanced**, under **Account Types**, tick **Offer POP3 when adding an account**, then restart
+QuickMail. Nothing else about QuickMail changes while it is off — and an account already using POP3
+keeps working whether the setting is on or off, so turning it back off hides the option without
+stranding your mail.
+
+Then add the account as usual: **Accounts → Add Account**, open **Advanced settings**, and choose
+**POP3/SMTP** under **Connection method**. Gmail, Outlook.com and Yahoo fill in their POP3 server for
+you; for anything else you type the server, as you would for IMAP. Most services need POP3 switched
+on in their own web settings first, and Gmail and Yahoo want an app password rather than your account
+password.
+
+### What POP3 means day to day
+
+POP3 has no folders on the server, no shared read or flag state, and no way to fetch part of a
+message. So a POP3 account in QuickMail works like this:
+
+- **Whole messages are downloaded and kept on this computer.** Reading a message, opening its
+  attachments and searching all work with no network at all.
+- **Four folders — Inbox, Sent, Drafts and Trash — and they are QuickMail's own.** There is nothing
+  on a POP3 server to make folders out of, so creating, renaming or moving folders is not offered;
+  ask for it and QuickMail says why rather than failing at the server.
+- **Read and unread, flags, and moves stay on this computer.** POP3 gives them nowhere to go, so
+  another mail program looking at the same mailbox will not see them.
+- **New mail arrives on the sync interval**, not the instant it lands. POP3 has no equivalent of the
+  live connection QuickMail holds open for IMAP.
+- **Deleting is two steps, as everywhere else in QuickMail**: to Trash, then permanently.
+
+### Keep mail on the server
+
+The one setting worth reading twice. **Keep mail on the server after downloading** is on by default,
+and while it is on QuickMail never deletes anything from your mail service — collect mail here and it
+is still there for your phone, or webmail, or whatever else you use.
+
+Clear it and QuickMail removes each message from the server once it has been safely stored here,
+which is the classic POP3 behaviour. That makes this computer the only copy, so keep backups in mind
+before you choose it. Either way, a message you delete only ever leaves the server on a permanent
+delete, never on the way to Trash — and QuickMail checks it is deleting the right message before it
+does, so a message another program has already collected is left alone rather than deleted by
+position.
+
+Thanks to the people who have been asking for this since QuickMail's early days.
+([#128](https://github.com/kellylford/QuickMail/issues/128))
+
 ## New: the folder picker opens where you last filed
 
 Filing is repetitive. You move a message to **Projects/2026**, then the next one, then the one after that — and until now the picker opened each time on the folder the messages were *in*, so you walked the tree to the same destination over and over.
