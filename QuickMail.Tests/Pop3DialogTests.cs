@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -55,6 +56,35 @@ public class Pop3DialogTests
     private static string PeerName(UIElement element) =>
         UIElementAutomationPeer.CreatePeerForElement(element)?.GetName() ?? string.Empty;
 
+    /// <summary>
+    /// The accessible name once WPF has settled.
+    ///
+    /// <para><c>AutomationProperties.LabeledBy</c> is an <c>ElementName</c> binding, and ElementName
+    /// resolution is asynchronous — WPF retries it as the tree loads. A single dispatcher drain is
+    /// enough on a fast machine and was not on the CI runner, where this read came back empty
+    /// (build job of PR 538). Draining until the name appears makes the test measure the wiring
+    /// rather than the machine; a name that never appears still fails, with the diagnosis attached.</para>
+    /// </summary>
+    private static string SettledPeerName(FrameworkElement element)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var name = PeerName(element);
+            if (!string.IsNullOrEmpty(name)) return name;
+            Drain();
+        }
+
+        // Empty after settling is a real failure. Say which half of the wiring is missing: a null
+        // LabeledBy means the ElementName never resolved (#168's failure mode), while a resolved
+        // LabeledBy with no name means the label itself carries no content.
+        var labeledBy = AutomationProperties.GetLabeledBy(element);
+        Assert.Fail(
+            $"{element.Name} has no accessible name after settling. " +
+            $"LabeledBy={(labeledBy is null ? "null (ElementName never resolved)" : labeledBy.GetType().Name)}, " +
+            $"IsVisible={element.IsVisible}, IsLoaded={element.IsLoaded}.");
+        return string.Empty;   // unreachable; Assert.Fail throws
+    }
+
     [StaFact]
     public void ChoosingPop3_ShowsThePop3FieldsAndHidesTheImapOnes()
     {
@@ -97,11 +127,11 @@ public class Pop3DialogTests
 
             // Read from the automation peer, not from the XAML: a Label whose Target failed to bind
             // renders perfectly and announces nothing (#168).
-            Assert.Equal("POP3 host:", PeerName(Named<TextBox>(window, "Pop3HostBox")));
-            Assert.Equal("POP3 port:", PeerName(Named<TextBox>(window, "Pop3PortBox")));
+            Assert.Equal("POP3 host:", SettledPeerName(Named<TextBox>(window, "Pop3HostBox")));
+            Assert.Equal("POP3 port:", SettledPeerName(Named<TextBox>(window, "Pop3PortBox")));
 
             // A short label, with no instruction baked in — the consequence of clearing it is a Hint.
-            var keep = PeerName(Named<CheckBox>(window, "Pop3LeaveOnServerCheckBox"));
+            var keep = SettledPeerName(Named<CheckBox>(window, "Pop3LeaveOnServerCheckBox"));
             Assert.Equal("Keep mail on the server after downloading", keep);
         }
         finally { window.Close(); }
