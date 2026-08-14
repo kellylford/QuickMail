@@ -1730,11 +1730,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         left.Username == right.Username &&
         left.LoginUsername == right.LoginUsername &&
         left.AuthType == right.AuthType &&
-        left.ImapHost == right.ImapHost &&
-        left.ImapPort == right.ImapPort &&
-        left.ImapUseSsl == right.ImapUseSsl &&
+        // The INCOMING leg, whichever protocol serves it: reading the IMAP fields directly missed a
+        // repointed POP3 account entirely (its IMAP fields never change), so live "connected" status
+        // was carried over to a connection that no longer existed.
+        left.IncomingHost == right.IncomingHost &&
+        left.IncomingPort == right.IncomingPort &&
+        left.IncomingUseSsl == right.IncomingUseSsl &&
         left.RequireStartTls == right.RequireStartTls &&
-        left.ImapAcceptInvalidCert == right.ImapAcceptInvalidCert;
+        left.IncomingAcceptInvalidCert == right.IncomingAcceptInvalidCert;
 
     // ── Saved-views lifecycle ─────────────────────────────────────────────────────
 
@@ -4118,12 +4121,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ConnectionStatusText = "Connecting…";
         IsBusy = true;
 
-        // Group by IMAP host: accounts sharing a server connect sequentially to stay under the
+        // Group by incoming host: accounts sharing a server connect sequentially to stay under the
         // per-IP connection limit shared hosting enforces (same rationale as SyncService); accounts
         // on different hosts still connect in parallel.
+        //
+        // IncomingHost, not ImapHost — a POP3 account's IMAP host is empty, so grouping on it put
+        // every POP3 account in one bucket regardless of its real server, and failed to serialize a
+        // POP3 account against an IMAP account on the same host. Serializing matters more for POP3
+        // than for IMAP: RFC 1939 gives a session an exclusive lock on the maildrop.
         var resultsByHost = await Task.WhenAll(
             Accounts.Where(a => !a.IsShared)   // #31: shared mailboxes are not connected in PR 1 (no own creds)
-                    .GroupBy(a => a.ImapHost, StringComparer.OrdinalIgnoreCase)
+                    .GroupBy(a => a.IncomingHost, StringComparer.OrdinalIgnoreCase)
                     .Select(async hostGroup =>
                     {
                         var groupResults = new List<(Guid Id, List<MailFolderModel>? Folders)>();

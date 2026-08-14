@@ -282,6 +282,74 @@ public class Pop3AccountManagerTests
     }
 }
 
+/// <summary>
+/// The incoming leg reported per backend (#128). Code that asks "which server does this account
+/// receive from" used to read the IMAP fields directly, which describes a POP3 account as the empty
+/// host on port 993 — the same root cause as the blank server the Account Properties window showed.
+/// </summary>
+public class AccountIncomingLegTests
+{
+    [Fact]
+    public void APop3AccountReportsItsPop3Server()
+    {
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.Pop3Smtp,
+            Pop3Host = "mail.example.com", Pop3Port = 995, Pop3UseSsl = true, Pop3AcceptInvalidCert = true,
+            ImapHost = string.Empty, ImapPort = 993, ImapUseSsl = true,   // untouched defaults
+        };
+
+        Assert.Equal("mail.example.com", account.IncomingHost);
+        Assert.Equal(995, account.IncomingPort);
+        Assert.True(account.IncomingUseSsl);
+        Assert.True(account.IncomingAcceptInvalidCert);
+    }
+
+    [Fact]
+    public void AnImapAccountIsUnchanged()
+    {
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.ImapSmtp,
+            ImapHost = "imap.example.com", ImapPort = 143, ImapUseSsl = false,
+        };
+
+        Assert.Equal("imap.example.com", account.IncomingHost);
+        Assert.Equal(143, account.IncomingPort);
+        Assert.False(account.IncomingUseSsl);
+    }
+
+    [Fact]
+    public void AGraphAccountHasNoIncomingServer()
+    {
+        var account = new AccountModel { BackendKind = BackendKind.MicrosoftGraph, ImapPort = 993 };
+
+        Assert.Equal(string.Empty, account.IncomingHost);
+        Assert.Equal(0, account.IncomingPort);
+    }
+
+    [Fact]
+    public void TwoPop3AccountsOnDifferentServersAreNotTheSameHost()
+    {
+        // Connect-time grouping serializes accounts that share a host, which matters more for POP3
+        // than IMAP: RFC 1939 locks the maildrop for the session. Grouping on the IMAP field put
+        // every POP3 account in one bucket — both of these looked like the same empty host.
+        var first  = new AccountModel { BackendKind = BackendKind.Pop3Smtp, Pop3Host = "pop.one.example" };
+        var second = new AccountModel { BackendKind = BackendKind.Pop3Smtp, Pop3Host = "pop.two.example" };
+
+        Assert.NotEqual(first.IncomingHost, second.IncomingHost);
+    }
+
+    [Fact]
+    public void APop3AccountAndAnImapAccountOnOneHostShareIt()
+    {
+        var pop3 = new AccountModel { BackendKind = BackendKind.Pop3Smtp, Pop3Host = "mail.example.com" };
+        var imap = new AccountModel { BackendKind = BackendKind.ImapSmtp, ImapHost = "mail.example.com" };
+
+        Assert.Equal(pop3.IncomingHost, imap.IncomingHost);
+    }
+}
+
 /// <summary>The POP3 half of the provider catalog.</summary>
 public class Pop3ProviderCatalogTests
 {

@@ -92,6 +92,48 @@ public partial class AccountModel : ObservableObject
     /// </summary>
     public bool Pop3LeaveMailOnServer { get; set; } = true;
 
+    // ── The incoming leg, whichever protocol serves it ───────────────────────────
+    // Code that cares about "the server this account receives from" — grouping accounts by host at
+    // connect time, deciding whether a reconfigured account still describes the same connection —
+    // must not reach for the IMAP fields directly. A POP3 account leaves those at their defaults, so
+    // an IMAP-only reading sees every POP3 account as the same empty host on port 993 (#128).
+
+    /// <summary>The host this account receives mail from. Empty for Graph, which has no server.</summary>
+    [JsonIgnore]
+    public string IncomingHost => BackendKind switch
+    {
+        BackendKind.Pop3Smtp       => Pop3Host,
+        BackendKind.MicrosoftGraph => string.Empty,
+        _                          => ImapHost,
+    };
+
+    /// <summary>The port that goes with <see cref="IncomingHost"/>. 0 for Graph.</summary>
+    [JsonIgnore]
+    public int IncomingPort => BackendKind switch
+    {
+        BackendKind.Pop3Smtp       => Pop3Port,
+        BackendKind.MicrosoftGraph => 0,
+        _                          => ImapPort,
+    };
+
+    /// <summary>Implicit TLS on the incoming connection. False for Graph, which has none.</summary>
+    [JsonIgnore]
+    public bool IncomingUseSsl => BackendKind switch
+    {
+        BackendKind.Pop3Smtp       => Pop3UseSsl,
+        BackendKind.MicrosoftGraph => false,
+        _                          => ImapUseSsl,
+    };
+
+    /// <summary>Whether the incoming connection accepts an invalid certificate.</summary>
+    [JsonIgnore]
+    public bool IncomingAcceptInvalidCert => BackendKind switch
+    {
+        BackendKind.Pop3Smtp       => Pop3AcceptInvalidCert,
+        BackendKind.MicrosoftGraph => false,
+        _                          => ImapAcceptInvalidCert,
+    };
+
     // SMTP
     public string SmtpHost { get; set; } = string.Empty;
     public int SmtpPort { get; set; } = 587;
