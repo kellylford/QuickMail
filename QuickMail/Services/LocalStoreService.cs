@@ -168,6 +168,19 @@ public class LocalStoreService : ILocalStoreService
         cmd.ExecuteNonQuery();
 
         RunDataMigrations(conn);
+
+        // Raw RFC 5322 bytes of a POP3 message, stored only when the message has attachments (#128).
+        // POP3 has no equivalent of IMAP's fetch-one-body-part, so an attachment has to come back out
+        // of the message we already downloaded; keeping the bytes is what makes it openable later
+        // without a second full download. NULL for every IMAP and Graph row, and for POP3 messages
+        // with no attachments — which is why this is a nullable column on the existing detail table
+        // rather than a table of its own: DeleteSummariesAsync already drops the MessageDetail row,
+        // so the bytes cascade with the message instead of leaking.
+        //
+        // Deliberately AFTER RunDataMigrations, unlike the ALTERs above: the 1→2 migration rebuilds
+        // MessageDetail by CREATE/INSERT/DROP/RENAME against a fixed column list, so a column added
+        // before it would be dropped again and stay missing for the rest of the session.
+        RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN mime_bytes BLOB DEFAULT NULL;");
     }
 
     // SQLite's PRAGMA user_version stores a single integer per database. We use it as a
@@ -869,7 +882,8 @@ public class LocalStoreService : ILocalStoreService
         // INNER JOIN returns nothing.
         cmd.CommandText = """
             SELECT d.to_addr, d.cc, d.reply_to, d.plain_body, d.html_body,
-                   s.from_disp, s.subject, s.date_ticks, s.is_read, d.attachments_json, d.calendar_ics
+                   s.from_disp, s.subject, s.date_ticks, s.is_read, d.attachments_json, d.calendar_ics,
+                   s.internet_message_id
             FROM MessageDetail d
             LEFT JOIN MessageSummary s USING (unique_id, account_id, folder_name)
             WHERE d.unique_id=$uid AND d.account_id=$aid AND d.folder_name=$fn;
@@ -916,10 +930,53 @@ public class LocalStoreService : ILocalStoreService
             Subject       = r.IsDBNull(6) ? "(no subject)" : r.GetString(6),
             Date          = r.IsDBNull(7) ? DateTimeOffset.MinValue : new DateTimeOffset(r.GetInt64(7), TimeSpan.Zero),
             IsRead        = !r.IsDBNull(8) && r.GetInt64(8) != 0,
+            // Carried from the summary row so a reply composed from a cached message still threads:
+            // ComposeViewModel puts this in In-Reply-To, and until now a cache-served open handed it
+            // an empty string. POP3 makes that permanent rather than incidental — the cache is the
+            // only copy, so there is no server fetch that would fill it in later.
+            InternetMessageId = r.IsDBNull(11) ? string.Empty : r.GetString(11),
             Attachments   = attachments,
             CalendarIcs   = calendarIcs,
             CalendarInvite = string.IsNullOrWhiteSpace(calendarIcs) ? null : IcsModel.Parse(calendarIcs),
         };
+    }
+
+    /// <summary>
+    /// Stores (or clears, when <paramref name="mimeBytes"/> is null) the raw message bytes on an
+    /// existing MessageDetail row. Only <c>Pop3MailService</c> calls this, and only after
+    /// <see cref="UpsertDetailAsync"/> has created the row — an UPDATE against a missing row is a
+    /// silent no-op, which is the right outcome for a message that is no longer cached.
+    /// </summary>
+    public async Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "UPDATE MessageDetail SET mime_bytes=$bytes " +
+            "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
+        cmd.Parameters.AddWithValue("$bytes", (object?)mimeBytes ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$uid",   messageId);
+        cmd.Parameters.AddWithValue("$aid",   accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",    folderName);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Returns the raw message bytes previously stored by <see cref="StoreMimeBytesAsync"/>, or null
+    /// when none were stored (every IMAP/Graph message, and POP3 messages with no attachments).
+    /// </summary>
+    public async Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT mime_bytes FROM MessageDetail " +
+            "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
+        cmd.Parameters.AddWithValue("$uid", messageId);
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        var result = await cmd.ExecuteScalarAsync();
+        return result as byte[];
     }
 
     public async Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName)

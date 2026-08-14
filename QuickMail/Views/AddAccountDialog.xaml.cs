@@ -148,6 +148,12 @@ public partial class AddAccountDialog : Window
         // stay a short label.
         if (ReferenceEquals(focused, SmtpImplicitSslCheckBox))
             return "Checked uses port 465. Cleared uses STARTTLS on port 587.";
+        // POP3 hands the local store the only copy of a message once the server drops it, and that
+        // is what this checkbox decides. It belongs in a hint rather than in the label, which stays
+        // a short label — and in a hint the user's announcement preference still applies.
+        if (ReferenceEquals(focused, Pop3LeaveOnServerCheckBox))
+            return "Cleared, mail is removed from the server once QuickMail has downloaded it, "
+                 + "so this computer holds the only copy.";
         if (ReferenceEquals(focused, SignatureBox))
             return "Added to the end of new messages, replies, and forwards.";
         return null;

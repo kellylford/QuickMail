@@ -155,6 +155,11 @@ public partial class AccountManagerDialog : Window
         // stay a short label.
         if (ReferenceEquals(focused, SmtpImplicitSslCheckBox))
             return "Checked uses port 465. Cleared uses STARTTLS on port 587.";
+        // Same reasoning as the Add Account dialog: what clearing this costs is the point of the
+        // control, and it belongs in a hint rather than in a label that must stay short.
+        if (ReferenceEquals(focused, Pop3LeaveOnServerCheckBox))
+            return "Cleared, mail is removed from the server once QuickMail has downloaded it, "
+                 + "so this computer holds the only copy.";
         if (ReferenceEquals(focused, SignatureBox))
             return "Added to the end of new messages, replies, and forwards.";
         return null;

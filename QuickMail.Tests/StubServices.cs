@@ -244,6 +244,18 @@ sealed class StubLocalStoreService : ILocalStoreService
     /// stand in for a cached invite email); otherwise it returns null like the real cache-miss path.</summary>
     public MailMessageDetail? SeededDetail { get; set; }
     public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult(SeededDetail);
+
+    /// <summary>Raw POP3 message bytes (#128), kept so a test can assert what was stored.</summary>
+    public Dictionary<(Guid AccountId, string Folder, string MessageId), byte[]?> MimeBytes { get; } = new();
+
+    public Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes)
+    {
+        MimeBytes[(accountId, folderName, messageId)] = mimeBytes;
+        return Task.CompletedTask;
+    }
+
+    public Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId) =>
+        Task.FromResult(MimeBytes.TryGetValue((accountId, folderName, messageId), out var bytes) ? bytes : null);
     public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
     public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     public Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());

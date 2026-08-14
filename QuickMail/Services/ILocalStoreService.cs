@@ -65,6 +65,22 @@ public interface ILocalStoreService
     Task UpsertDetailAsync(MailMessageDetail detail);
     Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId);
 
+    // ── POP3 raw message bytes (#128) ────────────────────────────────────────────
+
+    /// <summary>
+    /// Stores the raw RFC 5322 bytes of a POP3 message so its attachments can be extracted later
+    /// without a second download — POP3 has no per-part fetch, so the bytes are the only way back to
+    /// the parts. Pass null to clear. Called only by <c>Pop3MailService</c>, and only after
+    /// <see cref="UpsertDetailAsync"/>; IMAP and Graph messages leave this null.
+    /// </summary>
+    Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes);
+
+    /// <summary>
+    /// Returns the bytes previously stored by <see cref="StoreMimeBytesAsync"/>, or null if none
+    /// were stored (IMAP/Graph messages, and POP3 messages with no attachments).
+    /// </summary>
+    Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId);
+
     /// <summary>
     /// Returns the highest message key stored for this folder, or "0" if none. For the IMAP
     /// backend this is the numeric high-water UID, computed as MAX(CAST(unique_id AS INTEGER))

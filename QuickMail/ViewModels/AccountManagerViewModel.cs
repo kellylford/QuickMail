@@ -157,6 +157,11 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         ImapPort = value.ImapPort;
         ImapUseSsl = value.ImapUseSsl;
         ImapAcceptInvalidCert = value.ImapAcceptInvalidCert;
+        Pop3Host = value.Pop3Host;
+        Pop3Port = value.Pop3Port;
+        Pop3UseSsl = value.Pop3UseSsl;
+        Pop3AcceptInvalidCert = value.Pop3AcceptInvalidCert;
+        Pop3LeaveMailOnServer = value.Pop3LeaveMailOnServer;
         SmtpHost = value.SmtpHost;
         SmtpPort = value.SmtpPort;
         SmtpUseSsl = value.SmtpUseSsl;
@@ -384,6 +389,13 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         account.ImapPort = ImapPort;
         account.ImapUseSsl = ImapUseSsl;
         account.ImapAcceptInvalidCert = ImapAcceptInvalidCert;
+        account.Pop3Host = Pop3Host;
+        account.Pop3Port = Pop3Port;
+        account.Pop3UseSsl = Pop3UseSsl;
+        account.Pop3AcceptInvalidCert = Pop3AcceptInvalidCert;
+        // Editable after the fact, and consequential: turning "leave mail on the server" off means
+        // the next collection is the last chance any other client has to see that mail.
+        account.Pop3LeaveMailOnServer = Pop3LeaveMailOnServer;
         account.SmtpHost = SmtpHost;
         account.SmtpPort = SmtpPort;
         account.SmtpUseSsl = SmtpUseSsl;

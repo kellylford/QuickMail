@@ -75,6 +75,23 @@ public partial class AccountModel : ObservableObject
     public bool ImapUseSsl { get; set; } = true;
     public bool ImapAcceptInvalidCert { get; set; } = false;
 
+    // POP3
+    public string Pop3Host { get; set; } = string.Empty;
+    public int Pop3Port { get; set; } = 995;
+    public bool Pop3UseSsl { get; set; } = true;
+    public bool Pop3AcceptInvalidCert { get; set; } = false;
+
+    /// <summary>
+    /// When true (the default), downloaded messages are left on the server so other clients can
+    /// still collect them. When false, a message is deleted from the server once it is stored
+    /// locally — the classic POP3 behavior.
+    /// <para>QuickMail still files deletes through a local Trash folder either way: a message the
+    /// user deletes is moved to Trash and only removed from the server when Trash is emptied or the
+    /// message is permanently deleted. Because the local store is the only copy of POP3 mail, that
+    /// second step is the point of no return.</para>
+    /// </summary>
+    public bool Pop3LeaveMailOnServer { get; set; } = true;
+
     // SMTP
     public string SmtpHost { get; set; } = string.Empty;
     public int SmtpPort { get; set; } = 587;

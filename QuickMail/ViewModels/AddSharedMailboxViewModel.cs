@@ -24,9 +24,11 @@ public partial class AddSharedMailboxViewModel : ObservableObject
 
         // Only shared-capable accounts can host a shared mailbox: a work/school Microsoft 365 (Graph)
         // account, or an IMAP account. A personal Microsoft account has no Exchange shared mailboxes,
-        // and a shared account can't itself be a parent.
+        // a POP3 account has no concept of a second mailbox at all (one maildrop, no folders, no
+        // access delegation), and a shared account can't itself be a parent.
         ParentOptions = _allAccounts
             .Where(a => !a.IsShared
+                        && a.BackendKind != BackendKind.Pop3Smtp
                         && !(a.BackendKind == BackendKind.MicrosoftGraph && a.IsPersonalMicrosoftAccount == true))
             .ToList();
 

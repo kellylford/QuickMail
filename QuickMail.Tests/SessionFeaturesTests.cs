@@ -104,6 +104,8 @@ public class PreviewSuppressionTests
         public Task<bool> HasSummariesMissingRecipientsAsync() => Task.FromResult(false);
         public Task UpsertDetailAsync(MailMessageDetail detail) => Task.CompletedTask;
         public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<MailMessageDetail?>(null);
+        public Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes) => Task.CompletedTask;
+        public Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<byte[]?>(null);
         public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
         public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
         public Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());

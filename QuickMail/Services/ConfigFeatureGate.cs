@@ -27,6 +27,10 @@ public class ConfigFeatureGate : IFeatureGate
         // sole creation path, stays hidden until the feature is whole. Set SharedMailboxes=true under
         // [features] to test.
         [FeatureFlag.SharedMailboxes] = false,
+        // Off until POP3 (#128) has run against real servers. The local store holds the only copy of
+        // POP3 mail, so the cost of a wrong assumption is a user's mail, not a re-sync. Set
+        // Pop3Backend=true under [features] to test.
+        [FeatureFlag.Pop3Backend] = false,
     };
 
     private readonly Dictionary<string, string> _configFlags;

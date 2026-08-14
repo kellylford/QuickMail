@@ -157,9 +157,11 @@
                             </ComboBox>
                         </StackPanel>
 
-                        <!-- IMAP + SMTP — collapsed for Microsoft Graph accounts, which authenticate
-                             via OAuth and need no host configuration. -->
-                        <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
+                        <!-- Server settings — collapsed for Microsoft Graph accounts, which authenticate
+                             via OAuth and need no host configuration. Shown for both host-based
+                             backends: each contributes its own incoming section below, and both send
+                             over SMTP. -->
+                        <StackPanel Visibility="{Binding ShowServerSettings, Converter={StaticResource BoolToVisibility}}">
                             <Separator Margin="0,12"/>
 
                             <!-- Only for servers whose login is not the email address. Advanced,
@@ -178,29 +180,67 @@
 
                             <Separator Margin="0,12"/>
 
-                            <TextBlock Text="Incoming Mail (IMAP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <!-- Incoming: exactly one of these two is ever visible, which is why both
+                                 use the same access keys — the access-key manager only considers
+                                 visible elements, and h/p/S/i stay where the user learned them. -->
+                            <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="Incoming Mail (IMAP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
 
-                            <Label x:Name="LblImapHost" Content="IMAP _host:" Target="{Binding ElementName=ImapHostBox}" Padding="0" Margin="0,4,0,2"/>
-                            <TextBox x:Name="ImapHostBox"
-                                     Text="{Binding ImapHost, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.LabeledBy="{Binding ElementName=LblImapHost}"
-                                    />
+                                <Label x:Name="LblImapHost" Content="IMAP _host:" Target="{Binding ElementName=ImapHostBox}" Padding="0" Margin="0,4,0,2"/>
+                                <TextBox x:Name="ImapHostBox"
+                                         Text="{Binding ImapHost, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.LabeledBy="{Binding ElementName=LblImapHost}"
+                                        />
 
-                            <Label x:Name="LblImapPort" Content="IMAP _port:" Target="{Binding ElementName=ImapPortBox}" Padding="0" Margin="0,6,0,2"/>
-                            <TextBox x:Name="ImapPortBox"
-                                     Text="{Binding ImapPort, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.LabeledBy="{Binding ElementName=LblImapPort}"
-                                    />
+                                <Label x:Name="LblImapPort" Content="IMAP _port:" Target="{Binding ElementName=ImapPortBox}" Padding="0" Margin="0,6,0,2"/>
+                                <TextBox x:Name="ImapPortBox"
+                                         Text="{Binding ImapPort, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.LabeledBy="{Binding ElementName=LblImapPort}"
+                                        />
 
-                            <CheckBox Content="Use _SSL (port 993)"
-                                      IsChecked="{Binding ImapUseSsl}"
-                                      AutomationProperties.Name="IMAP use SSL"
-                                      Margin="0,6"/>
+                                <CheckBox Content="Use _SSL (port 993)"
+                                          IsChecked="{Binding ImapUseSsl}"
+                                          AutomationProperties.Name="IMAP use SSL"
+                                          Margin="0,6"/>
 
-                            <CheckBox Content="Accept _invalid certificates"
-                                      IsChecked="{Binding ImapAcceptInvalidCert}"
-                                      AutomationProperties.Name="IMAP accept invalid SSL certificates"
-                                      Margin="0,0,0,6"/>
+                                <CheckBox Content="Accept _invalid certificates"
+                                          IsChecked="{Binding ImapAcceptInvalidCert}"
+                                          AutomationProperties.Name="IMAP accept invalid SSL certificates"
+                                          Margin="0,0,0,6"/>
+                            </StackPanel>
+
+                            <StackPanel Visibility="{Binding IsPop3Backend, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="Incoming Mail (POP3)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                                <Label x:Name="LblPop3Host" Content="POP3 _host:" Target="{Binding ElementName=Pop3HostBox}" Padding="0" Margin="0,4,0,2"/>
+                                <TextBox x:Name="Pop3HostBox"
+                                         Text="{Binding Pop3Host, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.LabeledBy="{Binding ElementName=LblPop3Host}"
+                                        />
+
+                                <Label x:Name="LblPop3Port" Content="POP3 _port:" Target="{Binding ElementName=Pop3PortBox}" Padding="0" Margin="0,6,0,2"/>
+                                <TextBox x:Name="Pop3PortBox"
+                                         Text="{Binding Pop3Port, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.LabeledBy="{Binding ElementName=LblPop3Port}"
+                                        />
+
+                                <CheckBox Content="Use _SSL (port 995)"
+                                          IsChecked="{Binding Pop3UseSsl}"
+                                          AutomationProperties.Name="POP3 use SSL"
+                                          Margin="0,6"/>
+
+                                <CheckBox Content="Accept _invalid certificates"
+                                          IsChecked="{Binding Pop3AcceptInvalidCert}"
+                                          AutomationProperties.Name="POP3 accept invalid SSL certificates"
+                                          Margin="0,0,0,6"/>
+
+                                <!-- The consequence of clearing this is spelled out in a focus hint
+                                     (see HintFor) rather than in the label, which stays a short label. -->
+                                <CheckBox x:Name="Pop3LeaveOnServerCheckBox"
+                                          Content="_Keep mail on the server after downloading"
+                                          IsChecked="{Binding Pop3LeaveMailOnServer}"
+                                          Margin="0,0,0,6"/>
+                            </StackPanel>
 
                             <Separator Margin="0,6"/>
 
