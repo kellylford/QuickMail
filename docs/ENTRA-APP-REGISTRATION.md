@@ -67,9 +67,15 @@ scope requested at sign-in can dead-end onboarding on a consent-restricted tenan
 > into every fresh Graph consent. When Microsoft's validation of that legacy Exchange entitlement went
 > intermittently bad, `.default` consent failed with `AADSTS65006` on every fresh work/school Graph
 > onboarding (#511). Explicit Graph scopes never touch the Exchange entitlement, so Graph sign-in is
-> clean. This is the **bridge** for the Graph-only migration (#529); once the Exchange permissions are
-> removed from this registration (last step of #529), work/school reverts to `.default` (Exchange-free,
-> zero-maintenance). The Graph permissions below must still be declared for AAD either way.
+> clean. The Graph permissions below must still be declared for AAD either way.
+>
+> **This is permanent — work/school does not go back to `.default`.** It was first written as a
+> temporary bridge, assuming Microsoft IMAP would be dropped and the Exchange permissions deleted from
+> this registration. #529 settled the opposite: Microsoft IMAP is **retained** as a documented fallback
+> while the open Graph defects stand, so the Exchange permissions stay declared, so `.default` would
+> drag them back into Graph consent and bring back the `AADSTS65006`. Removing the Exchange permissions
+> and reverting to `.default` are both off the table. The price is that
+> `OAuthService.GraphMailScopesWorkSchool` is a hand-maintained list — see the §6 note.
 
 > **`.default` is not the whole story.** Contact sync and calendar sync run **separate,
 > incremental consent flows** (`RequestContactsConsentAsync` / `RequestCalendarConsentAsync`) that
@@ -114,15 +120,17 @@ declared scopes). Both must still be declared here.
 | `SMTP.Send` | SMTP send (XOAUTH2) |
 
 Plus `offline_access` (refresh tokens) — a standard OIDC scope that **MSAL adds automatically** for
-the public-client desktop flow, so refresh tokens still issue even though the code now requests only
-`.default` (verified live). It is not listed in `OAuthService.cs` and needs no separate portal entry.
+the public-client desktop flow, so refresh tokens still issue even though the code never requests it
+(verified live). It is not listed in `OAuthService.cs` and needs no separate portal entry.
 
-> For scopes reached through **`.default`** (the mail path), adding a permission is **entirely a
-> registration action**: declare it in this list **and** re-grant admin consent in each
-> admin-consent tenant. There is no code scope list to update, and a permission the code needs but
-> that is not declared+granted here surfaces as a feature-level `403`. Declaring a new scope
-> **before** GA (while no account has consented yet) means the first consent captures it and no one
-> is ever re-prompted.
+> **No mail path goes through `.default` any more (#511).** Work/school Graph mail requests
+> `GraphMailScopesWorkSchool`, personal Graph mail requests `GraphMailScopesPersonal`, and IMAP/SMTP
+> requests its two explicit Exchange scopes — so adding a mail permission is **never** a
+> registration-only action. Declare it in this list, re-grant admin consent in each admin-consent
+> tenant, **and** add it to the matching array in `OAuthService.cs`; a permission that is declared and
+> granted but missing from the code array is simply never requested, and the feature `403`s. Declaring
+> a new scope **before** GA (while no account has consented yet) means the first consent captures it
+> and no one is ever re-prompted.
 >
 > **The explicitly-requested scopes behave differently and fail differently.** For contacts and
 > calendar (see the callout above), an undeclared or un-consented scope surfaces as a **consent
@@ -323,7 +331,9 @@ un-granted permission blocks sign-in only if that build's scope list actually re
 that is merely *declared* on the registration but not in the code list (e.g. `User.ReadBasic.All`, a
 forward declaration) does **not** block sign-in. Conversely, adding a new work/school mail permission
 now requires editing `GraphMailScopesWorkSchool` **and** the registration, not the registration alone.
-(This reverts to `.default` at the end of the #529 migration, once the Exchange perms are removed.)
+This is the standing arrangement, not a transitional one — #529 settled on retaining Microsoft IMAP,
+which keeps the Exchange permissions declared, which is exactly why work/school cannot go back to
+`.default`.
 
 ### Server-rules write fails with `403` even though sign-in worked
 The account's cached token predates a newly-added scope, or the tenant granted only part of the set.

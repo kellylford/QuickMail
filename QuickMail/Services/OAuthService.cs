@@ -36,13 +36,24 @@ public class OAuthService : IOAuthService
     // Microsoft's validation of that legacy Exchange entitlement went intermittently bad, `.default`
     // consent failed with AADSTS65006 (reproducible on every fresh consent, not tenant-side). #511.
     //
-    // BRIDGE for the Graph-only migration (#529): request EXPLICIT Graph mail scopes instead, so a Graph
-    // sign-in only ever validates the Graph permissions it needs and never touches the Exchange
-    // entitlement. Contacts and calendar are NOT here — they run through their own incremental consent
-    // flows (RequestContactsConsentAsync / RequestCalendarConsentAsync), same as personal accounts, so
-    // this list is mail only. This is temporary: once the Exchange permissions are removed from the app
-    // registration (last step of #529), `.default` is Exchange-free and this reverts to it (restoring the
-    // zero-maintenance #208 behavior). See docs/planning/oauth-default-scope-pm-dev-spec.md.
+    // FIX (#511): request EXPLICIT Graph mail scopes instead, so a Graph sign-in only ever validates the
+    // Graph permissions it needs and never touches the Exchange entitlement. Contacts and calendar are
+    // NOT here — they run through their own incremental consent flows (RequestContactsConsentAsync /
+    // RequestCalendarConsentAsync), same as personal accounts, so this list is mail only.
+    //
+    // THIS IS PERMANENT — do NOT "restore" `.default` here. It was originally written as a temporary
+    // bridge, on the plan that Microsoft IMAP would be dropped and the Exchange permissions deleted from
+    // the app registration. That plan was settled the other way (#529): Microsoft IMAP is RETAINED as a
+    // documented fallback while the open Graph defects (#491/#462/#454/#31) stand, so the Exchange
+    // permissions must stay declared, so `.default` would drag them back into Graph consent and
+    // reintroduce the AADSTS65006. The registration cleanup and the `.default` revert are off the table.
+    //
+    // The cost of that decision lands here: this list is HAND-MAINTAINED. Adding a work/school Graph mail
+    // capability means adding its scope to this array AND declaring it on the registration — miss the
+    // array and the call 403s at runtime. That is the accepted trade (a dev-time-diagnosable 403 beats
+    // anything that touches users' machines); it is not an oversight to be optimized away by going back
+    // to `.default`. See docs/planning/oauth-default-scope-pm-dev-spec.md for the superseded `.default`
+    // design and #529 for why it stays superseded.
     // Only scopes the work/school MAIL path actually calls. Deliberately NOT `User.ReadBasic.All`
     // (a `/users` directory permission with no call site — it's a forward declaration on the app
     // registration, see docs/ENTRA-APP-REGISTRATION.md): restrictive tenants gate directory reads
@@ -84,9 +95,11 @@ public class OAuthService : IOAuthService
 
     // Calendar read/write scope for Graph calendar sync (full-calendar spec, M4). Explicit scope so
     // it works for BOTH personal and work/school accounts — same reasoning as GraphContactScopes.
-    // Requested only when the user adds a Microsoft calendar. NOTE: work/school accounts sign in with
-    // `.default`, so for them Calendars.ReadWrite must ALSO be declared on the app registration (see
-    // docs/ENTRA-APP-REGISTRATION.md §3); this explicit array is what personal (MSA) accounts request.
+    // Requested only when the user adds a Microsoft calendar. NOTE: Calendars.ReadWrite must ALSO be
+    // declared on the app registration (see docs/ENTRA-APP-REGISTRATION.md §3) so a work/school tenant
+    // can admin-consent it; this explicit array is what the calendar consent flow requests, for personal
+    // and work/school alike. (This note used to say work/school "sign in with `.default`" — no longer
+    // true since #511, and it was never the reason the declaration is needed.)
     // In use by GraphCalendarSyncService (#282): reads /me/calendars and /me/events and creates
     // events, so the ReadWrite (not just Read) scope is required.
     public static readonly string[] GraphCalendarScopes =
@@ -121,9 +134,9 @@ public class OAuthService : IOAuthService
     {
         if (account.BackendKind != BackendKind.MicrosoftGraph)
             return ImapSmtpScopes;
-        // Both personal and work/school use explicit Graph scopes now — personal for write access
-        // (#217), work/school as the #529 bridge so a Graph sign-in never validates the Exchange
-        // entitlement (#511). Prefer the persisted, tenant-derived flag; fall back to the email-domain
+        // Both personal and work/school use explicit Graph scopes — personal for write access (#217),
+        // work/school so a Graph sign-in never validates the Exchange entitlement (#511).
+        // Prefer the persisted, tenant-derived flag; fall back to the email-domain
         // guess only when the account hasn't been detected yet (first sign-in, or added before detection).
         var isPersonal = account.IsPersonalMicrosoftAccount ?? IsPersonalMicrosoftDomain(account.Username);
         return isPersonal ? GraphMailScopesPersonal : GraphMailScopesWorkSchool;
@@ -135,10 +148,10 @@ public class OAuthService : IOAuthService
     // permissions are never consented and mail calls then 403 (#391, Microsoft docs "`.default`"
     // Example 3). Prompt.Consent makes the admin/user approve the full declared set once, up front.
     //
-    // #511/#529: with EXPLICIT scopes (not `.default`) that workaround does not apply — requesting
+    // #511: with EXPLICIT scopes (not `.default`) that workaround does not apply — requesting
     // `Mail.ReadWrite` IS the consent trigger, and AAD shows consent only when it isn't already granted.
     // Forcing it there just re-prompts an already-consented org on every add (the #207/#208 symptom seen
-    // when the bridge first went in). So force consent only on the `.default` path; explicit-scope adds
+    // when explicit scopes first went in). So force consent only on the `.default` path; explicit adds
     // fall through to the normal prompt, which lets AAD skip consent when the org has already granted it.
     //
     // Re-auth (an already-added account whose token expired) uses the normal prompt either way — that
@@ -281,7 +294,7 @@ public class OAuthService : IOAuthService
 
     // Add-account entry point. firstConnect=true; the prompt then depends on the scopes: the `.default`
     // path still forces consent (#391), while the explicit-scope paths (personal, and work/school since
-    // the #529 bridge) let AAD decide, so an already-consented org isn't re-prompted. See PromptForSignIn.
+    // #511) let AAD decide, so an already-consented org isn't re-prompted. See PromptForSignIn.
     public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
         => SignInInteractiveAsync(account, DefaultScopesFor(account), firstConnect: true, ct);
 

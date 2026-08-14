@@ -6,15 +6,16 @@ using Xunit;
 namespace QuickMail.Tests;
 
 /// <summary>
-/// Locks the per-account scope selection (#217/#218, #511/#529): personal Microsoft accounts get the
+/// Locks the per-account scope selection (#217/#218, #511): personal Microsoft accounts get the
 /// explicit personal Graph scopes, work/school Graph accounts get the explicit work/school Graph scopes
-/// (the #529 bridge — so a Graph sign-in never validates the Exchange entitlement, #511), and IMAP
-/// always uses the IMAP scopes. Guards against a future refactor silently reverting the routing.
+/// (so a Graph sign-in never validates the Exchange entitlement, #511), and IMAP always uses the IMAP
+/// scopes. Guards against a future refactor silently reverting the routing — including a well-meaning
+/// "restore `.default` for work/school", which #529 ruled out for good (see OAuthService).
 /// </summary>
 public class OAuthServiceScopeSelectionTests
 {
     // A work-or-school Microsoft address on Graph asks for explicit Graph scopes, NOT `.default`
-    // (#511/#529 bridge). `.default` requested the whole declared set, dragging the Exchange IMAP/SMTP
+    // (#511). `.default` requested the whole declared set, dragging the Exchange IMAP/SMTP
     // permissions into every fresh Graph consent — whose flaky validation produced the intermittent
     // AADSTS65006. The explicit list requests only the Graph mail permissions, so the Exchange
     // entitlement is never touched by a Graph sign-in.
