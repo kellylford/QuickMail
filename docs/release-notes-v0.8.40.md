@@ -59,10 +59,16 @@ is still there for your phone, or webmail, or whatever else you use.
 
 Clear it and QuickMail removes each message from the server once it has been safely stored here,
 which is the classic POP3 behaviour. That makes this computer the only copy, so keep backups in mind
-before you choose it. Either way, a message you delete only ever leaves the server on a permanent
-delete, never on the way to Trash — and QuickMail checks it is deleting the right message before it
-does, so a message another program has already collected is left alone rather than deleted by
-position.
+before you choose it. Clearing it also applies to mail collected earlier, as POP3 programs have
+traditionally worked: the next collection removes the server copies of messages QuickMail already
+holds, so if another device has not caught up with that mailbox yet, leave the setting on until it
+has.
+
+A message you delete only ever leaves the server on a permanent delete, never on the way to Trash —
+and QuickMail checks it is deleting the right message before it does, so a message another program
+has already collected is left alone rather than deleted by position. With keep-mail on, a permanent
+delete (including emptying the Trash) is local and final: the server copy stays for your other
+devices, and QuickMail remembers the deletion so the message is never downloaded again.
 
 Thanks to the people who have been asking for this since QuickMail's early days.
 ([#128](https://github.com/kellylford/QuickMail/issues/128))

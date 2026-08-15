@@ -335,12 +335,20 @@ your phone, webmail, or anything else you use.
 Clear it and QuickMail removes each message from the server once it is safely stored here — the
 classic POP3 behaviour, and the reason POP3 has the reputation it has. **This computer then holds the
 only copy**, so think about backups before choosing it. You can change the setting later in Manage
-Accounts; it applies from the next collection onwards and never retrieves anything already removed.
+Accounts. Clearing it also applies to mail collected earlier, as POP3 programs have traditionally
+worked: on the next collection QuickMail removes the server copies of messages it already downloaded
+— every one of them is already stored here, so nothing is lost, but if your phone or another program
+has not collected that mailbox yet, leave the setting checked until it has.
 
 Either way, deleting a message in QuickMail is two steps, as it is everywhere else: to Trash, then
 permanently. Only the permanent delete can reach the server, and only for an account set to remove
 collected mail. QuickMail confirms it is deleting the right message first — a message some other
 program has already collected is left alone rather than deleted by position.
+
+With **keep mail on the server** checked, a permanent delete (including emptying the Trash) is local
+and final: the message is gone from QuickMail for good, the server copy stays where it is for
+whatever else reads that mailbox, and QuickMail remembers the deletion so the message is never
+downloaded again.
 
 **Where your POP3 mail lives.** In QuickMail's data folder for that profile (`%APPDATA%\QuickMail` by
 default), in `mail.db`. For an IMAP account that file is a cache and can be deleted safely; for a
