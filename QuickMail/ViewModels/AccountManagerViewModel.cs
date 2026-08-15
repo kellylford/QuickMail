@@ -153,19 +153,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Password = value.AuthType == AuthType.Password
             ? (_credentials.GetPassword(value.Id) ?? string.Empty)
             : string.Empty;
-        ImapHost = value.ImapHost;
-        ImapPort = value.ImapPort;
-        ImapUseSsl = value.ImapUseSsl;
-        ImapAcceptInvalidCert = value.ImapAcceptInvalidCert;
-        Pop3Host = value.Pop3Host;
-        Pop3Port = value.Pop3Port;
-        Pop3UseSsl = value.Pop3UseSsl;
-        Pop3AcceptInvalidCert = value.Pop3AcceptInvalidCert;
-        Pop3LeaveMailOnServer = value.Pop3LeaveMailOnServer;
-        SmtpHost = value.SmtpHost;
-        SmtpPort = value.SmtpPort;
-        SmtpUseSsl = value.SmtpUseSsl;
-        SmtpAcceptInvalidCert = value.SmtpAcceptInvalidCert;
+        LoadServerFieldsFrom(value);
         Signature = value.Signature;
         SyncContacts = value.SyncContacts;
         SyncCalendar = value.SyncCalendar;
@@ -385,21 +373,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         if (IsPersonalMicrosoftAccount.HasValue)
             account.IsPersonalMicrosoftAccount = IsPersonalMicrosoftAccount;
         account.AuthType = AuthType;
-        account.ImapHost = ImapHost;
-        account.ImapPort = ImapPort;
-        account.ImapUseSsl = ImapUseSsl;
-        account.ImapAcceptInvalidCert = ImapAcceptInvalidCert;
-        account.Pop3Host = Pop3Host;
-        account.Pop3Port = Pop3Port;
-        account.Pop3UseSsl = Pop3UseSsl;
-        account.Pop3AcceptInvalidCert = Pop3AcceptInvalidCert;
-        // Editable after the fact, and consequential: turning "leave mail on the server" off means
-        // the next collection is the last chance any other client has to see that mail.
-        account.Pop3LeaveMailOnServer = Pop3LeaveMailOnServer;
-        account.SmtpHost = SmtpHost;
-        account.SmtpPort = SmtpPort;
-        account.SmtpUseSsl = SmtpUseSsl;
-        account.SmtpAcceptInvalidCert = SmtpAcceptInvalidCert;
+        WriteServerFieldsTo(account);
         // Follows the fields: hand-editing a server in this dialog clears it, which is the user
         // taking the settings over and with them the choice about fallback.
         account.RequireStartTls = RequireStartTls;

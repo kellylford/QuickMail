@@ -632,6 +632,91 @@ public class LocalStoreServiceTests
     }
 
     [Fact]
+    public async Task CountMessagesByFolder_ReturnsTotalAndUnread_PerFolder()
+    {
+        // One grouped scan answers what the POP3 folder tree and Inbox status both ask for. Reading
+        // it off LoadFolderReadStatesAsync instead means building a dictionary of every id in each
+        // folder just to count it — a cost that grows with a store nothing prunes.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
+        store.Initialize();
+
+        var acct = Guid.NewGuid();
+        MailMessageSummary Msg(string id, string folder, bool read) => new()
+        {
+            MessageId = id, AccountId = acct, FolderName = folder, IsRead = read,
+            From = "a@b.com", Subject = "s", Date = DateTimeOffset.UtcNow,
+        };
+        await store.UpsertSummariesAsync([
+            Msg("1", "Inbox", read: false), Msg("2", "Inbox", read: true), Msg("3", "Inbox", read: false),
+            Msg("4", "Trash", read: true),
+        ]);
+
+        var counts = await store.CountMessagesByFolderAsync(acct);
+        Assert.Equal((3, 2), counts["Inbox"]);
+        Assert.Equal((1, 0), counts["Trash"]);
+        Assert.False(counts.ContainsKey("Sent"));                                    // empty folder absent from the map
+        Assert.Empty(await store.CountMessagesByFolderAsync(Guid.NewGuid()));         // different account → empty map
+    }
+
+    [Fact]
+    public async Task LoadFolderSummariesSince_FiltersInSql_OnTheSameBoundaryTheCallerMeans()
+    {
+        // date_ticks is written as Date.UtcTicks, so the bound value has to be UtcTicks: a since
+        // expressed in a local offset, compared as raw Ticks, silently shifts the window by the
+        // offset — which for the POP3 sweep means either missing arrivals or re-announcing old mail.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
+        store.Initialize();
+
+        var acct   = Guid.NewGuid();
+        var cutoff = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
+        MailMessageSummary Msg(string id, DateTimeOffset date) => new()
+        {
+            MessageId = id, AccountId = acct, FolderName = "Inbox", Date = date,
+            From = "a@b.com", Subject = "s",
+        };
+        await store.UpsertSummariesAsync([
+            Msg("older",  cutoff.AddMinutes(-1)),
+            Msg("onTheBoundary", cutoff),
+            Msg("newer",  cutoff.AddMinutes(1)),
+        ]);
+
+        var window = await store.LoadFolderSummariesSinceAsync(acct, "Inbox", cutoff);
+        Assert.Equal(["newer", "onTheBoundary"], window.Select(m => m.MessageId));    // newest first, boundary included
+
+        // The same instant written with a non-zero offset selects the same rows.
+        var shifted = await store.LoadFolderSummariesSinceAsync(acct, "Inbox", cutoff.ToOffset(TimeSpan.FromHours(-5)));
+        Assert.Equal(window.Select(m => m.MessageId), shifted.Select(m => m.MessageId));
+
+        // Full loads are unaffected.
+        Assert.Equal(3, (await store.LoadFolderSummariesAsync(acct, "Inbox")).Count);
+    }
+
+    [Fact]
+    public async Task LoadFolderMessageStates_ReturnsIdDateAndReadState_ForTheWholeFolder()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
+        store.Initialize();
+
+        var acct = Guid.NewGuid();
+        var when = new DateTimeOffset(2026, 7, 4, 8, 0, 0, TimeSpan.Zero);
+        await store.UpsertSummariesAsync([
+            new() { MessageId = "a", AccountId = acct, FolderName = "Inbox", Date = when, IsRead = true,  From = "x", Subject = "s" },
+            new() { MessageId = "b", AccountId = acct, FolderName = "Inbox", Date = when, IsRead = false, From = "x", Subject = "s" },
+            new() { MessageId = "c", AccountId = acct, FolderName = "Trash", Date = when, IsRead = false, From = "x", Subject = "s" },
+        ]);
+
+        var states = await store.LoadFolderMessageStatesAsync(acct, "Inbox");
+        Assert.Equal(2, states.Count);
+        Assert.True(states.Single(s => s.Id == "a").IsRead);
+        Assert.False(states.Single(s => s.Id == "b").IsRead);
+        Assert.Equal(when, states.Single(s => s.Id == "a").Date);
+        Assert.Empty(await store.LoadFolderMessageStatesAsync(acct, "Sent"));
+    }
+
+    [Fact]
     public async Task HasAttachments_PersistsAndLoads()
     {
         // Regression for §1.10: ReadSummariesAsync used to omit the has_attachments

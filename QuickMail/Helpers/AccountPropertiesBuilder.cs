@@ -20,6 +20,15 @@ public static class AccountPropertiesBuilder
             new("Email address",  account.Username),
         };
 
+        // Graph has no host, port or security of its own, and describes its incoming and outgoing
+        // legs identically — so the rows are built once rather than written out on both sides.
+        List<PropertyItem> GraphLeg() =>
+        [
+            new("Connection", "Microsoft Graph"),
+            new("Server",     "None — Graph uses the Microsoft 365 API"),
+            new("Username",   account.Username),
+        ];
+
         // Incoming: whichever protocol this account actually receives over. Reading the IMAP fields
         // regardless was wrong for every account that does not speak IMAP — a POP3 or Graph account
         // showed a blank server on port 993, which is not a description of anything (#128).
@@ -37,12 +46,7 @@ public static class AccountPropertiesBuilder
                     : "Removed once downloaded"),
             }),
 
-            BackendKind.MicrosoftGraph => ("Incoming (Microsoft 365)", new List<PropertyItem>
-            {
-                new("Connection", "Microsoft Graph"),
-                new("Server",     "None — Graph uses the Microsoft 365 API"),
-                new("Username",   account.Username),
-            }),
+            BackendKind.MicrosoftGraph => ("Incoming (Microsoft 365)", GraphLeg()),
 
             _ => ("Incoming (IMAP)", new List<PropertyItem>
             {
@@ -57,12 +61,7 @@ public static class AccountPropertiesBuilder
 
         // Outgoing: POP3 accounts send over SMTP exactly like IMAP ones, so only Graph differs.
         var (outgoingHeader, outgoing) = account.BackendKind == BackendKind.MicrosoftGraph
-            ? ("Outgoing (Microsoft 365)", new List<PropertyItem>
-            {
-                new("Connection", "Microsoft Graph"),
-                new("Server",     "None — Graph uses the Microsoft 365 API"),
-                new("Username",   account.Username),
-            })
+            ? ("Outgoing (Microsoft 365)", GraphLeg())
             : ("Outgoing (SMTP)", new List<PropertyItem>
             {
                 new("Server",   account.SmtpHost),

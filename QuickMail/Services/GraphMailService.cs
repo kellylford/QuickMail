@@ -269,13 +269,9 @@ public class GraphMailService : IMailService, IConnectionProbe
             var mime = await _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/$value", GraphHeaders.ImmutableId, ct);
             using var stream = new MemoryStream(mime);
             var message = await MimeMessage.LoadAsync(stream, ct);
-            var calendar = message.BodyParts.OfType<TextPart>()
-                .FirstOrDefault(p => p.ContentType.IsMimeType("text", "calendar"));
-            if (calendar != null && !string.IsNullOrWhiteSpace(calendar.Text))
-            {
-                detail.CalendarIcs = calendar.Text;
-                detail.CalendarInvite = IcsModel.Parse(calendar.Text);
-            }
+            // The same part query and the same assignment rule the other two backends use — the
+            // CalendarIcs-with-CalendarInvite invariant is stated once, in PopulateCalendar.
+            ImapMailService.PopulateCalendar(detail, ImapMailService.FindCalendarText(message));
         }
         catch (Exception ex)
         {

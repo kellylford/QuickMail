@@ -68,6 +68,22 @@ public interface IMailService : IDisposable
     Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default);
 
     Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether a cached id absent from this backend's listings means the message was deleted
+    /// elsewhere, and so may be dropped from the local cache. True for every backend that lists a
+    /// server-side mailbox.
+    ///
+    /// <para>False for POP3 (#128), where it is <b>not</b> a statement about efficiency but about
+    /// safety: a POP3 server legitimately stops listing a message the moment it has been collected,
+    /// and once collected the local store is the only copy in existence. Reconciling deletions
+    /// against such a listing would delete the user's mail permanently, on the sweep after it
+    /// arrived. <c>Pop3MailService</c> also unions its cached ids into the listing so the arithmetic
+    /// comes out as a no-op either way — but that is the backend defending itself against a caller
+    /// that cannot see the invariant. This is the invariant, where the sweep can see it.</para>
+    /// </summary>
+    bool ListingIsAuthoritativeForDeletions(Guid accountId) => true;
+
     Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
     /// <summary>

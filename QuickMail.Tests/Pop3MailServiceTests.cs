@@ -46,6 +46,11 @@ public class Pop3MailServiceTests
         Preview    = "preview text",
     };
 
+    /// <summary>A cached row as the id listing sees it — id, date, read state, and nothing else.</summary>
+    private static (string Id, DateTimeOffset Date, bool IsRead) Cached(
+        string id, DateTimeOffset? date = null, bool isRead = false)
+        => (id, date ?? DateTimeOffset.UtcNow, isRead);
+
     private static MimeMessage BuildMime(
         string subject = "Hello",
         string? text = "Line one\nLine two",
@@ -124,8 +129,7 @@ public class Pop3MailServiceTests
     {
         // The listing the sweep consumes, exercised directly — the service-level test above cannot
         // reach the merge without a live server, so this is what pins the arithmetic.
-        var account = Guid.NewGuid();
-        var cached  = new[] { Msg(account, "uidl-1", "Inbox"), Msg(account, "uidl-2", "Inbox") };
+        var cached = new[] { Cached("uidl-1"), Cached("uidl-2") };
 
         var merged = Pop3MailService.MergeListing(cached, [], new HashSet<string>(), DateTimeOffset.UtcNow);
 
@@ -135,9 +139,8 @@ public class Pop3MailServiceTests
     [Fact]
     public void MergeListing_AddsUnseenServerIdsAsArrivingNow()
     {
-        var account = Guid.NewGuid();
-        var now     = DateTimeOffset.UtcNow;
-        var cached  = new[] { Msg(account, "known", "Inbox", now.AddDays(-2), isRead: true) };
+        var now    = DateTimeOffset.UtcNow;
+        var cached = new[] { Cached("known", now.AddDays(-2), isRead: true) };
 
         var merged = Pop3MailService.MergeListing(cached, ["known", "brand-new"], new HashSet<string>(), now);
 
@@ -158,8 +161,7 @@ public class Pop3MailServiceTests
     {
         // With leave-on-server off, this is the steady state seconds after collection: the server
         // lists nothing QuickMail holds. Dropping those ids here is what would delete the mail.
-        var account = Guid.NewGuid();
-        var cached  = new[] { Msg(account, "collected-1", "Inbox"), Msg(account, "collected-2", "Inbox") };
+        var cached = new[] { Cached("collected-1"), Cached("collected-2") };
 
         var merged = Pop3MailService.MergeListing(cached, ["a-totally-different-uidl"], new HashSet<string>(), DateTimeOffset.UtcNow);
         var listed = merged.Select(m => m.Id).ToHashSet();
@@ -176,9 +178,8 @@ public class Pop3MailServiceTests
         // to Trash) or empties Trash (row gone entirely), the UIDL is no longer cached in the Inbox
         // — but it is in the collected ledger. Reporting it as "arriving now" is what made deleted
         // mail resurrect on every sweep: hasNew fired, and the fetch re-downloaded it.
-        var account   = Guid.NewGuid();
         var now       = DateTimeOffset.UtcNow;
-        var cached    = new[] { Msg(account, "still-in-inbox", "Inbox") };
+        var cached    = new[] { Cached("still-in-inbox") };
         var collected = new HashSet<string>(["still-in-inbox", "deleted-by-user", "emptied-from-trash"]);
 
         var merged = Pop3MailService.MergeListing(
@@ -395,6 +396,25 @@ public class Pop3MailServiceTests
         await Assert.ThrowsAsync<NotSupportedException>(() => pop.CopyFolderAsync(id, "Inbox", null));
     }
 
+    [Fact]
+    public void FolderCrud_IsRefusedByCapability_NotByReachingTheBackendAndCatchingIt()
+    {
+        // What the UI asks before it opens a folder dialog. The throws above are the last line of
+        // defence; this is the one that keeps the user from being offered the action at all.
+        Assert.False(new AccountModel { BackendKind = BackendKind.Pop3Smtp }.SupportsFolderCrud);
+        Assert.True(new AccountModel { BackendKind = BackendKind.ImapSmtp }.SupportsFolderCrud);
+        Assert.True(new AccountModel { BackendKind = BackendKind.MicrosoftGraph }.SupportsFolderCrud);
+    }
+
+    [Fact]
+    public void ListingIsNotAuthoritativeForDeletions_SoTheSweepCanSeeTheInvariant()
+    {
+        // The sweep asks this before it reconciles deletions. MergeListing's union makes the
+        // arithmetic a no-op as well, but that is the backend defending itself against a caller that
+        // cannot see the invariant — this is the invariant, stated where the caller can read it.
+        Assert.False(new Pop3MailService(NewStore()).ListingIsAuthoritativeForDeletions(Guid.NewGuid()));
+    }
+
     // ── Local move / copy ────────────────────────────────────────────────────────
 
     [Fact]
@@ -419,8 +439,9 @@ public class Pop3MailServiceTests
         Assert.Empty(await store.GetAllMessageIdsAsync(account, "Inbox"));
         var trashed = (await store.LoadFolderSummariesAsync(account, "Trash")).Single();
         Assert.Equal("uidl-1", trashed.MessageId);
-        // A named flag survives the move: the upsert can only carry the built-in id, so the service
-        // restates it explicitly.
+        // A named flag survives the move. The row is re-filed whole in SQL, so flag_id travels with
+        // it rather than being re-derived from IsServerFlagged by an upsert built for a backend
+        // where the server owns flags.
         Assert.Equal(flag, trashed.FlagId);
 
         var detail = await store.LoadDetailAsync(account, "Trash", "uidl-1");
@@ -442,6 +463,76 @@ public class Pop3MailServiceTests
 
         Assert.Single(await store.GetAllMessageIdsAsync(account, "Inbox"));
         Assert.Single(await store.GetAllMessageIdsAsync(account, "Sent"));
+    }
+
+    [Fact]
+    public async Task Copy_DuplicatesTheBodyAndTheRawBytes_NotJustTheSummaryRow()
+    {
+        // The copy is an INSERT … SELECT over the live column list, so what makes the copy a message
+        // rather than a row — its body and the bytes its attachments are extracted from — has to
+        // arrive with it. A copy that is only a summary opens blank and cannot yield an attachment.
+        var store   = NewStore();
+        var account = Guid.NewGuid();
+        var pop     = new Pop3MailService(store);
+
+        await store.UpsertSummariesAsync([Msg(account, "uidl-1", "Inbox")]);
+        await store.UpsertDetailAsync(new MailMessageDetail
+        {
+            MessageId = "uidl-1", AccountId = account, FolderName = "Inbox", PlainTextBody = "the body",
+        });
+        await store.StoreMimeBytesAsync(account, "Inbox", "uidl-1", [7, 8, 9]);
+
+        await pop.CopyMessagesAsync(account, "Inbox", ["uidl-1"], "Sent");
+
+        var copied = await store.LoadDetailAsync(account, "Sent", "uidl-1");
+        Assert.Equal("the body", copied?.PlainTextBody);
+        Assert.Equal([7, 8, 9], await store.LoadMimeBytesAsync(account, "Sent", "uidl-1"));
+
+        // …and the original is untouched, bytes included.
+        Assert.Equal([7, 8, 9], await store.LoadMimeBytesAsync(account, "Inbox", "uidl-1"));
+    }
+
+    [Fact]
+    public async Task MovingAMessageIntoAnAlreadyOccupiedId_ReplacesItRatherThanFailing()
+    {
+        // Copy to Sent, then move the original there too. Without UPDATE OR REPLACE the second
+        // operation collides with the destination's primary key and aborts — taking the whole
+        // transaction, and with it the message, nowhere.
+        var store   = NewStore();
+        var account = Guid.NewGuid();
+        var pop     = new Pop3MailService(store);
+
+        await store.UpsertSummariesAsync([Msg(account, "uidl-1", "Inbox")]);
+        await pop.CopyMessagesAsync(account, "Inbox", ["uidl-1"], "Sent");
+        await pop.MoveMessagesAsync(account, "Inbox", ["uidl-1"], "Sent");
+
+        Assert.Empty(await store.GetAllMessageIdsAsync(account, "Inbox"));
+        Assert.Single(await store.GetAllMessageIdsAsync(account, "Sent"));
+    }
+
+    [Fact]
+    public async Task MovingAHarvestedInvite_TakesItsCalendarBackLinkWithIt()
+    {
+        // The event's "open the invitation" link records a folder. Filing the message elsewhere used
+        // to clear the link (the old move deleted the source row, and DeleteSummariesAsync clears
+        // links); moving the row in SQL must retarget it instead, or the link points at a folder the
+        // message has left and the calendar dead-ends.
+        var store   = NewStore();
+        var account = Guid.NewGuid();
+        var pop     = new Pop3MailService(store);
+
+        await store.UpsertSummariesAsync([Msg(account, "uidl-1", "Inbox")]);
+        await store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "evt-1", AccountId = account, Summary = "Standup",
+            SourceMessageId = "uidl-1", SourceFolder = "Inbox",
+        });
+
+        await pop.MoveMessagesAsync(account, "Inbox", ["uidl-1"], "Trash");
+
+        var evt = (await store.LoadCalendarEventsAsync()).Single(e => e.Uid == "evt-1");
+        Assert.Equal("Trash", evt.SourceFolder);
+        Assert.Equal("uidl-1", evt.SourceMessageId);
     }
 
     [Fact]
