@@ -52,4 +52,18 @@ public enum FeatureFlag
     /// launch. Flips to true by default once the feature is complete.
     /// </summary>
     SharedMailboxes,
+
+    /// <summary>
+    /// Offers POP3/SMTP as a connection method in the Add Account dialog (#128).
+    ///
+    /// Only the OFFER is gated, exactly as with <see cref="GoogleAuth"/>: an account already saved
+    /// with <see cref="QuickMail.Models.BackendKind.Pop3Smtp"/> connects, syncs and sends normally
+    /// whatever this is set to, and the Account Manager still shows its POP3 server settings. Turning
+    /// the flag off after adding an account therefore hides the option without stranding the mail.
+    ///
+    /// Default: false. POP3 puts the only copy of a message in the local store, so it stays opt-in
+    /// until it has run against real servers. Turn it on with Pop3Backend=true under [features] in
+    /// config.ini, or --feature Pop3Backend at launch.
+    /// </summary>
+    Pop3Backend,
 }

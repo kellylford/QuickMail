@@ -5476,6 +5476,7 @@ public partial class MainWindow : Window
                           ?? (node != null ? _vm.Accounts.FirstOrDefault(a => a.AccountLabel == node.Label)?.Id : null)
                           ?? _vm.SelectedAccount?.Id;
         if (accountId == null || accountId == Guid.Empty) return;
+        if (!SupportsServerFolders(accountId.Value, "create a folder in")) return;
 
         var dlg = new NewFolderDialog
         {
@@ -5509,6 +5510,22 @@ public partial class MainWindow : Window
         return false;
     }
 
+    /// <summary>
+    /// Refuses folder management on an account whose protocol has no folders — POP3 (#128), whose
+    /// Inbox, Sent, Drafts and Trash are made up by QuickMail and are the only folders there can be.
+    /// Same contract as <see cref="IsMovableFolder"/>: say why, rather than let the command reach a
+    /// backend that throws and surface as "Failed to create folder".
+    /// </summary>
+    private bool SupportsServerFolders(Guid accountId, string verb)
+    {
+        var account = _vm.Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account?.BackendKind != BackendKind.Pop3Smtp) return true;
+
+        Report($"POP3 accounts have no server folders, so there is nothing to {verb}. "
+             + $"{account.AccountLabel} has only Inbox, Sent, Drafts and Trash.");
+        return false;
+    }
+
     // Status bar for sighted users, announcement for screen-reader users — the pairing
     // FolderContextMenu_SetArchive_Click established for these context-menu outcomes.
     private void Report(string message)
@@ -5521,6 +5538,7 @@ public partial class MainWindow : Window
     {
         var node = GetContextMenuFolderNode(sender);
         if (!IsMovableFolder(node, "move")) return;
+        if (!SupportsServerFolders(node!.Folder!.AccountId, "move")) return;
 
         if (_vm.CachedFolders.Count == 0) return;
         var picker = FolderPickerWindow.ForFolderMoveCopy(
@@ -5542,6 +5560,7 @@ public partial class MainWindow : Window
     {
         var node = GetContextMenuFolderNode(sender);
         if (!IsMovableFolder(node, "copy")) return;
+        if (!SupportsServerFolders(node!.Folder!.AccountId, "copy")) return;
 
         if (_vm.CachedFolders.Count == 0) return;
         var picker = FolderPickerWindow.ForFolderMoveCopy(
@@ -5627,6 +5646,8 @@ public partial class MainWindow : Window
     // tree in place (no rebuild), so the captured neighbour reference stays valid for FocusTreeItem.
     private async Task DeleteFolderWithFocusAsync(FolderTreeNode node)
     {
+        if (node.Folder is { } target && !SupportsServerFolders(target.AccountId, "delete")) return;
+
         var above = FindVisibleFolderNodeAbove(node);
         // Only move focus if the delete actually happened — a cancelled confirmation must leave the
         // user where they were.

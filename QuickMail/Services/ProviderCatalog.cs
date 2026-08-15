@@ -42,7 +42,9 @@ public sealed class ProviderCatalog : IProviderCatalog
         DefaultBackend: BackendKind.ImapSmtp,
         AppPasswordHint: "Gmail requires an app password, not your Google account password. "
                        + "Turn on 2-Step Verification first, then create a 16-character app password.",
-        AppPasswordUrl: "https://myaccount.google.com/apppasswords");
+        AppPasswordUrl: "https://myaccount.google.com/apppasswords",
+        // POP3 also has to be switched on in Gmail's own settings before it answers (#128).
+        Pop3Host: "pop.gmail.com", Pop3Port: 995);
 
     /// <summary>
     /// Gmail for the users whose Google authorization still works: QuickMail's Google OAuth client
@@ -81,7 +83,8 @@ public sealed class ProviderCatalog : IProviderCatalog
         // The Graph option remains available as "Connection method" under Advanced settings.
         DefaultBackend: BackendKind.ImapSmtp,
         AppPasswordHint: null,
-        AppPasswordUrl: null);
+        AppPasswordUrl: null,
+        Pop3Host: "outlook.office365.com", Pop3Port: 995);
 
     private static readonly MailProvider YahooProvider = new(
         Id: YahooId,
@@ -94,7 +97,8 @@ public sealed class ProviderCatalog : IProviderCatalog
         DefaultBackend: BackendKind.ImapSmtp,
         AppPasswordHint: "Yahoo requires an app password, not your Yahoo account password. "
                        + "Generate one under Account Security, App passwords.",
-        AppPasswordUrl: "https://login.yahoo.com/account/security");
+        AppPasswordUrl: "https://login.yahoo.com/account/security",
+        Pop3Host: "pop.mail.yahoo.com", Pop3Port: 995);
 
     private static readonly MailProvider ICloudProvider = new(
         Id: ICloudId,
@@ -108,6 +112,8 @@ public sealed class ProviderCatalog : IProviderCatalog
         AppPasswordHint: "iCloud requires an app-specific password, not your Apple ID password. "
                        + "Generate one under Sign-In & Security, App-Specific Passwords.",
         AppPasswordUrl: "https://appleid.apple.com");
+    // No Pop3Host on purpose: iCloud Mail serves IMAP only, so pre-filling a POP3 host here would
+    // hand the user a server that does not answer.
 
     private static readonly MailProvider OtherProvider = new(
         Id: OtherId,

@@ -43,6 +43,43 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void OfferPop3_RoundTripsThroughTheFeatureFlag()
+    {
+        // The checkbox exists so nobody has to hand-edit config.ini to try POP3 (#128). It is stored
+        // as the Pop3Backend feature flag, not as a setting of its own: --feature Pop3Backend is the
+        // same switch, and two spellings of one flag would disagree the moment a user set both.
+        var configService = new StubConfigService();
+        var registry = new StubCommandRegistry();
+
+        Assert.False(new SettingsViewModel(configService, registry).OfferPop3);
+
+        var cfg = new ConfigModel();
+        cfg.Features["Pop3Backend"] = "true";
+        configService.Save(cfg);
+        var vm = new SettingsViewModel(configService, registry);
+        Assert.True(vm.OfferPop3);
+
+        vm.OfferPop3 = false;
+        vm.SaveCommand.Execute(null);
+
+        // Written as an explicit "false" rather than removed, so a user who turns it back off stays
+        // off if the built-in default ever changes — the rule the Google flag already follows.
+        Assert.Equal("false", configService.Load().Features["Pop3Backend"]);
+        Assert.False(new ConfigFeatureGate(configService.Load(), []).IsEnabled(FeatureFlag.Pop3Backend));
+    }
+
+    [Fact]
+    public void OfferPop3_TurnedOn_ReachesTheFeatureGate()
+    {
+        // The whole point of the checkbox: what it writes is what the gate reads at the next start.
+        var configService = new StubConfigService();
+        var vm = new SettingsViewModel(configService, new StubCommandRegistry()) { OfferPop3 = true };
+        vm.SaveCommand.Execute(null);
+
+        Assert.True(new ConfigFeatureGate(configService.Load(), []).IsEnabled(FeatureFlag.Pop3Backend));
+    }
+
+    [Fact]
     public void ListDensity_RoundTripsThroughConfig_AndRadiosStayExclusive()
     {
         var configService = new StubConfigService();

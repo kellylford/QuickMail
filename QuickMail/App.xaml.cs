@@ -43,6 +43,7 @@ public partial class App : Application
     private GraphChangeNotifier? _graphNotifier;
     private ImapMailService? _imapBackend;
     private GraphMailService? _graphBackend;
+    private Pop3MailService? _pop3Backend;
     private UpdateCheckService? _updateCheckService;
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
@@ -269,14 +270,29 @@ public partial class App : Application
             _graphSendMail        = new GraphSendMailService(msOAuthService);
             var smtpService       = new SmtpService(oauthService, _graphSendMail);
 
+            // The local store is built before the backends because the POP3 backend reads and writes
+            // it directly: a POP3 mailbox has no server-side state to consult, so the store is not a
+            // cache of the account but the account itself.
+            var localStore = new LocalStoreService(profile);
+            if (!onlineMode)
+                localStore.Initialize();
+
+            _pop3Backend          = new Pop3MailService(localStore, onlineMode);
+            var pop3Backend       = _pop3Backend;
+
             // Per-account mail backend router. Each account is registered to the backend its
-            // BackendKind selects (IMAP by default, Graph for Microsoft 365 accounts).
-            IMailService BackendFor(AccountModel a)
-                => a.BackendKind == BackendKind.MicrosoftGraph ? graphBackend : imapBackend;
+            // BackendKind selects (IMAP by default, Graph for Microsoft 365 accounts, POP3 for
+            // POP3/SMTP accounts).
+            IMailService BackendFor(AccountModel a) => a.BackendKind switch
+            {
+                BackendKind.MicrosoftGraph => graphBackend,
+                BackendKind.Pop3Smtp       => pop3Backend,
+                _                          => imapBackend,
+            };
             // BackendFor is also handed to the router so an account it has never been told about —
             // the throwaway probe account Test Connection builds, for instance — is routed by its
             // BackendKind rather than defaulting to IMAP.
-            var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend }, BackendFor);
+            var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend, pop3Backend }, BackendFor);
 
             // ui-probe (#180 Decision D): network hard-off at the DI root. EVERY
             // consumer of the mail/send/oauth services gets the offline no-op —
@@ -287,10 +303,6 @@ public partial class App : Application
             IMailService effectiveMail = probeMode ? new ProbeOfflineMailService() : mailRouter;
             ISendMailService effectiveSmtp = probeMode ? new ProbeOfflineSendMailService() : smtpService;
             IOAuthService effectiveOAuth = probeMode ? new ProbeOfflineOAuthService() : oauthService;
-
-            var localStore = new LocalStoreService(profile);
-            if (!onlineMode)
-                localStore.Initialize();
 
             // Change-notification router (new-mail + reachability). IMAP's strategy is a held IDLE
             // connection, implemented by ImapMailService itself because it is bound to the IMAP
@@ -510,6 +522,7 @@ public partial class App : Application
         _graphNotifier?.Dispose();  // disposes the Graph poll CTS (StopWatchers already ran; idempotent)
         _imapBackend?.Dispose();    // closes connection pools (StopWatchers already ran, and is idempotent)
         _graphBackend?.Dispose();   // releases GraphClient/HttpClient; after the notifiers, which poll through its client
+        _pop3Backend?.Dispose();    // releases the per-account session locks (POP3 holds no open connection)
         _graphSendMail?.Dispose();
         _googlePeopleClient?.Dispose();
         _googleCalendarClient?.Dispose();

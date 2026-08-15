@@ -1,10 +1,45 @@
 # POP3 Backend — PM & Dev Specification
 
-**Status:** Implemented — awaiting testing (see [issue #128](https://github.com/kellylford/QuickMail/issues/128))  
+**Status:** Implemented and tested, behind the `Pop3Backend` flag (see [issue #128](https://github.com/kellylford/QuickMail/issues/128))  
 **Date:** 2026-06-24  
-**Implemented:** 2026-06-26  
+**Implemented:** 2026-06-26 (first cut) / 2026-08-14 (rebuilt on current main, tested)  
 **Target:** v0.8.x (after Graph backend ships)  
 **Scope:** Large (new protocol backend, new service, model changes, UI additions)
+
+---
+
+## 0. What changed after the spec was written
+
+The spec predates the #462 periodic-sweep rework, which is where POP3's real design problem turned
+out to live. Read this section before §5.
+
+**The sweep is the hazard.** `SyncService` routes a folder with no numeric high-water mark through
+`SyncFolderByIdDiffAsync`, and every POP3 folder qualifies (UIDLs are not numbers). That path deletes
+cached ids the backend's listing omits — and a POP3 server legitimately stops listing a message the
+moment it is collected. Left alone it would have deleted the user's only copy of their mail on the
+first sweep after collection.
+
+The resolution keeps `SyncService` backend-agnostic; all three answers live in `Pop3MailService`:
+
+| Sweep asks | POP3 answers | Why |
+|---|---|---|
+| `GetFolderMessageIdDatesAsync` | union of server UIDLs and cached ids; cached rows keep their own date and read state; unseen UIDLs are stamped "now", unread | the union makes the deletion reconcile a no-op; the stamp is what tells the sweep there is new mail to fetch |
+| `GetMessagesSinceDateAsync` | collects from the server first, then returns the window | this is the download trigger, so arrivals reach rules, the list and the toast |
+| `GetFolderMessageIdsAsync` | store only | the older `ReconcileFolderAsync` path diffs the cache against itself |
+
+Two smaller corrections from the same review:
+
+- **Flags.** `UpsertSummariesAsync` derives the stored flag from `IsServerFlagged`, which assumes an
+  IMAP server that owns flag state. POP3 has none, so every sync fetch restates the local flag as the
+  server's — otherwise each sweep cleared the user's flags.
+- **A hand-picked POP3 survives a provider match.** Typing an address selects a provider and applies
+  its default connection method, which silently put the account back on IMAP. Graph still follows the
+  provider (it is a Microsoft-only route); POP3 does not (any provider may offer it).
+
+Also implemented beyond the original spec: POP3 hosts in the provider catalog (Gmail, Outlook.com,
+Yahoo; iCloud has no POP3 service and is deliberately blank), decoded attachment sizes, calendar
+invites and mailing-list detection on downloaded mail, and `internet_message_id` carried on cached
+details so a reply from a POP3 message threads.
 
 ---
 

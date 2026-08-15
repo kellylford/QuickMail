@@ -64,9 +64,29 @@ public class AddAccountViewModelGateTests
     }
 
     [Fact]
+    public void GraphIsNotOffered_UnlessTheProviderIsMicrosoft()
+    {
+        // Graph is the Microsoft 365 API. Offering it for other providers let a Gmail account be
+        // saved bound to Microsoft OAuth with no hosts — nothing downstream validates the pairing
+        // (IsReadyToSave has nothing to check for Graph), so the combo must not offer it.
+        var vm = Make(graphEnabled: true);
+        var catalog = new ProviderCatalog();
+
+        vm.SelectedProvider = catalog.ById(ProviderCatalog.GmailId);
+        Assert.DoesNotContain(vm.AvailableBackends, b => b.Kind == BackendKind.MicrosoftGraph);
+
+        vm.SelectedProvider = catalog.Other;
+        Assert.DoesNotContain(vm.AvailableBackends, b => b.Kind == BackendKind.MicrosoftGraph);
+
+        vm.SelectedProvider = catalog.ById(ProviderCatalog.MicrosoftId);
+        Assert.Contains(vm.AvailableBackends, b => b.Kind == BackendKind.MicrosoftGraph);
+    }
+
+    [Fact]
     public void SelectingGraph_ForcesOAuthAndClearsImapFields()
     {
-        var vm = Make(graphEnabled: true);
+        // Through the Microsoft provider — the only one Graph is offered for.
+        var vm = MakeMicrosoft(graphEnabled: true);
         vm.ImapHost = "imap.example.com";
         vm.SmtpHost = "smtp.example.com";
 
@@ -83,7 +103,7 @@ public class AddAccountViewModelGateTests
     [Fact]
     public void ToAccountModel_CarriesBackendKind()
     {
-        var vm = Make(graphEnabled: true);
+        var vm = MakeMicrosoft(graphEnabled: true);
         vm.SelectedBackend = vm.AvailableBackends.First(b => b.Kind == BackendKind.MicrosoftGraph);
         Assert.Equal(BackendKind.MicrosoftGraph, vm.ToAccountModel().BackendKind);
 

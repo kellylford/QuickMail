@@ -125,7 +125,9 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
             {
                 Id    = account.Id,
                 Label = account.AccountLabel,
-                Host  = account.ImapHost ?? "-",
+                // IncomingHost, not ImapHost: a POP3 account's ImapHost is empty, and this window
+                // exists to debug exactly the account whose server would otherwise show blank.
+                Host  = string.IsNullOrEmpty(account.IncomingHost) ? "-" : account.IncomingHost,
             };
             UpdateRow(row, account);
             Accounts.Add(row);

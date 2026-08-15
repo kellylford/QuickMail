@@ -85,7 +85,10 @@ public partial class AddAccountDialog : Window
 
     /// <summary>
     /// A lookup finished. The message itself is announced by the StatusText handler above; what this
-    /// adds is putting the caret where the work now is — the IMAP host field — when nothing was found.
+    /// adds is putting the caret where the work now is — the incoming host field — when nothing was
+    /// found. Exactly one of the IMAP and POP3 panels is visible, so the host box to focus follows
+    /// the connection method; without the POP3 branch, a POP3 account's error announced the field
+    /// and then stranded focus where it was.
     /// </summary>
     private void OnDiscoveryCompleted(bool found, string message)
     {
@@ -93,12 +96,19 @@ public partial class AddAccountDialog : Window
 
         // Advanced was just expanded by the VM. Let the expander realize its content before focusing
         // into it, or Focus() lands on an element that does not exist yet.
-        Dispatcher.BeginInvoke(new Action(() =>
-        {
-            if (!ImapHostBox.IsVisible) return;
-            ImapHostBox.Focus();
-            Keyboard.Focus(ImapHostBox);
-        }), System.Windows.Threading.DispatcherPriority.Input);
+        Dispatcher.BeginInvoke(new Action(FocusIncomingHostBox),
+            System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    /// <summary>Focuses whichever incoming-server host box is currently presented.</summary>
+    private void FocusIncomingHostBox()
+    {
+        var box = ImapHostBox.IsVisible ? ImapHostBox
+                : Pop3HostBox.IsVisible ? Pop3HostBox
+                : null;
+        if (box is null) return;
+        box.Focus();
+        Keyboard.Focus(box);
     }
 
     /// <summary>
@@ -148,6 +158,12 @@ public partial class AddAccountDialog : Window
         // stay a short label.
         if (ReferenceEquals(focused, SmtpImplicitSslCheckBox))
             return "Checked uses port 465. Cleared uses STARTTLS on port 587.";
+        // POP3 hands the local store the only copy of a message once the server drops it, and that
+        // is what this checkbox decides. It belongs in a hint rather than in the label, which stays
+        // a short label — and in a hint the user's announcement preference still applies.
+        if (ReferenceEquals(focused, Pop3LeaveOnServerCheckBox))
+            return "Cleared, mail is removed from the server once QuickMail has downloaded it, "
+                 + "so this computer holds the only copy.";
         if (ReferenceEquals(focused, SignatureBox))
             return "Added to the end of new messages, replies, and forwards.";
         return null;
@@ -259,12 +275,8 @@ public partial class AddAccountDialog : Window
             else
             {
                 _vm.IsAdvancedExpanded = true;
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    if (!ImapHostBox.IsVisible) return;
-                    ImapHostBox.Focus();
-                    Keyboard.Focus(ImapHostBox);
-                }), System.Windows.Threading.DispatcherPriority.Input);
+                Dispatcher.BeginInvoke(new Action(FocusIncomingHostBox),
+                    System.Windows.Threading.DispatcherPriority.Input);
             }
             return;
         }

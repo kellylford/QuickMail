@@ -1878,7 +1878,10 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
     private static readonly string[] _mailingListHeaders = { "List-Id" };
 
-    private static ComposeMode ParseComposeMode(string? header) => header?.ToLowerInvariant() switch
+    /// <summary>Shared with <see cref="Pop3MailService"/>, which reads the same header off a
+    /// downloaded <c>MimeMessage</c> so a QuickMail-authored draft reopens in the mode it was
+    /// written in whichever backend fetched it.</summary>
+    internal static ComposeMode ParseComposeMode(string? header) => header?.ToLowerInvariant() switch
     {
         "markdown" => ComposeMode.Markdown,
         "html"     => ComposeMode.Html,

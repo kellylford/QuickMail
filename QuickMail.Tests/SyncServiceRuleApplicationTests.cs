@@ -93,9 +93,18 @@ public class SyncServiceRuleApplicationTests : IDisposable
         public List<MailMessageSummary> Batch { get; }
         public FetchStubMailService(List<MailMessageSummary> batch) => Batch = batch;
 
+        // POP3's fetches persist every download into the store BEFORE returning (the store is the
+        // only copy). Setting this reproduces that shape, which is what silently disabled rules:
+        // the chokepoint's post-fetch store snapshot read every arrival as already-known.
+        public Func<List<MailMessageSummary>, Task>? PersistOnFetch { get; set; }
+
         // The only method the IDLE paths call to fetch.
-        public Task<List<MailMessageSummary>> GetMessagesSinceAsync(Guid a, string f, string sinceId, int count, CancellationToken ct = default)
-            => Task.FromResult(Batch.Select(Clone).ToList());
+        public async Task<List<MailMessageSummary>> GetMessagesSinceAsync(Guid a, string f, string sinceId, int count, CancellationToken ct = default)
+        {
+            var batch = Batch.Select(Clone).ToList();
+            if (PersistOnFetch is not null) await PersistOnFetch(batch);
+            return batch;
+        }
 
         private static MailMessageSummary Clone(MailMessageSummary m) => new()
         {
@@ -114,10 +123,12 @@ public class SyncServiceRuleApplicationTests : IDisposable
         // assert the id-diff sweep skips the window fetch entirely when nothing is new, and pulls the
         // whole SyncDays window when there IS a new server id (#462).
         public DateTime? LastSinceDate { get; private set; }
-        public Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid a, string f, DateTime since, CancellationToken ct = default)
+        public async Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid a, string f, DateTime since, CancellationToken ct = default)
         {
             LastSinceDate = since;
-            return Task.FromResult(Batch.Select(Clone).ToList());
+            var batch = Batch.Select(Clone).ToList();
+            if (PersistOnFetch is not null) await PersistOnFetch(batch);
+            return batch;
         }
         public Task<MailMessageDetail> GetMessageDetailAsync(Guid a, string f, string id, CancellationToken ct = default) => Task.FromResult(new MailMessageDetail());
         public Task<MailMessageDetail> PrefetchMessageDetailAsync(Guid a, string f, string id, CancellationToken ct = default) => Task.FromResult(new MailMessageDetail());
@@ -172,6 +183,68 @@ public class SyncServiceRuleApplicationTests : IDisposable
         => new(imap, _store, new StubConfigService(), rules);
 
     // ── The verifications ────────────────────────────────────────────────────────
+
+    // ── POP3-shaped fetches (#128): the backend persists inside the fetch ─────────
+    // These three pin the pre-fetch snapshot plumbing. Without it, a backend that stores its
+    // downloads before returning (POP3 — the store is its only copy) made every arrival read as
+    // already-known at the chokepoint, and client rules silently never ran on that account.
+
+    [Fact]
+    public async Task Pop3ShapedSweep_PersistsInsideTheFetch_RulesStillRunOnTheArrival()
+    {
+        var known = Message("p0");
+        await _store.UpsertSummariesAsync([known]);   // steady state: the folder has cached mail
+
+        var arrival = Message("p1", read: false);
+        var imap = new FetchStubMailService([known, arrival])
+        {
+            PersistOnFetch = batch => _store.UpsertSummariesAsync(batch),
+            ServerIdDates  = [(known.MessageId, known.Date, known.IsRead), (arrival.MessageId, arrival.Date, false)],
+        };
+        var rules = new CapturingRuleService();
+
+        await Build(imap, rules).SyncFolderFullAsync(Account(), _inbox, CancellationToken.None);
+
+        // Only the arrival reaches the engine — not the cached message the window re-returned.
+        var call = Assert.Single(rules.Calls);
+        Assert.Equal([arrival.MessageId], call.Select(m => m.MessageId));
+    }
+
+    [Fact]
+    public async Task Pop3ShapedSweep_FirstSyncOfAnEmptyFolder_TreatsTheWholeFetchAsArrivals()
+    {
+        var arrival = Message("p1", read: false);
+        var imap = new FetchStubMailService([arrival])
+        {
+            PersistOnFetch = batch => _store.UpsertSummariesAsync(batch),
+        };
+        var rules = new CapturingRuleService();
+
+        await Build(imap, rules).SyncFolderFullAsync(Account(), _inbox, CancellationToken.None);
+
+        var call = Assert.Single(rules.Calls);
+        Assert.Equal([arrival.MessageId], call.Select(m => m.MessageId));
+    }
+
+    [Fact]
+    public async Task Pop3ShapedIdleSync_RunsRulesOnItsFreshDownloads()
+    {
+        // The targeted-sync path (delete/archive reconciliation): POP3's incremental fetch returns
+        // ONLY what it just downloaded and stored, so the whole batch is new by construction.
+        var arrival = Message("p1", read: false);
+        var imap = new FetchStubMailService([arrival])
+        {
+            PersistOnFetch = batch => _store.UpsertSummariesAsync(batch),
+        };
+        var rules = new CapturingRuleService();
+        var account = Account();
+        account.BackendKind = BackendKind.Pop3Smtp;
+
+        await Build(imap, rules).SyncOneFolderAsync(account, _inbox, CancellationToken.None);
+
+        var call = Assert.Single(rules.Calls);
+        Assert.Equal([arrival.MessageId], call.Select(m => m.MessageId));
+    }
 
     [Fact]
     public async Task LiveIdleSync_AppliesRulesToNewArrival()

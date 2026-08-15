@@ -26,6 +26,13 @@ namespace QuickMail.Models;
 /// than the account password. Null means no hint.
 /// </param>
 /// <param name="AppPasswordUrl">Where the user generates that app password. Null when there is none.</param>
+/// <param name="Pop3Host">
+/// This provider's POP3 host, for the users who choose POP3 as the connection method (#128). Null
+/// when the provider offers no POP3 service (iCloud) or when POP3 is not a sensible route to it —
+/// the POP3 host box is then left for the user to fill in rather than pre-filled with a guess.
+/// Optional and trailing so every existing construction site is untouched.
+/// </param>
+/// <param name="Pop3Port">POP3 port to go with <paramref name="Pop3Host"/>. 995 is implicit TLS.</param>
 public sealed record MailProvider(
     string Id,
     string DisplayName,
@@ -40,8 +47,13 @@ public sealed record MailProvider(
     bool SupportsOAuth,
     BackendKind DefaultBackend,
     string? AppPasswordHint,
-    string? AppPasswordUrl)
+    string? AppPasswordUrl,
+    string? Pop3Host = null,
+    int Pop3Port = 995)
 {
+    /// <summary>True when QuickMail knows a POP3 host for this provider.</summary>
+    public bool SupportsPop3 => !string.IsNullOrEmpty(Pop3Host);
+
     /// <summary>The catch-all entry: no known settings, user fills in Advanced settings by hand.</summary>
     public bool IsOther => Domains.Length == 0;
 

@@ -403,6 +403,18 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Account Types Group (#128) -->
+                        <GroupBox Header="Account T_ypes" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Account type settings">
+                            <StackPanel>
+                                <CheckBox Content="Offer _POP3 when adding an account"
+                                          IsChecked="{Binding OfferPop3, Mode=TwoWay}"
+                                          AutomationProperties.Name="Offer POP3 when adding an account"/>
+                                <TextBlock Text="Adds POP3/SMTP to the Connection method list under Advanced settings in Add Account, for mail services that offer no IMAP. Takes effect the next time QuickMail starts. POP3 downloads each message to this computer and keeps it there — QuickMail's own Inbox, Sent, Drafts and Trash — so the local copy is the only copy once a message leaves the server. Accounts already using POP3 keep working whether this is on or off."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- QuickMail Logging Group -->
                         <GroupBox Header="QuickMail _Logging" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="QuickMail logging settings">

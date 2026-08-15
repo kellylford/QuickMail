@@ -19,6 +19,10 @@ internal static class MailSecurity
     public static SecureSocketOptions ForImap(AccountModel account) =>
         Select(account.ImapUseSsl, account.RequireStartTls);
 
+    /// <summary>Connect option for this account's incoming (POP3) connection.</summary>
+    public static SecureSocketOptions ForPop3(AccountModel account) =>
+        Select(account.Pop3UseSsl, account.RequireStartTls);
+
     /// <summary>Connect option for this account's outgoing (SMTP) connection.</summary>
     public static SecureSocketOptions ForSmtp(AccountModel account) =>
         Select(account.SmtpUseSsl, account.RequireStartTls);

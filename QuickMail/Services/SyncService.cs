@@ -154,11 +154,15 @@ public class SyncService : ISyncService
         // int[] so Interlocked.Increment works inside async lambdas (can't use ref locals there).
         int[] completedFolders = { 0 };
 
-        // Group accounts by IMAP host. Accounts on the same server sync sequentially within
-        // their group to avoid hitting per-IP connection limits (which trigger "Server shutting
-        // down" BYEs on shared hosting). Groups on different servers still run in parallel.
+        // Group accounts by incoming host — the server each backend actually receives from, so a
+        // POP3 account groups by its POP3 host, not its (empty) ImapHost. Accounts on the same
+        // server sync sequentially within their group to avoid hitting per-IP connection limits
+        // (which trigger "Server shutting down" BYEs on shared hosting) — and, for POP3, the
+        // RFC 1939 exclusive maildrop lock. Grouping by ImapHost here put every POP3 and Graph
+        // account into one "" bucket (serialized against each other, parallel with an IMAP account
+        // on the same real host — both wrong). Same rationale as MainViewModel's connect grouping.
         var accountsByHost = accountList
-            .GroupBy(a => a.ImapHost, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(a => a.IncomingHost, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         async Task SyncPassAsync(Func<MailFolderModel, bool> folderFilter)
@@ -260,10 +264,17 @@ public class SyncService : ISyncService
     /// messages from the store, raises <see cref="RulesApplied"/> / <see cref="MessagesRemoved"/>,
     /// and returns the batch with those messages stripped so the UI never shows them in the origin
     /// folder. Callers own <see cref="FolderSynced"/>.
+    ///
+    /// <para><paramref name="preFetchKnownIds"/>: the folder's cached-id set as it stood BEFORE the
+    /// fetch, when the caller has one. The store query below assumes fetching does not persist —
+    /// true for IMAP and Graph, violated by POP3, whose fetch stores every download before
+    /// returning. Querying after such a fetch reads every arrival as already-known and rules
+    /// silently never run, so a caller that snapshotted ids pre-fetch must pass them.</para>
     /// </summary>
     private async Task<List<MailMessageSummary>> ApplyRulesToArrivalsAsync(
         AccountModel account, MailFolderModel folder,
-        List<MailMessageSummary> fetched, bool persisted, bool consumeRebuildBaseline, CancellationToken ct)
+        List<MailMessageSummary> fetched, bool persisted, bool consumeRebuildBaseline, CancellationToken ct,
+        IReadOnlyCollection<string>? preFetchKnownIds = null)
     {
         if (fetched.Count == 0)
         {
@@ -279,11 +290,14 @@ public class SyncService : ISyncService
         // (LoadRules() is cached after first load.) Still persist so the cache/UI reflect the fetch.
         var hasEnabledRules = _rules.LoadRules().Any(r => r.IsEnabled);
 
-        // Persisted dedupe authority is the store — snapshot which fetched ids it already holds,
-        // BEFORE the upsert, so freshly-fetched messages still read as new. A bounded IN over the
+        // Persisted dedupe authority is the store — the caller's pre-fetch snapshot when it has one
+        // (mandatory for backends that persist inside the fetch), otherwise queried here, which is
+        // still BEFORE the upsert so IMAP/Graph fetches read as new. A bounded IN over the
         // batch avoids scanning every id in a large cached folder; the full scan is only cheaper for
         // an unusually large batch (a fresh account's first sync, where the store is empty anyway).
         var knownInStore = !(persisted && hasEnabledRules) ? []
+            : preFetchKnownIds is not null
+                ? new HashSet<string>(preFetchKnownIds)
             : fetched.Count <= 500
                 ? await _store.GetExistingMessageIdsAsync(account.Id, folder.FullName, fetched.Select(m => m.MessageId))
                 : await _store.GetAllMessageIdsAsync(account.Id, folder.FullName);
@@ -429,8 +443,13 @@ public class SyncService : ISyncService
         if (incoming.Count > 0)
         {
             // Upsert + client rules happen inside the shared chokepoint so live-arriving mail is
-            // subject to rules exactly like the full sync.
-            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: false, ct);
+            // subject to rules exactly like the full sync. POP3's incremental fetch returns ONLY the
+            // messages it just downloaded (and persisted before returning), so for that backend the
+            // whole batch is new by construction — pass an empty pre-fetch snapshot, or the store
+            // query would read every arrival as already-known and skip rules.
+            IReadOnlyCollection<string>? preFetch = account.BackendKind == BackendKind.Pop3Smtp
+                ? Array.Empty<string>() : null;
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: false, ct, preFetch);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
         return incoming;
@@ -543,7 +562,10 @@ public class SyncService : ISyncService
         if (cacheReadStates.Count == 0)
         {
             var initial = await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, windowStart, ct);
-            return await SurfaceArrivalsAsync(account, folder, initial, ct);
+            // Empty pre-fetch snapshot: the folder held nothing before this fetch, so everything
+            // fetched is an arrival — including for POP3, whose fetch persists before returning
+            // and would otherwise read its own downloads as already-known and skip rules.
+            return await SurfaceArrivalsAsync(account, folder, initial, ct, preFetchKnownIds: Array.Empty<string>());
         }
 
         var serverIdDates = await _imap.GetFolderMessageIdDatesAsync(account.Id, folder.FullName, ct);
@@ -558,8 +580,10 @@ public class SyncService : ISyncService
 
         // Always run the (possibly empty) batch through the chokepoint. An empty batch is a no-op except
         // that it consumes a pending #366 rebuild baseline (F4) — preserving the pre-#462 behavior where
-        // every sweep passed through ApplyRulesToArrivalsAsync.
-        var incoming = await SurfaceArrivalsAsync(account, folder, fetched, ct);
+        // every sweep passed through ApplyRulesToArrivalsAsync. The pre-fetch cached-id set is passed as
+        // the rules dedupe snapshot: it was taken before the fetch, so arrivals a backend persisted
+        // inside the fetch (POP3) still read as new.
+        var incoming = await SurfaceArrivalsAsync(account, folder, fetched, ct, cacheReadStates.Keys);
 
         // ── Read/unread reconcile ── the old full-window re-fetch refreshed read state from the server as
         // a side effect (UpsertSummariesAsync carries is_read = excluded.is_read); with the fetch now
@@ -629,9 +653,10 @@ public class SyncService : ISyncService
     /// consuming a pending rebuild baseline).
     /// </summary>
     private async Task<List<MailMessageSummary>> SurfaceArrivalsAsync(
-        AccountModel account, MailFolderModel folder, List<MailMessageSummary> fetched, CancellationToken ct)
+        AccountModel account, MailFolderModel folder, List<MailMessageSummary> fetched, CancellationToken ct,
+        IReadOnlyCollection<string>? preFetchKnownIds = null)
     {
-        var incoming = await ApplyRulesToArrivalsAsync(account, folder, fetched, persisted: true, consumeRebuildBaseline: true, ct);
+        var incoming = await ApplyRulesToArrivalsAsync(account, folder, fetched, persisted: true, consumeRebuildBaseline: true, ct, preFetchKnownIds);
         if (incoming.Count > 0)
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         return incoming;

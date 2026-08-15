@@ -41,8 +41,10 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         };
         if (gate.IsEnabled(FeatureFlag.GraphBackend))
             backends.Add(new(BackendKind.MicrosoftGraph, "Microsoft 365 (Graph)"));
+        if (gate.IsEnabled(FeatureFlag.Pop3Backend))
+            backends.Add(new(BackendKind.Pop3Smtp, "POP3/SMTP"));
 
-        AvailableBackends = backends;
+        _allBackends = backends;
         _selectedBackend = backends[0];
 
         // The Google sign-in provider entry only exists for users who opted in. Everyone else is
@@ -83,6 +85,9 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         ChooseBackendForMicrosoftAccount();
         SyncBackendOptionToBackendKind();
         // Declared on this class, so the base class's [NotifyPropertyChangedFor] can't cover it.
+        // AvailableBackends is provider-dependent (Graph is Microsoft-only), so the combo refreshes
+        // with the provider.
+        OnPropertyChanged(nameof(AvailableBackends));
         OnPropertyChanged(nameof(ShowConnectionMethod));
 
         // Deliberately NOT filling in the account name from the provider. Selecting a provider fires
@@ -97,17 +102,42 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
 
     // ── Connection method (Advanced settings) ────────────────────────────────────
 
-    /// <summary>Connection methods offered, derived from the feature gate.</summary>
-    public IReadOnlyList<BackendKindOption> AvailableBackends { get; }
+    private readonly List<BackendKindOption> _allBackends;
 
     /// <summary>
-    /// The IMAP-versus-Graph choice, shown only for Microsoft accounts and only inside Advanced
-    /// settings. Every other provider has exactly one connection method, so asking would be noise.
+    /// Connection methods offered, derived from the feature gate AND the selected provider: Graph
+    /// is the Microsoft 365 API, so it is only offered when the provider is Microsoft. Offering it
+    /// for any provider let a Gmail account be saved bound to Microsoft OAuth with no hosts — a
+    /// dead account nothing later corrects, since <see cref="IsReadyToSave"/> has nothing to check
+    /// for Graph and ChooseBackendForMicrosoftAccount deliberately no-ops for other providers.
+    /// </summary>
+    public IReadOnlyList<BackendKindOption> AvailableBackends =>
+        _allBackends.Where(b => b.Kind != BackendKind.MicrosoftGraph
+                                || SelectedProvider?.Id == ProviderCatalog.MicrosoftId)
+                    .ToList();
+
+    /// <summary>
+    /// The connection-method choice, shown inside Advanced settings.
+    ///
+    /// <para>IMAP versus Graph is a Microsoft-only question, so on its own it appears only for
+    /// Microsoft accounts — every other provider has exactly one connection method, and asking would
+    /// be noise. POP3 changes that: it is offered for any provider, so once the POP3 backend is
+    /// enabled the combo is shown throughout. It is the only way to reach POP3, and a user who wants
+    /// it usually has a provider QuickMail has never heard of.</para>
     /// </summary>
     public bool ShowConnectionMethod =>
-        AvailableBackends.Count > 1 && SelectedProvider?.Id == ProviderCatalog.MicrosoftId;
+        AvailableBackends.Count > 1
+        && (_gate.IsEnabled(FeatureFlag.Pop3Backend) || SelectedProvider?.Id == ProviderCatalog.MicrosoftId);
 
     protected override bool IsGoogleAuthEnabled => _gate.IsEnabled(FeatureFlag.GoogleAuth);
+
+    /// <summary>
+    /// A hand-picked POP3 survives a provider change; see the base declaration for why POP3 and not
+    /// Graph. <see cref="_backendUserChosen"/> is what makes it the user's choice rather than one of
+    /// this VM's own inferences.
+    /// </summary>
+    protected override bool PreserveChosenBackend =>
+        _backendUserChosen && BackendKind == BackendKind.Pop3Smtp;
 
     [ObservableProperty]
     private BackendKindOption _selectedBackend;
@@ -150,6 +180,15 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
             // Graph accounts authenticate via OAuth and need no IMAP/SMTP host configuration.
             AuthType = AuthType.OAuth2Microsoft;
             ClearHostsForGraph();
+        }
+        else if (BackendKind == BackendKind.Pop3Smtp)
+        {
+            // The POP3 backend authenticates with a password; there is no OAuth path through it.
+            // Coming from Graph, the host fields were cleared and have to be put back — the SMTP
+            // half is still needed to send, and a provider's POP3 host to receive.
+            AuthType = AuthType.Password;
+            if (SelectedProvider is { IsOther: false } popProvider && !HostsUserEdited)
+                ApplyProvider(popProvider, collapseAdvanced: false);
         }
         else if (SelectedProvider is { IsOther: false } provider && !HostsUserEdited)
         {
@@ -420,6 +459,11 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         ImapPort = ImapPort,
         ImapUseSsl = ImapUseSsl,
         ImapAcceptInvalidCert = ImapAcceptInvalidCert,
+        Pop3Host = Pop3Host,
+        Pop3Port = Pop3Port,
+        Pop3UseSsl = Pop3UseSsl,
+        Pop3AcceptInvalidCert = Pop3AcceptInvalidCert,
+        Pop3LeaveMailOnServer = Pop3LeaveMailOnServer,
         SmtpHost = SmtpHost,
         SmtpPort = SmtpPort,
         SmtpUseSsl = SmtpUseSsl,
