@@ -1,24 +1,26 @@
 # Winget Distribution — Plan
 
 **Issue:** [#536 — Distribute QuickMail through winget](https://github.com/kellylford/QuickMail/issues/536)
-**Status:** Proposed
-**Date:** 2026-08-14
+**Status:** Phase 1 complete (2026-08-15). Approach revised: the winget package will
+install Velopack's **Setup.exe**, not the MSI. Awaiting the release-workflow change that
+ships Setup.exe.
+**Date:** 2026-08-14, revised 2026-08-15
 
 ## Summary
 
 Make QuickMail installable with `winget install quickmail`, for both x64 and ARM64, by
 publishing manifests to the community repository
-[microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) that point at the MSI
-installers already attached to every GitHub release. Package identifier:
-**`KellyLford.QuickMail`** (a winget search on 2026-08-14 confirms no existing QuickMail
-package, and `KellyBrazil.*` / `KellyElton.*` publishers show the naming convention this
-follows).
+[microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) that point at installers
+attached to every GitHub release. Package identifier: **`KellyLford.QuickMail`** (a winget
+search on 2026-08-14 confirms no existing QuickMail package, and `KellyBrazil.*` /
+`KellyElton.*` publishers show the naming convention this follows).
 
-No application code changes are expected. The work is verification of the existing
-installer's unattended behavior, one investigation into Add/Remove Programs registration,
-a decision about how winget upgrades coexist with Velopack self-updates, the first manual
-manifest submission, and then CI automation so every future release updates the manifest
-without manual work.
+The original draft assumed the MSI would be the winget installer. **Phase 1 testing
+disproved that** (details below): a silent MSI install lands in `C:\QuickMail`, and a
+silent MSI upgrade over an existing install uninstalls the old copy — data-removal prompt
+and all — and relocates the app. Velopack's one-click `Setup.exe` does everything winget
+needs correctly, so the plan now ships Setup.exe as a release asset and points the manifest
+at it. The only code change is a few lines in the release workflow.
 
 ## Why it is worth doing
 
@@ -29,15 +31,15 @@ without manual work.
   developers and IT-adjacent users) look first. Being absent reads as "not maintained."
 - **Scriptable setup.** Users rebuilding a machine restore their software with one winget
   import; QuickMail should be on that list.
-- **It is nearly free.** Releases already publish permanent, versioned MSI URLs for both
-  architectures on GitHub Releases — exactly the shape winget manifests require.
+- **It is nearly free.** Releases already publish permanent, versioned installer URLs on
+  GitHub Releases; adding Setup.exe to that list is one workflow edit.
 
 ## Goals
 
 1. `winget install quickmail` installs the current release on x64 and ARM64, per-user,
-   without elevation, matching what the MSI does when run by hand.
+   without elevation, into `%LocalAppData%\QuickMail` — the same place the wizard installs.
 2. `winget upgrade` behaves sanely alongside Velopack self-updates — no downgrade loops, no
-   permanently stale "upgrade available" entries.
+   mid-upgrade data prompt, no relocation.
 3. Every future release updates the winget manifest automatically from CI; the
    pre-release-then-promote cadence continues to work unchanged.
 4. `winget uninstall` behaves identically to uninstalling from Settings → Apps, including
@@ -46,146 +48,128 @@ without manual work.
 ## Non-goals
 
 - Publishing the portable executable as a winget *portable* package. The portable exe
-  cannot apply updates (notify-only) and creates no Start Menu entry; the MSI is the
-  install experience we support. Revisit only if users ask.
-- Microsoft Store distribution (MSIX). Entirely different packaging and update model;
-  separate decision, separate plan.
-- Code signing. Winget does not require signed installers — manifests pin the installer's
-  SHA256, and the validation pipeline runs its own malware scans. Unsigned binaries may
-  still trigger SmartScreen for *direct* downloads, but winget installs bypass that UX.
-  Signing remains tracked with the Azure Trusted Signing work in `docs/INSTALLER.md`, not
-  here.
+  cannot apply updates (notify-only) and creates no Start Menu entry.
+- Microsoft Store distribution (MSIX). Entirely different packaging and update model.
+- Fixing the MSI's silent-install behavior in this plan. It is a real defect (tracked
+  separately, see Phase 1 findings) but the winget path no longer depends on it.
 
-## How winget works (the moving parts)
+## Phase 1 findings (2026-08-15, ARM64 machine, vpk 1.2.0 output)
 
-A winget package is a set of small YAML manifests in the community repo, per version:
+Tested against the real v0.8.40 release MSIs plus two signed ARM64 `Setup.exe` builds from
+the on-demand installer workflow (0.8.40-test.42.1 and 0.8.40-test.44.1). All installs
+were silent and non-elevated. Registry state was verified from outside any app container.
 
-```
-manifests/k/KellyLford/QuickMail/0.8.40/
-  KellyLford.QuickMail.yaml                 # version manifest (identifier + version)
-  KellyLford.QuickMail.locale.en-US.yaml    # name, publisher, description, license, URLs
-  KellyLford.QuickMail.installer.yaml       # per-architecture installer URLs + SHA256
-```
+### The MSI is not suitable as the winget installer
 
-The installer manifest lists both architectures in one file:
+| Test | Result |
+| --- | --- |
+| `msiexec /i QuickMail-0.8.39-win-arm64.msi /qn` | Exit 0 in 4 s, no UI, no elevation — **but installed to `C:\QuickMail\`**, not `%LocalAppData%\QuickMail`. |
+| Why | The wizard's Welcome→Next control event is what sets `INSTALLFOLDER = [LocalAppDataFolder]QuickMail`. `/qn` runs no dialogs, so `INSTALLFOLDER` falls back to the Directory table default `TARGETDIR\QuickMail`. The `SetINSTALLFOLDER` action only fires when `VELOPACK_INSTALLDIR` is passed. Velopack's docs say `/qn` should honor `--instLocation PerUser`; vpk 1.2.0 does not. Upstream Velopack defect. |
+| `VELOPACK_INSTALLDIR="%LocalAppData%\QuickMail"` on the command line | Works — but the value is a literal path, so a per-user location cannot be expressed in a public winget manifest. |
+| Silent 0.8.40 MSI over a wizard-style `%LocalAppData%` 0.8.39 install (what `winget upgrade` would do) | `RemoveExistingProducts` uninstalled the LocalAppData copy, **fired the "remove your data?" prompt mid-upgrade**, then installed 0.8.40 to `C:\QuickMail`. Confirms and extends the #245 finding that MSI-over-MSI is a two-phase uninstall/reinstall. |
+| Add/Remove Programs rows | Two: the MSI's own hidden row (`ARPSYSTEMCOMPONENT=1`, HKLM, DisplayVersion `0.8.40.0`) and Velopack's visible `HKCU\...\Uninstall\MSI:QuickMail` (DisplayVersion `0.8.40`, `QuietUninstallString: msiexec /x {ProductCode} /qn`). winget correlates to the Velopack row (`ARP\User\Arm64\MSI:QuickMail`). |
+| ProductCode / UpgradeCode | ProductCode changes every version and differs per architecture; UpgradeCode `{4F6E83C5-E7FB-5BBD-A3C3-6D78A4720D5E}` is stable across both. Upgrade table replaces older, blocks newer. Authoring is correct; the problem is location and the uninstall hook, not the upgrade logic. |
+| Silent uninstall `msiexec /x {ProductCode} /qn` | Exit 0; ARP rows and Start Menu shortcut removed; data prompt appears (correct for a real uninstall). Leaves empty `current`/`packages` folders behind. |
+| Post-patching the MSI in CI (e.g. WiX transform to fix the default directory) | Not viable: every MSI and exe in the release is Authenticode-signed via Azure Trusted Signing (`INSTALLER.md` still says signing is "not wired up" — it is), and a post-pack edit invalidates the signature. |
 
-- `Architecture: x64` → `QuickMail-<version>-win.msi`
-- `Architecture: arm64` → `QuickMail-<version>-win-arm64.msi`
+### Setup.exe does everything winget needs
 
-with `InstallerType: wix`, `Scope: user`, and each installer's SHA256. New versions are
-new folders, submitted as PRs to microsoft/winget-pkgs. The first PR for a new package
-goes through automated validation (schema, URL reachability, hash match, an actual install
-in their pipeline, Defender scan) plus human moderation; subsequent version bumps are
-mostly automated on their side.
+| Test | Result |
+| --- | --- |
+| `Setup.exe --silent` fresh install | 4 s, no UI, no elevation, installs to `%LocalAppData%\QuickMail`, runs the `--veloapp-install` hook, does **not** launch the app (silent skips launch), creates the Start Menu shortcut, writes one ARP row. |
+| ARP row | `HKCU\...\Uninstall\QuickMail`: DisplayName `QuickMail`, Publisher `Kelly Ford`, DisplayVersion `0.8.40` (3-part SemVer; prerelease suffix stripped), `UninstallString "…\Update.exe" --uninstall`, `QuietUninstallString "…\Update.exe" --uninstall --silent`, InstallLocation, NoModify/NoRepair. `winget list` shows `QuickMail  ARP\User\Arm64\QuickMail  0.8.40`. |
+| `Setup.exe --silent` newer build over an existing install (the `winget upgrade` path) | 4 s. Velopack treats it as an overwrite (silent = yes), force-stops a running instance, renames the old folder for rollback, installs fresh, deletes the rollback folder. **Does not invoke the old app's uninstall hook — no data prompt.** Version advanced; ARP row rewritten. |
+| `winget uninstall --name QuickMail --silent` | "Successfully uninstalled." winget ran the QuietUninstallString; ARP row and shortcuts gone; the data prompt appeared, as it should on a genuine uninstall. |
+| Signing | The on-demand builds' Setup.exe files were Authenticode-signed by the same certificate as the release MSIs — vpk signs Setup.exe as part of `pack`, so the release workflow needs no extra signing step. |
 
-Two facts shape the plan:
+Verified from Velopack source (`src/bins/src/commands/install.rs`, `setup.rs`,
+`windows/registry.rs`): default directory is `LocalAppData\{packId}`; `--silent` answers
+yes to the overwrite prompt and suppresses launch; the install hook runs in silent mode;
+no version comparison is done (Setup.exe will happily overwrite with an older build —
+winget never offers downgrades, so this is moot in practice).
 
-- **winget requires unattended install.** For MSIs it appends standard `msiexec` quiet
-  switches; the installer must complete with no UI and no elevation prompt (our MSI is
-  per-user by design, so elevation should not arise — but "should" is Phase 1's job).
-- **`winget list` / `winget upgrade` correlate packages to Add/Remove Programs entries**
-  by ProductCode, DisplayName, and DisplayVersion. Whatever our ARP entry looks like —
-  and Velopack installs have both a Velopack-written uninstall entry and possibly the
-  MSI's own registration — determines whether upgrades are detected correctly.
+### Two things Phase 1 could not settle
 
-## Phase 1 — Verify unattended install and map the ARP registration
+- **Does DisplayVersion track Velopack self-updates?** Velopack has a dedicated
+  `update_msi_uninstall_entry` and rewrites the ordinary entry via
+  `write_uninstall_entry`; the code paths exist but were not exercised (that needs the app
+  to run and self-update, which the test machine was not set up for). Check on the first
+  real self-update after a winget install: if DisplayVersion lags, `winget upgrade` shows a
+  stale "upgrade available" that is harmless but noisy.
+- **x64.** Every test above ran on ARM64. Nothing in the findings is architecture-specific
+  (the MSI tables and Velopack code are identical), but the first x64 verification should
+  happen during Phase 3's Windows Sandbox run.
 
-All investigation, no code. Run against a real release's MSI (not a local pack), on a
-scratch profile.
+## Phase 2 — Ship Setup.exe with every release (the one code change)
 
-1. **Silent install:** `msiexec /i QuickMail-0.8.x-win.msi /qn` from a non-elevated
-   prompt. Confirm: exit code 0, app lands in `%LocalAppData%\QuickMail\current\`, Start
-   Menu entry exists, no UAC prompt, no window ever appears. This is the exact contract
-   winget's pipeline tests.
-2. **Silent uninstall:** `msiexec /x <ProductCode> /qn`. Confirm it completes unattended.
-   Note what happens to the Velopack uninstall hook (the detached "remove user data?"
-   prompt): if it appears even under `/qn` that is acceptable for interactive
-   `winget uninstall`, but record the behavior — the safe default (keep data) must hold
-   when the prompt cannot appear.
-3. **Map the ARP entries.** After an MSI install, enumerate
-   `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall` (and HKLM, to prove nothing
-   lands there): does the machine end up with one entry or two (MSI registration +
-   Velopack's own)? Record DisplayName, DisplayVersion, ProductCode, Publisher for each.
-   Two visible entries would also mean users see QuickMail twice in Settings → Apps —
-   worth knowing regardless of winget.
-4. **Does DisplayVersion track self-updates?** Install version N via MSI, let Velopack
-   self-update to N+1, re-read the ARP entry. If DisplayVersion now reads N+1, winget's
-   upgrade detection stays truthful for self-updated installs. If it still reads N,
-   `winget upgrade` will forever offer an "upgrade" to a version already installed.
-5. **Does ProductCode change per release?** Diff the ProductCode across two releases'
-   MSIs (`msiexec` logs, or Orca/PowerShell against the MSI property table). Winget
-   manifests carry the ProductCode per version; WiX-generated codes are normally
-   per-build, which is fine — the manifest is per-version too — but we need to know.
-6. **MSI-over-self-updated-install:** install N via MSI, self-update to N+1, then run the
-   N+2 MSI (what `winget upgrade` will do). Confirm the result is a healthy N+2 install
-   with one ARP entry and a working updater. This is the highest-risk interaction in the
-   whole plan and must be proven before submission, not after.
+`vpk pack` already emits `QuickMail-win-Setup.exe` (x64) and
+`QuickMail-win-arm64-Setup.exe` (ARM64) into `installer/Output/Releases/`; the release
+workflow currently uploads the MSIs and discards them (`INSTALLER.md`: "produced by
+`vpk pack` but not shipped"). Change `.github/workflows/quickmail.yml` to:
 
-Findings land in this document. If step 6 misbehaves, the fallback is
-`UpgradeBehavior: uninstallPrevious` in the manifest (winget uninstalls old, installs
-new — settings survive because the profile lives in `%APPDATA%`, per
-`docs/INSTALLER.md`), which trades a slower upgrade for a clean one.
+1. Rename each Setup.exe to include the version — `QuickMail-<version>-win-Setup.exe` /
+   `QuickMail-<version>-win-arm64-Setup.exe` — the same way the MSIs are renamed today
+   (and the same way `build-installer.yml` already renames its Setup.exe; copy that
+   snippet, including its "exactly one Setup.exe" guard).
+2. Add both to the `softprops/action-gh-release` file list.
+3. Nothing else: Setup.exe is signed by vpk during pack, and the MSI, portable exe, and
+   feed metadata continue to ship unchanged.
 
-## Phase 2 — Decide the auto-update interplay
+The MSI stays the download-page installer (wizard, license page). Setup.exe is what winget
+consumes; it is also a perfectly good direct download for anyone who wants one-click.
+`INSTALLER.md`'s asset table and its "Code signing is not wired up yet" line need updating
+in the same PR.
 
-Recommendation: **keep Velopack self-update as the primary update channel; winget is an
-acquisition channel.** A winget-installed QuickMail self-updates exactly like every other
-install. This is the pattern most self-updating apps in winget use, and the alternative —
-detecting a winget install and disabling the updater — makes winget users second-class
-(they would wait on manifest PRs for every fix) for no benefit.
-
-Consequences to accept and document:
-
-- If Phase 1 finds DisplayVersion *does* track self-updates: `winget upgrade` simply shows
-  nothing for QuickMail most of the time, because the app is already current. Ideal.
-- If it does *not*: `winget upgrade` will list QuickMail with a stale installed-version.
-  Running the upgrade is harmless (Phase 1 step 6 proves it) but noisy. If we land here,
-  filing a Velopack issue or writing the DisplayVersion ourselves post-update is the fix —
-  decide then, with data.
-- winget never downgrades by default, so a manifest that lags the self-update channel by a
-  release is safe, merely stale.
+**This change is not testable until a tag is pushed** — the release workflow only runs on
+`v*` tags. The next release (0.8.41) is therefore the first that can be submitted to
+winget. Alternatively, a workflow-dispatch dry run of the pack + upload steps against a
+draft release would prove it earlier; judge whether that is worth building.
 
 ## Phase 3 — First manifest submission (manual, deliberately)
 
 Do the first submission by hand to learn the pipeline before automating it:
 
-1. Author the three manifests with `wingetcreate new` against the current release's asset
-   URLs; fill the locale manifest from the repo (description from README, license MIT,
-   `PackageUrl`/`PublisherSupportUrl` → repo, `Moniker: quickmail` — this is what makes
-   the short `winget install quickmail` resolve).
-2. Validate locally: `winget validate --manifest <dir>`, then an actual install with
+1. Author the manifests with `wingetcreate new` against the release's Setup.exe URLs.
+   Installer manifest shape:
+   - `InstallerType: exe`
+   - `Scope: user`
+   - `InstallerSwitches: { Silent: --silent, SilentWithProgress: --silent }`
+   - two `Installers` entries, `Architecture: x64` and `arm64`, each with its URL and SHA256
+   - `AppsAndFeaturesEntries: [{ DisplayName: QuickMail, Publisher: Kelly Ford }]` so
+     `winget upgrade` correlates the Velopack ARP row to the package
+   - `UpgradeBehavior: install` (default) — Setup.exe's overwrite is the upgrade; never
+     `uninstallPrevious`, which would fire the data prompt on every upgrade.
+   - Locale manifest: name, `Publisher: Kelly Ford`, description from README, `License:
+     MIT`, `PackageUrl`/`PublisherSupportUrl` → repo, `Moniker: quickmail`, `Tags`.
+2. Validate locally: `winget validate --manifest <dir>`, then a real install with
    `winget install --manifest <dir>` (requires enabling the `LocalManifestFiles` setting
-   once, from an elevated prompt). Run the winget-pkgs `SandboxTest.ps1` in Windows
-   Sandbox for the clean-machine test — it catches missing-dependency assumptions
-   (WebView2 install-on-demand via `--framework webview2` gets its first truly clean
-   verification here).
-3. Submit the PR to microsoft/winget-pkgs from Kelly's account (the fork the automation
-   in Phase 4 will reuse). Expect automated validation plus a human moderation pass on
-   this first one; turnaround is typically days.
+   once, elevated). Run the winget-pkgs `SandboxTest.ps1` in Windows Sandbox for the
+   clean-machine test — this is also the first truly clean verification of the WebView2
+   install-on-demand path, and the x64 verification Phase 1 lacked.
+3. Submit the PR to microsoft/winget-pkgs from Kelly's account (Phase 4's automation
+   reuses that fork). Expect automated validation plus a human moderation pass on this
+   first one; turnaround is typically days.
 4. After merge, verify end-to-end on a machine that has never seen QuickMail:
    `winget search quickmail`, `winget install quickmail`, launch, add account, then
-   `winget uninstall` and confirm the data-removal prompt semantics.
+   `winget uninstall quickmail`.
 
 ## Phase 4 — Automate per-release manifest updates
 
-Add a small workflow (or a job in `.github/workflows/quickmail.yml`) using the
-**winget-releaser** action (vedantmgoyal9/winget-releaser), triggered on the release
-**`released`** event. That event fires both when a full release is published *and when a
-pre-release is promoted to a release* — which is exactly the promote-based cadence this
-repo uses (see the release-cadence practice: pre-release first, promote after
-verification). Pre-releases themselves never trigger it, so winget only ever sees
+Add a small workflow using the **winget-releaser** action (vedantmgoyal9/winget-releaser),
+triggered on the release **`released`** event. That event fires both when a full release is
+published *and when a pre-release is promoted to a release* — exactly the promote-based
+cadence this repo uses. Pre-releases themselves never trigger it, so winget only ever sees
 promoted builds.
 
-Details:
-
-- The action reads the release's assets, matches the two MSIs by pattern, computes hashes,
-  writes the new version folder, and opens the PR to microsoft/winget-pkgs from a fork.
-- It needs a **classic PAT with `public_repo` scope** stored as a repo secret (fine-grained
-  tokens cannot fork/PR to microsoft/winget-pkgs today). Token creation is Kelly's step;
-  everything else is workflow YAML.
+- The action reads the release's assets, matches the two Setup.exe files by pattern,
+  computes hashes, writes the new version folder, and opens the PR to
+  microsoft/winget-pkgs from a fork.
+- It needs a **classic PAT with `public_repo` scope** stored as a repo secret
+  (fine-grained tokens cannot fork/PR to microsoft/winget-pkgs today). Token creation is
+  Kelly's step; everything else is workflow YAML.
 - Fallback if the action ever bit-rots: `wingetcreate update KellyLford.QuickMail
-  --version <v> --urls <x64.msi> <arm64.msi> --submit` in a plain workflow step does the
-  same thing.
+  --version <v> --urls <x64-Setup.exe> <arm64-Setup.exe> --submit` in a plain workflow
+  step does the same thing.
 - The release checklist gains one line: after promoting a release, confirm the
   winget-pkgs PR appeared and (eventually) merged. Nothing blocks the release on it.
 
@@ -194,42 +178,55 @@ Details:
 - **User guide** (`docs/USER-GUIDE.md`): add winget as an install option alongside the MSI
   download — the command, both architectures being automatic, and that updates continue to
   arrive through the app itself.
-- **`docs/INSTALLER.md`**: new section recording the manifest identifier, the ARP findings
-  from Phase 1, the automation, and the PAT secret's name and scope.
+- **`docs/INSTALLER.md`**: Setup.exe now ships (asset table), signing *is* wired up, the
+  manifest identifier, the ARP findings above, the automation, and the PAT secret's name
+  and scope. Also correct the "installs to `%LocalAppData%`" claim to note that this holds
+  for the wizard and for Setup.exe, but **not** for a silent MSI install (see the separate
+  MSI issue).
 - **README**: the `winget install quickmail` one-liner near the download links.
 - **Release notes** for the first winget-available release mention the new install path.
+
+## Update-interplay decision (was Phase 2)
+
+Keep Velopack self-update as the primary update channel; winget is an acquisition channel.
+A winget-installed QuickMail self-updates exactly like every other install. winget never
+downgrades, so a manifest that lags the self-update channel by a release is safe, merely
+stale. If DisplayVersion turns out not to track self-updates (see open item above),
+decide then whether to patch it ourselves post-update.
 
 ## Sequencing and effort
 
 | Phase | Depends on | Effort |
 | --- | --- | --- |
-| 1 — Silent install + ARP investigation | a published release's MSIs | Half a day of hands-on testing |
-| 2 — Update-interplay decision | Phase 1 findings | Small; mostly writing the decision down |
-| 3 — First manifest + submission | Phases 1–2 | A day, plus moderation wait (days) |
+| 1 — Verification | — | **Done 2026-08-15** |
+| 2 — Ship Setup.exe in releases | a PR + the next tagged release | Small workflow change; proven only by the next release |
+| 3 — First manifest + submission | first release carrying Setup.exe | A day, plus moderation wait (days) |
 | 4 — CI automation | Phase 3 merged in winget-pkgs; PAT from Kelly | Small workflow change |
 | 5 — Docs | Phase 3 live | Small |
 
 ## Open questions
 
-1. **Q1:** If Phase 1 finds two ARP entries (MSI + Velopack), which one do we point
-   winget's `AppsAndFeaturesEntries` at, and is the duplicate worth fixing in packaging
-   regardless? (Needs Phase 1 data.)
-2. **Q2:** If DisplayVersion does not track self-updates, do we patch it ourselves after
-   each applied update, or accept the stale `winget upgrade` listing? (Needs Phase 1
-   data; leaning "patch it" if Velopack exposes a clean hook.)
+1. **Q1 (resolved):** winget correlates to Velopack's own visible ARP row, not the MSI's
+   hidden one. With Setup.exe there is only the one row.
+2. **Q2:** If DisplayVersion does not track self-updates, patch it ourselves or accept the
+   stale `winget upgrade` listing? Decide with data after the first real self-update of a
+   winget-installed copy.
 3. **Q3:** Publisher segment of the identifier: `KellyLford.QuickMail` is proposed to
    match the GitHub account. Confirm before the first submission — the identifier is
    permanent once merged.
+4. **Q4 (new):** Should the MSI silent-install defect be reported upstream to Velopack
+   now? It is independent of winget but affects anyone deploying the MSI silently
+   (Intune, Group Policy, scripts). Recommendation: yes — file it against velopack/velopack
+   with the Directory-table analysis above; it is a one-line WiX fix on their side.
 
 ## Out of scope
 
-- Changing the installer technology, install location, or per-user decision — winget
-  consumes the MSI as-is.
+- Changing the installer technology, install location, or per-user decision.
 - Any in-app UI or announcement changes. Installing via winget is indistinguishable from
-  installing via the MSI once the app launches; first-run behavior (desktop-shortcut
+  installing via Setup.exe once the app launches; first-run behavior (desktop-shortcut
   offer, tutorial) is unchanged.
 - Publishing older versions retroactively to winget. The catalog starts at the first
-  submitted release.
+  release that ships Setup.exe.
 - The Inno-era migration path (`docs/INSTALLER.md`) — users on v0.7.9.1-or-earlier
   installs who choose winget simply follow the same uninstall-then-install step with
   `winget install` as step 2.
