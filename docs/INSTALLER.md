@@ -7,8 +7,11 @@ containing:
 - `QuickMail-win.msi` — **the user-facing installer**: a standard Windows Installer wizard
   (WiX 5) with welcome, license acceptance, and conclusion pages fed from
   `installer/velopack/*.txt` and the repo `LICENSE`
-- `QuickMail-win-Setup.exe` — Velopack's one-click installer (no wizard, no license page);
-  produced by `vpk pack` but **not shipped** — the MSI is the installer users download
+- `QuickMail-win-Setup.exe` — Velopack's one-click installer (no wizard, no license page).
+  **Shipped since issue #536 as `QuickMail-<version>-win-Setup.exe`**: it is what the winget
+  package (`KellyLford.QuickMail`) installs, because `Setup.exe --silent` installs and
+  upgrades in place under `%LocalAppData%\QuickMail` while a silent MSI install does not (see
+  *Silent installs* below). The MSI remains the installer the download page offers people.
 - `QuickMail-<version>-full.nupkg` — the full update package consumed by the in-app updater
 - `QuickMail-<version>-delta.nupkg` — binary delta from the previous release (generated only
   when the previous release's packages are present; CI fetches them with `vpk download github`
@@ -30,6 +33,7 @@ two architectures would offer each build's update to the wrong machine.
 | Channel | `win` (Velopack's default) | `win-arm64` |
 | Pack arguments | none extra | `--runtime win-arm64 --channel win-arm64` |
 | Installer | `QuickMail-<version>-win.msi` | `QuickMail-<version>-win-arm64.msi` |
+| One-click / winget | `QuickMail-<version>-win-Setup.exe` | `QuickMail-<version>-win-arm64-Setup.exe` |
 | Portable | `QuickMail.exe` | `QuickMail-arm64.exe` |
 | Feed metadata | `RELEASES`, `releases.win.json`, `assets.win.json` | `RELEASES-win-arm64`, `releases.win-arm64.json`, `assets.win-arm64.json` |
 | Package | `QuickMail-<version>-full.nupkg` | `QuickMail-<version>-win-arm64-full.nupkg` |
@@ -99,8 +103,22 @@ leaves ARM64 output in `bin/Release` until the next ordinary build.
   `VelopackApp.Build().Run()`. That is why `App.xaml` compiles as `Page` and `App.xaml.cs`
   declares an explicit `Main` (see the csproj `StartupObject`). Removing or reordering that
   call breaks packaging.
-- **Code signing** is not wired up yet. `vpk pack` supports Azure Trusted Signing via
-  `--azureTrustedSignFile` when that work completes.
+- **Code signing** runs in CI on every tagged release through Azure Trusted Signing:
+  `vpk pack --azureTrustedSignFile` signs the packaged binaries, `Update.exe`, `Setup.exe`
+  and the MSI as they are produced, and a separate step signs the two portable exes. There
+  is no signing certificate or long-lived secret in the repo — the workflow's OIDC token is
+  exchanged for Azure credentials via `azure/login`. Consequence: **nothing may edit a
+  packed MSI or exe after `vpk pack`** (a post-pack transform would void the signature).
+- **Silent installs must use `Setup.exe --silent`, not `msiexec /qn`** (issue #554). In
+  vpk 1.2.0 the MSI's `%LocalAppData%` default is set by the wizard's Next button, so an
+  unattended `msiexec /i … /qn` falls back to the Directory-table default and installs to
+  `C:\QuickMail`; a silent MSI over an existing install then uninstalls the old copy
+  (data-removal prompt included, per the #245 investigation) and relocates the app. If an
+  MSI must be deployed silently, pass `VELOPACK_INSTALLDIR="<absolute per-user path>"`.
+  `Setup.exe --silent` has none of these problems: it installs to `%LocalAppData%\QuickMail`,
+  overwrites an existing install in place without invoking its uninstall hook, and writes
+  the `HKCU\…\Uninstall\QuickMail` entry (3-part `DisplayVersion`, `QuietUninstallString`)
+  that `winget list` / `upgrade` / `uninstall` key off.
 
 ## Release flow (CI)
 
@@ -113,8 +131,8 @@ On a `v*` tag, `.github/workflows/quickmail.yml`:
 4. `vpk pack` — builds setup exe, full/delta packages, and feed metadata; then deletes the
    downloaded previous-version `.nupkg` so only current-version assets upload.
 5. `softprops/action-gh-release` uploads the portable `QuickMail.exe`, the MSI installer, the
-   `.nupkg` packages, and the feed metadata files. The in-app updater reads these from the
-   latest GitHub release.
+   one-click `Setup.exe` (for winget), the `.nupkg` packages, and the feed metadata files —
+   for both architectures. The in-app updater reads these from the latest GitHub release.
 
 ## Testing updates locally (no GitHub release needed)
 

@@ -422,10 +422,14 @@ jobs:
       # --shortcuts StartMenuRoot: Start Menu entry only, no desktop shortcut
       # (matches the previous installer's default).
       # --msi builds the wizard installer (welcome, license acceptance, conclusion pages)
-      # that is the user-facing download; the one-click Setup.exe is also produced but
-      # intentionally not shipped. --instLocation PerUser keeps the install in
-      # %LocalAppData% so background updates never need elevation. vpk requires the
-      # license file to carry a .txt/.md/.rtf extension, hence the copy.
+      # that is the user-facing download. The one-click Setup.exe vpk also emits is
+      # shipped too, since issue #536: it is what the winget package installs, because
+      # a silent MSI install (`msiexec /qn`, which is all winget ever runs) lands in
+      # C:\QuickMail and upgrades relocate the app — issue #554 — while
+      # `Setup.exe --silent` installs and upgrades in place under %LocalAppData%.
+      # --instLocation PerUser keeps the wizard install in %LocalAppData% so background
+      # updates never need elevation. vpk requires the license file to carry a
+      # .txt/.md/.rtf extension, hence the copy.
       - name: Pack Velopack release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
@@ -450,6 +454,10 @@ jobs:
           # versions apart in their Downloads folder. The version is only in the filename;
           # the MSI's internal ProductVersion is unchanged (vpk set it from --packVersion).
           Rename-Item installer/Output/Releases/QuickMail-win.msi "QuickMail-$version-win.msi"
+          # Same for Setup.exe (issue #536): vpk names it QuickMail-win-Setup.exe. Rename-Item
+          # throws if vpk ever stops emitting it, which fails the release rather than
+          # publishing without the winget installer.
+          Rename-Item installer/Output/Releases/QuickMail-win-Setup.exe "QuickMail-$version-win-Setup.exe"
           # The previous version's full .nupkg (fetched above as the delta input) stays in
           # the folder and is uploaded with the rest: vpk pack bakes an entry for every
           # package it saw into RELEASES/releases.win.json, so deleting the file would
@@ -459,9 +467,10 @@ jobs:
       # Velopack suffixes every file it writes with the channel name — verified against
       # real vpk 1.2.0 output in run 30710511730, where the two channels produced:
       #   x64   : RELEASES, releases.win.json, assets.win.json,
-      #           QuickMail-<v>-full.nupkg, QuickMail-win.msi
+      #           QuickMail-<v>-full.nupkg, QuickMail-win.msi, QuickMail-win-Setup.exe
       #   arm64 : RELEASES-win-arm64, releases.win-arm64.json, assets.win-arm64.json,
-      #           QuickMail-<v>-win-arm64-full.nupkg, QuickMail-win-arm64.msi
+      #           QuickMail-<v>-win-arm64-full.nupkg, QuickMail-win-arm64.msi,
+      #           QuickMail-win-arm64-Setup.exe
       # No filename appears in both sets, so the two update feeds cannot overwrite each
       # other. Re-check this listing if vpk is ever upgraded: a collision here would
       # corrupt the x64 feed and strand every existing install.
@@ -486,6 +495,7 @@ jobs:
             --instConclusion installer/velopack/conclusion.txt
           if ($LASTEXITCODE -ne 0) { throw "vpk pack (arm64) failed with exit code $LASTEXITCODE." }
           Rename-Item installer/Output/Releases/QuickMail-win-arm64.msi "QuickMail-$version-win-arm64.msi"
+          Rename-Item installer/Output/Releases/QuickMail-win-arm64-Setup.exe "QuickMail-$version-win-arm64-Setup.exe"
           Write-Host "--- Velopack output (both channels) ---"
           Get-ChildItem installer/Output/Releases | Select-Object -ExpandProperty Name
 
@@ -533,20 +543,22 @@ jobs:
       # Release notes are read from docs/release-notes-<tag>.md if present,
       # otherwise GitHub auto-generates notes from commits.
       #
-      # Uploaded assets serve two consumers:
+      # Uploaded assets serve three consumers:
       #  - people: QuickMail-<version>-win.msi (wizard installer with license acceptance)
       #    and QuickMail.exe (portable) for x64; the -win-arm64 / -arm64 pair for ARM64
+      #  - winget: QuickMail-<version>-win-Setup.exe and -win-arm64-Setup.exe, Velopack's
+      #    one-click installer, which the KellyLford.QuickMail manifest points at (#536)
       #  - the in-app updater: RELEASES, releases.win.json, assets.win.json and the
       #    matching -win-arm64 trio, plus the .nupkg packages (full + delta), which
       #    Velopack's GithubSource reads from the latest release.
-      # Intentionally not shipped: QuickMail-win-Setup.exe (one-click, no wizard/license)
-      # and QuickMail-win-Portable.zip (the raw single-file QuickMail.exe remains the
-      # portable download), and their ARM64 equivalents.
+      # Intentionally not shipped: QuickMail-win-Portable.zip (the raw single-file
+      # QuickMail.exe remains the portable download) and its ARM64 equivalent.
       #
       # The *.nupkg glob covers both channels' packages; every other Velopack path is
       # listed per channel so a missing file fails the release rather than silently
       # publishing a feed that clients cannot read. Note QuickMail-*-win.msi does NOT
-      # match QuickMail-<v>-win-arm64.msi — the ARM64 installer needs its own entry.
+      # match QuickMail-<v>-win-arm64.msi (and likewise for -Setup.exe) — the ARM64
+      # installers need their own entries.
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
@@ -557,6 +569,8 @@ jobs:
             publish-arm64/QuickMail-arm64.exe
             installer/Output/Releases/QuickMail-*-win.msi
             installer/Output/Releases/QuickMail-*-win-arm64.msi
+            installer/Output/Releases/QuickMail-*-win-Setup.exe
+            installer/Output/Releases/QuickMail-*-win-arm64-Setup.exe
             installer/Output/Releases/*.nupkg
             installer/Output/Releases/RELEASES
             installer/Output/Releases/releases.win.json
