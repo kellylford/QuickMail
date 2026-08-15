@@ -57,7 +57,10 @@ over.</p>
 <td><strong>Messages</strong></td>
 <td>Two-way</td>
 <td>Read and unread, moving between folders, deleting, and sending all
-go to the server. Another program sees the same state.</td>
+go to the server. Another program sees the same state. <strong>POP3
+accounts are the exception</strong> — the protocol has nowhere to record
+any of it, so everything but sending stays on this computer. See <a
+href="#pop3-accounts">POP3 accounts</a>.</td>
 </tr>
 <tr class="even">
 <td><strong>The built-in flag</strong></td>
@@ -126,6 +129,11 @@ rules, flags you named, templates, signatures, saved views, and your
 settings are stored in QuickMail’s data folder
 (<code>%APPDATA%\QuickMail</code>) and need to be copied across if you
 want them.</p>
+<p><strong>A <a href="#pop3-accounts">POP3 account</a> is the exception
+to the first sentence.</strong> If it is set to remove mail from the
+server once collected, the server has nothing left to give back and
+<code>mail.db</code> in that data folder is your mail — copy it across,
+or back it up, like any other document.</p>
 <hr />
 
   <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="calendar.html">Previous: Calendar</a> | <a href="notifications.html">Next: Notifications</a></div>

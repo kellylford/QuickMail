@@ -33,7 +33,7 @@ Manage Accounts…</strong>, from the <strong>Accounts</strong> button on
 the toolbar, or from the Command Palette (<strong>Ctrl+Shift+P</strong>)
 by choosing <strong>Manage Accounts</strong>. It has no keyboard
 shortcut of its own to begin with; you can give it one under
-<strong>Settings → Keyboard Shortcuts</strong>.</p>
+<strong>File → Settings → Keyboard Shortcuts</strong>.</p>
 <p>Manage Accounts opens with focus on the first entry in the
 <strong>Accounts</strong> list, so you can arrow through your accounts
 straight away. <strong>New</strong>, <strong>Delete</strong>, and
@@ -174,8 +174,14 @@ settings</strong> for any provider, to enter:</p>
 server logs in under a different name than your email address. See <a
 href="#when-your-login-is-not-your-email-address">When your login is not
 your email address</a>.</li>
+<li><strong>Connection method</strong> — Standard IMAP/SMTP, Microsoft
+365 (Graph) for Microsoft accounts, and POP3/SMTP when you have turned
+POP3 on. The incoming fields below follow whichever you choose; see <a
+href="#pop3-accounts">POP3 accounts</a>.</li>
 <li><strong>IMAP host</strong>, port, <strong>Use SSL</strong> (port
-993), and whether to accept invalid certificates</li>
+993), and whether to accept invalid certificates — or <strong>POP3
+host</strong>, port and <strong>Use SSL</strong> (port 995) for a POP3
+account</li>
 <li><strong>SMTP host</strong>, port, implicit SSL on connect (port 465
 — leave it unchecked for STARTTLS on port 587), and whether to accept
 invalid certificates</li>
@@ -338,7 +344,7 @@ QuickMail no longer offers it by default. If your Google account was
 authorized before that happened, it still works, and you can turn the
 option back on:</p>
 <ol type="1">
-<li>Open <strong>Tools → Settings</strong>, go to the
+<li>Open <strong>File → Settings</strong>, go to the
 <strong>Advanced</strong> tab, and check <strong>Sign in with Google for
 Gmail accounts</strong>. Select <strong>Save</strong>.</li>
 <li>Restart QuickMail. The setting is read at startup.</li>
@@ -415,6 +421,83 @@ single (non-repeating) appointments on. See <a
 href="#syncing-contacts-from-your-accounts">Syncing Contacts from Your
 Accounts</a> and the <a href="#calendar">Calendar</a> section for
 details.</p>
+<h3 id="pop3-accounts">POP3 accounts</h3>
+<p>Some mail services offer POP3 and nothing else. QuickMail can collect
+mail over POP3 and send over SMTP as usual — but POP3 works differently
+enough from IMAP that it is worth reading this section before you choose
+it.</p>
+<p><strong>Turning it on.</strong> POP3 is off until you ask for it. In
+<strong>File → Settings</strong> (Ctrl+comma), open the
+<strong>Advanced</strong> tab, and under <strong>Account Types</strong>
+check <strong>Offer POP3 when adding an account</strong>. It takes
+effect the next time QuickMail starts. (Equivalently,
+<code>Pop3Backend = true</code> under <code>[features]</code> in
+<code>config.ini</code>, or <code>--feature Pop3Backend</code> at launch
+— they are the same switch, so there is no need to set more than
+one.)</p>
+<p><strong>Adding the account.</strong> Add it as you would any other:
+<strong>New</strong> in Manage Accounts, then open <strong>Advanced
+settings</strong> and choose <strong>POP3/SMTP</strong> under
+<strong>Connection method</strong>. The <strong>Incoming Mail
+(POP3)</strong> fields replace the IMAP ones. Gmail, Outlook.com and
+Yahoo Mail fill in their POP3 server for you; for anything else, type
+the server, port and security yourself. iCloud is not offered a POP3
+server because Apple does not run one — iCloud is IMAP only.</p>
+<p>Two things most services require before POP3 will answer at all: POP3
+switched on in the service’s own web settings, and — for Gmail and Yahoo
+— an app password rather than your account password.</p>
+<p><strong>What is different from IMAP:</strong></p>
+<ul>
+<li><strong>Messages are downloaded whole and kept on this
+computer.</strong> Reading a message, opening its attachments, and
+searching all work with no network.</li>
+<li><strong>Four folders — Inbox, Sent, Drafts and Trash — and they
+belong to QuickMail.</strong> A POP3 server has no folders to show, so
+these are QuickMail’s own. Creating, renaming, moving and deleting
+folders are not offered for a POP3 account; QuickMail says so rather
+than failing at the server.</li>
+<li><strong>Read and unread, flags, and moves between those folders stay
+on this computer.</strong> POP3 has nowhere on the server to record
+them, so another mail program reading the same mailbox will not see
+them.</li>
+<li><strong>New mail arrives on the sync interval</strong>, not the
+moment it lands. POP3 has no equivalent of the live connection QuickMail
+holds open for IMAP, so there is no instant notification.</li>
+<li><strong>Sending is unchanged.</strong> A POP3 account sends over
+SMTP exactly like an IMAP one, and a copy of each sent message is filed
+in QuickMail’s own Sent folder.</li>
+</ul>
+<p><strong>Keep mail on the server after downloading.</strong> This is
+checked by default, and while it is checked QuickMail never deletes
+anything from your mail service: collect mail here and it is still there
+for your phone, webmail, or anything else you use.</p>
+<p>Clear it and QuickMail removes each message from the server once it
+is safely stored here — the classic POP3 behaviour, and the reason POP3
+has the reputation it has. <strong>This computer then holds the only
+copy</strong>, so think about backups before choosing it. You can change
+the setting later in Manage Accounts. Clearing it also applies to mail
+collected earlier, as POP3 programs have traditionally worked: on the
+next collection QuickMail removes the server copies of messages it
+already downloaded — every one of them is already stored here, so
+nothing is lost, but if your phone or another program has not collected
+that mailbox yet, leave the setting checked until it has.</p>
+<p>Either way, deleting a message in QuickMail is two steps, as it is
+everywhere else: to Trash, then permanently. Only the permanent delete
+can reach the server, and only for an account set to remove collected
+mail. QuickMail confirms it is deleting the right message first — a
+message some other program has already collected is left alone rather
+than deleted by position.</p>
+<p>With <strong>keep mail on the server</strong> checked, a permanent
+delete (including emptying the Trash) is local and final: the message is
+gone from QuickMail for good, the server copy stays where it is for
+whatever else reads that mailbox, and QuickMail remembers the deletion
+so the message is never downloaded again.</p>
+<p><strong>Where your POP3 mail lives.</strong> In QuickMail’s data
+folder for that profile (<code>%APPDATA%\QuickMail</code> by default),
+in <code>mail.db</code>. For an IMAP account that file is a cache and
+can be deleted safely; for a POP3 account with “keep mail on the server”
+cleared, it is your mail. Back it up accordingly, and see <a
+href="#moving-to-a-new-computer">Moving to a new computer</a>.</p>
 <h3 id="editing-an-account">Editing an account</h3>
 <p>Select an account in the <strong>Accounts</strong> list and its
 settings appear beside it. You can change:</p>

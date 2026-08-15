@@ -117,8 +117,8 @@ watch a conversation with no subject” and nothing changes.</p>
 watched, turn on the <strong>Watched</strong> field in <a
 href="#message-list-fields">Message List Fields</a>. It is off to begin
 with.</p>
-<p><strong>To see what you are watching</strong>, choose <strong>Message
-→ Watched Conversations…</strong>. The window lists every watch with how
+<p><strong>To see what you are watching</strong>, choose <strong>Tools →
+Watched Conversations…</strong>. The window lists every watch with how
 many cached messages it has collected and when you started it. Press
 <strong>Enter</strong> on one to jump to that conversation,
 <strong>Delete</strong> to stop watching it, or <strong>Rename</strong>
@@ -218,11 +218,23 @@ or copy. If you need a destination that does not exist yet, activate
 <strong>New Folder</strong> (or <strong>Alt+N</strong>) in the picker to
 create one under the selected folder and move into it without leaving
 the dialog.</p>
-<p>The picker opens on the folder the messages are in, so you start
-where you were. In a combined view such as All Inboxes that is the
-message’s own folder, not the view. If the messages you selected come
-from more than one folder there is no single starting point, and it
-opens on the first folder.</p>
+<p><strong>The picker opens on the folder you last filed to</strong>, so
+filing several messages to the same place takes one keystroke after the
+first: open the picker, press Enter. Move and copy are remembered
+separately — copying to a reference folder does not change where Move to
+Folder opens — and each account keeps its own, since a folder on one
+account is not a destination for another.</p>
+<p>Before you have moved anything on that account, and whenever the
+remembered folder is no longer there — you have deleted or renamed it —
+the picker opens on the folder the messages are in instead, so you still
+start somewhere useful. The same applies when the messages you selected
+come from more than one account: no single remembered folder is right
+for all of them.</p>
+<p>Only the folder you choose in the picker is remembered. Archiving and
+deleting file messages away too, but they do not change where the picker
+opens. In a combined view such as All Inboxes that is the message’s own
+folder, not the view. If neither is available the picker opens on the
+first folder; it never opens with nothing selected.</p>
 <p>Typing jumps to a folder here too, exactly as it does in the main
 folder tree: type the beginning of a folder name and the selection moves
 to it. Because a bare letter belongs to that typing, the picker’s
@@ -238,6 +250,29 @@ menu) to switch how messages are grouped:</p>
 <li><strong>From</strong> — messages grouped by sender</li>
 <li><strong>To</strong> — messages grouped by recipient</li>
 </ul>
+<h3 id="each-folder-remembers-how-you-left-it">Each Folder Remembers How
+You Left It</h3>
+<p>Folders do not all want the same treatment. An inbox reads well
+grouped into <strong>Conversations</strong>; a folder full of receipts
+that all share one subject reads terribly that way — it collapses into a
+single conversation of a hundred messages.</p>
+<p>So QuickMail remembers. Change the view mode, filter, or sort in a
+folder and that folder opens that way from then on, including after a
+restart. Set your inbox to Conversations and your receipts folder to
+Messages once, and each stays put.</p>
+<p>A folder you have never changed follows the <strong>Display
+mode</strong> in <strong>Settings → General</strong>, which also tracks
+the last choice you made anywhere. So the first time you open a new
+folder it looks like the last folder you set up — change it once and it
+is that folder’s own setting from then on.</p>
+<p>To hand a folder back to the default, use <strong>Reset Folder
+View</strong> from the <strong>View → Views</strong> menu or the command
+palette. QuickMail confirms with “Folder view reset.”</p>
+<p>To turn the whole behaviour off, clear <strong>Remember view settings
+for each folder</strong> in <strong>Settings → General</strong>. The
+view mode and sort then apply to every folder at once, as they did
+before. Your per-folder settings are kept, so switching it back on
+restores them.</p>
 <h3 id="message-list-density">Message List Density</h3>
 <p><strong>View → Density</strong> sets how much space each message row
 takes: <strong>Comfortable</strong> (the default) leaves room around
@@ -263,14 +298,14 @@ filter the tree, press Enter to navigate to the matching folder.</p>
 any part of a command name to find it. Press Enter to run it. This is
 the fastest way to discover and run any action in the app.</p>
 <h3 id="keyboard-customization">Keyboard Customization</h3>
-<p>Open <strong>Settings → Keyboard</strong> to reassign any shortcut to
-a different key. Select a command’s field and press the key combination
-you want — QuickMail captures it, shows you what it heard, and asks you
-to confirm with <strong>OK</strong>, pick another with
-<strong>Change</strong>, or <strong>Cancel</strong>. If the combination
-is already assigned to something else, a warning names the existing
-command so you can decide whether to reassign it. Changes take effect
-immediately and survive restarts.</p>
+<p>Open <strong>File → Settings → Keyboard Shortcuts</strong> to
+reassign any shortcut to a different key. Select a command’s field and
+press the key combination you want — QuickMail captures it, shows you
+what it heard, and asks you to confirm with <strong>OK</strong>, pick
+another with <strong>Change</strong>, or <strong>Cancel</strong>. If the
+combination is already assigned to something else, a warning names the
+existing command so you can decide whether to reassign it. Changes take
+effect immediately and survive restarts.</p>
 <p><strong>Bare keys as shortcuts.</strong> You can assign a shortcut
 with no modifier key using <strong>Delete, Backspace, Insert, or any
 function key (F1–F24)</strong> — for example, bare

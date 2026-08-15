@@ -25,7 +25,7 @@
 
 </head>
 <body>
-  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="mail-rules.html">Previous: Mail Rules</a> | <a href="calendar.html">Next: Calendar</a></div>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="mail-rules.html">Previous: Mail Rules</a> | <a href="startup.html">Next: Startup</a></div>
   <h1 id="saved-views">Saved Views</h1>
 <p>A saved view is a named filter you can return to instantly — for
 example, “Unread from work” or “Flagged in the last 7 days.”</p>
@@ -35,19 +35,24 @@ Inboxes), a message filter, and optionally a date limit. Assign a hotkey
 to jump to it directly.</p>
 <p>Press the assigned hotkey from anywhere in the main window to switch
 to that view immediately.</p>
-<h3 id="choose-what-opens-at-startup">Choose what opens at startup</h3>
-<p>By default QuickMail opens to <strong>All Mail</strong>. To make it
-open somewhere else — your Inbox, a specific folder, or any saved view —
-select the <strong>Default view (applied on startup)</strong> checkbox
-for that view in the View Manager. QuickMail then opens to that view,
-and the folder it targets, each time it starts. Only one view can be the
-default at a time; choosing a new default clears the previous one.</p>
-<p>So to open directly into a particular folder on launch: navigate to
-that folder, choose <strong>Save View…</strong> from the
-<strong>View</strong> menu, then mark the new view as the default in the
-View Manager.</p>
+<h3 id="leaving-a-view">Leaving a view</h3>
+<p>A view is a temporary overlay, not a change to your settings.
+<strong>Clear View</strong> — on the <strong>View → Views</strong> menu
+and in the command palette — puts everything back the way the folder
+was: grouping, filter, sort, and any date limit the view applied.
+Nothing a view does is kept once you leave it. (If the view spans
+several folders, clearing it returns you to All Mail, since the folders
+themselves were the view.)</p>
+<p>You can also just change something. Adjusting the view mode, filter,
+or sort while a view is active leaves the view — the title stops showing
+its name — and what you chose becomes that folder’s own setting.</p>
+<p>Only what you changed comes with you. If you are in “Flagged this
+week” and you change the sort, you leave the view with your new sort and
+the folder back to its usual self — you are not left quietly filtered to
+flagged messages from the last seven days. The saved view itself is
+never altered; press its hotkey again to go back to it.</p>
 <hr />
 
-  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="mail-rules.html">Previous: Mail Rules</a> | <a href="calendar.html">Next: Calendar</a></div>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="mail-rules.html">Previous: Mail Rules</a> | <a href="startup.html">Next: Startup</a></div>
 </body>
 </html>

@@ -248,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.38</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.40</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -472,7 +472,7 @@ Manage Accounts…</strong>, from the <strong>Accounts</strong> button on
 the toolbar, or from the Command Palette (<strong>Ctrl+Shift+P</strong>)
 by choosing <strong>Manage Accounts</strong>. It has no keyboard
 shortcut of its own to begin with; you can give it one under
-<strong>Settings → Keyboard Shortcuts</strong>.</p>
+<strong>File → Settings → Keyboard Shortcuts</strong>.</p>
 <p>Manage Accounts opens with focus on the first entry in the
 <strong>Accounts</strong> list, so you can arrow through your accounts
 straight away. <strong>New</strong>, <strong>Delete</strong>, and
@@ -613,8 +613,14 @@ settings</strong> for any provider, to enter:</p>
 server logs in under a different name than your email address. See <a
 href="#when-your-login-is-not-your-email-address">When your login is not
 your email address</a>.</li>
+<li><strong>Connection method</strong> — Standard IMAP/SMTP, Microsoft
+365 (Graph) for Microsoft accounts, and POP3/SMTP when you have turned
+POP3 on. The incoming fields below follow whichever you choose; see <a
+href="#pop3-accounts">POP3 accounts</a>.</li>
 <li><strong>IMAP host</strong>, port, <strong>Use SSL</strong> (port
-993), and whether to accept invalid certificates</li>
+993), and whether to accept invalid certificates — or <strong>POP3
+host</strong>, port and <strong>Use SSL</strong> (port 995) for a POP3
+account</li>
 <li><strong>SMTP host</strong>, port, implicit SSL on connect (port 465
 — leave it unchecked for STARTTLS on port 587), and whether to accept
 invalid certificates</li>
@@ -777,7 +783,7 @@ QuickMail no longer offers it by default. If your Google account was
 authorized before that happened, it still works, and you can turn the
 option back on:</p>
 <ol type="1">
-<li>Open <strong>Tools → Settings</strong>, go to the
+<li>Open <strong>File → Settings</strong>, go to the
 <strong>Advanced</strong> tab, and check <strong>Sign in with Google for
 Gmail accounts</strong>. Select <strong>Save</strong>.</li>
 <li>Restart QuickMail. The setting is read at startup.</li>
@@ -854,6 +860,83 @@ single (non-repeating) appointments on. See <a
 href="#syncing-contacts-from-your-accounts">Syncing Contacts from Your
 Accounts</a> and the <a href="#calendar">Calendar</a> section for
 details.</p>
+<h3 id="pop3-accounts">POP3 accounts</h3>
+<p>Some mail services offer POP3 and nothing else. QuickMail can collect
+mail over POP3 and send over SMTP as usual — but POP3 works differently
+enough from IMAP that it is worth reading this section before you choose
+it.</p>
+<p><strong>Turning it on.</strong> POP3 is off until you ask for it. In
+<strong>File → Settings</strong> (Ctrl+comma), open the
+<strong>Advanced</strong> tab, and under <strong>Account Types</strong>
+check <strong>Offer POP3 when adding an account</strong>. It takes
+effect the next time QuickMail starts. (Equivalently,
+<code>Pop3Backend = true</code> under <code>[features]</code> in
+<code>config.ini</code>, or <code>--feature Pop3Backend</code> at launch
+— they are the same switch, so there is no need to set more than
+one.)</p>
+<p><strong>Adding the account.</strong> Add it as you would any other:
+<strong>New</strong> in Manage Accounts, then open <strong>Advanced
+settings</strong> and choose <strong>POP3/SMTP</strong> under
+<strong>Connection method</strong>. The <strong>Incoming Mail
+(POP3)</strong> fields replace the IMAP ones. Gmail, Outlook.com and
+Yahoo Mail fill in their POP3 server for you; for anything else, type
+the server, port and security yourself. iCloud is not offered a POP3
+server because Apple does not run one — iCloud is IMAP only.</p>
+<p>Two things most services require before POP3 will answer at all: POP3
+switched on in the service’s own web settings, and — for Gmail and Yahoo
+— an app password rather than your account password.</p>
+<p><strong>What is different from IMAP:</strong></p>
+<ul>
+<li><strong>Messages are downloaded whole and kept on this
+computer.</strong> Reading a message, opening its attachments, and
+searching all work with no network.</li>
+<li><strong>Four folders — Inbox, Sent, Drafts and Trash — and they
+belong to QuickMail.</strong> A POP3 server has no folders to show, so
+these are QuickMail’s own. Creating, renaming, moving and deleting
+folders are not offered for a POP3 account; QuickMail says so rather
+than failing at the server.</li>
+<li><strong>Read and unread, flags, and moves between those folders stay
+on this computer.</strong> POP3 has nowhere on the server to record
+them, so another mail program reading the same mailbox will not see
+them.</li>
+<li><strong>New mail arrives on the sync interval</strong>, not the
+moment it lands. POP3 has no equivalent of the live connection QuickMail
+holds open for IMAP, so there is no instant notification.</li>
+<li><strong>Sending is unchanged.</strong> A POP3 account sends over
+SMTP exactly like an IMAP one, and a copy of each sent message is filed
+in QuickMail’s own Sent folder.</li>
+</ul>
+<p><strong>Keep mail on the server after downloading.</strong> This is
+checked by default, and while it is checked QuickMail never deletes
+anything from your mail service: collect mail here and it is still there
+for your phone, webmail, or anything else you use.</p>
+<p>Clear it and QuickMail removes each message from the server once it
+is safely stored here — the classic POP3 behaviour, and the reason POP3
+has the reputation it has. <strong>This computer then holds the only
+copy</strong>, so think about backups before choosing it. You can change
+the setting later in Manage Accounts. Clearing it also applies to mail
+collected earlier, as POP3 programs have traditionally worked: on the
+next collection QuickMail removes the server copies of messages it
+already downloaded — every one of them is already stored here, so
+nothing is lost, but if your phone or another program has not collected
+that mailbox yet, leave the setting checked until it has.</p>
+<p>Either way, deleting a message in QuickMail is two steps, as it is
+everywhere else: to Trash, then permanently. Only the permanent delete
+can reach the server, and only for an account set to remove collected
+mail. QuickMail confirms it is deleting the right message first — a
+message some other program has already collected is left alone rather
+than deleted by position.</p>
+<p>With <strong>keep mail on the server</strong> checked, a permanent
+delete (including emptying the Trash) is local and final: the message is
+gone from QuickMail for good, the server copy stays where it is for
+whatever else reads that mailbox, and QuickMail remembers the deletion
+so the message is never downloaded again.</p>
+<p><strong>Where your POP3 mail lives.</strong> In QuickMail’s data
+folder for that profile (<code>%APPDATA%\QuickMail</code> by default),
+in <code>mail.db</code>. For an IMAP account that file is a cache and
+can be deleted safely; for a POP3 account with “keep mail on the server”
+cleared, it is your mail. Back it up accordingly, and see <a
+href="#moving-to-a-new-computer">Moving to a new computer</a>.</p>
 <h3 id="editing-an-account">Editing an account</h3>
 <p>Select an account in the <strong>Accounts</strong> list and its
 settings appear beside it. You can change:</p>
@@ -1163,8 +1246,8 @@ watch a conversation with no subject” and nothing changes.</p>
 watched, turn on the <strong>Watched</strong> field in <a
 href="#message-list-fields">Message List Fields</a>. It is off to begin
 with.</p>
-<p><strong>To see what you are watching</strong>, choose <strong>Message
-→ Watched Conversations…</strong>. The window lists every watch with how
+<p><strong>To see what you are watching</strong>, choose <strong>Tools →
+Watched Conversations…</strong>. The window lists every watch with how
 many cached messages it has collected and when you started it. Press
 <strong>Enter</strong> on one to jump to that conversation,
 <strong>Delete</strong> to stop watching it, or <strong>Rename</strong>
@@ -1264,11 +1347,23 @@ or copy. If you need a destination that does not exist yet, activate
 <strong>New Folder</strong> (or <strong>Alt+N</strong>) in the picker to
 create one under the selected folder and move into it without leaving
 the dialog.</p>
-<p>The picker opens on the folder the messages are in, so you start
-where you were. In a combined view such as All Inboxes that is the
-message’s own folder, not the view. If the messages you selected come
-from more than one folder there is no single starting point, and it
-opens on the first folder.</p>
+<p><strong>The picker opens on the folder you last filed to</strong>, so
+filing several messages to the same place takes one keystroke after the
+first: open the picker, press Enter. Move and copy are remembered
+separately — copying to a reference folder does not change where Move to
+Folder opens — and each account keeps its own, since a folder on one
+account is not a destination for another.</p>
+<p>Before you have moved anything on that account, and whenever the
+remembered folder is no longer there — you have deleted or renamed it —
+the picker opens on the folder the messages are in instead, so you still
+start somewhere useful. The same applies when the messages you selected
+come from more than one account: no single remembered folder is right
+for all of them.</p>
+<p>Only the folder you choose in the picker is remembered. Archiving and
+deleting file messages away too, but they do not change where the picker
+opens. In a combined view such as All Inboxes that is the message’s own
+folder, not the view. If neither is available the picker opens on the
+first folder; it never opens with nothing selected.</p>
 <p>Typing jumps to a folder here too, exactly as it does in the main
 folder tree: type the beginning of a folder name and the selection moves
 to it. Because a bare letter belongs to that typing, the picker’s
@@ -1284,6 +1379,29 @@ menu) to switch how messages are grouped:</p>
 <li><strong>From</strong> — messages grouped by sender</li>
 <li><strong>To</strong> — messages grouped by recipient</li>
 </ul>
+<h3 id="each-folder-remembers-how-you-left-it">Each Folder Remembers How
+You Left It</h3>
+<p>Folders do not all want the same treatment. An inbox reads well
+grouped into <strong>Conversations</strong>; a folder full of receipts
+that all share one subject reads terribly that way — it collapses into a
+single conversation of a hundred messages.</p>
+<p>So QuickMail remembers. Change the view mode, filter, or sort in a
+folder and that folder opens that way from then on, including after a
+restart. Set your inbox to Conversations and your receipts folder to
+Messages once, and each stays put.</p>
+<p>A folder you have never changed follows the <strong>Display
+mode</strong> in <strong>Settings → General</strong>, which also tracks
+the last choice you made anywhere. So the first time you open a new
+folder it looks like the last folder you set up — change it once and it
+is that folder’s own setting from then on.</p>
+<p>To hand a folder back to the default, use <strong>Reset Folder
+View</strong> from the <strong>View → Views</strong> menu or the command
+palette. QuickMail confirms with “Folder view reset.”</p>
+<p>To turn the whole behaviour off, clear <strong>Remember view settings
+for each folder</strong> in <strong>Settings → General</strong>. The
+view mode and sort then apply to every folder at once, as they did
+before. Your per-folder settings are kept, so switching it back on
+restores them.</p>
 <h3 id="message-list-density">Message List Density</h3>
 <p><strong>View → Density</strong> sets how much space each message row
 takes: <strong>Comfortable</strong> (the default) leaves room around
@@ -1309,14 +1427,14 @@ filter the tree, press Enter to navigate to the matching folder.</p>
 any part of a command name to find it. Press Enter to run it. This is
 the fastest way to discover and run any action in the app.</p>
 <h3 id="keyboard-customization">Keyboard Customization</h3>
-<p>Open <strong>Settings → Keyboard</strong> to reassign any shortcut to
-a different key. Select a command’s field and press the key combination
-you want — QuickMail captures it, shows you what it heard, and asks you
-to confirm with <strong>OK</strong>, pick another with
-<strong>Change</strong>, or <strong>Cancel</strong>. If the combination
-is already assigned to something else, a warning names the existing
-command so you can decide whether to reassign it. Changes take effect
-immediately and survive restarts.</p>
+<p>Open <strong>File → Settings → Keyboard Shortcuts</strong> to
+reassign any shortcut to a different key. Select a command’s field and
+press the key combination you want — QuickMail captures it, shows you
+what it heard, and asks you to confirm with <strong>OK</strong>, pick
+another with <strong>Change</strong>, or <strong>Cancel</strong>. If the
+combination is already assigned to something else, a warning names the
+existing command so you can decide whether to reassign it. Changes take
+effect immediately and survive restarts.</p>
 <p><strong>Bare keys as shortcuts.</strong> You can assign a shortcut
 with no modifier key using <strong>Delete, Backspace, Insert, or any
 function key (F1–F24)</strong> — for example, bare
@@ -1544,8 +1662,8 @@ command palette. Archiving works from every view. In the
 <strong>From</strong>, <strong>To</strong>, and
 <strong>Conversations</strong> groupings, archiving a group moves the
 whole group at once, the same way Delete does. The
-<strong>Ctrl+Shift+M</strong> shortcut can be changed in
-<strong>Settings → Keyboard</strong>.</p>
+<strong>Ctrl+Shift+M</strong> shortcut can be changed in <strong>File →
+Settings → Keyboard Shortcuts</strong>.</p>
 <p><strong>Each account archives to its own folder</strong> — there is
 no single shared Archive folder. QuickMail uses the folder your provider
 marks as the Archive folder automatically, so most accounts need no
@@ -1907,8 +2025,8 @@ numbered — for example: “Misspelling: teh. 1: the, 2: then, 3: them.”
 Press <code>Alt+1</code>, <code>Alt+2</code>, or <code>Alt+3</code> to
 replace the misspelled word with that numbered suggestion without
 leaving the compose area.</p>
-<p>Control announcement behavior in <strong>Settings → Screen Reader
-Announcements</strong>:</p>
+<p>Control announcement behavior in <strong>File → Settings → General →
+Screen Reader Announcements</strong>:</p>
 <ul>
 <li><strong>Announce spelling suggestions</strong> — turn off to hear
 only the misspelled word without suggestions.</li>
@@ -2047,9 +2165,9 @@ from a folder.</li>
 <p>Both actions are also in the address book’s Command Palette
 (<strong>Ctrl+Shift+P</strong>) as <strong>Find Mail From
 Contact</strong> and <strong>Find Mail To Contact</strong>. Commands
-that live inside the address book are not listed in Settings → Keyboard,
-which covers the main window’s commands; reach them from the
-palette.</p>
+that live inside the address book are not listed in File → Settings →
+Keyboard Shortcuts, which covers the main window’s commands; reach them
+from the palette.</p>
 <p>Press <strong>Escape</strong> with focus in the message list to close
 the results and go back to the folder you started from; the folder name
 and its message count are announced. A <strong>Close</strong> button at
@@ -2367,17 +2485,68 @@ Inboxes), a message filter, and optionally a date limit. Assign a hotkey
 to jump to it directly.</p>
 <p>Press the assigned hotkey from anywhere in the main window to switch
 to that view immediately.</p>
-<h3 id="choose-what-opens-at-startup">Choose what opens at startup</h3>
-<p>By default QuickMail opens to <strong>All Mail</strong>. To make it
-open somewhere else — your Inbox, a specific folder, or any saved view —
-select the <strong>Default view (applied on startup)</strong> checkbox
-for that view in the View Manager. QuickMail then opens to that view,
-and the folder it targets, each time it starts. Only one view can be the
-default at a time; choosing a new default clears the previous one.</p>
-<p>So to open directly into a particular folder on launch: navigate to
-that folder, choose <strong>Save View…</strong> from the
-<strong>View</strong> menu, then mark the new view as the default in the
-View Manager.</p>
+<h3 id="leaving-a-view">Leaving a view</h3>
+<p>A view is a temporary overlay, not a change to your settings.
+<strong>Clear View</strong> — on the <strong>View → Views</strong> menu
+and in the command palette — puts everything back the way the folder
+was: grouping, filter, sort, and any date limit the view applied.
+Nothing a view does is kept once you leave it. (If the view spans
+several folders, clearing it returns you to All Mail, since the folders
+themselves were the view.)</p>
+<p>You can also just change something. Adjusting the view mode, filter,
+or sort while a view is active leaves the view — the title stops showing
+its name — and what you chose becomes that folder’s own setting.</p>
+<p>Only what you changed comes with you. If you are in “Flagged this
+week” and you change the sort, you leave the view with your new sort and
+the folder back to its usual self — you are not left quietly filtered to
+flagged messages from the last seven days. The saved view itself is
+never altered; press its hotkey again to go back to it.</p>
+<hr />
+<h2 id="startup">Startup</h2>
+<p>By default QuickMail opens to <strong>All Mail</strong>. You can tell
+it to open anywhere you like instead — one account’s Inbox, a project
+folder, or <strong>All Inboxes</strong>.</p>
+<h3 id="choose-your-startup-folder">Choose your startup folder</h3>
+<p>The quickest way is from the folder tree itself:</p>
+<ol type="1">
+<li>Move to the folder you want (<strong>Ctrl+1</strong> puts you in the
+folder tree).</li>
+<li>Press the <strong>Applications</strong> key, or
+<strong>Shift+F10</strong>, to open the folder’s context menu.</li>
+<li>Choose <strong>Set as Startup Folder</strong>.</li>
+</ol>
+<p>QuickMail confirms the change, and opens there every time it starts
+from then on.</p>
+<p>You can also do it from <strong>File → Settings → Startup</strong>,
+where the <strong>Opens in</strong> field shows your current choice.
+Select <strong>Choose…</strong> to pick a different folder from the
+folder tree, or <strong>Clear</strong> to go back to All Mail.
+<strong>Clear Startup Folder</strong> in the folder context menu does
+the same thing.</p>
+<p>If the folder later disappears — you delete it, rename it, or remove
+the account — QuickMail opens in All Mail and tells you why. Nothing is
+lost and nothing needs repairing.</p>
+<h3 id="choose-how-much-is-checked-at-startup">Choose how much is
+checked at startup</h3>
+<p>Also under <strong>File → Settings → Startup</strong>,
+<strong>Startup Sync</strong> controls how much mail QuickMail checks
+while it is starting. This matters most if you have several accounts and
+a lot of folders.</p>
+<ul>
+<li><strong>Just my startup folder</strong> (recommended) — checks only
+what your startup folder shows. If your startup folder is All Inboxes,
+that is every inbox; if it is All Mail, that is everything.</li>
+<li><strong>Every account’s inbox</strong> — checks each account’s
+inbox, whichever folder you open in.</li>
+<li><strong>Every folder</strong> — checks everything before settling.
+This is how QuickMail behaved before this setting existed.</li>
+</ul>
+<p>New mail still arrives in your inboxes straight away whichever you
+choose, so notifications are unaffected. Other folders are caught up by
+the background check — the <strong>Check for new mail every</strong>
+setting on the <strong>General</strong> tab. If you have set that to
+<strong>Off</strong>, other folders are only checked when you open
+them.</p>
 <hr />
 <h2 id="calendar">Calendar</h2>
 <p>QuickMail has a full, keyboard-first calendar. You can create and
@@ -2464,8 +2633,8 @@ alone.</p>
 <p>Both commands are also in the Command Palette
 (<strong>Ctrl+Shift+P</strong>) — as <strong>Use as Default Calendar for
 New Appointments</strong> and <strong>Clear Default Calendar</strong> —
-and you can assign them keys in <strong>Settings →
-Keyboard</strong>.</p>
+and you can assign them keys in <strong>File → Settings → Keyboard
+Shortcuts</strong>.</p>
 <h3 id="the-four-views">The four views</h3>
 <p>Your events can be shown four ways. Switch between them with the
 toolbar buttons or these keys while the event list has focus:</p>
@@ -2770,7 +2939,8 @@ palette (<strong>Ctrl+Shift+P</strong>) or the toolbar/menu. QuickMail
 writes a <code>.ics</code> file you can send to someone or import
 elsewhere. (Exporting one occurrence of a repeating appointment exports
 the whole series.) This action has no default keyboard shortcut, but you
-can assign one in <strong>Settings → Keyboard</strong>.</p>
+can assign one in <strong>File → Settings → Keyboard
+Shortcuts</strong>.</p>
 <h3 id="searching-your-appointments">Searching your appointments</h3>
 <p>Press <strong>Ctrl+Shift+S</strong> while the calendar is open to
 search. Type to filter the list by title, location, or notes; the count
@@ -3011,7 +3181,10 @@ over.</p>
 <td><strong>Messages</strong></td>
 <td>Two-way</td>
 <td>Read and unread, moving between folders, deleting, and sending all
-go to the server. Another program sees the same state.</td>
+go to the server. Another program sees the same state. <strong>POP3
+accounts are the exception</strong> — the protocol has nowhere to record
+any of it, so everything but sending stays on this computer. See <a
+href="#pop3-accounts">POP3 accounts</a>.</td>
 </tr>
 <tr class="even">
 <td><strong>The built-in flag</strong></td>
@@ -3080,6 +3253,11 @@ rules, flags you named, templates, signatures, saved views, and your
 settings are stored in QuickMail’s data folder
 (<code>%APPDATA%\QuickMail</code>) and need to be copied across if you
 want them.</p>
+<p><strong>A <a href="#pop3-accounts">POP3 account</a> is the exception
+to the first sentence.</strong> If it is set to remove mail from the
+server once collected, the server has nothing left to give back and
+<code>mail.db</code> in that data folder is your mail — copy it across,
+or back it up, like any other document.</p>
 <hr />
 <h2 id="notifications">Notifications</h2>
 <p>New-mail notifications and the option to keep QuickMail running in
@@ -3145,7 +3323,7 @@ href="#message-list-density">message list density</a>, and
 href="#message-list-fields">field chooser</a>. <strong>Next
 Theme</strong> and <strong>Previous Theme</strong> have no menu items;
 run them from the Command Palette, or give them a key of your own in
-<strong>Settings → Keyboard</strong>.</p>
+<strong>File → Settings → Keyboard Shortcuts</strong>.</p>
 <hr />
 <h2 id="connection-diagnostics">Connection Diagnostics</h2>
 <p>Connection Diagnostics records what QuickMail is doing when it talks
@@ -3369,6 +3547,18 @@ next time QuickMail starts. Gmail accounts already using Google sign-in
 keep working whether this is on or off. See <a
 href="#gmail-google-account">Gmail (Google Account)</a>.</li>
 </ul>
+<p><strong>Account Types</strong></p>
+<ul>
+<li><strong>Offer POP3 when adding an account</strong> — off by default.
+Adds <strong>POP3/SMTP</strong> to the <strong>Connection
+method</strong> list under <strong>Advanced settings</strong> in the
+account dialogs, for mail services that offer no IMAP. Takes effect the
+next time QuickMail starts. POP3 downloads each message to this computer
+and keeps it there, in QuickMail’s own Inbox, Sent, Drafts and Trash, so
+the local copy is the only copy once a message leaves the server — read
+<a href="#pop3-accounts">POP3 accounts</a> before turning it on.
+Accounts already using POP3 keep working whether this is on or off.</li>
+</ul>
 <p><strong>QuickMail Logging</strong></p>
 <ul>
 <li><strong>Enable logging</strong> — when checked, QuickMail writes
@@ -3587,8 +3777,8 @@ each theme that ships with QuickMail.</p>
 <p>The Command Palette also offers <strong>Next Theme</strong> and
 <strong>Previous Theme</strong> to cycle through themes, and a
 <strong>Theme: [name]</strong> command for each theme. None of these
-have a default keyboard shortcut — assign one in <strong>Settings →
-Keyboard</strong> if you want direct access.</p>
+have a default keyboard shortcut — assign one in <strong>File → Settings
+→ Keyboard Shortcuts</strong> if you want direct access.</p>
 <p><strong>Editing a theme by hand:</strong> a theme is a plain,
 documented JSON text file. Duplicate a built-in theme, choose
 <strong>Open themes folder</strong>, and edit the copy in any text
@@ -3679,8 +3869,8 @@ the only theme with a fully dark palette.</p>
 subject, date, and so on. <strong>View → Message List Fields…</strong>
 lets you decide which of those pieces are spoken and in what order. It
 is also in the command palette as <strong>Message List Fields…</strong>.
-It has no keyboard shortcut of its own; assign one in <strong>Settings →
-Keyboard</strong> if you want one.</p>
+It has no keyboard shortcut of its own; assign one in <strong>File →
+Settings → Keyboard Shortcuts</strong> if you want one.</p>
 <p>Open it and you get a list of every available field, each one a real
 check box. Check a field to have it spoken, uncheck it to leave it out,
 and move it to change where it falls in the line.</p>
@@ -4002,7 +4192,7 @@ they have no default keyboard shortcut. <strong>Manage Themes</strong>,
 Comfortable</strong>, <strong>Density: Compact</strong>, <strong>Manage
 Flags…</strong>, and <strong>Report a Bug</strong> likewise have no
 default key — reach them from the menus or the command palette, or
-assign a shortcut yourself in Settings → Keyboard.</p>
+assign a shortcut yourself in File → Settings → Keyboard Shortcuts.</p>
 <p><code>Ctrl+1</code>, <code>Ctrl+2</code>, and <code>Ctrl+3</code>
 jump to a pane when no message tabs are open; with tabs open they select
 tab 1, 2, and 3 instead. <strong><code>Ctrl+Alt+1</code>,
