@@ -170,4 +170,25 @@ public class AccountEditorSignInTests
 
         Assert.False(oauth.WithContactsPathUsed);
     }
+
+    // #544 review finding 3: the known personal flag must reach the sign-in, or the fold's personal check
+    // falls back to the domain guess and misses a personal account on a vanity domain. The VM learns the
+    // flag from a prior sign-in (token-derived, #233); a subsequent sign-in must carry it onto tempAccount.
+    [Fact]
+    public async Task MicrosoftSignIn_CarriesTheKnownPersonalFlag_OnASubsequentSignIn()
+    {
+        var (vm, oauth) = NewVm();
+        vm.Username = "me@myvanitydomain.com";
+        oauth.ReturnUsername = "me@myvanitydomain.com";
+        oauth.ReturnPersonal = true;               // the token says personal (vanity domain)
+        vm.SyncContacts = true;
+
+        await vm.SignInMicrosoftCommand.ExecuteAsync(null);
+        // The FIRST tempAccount couldn't know yet — the flag is only learned from this sign-in's result.
+        Assert.Null(oauth.LastSignInAccount!.IsPersonalMicrosoftAccount);
+
+        await vm.SignInMicrosoftCommand.ExecuteAsync(null);
+        // The SECOND carries the now-known flag, so the fold applies without relying on the domain guess.
+        Assert.Equal(true, oauth.LastSignInAccount!.IsPersonalMicrosoftAccount);
+    }
 }

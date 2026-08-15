@@ -184,6 +184,26 @@ public class AccountLoginUsernameTests
     }
 
     [Fact]
+    public void SelectingAPersonalMicrosoftAccount_LoadsThePersonalFlag_SoReAuthCanFold() // #544 finding 3
+    {
+        // The persisted tenant-derived flag (#233) must reach the VM when the Manager loads the account,
+        // or re-authenticating a vanity-domain personal account falls back to the domain guess and misses
+        // the single-consent fold. A vanity domain is used precisely because the domain guess can't help.
+        var account = new AccountModel
+        {
+            Id = Guid.NewGuid(),
+            Username = "me@myvanitydomain.com",
+            AuthType = AuthType.OAuth2Microsoft,
+            BackendKind = BackendKind.MicrosoftGraph,
+            IsPersonalMicrosoftAccount = true,
+        };
+
+        var vm = NewManagerVm(account);
+
+        Assert.Equal(true, vm.IsPersonalMicrosoftAccount);
+    }
+
+    [Fact]
     public void SavingWritesTheOverrideBackAndTrimsIt()
     {
         var account = new AccountModel

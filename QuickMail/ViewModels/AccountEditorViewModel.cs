@@ -666,8 +666,11 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// Detected from the token at Microsoft sign-in (null until signed in). Carried to
     /// <see cref="AccountModel.IsPersonalMicrosoftAccount"/> by the derived VM's ToAccountModel so
     /// scope selection is correct even for personal accounts on custom domains (#233).
+    /// The setter is <c>protected</c> so the Account Manager can restore the persisted flag when it loads
+    /// an existing account for edit/re-auth — without it, re-authing a vanity-domain personal account
+    /// would fall back to the domain guess and miss the single-consent fold.
     /// </summary>
-    public bool? IsPersonalMicrosoftAccount { get; private set; }
+    public bool? IsPersonalMicrosoftAccount { get; protected set; }
 
     /// <summary>
     /// Raised when interactive sign-in completed as a DIFFERENT identity than the one entered (#202) —
@@ -706,10 +709,15 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             // Carry the two sync opt-ins so the Microsoft sign-in can fold their consent into this one
             // prompt (WithExtraScopesToConsent) instead of re-prompting after add — the difference between
             // a personal account seeing one consent screen and seeing three (mail, contacts, calendar).
+            // Carry the known personal-account flag too (set by a prior sign-in, or loaded when re-authing
+            // an existing account): without it the fold's personal check falls back to the domain guess,
+            // which misses a personal account on a vanity domain (#233) — the exact case that most needs
+            // the single prompt.
             var tempAccount = new AccountModel
             {
                 Username = Username, AuthType = AuthType.OAuth2Microsoft, BackendKind = BackendKind,
                 SyncContacts = SyncContacts, SyncCalendar = SyncCalendar,
+                IsPersonalMicrosoftAccount = IsPersonalMicrosoftAccount,
             };
             var result = (SyncContacts || SyncCalendar)
                 ? await OAuthService.SignInInteractiveWithContactsAsync(tempAccount, CancellationToken.None)

@@ -324,21 +324,39 @@ public class OAuthService : IOAuthService
         // #511/#529: consent is force-prompted only on the `.default` path (see PromptForSignIn). With
         // explicit scopes AAD decides, so an already-consented org isn't re-prompted on every add.
         var usesDefaultScope = scopes.Any(s => s.EndsWith("/.default", StringComparison.Ordinal));
-        var builder = _msal.AcquireTokenInteractive(scopes)
-            // Embedded WebView2 window: renders in-app and closes itself on completion, returning
-            // focus to QuickMail — no system-browser tab and no lingering success page.
-            .WithUseEmbeddedWebView(true)
-            .WithPrompt(PromptForSignIn(firstConnect, account.Username, usesDefaultScope));
 
-        // Consent to the mail scopes AND any requested contact/calendar scopes in this one prompt, so a
-        // personal account (no admin to pre-approve them) isn't re-prompted per capability.
-        if (extraScopesToConsent is { Length: > 0 })
-            builder = builder.WithExtraScopesToConsent(extraScopesToConsent);
+        // Build the interactive request. `extras` are folded in via WithExtraScopesToConsent so a personal
+        // account (no admin to pre-approve them) consents to mail + contacts + calendar in one prompt.
+        AcquireTokenInteractiveParameterBuilder Build(string[]? extras)
+        {
+            var b = _msal.AcquireTokenInteractive(scopes)
+                // Embedded WebView2 window: renders in-app and closes itself on completion, returning
+                // focus to QuickMail — no system-browser tab and no lingering success page.
+                .WithUseEmbeddedWebView(true)
+                .WithPrompt(PromptForSignIn(firstConnect, account.Username, usesDefaultScope));
+            if (extras is { Length: > 0 })
+                b = b.WithExtraScopesToConsent(extras);
+            if (!string.IsNullOrEmpty(account.Username))
+                b = b.WithLoginHint(account.Username);
+            return b;
+        }
 
-        if (!string.IsNullOrEmpty(account.Username))
-            builder = builder.WithLoginHint(account.Username);
-
-        var result = await builder.ExecuteAsync(ct);
+        AuthenticationResult result;
+        try
+        {
+            result = await Build(extraScopesToConsent).ExecuteAsync(ct);
+        }
+        catch (MsalException ex) when (extraScopesToConsent is { Length: > 0 } && !IsUserCancellation(ex))
+        {
+            // The user authenticated but declined consent to the folded contact/calendar scopes (e.g.
+            // balked at calendar write). Retry mail-only so they still get a working account instead of
+            // no account at all — the declined capability falls back to its own post-add consent prompt,
+            // which they can decline there too without losing mail. A genuine window-close (cancellation)
+            // is excluded above, so closing the sign-in still aborts as the user intended.
+            LogService.Log($"OAuthService: sign-in with folded contact/calendar consent failed " +
+                           $"({ex.ErrorCode}); retrying mail-only for {account.Username}.");
+            result = await Build(null).ExecuteAsync(ct);
+        }
         // Authoritative personal-vs-work detection from the token: personal Microsoft accounts sign in
         // under the well-known MSA consumers tenant. The caller persists this on the account so scope
         // selection is correct even for consumer accounts on custom domains (#233). Account is non-null
@@ -374,19 +392,20 @@ public class OAuthService : IOAuthService
             ExtraConsentScopesForMicrosoftSignIn(account), ct);
 
     // The extra Graph scopes to fold into THIS account's mail sign-in consent, or empty when none should
-    // be folded. Folds only for a personal account (resolved from the persisted tenant flag, else the
-    // email-domain guess — the token that would set the flag doesn't exist yet at first sign-in, the same
-    // resolution DefaultScopesFor uses); a work/school account returns empty so its opted-in contact/
-    // calendar consent stays on the graceful post-add path and never dead-ends a consent-restricted
-    // tenant's sign-in. A misclassified vanity-domain personal account simply falls back to today's
-    // separate-prompt behavior — no worse than now.
+    // be folded. Two gates, both required:
+    //   • Graph backend — the primary mail scopes must be graph.microsoft.com, so the folded contact/
+    //     calendar scopes ride the SAME resource. A personal Microsoft account DEFAULTS to the IMAP backend
+    //     (outlook.office.com mail scopes); folding graph.microsoft.com scopes onto that sign-in is a
+    //     cross-resource authorize the MSA + outlook.office.com path handles badly (#239) — and it is the
+    //     DEFAULT consumer onboarding path, not an edge case. Only a Graph sign-in folds.
+    //   • Personal — work/school returns empty so its opted-in consent stays on the graceful post-add path
+    //     and never dead-ends a consent-restricted tenant's sign-in (see SignInInteractiveWithContactsAsync).
+    // Personal is resolved via ResolveIsPersonalMicrosoftAccount (persisted flag, else the domain guess),
+    // the same resolution DefaultScopesFor uses.
     internal static string[] ExtraConsentScopesForMicrosoftSignIn(AccountModel account)
-    {
-        var isPersonal = account.IsPersonalMicrosoftAccount ?? IsPersonalMicrosoftDomain(account.Username);
-        return isPersonal
+        => account.BackendKind == BackendKind.MicrosoftGraph && ResolveIsPersonalMicrosoftAccount(account)
             ? MicrosoftExtraConsentScopes(account.SyncContacts, account.SyncCalendar)
             : Array.Empty<string>();
-    }
 
     // The extra Graph scopes to pre-consent alongside the mail sign-in for the two opt-in bits. Empty
     // when neither is requested (the caller then attaches no WithExtraScopesToConsent). Pure and
@@ -399,6 +418,12 @@ public class OAuthService : IOAuthService
         if (syncCalendar) scopes.AddRange(GraphCalendarScopes);
         return scopes.ToArray();
     }
+
+    // The user closed/aborted the sign-in window, as opposed to a server-side failure like a declined
+    // consent (access_denied). Used to decide whether a folded-consent failure is worth a mail-only
+    // retry: a decline is (retry so mail still signs in), a deliberate cancel is not (respect the abort).
+    private static bool IsUserCancellation(MsalException ex)
+        => ex.ErrorCode == MsalError.AuthenticationCanceledError;
 
     public async Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default)
     {

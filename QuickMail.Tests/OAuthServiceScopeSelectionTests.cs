@@ -257,6 +257,20 @@ public class OAuthServiceScopeSelectionTests
     }
 
     [Fact]
+    public void FoldForSignIn_PersonalOnImapBackend_FoldsNothing() // #544 review finding 1
+    {
+        // A personal Microsoft account DEFAULTS to the IMAP backend (outlook.office.com mail scopes).
+        // Folding graph.microsoft.com contact/calendar scopes onto that sign-in is a fragile cross-
+        // resource authorize (#239) on the DEFAULT consumer path — only a Graph sign-in folds.
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.ImapSmtp, Username = "me@outlook.com",
+            SyncContacts = true, SyncCalendar = true,
+        };
+        Assert.Empty(OAuthService.ExtraConsentScopesForMicrosoftSignIn(account));
+    }
+
+    [Fact]
     public void ImapScopes_AreExplicit_NotDefault() // #239
     {
         // `.default` on the IMAP resource is invalid for personal Microsoft accounts and blocked
