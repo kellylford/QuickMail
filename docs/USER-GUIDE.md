@@ -1047,11 +1047,13 @@ Select a message and choose **Create Rule from Message** from the context menu o
 
 ### Microsoft 365: server-side rules
 
-If you have a Microsoft 365 (Exchange) account, the Rules Manager does a little more. Alongside the rules that run inside QuickMail, it shows the **server-side rules** on your Exchange mailbox — the same rules Outlook calls "Inbox rules." A server rule runs on Microsoft's servers, so it acts on your mail **even when QuickMail is closed**, and it applies wherever you read that mailbox.
+If you have a **work or school** Microsoft 365 (Exchange) account, the Rules Manager does a little more. Alongside the rules that run inside QuickMail, it shows the **server-side rules** on your Exchange mailbox — the same rules Outlook calls "Inbox rules." A server rule runs on Microsoft's servers, so it acts on your mail **even when QuickMail is closed**, and it applies wherever you read that mailbox.
+
+Server-side rules are an organization feature, so **personal Outlook.com, Hotmail, and Live.com accounts do not have them** — even when connected through Microsoft 365 directly. For a personal account the Rules Manager shows only the rules that run inside QuickMail, the same as any other non-Exchange account.
 
 **One account at a time.** With a Microsoft 365 account present, the Rules Manager opens on a single account chosen in an **Account** list at the top, rather than listing every account's rules together. Choose the account whose rules you want, and the list below shows just that mailbox's rules. If you have only one account there is no picker. This is the first thing to notice if you are used to seeing every account's rules in one list: your rules are not gone, they are behind the account picker.
 
-**One list, marked where each rule runs.** Server rules and QuickMail rules appear together in a single list. Each row says where the rule runs — **on server** or **in QuickMail** — along with its name and whether it is enabled. Creating, editing, enabling or disabling, reordering, and deleting all work the same way whichever kind a rule is.
+**One list, marked where each rule runs.** Server rules and QuickMail rules appear together in a single list. Each row says where the rule runs — **on server** or **in QuickMail** — along with its name and whether it is enabled. Creating, editing, enabling or disabling, reordering, and deleting all work the same way whichever kind a rule is. When you open the Rules Manager, or switch to another account with the account picker, QuickMail announces that account's rule mode — that its rules run in QuickMail while it is open, or that the account also supports server-side rules — so an empty list is never a mystery about which kind the account can have.
 
 **QuickMail chooses where a new rule lives.** When you create a rule, QuickMail saves it as a server rule whenever it can, so it keeps working while QuickMail is closed. A rule that needs something only QuickMail can do — today that is **Mark as unread** — is saved as a QuickMail rule instead, and QuickMail tells you why.
 
