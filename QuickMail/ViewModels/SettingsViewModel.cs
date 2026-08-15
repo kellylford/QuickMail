@@ -130,6 +130,19 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _googleSignIn;
 
+    /// <summary>
+    /// Bound to the Advanced tab's POP3 checkbox, and stored as the Pop3Backend flag in the
+    /// config.ini [features] section for the same reason as <see cref="GoogleSignIn"/> — it is the
+    /// same switch as <c>--feature Pop3Backend</c>, and a setting of its own would be a second
+    /// spelling of one flag. Read at startup by ConfigFeatureGate, hence the restart (#128).
+    ///
+    /// <para>Off by default. It gates only the OFFER of POP3 in Add Account: an account already
+    /// using POP3 keeps working whatever this is set to, so turning it back off hides the option
+    /// without stranding anyone's mail.</para>
+    /// </summary>
+    [ObservableProperty]
+    private bool _offerPop3;
+
     // ── Diagnostics (debug-only, #175) ─────────────────────────────────────────────
     // Deliberately NOT [ObservableProperty] over a field: the value lives on the
     // session service, never in ConfigModel/config.ini — non-persistence is the
@@ -460,6 +473,7 @@ public partial class SettingsViewModel : ObservableObject
         AutoUpdate                       = cfg.AutoUpdate;
         ShowUpdateInstalledAlerts        = cfg.ShowUpdateInstalledAlerts;
         GoogleSignIn                     = ReadFeature(cfg, FeatureFlag.GoogleAuth, false);
+        OfferPop3                        = ReadFeature(cfg, FeatureFlag.Pop3Backend, false);
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
         DefaultComposeMode = cfg.DefaultComposeMode switch
@@ -543,6 +557,7 @@ public partial class SettingsViewModel : ObservableObject
         // Written both ways round, never removed when false: an explicit "false" in the file is how
         // a user who turns this back off stays off if the built-in default ever changes again.
         cfg.Features[FeatureFlag.GoogleAuth.ToString()] = GoogleSignIn ? "true" : "false";
+        cfg.Features[FeatureFlag.Pop3Backend.ToString()] = OfferPop3 ? "true" : "false";
         if (DesktopShortcut != Helpers.DesktopShortcut.Exists())
         {
             try

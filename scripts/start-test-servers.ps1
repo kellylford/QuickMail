@@ -112,12 +112,14 @@ if (Test-Path $pidFile) {
 }
 
 if (-not $gmAlreadyRunning) {
-    # greenmail.setup.test.smtp / .imap bind 127.0.0.1 at the test-profile ports (3025 / 3143).
-    # greenmail.auth.disabled accepts any credentials and auto-creates mailboxes, so tests can
-    # invent per-run users without any server-side user list.
+    # greenmail.setup.test.smtp / .imap / .pop3 bind 127.0.0.1 at the test-profile ports
+    # (3025 / 3143 / 3110). greenmail.auth.disabled accepts any credentials and auto-creates
+    # mailboxes, so tests can invent per-run users without any server-side user list.
+    # POP3 serves the same INBOX as IMAP, which is what lets a POP3 test seed over SMTP (#128).
     $gmArgs = @(
         "-Dgreenmail.setup.test.smtp",
         "-Dgreenmail.setup.test.imap",
+        "-Dgreenmail.setup.test.pop3",
         "-Dgreenmail.auth.disabled",
         "-Dgreenmail.verbose",
         "-jar", $jar
@@ -134,14 +136,15 @@ if (-not $gmAlreadyRunning) {
         }
         $smtpOk = (Test-NetConnection 127.0.0.1 -Port 3025 -WarningAction SilentlyContinue).TcpTestSucceeded
         $imapOk = (Test-NetConnection 127.0.0.1 -Port 3143 -WarningAction SilentlyContinue).TcpTestSucceeded
-        if ($smtpOk -and $imapOk) { $ready = $true; break }
+        $popOk  = (Test-NetConnection 127.0.0.1 -Port 3110 -WarningAction SilentlyContinue).TcpTestSucceeded
+        if ($smtpOk -and $imapOk -and $popOk) { $ready = $true; break }
         Start-Sleep -Milliseconds 500
     }
 
     if (-not $ready) {
-        Write-Error "GreenMail did not open ports 3025/3143 within 60s. See $logFile / $logFile.err"
+        Write-Error "GreenMail did not open ports 3025/3143/3110 within 60s. See $logFile / $logFile.err"
     }
-    Write-Host "GreenMail ready: SMTP 127.0.0.1:3025, IMAP 127.0.0.1:3143 (pid $($proc.Id))."
+    Write-Host "GreenMail ready: SMTP 127.0.0.1:3025, IMAP 127.0.0.1:3143, POP3 127.0.0.1:3110 (pid $($proc.Id))."
 }
 
 # ── Radicale (CalDAV + CardDAV) ────────────────────────────────────────────────

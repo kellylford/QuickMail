@@ -75,6 +75,65 @@ public partial class AccountModel : ObservableObject
     public bool ImapUseSsl { get; set; } = true;
     public bool ImapAcceptInvalidCert { get; set; } = false;
 
+    // POP3
+    public string Pop3Host { get; set; } = string.Empty;
+    public int Pop3Port { get; set; } = 995;
+    public bool Pop3UseSsl { get; set; } = true;
+    public bool Pop3AcceptInvalidCert { get; set; } = false;
+
+    /// <summary>
+    /// When true (the default), downloaded messages are left on the server so other clients can
+    /// still collect them. When false, a message is deleted from the server once it is stored
+    /// locally — the classic POP3 behavior.
+    /// <para>QuickMail still files deletes through a local Trash folder either way: a message the
+    /// user deletes is moved to Trash and only removed from the server when Trash is emptied or the
+    /// message is permanently deleted. Because the local store is the only copy of POP3 mail, that
+    /// second step is the point of no return.</para>
+    /// </summary>
+    public bool Pop3LeaveMailOnServer { get; set; } = true;
+
+    // ── The incoming leg, whichever protocol serves it ───────────────────────────
+    // Code that cares about "the server this account receives from" — grouping accounts by host at
+    // connect time, deciding whether a reconfigured account still describes the same connection —
+    // must not reach for the IMAP fields directly. A POP3 account leaves those at their defaults, so
+    // an IMAP-only reading sees every POP3 account as the same empty host on port 993 (#128).
+
+    /// <summary>The host this account receives mail from. Empty for Graph, which has no server.</summary>
+    [JsonIgnore]
+    public string IncomingHost => BackendKind switch
+    {
+        BackendKind.Pop3Smtp       => Pop3Host,
+        BackendKind.MicrosoftGraph => string.Empty,
+        _                          => ImapHost,
+    };
+
+    /// <summary>The port that goes with <see cref="IncomingHost"/>. 0 for Graph.</summary>
+    [JsonIgnore]
+    public int IncomingPort => BackendKind switch
+    {
+        BackendKind.Pop3Smtp       => Pop3Port,
+        BackendKind.MicrosoftGraph => 0,
+        _                          => ImapPort,
+    };
+
+    /// <summary>Implicit TLS on the incoming connection. False for Graph, which has none.</summary>
+    [JsonIgnore]
+    public bool IncomingUseSsl => BackendKind switch
+    {
+        BackendKind.Pop3Smtp       => Pop3UseSsl,
+        BackendKind.MicrosoftGraph => false,
+        _                          => ImapUseSsl,
+    };
+
+    /// <summary>Whether the incoming connection accepts an invalid certificate.</summary>
+    [JsonIgnore]
+    public bool IncomingAcceptInvalidCert => BackendKind switch
+    {
+        BackendKind.Pop3Smtp       => Pop3AcceptInvalidCert,
+        BackendKind.MicrosoftGraph => false,
+        _                          => ImapAcceptInvalidCert,
+    };
+
     // SMTP
     public string SmtpHost { get; set; } = string.Empty;
     public int SmtpPort { get; set; } = 587;

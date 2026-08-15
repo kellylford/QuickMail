@@ -47,6 +47,18 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty] private int    _imapPort = 993;
     [ObservableProperty] private bool   _imapUseSsl = true;
     [ObservableProperty] private bool   _imapAcceptInvalidCert = false;
+    [ObservableProperty] private string _pop3Host = string.Empty;
+    [ObservableProperty] private int    _pop3Port = 995;
+    [ObservableProperty] private bool   _pop3UseSsl = true;
+    [ObservableProperty] private bool   _pop3AcceptInvalidCert = false;
+
+    /// <summary>
+    /// Bound to "Leave mail on the server" in the POP3 settings. On by default, because the
+    /// alternative — the classic POP3 behavior — makes the local store the only copy of the user's
+    /// mail from the moment it is collected.
+    /// </summary>
+    [ObservableProperty] private bool   _pop3LeaveMailOnServer = true;
+
     [ObservableProperty] private string _smtpHost = string.Empty;
     [ObservableProperty] private int    _smtpPort = 587;
     [ObservableProperty] private bool   _smtpUseSsl = false;
@@ -184,6 +196,10 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// currently holds keyboard focus removes the focused element from the visual tree and strands
     /// focus on the window with no announcement.
     /// </param>
+    /// <remarks>
+    /// See <see cref="PreserveChosenBackend"/> for the one case where the provider's default backend
+    /// is deliberately not applied.
+    /// </remarks>
     protected bool ApplyProvider(MailProvider? provider, bool collapseAdvanced = true)
     {
         if (provider is null) return false;
@@ -202,8 +218,13 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         {
             // ORDER MATTERS: BackendKind is assigned before AuthType because OnAuthTypeChangedInternal
             // reads BackendKind. This is the same ordering hazard the old backend combo documented.
-            BackendKind = provider.DefaultBackend;
-            AuthType = provider.DefaultAuthType;
+            if (!PreserveChosenBackend)
+                BackendKind = provider.DefaultBackend;
+
+            // POP3 authenticates with a password whatever the provider's default says: there is no
+            // OAuth path through that backend, and taking the provider's OAuth default here would
+            // leave the account unable to sign in at all.
+            AuthType = BackendKind == BackendKind.Pop3Smtp ? AuthType.Password : provider.DefaultAuthType;
 
             if (BackendKind == BackendKind.MicrosoftGraph)
             {
@@ -227,6 +248,14 @@ public abstract partial class AccountEditorViewModel : ObservableObject
                 SmtpPort = provider.SmtpPort;
                 SmtpUseSsl = provider.SmtpUseSsl;
                 SmtpAcceptInvalidCert = false;
+
+                // POP3 fields are filled whichever backend is selected, so switching the connection
+                // method to POP3 finds them already set. A provider with no POP3 service leaves the
+                // host empty rather than guessing one — the user types it, and IsReadyToSave says so.
+                Pop3Host = provider.Pop3Host ?? string.Empty;
+                Pop3Port = provider.Pop3Port;
+                Pop3UseSsl = provider.Pop3Port == 995;
+                Pop3AcceptInvalidCert = false;
             }
 
             if (AuthType != AuthType.Password) ClearPassword();
@@ -267,6 +296,10 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             SmtpPort = 587;
             SmtpUseSsl = false;
             SmtpAcceptInvalidCert = false;
+            Pop3Host = string.Empty;
+            Pop3Port = 995;
+            Pop3UseSsl = true;
+            Pop3AcceptInvalidCert = false;
             // The account name is never touched here — nothing writes it but the user.
         }
         finally
@@ -344,6 +377,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGraphBackend))]
     [NotifyPropertyChangedFor(nameof(IsImapBackend))]
+    [NotifyPropertyChangedFor(nameof(IsPop3Backend))]
+    [NotifyPropertyChangedFor(nameof(IncomingHostLabel))]
+    [NotifyPropertyChangedFor(nameof(ShowServerSettings))]
     private BackendKind _backendKind = BackendKind.ImapSmtp;
 
     /// <summary>True when this account uses the Microsoft Graph backend (drives IMAP/SMTP field visibility).</summary>
@@ -351,6 +387,21 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
     /// <summary>True when this account uses the standard IMAP/SMTP backend.</summary>
     public bool IsImapBackend => BackendKind == BackendKind.ImapSmtp;
+
+    /// <summary>True when this account receives over POP3 (drives POP3 field visibility).</summary>
+    public bool IsPop3Backend => BackendKind == BackendKind.Pop3Smtp;
+
+    /// <summary>
+    /// Names the incoming protocol in status text, so a failure says which server refused the
+    /// connection rather than naming IMAP for an account that never speaks it.
+    /// </summary>
+    public string IncomingHostLabel => IsPop3Backend ? "POP3" : "IMAP";
+
+    /// <summary>
+    /// Whether the server-settings block is shown at all. Both host-based backends need it (each
+    /// shows its own incoming section, and both send over SMTP); Graph has no hosts to configure.
+    /// </summary>
+    public bool ShowServerSettings => !IsGraphBackend;
 
     [ObservableProperty] private string _statusText = string.Empty;
 
@@ -497,6 +548,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     partial void OnSmtpPortChanged(int value) => NoteHostEdit();
     partial void OnImapUseSslChanged(bool value) => NoteHostEdit();
     partial void OnSmtpUseSslChanged(bool value) => NoteHostEdit();
+    partial void OnPop3HostChanged(string value) => NoteHostEdit();
+    partial void OnPop3PortChanged(int value) => NoteHostEdit();
+    partial void OnPop3UseSslChanged(bool value) => NoteHostEdit();
 
     private void NoteHostEdit()
     {
@@ -523,6 +577,20 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// <see cref="OnAuthTypeChangedInternal"/> because the generated partial method belongs to this
     /// class and cannot be implemented by a derived one.
     /// </summary>
+    /// <summary>
+    /// True when the connection method the user picked outranks the provider's default, so
+    /// <see cref="ApplyProvider"/> leaves <see cref="BackendKind"/> alone.
+    ///
+    /// <para>Only POP3 qualifies, and the asymmetry is the point. Graph is a property of the
+    /// PROVIDER — only Microsoft accounts have it — so a provider change must be free to move an
+    /// account off it. POP3 is a property of how the user wants to connect, and any provider may
+    /// offer it; without this, choosing POP3 in Advanced settings and then finishing the email
+    /// address put the account silently back on IMAP, because typing the address matches a provider
+    /// and re-applies its default. The user could not see it happen — the combo is inside a
+    /// collapsed expander.</para>
+    /// </summary>
+    protected virtual bool PreserveChosenBackend => false;
+
     protected virtual void OnSelectedProviderChangedInternal(MailProvider? value) { }
 
     partial void OnSelectedProviderChanged(MailProvider? value) => OnSelectedProviderChangedInternal(value);
@@ -710,7 +778,15 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         // Graph carries no host configuration at all; sign-in is what proves the account.
         if (IsGraphBackend) return true;
 
-        if (string.IsNullOrWhiteSpace(ImapHost) || string.IsNullOrWhiteSpace(SmtpHost))
+        if (IsPop3Backend)
+        {
+            if (string.IsNullOrWhiteSpace(Pop3Host) || string.IsNullOrWhiteSpace(SmtpHost))
+            {
+                error = "No server settings for this address. Enter the POP3 and SMTP hosts under Advanced settings.";
+                return false;
+            }
+        }
+        else if (string.IsNullOrWhiteSpace(ImapHost) || string.IsNullOrWhiteSpace(SmtpHost))
         {
             error = "No server settings for this address. Enter the IMAP and SMTP hosts under Advanced settings.";
             return false;
@@ -748,6 +824,11 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         ImapPort = ImapPort,
         ImapUseSsl = ImapUseSsl,
         ImapAcceptInvalidCert = ImapAcceptInvalidCert,
+        Pop3Host = Pop3Host,
+        Pop3Port = Pop3Port,
+        Pop3UseSsl = Pop3UseSsl,
+        Pop3AcceptInvalidCert = Pop3AcceptInvalidCert,
+        Pop3LeaveMailOnServer = Pop3LeaveMailOnServer,
         SmtpHost = SmtpHost,
         SmtpPort = SmtpPort,
         SmtpUseSsl = SmtpUseSsl,
@@ -792,9 +873,12 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(ImapHost) || string.IsNullOrWhiteSpace(Username))
+        // The incoming host the probe will actually dial — naming IMAP for a POP3 account would send
+        // the user to fill in a box that is not even shown.
+        var incomingHost = IsPop3Backend ? Pop3Host : ImapHost;
+        if (string.IsNullOrWhiteSpace(incomingHost) || string.IsNullOrWhiteSpace(Username))
         {
-            StatusText = "Fill in IMAP host and username first.";
+            StatusText = $"Fill in {IncomingHostLabel} host and username first.";
             return;
         }
 
@@ -807,7 +891,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             // Two independent legs, reported independently. Incoming can be perfect while outgoing
             // is wrong — that combination used to pass Test Connection and then fail on first send,
             // because only IMAP was ever probed.
-            var imapResult = await ProbeAsync(ct => MailService.ConnectAsync(account, pwd, ct));
+            var incomingResult = await ProbeAsync(ct => MailService.ConnectAsync(account, pwd, ct));
 
             var smtpResult = string.IsNullOrWhiteSpace(SmtpHost)
                 ? "SMTP not configured."
@@ -815,7 +899,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
                     ? "SMTP not checked."
                     : await ProbeAsync(ct => SendMailService.VerifyAsync(account, pwd, ct));
 
-            StatusText = $"IMAP: {imapResult} SMTP: {smtpResult}";
+            StatusText = $"{IncomingHostLabel}: {incomingResult} SMTP: {smtpResult}";
         }
         finally
         {

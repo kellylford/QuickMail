@@ -275,6 +275,97 @@ public class AccountPropertiesBuilderTests
             i.Label == "Authentication" && i.Value.Contains("iCloud"));
     }
 
+    // ── Incoming section follows the backend (#128) ─────────────────────────
+    // Reading the IMAP fields regardless described the wrong protocol for every account that does
+    // not speak IMAP: a POP3 account showed a blank server on port 993, which is what sent this
+    // back for a second look after it was first tried.
+
+    private static AccountModel MakePop3Account() => new()
+    {
+        AccountName           = "POP mail",
+        Username              = "kelly@example.com",
+        AuthType              = AuthType.Password,
+        BackendKind           = BackendKind.Pop3Smtp,
+        Pop3Host              = "mail.example.com",
+        Pop3Port              = 995,
+        Pop3UseSsl            = true,
+        Pop3LeaveMailOnServer = true,
+        SmtpHost              = "mail.example.com",
+        SmtpPort              = 465,
+        SmtpUseSsl            = true,
+        // Left at their defaults, exactly as a real POP3 account has them — and precisely what must
+        // not be reported.
+        ImapPort              = 993,
+    };
+
+    [Fact]
+    public void Build_Pop3Account_DescribesPop3NotImap()
+    {
+        var (_, sections) = AccountPropertiesBuilder.Build(MakePop3Account(), null);
+
+        Assert.DoesNotContain(sections, s => s.Header.Contains("IMAP", StringComparison.Ordinal));
+
+        var incoming = sections.First(s => s.Header == "Incoming (POP3)");
+        Assert.Contains(incoming.Items, i => i.Label == "Server" && i.Value == "mail.example.com");
+        Assert.Contains(incoming.Items, i => i.Label == "Port"   && i.Value == "995");
+
+        // The unused IMAP default must not appear anywhere.
+        Assert.DoesNotContain(sections.SelectMany(s => s.Items), i => i.Value == "993");
+    }
+
+    [Fact]
+    public void Build_Pop3Account_SaysWhetherMailIsKeptOnTheServer()
+    {
+        var keeping = AccountPropertiesBuilder.Build(MakePop3Account(), null).Sections
+            .First(s => s.Header == "Incoming (POP3)");
+        Assert.Contains(keeping.Items, i => i.Label == "Mail on server" && i.Value.Contains("Kept", StringComparison.Ordinal));
+
+        var account = MakePop3Account();
+        account.Pop3LeaveMailOnServer = false;
+        var removing = AccountPropertiesBuilder.Build(account, null).Sections
+            .First(s => s.Header == "Incoming (POP3)");
+        Assert.Contains(removing.Items, i => i.Label == "Mail on server" && i.Value.Contains("Removed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Build_Pop3Account_StillSendsOverSmtp()
+    {
+        var (_, sections) = AccountPropertiesBuilder.Build(MakePop3Account(), null);
+
+        var outgoing = sections.First(s => s.Header == "Outgoing (SMTP)");
+        Assert.Contains(outgoing.Items, i => i.Label == "Server" && i.Value == "mail.example.com");
+        Assert.Contains(outgoing.Items, i => i.Label == "Port"   && i.Value == "465");
+    }
+
+    [Fact]
+    public void Build_GraphAccount_DoesNotInventServerSettings()
+    {
+        // Graph clears the host fields, so this had the same defect as POP3: a blank server on
+        // port 993 for an account that has no servers at all.
+        var acct = MakeAccount(AuthType.OAuth2Microsoft);
+        acct.BackendKind = BackendKind.MicrosoftGraph;
+        acct.ImapHost = string.Empty;
+        acct.SmtpHost = string.Empty;
+
+        var (_, sections) = AccountPropertiesBuilder.Build(acct, null);
+
+        Assert.DoesNotContain(sections, s => s.Header.Contains("IMAP", StringComparison.Ordinal));
+        Assert.DoesNotContain(sections, s => s.Header.Contains("SMTP", StringComparison.Ordinal));
+        Assert.DoesNotContain(sections.SelectMany(s => s.Items), i => i.Value is "993" or "587");
+        Assert.Contains(sections.SelectMany(s => s.Items),
+            i => i.Label == "Connection" && i.Value.Contains("Graph", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Build_ImapAccount_IsUnchanged()
+    {
+        var (_, sections) = AccountPropertiesBuilder.Build(MakeAccount(), null);
+
+        var incoming = sections.First(s => s.Header == "Incoming (IMAP)");
+        Assert.Contains(incoming.Items, i => i.Label == "Server" && i.Value == "imap.work.com");
+        Assert.Contains(incoming.Items, i => i.Label == "Port"   && i.Value == "993");
+    }
+
     [Fact]
     public void Build_NeverExposeCredential()
     {
