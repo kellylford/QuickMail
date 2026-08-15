@@ -443,7 +443,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private async Task ReloadAndReselectAsync(
         string? serverId = null, Guid? clientId = null, int? fallbackIndex = null, CancellationToken ct = default)
     {
-        await RefreshAsync(ct);
+        // A write-triggered reload, NOT an account switch — so it must not re-speak the rule-mode hint
+        // (the account hasn't changed; only its rules did).
+        await RefreshCoreAsync(announceMode: false, ct);
         SelectedRule = Rules.FirstOrDefault(r =>
             (serverId != null && r.Server?.Id == serverId) ||
             (clientId != null && r.Client?.Id == clientId));
@@ -487,8 +489,13 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// </summary>
     private CancellationTokenSource? _refreshCts;
 
+    // The account-context refresh (initial open + every account switch, via RefreshCommand). Speaks the
+    // rule-mode hint once the load settles, so a screen-reader user hears whether the account they landed
+    // on runs rules on the server or only in QuickMail — the one thing the empty list can't convey.
     [RelayCommand]
-    private async Task RefreshAsync(CancellationToken ct)
+    private Task RefreshAsync(CancellationToken ct) => RefreshCoreAsync(announceMode: true, ct);
+
+    private async Task RefreshCoreAsync(bool announceMode, CancellationToken ct)
     {
         if (SelectedAccount?.Id is not Guid accountId)
         {
@@ -561,12 +568,26 @@ public partial class UnifiedRulesViewModel : ObservableObject
             // A load failure must survive to the status line — otherwise "couldn't reach Graph" reads
             // as "this account has no server rules", which invites the wrong next action.
             StatusText = BuildStatus(rows, failures);
+
+            // Only the account-context load (open/switch) speaks the mode; a write-reload does not. This
+            // sits past every early return above, so a superseded refresh never announces a stale account.
+            if (announceMode)
+                Announce(RuleModeHint(AccountSupportsServerRules), AnnouncementCategory.Hint);
         }
         finally
         {
             IsBusy = false;
         }
     }
+
+    // The spoken rule-mode cue for the account just landed on — an AnnouncementCategory.Hint, so it
+    // honors the user's AnnounceHints preference. Both modes are announced (not just the client-only
+    // case) so that, in a multi-account manager, switching accounts always states the new account's mode
+    // rather than leaving silence to be interpreted. Pure so the wording is pinned by a test.
+    internal static string RuleModeHint(bool supportsServerRules)
+        => supportsServerRules
+            ? "This account also supports server-side rules that run in the cloud."
+            : "Rules for this account run in QuickMail while it's open.";
 
     /// <summary>Cancels any in-flight load. The View calls this on close so a slow Graph fetch can't
     /// complete and write into a window that's gone.</summary>
