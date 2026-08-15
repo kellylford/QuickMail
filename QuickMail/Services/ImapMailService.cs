@@ -813,10 +813,13 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                     else if (s.HtmlBody != null)
                     {
                         var part = await folder.GetBodyPartAsync(s.UniqueId, s.HtmlBody, ct);
-                        // HtmlStripper, not a tag-stripping regex: it decodes entities, keeps list
-                        // and link structure, and is what the POP3 backend already builds previews
-                        // with — so the same message previews identically whichever fetched it.
-                        if (part is TextPart tp) text = Helpers.HtmlStripper.ToPlainText(tp.Text);
+                        // HtmlStripper, not a tag-stripping regex: it decodes entities and skips
+                        // script/style/head content, which the regex left in — HTML mail routinely
+                        // previewed as a run of CSS. It is what the POP3 backend already builds
+                        // previews with, so the same message reads the same way whichever fetched it.
+                        // includeLinkTargets: false because this is a preview — see HtmlStripper.
+                        if (part is TextPart tp)
+                            text = Helpers.HtmlStripper.ToPlainText(tp.Text, includeLinkTargets: false);
                     }
 
                     var preview = ExtractPreviewLines(text, maxLines);

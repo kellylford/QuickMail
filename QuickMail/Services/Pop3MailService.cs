@@ -921,14 +921,15 @@ public class Pop3MailService : IMailService
     /// <summary>
     /// The message list's preview line. Built here at download time rather than fetched on demand —
     /// POP3 cannot re-read part of a message — but from the same three-line rule
-    /// <see cref="ImapMailService.ExtractPreviewLines"/> applies, then capped, since this string is
-    /// stored rather than recomputed per repaint.
+    /// <see cref="ImapMailService.ExtractPreviewLines"/> applies. The 200-character cap is this
+    /// backend's alone, because this string is stored rather than recomputed per repaint.
     /// </summary>
     private static string BuildPreview(MimeMessage msg)
     {
         var text = msg.TextBody;
         if (string.IsNullOrWhiteSpace(text))
-            text = Helpers.HtmlStripper.ToPlainText(msg.HtmlBody);
+            // includeLinkTargets: false because this is a preview — see HtmlStripper.
+            text = Helpers.HtmlStripper.ToPlainText(msg.HtmlBody, includeLinkTargets: false);
         if (string.IsNullOrWhiteSpace(text)) return string.Empty;
 
         var joined = ImapMailService.ExtractPreviewLines(text, 3);

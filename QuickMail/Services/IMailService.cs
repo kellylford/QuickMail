@@ -78,9 +78,16 @@ public interface IMailService : IDisposable
     /// safety: a POP3 server legitimately stops listing a message the moment it has been collected,
     /// and once collected the local store is the only copy in existence. Reconciling deletions
     /// against such a listing would delete the user's mail permanently, on the sweep after it
-    /// arrived. <c>Pop3MailService</c> also unions its cached ids into the listing so the arithmetic
-    /// comes out as a no-op either way — but that is the backend defending itself against a caller
-    /// that cannot see the invariant. This is the invariant, where the sweep can see it.</para>
+    /// arrived.</para>
+    ///
+    /// <para><b>This flag is a second lock, not a replacement for the first.</b>
+    /// <c>Pop3MailService.MergeListing</c> unions its cached ids into every listing it returns, which
+    /// is what makes the deletion arithmetic empty; that union stays load-bearing and must not be
+    /// removed on the strength of this flag. The router resolves an unregistered account to the
+    /// default (IMAP) backend, so a POP3 account that never registered would read as authoritative
+    /// here and the union would be the only thing left standing between the sweep and the user's
+    /// mail. What this flag adds is that the invariant is now visible to <c>SyncService</c>, instead
+    /// of being an arithmetic coincidence it could break without noticing.</para>
     /// </summary>
     bool ListingIsAuthoritativeForDeletions(Guid accountId) => true;
 

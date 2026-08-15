@@ -744,6 +744,21 @@ public class Pop3MailServiceTests
     }
 
     [Fact]
+    public void Preview_DoesNotReadOutATrackingUrl()
+    {
+        // Both backends build previews through HtmlStripper now, so both have to suppress link
+        // targets. Marketing mail opens with a logo wrapped in a tracking link; included, the whole
+        // preview line is query string, which for a screen-reader user is what gets spoken.
+        var msg = BuildMime(text: null,
+            html: "<p><a href=\"https://click.e.example.com/u/?qs=8a7f3c2b1d\">Acme</a> Spring sale</p>");
+        var preview = Pop3MailService.BuildSummary(Guid.NewGuid(), "u", msg, "Inbox", false).Preview;
+
+        Assert.DoesNotContain("click.e.example.com", preview);
+        Assert.Contains("Acme", preview);
+        Assert.Contains("Spring sale", preview);
+    }
+
+    [Fact]
     public void Detail_CarriesFullAddresses_AndTheComposeMode()
     {
         var msg = BuildMime(customize: m =>

@@ -30,6 +30,24 @@ public class HtmlStripperTests
     }
 
     [Fact]
+    public void Strip_ForAPreview_DropsTheLinkTargetButKeepsTheText()
+    {
+        // A preview is one line the user reads — or hears — to decide whether to open the message,
+        // and marketing mail routinely opens with a logo wrapped in a tracking link. With the target
+        // included, the first thing in the preview is a hundred characters of query string.
+        var text = HtmlStripper.ToPlainText(
+            "<a href=\"https://click.e.example.com/u/?qs=8a7f3c2b1d\"><img alt=\"Acme\"></a> Spring sale",
+            includeLinkTargets: false);
+
+        Assert.Equal("[Acme] Spring sale", text);
+
+        // The body conversion — the compose path, where losing the destination loses the only way to
+        // reach it — is unchanged, and is still the default.
+        Assert.Contains("https://example.com",
+            HtmlStripper.ToPlainText("<a href=\"https://example.com\">Click here</a>"));
+    }
+
+    [Fact]
     public void Strip_Link_TextEqualsUrl_NoDuplicateParens()
     {
         var text = HtmlStripper.ToPlainText("<a href=\"https://example.com/\">https://example.com/</a>");

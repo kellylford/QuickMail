@@ -293,6 +293,10 @@ class StubLocalStoreService : ILocalStoreService
     /// <c>FolderName</c>.</para></summary>
     public virtual Task<int> RefileMessagesAsync(Guid accountId, string fromFolder, string toFolder, IEnumerable<string> messageIds, bool copy)
     {
+        // Same-folder is a no-op in the real store. Without this the stub would find source and
+        // destination to be the same list and remove the row from it — the fake destroying mail the
+        // shipping code leaves alone is exactly the wrong direction for a fake to be wrong in.
+        if (string.Equals(fromFolder, toFolder, StringComparison.Ordinal)) return Task.FromResult(0);
         if (!SeededSummaries.TryGetValue((accountId, fromFolder), out var source)) return Task.FromResult(0);
         var wanted = new HashSet<string>(messageIds, StringComparer.Ordinal);
         var moving = source.Where(m => wanted.Contains(m.MessageId)).ToList();
