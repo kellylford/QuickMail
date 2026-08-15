@@ -5511,18 +5511,16 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Refuses folder management on an account whose protocol has no folders — POP3 (#128), whose
-    /// Inbox, Sent, Drafts and Trash are made up by QuickMail and are the only folders there can be.
-    /// Same contract as <see cref="IsMovableFolder"/>: say why, rather than let the command reach a
-    /// backend that throws and surface as "Failed to create folder".
+    /// Refuses folder management on an account whose protocol has no folders. Whether an account can
+    /// manage folders, and how the refusal reads, both come from the ViewModel
+    /// (<see cref="MainViewModel.FolderCrudRefusal"/>) — this is only the reporting. Same contract as
+    /// <see cref="IsMovableFolder"/>: say why, rather than let the command reach a backend that
+    /// throws and surface as "Failed to create folder".
     /// </summary>
     private bool SupportsServerFolders(Guid accountId, string verb)
     {
-        var account = _vm.Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account?.BackendKind != BackendKind.Pop3Smtp) return true;
-
-        Report($"POP3 accounts have no server folders, so there is nothing to {verb}. "
-             + $"{account.AccountLabel} has only Inbox, Sent, Drafts and Trash.");
+        if (_vm.FolderCrudRefusal(accountId, verb) is not { } refusal) return true;
+        Report(refusal);
         return false;
     }
 
@@ -6366,8 +6364,15 @@ public partial class MainWindow : Window
             // Filing is repetitive, so the place the user keeps choosing beats the place they
             // are leaving (#515).
             initialFolder: _vm.LastDestinationFor(list, copy) ?? CurrentFolderOf(list, folders),
-            folderCreator: (accountId, parentFullName, name) =>
-                _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name))
+            // No creator, no New Folder button. Withheld when any account in the tree cannot manage
+            // folders (POP3, #128): the button is one button over a whole tree, not one per account,
+            // and offering an action that can only fail is worse than not offering it. Until now this
+            // was the one folder-CRUD entry point with no gate, surviving on the readability of the
+            // backend's NotSupportedException.
+            folderCreator: _vm.AllSupportFolderCrud(ids)
+                ? (accountId, parentFullName, name) =>
+                    _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name)
+                : null)
             { Owner = this };
     }
 

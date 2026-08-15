@@ -445,42 +445,34 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         }
     }
 
-    public AccountModel ToAccountModel() => new()
+    public AccountModel ToAccountModel()
     {
-        AccountName = AccountName,
-        DisplayName = DisplayName,
-        // The NORMALIZED address where one can be parsed out, not the raw box: a pasted
-        // "Kelly Ford <kelly@example.com>" or a trailing space parses fine in the validator and then
-        // throws in MimeMessageBuilder on every send. Falls back to the raw value only on a path
-        // that never reaches here with an unusable address — IsReadyToSave has already refused it.
-        Username = EmailAddressValidator.TryNormalize(Username, out var address) ? address : Username,
-        // Null rather than "" when unset, so accounts.json carries the field only for the accounts
-        // that actually need it.
-        LoginUsername = string.IsNullOrWhiteSpace(LoginUsername) ? null : LoginUsername.Trim(),
-        AuthType = AuthType,
-        BackendKind = BackendKind,
-        ProviderId = SelectedProvider?.Id,
-        IsPersonalMicrosoftAccount = IsPersonalMicrosoftAccount,
-        ImapHost = ImapHost,
-        ImapPort = ImapPort,
-        ImapUseSsl = ImapUseSsl,
-        ImapAcceptInvalidCert = ImapAcceptInvalidCert,
-        Pop3Host = Pop3Host,
-        Pop3Port = Pop3Port,
-        Pop3UseSsl = Pop3UseSsl,
-        Pop3AcceptInvalidCert = Pop3AcceptInvalidCert,
-        Pop3LeaveMailOnServer = Pop3LeaveMailOnServer,
-        SmtpHost = SmtpHost,
-        SmtpPort = SmtpPort,
-        SmtpUseSsl = SmtpUseSsl,
-        SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
-        // Persisted with the account: settings QuickMail supplied must keep requiring encryption
-        // every time the account connects, not only on the day it was created.
-        RequireStartTls = RequireStartTls,
-        Signature = Signature,
-        SyncContacts = SyncContacts && ShowContactSyncOption,
-        SyncCalendar = SyncCalendar && ShowCalendarSyncOption,
-    };
+        var account = new AccountModel
+        {
+            AccountName = AccountName,
+            DisplayName = DisplayName,
+            // The NORMALIZED address where one can be parsed out, not the raw box: a pasted
+            // "Kelly Ford <kelly@example.com>" or a trailing space parses fine in the validator and then
+            // throws in MimeMessageBuilder on every send. Falls back to the raw value only on a path
+            // that never reaches here with an unusable address — IsReadyToSave has already refused it.
+            Username = EmailAddressValidator.TryNormalize(Username, out var address) ? address : Username,
+            // Null rather than "" when unset, so accounts.json carries the field only for the accounts
+            // that actually need it.
+            LoginUsername = string.IsNullOrWhiteSpace(LoginUsername) ? null : LoginUsername.Trim(),
+            AuthType = AuthType,
+            BackendKind = BackendKind,
+            ProviderId = SelectedProvider?.Id,
+            IsPersonalMicrosoftAccount = IsPersonalMicrosoftAccount,
+            // Persisted with the account: settings QuickMail supplied must keep requiring encryption
+            // every time the account connects, not only on the day it was created.
+            RequireStartTls = RequireStartTls,
+            Signature = Signature,
+            SyncContacts = SyncContacts && ShowContactSyncOption,
+            SyncCalendar = SyncCalendar && ShowCalendarSyncOption,
+        };
+        WriteServerFieldsTo(account);
+        return account;
+    }
 
     /// <summary>
     /// Called from AddAccountDialog.OnClosed. Cancels before disposing so an in-flight lookup gets a

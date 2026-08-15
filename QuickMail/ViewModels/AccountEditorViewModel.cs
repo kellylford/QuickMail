@@ -254,7 +254,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
                 // host empty rather than guessing one — the user types it, and IsReadyToSave says so.
                 Pop3Host = provider.Pop3Host ?? string.Empty;
                 Pop3Port = provider.Pop3Port;
-                Pop3UseSsl = provider.Pop3Port == 995;
+                Pop3UseSsl = provider.Pop3UseSsl;
                 Pop3AcceptInvalidCert = false;
             }
 
@@ -518,6 +518,53 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         {
             _applyingSettings = wasApplying;
         }
+    }
+
+    // ── Server fields ↔ AccountModel ──────────────────────────────────────────
+    // The one place the connection fields are enumerated. There were four hand-maintained copies of
+    // this list — the probe account, Add Account's ToAccountModel, and the Account Manager's load and
+    // save — and the POP3 work had to touch every one of them to add five fields (#128). A field
+    // missed in any single copy is silent: the dialog shows it, the account saves without it.
+    // RequireStartTls is deliberately NOT here. It is not a server field but a decision about them,
+    // and each caller sequences it differently — assigning a host clears it as a hand edit, so the
+    // Account Manager has to restore it *after* the copy.
+
+    /// <summary>Copies the account's IMAP, POP3 and SMTP settings into the form.</summary>
+    protected void LoadServerFieldsFrom(AccountModel account)
+    {
+        ImapHost = account.ImapHost;
+        ImapPort = account.ImapPort;
+        ImapUseSsl = account.ImapUseSsl;
+        ImapAcceptInvalidCert = account.ImapAcceptInvalidCert;
+        Pop3Host = account.Pop3Host;
+        Pop3Port = account.Pop3Port;
+        Pop3UseSsl = account.Pop3UseSsl;
+        Pop3AcceptInvalidCert = account.Pop3AcceptInvalidCert;
+        Pop3LeaveMailOnServer = account.Pop3LeaveMailOnServer;
+        SmtpHost = account.SmtpHost;
+        SmtpPort = account.SmtpPort;
+        SmtpUseSsl = account.SmtpUseSsl;
+        SmtpAcceptInvalidCert = account.SmtpAcceptInvalidCert;
+    }
+
+    /// <summary>Copies the form's IMAP, POP3 and SMTP settings onto the account.</summary>
+    protected void WriteServerFieldsTo(AccountModel account)
+    {
+        account.ImapHost = ImapHost;
+        account.ImapPort = ImapPort;
+        account.ImapUseSsl = ImapUseSsl;
+        account.ImapAcceptInvalidCert = ImapAcceptInvalidCert;
+        account.Pop3Host = Pop3Host;
+        account.Pop3Port = Pop3Port;
+        account.Pop3UseSsl = Pop3UseSsl;
+        account.Pop3AcceptInvalidCert = Pop3AcceptInvalidCert;
+        // Editable after the fact, and consequential: turning "leave mail on the server" off means
+        // the next collection is the last chance any other client has to see that mail.
+        account.Pop3LeaveMailOnServer = Pop3LeaveMailOnServer;
+        account.SmtpHost = SmtpHost;
+        account.SmtpPort = SmtpPort;
+        account.SmtpUseSsl = SmtpUseSsl;
+        account.SmtpAcceptInvalidCert = SmtpAcceptInvalidCert;
     }
 
     /// <summary>
@@ -807,37 +854,29 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// Builds a throwaway account carrying the form's current values, for a connectivity probe.
     /// Its Id is fresh so the probe never disturbs the real account's connection pool.
     /// </summary>
-    private AccountModel BuildProbeAccount() => new()
+    private AccountModel BuildProbeAccount()
     {
-        Id = Guid.NewGuid(),
-        AccountName = $"Test ({Username})",
-        DisplayName = Username,
-        Username = Username,
-        // The probe must log in under the same name the saved account will, or a passing test says
-        // nothing about whether the real credentials work.
-        LoginUsername = LoginUsername,
-        AuthType = AuthType,
-        BackendKind = BackendKind,
-        ProviderId = SelectedProvider?.Id,
-        IsPersonalMicrosoftAccount = IsPersonalMicrosoftAccount,
-        ImapHost = ImapHost,
-        ImapPort = ImapPort,
-        ImapUseSsl = ImapUseSsl,
-        ImapAcceptInvalidCert = ImapAcceptInvalidCert,
-        Pop3Host = Pop3Host,
-        Pop3Port = Pop3Port,
-        Pop3UseSsl = Pop3UseSsl,
-        Pop3AcceptInvalidCert = Pop3AcceptInvalidCert,
-        Pop3LeaveMailOnServer = Pop3LeaveMailOnServer,
-        SmtpHost = SmtpHost,
-        SmtpPort = SmtpPort,
-        SmtpUseSsl = SmtpUseSsl,
-        SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
-        // The probe must connect exactly as the saved account will, or "Test Connection: OK" is a
-        // claim about a different connection than the one the password will be sent over.
-        RequireStartTls = RequireStartTls,
-        Signature = Signature,
-    };
+        var probe = new AccountModel
+        {
+            Id = Guid.NewGuid(),
+            AccountName = $"Test ({Username})",
+            DisplayName = Username,
+            Username = Username,
+            // The probe must log in under the same name the saved account will, or a passing test says
+            // nothing about whether the real credentials work.
+            LoginUsername = LoginUsername,
+            AuthType = AuthType,
+            BackendKind = BackendKind,
+            ProviderId = SelectedProvider?.Id,
+            IsPersonalMicrosoftAccount = IsPersonalMicrosoftAccount,
+            // The probe must connect exactly as the saved account will, or "Test Connection: OK" is a
+            // claim about a different connection than the one the password will be sent over.
+            RequireStartTls = RequireStartTls,
+            Signature = Signature,
+        };
+        WriteServerFieldsTo(probe);
+        return probe;
+    }
 
     [RelayCommand]
     private async Task TestConnectionAsync()

@@ -146,6 +146,12 @@ public class SyncServiceRuleApplicationTests : IDisposable
         // listing that differs from what a window fetch would return — e.g. a new id the cache lacks, or
         // a cached id the server has dropped.
         public List<string>? ServerIds { get; set; }
+
+        // Cleared to stand in for a POP3 account, whose server drops a message from its listing as
+        // soon as it is collected — after which the local store is the only copy.
+        public bool DeletionAuthority { get; set; } = true;
+        public bool ListingIsAuthoritativeForDeletions(Guid accountId) => DeletionAuthority;
+
         public Task<IList<string>> GetFolderMessageIdsAsync(Guid a, string f, CancellationToken ct = default)
             => Task.FromResult<IList<string>>(ServerIds ?? ServerIdDates?.Select(x => x.Id).ToList()
                                               ?? Batch.Select(m => m.MessageId).ToList());
@@ -494,6 +500,46 @@ public class SyncServiceRuleApplicationTests : IDisposable
         var stored = await _store.GetAllMessageIdsAsync(_accountId, "INBOX");
         Assert.Contains("A", stored);
         Assert.Contains("B", stored);
+    }
+
+    [Fact]
+    public async Task Reconcile_NeverDeletes_WhenTheBackendsListingIsNotAuthoritative()
+    {
+        // POP3 (#128). Its server stops listing a message the moment it is collected, and by then the
+        // local store holds the only copy in existence — so "missing from the listing" must never
+        // mean "delete it". Pop3MailService also unions its cached ids into the listing so the
+        // arithmetic comes out empty either way, but that is the backend defending itself against a
+        // caller that cannot see the invariant. This is the sweep honouring it directly: even handed
+        // a listing that genuinely omits cached mail, it removes nothing.
+        await _store.UpsertSummariesAsync([Message("A"), Message("B")]);
+        var imap = new FetchStubMailService([]) { ServerIds = [], DeletionAuthority = false };
+        var sync = Build(imap, new CapturingRuleService());
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        Assert.Equal(0, await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None));
+        Assert.Empty(removed);
+        var stored = await _store.GetAllMessageIdsAsync(_accountId, "INBOX");
+        Assert.Contains("A", stored);
+        Assert.Contains("B", stored);
+    }
+
+    [Fact]
+    public async Task Reconcile_StillDeletes_WhenTheBackendsListingIsAuthoritative()
+    {
+        // The other half of the gate: an ordinary IMAP/Graph account must keep losing cached mail
+        // that was deleted elsewhere. A capability that turns the reconcile off everywhere would
+        // pass the test above and break every account that is not POP3.
+        await _store.UpsertSummariesAsync([Message("A"), Message("B")]);
+        var imap = new FetchStubMailService([]) { ServerIds = ["A"] };   // B deleted on the server
+        var sync = Build(imap, new CapturingRuleService());
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        Assert.Equal(1, await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None));
+        Assert.Equal(["B"], removed.Select(m => m.MessageId));
     }
 
     [Fact]

@@ -187,6 +187,9 @@ public class MailServiceRouter : IMailService, IConnectionProbe
     public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default)
         => For(accountId).EmptyTrashAsync(accountId, ct);
 
+    public bool ListingIsAuthoritativeForDeletions(Guid accountId)
+        => For(accountId).ListingIsAuthoritativeForDeletions(accountId);
+
     public Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default)
         => For(accountId).GetFolderMessageIdsAsync(accountId, folderName, ct);
 

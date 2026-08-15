@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
@@ -461,6 +462,22 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$fn",  folderName);
         if (limit.HasValue)
             cmd.Parameters.AddWithValue("$limit", Math.Max(0, limit.Value));
+        return await ReadSummariesAsync(cmd);
+    }
+
+    public async Task<List<MailMessageSummary>> LoadFolderSummariesSinceAsync(
+        Guid accountId, string folderName, DateTimeOffset since)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
+            "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND date_ticks>=$since ORDER BY date_ticks DESC;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        // date_ticks is written as Date.UtcTicks, so the bound value has to be UtcTicks too — a
+        // local-offset DateTimeOffset compared as raw Ticks is off by the offset.
+        cmd.Parameters.AddWithValue("$since", since.UtcTicks);
         return await ReadSummariesAsync(cmd);
     }
 
@@ -1070,6 +1087,22 @@ public class LocalStoreService : ILocalStoreService
         return result;
     }
 
+    public async Task<IReadOnlyList<(string Id, DateTimeOffset Date, bool IsRead)>> LoadFolderMessageStatesAsync(
+        Guid accountId, string folderName)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT unique_id, date_ticks, is_read FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        var result = new List<(string, DateTimeOffset, bool)>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            result.Add((r.GetString(0), new DateTimeOffset(r.GetInt64(1), TimeSpan.Zero), r.GetInt64(2) != 0));
+        return result;
+    }
+
     /// <summary>
     /// Which of <paramref name="messageIds"/> already exist in the folder — a bounded
     /// <c>WHERE unique_id IN (…)</c> so a live sync can dedupe its small fetched batch without
@@ -1165,6 +1198,120 @@ public class LocalStoreService : ILocalStoreService
         while (await reader.ReadAsync())
             byFolder[reader.GetString(0)] = reader.GetInt32(1);
         return byFolder;
+    }
+
+    public async Task<Dictionary<string, (int Total, int Unread)>> CountMessagesByFolderAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT folder_name, COUNT(*), SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) " +
+            "FROM MessageSummary WHERE account_id = @id GROUP BY folder_name";
+        cmd.Parameters.AddWithValue("@id", accountId.ToString());
+        var byFolder = new Dictionary<string, (int, int)>();
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            byFolder[reader.GetString(0)] = (reader.GetInt32(1), reader.GetInt32(2));
+        return byFolder;
+    }
+
+    public async Task<int> RefileMessagesAsync(
+        Guid accountId, string fromFolder, string toFolder, IEnumerable<string> messageIds, bool copy)
+    {
+        var ids = messageIds as IReadOnlyList<string> ?? messageIds.ToList();
+        if (ids.Count == 0 || string.Equals(fromFolder, toFolder, StringComparison.Ordinal)) return 0;
+
+        await using var conn = await OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+
+        int refiled = 0;
+        // Chunked for the same reason DeleteSummariesAsync is: SQLite compiles a bounded number of
+        // parameters (~999), and the caller may be emptying a whole folder into Trash.
+        const int chunkSize = 500;
+        for (int offset = 0; offset < ids.Count; offset += chunkSize)
+        {
+            var count = Math.Min(chunkSize, ids.Count - offset);
+            var placeholders = string.Join(',', Enumerable.Range(0, count).Select(i => $"$u{i}"));
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = copy
+                // Column lists read from the live schema rather than written out here: the point of
+                // moving rows in SQL is that nothing is lost in transit, and a hand-written list
+                // would quietly stop carrying the next column someone adds.
+                ? await CopyRowsSqlAsync(conn, placeholders)
+                // UPDATE OR REPLACE, not UPDATE: an id already filed in the destination (the same
+                // message copied there earlier) would otherwise collide with the primary key and
+                // abort the whole transaction.
+                //
+                // The CalendarEvent leg retargets a harvested invite's back-link to the message's
+                // new home. Without it the event still points at the folder the message left, and
+                // "open the invitation" from the calendar dead-ends — the failure
+                // ClearOrphanedCalendarSourceLinksAsync exists to prevent, arriving by a route it
+                // cannot see (the detail row exists, just not where the event says).
+                : $"""
+                   UPDATE OR REPLACE MessageSummary SET folder_name=$to
+                     WHERE account_id=$aid AND folder_name=$from AND unique_id IN ({placeholders});
+                   UPDATE OR REPLACE MessageDetail  SET folder_name=$to
+                     WHERE account_id=$aid AND folder_name=$from AND unique_id IN ({placeholders});
+                   UPDATE CalendarEvent SET source_folder=$to
+                     WHERE account_id=$aid AND source_folder=$from AND source_message_id IN ({placeholders});
+                   """;
+            cmd.Parameters.AddWithValue("$aid",  accountId.ToString());
+            cmd.Parameters.AddWithValue("$from", fromFolder);
+            cmd.Parameters.AddWithValue("$to",   toFolder);
+            for (int i = 0; i < count; i++)
+                cmd.Parameters.AddWithValue($"$u{i}", ids[offset + i]);
+
+            // Two statements touch MessageSummary and MessageDetail; the summary is the row that
+            // exists for every message, so its count is how many were actually there to re-file.
+            await using (var counting = conn.CreateCommand())
+            {
+                counting.CommandText =
+                    $"SELECT COUNT(*) FROM MessageSummary WHERE account_id=$aid AND folder_name=$from AND unique_id IN ({placeholders});";
+                counting.Parameters.AddWithValue("$aid",  accountId.ToString());
+                counting.Parameters.AddWithValue("$from", fromFolder);
+                for (int i = 0; i < count; i++)
+                    counting.Parameters.AddWithValue($"$u{i}", ids[offset + i]);
+                refiled += Convert.ToInt32(await counting.ExecuteScalarAsync() ?? 0);
+            }
+
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+        return refiled;
+    }
+
+    /// <summary>
+    /// <c>INSERT OR REPLACE … SELECT</c> for both message tables, with <c>folder_name</c> swapped for
+    /// the destination and every other column carried across verbatim. The column names come from
+    /// <c>PRAGMA table_info</c> so the copy stays complete as the schema grows — the same guarantee
+    /// the row-by-row version had by re-filing loaded objects, without loading them.
+    /// </summary>
+    private static async Task<string> CopyRowsSqlAsync(SqliteConnection conn, string placeholders)
+    {
+        var sql = new StringBuilder();
+        foreach (var table in new[] { "MessageSummary", "MessageDetail" })
+        {
+            var columns = await ColumnNamesAsync(conn, table);
+            var projected = string.Join(", ", columns.Select(c => c == "folder_name" ? "$to" : c));
+            sql.Append($"INSERT OR REPLACE INTO {table} ({string.Join(", ", columns)}) ")
+               .Append($"SELECT {projected} FROM {table} ")
+               .Append($"WHERE account_id=$aid AND folder_name=$from AND unique_id IN ({placeholders});");
+        }
+        return sql.ToString();
+    }
+
+    private static async Task<List<string>> ColumnNamesAsync(SqliteConnection conn, string table)
+    {
+        await using var cmd = conn.CreateCommand();
+        // Table names here are compile-time literals, never user input.
+        cmd.CommandText = $"PRAGMA table_info({table});";
+        var names = new List<string>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            names.Add(r.GetString(1));
+        return names;
     }
 
     public async Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId)

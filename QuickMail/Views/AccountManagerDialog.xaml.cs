@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Navigation;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -139,29 +140,24 @@ public partial class AccountManagerDialog : Window
 
     private string? HintFor(IInputElement? focused)
     {
+        // Hints the Add Account dialog shows for the same field live in AccountFieldHints, so the two
+        // dialogs cannot describe one control two different ways. The rest are specific to this one.
         if (ReferenceEquals(focused, AccountNameBox))
-            return "Leave blank to use your email address.";
+            return AccountFieldHints.AccountName;
         if (ReferenceEquals(focused, PasswordBox))
-            return "Stored in Windows Credential Manager.";
+            return AccountFieldHints.Password;
         if (ReferenceEquals(focused, LoginUsernameBox))
-            return "Leave blank unless your mail server logs in under a different name than your email address.";
+            return AccountFieldHints.LoginUsername;
         if (ReferenceEquals(focused, SyncContactsCheckBox))
             return "Pulls this account's contacts into the address book. Enabling asks for a one-time read-only permission.";
         if (ReferenceEquals(focused, SyncCalendarCheckBox))
-            return "Shows this account's calendar in the Calendar view.";
-        // The ports are in the checkbox's visible Content, but an explicit
-        // AutomationProperties.Name OVERRIDES that text — so without this the port guidance existed
-        // for sighted users only. It belongs in a hint rather than back in the Name, which must
-        // stay a short label.
+            return AccountFieldHints.SyncCalendar;
         if (ReferenceEquals(focused, SmtpImplicitSslCheckBox))
-            return "Checked uses port 465. Cleared uses STARTTLS on port 587.";
-        // Same reasoning as the Add Account dialog: what clearing this costs is the point of the
-        // control, and it belongs in a hint rather than in a label that must stay short.
+            return AccountFieldHints.SmtpImplicitSsl;
         if (ReferenceEquals(focused, Pop3LeaveOnServerCheckBox))
-            return "Cleared, mail is removed from the server once QuickMail has downloaded it, "
-                 + "so this computer holds the only copy.";
+            return AccountFieldHints.Pop3LeaveOnServer;
         if (ReferenceEquals(focused, SignatureBox))
-            return "Added to the end of new messages, replies, and forwards.";
+            return AccountFieldHints.Signature;
         return null;
     }
 

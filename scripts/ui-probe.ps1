@@ -60,8 +60,15 @@ if (-not (Test-Path $exe)) { throw "Not found: $exe (build first or drop -NoBuil
 # come out white. Fail fast BEFORE seeding - a run aborted here used to leave a
 # half-seeded profile behind, and re-running into the same RunDir then failed
 # with duplicate fixture data.
-if (Get-Process LogonUI -ErrorAction SilentlyContinue) {
-    throw "The desktop session is locked. WPF windows cannot render on the secure desktop, so probe captures would be blank. Unlock the machine (or use an unlocked/virtual desktop session) and retry."
+#
+# Scoped to THIS session, which is the only one the probe can render into. An
+# unfiltered Get-Process LogonUI is wrong over RDP: the physical console keeps a
+# LogonUI at its login screen for as long as nobody is sitting at the machine, so
+# the guard fired forever on a perfectly usable remote desktop and the harness
+# could not be run at all from one.
+$mySession = (Get-Process -Id $PID).SessionId
+if (Get-Process LogonUI -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $mySession }) {
+    throw "This desktop session ($mySession) is locked. WPF windows cannot render on the secure desktop, so probe captures would be blank. Unlock it (or use an unlocked/virtual desktop session) and retry."
 }
 
 if (-not $ProfileDir) {

@@ -191,10 +191,10 @@ sealed class StubOAuthService : IOAuthService
     public Task SignOutAsync(AccountModel account) => Task.CompletedTask;
 }
 
-sealed class StubLocalStoreService : ILocalStoreService
+class StubLocalStoreService : ILocalStoreService
 {
-    public void Initialize() { }
-    public Task UpsertSummariesAsync(IEnumerable<MailMessageSummary> summaries) => Task.CompletedTask;
+    public virtual void Initialize() { }
+    public virtual Task UpsertSummariesAsync(IEnumerable<MailMessageSummary> summaries) => Task.CompletedTask;
 
     /// <summary>Cached rows keyed by (account, folder). Empty by default, so every existing test that
     /// never seeds it keeps seeing an empty cache; seed it to exercise a cache-first load such as the
@@ -204,98 +204,140 @@ sealed class StubLocalStoreService : ILocalStoreService
     private static List<MailMessageSummary> Newest(IEnumerable<MailMessageSummary> rows)
         => [.. rows.OrderByDescending(m => m.Date)];
 
-    public Task<List<MailMessageSummary>> LoadAllSummariesAsync()
+    public virtual Task<List<MailMessageSummary>> LoadAllSummariesAsync()
         => Task.FromResult(Newest(SeededSummaries.Values.SelectMany(v => v)));
-    public Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId)
+    public virtual Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId)
         => Task.FromResult(Newest(SeededSummaries.Where(kv => kv.Key.AccountId == accountId).SelectMany(kv => kv.Value)));
-    public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null)
+    public virtual Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null)
         => Task.FromResult(SeededSummaries.TryGetValue((accountId, folderName), out var rows)
             ? Newest(rows) : []);
-    public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
-    public Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
-    public Task ClearCachedMailAsync(System.Collections.Generic.IEnumerable<System.Guid> accountIds) => Task.CompletedTask;
-    public Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds) => Task.CompletedTask;
+    public virtual Task<List<MailMessageSummary>> LoadFolderSummariesSinceAsync(Guid accountId, string folderName, DateTimeOffset since)
+        => Task.FromResult(SeededSummaries.TryGetValue((accountId, folderName), out var rows)
+            ? Newest(rows.Where(m => m.Date >= since)) : []);
+    public virtual Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
+    public virtual Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
+    public virtual Task ClearCachedMailAsync(System.Collections.Generic.IEnumerable<System.Guid> accountIds) => Task.CompletedTask;
+    public virtual Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds) => Task.CompletedTask;
 
     /// <summary>Folders the stub hands back from <see cref="LoadFoldersAsync"/> — seed this to stand in
     /// for a persisted folder list at startup (#516). <see cref="SaveFoldersAsync"/> writes into it too,
     /// so a save/load round-trip works without a real database.</summary>
     public Dictionary<Guid, List<MailFolderModel>> SeededFolders { get; } = [];
-    public Task SaveFoldersAsync(Guid accountId, IReadOnlyList<MailFolderModel> folders)
+    public virtual Task SaveFoldersAsync(Guid accountId, IReadOnlyList<MailFolderModel> folders)
     {
         SeededFolders[accountId] = [.. folders.Where(f => !f.IsHeader && f.FullName.Length > 0)];
         return Task.CompletedTask;
     }
-    public Task<Dictionary<Guid, List<MailFolderModel>>> LoadFoldersAsync()
+    public virtual Task<Dictionary<Guid, List<MailFolderModel>>> LoadFoldersAsync()
         => Task.FromResult(SeededFolders.ToDictionary(kv => kv.Key, kv => new List<MailFolderModel>(kv.Value)));
-    public Task PurgeFoldersForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds)
+    public virtual Task PurgeFoldersForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds)
     {
         foreach (var id in SeededFolders.Keys.Where(k => !knownAccountIds.Contains(k)).ToList())
             SeededFolders.Remove(id);
         return Task.CompletedTask;
     }
 
-    public Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead) => Task.CompletedTask;
-    public Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, bool isRead) => Task.CompletedTask;
-    public Task UpdatePreviewAsync(Guid accountId, string folderName, string messageId, string preview) => Task.CompletedTask;
-    public Task UpdatePreviewsBatchAsync(Guid accountId, string folderName, IEnumerable<(string MessageId, string Preview)> updates) => Task.CompletedTask;
-    public Task<bool> HasSummariesMissingRecipientsAsync() => Task.FromResult(false);
-    public Task UpsertDetailAsync(MailMessageDetail detail) => Task.CompletedTask;
+    public virtual Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead) => Task.CompletedTask;
+    public virtual Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, bool isRead) => Task.CompletedTask;
+    public virtual Task UpdatePreviewAsync(Guid accountId, string folderName, string messageId, string preview) => Task.CompletedTask;
+    public virtual Task UpdatePreviewsBatchAsync(Guid accountId, string folderName, IEnumerable<(string MessageId, string Preview)> updates) => Task.CompletedTask;
+    public virtual Task<bool> HasSummariesMissingRecipientsAsync() => Task.FromResult(false);
+    public virtual Task UpsertDetailAsync(MailMessageDetail detail) => Task.CompletedTask;
     /// <summary>When set, <see cref="LoadDetailAsync"/> returns this seeded detail (tests use it to
     /// stand in for a cached invite email); otherwise it returns null like the real cache-miss path.</summary>
     public MailMessageDetail? SeededDetail { get; set; }
-    public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult(SeededDetail);
+    public virtual Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult(SeededDetail);
 
     /// <summary>Raw POP3 message bytes (#128), kept so a test can assert what was stored.</summary>
     public Dictionary<(Guid AccountId, string Folder, string MessageId), byte[]?> MimeBytes { get; } = new();
 
-    public Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes)
+    public virtual Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes)
     {
         MimeBytes[(accountId, folderName, messageId)] = mimeBytes;
         return Task.CompletedTask;
     }
 
-    public Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId) =>
+    public virtual Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId) =>
         Task.FromResult(MimeBytes.TryGetValue((accountId, folderName, messageId), out var bytes) ? bytes : null);
 
     /// <summary>Functional in-memory POP3 collected-UIDL ledger, so backend tests exercise the real
     /// record/prune arithmetic rather than a silent no-op.</summary>
     public Dictionary<Guid, HashSet<string>> Pop3Uidls { get; } = [];
-    public Task<HashSet<string>> LoadPop3CollectedUidlsAsync(Guid accountId)
+    public virtual Task<HashSet<string>> LoadPop3CollectedUidlsAsync(Guid accountId)
         => Task.FromResult(Pop3Uidls.TryGetValue(accountId, out var set)
             ? new HashSet<string>(set, StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal));
-    public Task AddPop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)
+    public virtual Task AddPop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)
     {
         if (!Pop3Uidls.TryGetValue(accountId, out var set))
             Pop3Uidls[accountId] = set = new HashSet<string>(StringComparer.Ordinal);
         set.UnionWith(uidls);
         return Task.CompletedTask;
     }
-    public Task RemovePop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)
+    public virtual Task RemovePop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)
     {
         if (Pop3Uidls.TryGetValue(accountId, out var set)) set.ExceptWith(uidls);
         return Task.CompletedTask;
     }
-    public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
-    public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
-    public Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());
-    public Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.FromResult(new HashSet<string>());
-    public Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
-    public Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId) => Task.FromResult(new Dictionary<string, int>());
-    public Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId) => Task.FromResult<DateTimeOffset?>(null);
-    public Task UpdateFlagIdAsync(Guid accountId, string folderName, string messageId, string? flagId) => Task.CompletedTask;
-    public Task UpdateFlagIdBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, string? flagId) => Task.CompletedTask;
-    public Task UpsertCalendarEventAsync(CalendarEvent evt) => Task.CompletedTask;
-    public Task<List<CalendarEvent>> LoadCalendarEventsAsync() => Task.FromResult(new List<CalendarEvent>());
-    public Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync()
+    public virtual Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
+    public virtual Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
+    public virtual Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());
+    public virtual Task<IReadOnlyList<(string Id, DateTimeOffset Date, bool IsRead)>> LoadFolderMessageStatesAsync(Guid accountId, string folderName)
+        => Task.FromResult<IReadOnlyList<(string, DateTimeOffset, bool)>>(
+            SeededSummaries.TryGetValue((accountId, folderName), out var rows)
+                ? [.. rows.Select(m => (m.MessageId, m.Date, m.IsRead))] : []);
+
+    /// <summary>Functional enough to be worth asserting on: the seeded rows really are moved (or
+    /// copied) between folders, so a POP3 re-file test sees the outcome rather than a no-op.
+    /// <para>A copy shares the row instance with the source rather than cloning it — the seeded lists
+    /// are keyed by folder, so membership is the thing to assert on, not the copy's
+    /// <c>FolderName</c>.</para></summary>
+    public virtual Task<int> RefileMessagesAsync(Guid accountId, string fromFolder, string toFolder, IEnumerable<string> messageIds, bool copy)
+    {
+        // Same-folder is a no-op in the real store. Without this the stub would find source and
+        // destination to be the same list and remove the row from it — the fake destroying mail the
+        // shipping code leaves alone is exactly the wrong direction for a fake to be wrong in.
+        if (string.Equals(fromFolder, toFolder, StringComparison.Ordinal)) return Task.FromResult(0);
+        if (!SeededSummaries.TryGetValue((accountId, fromFolder), out var source)) return Task.FromResult(0);
+        var wanted = new HashSet<string>(messageIds, StringComparer.Ordinal);
+        var moving = source.Where(m => wanted.Contains(m.MessageId)).ToList();
+        if (moving.Count == 0) return Task.FromResult(0);
+
+        if (!SeededSummaries.TryGetValue((accountId, toFolder), out var destination))
+            SeededSummaries[(accountId, toFolder)] = destination = [];
+        foreach (var m in moving)
+        {
+            destination.RemoveAll(d => d.MessageId == m.MessageId);
+            destination.Add(m);
+            if (!copy)
+            {
+                source.Remove(m);
+                m.FolderName = toFolder;
+            }
+        }
+        return Task.FromResult(moving.Count);
+    }
+    public virtual Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.FromResult(new HashSet<string>());
+    public virtual Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
+    public virtual Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId) => Task.FromResult(new Dictionary<string, int>());
+    public virtual Task<Dictionary<string, (int Total, int Unread)>> CountMessagesByFolderAsync(Guid accountId)
+        => Task.FromResult(SeededSummaries
+            .Where(kv => kv.Key.AccountId == accountId)
+            .ToDictionary(kv => kv.Key.Folder, kv => (kv.Value.Count, kv.Value.Count(m => !m.IsRead))));
+    public virtual Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId) => Task.FromResult<DateTimeOffset?>(null);
+    public virtual Task UpdateFlagIdAsync(Guid accountId, string folderName, string messageId, string? flagId) => Task.CompletedTask;
+    public virtual Task UpdateFlagIdBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, string? flagId) => Task.CompletedTask;
+    public virtual Task UpsertCalendarEventAsync(CalendarEvent evt) => Task.CompletedTask;
+    public virtual Task<List<CalendarEvent>> LoadCalendarEventsAsync() => Task.FromResult(new List<CalendarEvent>());
+    public virtual Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync()
         => Task.FromResult<IReadOnlyList<(Guid, string, string)>>(new List<(Guid, string, string)>());
-    public Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status) => Task.CompletedTask;
-    public Task DeleteCalendarEventAsync(string uid, Guid accountId) => Task.CompletedTask;
-    public Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
+    public virtual Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status) => Task.CompletedTask;
+    public virtual Task DeleteCalendarEventAsync(string uid, Guid accountId) => Task.CompletedTask;
+    public virtual Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
         => Task.FromResult(new List<(Guid, string, string, string)>());
-    public Task ClearOrphanedCalendarSourceLinksAsync() => Task.CompletedTask;
-    public Task ReplaceGraphCalendarEventsAsync(Guid accountId, IReadOnlyList<CalendarEvent> events) => Task.CompletedTask;
-    public Task<string?> GetDeltaTokenAsync(Guid accountId, string folderId) => Task.FromResult<string?>(null);
-    public Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken) => Task.CompletedTask;
+    public virtual Task ClearOrphanedCalendarSourceLinksAsync() => Task.CompletedTask;
+    public virtual Task ReplaceGraphCalendarEventsAsync(Guid accountId, IReadOnlyList<CalendarEvent> events) => Task.CompletedTask;
+    public virtual Task<string?> GetDeltaTokenAsync(Guid accountId, string folderId) => Task.FromResult<string?>(null);
+    public virtual Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken) => Task.CompletedTask;
 }
 
 sealed class StubContactService : IContactService

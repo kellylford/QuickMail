@@ -877,6 +877,64 @@ public class AddAccountViewModelProviderTests
         Assert.Equal(ProviderCatalog.YahooId, Catalog.Resolve(account).Id);
     }
 
+    [Fact]
+    public void ToAccountModelCarriesEveryServerField_OnBothIncomingProtocols()
+    {
+        // One list of connection fields, shared by the probe account, this method and the Account
+        // Manager's load and save (AccountEditorViewModel.WriteServerFieldsTo). It used to be four
+        // hand-maintained copies, and a field missed in any one of them is silent — the dialog shows
+        // it, the account saves without it.
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.Other;
+        vm.Username = "kelly@example.com";
+
+        vm.ImapHost = "imap.example.com"; vm.ImapPort = 1143; vm.ImapUseSsl = false; vm.ImapAcceptInvalidCert = true;
+        vm.Pop3Host = "pop.example.com";  vm.Pop3Port = 1110; vm.Pop3UseSsl = false; vm.Pop3AcceptInvalidCert = true;
+        vm.Pop3LeaveMailOnServer = false;
+        vm.SmtpHost = "smtp.example.com"; vm.SmtpPort = 1587; vm.SmtpUseSsl = true;  vm.SmtpAcceptInvalidCert = true;
+
+        var account = vm.ToAccountModel();
+
+        Assert.Equal("imap.example.com", account.ImapHost);
+        Assert.Equal(1143, account.ImapPort);
+        Assert.False(account.ImapUseSsl);
+        Assert.True(account.ImapAcceptInvalidCert);
+
+        Assert.Equal("pop.example.com", account.Pop3Host);
+        Assert.Equal(1110, account.Pop3Port);
+        Assert.False(account.Pop3UseSsl);
+        Assert.True(account.Pop3AcceptInvalidCert);
+        // The one with consequences: cleared, the next collection is the last chance any other
+        // client has to see that mail.
+        Assert.False(account.Pop3LeaveMailOnServer);
+
+        Assert.Equal("smtp.example.com", account.SmtpHost);
+        Assert.Equal(1587, account.SmtpPort);
+        Assert.True(account.SmtpUseSsl);
+        Assert.True(account.SmtpAcceptInvalidCert);
+    }
+
+    [Fact]
+    public void APop3ProvidersTransportSecurityComesFromTheCatalog_NotFromItsPortNumber()
+    {
+        // Pop3UseSsl is stated by the catalog entry, the shape ImapUseSsl and SmtpUseSsl already
+        // have. Inferring it from "is the port 995?" silently downgrades a provider that offers
+        // implicit TLS on any other port to STARTTLS, at the moment its settings are filled in.
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.GmailId);
+
+        Assert.Equal("pop.gmail.com", vm.Pop3Host);
+        Assert.True(vm.Pop3UseSsl);
+
+        var onANonStandardPort = new MailProvider(
+            "test", "Test", ["test.example"], "imap.test.example", 993, true,
+            "smtp.test.example", 587, false, AuthType.Password, false, BackendKind.ImapSmtp,
+            null, null, Pop3Host: "pop.test.example", Pop3Port: 1995, Pop3UseSsl: true);
+
+        Assert.True(onANonStandardPort.Pop3UseSsl);
+        Assert.True(onANonStandardPort.SupportsPop3);
+    }
+
     // ── Transport security (who chose the servers decides the fallback) ──────────
 
     [Fact]

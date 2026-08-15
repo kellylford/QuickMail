@@ -698,6 +698,12 @@ public class SyncService : ISyncService
     private async Task<int> ReconcileDeletionsAsync(
         AccountModel account, MailFolderModel folder, HashSet<string> localIds, IList<string> serverIds)
     {
+        // A backend whose listing is not authoritative for deletions (POP3: the server drops a
+        // message from its listing the moment it is collected, and the cache is then the only copy)
+        // makes this whole reconcile unsafe, not merely unnecessary. Asked here, once, rather than
+        // left to each backend to shape its listing so the arithmetic happens to come out empty.
+        if (!_imap.ListingIsAuthoritativeForDeletions(account.Id)) return 0;
+
         var serverSet  = new HashSet<string>(serverIds);
         var deletedIds = localIds.Where(id => !serverSet.Contains(id)).ToList();
 
