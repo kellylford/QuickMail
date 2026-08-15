@@ -1,0 +1,62 @@
+name: Publish to winget
+
+# Opens a PR against microsoft/winget-pkgs with a new KellyLford.QuickMail version whenever a
+# release is *promoted* (issue #536, docs/planning/winget-distribution-plan.md, Phase 4).
+#
+# Trigger: `released` fires when a full release is published AND when a pre-release is
+# promoted to a release. It does not fire for pre-releases themselves, so this repo's
+# publish-as-pre-release-then-promote cadence (see the Release step in quickmail.yml) means
+# winget only ever sees builds Kelly has already promoted. `published` would fire on the
+# pre-release too — do not switch to it.
+#
+# Installers: only the two Velopack Setup.exe assets. The MSIs must never reach the manifest
+# — a silent MSI install lands in C:\QuickMail and upgrades relocate the app (issue #554) —
+# and the portable exes are not installers. The regex below matches
+# QuickMail-<v>-win-Setup.exe and QuickMail-<v>-win-arm64-Setup.exe and nothing else.
+#
+# Prerequisites, both one-time and both Kelly's:
+#   1. The first KellyLford.QuickMail version must already be in winget-pkgs (winget-releaser
+#      only *updates* existing packages; the first submission is manual — plan Phase 3).
+#   2. A CLASSIC personal access token with the `public_repo` scope, stored as the repo
+#      secret WINGET_TOKEN. Fine-grained tokens cannot fork/PR into microsoft/winget-pkgs
+#      (winget-releaser issue #172). The token forks winget-pkgs under Kelly's account and
+#      opens the PR from there.
+# Until the secret exists the job is skipped, not failed, so a release never goes red for a
+# feature that is not switched on yet.
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: 'Release tag to publish (e.g. v0.8.41); must be a promoted, non-pre-release'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      # `secrets.*` cannot be referenced in a job-level `if`, so surface presence via env and
+      # gate the step. Empty string when the secret is unset.
+      HAS_TOKEN: ${{ secrets.WINGET_TOKEN != '' }}
+    steps:
+      - name: Skip until WINGET_TOKEN is configured
+        if: env.HAS_TOKEN != 'true'
+        run: echo "WINGET_TOKEN is not set; skipping winget publish (see the comment at the top of this workflow)."
+
+      - name: Open winget-pkgs PR
+        if: env.HAS_TOKEN == 'true'
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: KellyLford.QuickMail
+          # workflow_dispatch supplies the tag; on `released` the action's default
+          # (github.event.release.tag_name) is what we want.
+          release-tag: ${{ github.event.inputs.release-tag || github.event.release.tag_name }}
+          installers-regex: '-win(-arm64)?-Setup\.exe$'
+          # Keep the catalog tidy; older versions are still on GitHub Releases.
+          max-versions-to-keep: 5
+          token: ${{ secrets.WINGET_TOKEN }}
