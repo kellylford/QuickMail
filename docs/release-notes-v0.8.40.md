@@ -95,6 +95,33 @@ The cause was that the six headers do not fit on one line, so they are laid out 
 
 Left and Right now move through the tabs in order, whatever the layout, and wrap around at both ends. **Home** goes to the first tab and **End** to the last. Arrowing to a tab shows it, as it does in any tabbed window on Windows, and **Ctrl+Tab** and **Ctrl+Shift+Tab** work as before. The Address Book's tabs behave the same way. Your open message tabs are unchanged — that strip has always had its own arrow handling, which steps onto each tab's close button and stops at the ends rather than wrapping. ([#528](https://github.com/kellylford/QuickMail/issues/528))
 
+## Fixed: adding a work or school Microsoft 365 account could fail at sign-in
+
+Adding a work or school Microsoft 365 account could stop at the Microsoft sign-in page with error
+**AADSTS65006** and go no further. It was nothing about your account or your organization — while it
+lasted, every new work or school account hit it.
+
+QuickMail was asking Microsoft to approve every permission it has ever declared, which includes the
+older Exchange permissions it needs only for the Microsoft IMAP option. When Microsoft's checking of
+that older entitlement went intermittently bad, the whole sign-in went down with it.
+
+Signing in now asks only for the permissions the account actually uses, so that older entitlement is
+never involved and cannot break sign-in again. Accounts you have already added are unchanged. As a
+bonus, adding a second account from an organization that has already approved QuickMail no longer
+asks you to approve it all over again.
+([#511](https://github.com/kellylford/QuickMail/issues/511))
+
+## Fixed: choosing Microsoft 365 (Graph) by hand did not stick for a personal account
+
+For a personal Microsoft account — outlook.com, hotmail.com, live.com — choosing **Microsoft 365
+(Graph)** under **Advanced settings → Connection method** was quietly changed back to IMAP as soon as
+you signed in. There was no way to reach that combination through the interface at all.
+
+QuickMail guesses the connection method from your address, then corrects the guess after sign-in,
+when it can finally see what kind of account it really is. The correction was overruling choices you
+had made yourself as well as its own guesses. It now corrects only its own.
+([#527](https://github.com/kellylford/QuickMail/issues/527))
+
 ---
 
 ## Reporting Issues
