@@ -2,8 +2,9 @@
 
 **Issue:** [#536 — Distribute QuickMail through winget](https://github.com/kellylford/QuickMail/issues/536)
 **Status:** Phase 1 complete (2026-08-15). Approach revised: the winget package will
-install Velopack's **Setup.exe**, not the MSI. Awaiting the release-workflow change that
-ships Setup.exe.
+install Velopack's **Setup.exe**, not the MSI. Phase 2 (ship Setup.exe) is PR #555; the
+Phase 4 workflow and the Phase 3 manifest template are PR #557. Waiting on: merge of
+both, then the 0.8.41 release, then the manual first submission.
 **Date:** 2026-08-14, revised 2026-08-15
 
 ## Summary
@@ -214,10 +215,13 @@ decide then whether to patch it ourselves post-update.
 3. **Q3:** Publisher segment of the identifier: `KellyLford.QuickMail` is proposed to
    match the GitHub account. Confirm before the first submission — the identifier is
    permanent once merged.
-4. **Q4 (new):** Should the MSI silent-install defect be reported upstream to Velopack
-   now? It is independent of winget but affects anyone deploying the MSI silently
-   (Intune, Group Policy, scripts). Recommendation: yes — file it against velopack/velopack
-   with the Directory-table analysis above; it is a one-line WiX fix on their side.
+4. **Q4 (resolved):** No upstream report needed. The MSI silent-install defect is
+   [velopack/velopack#945](https://github.com/velopack/velopack/issues/945), closed
+   2026-07-01 by a fix on master (`SetQuietDefaultInstallFolder` for `UILevel<5` in
+   `MsiTemplate.hbs`), shipped so far only in the 1.2.110 prerelease. The release
+   workflow installs the latest *stable* vpk, so the MSI is fixed automatically by the
+   next stable Velopack. Tracked in #554, which also keeps the still-open MSI-over-MSI
+   uninstall/prompt behavior (#245) in view. Winget is unaffected either way.
 
 ## Out of scope
 
