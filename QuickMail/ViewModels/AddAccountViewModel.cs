@@ -274,16 +274,22 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
 
     /// <summary>
     /// Sign-in answered the question the domain could only guess at. A personal Microsoft account
-    /// on a vanity domain looks exactly like a work tenant from the address alone, so it had been
-    /// moved to Graph; put it back on IMAP, the path such accounts worked on before the guess
-    /// existed. This overrides a hand-picked connection method deliberately: the tenant id is
-    /// ground truth about the account, not an inference from its domain.
+    /// on a vanity domain looks exactly like a work tenant from the address alone, so the domain
+    /// guess had moved it to Graph; the tenant id from sign-in is ground truth, so put an
+    /// <em>auto-inferred</em> Graph choice back on IMAP.
+    ///
+    /// But a connection method the user picked BY HAND in Advanced is honored — the same
+    /// <see cref="_backendUserChosen"/> guard <see cref="ChooseBackendForMicrosoftAccount"/> already
+    /// uses. Its absence here was the #527 bug: an explicit "Microsoft 365 (Graph)" pick for a
+    /// personal account survived the address-commit step and was then silently reverted after sign-in,
+    /// leaving no way to reach Graph for a personal account through the UI at all.
     /// </summary>
     protected override void OnMicrosoftSignInCompleted(bool isPersonalAccount)
     {
         if (!isPersonalAccount) return;
         if (SelectedProvider is not { } provider || provider.Id != ProviderCatalog.MicrosoftId) return;
         if (BackendKind != BackendKind.MicrosoftGraph) return;
+        if (_backendUserChosen) return;   // the user deliberately chose Graph — don't override it (#527)
 
         MoveToBackend(BackendKind.ImapSmtp);
     }
