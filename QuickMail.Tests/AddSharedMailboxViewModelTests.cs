@@ -42,6 +42,24 @@ public class AddSharedMailboxViewModelTests
     }
 
     [Fact]
+    public void ParentOptions_ExcludeUndetectedPersonalGraph_CaughtByDomainGuess() // #541
+    {
+        // Flag not detected yet (null), but a consumer-domain address → the domain-guess fallback
+        // resolves it as personal, so it is excluded just like a confirmed personal account.
+        var undetected = new AccountModel
+        {
+            Id = Guid.NewGuid(), AccountName = "Undetected", Username = "me@outlook.com",
+            BackendKind = BackendKind.MicrosoftGraph, // IsPersonalMicrosoftAccount left null
+        };
+        var work = Graph("Work");
+
+        var vm = new AddSharedMailboxViewModel([work, undetected]);
+
+        Assert.Contains(work, vm.ParentOptions);
+        Assert.DoesNotContain(undetected, vm.ParentOptions);
+    }
+
+    [Fact]
     public void ShowGraphPollNote_TrueForGraphParent_FalseForImap()
     {
         var vm = new AddSharedMailboxViewModel([Graph("Work"), Imap("Home")]);

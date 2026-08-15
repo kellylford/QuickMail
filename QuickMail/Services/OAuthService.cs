@@ -130,16 +130,24 @@ public class OAuthService : IOAuthService
         return PersonalMicrosoftDomains.Contains(username[(at + 1)..].Trim().ToLowerInvariant());
     }
 
+    /// <summary>
+    /// The best available "is this a personal Microsoft account" answer: the persisted, tenant-derived
+    /// flag (#233), falling back to the email-domain guess only when the flag hasn't been set yet (first
+    /// sign-in, or an account added before detection shipped). This is the same resolution scope
+    /// selection uses — callers that gate a work/school-only Microsoft capability (server-side rules,
+    /// shared mailboxes) should use this rather than the raw <see cref="AccountModel.IsPersonalMicrosoftAccount"/>
+    /// flag, so an undetected account is still classified instead of slipping through as work/school.
+    /// </summary>
+    internal static bool ResolveIsPersonalMicrosoftAccount(AccountModel account)
+        => account.IsPersonalMicrosoftAccount ?? IsPersonalMicrosoftDomain(account.Username);
+
     internal static string[] DefaultScopesFor(AccountModel account)
     {
         if (account.BackendKind != BackendKind.MicrosoftGraph)
             return ImapSmtpScopes;
         // Both personal and work/school use explicit Graph scopes — personal for write access (#217),
         // work/school so a Graph sign-in never validates the Exchange entitlement (#511).
-        // Prefer the persisted, tenant-derived flag; fall back to the email-domain
-        // guess only when the account hasn't been detected yet (first sign-in, or added before detection).
-        var isPersonal = account.IsPersonalMicrosoftAccount ?? IsPersonalMicrosoftDomain(account.Username);
-        return isPersonal ? GraphMailScopesPersonal : GraphMailScopesWorkSchool;
+        return ResolveIsPersonalMicrosoftAccount(account) ? GraphMailScopesPersonal : GraphMailScopesWorkSchool;
     }
 
     // Prompt for an interactive sign-in. Forcing the CONSENT screen on add is a `.default`-only

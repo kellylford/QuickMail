@@ -48,6 +48,7 @@ public class UnifiedRulesViewModelTests
     }
 
     private static AccountModel Graph(Guid id) => new() { Id = id, BackendKind = BackendKind.MicrosoftGraph, Username = "g@x.com", AccountName = "Work" };
+    private static AccountModel PersonalGraph(Guid id) => new() { Id = id, BackendKind = BackendKind.MicrosoftGraph, IsPersonalMicrosoftAccount = true, Username = "me@outlook.com", AccountName = "Personal" };
     private static AccountModel Imap(Guid id) => new() { Id = id, BackendKind = BackendKind.ImapSmtp, Username = "i@x.com", AccountName = "Home" };
     private static ServerRuleModel Server(string name) => new() { Id = name, DisplayName = name, SubjectContains = "x", MarkAsRead = true };
     private static MailRule Client(string name, Guid accountId) => new() { Name = name, AccountId = accountId, SubjectContains = "y", Action = RuleAction.MarkAsRead };
@@ -83,6 +84,41 @@ public class UnifiedRulesViewModelTests
         Assert.False(vm.AccountSupportsServerRules);   // IMAP → no server rules
         Assert.Single(vm.Rules);
         Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
+    }
+
+    [Fact]
+    public async Task Refresh_PersonalGraphAccount_LoadsOnlyClientRules() // #541
+    {
+        // Personal Microsoft (Graph) accounts don't get MailboxSettings.ReadWrite, so server rules
+        // aren't possible — the rules window must not offer them (it would 403 into a meaningless
+        // "ask your administrator" for a mailbox with no admin). They use client rules only.
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules { Stored = [Server("S1")] };
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
+        var vm = new UnifiedRulesViewModel(client, server, [PersonalGraph(a)], preferredAccountId: a);
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.False(vm.AccountSupportsServerRules);   // personal Graph → no server rules, despite Graph backend
+        Assert.Single(vm.Rules);                       // the server rule is NOT loaded
+        Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
+    }
+
+    [Fact]
+    public async Task Refresh_UndetectedPersonalGraphAccount_CaughtByDomainGuess_LoadsOnlyClientRules() // #541
+    {
+        // The tenant flag hasn't been detected yet (null), but the address is a consumer domain, so the
+        // domain-guess fallback (same as scope selection) resolves it as personal → still no server rules.
+        var a = Guid.NewGuid();
+        var acct = new AccountModel { Id = a, BackendKind = BackendKind.MicrosoftGraph, Username = "me@outlook.com", AccountName = "Undetected" };
+        var server = new FakeServerRules { Stored = [Server("S1")] };
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
+        var vm = new UnifiedRulesViewModel(client, server, [acct], preferredAccountId: a);
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.False(vm.AccountSupportsServerRules);
+        Assert.Single(vm.Rules);
     }
 
     [Fact]

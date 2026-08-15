@@ -70,6 +70,19 @@ public class OAuthServiceScopeSelectionTests
         Assert.Same(OAuthService.GraphMailScopesWorkSchool, OAuthService.DefaultScopesFor(account));
     }
 
+    // ResolveIsPersonalMicrosoftAccount is the shared "flag, else domain guess" classifier used by scope
+    // selection AND the work/school-only capability gates (server rules #541, shared mailboxes).
+    [Theory]
+    [InlineData(true, "user@contoso.com", true)]    // explicit flag wins over a work-looking domain
+    [InlineData(false, "me@outlook.com", false)]    // explicit flag wins over a consumer domain
+    [InlineData(null, "me@outlook.com", true)]      // undetected → domain guess says personal
+    [InlineData(null, "user@contoso.com", false)]   // undetected → domain guess says work
+    public void ResolveIsPersonalMicrosoftAccount_PrefersFlag_FallsBackToDomain(bool? flag, string username, bool expected)
+    {
+        var account = new AccountModel { Username = username, IsPersonalMicrosoftAccount = flag };
+        Assert.Equal(expected, OAuthService.ResolveIsPersonalMicrosoftAccount(account));
+    }
+
     [Fact]
     public void ImapAccount_UsesImapScopes_EvenOnAPersonalDomain()
     {
