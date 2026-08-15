@@ -457,11 +457,19 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private void Announce(string text, AnnouncementCategory category) => AnnouncementRequested?.Invoke(text, category);
 
     /// <summary>
-    /// True when the selected account is a Microsoft 365 (Graph) account, so it can carry server-side
-    /// rules. Drives which rules load, and (later) how a New rule is classified/routed.
+    /// True when the selected account is a <em>work or school</em> Microsoft 365 (Graph) account, so it
+    /// can carry server-side rules. Drives which rules load, and how a New rule is classified/routed.
+    ///
+    /// Personal Microsoft (Graph) accounts are excluded (#541): server rules run on
+    /// <c>MailboxSettings.ReadWrite</c>, which <see cref="OAuthService.GraphMailScopesPersonal"/>
+    /// deliberately omits as an org-only capability — so offering them to a personal account only
+    /// yields a 403 that surfaces as a meaningless "ask your administrator" for a mailbox with no admin.
+    /// Personal accounts use client-side rules only, the same as any non-server-rules account. This
+    /// mirrors the exclusion <see cref="AddSharedMailboxViewModel"/> already applies.
     /// </summary>
     public bool AccountSupportsServerRules
-        => _serverRules != null && SelectedAccountModel?.BackendKind == BackendKind.MicrosoftGraph;
+        => _serverRules != null
+           && SelectedAccountModel is { BackendKind: BackendKind.MicrosoftGraph, IsPersonalMicrosoftAccount: not true };
 
     private AccountModel? SelectedAccountModel
         => _allAccounts.FirstOrDefault(a => a.Id == SelectedAccount?.Id);
