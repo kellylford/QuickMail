@@ -145,7 +145,10 @@ public partial class UnifiedRulesWindow : Window
         => MessageBox.Show(this, message, "Saved as a QuickMail rule", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private void OnAnnouncement(string text, AnnouncementCategory category)
-        => AccessibilityHelper.Announce(this, text, interrupt: true, category: category);
+        // Results and status are action outcomes the user should hear promptly, so they interrupt. A Hint
+        // is ambient — the rule-mode cue spoken as you land on an account — and must NOT cut off the
+        // platform's own announcement of the newly-selected account, so it queues instead of interrupting.
+        => AccessibilityHelper.Announce(this, text, interrupt: category != AnnouncementCategory.Hint, category: category);
 
     private void OnPermissionMessage(string message)
         => AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Hint);

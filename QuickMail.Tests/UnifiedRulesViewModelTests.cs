@@ -288,6 +288,80 @@ public class UnifiedRulesViewModelTests
         Assert.DoesNotContain("No rules for this account", vm.StatusText); // … not overwritten by BuildStatus
     }
 
+    // ── Spoken rule-mode hint on account selection ─────────────────────────────
+    // An empty rule list can't tell a screen-reader user whether this account runs rules on the server
+    // or only in QuickMail. A Hint on each account-context load states it; a write-reload does not.
+
+    [Fact]
+    public void RuleModeHint_DistinguishesServerCapableFromClientOnly()
+    {
+        Assert.Contains("server-side", UnifiedRulesViewModel.RuleModeHint(supportsServerRules: true));
+        Assert.Contains("run in QuickMail", UnifiedRulesViewModel.RuleModeHint(supportsServerRules: false));
+    }
+
+    [Fact]
+    public async Task Refresh_WorkSchoolGraph_AnnouncesServerCapableModeHint_AsAHint()
+    {
+        var a = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [Graph(a)], preferredAccountId: a);
+        (string Text, AnnouncementCategory Cat)? hint = null;
+        vm.AnnouncementRequested += (t, c) => hint = (t, c);
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.NotNull(hint);
+        Assert.Equal(UnifiedRulesViewModel.RuleModeHint(true), hint!.Value.Text);
+        Assert.Equal(AnnouncementCategory.Hint, hint!.Value.Cat);       // silenceable, honors AnnounceHints
+    }
+
+    [Fact]
+    public async Task Refresh_PersonalGraph_AnnouncesClientOnlyModeHint()
+    {
+        var a = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [PersonalGraph(a)], preferredAccountId: a);
+        string? hint = null;
+        vm.AnnouncementRequested += (t, _) => hint = t;
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(UnifiedRulesViewModel.RuleModeHint(false), hint);   // personal → client-only, no server
+    }
+
+    [Fact]
+    public async Task SwitchingAccount_ReSpeaksTheNewAccountsMode()
+    {
+        var work = Guid.NewGuid();
+        var personal = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(),
+            [Graph(work), PersonalGraph(personal)], preferredAccountId: work);
+        await vm.RefreshCommand.ExecuteAsync(null);          // initial: work (server-capable)
+        string? hint = null;
+        vm.AnnouncementRequested += (t, _) => hint = t;
+
+        // Selecting a new account must itself re-speak the mode — no manual refresh. The client-only
+        // load path is synchronous, so the OnSelectedAccountChanged-triggered refresh + announce has
+        // completed by the time the setter returns; this pins the auto-refresh-on-switch wiring.
+        vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == personal);
+
+        Assert.Equal(UnifiedRulesViewModel.RuleModeHint(false), hint);   // now the personal account's mode
+    }
+
+    [Fact]
+    public async Task WriteReload_DoesNotReSpeakTheModeHint()
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules { Stored = [Server("S1")] };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.SelectedRule = vm.Rules.Single();
+        var announces = new List<string>();
+        vm.AnnouncementRequested += (t, _) => announces.Add(t);
+
+        await vm.ToggleEnabledCommand.ExecuteAsync(null);   // a write → reload, but the account is unchanged
+
+        Assert.DoesNotContain(UnifiedRulesViewModel.RuleModeHint(true), announces);
+    }
+
     // ── Prefill-from-message (Ctrl+Shift+T) and Run-on-Existing in the unified window ──────────
 
     [Fact]
