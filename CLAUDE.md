@@ -397,10 +397,21 @@ collects labeled PNGs. Review the run folder with the checklist in
 
 - **Run it after any change to `Views/`, `Styles/`, or `Themes/`** — at minimum the
   affected surfaces in parchment + dark.
-- **The desktop session must be unlocked.** On a locked session DWM never composites new
-  windows: captures come out white, and focus/clipboard-dependent tests flake. The
-  driver exits 4 and the script refuses to run when locked. (Also check
-  `Get-Process LogonUI` before blaming code for white captures or rotating test flakes.)
+- **Your own desktop session must be unlocked** — the one the probe renders into, which is
+  not necessarily the one at the machine. On a locked session DWM never composites new
+  windows: captures come out white, and focus/clipboard-dependent tests flake. The driver
+  exits 4 and the script refuses to start.
+  - **Over RDP, `Get-Process LogonUI` on its own proves nothing.** Windows keeps a LogonUI
+    at the physical console's login screen for as long as nobody is sitting at the machine,
+    in a *different session* from the remote one. An unfiltered check therefore reports
+    "locked" at a remote desktop that is unlocked and working — which is exactly what
+    `ui-probe.ps1` did until it was scoped to `(Get-Process -Id $PID).SessionId`. Compare
+    session ids, or just run `query session` and find the `Active` one.
+  - The app-side guard (`UiProbeDriver.IsSessionLocked`) uses `OpenInputDesktop`, which
+    answers for the calling session and needs no such care. A run where the script starts
+    but individual entries exit 4 means the secure desktop came up mid-run — a UAC prompt
+    will do it. Those entries are retryable; build a one-off plan and pass `-ProfileDir` to
+    reuse the fixture rather than reseeding.
 - Every WPF control type used in Views/ and Controls/ must have an implicit style in
   `Styles/ThemedControls.xaml` or a reviewed exemption — enforced by
   `ThemedControlCoverageTests`. WPF default chrome ignores theming; the unstyled ToolBar
