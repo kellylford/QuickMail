@@ -7798,6 +7798,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return false;
     }
 
+    /// <summary>
+    /// Why folder management is unavailable on this account, or null when it is available. The single
+    /// gate every folder-CRUD entry point asks before it opens a dialog or reaches a backend —
+    /// <paramref name="verb"/> is the action as the user would say it ("move", "create a folder in").
+    ///
+    /// <para>Here rather than in <c>MainWindow</c>: which accounts can manage folders is a state
+    /// decision, and code-behind is not where those live (see the MVVM rules). An account this
+    /// ViewModel has never heard of is allowed through — a guard is not the place to invent a
+    /// refusal, and the backend still answers for itself.</para>
+    /// </summary>
+    public string? FolderCrudRefusal(Guid accountId, string verb)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null || account.SupportsFolderCrud) return null;
+
+        return $"POP3 accounts have no server folders, so there is nothing to {verb}. "
+             + $"{account.AccountLabel} has only Inbox, Sent, Drafts and Trash.";
+    }
+
+    /// <summary>True when every one of these accounts can manage folders — the test a picker that
+    /// offers to create one has to pass, since the button is not per-account.</summary>
+    public bool AllSupportFolderCrud(IEnumerable<Guid> accountIds) =>
+        accountIds.All(id => FolderCrudRefusal(id, "create a folder in") is null);
+
     /// <summary>Creates a new folder under the given parent and refreshes the tree.</summary>
     public async Task CreateFolderAndRefreshAsync(Guid accountId, string? parentFolderName, string name)
     {

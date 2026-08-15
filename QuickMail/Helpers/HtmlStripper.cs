@@ -14,7 +14,16 @@ namespace QuickMail.Helpers;
 /// </summary>
 public static class HtmlStripper
 {
-    public static string ToPlainText(string? html)
+    /// <param name="includeLinkTargets">
+    /// Whether a link whose text differs from its href is rendered as <c>text (href)</c>. True for a
+    /// body conversion, where losing the destination loses the only way to reach it.
+    /// <para>False for a message-list preview. A preview is one line the user reads — or hears — to
+    /// decide whether to open the message, and marketing mail routinely opens with a logo wrapped in
+    /// a tracking link, so the first thing in the preview becomes a hundred characters of query
+    /// string. The destination is not lost: it is still in the body, where activating the link is
+    /// what the user would do with it.</para>
+    /// </param>
+    public static string ToPlainText(string? html, bool includeLinkTargets = true)
     {
         if (string.IsNullOrEmpty(html)) return string.Empty;
 
@@ -106,7 +115,8 @@ public static class HtmlStripper
                     {
                         var text = sb.ToString(linkTextStart, sb.Length - linkTextStart).Trim();
                         var decodedHref = WebUtility.HtmlDecode(linkHref);
-                        if (decodedHref.Length > 0
+                        if (includeLinkTargets
+                            && decodedHref.Length > 0
                             && !decodedHref.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase)
                             && !decodedHref.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
                             && !string.Equals(text, decodedHref, StringComparison.OrdinalIgnoreCase)

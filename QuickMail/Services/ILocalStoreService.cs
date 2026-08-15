@@ -13,6 +13,14 @@ public interface ILocalStoreService
     Task<List<MailMessageSummary>> LoadAllSummariesAsync();
     Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId);
     Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null);
+
+    /// <summary>
+    /// The folder's summaries dated <paramref name="since"/> or later, filtered in SQL rather than in
+    /// memory. The POP3 backend's window fetch is a store read (its mail lives nowhere else), and a
+    /// mailbox that is never pruned by a server grows without bound — so loading every row to discard
+    /// most of them is a cost that grows with the account's whole history, every sweep.
+    /// </summary>
+    Task<List<MailMessageSummary>> LoadFolderSummariesSinceAsync(Guid accountId, string folderName, DateTimeOffset since);
     Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
     Task DeleteAccountDataAsync(Guid accountId);
 
@@ -119,6 +127,15 @@ public interface ILocalStoreService
     /// </summary>
     Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName);
 
+    /// <summary>
+    /// Id, date and read state for every message in the folder — the three columns an id listing is
+    /// made of, and nothing else. The POP3 backend answers <c>GetFolderMessageIdDatesAsync</c> from
+    /// the cache, which otherwise means materialising every fifteen-column summary in the folder
+    /// (bodies excepted) on every sweep, to project three fields out of each.
+    /// </summary>
+    Task<IReadOnlyList<(string Id, DateTimeOffset Date, bool IsRead)>> LoadFolderMessageStatesAsync(
+        Guid accountId, string folderName);
+
     /// <summary>Which of <paramref name="messageIds"/> already exist in the folder (bounded lookup).</summary>
     Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
 
@@ -134,6 +151,29 @@ public interface ILocalStoreService
     /// the measurement's own cost off the timed region and off the per-folder hot path.
     /// </summary>
     Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId);
+
+    /// <summary>
+    /// Total and unread message counts per folder for one account, in a single <c>GROUP BY</c>. What
+    /// the POP3 folder tree and Inbox status are asking for: they need four folders' counts and
+    /// nothing else, and reading them off <see cref="LoadFolderReadStatesAsync"/> means building a
+    /// dictionary of every id in each folder to then count it.
+    /// </summary>
+    Task<Dictionary<string, (int Total, int Unread)>> CountMessagesByFolderAsync(Guid accountId);
+
+    // ── Local re-filing (#128) ───────────────────────────────────────────────────
+    // POP3's folders are QuickMail's own, so moving a message between them is a store operation with
+    // no server side at all.
+
+    /// <summary>
+    /// Re-files stored messages from one folder to another, moving the summary row, the detail row
+    /// and the raw MIME bytes intact — no column is read into managed memory and written back, so a
+    /// field the model gains later cannot be dropped in transit. When
+    /// <paramref name="copy"/> is true the rows are duplicated instead, leaving the originals.
+    /// Ids already present in <paramref name="toFolder"/> are replaced. Returns how many messages
+    /// were found in <paramref name="fromFolder"/> and re-filed.
+    /// </summary>
+    Task<int> RefileMessagesAsync(
+        Guid accountId, string fromFolder, string toFolder, IEnumerable<string> messageIds, bool copy);
 
     /// <summary>
     /// Returns the oldest message date stored for the given account, or null if no messages exist.

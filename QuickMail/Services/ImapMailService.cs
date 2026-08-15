@@ -813,7 +813,13 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                     else if (s.HtmlBody != null)
                     {
                         var part = await folder.GetBodyPartAsync(s.UniqueId, s.HtmlBody, ct);
-                        if (part is TextPart tp) text = StripHtml(tp.Text ?? string.Empty);
+                        // HtmlStripper, not a tag-stripping regex: it decodes entities and skips
+                        // script/style/head content, which the regex left in — HTML mail routinely
+                        // previewed as a run of CSS. It is what the POP3 backend already builds
+                        // previews with, so the same message reads the same way whichever fetched it.
+                        // includeLinkTargets: false because this is a preview — see HtmlStripper.
+                        if (part is TextPart tp)
+                            text = Helpers.HtmlStripper.ToPlainText(tp.Text, includeLinkTargets: false);
                     }
 
                     var preview = ExtractPreviewLines(text, maxLines);
@@ -1828,21 +1834,14 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         return null;
     }
 
-    private static string ExtractPreviewLines(string text, int maxLines) =>
+    /// <summary>Shared with <see cref="Pop3MailService"/>: the message list shows both backends'
+    /// messages side by side, so the preview text has to be built the same way in both.</summary>
+    internal static string ExtractPreviewLines(string text, int maxLines) =>
         string.Join(" ", text
             .Split('\n')
             .Select(l => l.Trim())
             .Where(l => l.Length > 0)
             .Take(maxLines));
-
-    private static string StripHtml(string html)
-    {
-        if (string.IsNullOrEmpty(html)) return string.Empty;
-        return System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " ")
-            .Replace("&nbsp;", " ").Replace("&amp;", "&")
-            .Replace("&lt;", "<").Replace("&gt;", ">")
-            .Trim();
-    }
 
     private static bool IsExcludedFromAllMail(FolderAttributes attrs, string fullName)
     {
@@ -1888,18 +1887,35 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         _          => ComposeMode.PlainText,
     };
 
-    private static string FormatAddressList(InternetAddressList? list) =>
+    // Shared with Pop3MailService for the same reason ParseComposeMode is: the message list renders
+    // both backends' rows side by side, so a second copy of these would be free to drift.
+
+    /// <summary>Full addresses ("Kelly Ford &lt;kelly@example.com&gt;"), for the detail view.</summary>
+    internal static string FormatAddressList(InternetAddressList? list) =>
         list == null || list.Count == 0
             ? string.Empty
             : string.Join(", ", list.Select(a => a.ToString()));
 
-    private static string FormatAddressListDisplay(InternetAddressList? list) =>
+    /// <summary>Display names where there is one, for the message list's From column.</summary>
+    internal static string FormatAddressListDisplay(InternetAddressList? list) =>
         list == null || list.Count == 0
             ? string.Empty
             : string.Join(", ", list.Select(a =>
                 a is MailboxAddress mb && !string.IsNullOrWhiteSpace(mb.Name)
                     ? mb.Name
                     : a.ToString()));
+
+    /// <summary>
+    /// Raw text of the first text/calendar body part of a downloaded message, or null when it carries
+    /// no invite. Feeds <see cref="PopulateCalendar"/>. Lives here, next to it, because both backends
+    /// that hold a whole <see cref="MimeMessage"/> need exactly this query: POP3 (every message it
+    /// downloads) and Graph (meeting messages, whose JSON never surfaces the MIME part, so it fetches
+    /// $value and re-parses).
+    /// </summary>
+    internal static string? FindCalendarText(MimeMessage message) =>
+        message.BodyParts
+            .OfType<TextPart>()
+            .FirstOrDefault(p => p.ContentType.IsMimeType("text", "calendar"))?.Text;
 
     public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) =>
         // Retry once on a fresh connection if the pooled one was silently dropped (issue #311).

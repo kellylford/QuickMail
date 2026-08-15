@@ -140,32 +140,26 @@ public partial class AddAccountDialog : Window
 
     private string? HintFor(IInputElement? focused)
     {
+        // Hints the Account Manager shows for the same field live in AccountFieldHints, so the two
+        // dialogs cannot describe one control two different ways. The rest are specific to this one.
         if (ReferenceEquals(focused, AccountNameBox))
-            return "Leave blank to use your email address.";
+            return AccountFieldHints.AccountName;
         if (ReferenceEquals(focused, DisplayNameBox))
             return "The name recipients see on messages you send.";
         if (ReferenceEquals(focused, PasswordBox))
-            return "Stored in Windows Credential Manager.";
+            return AccountFieldHints.Password;
         if (ReferenceEquals(focused, LoginUsernameBox))
-            return "Leave blank unless your mail server logs in under a different name than your email address.";
+            return AccountFieldHints.LoginUsername;
         if (ReferenceEquals(focused, SyncContactsCheckBox))
             return "Check this before signing in, so reading your contacts is part of the same permission.";
         if (ReferenceEquals(focused, SyncCalendarCheckBox))
-            return "Shows this account's calendar in the Calendar view.";
-        // The ports are in the checkbox's visible Content, but an explicit
-        // AutomationProperties.Name OVERRIDES that text — so without this the port guidance existed
-        // for sighted users only. It belongs in a hint rather than back in the Name, which must
-        // stay a short label.
+            return AccountFieldHints.SyncCalendar;
         if (ReferenceEquals(focused, SmtpImplicitSslCheckBox))
-            return "Checked uses port 465. Cleared uses STARTTLS on port 587.";
-        // POP3 hands the local store the only copy of a message once the server drops it, and that
-        // is what this checkbox decides. It belongs in a hint rather than in the label, which stays
-        // a short label — and in a hint the user's announcement preference still applies.
+            return AccountFieldHints.SmtpImplicitSsl;
         if (ReferenceEquals(focused, Pop3LeaveOnServerCheckBox))
-            return "Cleared, mail is removed from the server once QuickMail has downloaded it, "
-                 + "so this computer holds the only copy.";
+            return AccountFieldHints.Pop3LeaveOnServer;
         if (ReferenceEquals(focused, SignatureBox))
-            return "Added to the end of new messages, replies, and forwards.";
+            return AccountFieldHints.Signature;
         return null;
     }
 

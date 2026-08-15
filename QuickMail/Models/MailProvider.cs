@@ -33,6 +33,12 @@ namespace QuickMail.Models;
 /// Optional and trailing so every existing construction site is untouched.
 /// </param>
 /// <param name="Pop3Port">POP3 port to go with <paramref name="Pop3Host"/>. 995 is implicit TLS.</param>
+/// <param name="Pop3UseSsl">
+/// Implicit TLS on the POP3 leg, stated by the catalog rather than inferred from the port — the shape
+/// <paramref name="ImapUseSsl"/> and <paramref name="SmtpUseSsl"/> already have. A provider on a
+/// non-standard implicit-TLS port would otherwise be silently downgraded to STARTTLS by the entry
+/// that filled its settings in.
+/// </param>
 public sealed record MailProvider(
     string Id,
     string DisplayName,
@@ -49,7 +55,8 @@ public sealed record MailProvider(
     string? AppPasswordHint,
     string? AppPasswordUrl,
     string? Pop3Host = null,
-    int Pop3Port = 995)
+    int Pop3Port = 995,
+    bool Pop3UseSsl = true)
 {
     /// <summary>True when QuickMail knows a POP3 host for this provider.</summary>
     public bool SupportsPop3 => !string.IsNullOrEmpty(Pop3Host);

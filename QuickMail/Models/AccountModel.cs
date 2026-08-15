@@ -98,6 +98,19 @@ public partial class AccountModel : ObservableObject
     // must not reach for the IMAP fields directly. A POP3 account leaves those at their defaults, so
     // an IMAP-only reading sees every POP3 account as the same empty host on port 993 (#128).
 
+    /// <summary>
+    /// Whether folders on this account can be created, renamed, moved, copied or deleted. False only
+    /// for POP3 (#128), whose Inbox, Sent, Drafts and Trash are made up by QuickMail and are the only
+    /// folders there can be.
+    /// <para>A capability the UI asks about, rather than a <see cref="BackendKind"/> comparison
+    /// repeated at each command that needs it: those comparisons are a state decision, they were
+    /// planted at four call sites, and the one place that forgot to make it — the message move/copy
+    /// picker's New Folder button — worked only because the backend's <c>NotSupportedException</c>
+    /// message happened to read well.</para>
+    /// </summary>
+    [JsonIgnore]
+    public bool SupportsFolderCrud => BackendKind != BackendKind.Pop3Smtp;
+
     /// <summary>The host this account receives mail from. Empty for Graph, which has no server.</summary>
     [JsonIgnore]
     public string IncomingHost => BackendKind switch
