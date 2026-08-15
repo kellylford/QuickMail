@@ -464,12 +464,15 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// <c>MailboxSettings.ReadWrite</c>, which <see cref="OAuthService.GraphMailScopesPersonal"/>
     /// deliberately omits as an org-only capability — so offering them to a personal account only
     /// yields a 403 that surfaces as a meaningless "ask your administrator" for a mailbox with no admin.
-    /// Personal accounts use client-side rules only, the same as any non-server-rules account. This
-    /// mirrors the exclusion <see cref="AddSharedMailboxViewModel"/> already applies.
+    /// Personal accounts use client-side rules only, the same as any non-server-rules account.
+    ///
+    /// Uses <see cref="OAuthService.ResolveIsPersonalMicrosoftAccount"/> (flag, else the domain guess),
+    /// the same resolution scope selection uses, so an undetected personal account is caught too.
     /// </summary>
     public bool AccountSupportsServerRules
         => _serverRules != null
-           && SelectedAccountModel is { BackendKind: BackendKind.MicrosoftGraph, IsPersonalMicrosoftAccount: not true };
+           && SelectedAccountModel is { BackendKind: BackendKind.MicrosoftGraph } acct
+           && !OAuthService.ResolveIsPersonalMicrosoftAccount(acct);
 
     private AccountModel? SelectedAccountModel
         => _allAccounts.FirstOrDefault(a => a.Id == SelectedAccount?.Id);

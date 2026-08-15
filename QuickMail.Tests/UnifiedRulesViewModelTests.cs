@@ -105,6 +105,23 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task Refresh_UndetectedPersonalGraphAccount_CaughtByDomainGuess_LoadsOnlyClientRules() // #541
+    {
+        // The tenant flag hasn't been detected yet (null), but the address is a consumer domain, so the
+        // domain-guess fallback (same as scope selection) resolves it as personal → still no server rules.
+        var a = Guid.NewGuid();
+        var acct = new AccountModel { Id = a, BackendKind = BackendKind.MicrosoftGraph, Username = "me@outlook.com", AccountName = "Undetected" };
+        var server = new FakeServerRules { Stored = [Server("S1")] };
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
+        var vm = new UnifiedRulesViewModel(client, server, [acct], preferredAccountId: a);
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.False(vm.AccountSupportsServerRules);
+        Assert.Single(vm.Rules);
+    }
+
+    [Fact]
     public async Task Refresh_NoServerService_LoadsOnlyClientRules_EvenForGraphAccount()
     {
         var a = Guid.NewGuid();
