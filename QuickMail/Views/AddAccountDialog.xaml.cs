@@ -85,7 +85,10 @@ public partial class AddAccountDialog : Window
 
     /// <summary>
     /// A lookup finished. The message itself is announced by the StatusText handler above; what this
-    /// adds is putting the caret where the work now is — the IMAP host field — when nothing was found.
+    /// adds is putting the caret where the work now is — the incoming host field — when nothing was
+    /// found. Exactly one of the IMAP and POP3 panels is visible, so the host box to focus follows
+    /// the connection method; without the POP3 branch, a POP3 account's error announced the field
+    /// and then stranded focus where it was.
     /// </summary>
     private void OnDiscoveryCompleted(bool found, string message)
     {
@@ -93,12 +96,19 @@ public partial class AddAccountDialog : Window
 
         // Advanced was just expanded by the VM. Let the expander realize its content before focusing
         // into it, or Focus() lands on an element that does not exist yet.
-        Dispatcher.BeginInvoke(new Action(() =>
-        {
-            if (!ImapHostBox.IsVisible) return;
-            ImapHostBox.Focus();
-            Keyboard.Focus(ImapHostBox);
-        }), System.Windows.Threading.DispatcherPriority.Input);
+        Dispatcher.BeginInvoke(new Action(FocusIncomingHostBox),
+            System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    /// <summary>Focuses whichever incoming-server host box is currently presented.</summary>
+    private void FocusIncomingHostBox()
+    {
+        var box = ImapHostBox.IsVisible ? ImapHostBox
+                : Pop3HostBox.IsVisible ? Pop3HostBox
+                : null;
+        if (box is null) return;
+        box.Focus();
+        Keyboard.Focus(box);
     }
 
     /// <summary>
@@ -265,12 +275,8 @@ public partial class AddAccountDialog : Window
             else
             {
                 _vm.IsAdvancedExpanded = true;
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    if (!ImapHostBox.IsVisible) return;
-                    ImapHostBox.Focus();
-                    Keyboard.Focus(ImapHostBox);
-                }), System.Windows.Threading.DispatcherPriority.Input);
+                Dispatcher.BeginInvoke(new Action(FocusIncomingHostBox),
+                    System.Windows.Threading.DispatcherPriority.Input);
             }
             return;
         }

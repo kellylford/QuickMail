@@ -256,6 +256,25 @@ sealed class StubLocalStoreService : ILocalStoreService
 
     public Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId) =>
         Task.FromResult(MimeBytes.TryGetValue((accountId, folderName, messageId), out var bytes) ? bytes : null);
+
+    /// <summary>Functional in-memory POP3 collected-UIDL ledger, so backend tests exercise the real
+    /// record/prune arithmetic rather than a silent no-op.</summary>
+    public Dictionary<Guid, HashSet<string>> Pop3Uidls { get; } = [];
+    public Task<HashSet<string>> LoadPop3CollectedUidlsAsync(Guid accountId)
+        => Task.FromResult(Pop3Uidls.TryGetValue(accountId, out var set)
+            ? new HashSet<string>(set, StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal));
+    public Task AddPop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)
+    {
+        if (!Pop3Uidls.TryGetValue(accountId, out var set))
+            Pop3Uidls[accountId] = set = new HashSet<string>(StringComparer.Ordinal);
+        set.UnionWith(uidls);
+        return Task.CompletedTask;
+    }
+    public Task RemovePop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)
+    {
+        if (Pop3Uidls.TryGetValue(accountId, out var set)) set.ExceptWith(uidls);
+        return Task.CompletedTask;
+    }
     public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
     public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     public Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());

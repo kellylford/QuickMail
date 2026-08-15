@@ -164,6 +164,12 @@ public class LocalStoreService : ILocalStoreService
                 sort_order            INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (account_id, full_name)
             );
+
+            CREATE TABLE IF NOT EXISTS Pop3CollectedUidl (
+                account_id TEXT NOT NULL,
+                uidl       TEXT NOT NULL,
+                PRIMARY KEY (account_id, uidl)
+            );
             """;
         cmd.ExecuteNonQuery();
 
@@ -508,10 +514,11 @@ public class LocalStoreService : ILocalStoreService
         await using var tx   = await conn.BeginTransactionAsync();
         await using var cmd  = conn.CreateCommand();
         cmd.CommandText =
-            "DELETE FROM MessageDetail  WHERE account_id = $aid;" +
-            "DELETE FROM MessageSummary WHERE account_id = $aid;" +
-            "DELETE FROM CalendarEvent  WHERE account_id = $aid;" +
-            "DELETE FROM Folder         WHERE account_id = $aid;";
+            "DELETE FROM MessageDetail     WHERE account_id = $aid;" +
+            "DELETE FROM MessageSummary    WHERE account_id = $aid;" +
+            "DELETE FROM CalendarEvent     WHERE account_id = $aid;" +
+            "DELETE FROM Folder            WHERE account_id = $aid;" +
+            "DELETE FROM Pop3CollectedUidl WHERE account_id = $aid;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
@@ -992,6 +999,60 @@ public class LocalStoreService : ILocalStoreService
         while (await r.ReadAsync())
             result.Add(r.GetString(0));
         return result;
+    }
+
+    public async Task<HashSet<string>> LoadPop3CollectedUidlsAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT uidl FROM Pop3CollectedUidl WHERE account_id=$aid;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            result.Add(r.GetString(0));
+        return result;
+    }
+
+    public async Task AddPop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)
+    {
+        var list = uidls as IReadOnlyList<string> ?? uidls.ToList();
+        if (list.Count == 0) return;
+
+        await using var conn = await OpenAsync();
+        await using var tx = (SqliteTransaction)await conn.BeginTransactionAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText =
+            "INSERT OR IGNORE INTO Pop3CollectedUidl (account_id, uidl) VALUES ($aid, $uidl);";
+        var aid  = cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        var uidl = cmd.Parameters.AddWithValue("$uidl", string.Empty);
+        foreach (var u in list)
+        {
+            uidl.Value = u;
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await tx.CommitAsync();
+    }
+
+    public async Task RemovePop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)
+    {
+        var list = uidls as IReadOnlyList<string> ?? uidls.ToList();
+        if (list.Count == 0) return;
+
+        await using var conn = await OpenAsync();
+        await using var tx = (SqliteTransaction)await conn.BeginTransactionAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "DELETE FROM Pop3CollectedUidl WHERE account_id=$aid AND uidl=$uidl;";
+        var aid  = cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        var uidl = cmd.Parameters.AddWithValue("$uidl", string.Empty);
+        foreach (var u in list)
+        {
+            uidl.Value = u;
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await tx.CommitAsync();
     }
 
     public async Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName)

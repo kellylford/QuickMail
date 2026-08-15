@@ -61,6 +61,9 @@ public class Pop3MailService : IMailService
     /// know an id was never on the server.</summary>
     internal const string LocalIdPrefix = "local-";
 
+    /// <summary>The complete folder namespace of a POP3 account. Anything else does not exist.</summary>
+    internal static readonly string[] SyntheticFolders = [InboxFolder, SentFolder, DraftsFolder, TrashFolder];
+
     private readonly ILocalStoreService _store;
     private readonly bool _onlineMode;
 
@@ -164,22 +167,39 @@ public class Pop3MailService : IMailService
     /// <summary>
     /// The sweep's fetch, and therefore the download trigger — see the sync contract on the class.
     /// Collects anything new from the server first, then returns the folder's messages inside the
-    /// window so the sweep surfaces them through the ordinary arrivals path (rules, list, toast).
-    /// <para>Mail older than the window is still downloaded and stored; it is simply not announced
-    /// as an arrival. That matters on a first sync of a mailbox holding a long backlog: the user
-    /// gets all of it in the Inbox, without a toast per message.</para>
+    /// window PLUS everything collected on this call, so the sweep surfaces every arrival through
+    /// the ordinary path (rules, list, toast).
+    /// <para>The union matters: the window test reads the message's own Date header, and a message
+    /// arriving today can carry an older one — delayed delivery, resent mail, spam forging its
+    /// date. Filtering the return by header date alone would download and store such a message
+    /// while permanently hiding it from rules and the open list.</para>
+    /// <para>The one deliberate exception is the account's first collection ever, which stays
+    /// window-filtered: a first sync of a mailbox holding a years-long backlog puts all of it in
+    /// the Inbox without announcing each message as a new arrival.</para>
     /// </summary>
     public async Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(
         Guid accountId, string folderName, DateTime since, CancellationToken ct = default)
     {
+        List<MailMessageSummary> downloaded = [];
+        bool firstCollection = false;
         if (IsInbox(folderName))
-            await DownloadNewMessagesAsync(accountId, ct);
+            (downloaded, firstCollection) = await DownloadNewMessagesAsync(accountId, ct);
 
         var all = await LoadFromStoreAsync(accountId, folderName);
         var sinceUtc = since.Kind == DateTimeKind.Unspecified
             ? DateTime.SpecifyKind(since, DateTimeKind.Utc)
             : since.ToUniversalTime();
-        return all.Where(m => m.Date.UtcDateTime >= sinceUtc).ToList();
+        var window = all.Where(m => m.Date.UtcDateTime >= sinceUtc).ToList();
+        if (firstCollection || downloaded.Count == 0) return window;
+
+        // Prefer the store-loaded instance for a message in both sets — LoadFromStoreAsync restated
+        // its flag state, and the sweep upserts whatever this returns.
+        var inWindow = new HashSet<string>(window.Select(m => m.MessageId), StringComparer.Ordinal);
+        var byId = all.ToDictionary(m => m.MessageId, StringComparer.Ordinal);
+        foreach (var d in downloaded)
+            if (!inWindow.Contains(d.MessageId))
+                window.Add(byId.TryGetValue(d.MessageId, out var stored) ? stored : d);
+        return window;
     }
 
     /// <summary>
@@ -190,7 +210,7 @@ public class Pop3MailService : IMailService
     public async Task<List<MailMessageSummary>> GetMessagesSinceAsync(
         Guid accountId, string folderName, string sinceMessageId, int initialCount, CancellationToken ct = default)
         => IsInbox(folderName)
-            ? await DownloadNewMessagesAsync(accountId, ct)
+            ? (await DownloadNewMessagesAsync(accountId, ct)).Downloaded
             : [];
 
     public async Task<MailMessageDetail> GetMessageDetailAsync(
@@ -255,11 +275,17 @@ public class Pop3MailService : IMailService
 
         await _store.DeleteSummariesAsync(accountId, folderName, messageIds);
 
+        // Locally-authored mail (sent, drafts) was never on the server; nothing to delete there.
+        var serverIds = messageIds.Where(id => !id.StartsWith(LocalIdPrefix, StringComparison.Ordinal)).ToList();
+
+        // Record the destruction BEFORE any early return. With leave-on-server on, the server
+        // keeps listing these UIDLs — the ledger is the only thing standing between "Empty Trash"
+        // and the same mail re-downloading into the Inbox on the very next sweep.
+        await _store.AddPop3CollectedUidlsAsync(accountId, serverIds);
+
         if (!_accounts.TryGetValue(accountId, out var account) || account.Pop3LeaveMailOnServer)
             return;
 
-        // Locally-authored mail (sent, drafts) was never on the server; nothing to delete there.
-        var serverIds = messageIds.Where(id => !id.StartsWith(LocalIdPrefix, StringComparison.Ordinal)).ToList();
         if (serverIds.Count == 0) return;
 
         var wanted = new HashSet<string>(serverIds, StringComparer.Ordinal);
@@ -355,6 +381,16 @@ public class Pop3MailService : IMailService
             throw new InvalidOperationException(
                 $"Attachment '{partSpecifier}' is out of range for POP3 message {messageId} ({parts.Count} attachment(s)).");
 
+        // A forwarded email attached as message/rfc822 is a MessagePart, not a MimePart. Serialize
+        // the embedded message as .eml bytes — the same answer ImapMailService gives for this part
+        // type — rather than throwing at the only copy the user will ever have.
+        if (parts[idx] is MessagePart msgPart && msgPart.Message is not null)
+        {
+            using var eml = new MemoryStream();
+            await msgPart.Message.WriteToAsync(eml, ct);
+            return eml.ToArray();
+        }
+
         if (parts[idx] is not MimePart part || part.Content is null)
             throw new InvalidOperationException(
                 $"Attachment {idx} of POP3 message {messageId} is not a decodable MIME part.");
@@ -367,7 +403,7 @@ public class Pop3MailService : IMailService
     // ── Poll / keepalive / status ─────────────────────────────────────────────
 
     public async Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default)
-        => (await DownloadNewMessagesAsync(accountId, ct)).Count;
+        => (await DownloadNewMessagesAsync(accountId, ct)).Downloaded.Count;
 
     /// <summary>No-op: POP3 keeps no connection open between operations, so there is nothing to keep alive.</summary>
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
@@ -407,7 +443,12 @@ public class Pop3MailService : IMailService
         var cached = await LoadFromStoreAsync(accountId, folderName);
 
         if (!IsInbox(folderName) || _onlineMode || !_accounts.ContainsKey(accountId))
-            return MergeListing(cached, [], DateTimeOffset.UtcNow);
+            return MergeListing(cached, [], new HashSet<string>(), DateTimeOffset.UtcNow);
+
+        // The ledger keeps a collected-then-moved (or deliberately destroyed) UIDL from reading as
+        // a new arrival: it is no longer cached in the Inbox, but it is not new mail either, and
+        // stamping it "now" would make the sweep fetch phantom arrivals every cycle forever.
+        var collected = await _store.LoadPop3CollectedUidlsAsync(accountId);
 
         IList<string> serverUidls;
         try
@@ -423,24 +464,30 @@ public class Pop3MailService : IMailService
             serverUidls = [];
         }
 
-        return MergeListing(cached, serverUidls, DateTimeOffset.UtcNow);
+        return MergeListing(cached, serverUidls, collected, DateTimeOffset.UtcNow);
     }
 
     /// <summary>
     /// The sync contract's arithmetic, in one place so it can be tested directly: every cached
-    /// message, plus every server UIDL not already cached.
+    /// message, plus every server UIDL not already cached and never collected before.
     ///
     /// <para>Cached rows keep their own date and read state — the sweep's read reconcile compares
-    /// against them, and POP3 has no server-side read state that could disagree. Unseen UIDLs are
-    /// stamped <paramref name="now"/> and unread, which is what puts them inside the sweep's window
-    /// so it fetches them.</para>
+    /// against them, and POP3 has no server-side read state that could disagree. Genuinely unseen
+    /// UIDLs are stamped <paramref name="now"/> and unread, which is what puts them inside the
+    /// sweep's window so it fetches them.</para>
+    ///
+    /// <para><paramref name="collectedUidls"/> is the ledger of everything ever collected. A server
+    /// UIDL in it but not in <paramref name="cached"/> is a message the user moved out of this
+    /// folder or destroyed while leave-on-server keeps it listed — reporting it as arriving now
+    /// would make every sweep fetch phantom mail, so it is omitted entirely.</para>
     ///
     /// <para>Cached ids are never dropped, whatever the server says. That is the whole point: the
     /// sweep deletes cached ids missing from this list, and a POP3 server legitimately stops listing
     /// a message the moment it is collected.</para>
     /// </summary>
     internal static IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)> MergeListing(
-        IReadOnlyList<MailMessageSummary> cached, IEnumerable<string> serverUidls, DateTimeOffset now)
+        IReadOnlyList<MailMessageSummary> cached, IEnumerable<string> serverUidls,
+        IReadOnlySet<string> collectedUidls, DateTimeOffset now)
     {
         var result = cached
             .Select(m => (Id: m.MessageId, ReceivedUtc: m.Date, m.IsRead))
@@ -448,7 +495,7 @@ public class Pop3MailService : IMailService
 
         var known = new HashSet<string>(result.Select(r => r.Id), StringComparer.Ordinal);
         foreach (var uidl in serverUidls)
-            if (known.Add(uidl))
+            if (!collectedUidls.Contains(uidl) && known.Add(uidl))
                 result.Add((uidl, now, false));
 
         return result;
@@ -481,8 +528,10 @@ public class Pop3MailService : IMailService
         => MoveLocalAsync(accountId, folderName, destinationFolder, messageIds, copy: false);
 
     // ── Folder CRUD — not supported ───────────────────────────────────────────
-    // POP3 has no folder namespace. Callers gate on BackendKind (see MainViewModel's folder
-    // commands) so the user never reaches these; they throw rather than silently doing nothing.
+    // POP3 has no folder namespace. Callers gate on BackendKind (MainWindow's SupportsServerFolders
+    // guards the folder-tree entry points) so the user rarely reaches these; they throw with a plain
+    // reason rather than silently doing nothing, because ungated paths (the folder picker's New
+    // Folder button) surface the thrown message as the explanation.
 
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
         => throw new NotSupportedException("POP3 accounts have no server folders, so folders cannot be created.");
@@ -499,12 +548,22 @@ public class Pop3MailService : IMailService
     // ── Download ──────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Collects every UIDL the server holds that the store does not, storing each message whole.
-    /// Returns the messages downloaded on this call (empty when there is nothing new).
-    /// <para>Deduplication is by UIDL against the store, which is what makes this safe to call from
-    /// several sync paths — the sweep, a poll, an account's first load — without re-downloading.</para>
+    /// Collects every UIDL the server holds that this profile has never collected, storing each
+    /// message whole. Returns the messages downloaded on this call (empty when there is nothing
+    /// new) and whether this was the account's first collection ever.
+    /// <para>Deduplication is by UIDL against the collected-UIDL ledger plus every folder's stored
+    /// ids — NOT against the Inbox rows alone. A collected message does not stay in the Inbox: the
+    /// user deletes it (row moves to Trash), a rule files it, Empty Trash removes it entirely — and
+    /// with leave-on-server on the server still lists its UIDL. Only a memory independent of the
+    /// message rows keeps all of those from being re-downloaded into the Inbox as new mail.</para>
+    /// <para>With leave-on-server off, a UIDL we already collected but the server still lists gets
+    /// its DELE re-issued: DELEs only commit at QUIT, so a connection lost mid-collection rolls
+    /// every pending DELE back (RFC 1939), and without this the stale copies would sit on the
+    /// server forever. Never data loss — a UIDL is only in the seen set once its message is in the
+    /// store, or after the user deliberately destroyed it.</para>
     /// </summary>
-    private async Task<List<MailMessageSummary>> DownloadNewMessagesAsync(Guid accountId, CancellationToken ct)
+    private async Task<(List<MailMessageSummary> Downloaded, bool FirstCollection)> DownloadNewMessagesAsync(
+        Guid accountId, CancellationToken ct)
     {
         var downloaded = new List<MailMessageSummary>();
 
@@ -512,65 +571,105 @@ public class Pop3MailService : IMailService
         {
             // POP3 keeps mail nowhere but the store, so with no store there is nothing to sync into.
             LogService.Log($"POP3: skipping sync for account {accountId} — --online mode has no local store.");
-            return downloaded;
+            return (downloaded, false);
         }
 
         if (!_accounts.TryGetValue(accountId, out var account))
-            return downloaded;
+            return (downloaded, false);
 
-        var seen = await _store.GetAllMessageIdsAsync(accountId, InboxFolder);
+        var ledger = await _store.LoadPop3CollectedUidlsAsync(accountId);
+        var seen   = new HashSet<string>(ledger, StringComparer.Ordinal);
+        bool anyServerDerivedRow = false;
+        foreach (var folder in SyntheticFolders)
+        {
+            foreach (var id in await _store.GetAllMessageIdsAsync(accountId, folder))
+            {
+                if (id.StartsWith(LocalIdPrefix, StringComparison.Ordinal)) continue;
+                seen.Add(id);
+                anyServerDerivedRow = true;
+            }
+        }
+
+        // First collection = no ledger and no server-derived row anywhere: this profile has never
+        // taken anything off this maildrop. GetMessagesSinceDateAsync uses it to keep a first-run
+        // backlog quiet while still announcing every later arrival.
+        var firstCollection = ledger.Count == 0 && !anyServerDerivedRow;
 
         var sem = _locks.GetOrAdd(accountId, _ => new SemaphoreSlim(1, 1));
         await sem.WaitAsync(ct);
         try
         {
-            using var client = await OpenConnectionAsync(accountId, ct);
-            if (client.Count == 0)
+            IList<string> uidls;
+            using (var client = await OpenConnectionAsync(accountId, ct))
             {
-                await client.DisconnectAsync(quit: false, ct);
-                return downloaded;
+                // Index into this list is the session-scoped message number the RETR/DELE commands take.
+                uidls = client.Count == 0
+                    ? new List<string>()
+                    : await client.GetMessageUidsAsync(ct);
+                bool anyDeleted = false;
+
+                for (int i = 0; i < uidls.Count; i++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var uidl = uidls[i];
+                    if (seen.Contains(uidl))
+                    {
+                        if (!account.Pop3LeaveMailOnServer)
+                        {
+                            // Already collected (or deliberately destroyed) — the server copy should
+                            // be gone under this setting. Covers DELEs rolled back by a lost
+                            // connection, and mail collected before the setting was turned off.
+                            await client.DeleteMessageAsync(i, ct);
+                            anyDeleted = true;
+                        }
+                        continue;
+                    }
+
+                    MimeMessage msg;
+                    try
+                    {
+                        msg = await client.GetMessageAsync(i, ct);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        // One unreadable message must not stop the rest of the mailbox from arriving.
+                        LogService.Log($"POP3 [{account.AccountLabel}]: failed to download UIDL {uidl}", ex);
+                        continue;
+                    }
+
+                    var summary = await StoreMessageAsync(accountId, uidl, msg, InboxFolder, isRead: false, ct);
+                    downloaded.Add(summary);
+
+                    if (!account.Pop3LeaveMailOnServer)
+                    {
+                        // Only after the message is committed to the store. DELEs take effect at QUIT.
+                        await client.DeleteMessageAsync(i, ct);
+                        anyDeleted = true;
+                    }
+                }
+
+                await client.DisconnectAsync(quit: anyDeleted, ct);
+
+                if (downloaded.Count > 0)
+                    LogService.Log($"POP3 [{account.AccountLabel}]: downloaded {downloaded.Count} new message(s)" +
+                                   (anyDeleted ? ", removed from the server" : ", left on the server") + ".");
             }
 
-            // Index into this list is the session-scoped message number the RETR/DELE commands take.
-            var uidls = await client.GetMessageUidsAsync(ct);
-            bool anyDeleted = false;
+            // Ledger upkeep, after the session so it never extends the maildrop lock's hold time.
+            // Both writes are recoverable if the app dies before them: the messages are already in
+            // the store, so the next sweep's seen set still covers them and re-records here.
+            //   Record: everything downloaded this call, plus store-known UIDLs the ledger lacked
+            //   (rows collected by a build before the ledger existed).
+            //   Prune: ledger entries the server no longer lists — those can never be offered again.
+            var serverSet = new HashSet<string>(uidls, StringComparer.Ordinal);
+            var record = downloaded.Select(m => m.MessageId)
+                .Concat(serverSet.Where(u => seen.Contains(u) && !ledger.Contains(u)))
+                .ToList();
+            await _store.AddPop3CollectedUidlsAsync(accountId, record);
+            await _store.RemovePop3CollectedUidlsAsync(accountId, ledger.Where(u => !serverSet.Contains(u)).ToList());
 
-            for (int i = 0; i < uidls.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                var uidl = uidls[i];
-                if (seen.Contains(uidl)) continue;
-
-                MimeMessage msg;
-                try
-                {
-                    msg = await client.GetMessageAsync(i, ct);
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    // One unreadable message must not stop the rest of the mailbox from arriving.
-                    LogService.Log($"POP3 [{account.AccountLabel}]: failed to download UIDL {uidl}", ex);
-                    continue;
-                }
-
-                var summary = await StoreMessageAsync(accountId, uidl, msg, InboxFolder, isRead: false, ct);
-                downloaded.Add(summary);
-
-                if (!account.Pop3LeaveMailOnServer)
-                {
-                    // Only after the message is committed to the store. DELEs take effect at QUIT.
-                    await client.DeleteMessageAsync(i, ct);
-                    anyDeleted = true;
-                }
-            }
-
-            await client.DisconnectAsync(quit: anyDeleted, ct);
-
-            if (downloaded.Count > 0)
-                LogService.Log($"POP3 [{account.AccountLabel}]: downloaded {downloaded.Count} new message(s)" +
-                               (anyDeleted ? ", removed from the server" : ", left on the server") + ".");
-            return downloaded;
+            return (downloaded, firstCollection);
         }
         finally
         {
@@ -653,6 +752,17 @@ public class Pop3MailService : IMailService
         Guid accountId, string fromFolder, string toFolder, IList<string> messageIds, bool copy)
     {
         if (_onlineMode) return;   // no store, so there is nothing filed anywhere to move
+
+        // A rule created against another account, or a mixed-account move offering an IMAP folder
+        // name, can hand this any string. Filing rows under a name GetFoldersAsync never returns
+        // makes them unreachable from every part of the UI — and this store may hold the only copy
+        // of the message. Refuse loudly instead — and canonicalize the casing, since the store's
+        // folder lookups compare exactly.
+        toFolder = SyntheticFolders.FirstOrDefault(f => string.Equals(f, toFolder, StringComparison.OrdinalIgnoreCase))
+            ?? throw new NotSupportedException(
+                $"POP3 accounts have only the built-in Inbox, Sent, Drafts and Trash folders; " +
+                $"'{toFolder}' does not exist on this account, so the messages were not filed there.");
+
         if (string.Equals(fromFolder, toFolder, StringComparison.OrdinalIgnoreCase)) return;
 
         var byId = (await _store.LoadFolderSummariesAsync(accountId, fromFolder))
@@ -764,16 +874,26 @@ public class Pop3MailService : IMailService
     /// </summary>
     private static long DecodedSize(MimeEntity entity)
     {
-        if (entity is not MimePart part || part.Content is null) return 0;
         try
         {
             using var measuring = new MimeKit.IO.MeasuringStream();
-            part.Content.DecodeTo(measuring);
-            return measuring.Length;
+            switch (entity)
+            {
+                case MimePart { Content: not null } part:
+                    part.Content.DecodeTo(measuring);
+                    return measuring.Length;
+                case MessagePart { Message: not null } msgPart:
+                    // A forwarded email attached as message/rfc822: its size is the serialized .eml,
+                    // which is also exactly what DownloadAttachmentAsync hands back for it.
+                    msgPart.Message.WriteTo(measuring);
+                    return measuring.Length;
+                default:
+                    return 0;
+            }
         }
         catch (Exception ex)
         {
-            LogService.Log($"POP3: could not measure attachment '{part.FileName}'", ex);
+            LogService.Log($"POP3: could not measure attachment '{(entity as MimePart)?.FileName ?? entity.ContentType?.MimeType ?? "attachment"}'", ex);
             return 0;
         }
     }

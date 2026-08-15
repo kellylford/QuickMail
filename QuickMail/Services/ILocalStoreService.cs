@@ -81,6 +81,25 @@ public interface ILocalStoreService
     /// </summary>
     Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId);
 
+    // ── POP3 collected-UIDL ledger (#128) ────────────────────────────────────────
+    // The persistent memory of which server UIDLs this profile has ever collected or destroyed.
+    // Message rows cannot carry this: a row moves out of the Inbox (delete, rule, manual filing) or
+    // leaves the store entirely (Empty Trash), and with leave-on-server on the UIDL is still listed
+    // by the server — without the ledger every one of those messages is re-downloaded into the
+    // Inbox as new mail on the next sweep, forever.
+
+    /// <summary>Every UIDL ever recorded for this account by <see cref="AddPop3CollectedUidlsAsync"/>.</summary>
+    Task<HashSet<string>> LoadPop3CollectedUidlsAsync(Guid accountId);
+
+    /// <summary>Records UIDLs as collected (or deliberately destroyed). Idempotent.</summary>
+    Task AddPop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls);
+
+    /// <summary>
+    /// Forgets UIDLs the server no longer lists. Pruning only — a UIDL absent from the server can
+    /// never be offered again, so remembering it buys nothing.
+    /// </summary>
+    Task RemovePop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls);
+
     /// <summary>
     /// Returns the highest message key stored for this folder, or "0" if none. For the IMAP
     /// backend this is the numeric high-water UID, computed as MAX(CAST(unique_id AS INTEGER))

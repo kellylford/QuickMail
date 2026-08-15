@@ -106,6 +106,9 @@ public class PreviewSuppressionTests
         public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<MailMessageDetail?>(null);
         public Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes) => Task.CompletedTask;
         public Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<byte[]?>(null);
+        public Task<HashSet<string>> LoadPop3CollectedUidlsAsync(Guid accountId) => Task.FromResult(new HashSet<string>());
+        public Task AddPop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls) => Task.CompletedTask;
+        public Task RemovePop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls) => Task.CompletedTask;
         public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
         public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
         public Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());

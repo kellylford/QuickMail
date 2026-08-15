@@ -127,7 +127,7 @@ public class Pop3MailServiceTests
         var account = Guid.NewGuid();
         var cached  = new[] { Msg(account, "uidl-1", "Inbox"), Msg(account, "uidl-2", "Inbox") };
 
-        var merged = Pop3MailService.MergeListing(cached, [], DateTimeOffset.UtcNow);
+        var merged = Pop3MailService.MergeListing(cached, [], new HashSet<string>(), DateTimeOffset.UtcNow);
 
         Assert.Equal(["uidl-1", "uidl-2"], merged.Select(m => m.Id));
     }
@@ -139,7 +139,7 @@ public class Pop3MailServiceTests
         var now     = DateTimeOffset.UtcNow;
         var cached  = new[] { Msg(account, "known", "Inbox", now.AddDays(-2), isRead: true) };
 
-        var merged = Pop3MailService.MergeListing(cached, ["known", "brand-new"], now);
+        var merged = Pop3MailService.MergeListing(cached, ["known", "brand-new"], new HashSet<string>(), now);
 
         // The known id appears once, with its own date and read state.
         var known = Assert.Single(merged.Where(m => m.Id == "known"));
@@ -161,12 +161,134 @@ public class Pop3MailServiceTests
         var account = Guid.NewGuid();
         var cached  = new[] { Msg(account, "collected-1", "Inbox"), Msg(account, "collected-2", "Inbox") };
 
-        var merged = Pop3MailService.MergeListing(cached, ["a-totally-different-uidl"], DateTimeOffset.UtcNow);
+        var merged = Pop3MailService.MergeListing(cached, ["a-totally-different-uidl"], new HashSet<string>(), DateTimeOffset.UtcNow);
         var listed = merged.Select(m => m.Id).ToHashSet();
 
         Assert.Contains("collected-1", listed);
         Assert.Contains("collected-2", listed);
         Assert.Contains("a-totally-different-uidl", listed);
+    }
+
+    [Fact]
+    public void MergeListing_NeverReportsACollectedUidl_AsANewArrival()
+    {
+        // Leave-on-server keeps a UIDL listed forever. Once the user deletes the message (row moves
+        // to Trash) or empties Trash (row gone entirely), the UIDL is no longer cached in the Inbox
+        // — but it is in the collected ledger. Reporting it as "arriving now" is what made deleted
+        // mail resurrect on every sweep: hasNew fired, and the fetch re-downloaded it.
+        var account   = Guid.NewGuid();
+        var now       = DateTimeOffset.UtcNow;
+        var cached    = new[] { Msg(account, "still-in-inbox", "Inbox") };
+        var collected = new HashSet<string>(["still-in-inbox", "deleted-by-user", "emptied-from-trash"]);
+
+        var merged = Pop3MailService.MergeListing(
+            cached, ["still-in-inbox", "deleted-by-user", "emptied-from-trash", "genuinely-new"], collected, now);
+
+        var ids = merged.Select(m => m.Id).ToList();
+        Assert.Contains("still-in-inbox", ids);      // cached rows always survive
+        Assert.Contains("genuinely-new", ids);        // real arrivals still surface
+        Assert.DoesNotContain("deleted-by-user", ids);
+        Assert.DoesNotContain("emptied-from-trash", ids);
+    }
+
+    [Fact]
+    public async Task PermanentDelete_RecordsTheUidl_SoItIsNeverCollectedAgain()
+    {
+        // Empty Trash with leave-on-server on (the shipped default): no DELE is sent, so only the
+        // ledger stands between "permanently deleted" and the same message re-downloading into the
+        // Inbox on the very next sweep.
+        var store   = NewStore();
+        var account = Guid.NewGuid();
+        var pop     = new Pop3MailService(store);
+
+        await store.UpsertSummariesAsync([Msg(account, "uidl-1", "Trash"), Msg(account, "local-abc", "Trash")]);
+        await pop.PermanentlyDeleteBatchAsync(account, "Trash", ["uidl-1", "local-abc"]);
+
+        var ledger = await store.LoadPop3CollectedUidlsAsync(account);
+        Assert.Contains("uidl-1", ledger);
+        // Locally-authored ids were never on the server; remembering them would be noise.
+        Assert.DoesNotContain("local-abc", ledger);
+    }
+
+    [Fact]
+    public async Task MoveToAFolderThatDoesNotExist_IsRefused_NotSilentlyFiled()
+    {
+        // A rule created against an IMAP account, or a mixed-account move, can hand the POP3 backend
+        // any folder name. Filing rows under a name GetFoldersAsync never returns strands them
+        // invisibly — and this store may hold the only copy.
+        var store   = NewStore();
+        var account = Guid.NewGuid();
+        var pop     = new Pop3MailService(store);
+
+        await store.UpsertSummariesAsync([Msg(account, "uidl-1", "Inbox")]);
+
+        await Assert.ThrowsAsync<NotSupportedException>(
+            () => pop.MoveMessagesAsync(account, "Inbox", ["uidl-1"], "Archive"));
+
+        // The message is exactly where it was.
+        var inbox = await store.LoadFolderSummariesAsync(account, "Inbox");
+        Assert.Equal(["uidl-1"], inbox.Select(m => m.MessageId));
+    }
+
+    [Fact]
+    public async Task MoveBetweenSyntheticFolders_IsCaseInsensitive_AndFilesUnderTheCanonicalName()
+    {
+        var store   = NewStore();
+        var account = Guid.NewGuid();
+        var pop     = new Pop3MailService(store);
+
+        await store.UpsertSummariesAsync([Msg(account, "uidl-1", "Inbox")]);
+        await pop.MoveMessagesAsync(account, "Inbox", ["uidl-1"], "TRASH");
+
+        // Accepted case-insensitively, but stored under the name GetFoldersAsync actually lists —
+        // the store's folder lookups compare exactly, so "TRASH" rows would be invisible.
+        Assert.Empty(await store.LoadFolderSummariesAsync(account, "Inbox"));
+        Assert.Equal(["uidl-1"], (await store.LoadFolderSummariesAsync(account, "Trash")).Select(m => m.MessageId));
+    }
+
+    [Fact]
+    public async Task AForwardedMessageAttachment_IsListed_AndComesBackAsEml()
+    {
+        // A forwarded email attached as message/rfc822 is a MessagePart, not a MimePart. It must be
+        // both listed AND openable: the stored bytes are the only copy POP3 will ever have, so
+        // "visible but throws on open" strands the content permanently. IMAP serves the same part
+        // as a serialized .eml; POP3 must answer identically.
+        var inner = new MimeMessage();
+        inner.From.Add(new MailboxAddress("Original Sender", "orig@example.com"));
+        inner.To.Add(new MailboxAddress("Original Recipient", "rcpt@example.com"));
+        inner.Subject = "The forwarded original";
+        inner.Body = new TextPart("plain") { Text = "Original body." };
+
+        var outer = BuildMime(subject: "FW: The forwarded original", customize: msg =>
+        {
+            msg.Body = new Multipart("mixed")
+            {
+                new TextPart("plain") { Text = "See attached." },
+                new MessagePart { Message = inner,
+                    ContentDisposition = new ContentDisposition(ContentDisposition.Attachment) },
+            };
+        });
+
+        var account = Guid.NewGuid();
+        var detail = Pop3MailService.BuildDetail(account, "uidl-1", outer, "Inbox", isRead: false);
+        var att = Assert.Single(detail.Attachments);
+        Assert.True(att.FileSize > 0);   // DecodedSize measures the serialized .eml, not 0
+        Assert.NotNull(att.PartSpecifier);
+
+        var store = NewStore();
+        // Mirror StoreMessageAsync's order: the bytes column lives on the MessageDetail row, so the
+        // detail is upserted first and the bytes update targets it.
+        await store.UpsertDetailAsync(detail);
+        using var ms = new MemoryStream();
+        outer.WriteTo(ms);
+        await store.StoreMimeBytesAsync(account, "Inbox", "uidl-1", ms.ToArray());
+
+        var pop = new Pop3MailService(store);
+        var bytes = await pop.DownloadAttachmentAsync(account, "Inbox", "uidl-1", att.PartSpecifier);
+
+        using var loaded = new MemoryStream(bytes);
+        var roundTripped = MimeMessage.Load(loaded);
+        Assert.Equal("The forwarded original", roundTripped.Subject);
     }
 
     [Fact]

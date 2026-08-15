@@ -96,6 +96,151 @@ public sealed class Pop3ProtocolTests : IDisposable
     }
 
     [Fact]
+    public async Task DeletedMail_StaysDeleted_WhileTheServerStillListsIt()
+    {
+        // Leave-on-server (the shipped default) keeps the UIDL listed after collection. Deleting
+        // the message moves its row out of the Inbox — and dedupe keyed on Inbox rows alone then
+        // re-downloaded it as new mail on every later sync, forever. The collected-UIDL ledger is
+        // what this pins: delete once, and the message never comes back.
+        _greenMail.RequirePop3();
+        var ct      = TestContext.Current.CancellationToken;
+        var account = _greenMail.CreatePop3Account("pop-resurrect", leaveOnServer: true);
+        await SeedAsync(account.Username, "Delete me", "Body.", ct);
+
+        var store = NewStore();
+        using var pop = new Pop3MailService(store);
+        await pop.ConnectAsync(account, "pw", ct);
+        var downloaded = await WaitForDownloadAsync(pop, account.Id, expected: 1, ct);
+        var uidl = downloaded.Single().MessageId;
+
+        await pop.MoveToTrashAsync(account.Id, "Inbox", uidl, ct);
+
+        // The next sync must not re-collect it, and the listing must not offer it to the sweep as
+        // an arrival (which is what made hasNew fire and fetch phantom mail every cycle).
+        Assert.Equal(0, await pop.PollAsync(account.Id, "Inbox", ct));
+        Assert.Empty(await store.GetAllMessageIdsAsync(account.Id, "Inbox"));
+        var listing = await pop.GetFolderMessageIdDatesAsync(account.Id, "Inbox", ct);
+        Assert.DoesNotContain(listing, l => l.Id == uidl);
+
+        // Still exactly one copy, in Trash — and still on the server, as leave-on-server promises.
+        Assert.Single(await store.GetAllMessageIdsAsync(account.Id, "Trash"));
+        Assert.Equal(1, await ServerMessageCountAsync(account, ct));
+    }
+
+    [Fact]
+    public async Task EmptiedTrash_StaysEmpty_WhileTheServerStillListsTheUidl()
+    {
+        // Empty Trash removes the rows entirely; with leave-on-server on there is no DELE, so only
+        // the ledger stands between "permanently deleted" and the mail returning next sync.
+        _greenMail.RequirePop3();
+        var ct      = TestContext.Current.CancellationToken;
+        var account = _greenMail.CreatePop3Account("pop-empty-trash", leaveOnServer: true);
+        await SeedAsync(account.Username, "Destroy me", "Body.", ct);
+
+        var store = NewStore();
+        using var pop = new Pop3MailService(store);
+        await pop.ConnectAsync(account, "pw", ct);
+        var downloaded = await WaitForDownloadAsync(pop, account.Id, expected: 1, ct);
+        var uidl = downloaded.Single().MessageId;
+
+        await pop.MoveToTrashAsync(account.Id, "Inbox", uidl, ct);
+        Assert.Equal(1, await pop.EmptyTrashAsync(account.Id, ct));
+
+        Assert.Equal(0, await pop.PollAsync(account.Id, "Inbox", ct));
+        Assert.Empty(await store.GetAllMessageIdsAsync(account.Id, "Inbox"));
+        Assert.Empty(await store.GetAllMessageIdsAsync(account.Id, "Trash"));
+
+        // Leave-on-server means QuickMail never touches the server copy, even on Empty Trash —
+        // another client may not have collected it yet. Destroyed here, kept there.
+        Assert.Equal(1, await ServerMessageCountAsync(account, ct));
+    }
+
+    [Fact]
+    public async Task AnArrivalWithAnOldDateHeader_IsStillReturnedAsAnArrival()
+    {
+        // The sweep's window test reads the message's own Date header, and a message arriving today
+        // can carry an old one — delayed delivery, resent mail, spam forging its date. Filtering
+        // the fetch's return by header date alone downloaded and stored such a message while
+        // permanently hiding it from rules, the toast and the open list.
+        _greenMail.RequirePop3();
+        var ct      = TestContext.Current.CancellationToken;
+        var account = _greenMail.CreatePop3Account("pop-old-date", leaveOnServer: true);
+        var window  = DateTime.UtcNow.AddDays(-30);
+
+        var store = NewStore();
+        using var pop = new Pop3MailService(store);
+        await pop.ConnectAsync(account, "pw", ct);
+
+        // First collection: seed and collect one ordinary message so the account leaves the
+        // deliberately-quiet first-collection state.
+        await SeedAsync(account.Username, "Ordinary", "Body.", ct);
+        await WaitForDownloadAsync(pop, account.Id, expected: 1, ct);
+
+        // Steady state: a new arrival dated far outside the sync window.
+        await SeedAsync(account.Username, "Backdated spam", "Body.", ct,
+            date: DateTimeOffset.UtcNow.AddDays(-90));
+
+        List<MailMessageSummary> returned = [];
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < TimeSpan.FromSeconds(20))
+        {
+            returned = await pop.GetMessagesSinceDateAsync(account.Id, "Inbox", window, ct);
+            if (returned.Any(m => m.Subject == "Backdated spam")) break;
+            await Task.Delay(250, ct);
+        }
+
+        // Downloaded, stored — and RETURNED, which is what reaches rules and the live list.
+        Assert.Contains(returned, m => m.Subject == "Backdated spam");
+        Assert.Equal(2, (await store.GetAllMessageIdsAsync(account.Id, "Inbox")).Count);
+    }
+
+    [Fact]
+    public async Task ADeleRolledBackByALostConnection_IsReissuedOnTheNextSync()
+    {
+        // DELEs only commit at QUIT: a connection lost mid-collection rolls them all back
+        // (RFC 1939) while the messages are already committed to the store one by one. Those
+        // UIDLs are in the seen set, so without an explicit re-issue the stale server copies
+        // would survive every later sync, forever, despite delete-on-collect.
+        _greenMail.RequirePop3();
+        var ct      = TestContext.Current.CancellationToken;
+        var account = _greenMail.CreatePop3Account("pop-redele", leaveOnServer: false);
+        await SeedAsync(account.Username, "Stored but not DELEd", "Body.", ct);
+
+        var store = NewStore();
+        using var pop = new Pop3MailService(store);
+        await pop.ConnectAsync(account, "pw", ct);
+
+        // Reproduce the post-rollback state directly: the message is in the store (it was
+        // committed before the drop) but still on the server (the DELE was discarded with the
+        // session). The UIDL comes from the listing, which stamps unseen server ids as arriving.
+        var listing = await WaitForListingAsync(pop, account.Id, ct);
+        var uidl = listing.Single().Id;
+        await store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            MessageId = uidl, AccountId = account.Id, FolderName = "Inbox",
+            From = "Sender <sender@example.test>", To = account.Username,
+            Subject = "Stored but not DELEd", Date = DateTimeOffset.UtcNow,
+        }]);
+
+        // The next sync downloads nothing (already stored) — and clears the stale server copy.
+        Assert.Equal(0, await pop.PollAsync(account.Id, "Inbox", ct));
+        await WaitForServerCountAsync(account, 0, ct);
+    }
+
+    private static async Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> WaitForListingAsync(
+        Pop3MailService pop, Guid accountId, CancellationToken ct)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < TimeSpan.FromSeconds(20))
+        {
+            var listing = await pop.GetFolderMessageIdDatesAsync(accountId, "Inbox", ct);
+            if (listing.Count > 0) return listing;
+            await Task.Delay(250, ct);
+        }
+        throw new TimeoutException("Expected the server to list at least one UIDL.");
+    }
+
+    [Fact]
     public async Task LeaveOnServer_KeepsTheServerCopy()
     {
         _greenMail.RequirePop3();
@@ -374,12 +519,13 @@ public sealed class Pop3ProtocolTests : IDisposable
 
     private static async Task SeedAsync(
         string recipient, string subject, string body, CancellationToken ct,
-        Action<BodyBuilder>? customize = null)
+        Action<BodyBuilder>? customize = null, DateTimeOffset? date = null)
     {
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress("Sender", "sender@example.test"));
         message.To.Add(MailboxAddress.Parse(recipient));
         message.Subject = subject;
+        if (date is not null) message.Date = date.Value;
 
         var builder = new BodyBuilder { TextBody = body };
         customize?.Invoke(builder);

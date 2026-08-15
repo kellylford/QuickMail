@@ -44,7 +44,7 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         if (gate.IsEnabled(FeatureFlag.Pop3Backend))
             backends.Add(new(BackendKind.Pop3Smtp, "POP3/SMTP"));
 
-        AvailableBackends = backends;
+        _allBackends = backends;
         _selectedBackend = backends[0];
 
         // The Google sign-in provider entry only exists for users who opted in. Everyone else is
@@ -85,6 +85,9 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         ChooseBackendForMicrosoftAccount();
         SyncBackendOptionToBackendKind();
         // Declared on this class, so the base class's [NotifyPropertyChangedFor] can't cover it.
+        // AvailableBackends is provider-dependent (Graph is Microsoft-only), so the combo refreshes
+        // with the provider.
+        OnPropertyChanged(nameof(AvailableBackends));
         OnPropertyChanged(nameof(ShowConnectionMethod));
 
         // Deliberately NOT filling in the account name from the provider. Selecting a provider fires
@@ -99,8 +102,19 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
 
     // ── Connection method (Advanced settings) ────────────────────────────────────
 
-    /// <summary>Connection methods offered, derived from the feature gate.</summary>
-    public IReadOnlyList<BackendKindOption> AvailableBackends { get; }
+    private readonly List<BackendKindOption> _allBackends;
+
+    /// <summary>
+    /// Connection methods offered, derived from the feature gate AND the selected provider: Graph
+    /// is the Microsoft 365 API, so it is only offered when the provider is Microsoft. Offering it
+    /// for any provider let a Gmail account be saved bound to Microsoft OAuth with no hosts — a
+    /// dead account nothing later corrects, since <see cref="IsReadyToSave"/> has nothing to check
+    /// for Graph and ChooseBackendForMicrosoftAccount deliberately no-ops for other providers.
+    /// </summary>
+    public IReadOnlyList<BackendKindOption> AvailableBackends =>
+        _allBackends.Where(b => b.Kind != BackendKind.MicrosoftGraph
+                                || SelectedProvider?.Id == ProviderCatalog.MicrosoftId)
+                    .ToList();
 
     /// <summary>
     /// The connection-method choice, shown inside Advanced settings.
