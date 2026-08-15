@@ -20,17 +20,23 @@ public class AccountEditorSignInTests
         public string ReturnUsername = string.Empty;
         public bool ReturnPersonal;
         public CancellationToken LastSignInToken = new(canceled: true); // sentinel: a real call must overwrite it
+        public bool WithContactsPathUsed;   // true when the consent-folding overload was taken
+        public AccountModel? LastSignInAccount;
 
-        private OAuthResult Capture(CancellationToken ct)
+        private OAuthResult Capture(AccountModel account, CancellationToken ct)
         {
             LastSignInToken = ct;
+            LastSignInAccount = account;
             return new OAuthResult("token", ReturnUsername, ReturnPersonal);
         }
 
         public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
-            => Task.FromResult(Capture(ct));
+            => Task.FromResult(Capture(account, ct));
         public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default)
-            => Task.FromResult(Capture(ct));
+        {
+            WithContactsPathUsed = true;
+            return Task.FromResult(Capture(account, ct));
+        }
 
         public Task<string> GetAccessTokenAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult("token");
         public Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default) => Task.FromResult("token");
@@ -126,5 +132,42 @@ public class AccountEditorSignInTests
         await vm.SignInGoogleCommand.ExecuteAsync(null);
 
         Assert.False(oauth.LastSignInToken.CanBeCanceled);
+    }
+
+    // ── Single-consent fold-in: calendar (or contacts) opts the sign-in into the consent-folding path ──
+    // The path itself is what carries the contact/calendar scopes into the one interactive prompt so a
+    // personal account isn't re-prompted per capability. Calendar alone must take it — the old code only
+    // consulted SyncContacts, so a calendar-only account fell through to a plain mail sign-in and then a
+    // separate calendar consent.
+
+    [Fact]
+    public async Task MicrosoftSignIn_CalendarSyncOnly_UsesConsentFoldingPath_AndCarriesTheOptIns()
+    {
+        var (vm, oauth) = NewVm();
+        vm.Username = "user@contoso.com";
+        oauth.ReturnUsername = "user@contoso.com";
+        vm.SyncContacts = false;
+        vm.SyncCalendar = true;
+
+        await vm.SignInMicrosoftCommand.ExecuteAsync(null);
+
+        Assert.True(oauth.WithContactsPathUsed);
+        Assert.NotNull(oauth.LastSignInAccount);
+        Assert.False(oauth.LastSignInAccount!.SyncContacts);
+        Assert.True(oauth.LastSignInAccount!.SyncCalendar);
+    }
+
+    [Fact]
+    public async Task MicrosoftSignIn_NoSyncRequested_UsesPlainSignIn()
+    {
+        var (vm, oauth) = NewVm();
+        vm.Username = "user@contoso.com";
+        oauth.ReturnUsername = "user@contoso.com";
+        vm.SyncContacts = false;
+        vm.SyncCalendar = false;
+
+        await vm.SignInMicrosoftCommand.ExecuteAsync(null);
+
+        Assert.False(oauth.WithContactsPathUsed);
     }
 }

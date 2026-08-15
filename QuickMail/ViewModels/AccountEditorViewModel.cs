@@ -703,8 +703,15 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             // after a few minutes — admin-consent tenants and screen-reader navigation legitimately take
             // longer than the old 3-minute cutoff, which tore the window down mid-sign-in.
             var entered = Username;
-            var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Microsoft, BackendKind = BackendKind };
-            var result = SyncContacts
+            // Carry the two sync opt-ins so the Microsoft sign-in can fold their consent into this one
+            // prompt (WithExtraScopesToConsent) instead of re-prompting after add — the difference between
+            // a personal account seeing one consent screen and seeing three (mail, contacts, calendar).
+            var tempAccount = new AccountModel
+            {
+                Username = Username, AuthType = AuthType.OAuth2Microsoft, BackendKind = BackendKind,
+                SyncContacts = SyncContacts, SyncCalendar = SyncCalendar,
+            };
+            var result = (SyncContacts || SyncCalendar)
                 ? await OAuthService.SignInInteractiveWithContactsAsync(tempAccount, CancellationToken.None)
                 : await OAuthService.SignInInteractiveAsync(tempAccount, CancellationToken.None);
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -304,14 +305,18 @@ public class OAuthService : IOAuthService
     // path still forces consent (#391), while the explicit-scope paths (personal, and work/school since
     // #511) let AAD decide, so an already-consented org isn't re-prompted. See PromptForSignIn.
     public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
-        => SignInInteractiveAsync(account, DefaultScopesFor(account), firstConnect: true, ct);
+        => SignInInteractiveAsync(account, DefaultScopesFor(account), firstConnect: true, extraScopesToConsent: null, ct);
 
     // Re-auth with explicit scopes (GetAccessTokenAsync's UI-required fallback): normal prompt, since
     // the account already consented at add-time.
     public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
-        => SignInInteractiveAsync(account, scopes, firstConnect: false, ct);
+        => SignInInteractiveAsync(account, scopes, firstConnect: false, extraScopesToConsent: null, ct);
 
-    private async Task<OAuthResult> SignInInteractiveAsync(AccountModel account, string[] scopes, bool firstConnect, CancellationToken ct)
+    // extraScopesToConsent: additional Graph scopes to pre-consent in the SAME interactive prompt (MSAL
+    // WithExtraScopesToConsent). The returned token is still mail-scoped; the extra grants just land in
+    // the token cache so a later silent acquisition for them succeeds without a second prompt. Used to
+    // fold contact/calendar consent into the mail sign-in (see SignInInteractiveWithContactsAsync).
+    private async Task<OAuthResult> SignInInteractiveAsync(AccountModel account, string[] scopes, bool firstConnect, string[]? extraScopesToConsent, CancellationToken ct)
     {
         await EnsureTokenCacheAsync();
         LogService.Log($"OAuthService: starting interactive sign-in for {account.Username}");
@@ -324,6 +329,11 @@ public class OAuthService : IOAuthService
             // focus to QuickMail — no system-browser tab and no lingering success page.
             .WithUseEmbeddedWebView(true)
             .WithPrompt(PromptForSignIn(firstConnect, account.Username, usesDefaultScope));
+
+        // Consent to the mail scopes AND any requested contact/calendar scopes in this one prompt, so a
+        // personal account (no admin to pre-approve them) isn't re-prompted per capability.
+        if (extraScopesToConsent is { Length: > 0 })
+            builder = builder.WithExtraScopesToConsent(extraScopesToConsent);
 
         if (!string.IsNullOrEmpty(account.Username))
             builder = builder.WithLoginHint(account.Username);
@@ -342,11 +352,53 @@ public class OAuthService : IOAuthService
     }
 
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default)
-        // Microsoft: sign in for mail only. Contact scopes can't be folded in here because `.default`
-        // (work/school) can't be combined with explicit scopes and personal-vs-work isn't known until
-        // the token comes back. They're granted right after account creation via
-        // RequestContactsConsentAsync — silent when the app registration declares Contacts.Read/People.Read.
-        => SignInInteractiveAsync(account, ct);
+        // Microsoft: sign in for mail AND — for a PERSONAL account only — fold the requested contact/
+        // calendar consent into the same interactive prompt via WithExtraScopesToConsent, so a personal
+        // account (no admin-consent model) is prompted once instead of once per capability. The extra
+        // grants land in the token cache, so the post-add RequestContactsConsentAsync /
+        // RequestCalendarConsentAsync calls then acquire silently.
+        //
+        // We DELIBERATELY do NOT fold for work/school. On a tenant that disables user consent and hasn't
+        // admin-consented contacts/calendar, surfacing those scopes at the mail sign-in would dead-end the
+        // WHOLE interactive acquisition — no token, so the account is never added. The unfolded path
+        // degrades gracefully instead: mail signs in, the account is added, and only the post-add
+        // RequestContactsConsentAsync dead-ends (caught in AccountManagerViewModel, which just disables
+        // contact sync). This is the same admin-consent dead-end hazard the mail scope list avoids for
+        // User.ReadBasic.All. Folding only ever helped personal accounts anyway — work/school usually has
+        // admin pre-consent, so its post-add consent is already silent.
+        //
+        // (Pre-#511 nothing could be folded because work/school signed in with `.default`, which can't be
+        // combined with explicit scopes; both paths use explicit Graph scopes now, so personal folds
+        // cleanly. The account carries the two opt-in bits from the editor VM.)
+        => SignInInteractiveAsync(account, DefaultScopesFor(account), firstConnect: true,
+            ExtraConsentScopesForMicrosoftSignIn(account), ct);
+
+    // The extra Graph scopes to fold into THIS account's mail sign-in consent, or empty when none should
+    // be folded. Folds only for a personal account (resolved from the persisted tenant flag, else the
+    // email-domain guess — the token that would set the flag doesn't exist yet at first sign-in, the same
+    // resolution DefaultScopesFor uses); a work/school account returns empty so its opted-in contact/
+    // calendar consent stays on the graceful post-add path and never dead-ends a consent-restricted
+    // tenant's sign-in. A misclassified vanity-domain personal account simply falls back to today's
+    // separate-prompt behavior — no worse than now.
+    internal static string[] ExtraConsentScopesForMicrosoftSignIn(AccountModel account)
+    {
+        var isPersonal = account.IsPersonalMicrosoftAccount ?? IsPersonalMicrosoftDomain(account.Username);
+        return isPersonal
+            ? MicrosoftExtraConsentScopes(account.SyncContacts, account.SyncCalendar)
+            : Array.Empty<string>();
+    }
+
+    // The extra Graph scopes to pre-consent alongside the mail sign-in for the two opt-in bits. Empty
+    // when neither is requested (the caller then attaches no WithExtraScopesToConsent). Pure and
+    // deterministic so the fold-in policy is unit-tested without standing up MSAL.
+    internal static string[] MicrosoftExtraConsentScopes(bool syncContacts, bool syncCalendar)
+    {
+        if (!syncContacts && !syncCalendar) return Array.Empty<string>();
+        var scopes = new List<string>();
+        if (syncContacts) scopes.AddRange(GraphContactScopes);
+        if (syncCalendar) scopes.AddRange(GraphCalendarScopes);
+        return scopes.ToArray();
+    }
 
     public async Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default)
     {
