@@ -229,6 +229,23 @@ public class RowFieldsViewModelTests
     }
 
     [Fact]
+    public void TwoFieldsSharingTheSameNote_BothAnnounceIt()
+    {
+        // "Turn this field on…" is the same sentence for every off state field, so announcing only
+        // on a change of text left the second of two such fields silent — arrowing from Mailing
+        // list to Watched explained the first and made the second look like it behaved differently.
+        var (vm, _, _) = Make();
+        vm.SelectedField = Field(vm, "mailinglist");
+
+        var heard = new List<string>();
+        vm.AnnouncementRequested += (text, _) => heard.Add(text);
+
+        vm.SelectedField = Field(vm, "watched");
+
+        Assert.Equal(vm.SelectedFieldNote, Assert.Single(heard));
+    }
+
+    [Fact]
     public void AFieldWithNoNoteAnnouncesNothingAtAll()
     {
         // An empty note must not be spoken as an empty utterance on every arrow key.

@@ -141,7 +141,16 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
     private RowFieldRow? _selectedField;
 
-    partial void OnSelectedFieldChanged(RowFieldRow? value) => UpdateSelectedFieldNote();
+    partial void OnSelectedFieldChanged(RowFieldRow? value)
+    {
+        // Recompute under the flag so the note's own change handler stays quiet, then announce
+        // once here — whether or not the text differs from the field the user just left.
+        _selectionChanging = true;
+        try { UpdateSelectedFieldNote(); }
+        finally { _selectionChanging = false; }
+
+        AnnounceSelectedFieldNote();
+    }
 
     public bool HasSelection    => SelectedField is not null;
     public bool SelectedIsState => SelectedField?.IsState == true;
@@ -215,15 +224,34 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     [ObservableProperty]
     private string _selectedFieldNote = string.Empty;
 
+    /// <summary>True while a selection change is recomputing the note, so it announces once.</summary>
+    private bool _selectionChanging;
+
     /// <summary>
-    /// Speaks the note when the selection lands on a field that has one. It is a
-    /// <see cref="AnnouncementCategory.Hint"/>, and the View does not interrupt hints, so it
-    /// follows the field name rather than talking over it. Silence is never announced — a field
-    /// with no note must not produce "" as an utterance.
+    /// Speaks the note when the user toggles the selected field and that changes what the note
+    /// says. The selection path announces separately, in <see cref="OnSelectedFieldChanged"/>.
     /// </summary>
     partial void OnSelectedFieldNoteChanged(string value)
     {
-        if (!string.IsNullOrEmpty(value)) Announce(value, AnnouncementCategory.Hint);
+        if (!_selectionChanging) AnnounceSelectedFieldNote();
+    }
+
+    /// <summary>
+    /// Speaks the selected field's note, if it has one. A
+    /// <see cref="AnnouncementCategory.Hint"/>, which the View does not interrupt, so it follows
+    /// the field name rather than talking over it. Silence is never announced — a field with no
+    /// note must not produce "" as an utterance.
+    ///
+    /// <para>Landing on a field announces unconditionally rather than only when the text changed:
+    /// two fields can carry the <em>same</em> note, since "Turn this field on…" applies to every
+    /// state field that is off. Keying the announcement off value inequality meant the second of
+    /// two such fields said nothing at all — arrowing from Mailing list to Watched explained the
+    /// first and left the second looking like it behaved differently.</para>
+    /// </summary>
+    private void AnnounceSelectedFieldNote()
+    {
+        if (!string.IsNullOrEmpty(SelectedFieldNote))
+            Announce(SelectedFieldNote, AnnouncementCategory.Hint);
     }
 
     // Fields that say the same thing as "status", and therefore double up with it.
