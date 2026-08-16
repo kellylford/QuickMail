@@ -18,9 +18,21 @@ InstallerSwitches:
 UpgradeBehavior: install
 ReleaseDate: <RELEASE-DATE>
 # Velopack's own Add/Remove Programs entry (HKCU\...\Uninstall\QuickMail).
+#
+# ProductCode is load-bearing, not belt-and-braces. On a machine upgraded from an MSI
+# install -- which is every existing user -- there are TWO Add/Remove Programs rows both
+# named QuickMail: Velopack's `QuickMail` and the MSI's leftover `MSI:QuickMail`, which
+# Setup.exe does not remove. Measured on both architectures, see the Phase 1b table in
+# docs/planning/winget-distribution-plan.md; `winget list` shows the app twice there.
+# For a non-MSI entry winget's ProductCode IS the Add/Remove Programs key name (its
+# identifier reads `ARP\User\X64\QuickMail`), so naming it here selects Velopack's row and
+# excludes the MSI one. Without it this manifest matches both, and `winget upgrade` may act
+# on the stale row -- whose uninstall string is `msiexec /x` against the directory the
+# Velopack install now owns.
 AppsAndFeaturesEntries:
 - DisplayName: QuickMail
   Publisher: Kelly Ford
+  ProductCode: QuickMail
 Installers:
 - Architecture: x64
   InstallerUrl: https://github.com/kellylford/QuickMail/releases/download/v<VERSION>/QuickMail-<VERSION>-win-Setup.exe

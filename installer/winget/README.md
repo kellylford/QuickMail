@@ -27,7 +27,12 @@ each promoted release automatically and these files are reference only.
   winget section rather than being discovered.
 - **`AppsAndFeaturesEntries`** — Velopack writes `HKCU\…\Uninstall\QuickMail` with
   `DisplayName: QuickMail`, `Publisher: Kelly Ford` and a 3-part `DisplayVersion`; this is
-  how `winget list`/`upgrade` correlate an installed copy to the package.
+  how `winget list`/`upgrade` correlate an installed copy to the package. The
+  `ProductCode: QuickMail` line matters on any machine that came from the MSI: Setup.exe
+  does not remove the MSI's `MSI:QuickMail` row, so two rows named QuickMail coexist and
+  `winget list` shows the app twice (measured on both architectures — Phase 1b in
+  `docs/planning/winget-distribution-plan.md`). winget's ProductCode for a non-MSI entry is
+  the registry key name, so naming it picks Velopack's row and leaves the stale one alone.
 - **`Moniker: quickmail`** — makes `winget install quickmail` resolve without the full id.
 - **Two `Installers` entries** — x64 and arm64. Winget picks the native one.
 
@@ -48,10 +53,18 @@ predates PR #555).
    an existing install in place, so testing it against the copy you use replaces that copy.
    Inside the Sandbox: `winget settings --enable LocalManifestFiles` (elevated, once),
    `winget install --manifest <folder>`, launch, then `winget uninstall quickmail`.
-4. Fork microsoft/winget-pkgs, add the folder as
+4. Test the **upgrade-from-MSI** path too, in a second Sandbox: install the release's MSI
+   first (`msiexec /i <msi> /qn VELOPACK_INSTALLDIR="%LocalAppData%\QuickMail"` — the
+   property must be on the command line, an environment variable does not reach the Windows
+   Installer service), then `winget install --manifest <folder>` over it. Expect two rows in
+   Settings → Apps and two `winget list` rows; confirm `winget upgrade` and
+   `winget uninstall` act on the `ARP\...\QuickMail` row and not `ARP\...\MSI:QuickMail`.
+   This is the state every existing user will be in, and it is the one thing the manifest's
+   `ProductCode` exists to handle.
+5. Fork microsoft/winget-pkgs, add the folder as
    `manifests/k/KellyLford/QuickMail/<version>/`, open the PR. Or from the folder:
    `wingetcreate submit --token <classic PAT with public_repo> <folder>`.
-5. Expect the automated validation to run and a moderator to look at a first-time package;
+6. Expect the automated validation to run and a moderator to look at a first-time package;
    days, not hours.
 
 ## Every later release
