@@ -368,6 +368,45 @@ function Invoke-Installer {
     return [pscustomobject]@{ ExitCode = $p.ExitCode; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1) }
 }
 
+function Invoke-UninstallString {
+    <#  Run an Add/Remove Programs uninstall string the way Settings > Apps and winget do.
+        Two forms occur in practice and both must work: Velopack writes a quoted path plus
+        switches (`"...\Update.exe" --uninstall --silent`), the MSI row writes a bare command
+        (`msiexec.exe /x {GUID} /qn`). Returns $null if the string parses as neither, so the
+        caller can report that rather than silently skipping the uninstall. #>
+    param([string]$Command)
+    if ($Command -match '^"([^"]+)"\s*(.*)$') {
+        $exe = $Matches[1]; $rest = $Matches[2]
+    } elseif ($Command -match '^(\S+)\s*(.*)$') {
+        $exe = $Matches[1]; $rest = $Matches[2]
+    } else {
+        return $null
+    }
+    # Where-Object drops the empty element -split yields for an argument-less string.
+    return Invoke-Installer $exe @($rest -split '\s+' | Where-Object { $_ })
+}
+
+function Get-LiveInstallState {
+    <#  Whether the Velopack install under %LocalAppData% is still intact, file by file.
+        Add/Remove Programs rows say what Windows believes; these say whether the app is
+        actually still there. The difference is the whole question in scenarios 6 and 7. #>
+    $root = Join-Path $env:LOCALAPPDATA 'QuickMail'
+    $current = Join-Path $root 'current'
+    return [pscustomobject]@{
+        Root         = Test-Path $root
+        UpdateExe    = Test-Path (Join-Path $root 'Update.exe')
+        StubExe      = Test-Path (Join-Path $root 'QuickMail.exe')
+        CurrentExe   = Test-Path (Join-Path $current 'QuickMail.exe')
+        CurrentFiles = @(Get-ChildItem $current -File -Recurse -ErrorAction SilentlyContinue).Count
+    }
+}
+
+function Format-LiveInstallState {
+    param([string]$Label, [pscustomobject]$State)
+    $tick = { param($b) if ($b) { 'present' } else { '**gone**' } }
+    return "| $Label | $(& $tick $State.Root) | $(& $tick $State.UpdateExe) | $(& $tick $State.StubExe) | $(& $tick $State.CurrentExe) | $($State.CurrentFiles) |"
+}
+
 function Get-PackedFile {
     param([string]$Dir, [string]$Pattern)
     $f = @(Get-ChildItem $Dir -Filter $Pattern -ErrorAction SilentlyContinue)
@@ -626,20 +665,15 @@ Invoke-Scenario 'Scenario 4 -- uninstall through the quiet string winget uses' `
     Write-Section "QuietUninstallString: ``$($row[0].QuietUninstallString)``"
     Write-Section ''
 
-    $ran = $false
-    if ($row[0].QuietUninstallString -match '^"([^"]+)"\s*(.*)$') {
-        # Copy out of $Matches at once: any later -match in this scope replaces it. The
-        # Where-Object drops the empty element -split yields for an argument-less string.
-        $exe  = $Matches[1]
-        $argv = @($Matches[2] -split '\s+' | Where-Object { $_ })
-        $r2 = Invoke-Installer $exe $argv
-        $ran = $true
+    $r2 = Invoke-UninstallString $row[0].QuietUninstallString
+    $ran = $null -ne $r2
+    if ($ran) {
         Write-Section "Step 2 -- running it: exit $($r2.ExitCode) in $($r2.Seconds)s"
         if ($r2.ExitCode -ne 0) {
             Add-Finding "The quiet uninstall string exited $($r2.ExitCode). ``winget uninstall`` runs exactly this and would report a failure."
         }
     } else {
-        Add-Finding "QuietUninstallString did not parse as a quoted path plus arguments: $($row[0].QuietUninstallString)"
+        Add-Finding "QuietUninstallString did not parse as a command: $($row[0].QuietUninstallString)"
     }
     Write-Section ''
     $after = Get-Snapshot 'after quiet uninstall'
@@ -696,6 +730,97 @@ Invoke-Scenario 'Scenario 5 -- MSI over a Setup.exe install (the reverse migrati
     $visible = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
     if ($visible.Count -gt 1 -and $onTop) {
         Add-Finding "MSI over a Setup.exe install leaves $($visible.Count) visible ARP rows ($(($visible | ForEach-Object { $_.KeyName }) -join ', ')) over a single install directory -- the reverse migration is as messy as the forward one."
+    }
+}
+
+# --- scenarios 6 and 7: which of the two rows is safe to uninstall? -------------------
+
+function New-TwoEntryState {
+    <#  Reproduce the state scenario 2 measured: an MSI install at %LocalAppData% that has
+        since been overwritten by Setup.exe, leaving two visible Add/Remove Programs rows.
+        Returns the snapshot. Throws unless the state really has two rows -- these scenarios
+        are meaningless otherwise, and a silently-one-row start would make "uninstalling it
+        did no harm" look like a reassuring result. #>
+    $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
+    $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldMsi`"", '/qn', "VELOPACK_INSTALLDIR=`"$target`"")
+    Write-Section "Step 1 -- MSI $OldVersion into ``%LocalAppData%\QuickMail`` (wizard-equivalent): exit $($r1.ExitCode) in $($r1.Seconds)s"
+    $r2 = Invoke-Installer $newSetup @('--silent')
+    Write-Section ''
+    Write-Section "Step 2 -- ``Setup.exe --silent`` $NewVersion over it (the winget install/upgrade): exit $($r2.ExitCode) in $($r2.Seconds)s"
+    Write-Section ''
+    $snap = Get-Snapshot 'the two-entry state'
+    Write-Section (Format-Snapshot $snap)
+    $visible = @($snap.Arp | Where-Object { $_.SystemComponent -ne 1 })
+    if ($visible.Count -ne 2) {
+        throw "Premise failed: expected the two-entry state, got $($visible.Count) visible ARP row(s) ($(($visible | ForEach-Object { $_.KeyName }) -join ', ')). Nothing below measures what it claims to."
+    }
+    return $snap
+}
+
+Invoke-Scenario 'Scenario 6 -- uninstalling the STALE MSI row from the two-entry state' `
+    'After a winget install over an MSI install, Settings > Apps shows two QuickMail entries. If the user removes the old-looking one, is that cosmetic housekeeping or does it destroy the install they are still using?' {
+    $snap = New-TwoEntryState
+    $stale = @($snap.Arp | Where-Object { $_.KeyName -eq 'MSI:QuickMail' })
+    if (-not $stale.Count) { throw "No MSI:QuickMail row in the two-entry state; rows are $(($snap.Arp | ForEach-Object { $_.KeyName }) -join ', ')." }
+
+    $before = Get-LiveInstallState
+    Write-Section "Removing the stale row: ``$($stale[0].QuietUninstallString)`` -- exactly what Settings > Apps runs for that entry."
+    Write-Section ''
+    $r = Invoke-UninstallString $stale[0].QuietUninstallString
+    if ($null -eq $r) { throw "The stale row's uninstall string did not parse: $($stale[0].QuietUninstallString)" }
+    Write-Section "Exit $($r.ExitCode) in $($r.Seconds)s"
+    Write-Section ''
+    $after = Get-LiveInstallState
+
+    Write-Section 'What happened to the install the user is still running:'
+    Write-Section ''
+    Write-Section '| | install root | Update.exe | QuickMail.exe (stub) | current\QuickMail.exe | files under current\ |'
+    Write-Section '| --- | --- | --- | --- | --- | --- |'
+    Write-Section (Format-LiveInstallState 'before' $before)
+    Write-Section (Format-LiveInstallState 'after' $after)
+    Write-Section ''
+    Write-Section (Format-Snapshot (Get-Snapshot 'after removing the stale MSI row'))
+
+    if (-not $after.CurrentExe -and $before.CurrentExe) {
+        Add-Finding "Removing the stale MSI row DESTROYS the live install: current\QuickMail.exe is gone afterwards. The entry a user is most likely to delete -- it shows the older version -- takes the working app with it."
+    } elseif ($after.CurrentFiles -lt $before.CurrentFiles) {
+        Add-Finding "Removing the stale MSI row damages the live install: files under current\ dropped from $($before.CurrentFiles) to $($after.CurrentFiles), though QuickMail.exe survived."
+    } elseif (-not $after.UpdateExe -and $before.UpdateExe) {
+        Add-Finding "Removing the stale MSI row deleted Update.exe. The app remains but can no longer self-update or uninstall itself."
+    }
+    $left = @(Get-ArpRows | Where-Object { $_.SystemComponent -ne 1 })
+    if (@($left | Where-Object { $_.KeyName -eq 'MSI:QuickMail' }).Count) {
+        Add-Finding "Removing the stale MSI row did not remove it: MSI:QuickMail is still in Add/Remove Programs afterwards."
+    }
+    if (-not @($left | Where-Object { $_.KeyName -eq 'QuickMail' }).Count) {
+        Add-Finding "Removing the stale MSI row also removed Velopack's own QuickMail row, so the surviving install is no longer listed in Add/Remove Programs at all."
+    }
+}
+
+Invoke-Scenario 'Scenario 7 -- uninstalling the LIVE Velopack row from the two-entry state' `
+    'The other half of the same question: if the user removes the current-looking entry instead -- which is also what `winget uninstall` does -- are they left with a phantom?' {
+    $snap = New-TwoEntryState
+    $live = @($snap.Arp | Where-Object { $_.KeyName -eq 'QuickMail' -and $_.QuietUninstallString })
+    if (-not $live.Count) { throw "No Velopack QuickMail row with a quiet uninstall string; rows are $(($snap.Arp | ForEach-Object { $_.KeyName }) -join ', ')." }
+
+    Write-Section "Removing the live row: ``$($live[0].QuietUninstallString)`` -- what ``winget uninstall`` runs."
+    Write-Section ''
+    $r = Invoke-UninstallString $live[0].QuietUninstallString
+    if ($null -eq $r) { throw "The live row's uninstall string did not parse: $($live[0].QuietUninstallString)" }
+    Write-Section "Exit $($r.ExitCode) in $($r.Seconds)s"
+    Write-Section ''
+    $after = Get-Snapshot 'after removing the live Velopack row'
+    Write-Section (Format-Snapshot $after)
+
+    $left = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
+    if (@($left | Where-Object { $_.KeyName -eq 'MSI:QuickMail' }).Count) {
+        Add-Finding "After uninstalling through the row winget uses, the stale MSI:QuickMail row survives: the user has removed QuickMail and still sees it listed in Settings > Apps, pointing at $(@($left | Where-Object { $_.KeyName -eq 'MSI:QuickMail' })[0].InstallLocation)."
+    }
+    if ($after.MsiProducts.Count -gt 0) {
+        Add-Finding "After uninstalling through the row winget uses, $($after.MsiProducts.Count) Windows Installer product registration(s) survive, so Windows still believes an MSI product is installed."
+    }
+    if ($after.Shortcuts.Count -gt 0) {
+        Add-Finding "After uninstalling through the row winget uses, Start Menu shortcuts survive: $(($after.Shortcuts) -join ', ')."
     }
 }
 
