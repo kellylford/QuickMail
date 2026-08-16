@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using QuickMail.Helpers;
 using QuickMail.Models;
@@ -61,6 +62,20 @@ public class RowFieldsViewModelTests
         Assert.Contains("Chris Lee", vm.Preview, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SampleValuesSupplyOneEntryPerCatalogField()
+    {
+        // RowSpeechBuilder tolerates a short array by treating the tail as absent, so a sample
+        // that falls behind the catalog is silent rather than loud: "watched" was appended to the
+        // catalog without a sample entry and simply never previewed.
+        foreach (var kind in new[] { RowKind.Message, RowKind.Conversation, RowKind.SenderGroup })
+        {
+            Assert.Equal(
+                RowFieldCatalog.For(kind).Count,
+                RowFieldsViewModel.SampleValues(kind).Length);
+        }
+    }
+
     // ── moving ────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -105,10 +120,10 @@ public class RowFieldsViewModelTests
     {
         var (vm, _, _) = Make();
 
-        // "from" ahead of the status token.
+        // "from" ahead of the unread token. Default order is flag, unread, replied, forwarded,
+        // attachments, from — so four moves put it directly behind flag and ahead of unread.
         vm.SelectedField = Field(vm, "from");
-        vm.MoveUpCommand.Execute(null);
-        vm.MoveUpCommand.Execute(null);
+        for (int i = 0; i < 4; i++) vm.MoveUpCommand.Execute(null);
 
         Assert.Contains("Chris Lee. unread", vm.Preview, StringComparison.Ordinal);
     }
@@ -127,23 +142,29 @@ public class RowFieldsViewModelTests
     }
 
     [Fact]
-    public void UnreadOnlyWhenTrue_IsTheSupplementRequestEndToEnd()
+    public void UnreadOnlyWhenTrue_IsTheShippedDefault()
     {
-        // "I want to know about unread but not read."
-        var (vm, layouts, _) = Make();
+        // "I want to know about unread but not read" — #558. It needed no configuration at all
+        // once the combined status field stopped owning the wording.
+        var (vm, _, _) = Make();
 
-        Field(vm, "status").Enabled = false;
-        var unread = Field(vm, "unread");
-        unread.Enabled   = true;
-        unread.SpeakMode = SpeakMode.WhenTrue;
-
-        var saved = layouts.Load().Message;
-        Assert.False(saved.First(f => f.Id == "status").Enabled);
-        Assert.True(saved.First(f => f.Id == "unread").Enabled);
-        Assert.Equal(SpeakMode.WhenTrue, saved.First(f => f.Id == "unread").SpeakMode);
+        Assert.False(Field(vm, "status").Enabled);
+        Assert.True(Field(vm, "unread").Enabled);
+        Assert.Equal(SpeakMode.WhenTrue, Field(vm, "unread").SpeakMode);
 
         // The sample row is unread, so the preview says so — and never says "read".
         Assert.Contains("unread", vm.Preview, StringComparison.Ordinal);
+        Assert.DoesNotContain(". read", vm.Preview, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ChangingASpeakModePersists()
+    {
+        var (vm, layouts, _) = Make();
+
+        Field(vm, "unread").SpeakMode = SpeakMode.Always;
+
+        Assert.Equal(SpeakMode.Always, layouts.Load().Message.First(f => f.Id == "unread").SpeakMode);
     }
 
     [Fact]
@@ -160,6 +181,83 @@ public class RowFieldsViewModelTests
         Assert.True(vm.SpeakAlways);
         Assert.False(vm.SpeakWhenTrue);
         Assert.Equal(SpeakMode.Always, Field(vm, "attachments").SpeakMode);
+    }
+
+    [Fact]
+    public void SpeakModeIsUnavailableWhileTheFieldIsOff_AndComesBackWhenItIsTurnedOn()
+    {
+        // #558: "uncheck the field, then set speak only when true" was a sequence the window
+        // accepted and the builder ignored — it skips disabled fields before reading SpeakMode.
+        var (vm, _, _) = Make();
+
+        vm.SelectedField = Field(vm, "watched");     // a state field that ships off
+        Assert.True(vm.SelectedIsState);
+        Assert.False(vm.SelectedIsOn);
+
+        Field(vm, "watched").Enabled = true;
+        Assert.True(vm.SelectedIsOn);
+
+        Field(vm, "watched").Enabled = false;
+        Assert.False(vm.SelectedIsOn);
+    }
+
+    [Fact]
+    public void TurningTheSelectedFieldOff_ExplainsWhyTheSpeakModeChoiceWent()
+    {
+        var (vm, _, _) = Make();
+
+        vm.SelectedField = Field(vm, "attachments");
+        Assert.Equal(string.Empty, vm.SelectedFieldNote);
+
+        Field(vm, "attachments").Enabled = false;
+
+        Assert.Contains("Turn this field on", vm.SelectedFieldNote, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FieldNotesAreSpokenAsHintsSoTheyDoNotOverrideTheFieldName()
+    {
+        var (vm, _, _) = Make();
+        var heard = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (text, cat) => heard.Add((text, cat));
+
+        vm.SelectedField = Field(vm, "status");
+
+        var note = Assert.Single(heard);
+        Assert.Equal(AnnouncementCategory.Hint, note.Category);
+        Assert.Equal(vm.SelectedFieldNote, note.Text);
+    }
+
+    [Fact]
+    public void TwoFieldsSharingTheSameNote_BothAnnounceIt()
+    {
+        // "Turn this field on…" is the same sentence for every off state field, so announcing only
+        // on a change of text left the second of two such fields silent — arrowing from Mailing
+        // list to Watched explained the first and made the second look like it behaved differently.
+        var (vm, _, _) = Make();
+        vm.SelectedField = Field(vm, "mailinglist");
+
+        var heard = new List<string>();
+        vm.AnnouncementRequested += (text, _) => heard.Add(text);
+
+        vm.SelectedField = Field(vm, "watched");
+
+        Assert.Equal(vm.SelectedFieldNote, Assert.Single(heard));
+    }
+
+    [Fact]
+    public void AFieldWithNoNoteAnnouncesNothingAtAll()
+    {
+        // An empty note must not be spoken as an empty utterance on every arrow key.
+        var (vm, _, _) = Make();
+        vm.SelectedField = Field(vm, "status");        // has a note
+
+        var heard = new List<string>();
+        vm.AnnouncementRequested += (text, _) => heard.Add(text);
+
+        vm.SelectedField = Field(vm, "subject");       // has none
+
+        Assert.Empty(heard);
     }
 
     [Fact]

@@ -36,6 +36,7 @@ public class RowSpeechConverterTests
                 "",                    // to
                 folder,                // folder (#423)
                 false,                 // mailingList
+                false,                 // watched
                 settings ?? RowSpeechSettings.Default,
             ],
             typeof(string), parameter: null!, CultureInfo.InvariantCulture);

@@ -139,6 +139,7 @@
                     <TextBox x:Name="SharedSummaryText"
                              Text="{Binding SharedParentName, Mode=OneWay, StringFormat=Reads through {0}. Mail only — no separate sign-in.}"
                              IsReadOnly="True"
+                             IsReadOnlyCaretVisible="True"
                              TextWrapping="Wrap"
                              AutomationProperties.LabeledBy="{Binding ElementName=LblSharedParent}"/>
                 </StackPanel>

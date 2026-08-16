@@ -89,7 +89,11 @@ public static class RowFieldCatalog
     private static readonly RowFieldDef[] MessageFields =
     [
         new("flag",        "Flag",            "Flag",        "FlagLabel",       RowFieldFormat.Text),
-        new("status",      "Status (combined)", "Status",    "ReadStatusLabel", RowFieldFormat.Text),
+        // One word for four states, by priority: replied > forwarded > unread > read. Off by
+        // default since #558 — it cannot say "unread but not read" (it is Text, so it has no
+        // SpeakMode), and its priority chain hides unread on a replied or forwarded message.
+        // The three fields below say the same things separately and each carry a SpeakMode.
+        new("status",      "Read status (combined)", "Status", "ReadStatusLabel", RowFieldFormat.Text),
         new("attachments", "Attachments",     "Attachments", "HasAttachments",  RowFieldFormat.State, "attachments"),
         new("from",        "From",            "From",        "From",            RowFieldFormat.Text),
         new("subject",     "Subject",         "Subject",     "Subject",         RowFieldFormat.Text),
@@ -136,12 +140,22 @@ public static class RowFieldCatalog
 
     // ── Default spoken order, by id ──────────────────────────────────────────
     //
-    // These reproduce the strings the app has always spoken, so an existing user who never
-    // opens the chooser hears exactly what they heard before. The one intentional difference
-    // is that empty fields are now skipped instead of emitting a bare ". ".
+    // The group orders reproduce the strings the app has always spoken. The message order does
+    // too for an unread message, but deliberately no longer does for a read one: #558 reported
+    // that the app said "read" on every read row with no way to switch that off, because the
+    // combined "status" field owned the wording and, being a Text field, has no SpeakMode.
+    //
+    // Decomposing it into unread/replied/forwarded — each a State field, each defaulting to
+    // "speak only when true" — means an unread row still says "unread" in the same position, a
+    // read row says nothing about read state, and a replied-but-unread row says both instead of
+    // only "replied". Anyone who wants the old single word turns "status" back on and these off.
+    //
+    // Only users with no rowlayout.json see this change; Reconcile never re-enables a field a
+    // saved layout already covers.
 
     private static readonly string[] MessageDefaultOrder =
-        ["flag", "status", "attachments", "from", "subject", "preview", "date", "folder"];
+        ["flag", "unread", "replied", "forwarded", "attachments",
+         "from", "subject", "preview", "date", "folder"];
 
     private static readonly string[] ConversationDefaultOrder =
         ["subject", "count", "sender", "flag", "hasunread", "preview", "date"];
