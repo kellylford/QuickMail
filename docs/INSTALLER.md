@@ -153,8 +153,12 @@ On a `v*` tag, `.github/workflows/quickmail.yml`:
 2. `dotnet publish` (unchanged single-file self-contained build).
 3. `vpk download github` — fetches the previous release's packages so a delta can be built.
    Allowed to fail (the first Velopack release has no prior packages).
-4. `vpk pack` — builds setup exe, full/delta packages, and feed metadata; then deletes the
-   downloaded previous-version `.nupkg` so only current-version assets upload.
+4. `vpk pack` — builds setup exe, MSI, full/delta packages, and feed metadata. The
+   previous version's full `.nupkg` fetched in step 3 stays in the folder and uploads with
+   the rest: `vpk pack` writes an entry for every package it saw into
+   `RELEASES`/`releases.win.json`, so deleting it would publish feed metadata pointing at
+   an asset the release does not carry. An old-version `.nupkg` on a release page is
+   expected, not a mistake.
 5. `softprops/action-gh-release` uploads the portable `QuickMail.exe`, the MSI installer,
    the `.nupkg` packages, and the feed metadata files — for both architectures. The in-app
    updater reads these from the latest GitHub release. `Setup.exe` and `Portable.zip` are
