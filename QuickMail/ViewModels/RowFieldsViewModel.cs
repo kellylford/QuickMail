@@ -132,6 +132,7 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelection))]
     [NotifyPropertyChangedFor(nameof(SelectedIsState))]
+    [NotifyPropertyChangedFor(nameof(SelectedIsOn))]
     [NotifyPropertyChangedFor(nameof(SpeakWhenTrue))]
     [NotifyPropertyChangedFor(nameof(SpeakAlways))]
     [NotifyPropertyChangedFor(nameof(CanMoveUp))]
@@ -144,6 +145,15 @@ public sealed partial class RowFieldsViewModel : ObservableObject
 
     public bool HasSelection    => SelectedField is not null;
     public bool SelectedIsState => SelectedField?.IsState == true;
+
+    /// <summary>
+    /// Whether the selected field is turned on. Gates the speak-mode radios: <c>RowSpeechBuilder</c>
+    /// skips a disabled field before it ever looks at <see cref="SpeakMode"/>, so offering the
+    /// choice for a field that is off offers a setting that cannot do anything — which is half of
+    /// what #558 reported ("uncheck the field, then set speak only when true", and nothing happens).
+    /// Move Up/Down already say "Not spoken" for the same reason.
+    /// </summary>
+    public bool SelectedIsOn => SelectedField?.Enabled == true;
 
     public bool CanMoveUp   => SelectedField is not null && Fields.IndexOf(SelectedField) > 0;
     public bool CanMoveDown => SelectedField is not null && Fields.IndexOf(SelectedField) < Fields.Count - 1;
@@ -196,37 +206,59 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     private string _preview = string.Empty;
 
     /// <summary>
-    /// Guidance about the selected field, shown in the options pane. Its main job is the overlap
-    /// between "Status (combined)" and the separate Unread/Replied/Forwarded fields: both produce
-    /// the word "unread", so turning one on while the other is already on says it twice, and
-    /// turning one on without turning the other off looks like the setting did nothing.
+    /// Guidance about the selected field, shown in the options pane and spoken as a hint when the
+    /// selection lands on a field that has one. Two jobs: the overlap between "Read status
+    /// (combined)" and the separate Unread/Replied/Forwarded fields, which all produce the word
+    /// "unread" and so say it twice when both halves are on; and telling the user why the
+    /// speak-mode radios are unavailable on a field that is turned off (#558).
     /// </summary>
     [ObservableProperty]
     private string _selectedFieldNote = string.Empty;
 
+    /// <summary>
+    /// Speaks the note when the selection lands on a field that has one. It is a
+    /// <see cref="AnnouncementCategory.Hint"/>, and the View does not interrupt hints, so it
+    /// follows the field name rather than talking over it. Silence is never announced — a field
+    /// with no note must not produce "" as an utterance.
+    /// </summary>
+    partial void OnSelectedFieldNoteChanged(string value)
+    {
+        if (!string.IsNullOrEmpty(value)) Announce(value, AnnouncementCategory.Hint);
+    }
+
     // Fields that say the same thing as "status", and therefore double up with it.
     private static readonly string[] StatusParts = ["unread", "replied", "forwarded"];
+
+    private const string StatusName = "Read status (combined)";
 
     private void UpdateSelectedFieldNote()
     {
         if (SelectedField is not { } field) { SelectedFieldNote = string.Empty; return; }
 
-        bool StatusOn() => Fields.Any(f => f.Id == "status" && f.Enabled);
+        bool StatusOn()  => Fields.Any(f => f.Id == "status" && f.Enabled);
         bool AnyPartOn() => Fields.Any(f => StatusParts.Contains(f.Id) && f.Enabled);
 
         SelectedFieldNote = field.Id switch
         {
-            "status" when AnyPartOn() =>
+            // Both halves on. Only worth saying when this field is itself spoken — an off field
+            // cannot double anything, and its own note (below) is the more useful one.
+            "status" when field.Enabled && AnyPartOn() =>
                 "Says one word: replied, forwarded, unread, or read. Unread, Replied or Forwarded "
                 + "is also on, so that word is said twice — turn this off to use those instead.",
 
-            "status" =>
-                "Says one word: replied, forwarded, unread, or read. Turn it off if you would "
-                + "rather place Unread, Replied and Forwarded separately.",
+            _ when StatusParts.Contains(field.Id) && field.Enabled && StatusOn() =>
+                $"{StatusName} is also on and already says this, so it is said twice. "
+                + $"Turn {StatusName} off to use this field on its own.",
 
-            _ when StatusParts.Contains(field.Id) && StatusOn() =>
-                "Status (combined) is also on and already says this, so it is said twice. "
-                + "Turn Status (combined) off to use this field on its own.",
+            // Why the speak-mode radios are greyed out.
+            _ when field.IsState && !field.Enabled =>
+                "Turn this field on to choose when it is spoken.",
+
+            "status" =>
+                "Says one word: replied, forwarded, unread, or read — whichever applies first, so "
+                + "a replied message never says unread. Off by default: Unread, Replied and "
+                + "Forwarded say the same things separately and can each be set to speak only "
+                + "when true.",
 
             _ => string.Empty,
         };
@@ -299,6 +331,9 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     {
         if (_suppressSave) return;
         RefreshSpeakMode();
+        // Ticking the selected field's check box is what makes the speak-mode radios available,
+        // so the gate has to re-evaluate here and not only when the selection moves.
+        OnPropertyChanged(nameof(SelectedIsOn));
         SaveLayouts();
         UpdatePreview();
     }
@@ -352,8 +387,11 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     };
 
     /// <summary>
-    /// A synthetic row that exercises every field, so turning any of them on shows something.
-    /// Positional, in <see cref="RowFieldCatalog.For"/> order.
+    /// A synthetic row for the preview when the real selection is not of this kind. Positional, in
+    /// <see cref="RowFieldCatalog.For"/> order — one entry per catalog field, so appending a field
+    /// to the catalog means appending one here too. <c>RowSpeechBuilder.Build</c> tolerates a short
+    /// array by treating the tail as absent, which is why a missing entry showed up as a field that
+    /// silently never previews rather than as a crash (<c>watched</c> did exactly that).
     /// </summary>
     internal static object?[] SampleValues(RowKind kind) => kind switch
     {
@@ -372,6 +410,7 @@ public sealed partial class RowFieldsViewModel : ObservableObject
             "Sales Team",       // to
             "Work — Archive",   // folder
             false,              // mailing list
+            false,              // watched
         ],
         RowKind.Conversation =>
         [

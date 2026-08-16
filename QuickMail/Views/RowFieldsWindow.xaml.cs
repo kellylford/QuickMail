@@ -49,8 +49,14 @@ public partial class RowFieldsWindow : Window
         };
     }
 
+    /// <summary>
+    /// Results interrupt; hints do not. A hint here rides on a selection change — the field note
+    /// fires as the user arrows the list — so interrupting would replace the field name the
+    /// platform is speaking with the note about it, which is the wrong half to lose.
+    /// </summary>
     private void OnAnnouncement(string text, AnnouncementCategory category) =>
-        AccessibilityHelper.Announce(this, text, interrupt: true, category: category);
+        AccessibilityHelper.Announce(this, text,
+            interrupt: category != AnnouncementCategory.Hint, category: category);
 
     private void RegisterLocalCommands()
     {

@@ -54,10 +54,11 @@ public class RowFieldsPreviewConsistencyTests
         vm.Fields.First(f => f.Id == "preview").Enabled = false;
         AssertConsistent(vm, "disable a field");
 
-        var unread = vm.Fields.First(f => f.Id == "unread");
-        unread.Enabled = true;
+        var status = vm.Fields.First(f => f.Id == "status");
+        status.Enabled = true;
         AssertConsistent(vm, "enable a field");
 
+        var unread = vm.Fields.First(f => f.Id == "unread");
         unread.SpeakMode = SpeakMode.Always;
         AssertConsistent(vm, "change speak mode");
 
@@ -103,15 +104,16 @@ public class RowFieldsPreviewConsistencyTests
     }
 
     /// <summary>
-    /// Both "Status (combined)" and "Unread" say the word "unread". With both enabled the row says
-    /// it twice — which is what a user gets by turning Unread on without noticing Status is already
-    /// on. The preview has to show that honestly, so it is visible before the window closes.
+    /// Both "Read status (combined)" and "Unread" say the word "unread". With both enabled the row
+    /// says it twice — which is what a user gets by turning the combined field back on without
+    /// noticing Unread is already on. The preview has to show that honestly, so it is visible
+    /// before the window closes.
     /// </summary>
     [Fact]
     public void OverlappingStatusFields_AreShownDoubledRatherThanHidden()
     {
         var vm = Make();
-        vm.Fields.First(f => f.Id == "unread").Enabled = true;
+        vm.Fields.First(f => f.Id == "status").Enabled = true;
 
         Assert.Equal(2, vm.Preview.Split("unread", StringSplitOptions.None).Length - 1);
     }
@@ -130,7 +132,8 @@ public class RowFieldsPreviewConsistencyTests
         };
         var vm = new RowFieldsViewModel(new StubRowLayoutService(), new StubConfigService(), real);
 
-        Assert.Equal($"read. Angela. Updates. Sneak peek. {real.DateDisplay}.", vm.Preview);
+        // Read, so the default layout says nothing about read state at all (#558).
+        Assert.Equal($"Angela. Updates. Sneak peek. {real.DateDisplay}.", vm.Preview);
         Assert.DoesNotContain("Follow up", vm.Preview, StringComparison.Ordinal);
         Assert.DoesNotContain("attachments", vm.Preview, StringComparison.Ordinal);
     }
@@ -150,8 +153,12 @@ public class RowFieldsPreviewConsistencyTests
         vm.MoveDownCommand.Execute(null);
         Assert.Equal(Expected(vm, real), vm.Preview);
 
+        vm.Fields.First(f => f.Id == "status").Enabled = true;
+        Assert.Equal(Expected(vm, real), vm.Preview);
+        // Combined status is on again, so the read message says "read".
+        Assert.Contains("read", vm.Preview, StringComparison.Ordinal);
+
         vm.Fields.First(f => f.Id == "status").Enabled = false;
-        vm.Fields.First(f => f.Id == "unread").Enabled = true;
         Assert.Equal(Expected(vm, real), vm.Preview);
         // The message is read and Unread is "only when true", so nothing is said about status.
         Assert.DoesNotContain("read", vm.Preview, StringComparison.Ordinal);
@@ -178,8 +185,8 @@ public class RowFieldsPreviewConsistencyTests
         string? announced = null;
         vm.AnnouncementRequested += (text, _) => announced = text;
 
-        // "unread" ships disabled — exactly the field that was moved in the bug report.
-        vm.SelectedField = vm.Fields.First(f => f.Id == "unread");
+        // "to" ships disabled — the same shape as the field that was moved in the bug report.
+        vm.SelectedField = vm.Fields.First(f => f.Id == "to");
         vm.MoveUpCommand.Execute(null);
 
         Assert.EndsWith("Not spoken.", announced!, StringComparison.Ordinal);
@@ -202,16 +209,18 @@ public class RowFieldsPreviewConsistencyTests
     public void SelectingUnreadWhileStatusIsOn_ExplainsTheOverlap()
     {
         var vm = Make();
+        vm.Fields.First(f => f.Id == "status").Enabled = true;   // off by default since #558
 
         vm.SelectedField = vm.Fields.First(f => f.Id == "unread");
 
-        Assert.Contains("Status (combined) is also on", vm.SelectedFieldNote, StringComparison.Ordinal);
+        Assert.Contains("Read status (combined) is also on", vm.SelectedFieldNote, StringComparison.Ordinal);
     }
 
     [Fact]
     public void TurningStatusOff_ClearsTheOverlapNote()
     {
         var vm = Make();
+        vm.Fields.First(f => f.Id == "status").Enabled = true;
         vm.SelectedField = vm.Fields.First(f => f.Id == "unread");
         Assert.NotEqual(string.Empty, vm.SelectedFieldNote);
 
@@ -228,6 +237,24 @@ public class RowFieldsPreviewConsistencyTests
         vm.SelectedField = vm.Fields.First(f => f.Id == "status");
 
         Assert.Contains("replied, forwarded, unread, or read", vm.SelectedFieldNote, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The overlap note is about doubled speech, so it belongs to the field that is doubling. A
+    /// field that is off says nothing and cannot double anything — it gets the note explaining why
+    /// its speak-mode choice is unavailable instead (#558).
+    /// </summary>
+    [Fact]
+    public void AnOffStateFieldGetsTheTurnItOnNote_NotTheOverlapNote()
+    {
+        var vm = Make();
+        vm.Fields.First(f => f.Id == "status").Enabled = true;
+        vm.Fields.First(f => f.Id == "unread").Enabled = false;
+
+        vm.SelectedField = vm.Fields.First(f => f.Id == "unread");
+
+        Assert.Contains("Turn this field on", vm.SelectedFieldNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("said twice", vm.SelectedFieldNote, StringComparison.Ordinal);
     }
 
     [Fact]

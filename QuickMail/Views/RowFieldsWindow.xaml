@@ -47,9 +47,15 @@
         <Border DockPanel.Dock="Bottom" Padding="8,4,8,0">
             <StackPanel>
                 <TextBlock Text="Spoken preview" FontWeight="SemiBold" Margin="0,0,0,2"/>
+                <!-- IsReadOnlyCaretVisible + AcceptsReturn: without the caret a read-only TextBox
+                     has no insertion point to move, so the content is only ever reachable as a
+                     single value and lines past the first cannot be read (#558). This is the same
+                     pairing the reading-pane header fields use. -->
                 <TextBox x:Name="PreviewBox"
                          Text="{Binding Preview, Mode=OneWay}"
                          IsReadOnly="True"
+                         IsReadOnlyCaretVisible="True"
+                         AcceptsReturn="True"
                          TextWrapping="Wrap"
                          MinHeight="44"
                          VerticalScrollBarVisibility="Auto"
@@ -135,8 +141,12 @@
                 <StackPanel>
                     <TextBlock Text="Field options" FontWeight="SemiBold" Margin="0,0,0,4"/>
 
-                    <!-- Shown only for state fields (unread, attachments, replied…) -->
+                    <!-- Shown only for state fields (unread, attachments, replied…), and available
+                         only while that field is turned on: RowSpeechBuilder skips a disabled field
+                         before it looks at SpeakMode, so the choice would have no effect (#558).
+                         SelectedFieldNote says why when it is unavailable. -->
                     <StackPanel x:Name="SpeakModeGroup"
+                                IsEnabled="{Binding SelectedIsOn}"
                                 KeyboardNavigation.TabNavigation="Once"
                                 KeyboardNavigation.DirectionalNavigation="Cycle"
                                 helpers:RadioGroupNavigation.SelectionFollowsFocus="True"
@@ -184,7 +194,11 @@
                     <TextBox x:Name="FieldNoteBox"
                              Text="{Binding SelectedFieldNote, Mode=OneWay}"
                              IsReadOnly="True"
+                             IsReadOnlyCaretVisible="True"
+                             AcceptsReturn="True"
                              TextWrapping="Wrap"
+                             MaxHeight="120"
+                             VerticalScrollBarVisibility="Auto"
                              BorderThickness="0"
                              Background="Transparent"
                              Margin="0,8,0,0"

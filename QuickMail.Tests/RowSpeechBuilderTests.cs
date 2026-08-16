@@ -17,15 +17,18 @@ public class RowSpeechBuilderTests
 {
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    /// <summary>Bound values in catalog order for a message row.</summary>
+    /// <summary>
+    /// Bound values in catalog order for a message row. One entry per catalog field — see
+    /// <see cref="SampleValuesCoverEveryCatalogField"/>, which pins that.
+    /// </summary>
     private static object?[] MessageValues(
         string flag = "", string status = "unread", bool attachments = false,
         string from = "Chris Lee", string subject = "Budget review",
         string preview = "Lunch tomorrow?", string date = "2:14P",
         bool isUnread = true, bool replied = false, bool forwarded = false,
-        string to = "", string folder = "", bool mailingList = false)
+        string to = "", string folder = "", bool mailingList = false, bool watched = false)
         => [flag, status, attachments, from, subject, preview, date,
-            isUnread, replied, forwarded, to, folder, mailingList];
+            isUnread, replied, forwarded, to, folder, mailingList, watched];
 
     private static object?[] ConversationValues(
         string subject = "Budget review", int count = 3, string sender = "Chris Lee",
@@ -58,9 +61,11 @@ public class RowSpeechBuilderTests
     {
         // What MessageAccessibleNameConverter emitted for a flagged, unread message with an
         // attachment: "{flag}. {status}. attachments. {from}. {subject}. {preview}. {date}."
+        // The word now comes from the separate "unread" field rather than "status", in the same
+        // position — an unread row is unchanged by the #558 default change.
         var text = RowSpeechBuilder.Build(
             RowKind.Message,
-            MessageValues(flag: "Follow up", status: "unread", attachments: true),
+            MessageValues(flag: "Follow up", isUnread: true, attachments: true),
             Layout(RowKind.Message));
 
         Assert.Equal(
@@ -69,12 +74,53 @@ public class RowSpeechBuilderTests
     }
 
     [Fact]
+    public void DefaultLayout_SaysNothingAboutReadStateOnAReadMessage()
+    {
+        // #558: the app used to say "read" on every read row, and the field that said it had no
+        // speak mode to turn that off. Silence on read is now the default.
+        var text = RowSpeechBuilder.Build(
+            RowKind.Message, MessageValues(isUnread: false), Layout(RowKind.Message));
+
+        Assert.Equal("Chris Lee. Budget review. Lunch tomorrow?. 2:14P.", text);
+        Assert.DoesNotContain("read", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DefaultLayout_SaysUnreadAndRepliedTogether_WhichTheCombinedFieldCouldNot()
+    {
+        // status's priority chain returns "replied" first and never reaches the unread test, so a
+        // replied-but-unread message used to lose its unread state entirely.
+        var text = RowSpeechBuilder.Build(
+            RowKind.Message, MessageValues(isUnread: true, replied: true), Layout(RowKind.Message));
+
+        Assert.StartsWith("unread. replied.", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DefaultLayout_OmitsFlagAndAttachmentsWhenAbsent()
     {
         var text = RowSpeechBuilder.Build(
-            RowKind.Message, MessageValues(status: "read"), Layout(RowKind.Message));
+            RowKind.Message, MessageValues(), Layout(RowKind.Message));
 
-        Assert.Equal("read. Chris Lee. Budget review. Lunch tomorrow?. 2:14P.", text);
+        Assert.Equal("unread. Chris Lee. Budget review. Lunch tomorrow?. 2:14P.", text);
+    }
+
+    [Fact]
+    public void TheOldSingleWordIsStillAvailableByTurningStatusBackOn()
+    {
+        // The default changed; the capability did not. Anyone who preferred one word restores it.
+        var layout = Layout(RowKind.Message);
+        Field(layout, "status").Enabled  = true;
+        Field(layout, "unread").Enabled  = false;
+        Field(layout, "replied").Enabled = false;
+        // Off-by-default fields are appended, so status starts at the tail; put it back in the
+        // slot it used to hold, behind flag.
+        Move(layout, "status", 1 - layout.FindIndex(f => f.Id == "status"));
+
+        Assert.Equal(
+            "read. Chris Lee. Budget review. Lunch tomorrow?. 2:14P.",
+            RowSpeechBuilder.Build(
+                RowKind.Message, MessageValues(status: "read", isUnread: false), layout));
     }
 
     [Fact]
@@ -195,7 +241,8 @@ public class RowSpeechBuilderTests
     [Fact]
     public void UnreadWhenTrue_SpeaksOnUnreadAndIsSilentOnRead()
     {
-        // "I want to know about unread but not read."
+        // "I want to know about unread but not read." Since #558 this is the shipped default; the
+        // explicit setup stays so the behaviour is pinned independently of what the default is.
         var layout = Layout(RowKind.Message);
         Field(layout, "status").Enabled = false;
         var unread = Field(layout, "unread");
@@ -220,12 +267,11 @@ public class RowSpeechBuilderTests
         unread.Enabled   = true;
         unread.SpeakMode = SpeakMode.Always;
 
-        // Off-by-default fields sit at the end of the shipped layout until the user moves them,
-        // so this reads at the end of the row rather than the front.
-        Assert.EndsWith("2:14P. unread.",
+        // Unread leads the shipped order, so Always is heard at the front of the row.
+        Assert.StartsWith("unread. Chris Lee.",
             RowSpeechBuilder.Build(RowKind.Message, MessageValues(isUnread: true), layout),
             StringComparison.Ordinal);
-        Assert.EndsWith("2:14P. read.",
+        Assert.StartsWith("read. Chris Lee.",
             RowSpeechBuilder.Build(RowKind.Message, MessageValues(isUnread: false), layout),
             StringComparison.Ordinal);
     }
@@ -302,11 +348,13 @@ public class RowSpeechBuilderTests
     [Fact]
     public void ShortValueArrayIsToleratedRatherThanThrowing()
     {
-        // Bindings are still being wired up: the row should say what it can, not crash.
+        // Bindings are still being wired up: the row should say what it can, not crash. Only
+        // flag/status/attachments have arrived, and the unread slot has not — so a state field
+        // reading as absent must stay silent rather than being treated as false-and-spoken.
         var text = RowSpeechBuilder.Build(
-            RowKind.Message, ["", "unread", false], Layout(RowKind.Message));
+            RowKind.Message, ["", "unread", true], Layout(RowKind.Message));
 
-        Assert.Equal("unread.", text);
+        Assert.Equal("attachments.", text);
     }
 
     [Fact]
@@ -318,6 +366,16 @@ public class RowSpeechBuilderTests
         var text = RowSpeechBuilder.Build(RowKind.Message, MessageValues(), layout);
 
         Assert.StartsWith("unread.", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SampleValuesCoverEveryCatalogField()
+    {
+        // Build tolerates a short array by treating the tail as absent, so a helper that falls
+        // behind the catalog does not fail loudly — it just makes the newest fields untestable.
+        Assert.Equal(RowFieldCatalog.For(RowKind.Message).Count, MessageValues().Length);
+        Assert.Equal(RowFieldCatalog.For(RowKind.Conversation).Count, ConversationValues().Length);
+        Assert.Equal(RowFieldCatalog.For(RowKind.SenderGroup).Count, SenderGroupValues().Length);
     }
 
     [Fact]

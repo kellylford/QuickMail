@@ -227,6 +227,7 @@
                  Text="{Binding ErrorText, Mode=OneWay}"
                  Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}"
                  IsReadOnly="True"
+                 IsReadOnlyCaretVisible="True"
                  TextWrapping="Wrap"
                  Foreground="{DynamicResource Theme.Error}"
                  Margin="0,0,0,8"/>

@@ -40,6 +40,8 @@
                      Text="{Binding ContextLine, Mode=OneWay}"
                      AutomationProperties.Name="Not in dictionary"
                      IsReadOnly="True"
+                     IsReadOnlyCaretVisible="True"
+                     AcceptsReturn="True"
                      TextWrapping="Wrap"
                      VerticalScrollBarVisibility="Auto"
                      Height="56"
