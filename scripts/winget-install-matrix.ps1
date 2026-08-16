@@ -166,12 +166,16 @@ function Get-WingetView {
 function Get-Snapshot {
     param([string]$Label)
     Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    # @() on every collection is load-bearing, not decoration: a function that returns one
+    # object returns it unwrapped, and under Set-StrictMode -Version Latest the resulting
+    # `.Count` on a bare PSCustomObject is a terminating error. One ARP row is the normal
+    # case here, so without these the whole probe reports nothing.
     return [pscustomobject]@{
         Label       = $Label
-        Arp         = Get-ArpRows
-        MsiProducts = Get-MsiProductRows
-        Dirs        = Get-InstallDirs
-        Shortcuts   = Get-Shortcuts
+        Arp         = @(Get-ArpRows)
+        MsiProducts = @(Get-MsiProductRows)
+        Dirs        = @(Get-InstallDirs)
+        Shortcuts   = @(Get-Shortcuts)
         Winget      = Get-WingetView
     }
 }
@@ -271,9 +275,9 @@ function Reset-Machine {
 # --- install primitives --------------------------------------------------------------
 
 function Invoke-Installer {
-    param([string]$Path, [string[]]$Arguments, [hashtable]$Env = @{})
+    param([string]$Path, [string[]]$Arguments, [hashtable]$EnvVars = @{})
 
-    foreach ($k in $Env.Keys) { Set-Item "env:$k" $Env[$k] }
+    foreach ($k in $EnvVars.Keys) { Set-Item "env:$k" $EnvVars[$k] }
     try {
         $sw = [Diagnostics.Stopwatch]::StartNew()
         $p = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru
@@ -281,7 +285,7 @@ function Invoke-Installer {
         Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         return [pscustomobject]@{ ExitCode = $p.ExitCode; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1) }
     } finally {
-        foreach ($k in $Env.Keys) { Remove-Item "env:$k" -ErrorAction SilentlyContinue }
+        foreach ($k in $EnvVars.Keys) { Remove-Item "env:$k" -ErrorAction SilentlyContinue }
     }
 }
 
@@ -360,12 +364,14 @@ Write-Section ''
 function Invoke-Scenario {
     param([string]$Title, [string]$Question, [scriptblock]$Body)
     Write-Host "`n=== $Title ==="
-    Reset-Machine
     Write-Section "## $Title"
     Write-Section ''
     Write-Section "*Question: $Question*"
     Write-Section ''
     try {
+        # Inside the try: a reset that cannot clean the machine is this scenario's failure
+        # to report, not a reason to abandon every scenario after it.
+        Reset-Machine
         & $Body
     } catch {
         Write-Section "**Scenario aborted:** ``$_``"
@@ -392,7 +398,7 @@ Invoke-Scenario 'Scenario 2 -- Setup.exe over an MSI install (the migration path
     # Reproduce the wizard's install location without driving the wizard: VELOPACK_INSTALLDIR
     # is exactly what the Next button sets, per the #554 investigation.
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
-    $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldMsi`"", '/qn') -Env @{ VELOPACK_INSTALLDIR = $target }
+    $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldMsi`"", '/qn') -EnvVars @{ VELOPACK_INSTALLDIR = $target }
     Write-Section "Step 1 -- MSI $OldVersion into ``%LocalAppData%\QuickMail`` (wizard-equivalent): exit $($r1.ExitCode) in $($r1.Seconds)s"
     Write-Section ''
     $before = Get-Snapshot "after MSI $OldVersion (wizard-equivalent)"
@@ -449,8 +455,14 @@ Invoke-Scenario 'Scenario 4 -- uninstall through the quiet string winget uses' `
     Write-Section ''
 
     if ($row[0].QuietUninstallString -match '^"([^"]+)"\s*(.*)$') {
-        $r2 = Invoke-Installer $Matches[1] ($Matches[2] -split '\s+')
+        # Copy out of $Matches at once: any later -match in this scope replaces it. The
+        # Where-Object drops the empty element -split yields for an argument-less string.
+        $exe  = $Matches[1]
+        $argv = @($Matches[2] -split '\s+' | Where-Object { $_ })
+        $r2 = Invoke-Installer $exe $argv
         Write-Section "Step 2 -- running it: exit $($r2.ExitCode) in $($r2.Seconds)s"
+    } else {
+        Add-Finding "QuietUninstallString did not parse as a quoted path plus arguments: $($row[0].QuietUninstallString)"
     }
     Write-Section ''
     $after = Get-Snapshot 'after quiet uninstall'
@@ -469,7 +481,7 @@ Invoke-Scenario 'Scenario 5 -- MSI over a Setup.exe install (the reverse migrati
     Write-Section "Step 1 -- ``Setup.exe --silent`` ${OldVersion}: exit $($r1.ExitCode) in $($r1.Seconds)s"
     Write-Section ''
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
-    $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/qn') -Env @{ VELOPACK_INSTALLDIR = $target }
+    $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/qn') -EnvVars @{ VELOPACK_INSTALLDIR = $target }
     Write-Section "Step 2 -- MSI $NewVersion over it (wizard-equivalent location): exit $($r2.ExitCode) in $($r2.Seconds)s"
     Write-Section ''
     $after = Get-Snapshot "after MSI $NewVersion over Setup.exe $OldVersion"
