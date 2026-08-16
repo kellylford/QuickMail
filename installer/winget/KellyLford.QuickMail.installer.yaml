@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+# Installer manifest. See README.md in this folder for why each choice is what it is.
+PackageIdentifier: KellyLford.QuickMail
+PackageVersion: <VERSION>
+InstallerType: exe
+Scope: user
+InstallModes:
+- interactive
+- silent
+- silentWithProgress
+InstallerSwitches:
+  # Velopack Setup.exe: --silent hides all UI, answers yes to the overwrite prompt when an
+  # older copy is present, and does not launch the app afterwards.
+  Silent: --silent
+  SilentWithProgress: --silent
+# Never uninstallPrevious: that would run Update.exe --uninstall (and the data-removal
+# prompt) before every upgrade. Setup.exe over an existing install is the upgrade.
+UpgradeBehavior: install
+ReleaseDate: <RELEASE-DATE>
+# Velopack's own Add/Remove Programs entry (HKCU\...\Uninstall\QuickMail).
+#
+# ProductCode is load-bearing, not belt-and-braces. On a machine upgraded from an MSI
+# install -- which is every existing user -- there are TWO Add/Remove Programs rows both
+# named QuickMail: Velopack's `QuickMail` and the MSI's leftover `MSI:QuickMail`, which
+# Setup.exe does not remove. Measured on both architectures, see the Phase 1b table in
+# docs/planning/winget-distribution-plan.md; `winget list` shows the app twice there.
+# For a non-MSI entry winget's ProductCode IS the Add/Remove Programs key name (its
+# identifier reads `ARP\User\X64\QuickMail`), so naming it here selects Velopack's row and
+# excludes the MSI one. Without it this manifest matches both, and `winget upgrade` may act
+# on the stale row -- whose uninstall string is `msiexec /x` against the directory the
+# Velopack install now owns.
+AppsAndFeaturesEntries:
+- DisplayName: QuickMail
+  Publisher: Kelly Ford
+  ProductCode: QuickMail
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/kellylford/QuickMail/releases/download/v<VERSION>/QuickMail-<VERSION>-win-Setup.exe
+  InstallerSha256: <X64-SHA256>
+- Architecture: arm64
+  InstallerUrl: https://github.com/kellylford/QuickMail/releases/download/v<VERSION>/QuickMail-<VERSION>-win-arm64-Setup.exe
+  InstallerSha256: <ARM64-SHA256>
+ManifestType: installer
+ManifestVersion: 1.10.0
