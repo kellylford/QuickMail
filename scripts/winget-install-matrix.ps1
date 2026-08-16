@@ -285,14 +285,22 @@ function Reset-Machine {
 
     foreach ($row in Get-ArpRows) {
         try {
+            # Both paths go through Invoke-Installer for its timeout. The reset runs before
+            # every scenario and is asked to uninstall products whose files earlier
+            # scenarios have already deleted -- msiexec against a half-removed product is
+            # exactly the sort of thing that can sit there forever, and an unbounded wait
+            # here kills the whole job with no report (ARM64 leg of run 31967050524).
+            # A reset that cannot finish is not fatal: the residue count below reports it.
             if ($row.KeyName -match '^\{[0-9A-Fa-f-]+\}$') {
-                Start-Process msiexec -ArgumentList "/x $($row.KeyName) /qn" -Wait -ErrorAction SilentlyContinue
+                $u = Invoke-Installer 'msiexec.exe' @('/x', $row.KeyName, '/qn') -TimeoutSeconds 120
+                if ($u.TimedOut) { Write-Host "reset: msiexec /x $($row.KeyName) timed out and was killed" }
             } elseif ($row.QuietUninstallString) {
                 # "path\Update.exe" --uninstall --silent  ->  split exe from arguments
                 if ($row.QuietUninstallString -match '^"([^"]+)"\s*(.*)$') {
                     $exe = $Matches[1]; $argline = $Matches[2]
                     if (Test-Path $exe) {
-                        Start-Process $exe -ArgumentList $argline -Wait -ErrorAction SilentlyContinue
+                        $u = Invoke-Installer $exe @($argline -split '\s+' | Where-Object { $_ }) -TimeoutSeconds 120
+                        if ($u.TimedOut) { Write-Host "reset: $exe $argline timed out and was killed" }
                     }
                 }
             }
@@ -360,12 +368,47 @@ function Reset-Machine {
 # --- install primitives --------------------------------------------------------------
 
 function Invoke-Installer {
-    param([string]$Path, [string[]]$Arguments)
+    <#  Every installer here finishes in under ten seconds, so a wait measured in minutes
+        means something is stuck, not slow. Bound it: an unbounded -Wait turns one hung
+        installer into a killed job with no report at all, which is how the ARM64 leg of run
+        31967050524 spent 46 minutes and produced nothing. On timeout the process is killed
+        and TimedOut is set, so the scenario records which command hung and the rest of the
+        matrix still runs. #>
+    param([string]$Path, [string[]]$Arguments, [int]$TimeoutSeconds = 180)
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $p = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru
+    $p = Start-Process -FilePath $Path -ArgumentList $Arguments -PassThru
+    $timedOut = $false
+    if ($p.WaitForExit($TimeoutSeconds * 1000)) {
+        # The no-argument overload after a timed wait: it is what flushes the process's
+        # exit bookkeeping, without which ExitCode can come back unset.
+        $p.WaitForExit()
+    } else {
+        $timedOut = $true
+        try { $p.Kill($true) } catch { Write-Host "could not kill $Path after timeout: $_" }
+        # Whatever it was waiting on may still be running; the uninstall hook detaches by
+        # design (docs/INSTALLER.md), so clear the obvious children too.
+        foreach ($n in 'msiexec', 'Update', 'QuickMail') {
+            Get-Process $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        }
+    }
     $sw.Stop()
     Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    return [pscustomobject]@{ ExitCode = $p.ExitCode; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1) }
+    $exit = if ($timedOut) { $null } else { $p.ExitCode }
+    return [pscustomobject]@{
+        ExitCode = $exit
+        Seconds  = [math]::Round($sw.Elapsed.TotalSeconds, 1)
+        TimedOut = $timedOut
+        Command  = "$Path $($Arguments -join ' ')"
+    }
+}
+
+function Assert-Ran {
+    <#  A timed-out installer must not be read as a result. Call this on anything whose
+        outcome the scenario then measures. #>
+    param([pscustomobject]$Result, [string]$What)
+    if ($Result.TimedOut) {
+        throw "$What did not finish within the timeout and was killed (``$($Result.Command)``). Nothing measured after this point would mean anything."
+    }
 }
 
 function Invoke-UninstallString {
@@ -744,9 +787,11 @@ function New-TwoEntryState {
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
     $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldMsi`"", '/qn', "VELOPACK_INSTALLDIR=`"$target`"")
     Write-Section "Step 1 -- MSI $OldVersion into ``%LocalAppData%\QuickMail`` (wizard-equivalent): exit $($r1.ExitCode) in $($r1.Seconds)s"
+    Assert-Ran $r1 'The MSI install that sets up the two-entry state'
     $r2 = Invoke-Installer $newSetup @('--silent')
     Write-Section ''
     Write-Section "Step 2 -- ``Setup.exe --silent`` $NewVersion over it (the winget install/upgrade): exit $($r2.ExitCode) in $($r2.Seconds)s"
+    Assert-Ran $r2 'The Setup.exe install that sets up the two-entry state'
     Write-Section ''
     $snap = Get-Snapshot 'the two-entry state'
     Write-Section (Format-Snapshot $snap)
@@ -769,6 +814,7 @@ Invoke-Scenario 'Scenario 6 -- uninstalling the STALE MSI row from the two-entry
     $r = Invoke-UninstallString $stale[0].QuietUninstallString
     if ($null -eq $r) { throw "The stale row's uninstall string did not parse: $($stale[0].QuietUninstallString)" }
     Write-Section "Exit $($r.ExitCode) in $($r.Seconds)s"
+    Assert-Ran $r 'Removing the stale MSI row'
     Write-Section ''
     $after = Get-LiveInstallState
 
@@ -808,6 +854,7 @@ Invoke-Scenario 'Scenario 7 -- uninstalling the LIVE Velopack row from the two-e
     $r = Invoke-UninstallString $live[0].QuietUninstallString
     if ($null -eq $r) { throw "The live row's uninstall string did not parse: $($live[0].QuietUninstallString)" }
     Write-Section "Exit $($r.ExitCode) in $($r.Seconds)s"
+    Assert-Ran $r 'Removing the live Velopack row'
     Write-Section ''
     $after = Get-Snapshot 'after removing the live Velopack row'
     Write-Section (Format-Snapshot $after)
