@@ -1,0 +1,176 @@
+name: Winget install-path matrix
+
+# Measures QuickMail's installer behaviour across every install and upgrade path winget can
+# put a machine through, on GitHub-hosted runners, for issue #536.
+#
+# Why this exists: the winget plan's Phase 1 was done by hand on one ARM64 machine. That left
+# three gaps that the plan's own conclusions depend on — x64 was never tested, Setup.exe over
+# an MSI-installed copy (the path every existing user takes when they move to winget) was
+# never tested at all, and the winget correlation claims were inferred from registry state
+# rather than measured. Hand-testing does not scale to a matrix and cannot be re-run against
+# a future vpk, so it lives here instead.
+#
+# It packs two synthetic versions with the *same* vpk arguments the release workflow uses,
+# then walks the scenarios in scripts/winget-install-matrix.ps1. Nothing is signed: signing
+# does not affect install location, Add/Remove Programs registration, or upgrade semantics,
+# which is all this measures, and the Azure OIDC credentials are deliberately reachable only
+# from tag builds.
+#
+# Run it by pushing a branch named test/winget-** , or from the Actions tab once this file is
+# on the default branch.
+
+on:
+  push:
+    branches:
+      - 'test/winget-**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    # A leg whose runner label is unavailable, or whose scenarios misbehave badly enough to
+    # abort, must not hide the other leg's results.
+    continue-on-error: true
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            rid: win-x64
+          - arch: arm64
+            runner: windows-11-arm
+            rid: win-arm64
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      # QuickMail.csproj will not compile without these gitignored partial classes. The
+      # values are irrelevant here — nothing in this workflow signs in to anything — so they
+      # are written empty rather than pulled from secrets.
+      - name: Write placeholder credential partials
+        shell: pwsh
+        run: |
+          @'
+          namespace QuickMail.Services;
+          public partial class GoogleOAuthService
+          {
+              private const string ClientId     = "";
+              private const string ClientSecret = "";
+          }
+          '@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
+          @'
+          namespace QuickMail.Services;
+          public partial class BugReportService
+          {
+              private const string RelayUrl = "";
+              private const string RelayKey = "";
+          }
+          '@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+
+      # Native publish per leg. The release workflow cross-compiles ARM64 from an x64 runner;
+      # here each leg builds for the machine it will actually install on, because the point is
+      # to run the installer, not just produce it.
+      - name: Publish
+        run: dotnet publish QuickMail/QuickMail.csproj -c Release -r ${{ matrix.rid }} -o publish/
+
+      # Record the version rather than pin it: the release workflow installs vpk unpinned, so
+      # whatever this run measured is only true for the version named here.
+      - name: Install vpk
+        shell: pwsh
+        run: |
+          dotnet tool install -g vpk
+          $v = (vpk --version 2>&1 | Out-String).Trim()
+          Write-Host "vpk version: $v"
+          "VPK_VERSION=$v" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      # Two packs, same arguments as the release workflow's (minus signing), differing only in
+      # --packVersion. 1.0.0 and 1.0.1 are deliberately not real QuickMail versions so nothing
+      # in the report can be mistaken for a measurement of a shipped artifact.
+      - name: Pack both versions
+        shell: pwsh
+        run: |
+          Copy-Item LICENSE installer/velopack/license.txt
+          $archArgs = @()
+          if ('${{ matrix.arch }}' -eq 'arm64') { $archArgs = @('--runtime', 'win-arm64', '--channel', 'win-arm64') }
+          $suffix = if ('${{ matrix.arch }}' -eq 'arm64') { 'win-arm64' } else { 'win' }
+          foreach ($v in '1.0.0', '1.0.1') {
+            $out = "packs/$v"
+            New-Item -ItemType Directory -Force -Path $out | Out-Null
+            vpk pack --packId QuickMail --packVersion $v --packDir publish `
+              --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
+              --shortcuts StartMenuRoot --outputDir $out `
+              --framework webview2 `
+              --msi --instLocation PerUser `
+              --instWelcome installer/velopack/welcome.txt `
+              --instLicense installer/velopack/license.txt `
+              --instConclusion installer/velopack/conclusion.txt @archArgs
+            if ($LASTEXITCODE -ne 0) { throw "vpk pack $v failed with exit code $LASTEXITCODE." }
+            # Match the release workflow's rename so the probe exercises the shipped filenames.
+            Rename-Item "$out/QuickMail-$suffix.msi"       "QuickMail-$v-$suffix.msi"
+            Rename-Item "$out/QuickMail-$suffix-Setup.exe" "QuickMail-$v-$suffix-Setup.exe"
+            Write-Host "--- $v ---"
+            Get-ChildItem $out | Select-Object -ExpandProperty Name
+          }
+
+      # Best-effort. winget is not on the Windows Server images; it is on windows-11-arm. The
+      # probe degrades to registry-only evidence when it is missing, and says so in the report,
+      # rather than failing the run.
+      - name: Make winget available (best effort)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $wa = "$env:LOCALAPPDATA\Microsoft\WindowsApps"
+          if (Test-Path $wa) { $env:PATH = "$wa;$env:PATH"; "$wa" | Out-File $env:GITHUB_PATH -Append -Encoding utf8 }
+          if (Get-Command winget -ErrorAction SilentlyContinue) { winget --version; exit 0 }
+          # Re-register an App Installer that is provisioned but not registered for this user.
+          Get-AppxPackage -AllUsers Microsoft.DesktopAppInstaller -ErrorAction SilentlyContinue | ForEach-Object {
+            Add-AppxPackage -DisableDevelopmentMode -Register "$($_.InstallLocation)\AppXManifest.xml" -ErrorAction SilentlyContinue
+          }
+          if (Get-Command winget -ErrorAction SilentlyContinue) { winget --version; exit 0 }
+          # Otherwise install it from the winget-cli release, dependencies first.
+          try {
+            $rel = Invoke-RestMethod https://api.github.com/repos/microsoft/winget-cli/releases/latest -Headers @{ 'User-Agent' = 'quickmail-ci' }
+            $bundle = ($rel.assets | Where-Object name -like '*.msixbundle')[0]
+            $deps   = ($rel.assets | Where-Object name -like 'DesktopAppInstaller_Dependencies.zip')[0]
+            if ($deps) {
+              Invoke-WebRequest $deps.browser_download_url -OutFile deps.zip
+              Expand-Archive deps.zip -DestinationPath deps -Force
+              $archDir = if ('${{ matrix.arch }}' -eq 'arm64') { 'arm64' } else { 'x64' }
+              Get-ChildItem "deps/$archDir" -Filter *.appx -ErrorAction SilentlyContinue |
+                ForEach-Object { Add-AppxPackage $_.FullName -ErrorAction SilentlyContinue }
+            }
+            Invoke-WebRequest $bundle.browser_download_url -OutFile winget.msixbundle
+            Add-AppxPackage winget.msixbundle -ErrorAction SilentlyContinue
+          } catch { Write-Host "winget install attempt failed: $_" }
+          if (Get-Command winget -ErrorAction SilentlyContinue) { winget --version } else { Write-Host 'winget still unavailable; the probe will report it as such.' }
+
+      - name: Run the install-path matrix
+        shell: pwsh
+        run: |
+          ./scripts/winget-install-matrix.ps1 `
+            -OldDir packs/1.0.0 -NewDir packs/1.0.1 `
+            -OldVersion 1.0.0 -NewVersion 1.0.1 `
+            -Arch '${{ matrix.arch }}' `
+            -Report "winget-matrix-${{ matrix.arch }}.md"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: winget-matrix-${{ matrix.arch }}
+          path: |
+            winget-matrix-${{ matrix.arch }}.md
+            msi-fresh.log
+          if-no-files-found: warn
+          retention-days: 14
