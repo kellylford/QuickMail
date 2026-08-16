@@ -12,6 +12,10 @@ containing:
   package (`KellyLford.QuickMail`) installs, because `Setup.exe --silent` installs and
   upgrades in place under `%LocalAppData%\QuickMail` while a silent MSI install does not (see
   *Silent installs* below). The MSI remains the installer the download page offers people.
+  Accept the consequence knowingly: this asset is public, so anyone browsing the release
+  page can install QuickMail without ever seeing the license acceptance page the MSI wizard
+  shows. That is already true of every winget install — winget shows no license page for any
+  package — so restricting the asset would not buy the license page back.
 - `QuickMail-<version>-full.nupkg` — the full update package consumed by the in-app updater
 - `QuickMail-<version>-delta.nupkg` — binary delta from the previous release (generated only
   when the previous release's packages are present; CI fetches them with `vpk download github`

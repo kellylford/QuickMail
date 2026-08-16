@@ -457,6 +457,13 @@ jobs:
           # Same for Setup.exe (issue #536): vpk names it QuickMail-win-Setup.exe. Rename-Item
           # throws if vpk ever stops emitting it, which fails the release rather than
           # publishing without the winget installer.
+          #
+          # build-installer.yml renames "whichever single *Setup.exe landed" behind a
+          # count guard rather than naming the file. That guard cannot be copied here:
+          # both channels pack into this one output folder, so by the time the ARM64 pack
+          # runs the folder already holds the renamed x64 Setup.exe and a *Setup.exe glob
+          # would match two files and throw on every release. Naming the file is what the
+          # MSI rename directly above already does, for the same reason.
           Rename-Item installer/Output/Releases/QuickMail-win-Setup.exe "QuickMail-$version-win-Setup.exe"
           # The previous version's full .nupkg (fetched above as the delta input) stays in
           # the folder and is uploaded with the rest: vpk pack bakes an entry for every
@@ -465,15 +472,22 @@ jobs:
 
       # Native ARM64 pack, into the SAME output folder as x64. That is safe because
       # Velopack suffixes every file it writes with the channel name — verified against
-      # real vpk 1.2.0 output in run 30710511730, where the two channels produced:
+      # real vpk 1.2.0 output in run 30710511730. These are COMPLETE listings — every file
+      # each channel wrote, including the ones this workflow does not ship — because the
+      # only use for this comment is checking the two sets for a collision, and a partial
+      # listing cannot answer that:
       #   x64   : RELEASES, releases.win.json, assets.win.json,
-      #           QuickMail-<v>-full.nupkg, QuickMail-win.msi, QuickMail-win-Setup.exe
+      #           QuickMail-<v>-full.nupkg, QuickMail-win.msi, QuickMail-win-Setup.exe,
+      #           QuickMail-win-Portable.zip
       #   arm64 : RELEASES-win-arm64, releases.win-arm64.json, assets.win-arm64.json,
       #           QuickMail-<v>-win-arm64-full.nupkg, QuickMail-win-arm64.msi,
-      #           QuickMail-win-arm64-Setup.exe
+      #           QuickMail-win-arm64-Setup.exe, QuickMail-win-arm64-Portable.zip
       # No filename appears in both sets, so the two update feeds cannot overwrite each
       # other. Re-check this listing if vpk is ever upgraded: a collision here would
-      # corrupt the x64 feed and strand every existing install.
+      # corrupt the x64 feed and strand every existing install. Note that vpk is installed
+      # unpinned (`dotnet tool install -g vpk` above), so "if vpk is ever upgraded" means
+      # "on some future release run, without warning" — .github/workflows/
+      # winget-install-matrix.yml re-measures the packed output on demand for that reason.
       #
       # x64 deliberately stays on Velopack's default `win` channel. Every installed copy
       # of QuickMail already polls releases.win.json; renaming that channel would strand
@@ -547,7 +561,15 @@ jobs:
       #  - people: QuickMail-<version>-win.msi (wizard installer with license acceptance)
       #    and QuickMail.exe (portable) for x64; the -win-arm64 / -arm64 pair for ARM64
       #  - winget: QuickMail-<version>-win-Setup.exe and -win-arm64-Setup.exe, Velopack's
-      #    one-click installer, which the KellyLford.QuickMail manifest points at (#536)
+      #    one-click installer, which the KellyLford.QuickMail manifest points at (#536).
+      #    Shipping it publicly reverses the earlier "not shipped" decision, whose stated
+      #    reason was that Setup.exe skips the welcome/license/conclusion pages the --inst*
+      #    arguments above exist to provide. That reason was reconsidered, not overlooked:
+      #    winget itself never shows a license page for any package, so the moment
+      #    QuickMail is installable with `winget install` the licence-unseen install exists
+      #    regardless of whether the asset is also on the release page. Given that, hiding
+      #    it from people who want a one-click download buys nothing. The MSI remains the
+      #    installer the download links and the user guide point at.
       #  - the in-app updater: RELEASES, releases.win.json, assets.win.json and the
       #    matching -win-arm64 trio, plus the .nupkg packages (full + delta), which
       #    Velopack's GithubSource reads from the latest release.
