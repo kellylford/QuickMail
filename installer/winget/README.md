@@ -1,5 +1,15 @@
 # winget manifest for `KellyLford.QuickMail`
 
+> [!IMPORTANT]
+> **On hold — do not submit these manifests.** Winget distribution was stopped on
+> 2026-08-16 before any release shipped the installer it points at. `Setup.exe` run over an
+> existing MSI install leaves two Add/Remove Programs entries, and removing the stale one
+> deletes the working install (measured; see the plan document and `docs/INSTALLER.md`).
+> Every QuickMail user today installed from the MSI, so that is the path a winget install
+> would take. These files stay as the finished starting point for whenever the underlying
+> Velopack behaviour is fixed — issue #536 records what has to be true first.
+
+
 Reference copy of the three manifests that describe QuickMail to the
 [Windows Package Manager community repository](https://github.com/microsoft/winget-pkgs)
 (issue #536, `docs/planning/winget-distribution-plan.md`). The **published** manifests live

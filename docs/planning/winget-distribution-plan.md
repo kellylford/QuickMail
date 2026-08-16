@@ -1,11 +1,25 @@
 # Winget Distribution — Plan
 
 **Issue:** [#536 — Distribute QuickMail through winget](https://github.com/kellylford/QuickMail/issues/536)
-**Status:** Phase 1 complete (2026-08-15), re-verified on CI across both architectures
-(2026-08-16, Phase 1b). Approach revised: the winget package will install Velopack's
-**Setup.exe**, not the MSI. Phase 2 (ship Setup.exe) is PR #555; the Phase 4 workflow and
-the Phase 3 manifest template are PR #557; the CI harness is PR #560. Waiting on: merge of
-those, then the 0.8.41 release, then the manual first submission.
+**Status: STOPPED (2026-08-16). Do not ship, do not submit the manifests.** Nothing reached
+users — the stop happened before any release carried `Setup.exe`, and no README, user guide
+or release note ever mentioned winget.
+
+The blocker is not winget itself. `Setup.exe` run over an existing **MSI** install leaves
+the machine with two Add/Remove Programs entries both named QuickMail, and removing the
+stale one deletes the working install (measured on both architectures — see *Phase 1c*).
+Every QuickMail user today installed from the MSI, so that is the path a winget install
+would take for essentially the whole user base. A release note saying "uninstall first" is
+not a control: the people most likely to try `winget install` on day one are the ones least
+likely to read it first.
+
+What was merged and then reverted: shipping `Setup.exe` as a release asset (PR #555, undone)
+and the auto-publish workflow (PR #557's `winget-publish.yml`, deleted). What was kept: this
+plan, the manifest template under `installer/winget/` (marked on hold), and the CI harness
+`.github/workflows/winget-install-matrix.yml` (PR #560), which is what will re-verify the
+behaviour when this is picked back up. **What has to be true before revisiting is in
+[#536](https://github.com/kellylford/QuickMail/issues/536).**
+
 **Date:** 2026-08-14, revised 2026-08-15 and 2026-08-16
 
 ## Summary
@@ -196,6 +210,50 @@ answer it. This is one of the cases issue #561 (a persistent test machine) exist
   `QuickMail-<v>-win-Setup.exe` carries no architecture token while
   `QuickMail-<v>-win-arm64-Setup.exe` does. This matters only for Phase 4, where komac
   infers `Architecture:` for each asset; see the note in Phase 4.
+
+## Phase 1c findings (2026-08-16) -- the reason this stopped
+
+Phase 1b established that a winget install over an MSI install leaves two visible
+Add/Remove Programs rows. What it did not measure was what happens when the user acts on
+one of them. Scenarios 6 and 7 of the harness do, starting from that two-entry state.
+
+### Removing the stale `MSI:QuickMail` row destroys the live install
+
+Running that row's own uninstall string -- exactly what Settings > Apps runs for that
+entry, `msiexec.exe /x {ProductCode} /qn`:
+
+| | install root | `Update.exe` | `QuickMail.exe` | `current\QuickMail.exe` | files under `current\` |
+| --- | --- | --- | --- | --- | --- |
+| before | present | present | present | present | 5 |
+| after | **gone** | **gone** | **gone** | **gone** | 0 |
+
+Exit code 0, 1.3 seconds, no warning. Windows Installer removes the files it recorded, and
+`Setup.exe` overwrote that same directory, so the uninstall takes the working install with
+it. Afterwards the Velopack row still lists QuickMail at the newer version, pointing at a
+directory that no longer exists.
+
+The trap is well baited: the stale row shows the **older** version number, so it is the one
+a tidy-minded user deletes.
+
+### Removing the live `QuickMail` row leaves a phantom
+
+The other half -- and what `winget uninstall` runs. It exits 0 and removes the app and its
+Start Menu shortcut cleanly, but `MSI:QuickMail` survives, still listed in Settings > Apps,
+still pointing at the now-deleted directory, along with the hidden HKLM row and the Windows
+Installer product registration. The user uninstalls QuickMail and it is still in their app
+list; clicking it then runs `msiexec /x` against a product whose files are already gone.
+
+### Why this stopped the project rather than earning a release note
+
+The workaround is real -- uninstall first, then install, never install over -- and it does
+produce a single clean entry. It is not a control. QuickMail's users tinker; the ones who
+will try `winget install quickmail` the day it is announced are the ones least likely to
+have read the note first, and the failure mode is silent destruction of a working install
+with an exit code of 0.
+
+Note that none of this needs winget. The same two-entry state arises from downloading
+`Setup.exe` off the release page and running it over an MSI install, which is why the fix
+was to stop shipping the asset, not merely to stop publishing the manifest.
 
 ### Still not settled
 
