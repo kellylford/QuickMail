@@ -116,7 +116,9 @@ leaves ARM64 output in `bin/Release` until the next ordinary build.
 - **Silent installs must use `Setup.exe --silent`, not `msiexec /qn`** (issue #554). In
   vpk 1.2.0 the MSI's `%LocalAppData%` default is set by the wizard's Next button, so an
   unattended `msiexec /i … /qn` falls back to the Directory-table default and installs to
-  `C:\QuickMail`; a silent MSI over an existing install then uninstalls the old copy
+  a drive root — `C:\QuickMail` on one machine, `D:\QuickMail` on a CI runner, because
+  Windows Installer resolves `TARGETDIR` to the drive it prefers; a silent MSI over an
+  existing install then uninstalls the old copy
   (data-removal prompt included, per the #245 investigation) and relocates the app. If an
   MSI must be deployed silently, pass `VELOPACK_INSTALLDIR="<absolute per-user path>"`.
   `Setup.exe --silent` has none of these problems: it installs to `%LocalAppData%\QuickMail`,

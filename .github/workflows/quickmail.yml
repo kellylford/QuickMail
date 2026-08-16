@@ -424,8 +424,10 @@ jobs:
       # --msi builds the wizard installer (welcome, license acceptance, conclusion pages)
       # that is the user-facing download. The one-click Setup.exe vpk also emits is
       # shipped too, since issue #536: it is what the winget package installs, because
-      # a silent MSI install (`msiexec /qn`, which is all winget ever runs) lands in
-      # C:\QuickMail and upgrades relocate the app — issue #554 — while
+      # a silent MSI install (`msiexec /qn`, which is all winget ever runs) lands in a
+      # drive root rather than %LocalAppData% — C:\QuickMail on one machine, D:\QuickMail
+      # on a CI runner, since Windows Installer picks the drive — and upgrades relocate
+      # the app — issue #554 — while
       # `Setup.exe --silent` installs and upgrades in place under %LocalAppData%.
       # --instLocation PerUser keeps the wizard install in %LocalAppData% so background
       # updates never need elevation. vpk requires the license file to carry a
