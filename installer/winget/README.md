@@ -12,8 +12,10 @@ each promoted release automatically and these files are reference only.
 
 - **`InstallerType: exe`, `--silent`** — the installer is Velopack's one-click
   `QuickMail-<version>-win-Setup.exe` / `-win-arm64-Setup.exe`, never the MSI. A silent MSI
-  install lands in `C:\QuickMail` and a silent MSI upgrade uninstalls the old copy (data
-  prompt and all) before relocating the app — issue #554. `Setup.exe --silent` installs to
+  install lands in a drive root rather than `%LocalAppData%` — `C:\QuickMail` on one machine,
+  `D:\QuickMail` on a CI runner, since Windows Installer picks the drive — and a silent MSI
+  upgrade uninstalls the old copy (data prompt and all) before relocating the app — issue
+  #554. `Setup.exe --silent` installs to
   `%LocalAppData%\QuickMail`, and run over an existing install it overwrites in place
   without invoking the uninstall hook.
 - **`Scope: user`** — per-user, no elevation. Matches the wizard.

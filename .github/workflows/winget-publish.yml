@@ -10,7 +10,8 @@ name: Publish to winget
 # pre-release too — do not switch to it.
 #
 # Installers: only the two Velopack Setup.exe assets. The MSIs must never reach the manifest
-# — a silent MSI install lands in C:\QuickMail and upgrades relocate the app (issue #554) —
+# — a silent MSI install lands in a drive root, not %LocalAppData% (C:\QuickMail on one
+# machine, D:\QuickMail on a CI runner), and upgrades relocate the app (issue #554) —
 # and the portable exes are not installers. The regex below matches
 # QuickMail-<v>-win-Setup.exe and QuickMail-<v>-win-arm64-Setup.exe and nothing else.
 #
