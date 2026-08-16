@@ -1,11 +1,12 @@
 # Winget Distribution — Plan
 
 **Issue:** [#536 — Distribute QuickMail through winget](https://github.com/kellylford/QuickMail/issues/536)
-**Status:** Phase 1 complete (2026-08-15). Approach revised: the winget package will
-install Velopack's **Setup.exe**, not the MSI. Phase 2 (ship Setup.exe) is PR #555; the
-Phase 4 workflow and the Phase 3 manifest template are PR #557. Waiting on: merge of
-both, then the 0.8.41 release, then the manual first submission.
-**Date:** 2026-08-14, revised 2026-08-15
+**Status:** Phase 1 complete (2026-08-15), re-verified on CI across both architectures
+(2026-08-16, Phase 1b). Approach revised: the winget package will install Velopack's
+**Setup.exe**, not the MSI. Phase 2 (ship Setup.exe) is PR #555; the Phase 4 workflow and
+the Phase 3 manifest template are PR #557; the CI harness is PR #560. Waiting on: merge of
+those, then the 0.8.41 release, then the manual first submission.
+**Date:** 2026-08-14, revised 2026-08-15 and 2026-08-16
 
 ## Summary
 
@@ -69,7 +70,7 @@ were silent and non-elevated. Registry state was verified from outside any app c
 | `VELOPACK_INSTALLDIR="%LocalAppData%\QuickMail"` on the command line | Works — but the value is a literal path, so a per-user location cannot be expressed in a public winget manifest. |
 | Silent 0.8.40 MSI over a wizard-style `%LocalAppData%` 0.8.39 install (what `winget upgrade` would do) | `RemoveExistingProducts` uninstalled the LocalAppData copy, **fired the "remove your data?" prompt mid-upgrade**, then installed 0.8.40 to `C:\QuickMail`. Confirms and extends the #245 finding that MSI-over-MSI is a two-phase uninstall/reinstall. |
 | Add/Remove Programs rows | Two: the MSI's own hidden row (`ARPSYSTEMCOMPONENT=1`, HKLM, DisplayVersion `0.8.40.0`) and Velopack's visible `HKCU\...\Uninstall\MSI:QuickMail` (DisplayVersion `0.8.40`, `QuietUninstallString: msiexec /x {ProductCode} /qn`). winget correlates to the Velopack row (`ARP\User\Arm64\MSI:QuickMail`). |
-| ProductCode / UpgradeCode | ProductCode changes every version and differs per architecture; UpgradeCode `{4F6E83C5-E7FB-5BBD-A3C3-6D78A4720D5E}` is stable across both. Upgrade table replaces older, blocks newer. Authoring is correct; the problem is location and the uninstall hook, not the upgrade logic. |
+| ProductCode / UpgradeCode | ProductCode changes every version and differs per architecture; UpgradeCode `{4F6E83C5-E7FB-5BBD-A3C3-6D78A4720D5E}` is stable across both. Upgrade table replaces older, blocks newer. Authoring is correct; the problem is location and the uninstall hook, not the upgrade logic. One consequence worth stating rather than leaving to be inferred: because the UpgradeCode is shared, the ARM64 MSI treats an x64 install as an older version of itself and replaces it, and vice versa. That is almost certainly the behaviour you want — it is the only way an MSI user changes architecture — but it is the opposite of the Velopack channels, where `INSTALLER.md` records that **no cross-architecture migration exists**. |
 | Silent uninstall `msiexec /x {ProductCode} /qn` | Exit 0; ARP rows and Start Menu shortcut removed; data prompt appears (correct for a real uninstall). Leaves empty `current`/`packages` folders behind. |
 | Post-patching the MSI in CI (e.g. WiX transform to fix the default directory) | Not viable: every MSI and exe in the release is Authenticode-signed via Azure Trusted Signing (`INSTALLER.md` still says signing is "not wired up" — it is), and a post-pack edit invalidates the signature. |
 
@@ -86,20 +87,110 @@ were silent and non-elevated. Registry state was verified from outside any app c
 Verified from Velopack source (`src/bins/src/commands/install.rs`, `setup.rs`,
 `windows/registry.rs`): default directory is `LocalAppData\{packId}`; `--silent` answers
 yes to the overwrite prompt and suppresses launch; the install hook runs in silent mode;
-no version comparison is done (Setup.exe will happily overwrite with an older build —
-winget never offers downgrades, so this is moot in practice).
+no version comparison is done (Setup.exe will happily overwrite with an older build).
 
-### Two things Phase 1 could not settle
+That last point is not quite moot. `winget upgrade` never downgrades, but
+`winget install --version <older>` installs exactly what it is asked for, and Phase 4 keeps
+five older versions in the catalog (`max-versions-to-keep: 5`). A user who pins an older
+version therefore gets a silent downgrade with no warning from either winget or Setup.exe,
+and then Velopack self-updates them back up on the next launch. Nothing breaks; it is just
+a confusing thing to watch happen, and worth knowing before someone reports it.
 
+### What Phase 1 could not settle by hand
+
+- **x64.** Every test above ran on ARM64.
+- **Setup.exe over an MSI install.** Phase 1 covered Setup-over-Setup and MSI-over-MSI. It
+  never covered the combination every existing user hits, because every existing user
+  installed from the MSI and the winget package installs Setup.exe.
+- **What winget itself sees.** The correlation claims above were read out of the registry
+  and reasoned about, not observed from `winget list`.
 - **Does DisplayVersion track Velopack self-updates?** Velopack has a dedicated
   `update_msi_uninstall_entry` and rewrites the ordinary entry via
   `write_uninstall_entry`; the code paths exist but were not exercised (that needs the app
   to run and self-update, which the test machine was not set up for). Check on the first
   real self-update after a winget install: if DisplayVersion lags, `winget upgrade` shows a
   stale "upgrade available" that is harmless but noisy.
-- **x64.** Every test above ran on ARM64. Nothing in the findings is architecture-specific
-  (the MSI tables and Velopack code are identical), but the first x64 verification should
-  happen during Phase 3's Windows Sandbox run.
+
+The first three are now measured -- see below. The fourth still needs a running app.
+
+## Phase 1b findings (CI, 2026-08-16) -- both architectures, measured
+
+Hand-testing one machine does not scale to a matrix and cannot be re-run against a future
+vpk, so the open questions above were turned into a workflow:
+`.github/workflows/winget-install-matrix.yml` (PR #560). It packs two synthetic versions
+with the release workflow's own `vpk pack` arguments and walks the install and upgrade
+permutations on `windows-latest` (x64) and `windows-11-arm` (ARM64), snapshotting
+Add/Remove Programs rows across all three hives, Windows Installer product registrations,
+install directories, shortcuts, and `winget list` output after every step. Re-run it by
+pushing a `test/winget-**` branch.
+
+Numbers below are from run
+[31958458925](https://github.com/kellylford/QuickMail/actions/runs/31958458925), vpk 1.2.0,
+winget 1.11.510 (x64) and 1.29.280 (ARM64). Packages were unsigned, which does not affect
+install location, ARP registration, or upgrade semantics.
+
+### The migration path is not clean, and this is the one thing to fix before submitting
+
+Starting state: MSI installed into `%LocalAppData%\QuickMail`, i.e. what the wizard
+produces and what every existing user is running. Then `Setup.exe --silent` at a newer
+version, which is exactly what `winget install` or `winget upgrade` runs.
+
+| | Before (MSI only) | After `Setup.exe --silent` |
+| --- | --- | --- |
+| Visible ARP rows | 1 -- `MSI:QuickMail`, 1.0.0 | **2** -- `MSI:QuickMail` still 1.0.0, plus `QuickMail` 1.0.1 |
+| Hidden HKLM MSI row | 1 | 1, still 1.0.0 |
+| Windows Installer product registration | 1 | **1 -- survives** |
+| `winget list` | one row, `ARP\User\X64\MSI:QuickMail  1.0.0` | **two rows**, `…\MSI:QuickMail 1.0.0` and `…\QuickMail 1.0.1` |
+
+Identical on ARM64 (`ARP\User\Arm64\…`). Three consequences:
+
+1. **Users see QuickMail twice in Settings > Apps**, at two different versions.
+2. **The stale row is actively dangerous.** `MSI:QuickMail` keeps
+   `QuietUninstallString: msiexec /x {ProductCode} /qn`, pointed at the same directory the
+   new Velopack install now owns. Uninstalling the wrong one of the two rows tears files
+   out from under a working install.
+3. **The manifest's `AppsAndFeaturesEntries` matches both rows**, since both have
+   `DisplayName: QuickMail`. Whichever winget picks, the other stays.
+
+The fix in the manifest is to correlate on the ARP key name rather than the display name:
+winget's identifier for a non-MSI entry ends in that key (`ARP\User\X64\QuickMail`), so
+`ProductCode: QuickMail` in `AppsAndFeaturesEntries` selects the Velopack row and excludes
+`MSI:QuickMail`. That is in #557. It does not remove the second row -- nothing short of
+Velopack cleaning up the MSI registration will -- but it stops winget acting on the wrong
+one.
+
+The reverse (MSI over a Setup.exe install, which a winget user who later downloads the MSI
+would hit) is equally messy: 2 visible rows, same shape.
+
+### Everything else measured clean
+
+| Test | x64 | ARM64 |
+| --- | --- | --- |
+| `Setup.exe --silent` fresh | 1 ARP row, `%LocalAppData%\QuickMail`, Start Menu shortcut, exit 0 in ~5 s | same |
+| `Setup.exe --silent` over Setup.exe | still exactly 1 row; DisplayVersion advances 1.0.0 -> 1.0.1; `winget list` shows one row at the new version | same |
+| Quiet uninstall (`Update.exe --uninstall --silent`, what `winget uninstall` runs) | exit 0; 0 ARP rows, 0 install directories, 0 shortcuts, 0 product registrations | same |
+| `vpk pack` output filenames | `QuickMail-win-Setup.exe`, `QuickMail-win.msi`, `QuickMail-win-Portable.zip`, `RELEASES`, `releases.win.json`, `assets.win.json`, `QuickMail-<v>-full.nupkg` | the same set, each suffixed `win-arm64` |
+
+### Two corrections to the Phase 1 table above
+
+- **The silent-MSI defect is not architecture-specific, and it is not literally `C:\`.**
+  It reproduces on x64. The x64 runner installed to `D:\QuickMail` -- Windows Installer
+  resolves the Directory table's `TARGETDIR` default to the drive it prefers, which was the
+  ARM64 machine's `C:` and the x64 runner's `D:`. #554's title should read "a drive root",
+  not "C:\QuickMail".
+- **Both `Setup.exe` binaries are x86 PE images**, on both channels. Architecture therefore
+  cannot be inferred from the binary at all -- only from the filename, and
+  `QuickMail-<v>-win-Setup.exe` carries no architecture token while
+  `QuickMail-<v>-win-arm64-Setup.exe` does. This matters only for Phase 4, where komac
+  infers `Architecture:` for each asset; see the note in Phase 4.
+
+### Still not settled
+
+- **`winget upgrade` correlation.** It cannot be tested until `KellyLford.QuickMail` exists
+  in the catalog -- with no package to compare an installed version against, `winget
+  upgrade` has nothing to say. Re-run the matrix after the first submission merges.
+- **DisplayVersion after a Velopack self-update**, unchanged from above: it needs the app
+  to run and update itself, which the probe does not do.
 
 ## Phase 2 — Ship Setup.exe with every release (the one code change)
 
@@ -109,9 +200,12 @@ workflow currently uploads the MSIs and discards them (`INSTALLER.md`: "produced
 `vpk pack` but not shipped"). Change `.github/workflows/quickmail.yml` to:
 
 1. Rename each Setup.exe to include the version — `QuickMail-<version>-win-Setup.exe` /
-   `QuickMail-<version>-win-arm64-Setup.exe` — the same way the MSIs are renamed today
-   (and the same way `build-installer.yml` already renames its Setup.exe; copy that
-   snippet, including its "exactly one Setup.exe" guard).
+   `QuickMail-<version>-win-arm64-Setup.exe` — the same way the MSIs are renamed today.
+   Name the file rather than globbing for it. `build-installer.yml` renames "whichever
+   single `*Setup.exe` landed" behind a count guard, but that guard cannot be reused here:
+   the release workflow packs both channels into one output folder, so by the time the
+   ARM64 pack runs the folder already holds the renamed x64 Setup.exe and the glob would
+   match two files.
 2. Add both to the `softprops/action-gh-release` file list.
 3. Nothing else: Setup.exe is signed by vpk during pack, and the MSI, portable exe, and
    feed metadata continue to ship unchanged.
@@ -136,8 +230,12 @@ Do the first submission by hand to learn the pipeline before automating it:
    - `Scope: user`
    - `InstallerSwitches: { Silent: --silent, SilentWithProgress: --silent }`
    - two `Installers` entries, `Architecture: x64` and `arm64`, each with its URL and SHA256
-   - `AppsAndFeaturesEntries: [{ DisplayName: QuickMail, Publisher: Kelly Ford }]` so
-     `winget upgrade` correlates the Velopack ARP row to the package
+   - `AppsAndFeaturesEntries: [{ DisplayName: QuickMail, Publisher: Kelly Ford,
+     ProductCode: QuickMail }]` so `winget upgrade` correlates the Velopack ARP row to the
+     package. `ProductCode` is not optional decoration: on a machine upgraded from an MSI
+     install there are two rows named QuickMail (Phase 1b), and for a non-MSI entry
+     winget's ProductCode is the Add/Remove Programs key name — `QuickMail` for Velopack's
+     row, `MSI:QuickMail` for the MSI's. Without it the manifest matches both.
    - `UpgradeBehavior: install` (default) — Setup.exe's overwrite is the upgrade; never
      `uninstallPrevious`, which would fire the data prompt on every upgrade.
    - Locale manifest: name, `Publisher: Kelly Ford`, description from README, `License:
@@ -165,6 +263,14 @@ promoted builds.
 - The action reads the release's assets, matches the two Setup.exe files by pattern,
   computes hashes, writes the new version folder, and opens the PR to
   microsoft/winget-pkgs from a fork.
+- **Check the architecture on the first automated PR before letting it merge.** The action
+  hands the assets to komac, which infers `Architecture:` per installer. Phase 1b measured
+  both Setup.exe binaries as **x86** PE images, so the binary cannot disambiguate them;
+  only the filename can, and `QuickMail-<v>-win-Setup.exe` carries no architecture token
+  while `QuickMail-<v>-win-arm64-Setup.exe` does. If the x64 asset comes out as `x86` or
+  disappears from the manifest, the fix is to put `x64` in the release asset's name (one
+  line in `quickmail.yml`, plus the `installers-regex` in `winget-publish.yml`). The manual
+  first submission is unaffected — it states both architectures outright.
 - It needs a **classic PAT with `public_repo` scope** stored as a repo secret
   (fine-grained tokens cannot fork/PR to microsoft/winget-pkgs today). Token creation is
   Kelly's step; everything else is workflow YAML.
@@ -215,13 +321,31 @@ decide then whether to patch it ourselves post-update.
 3. **Q3:** Publisher segment of the identifier: `KellyLford.QuickMail` is proposed to
    match the GitHub account. Confirm before the first submission — the identifier is
    permanent once merged.
-4. **Q4 (resolved):** No upstream report needed. The MSI silent-install defect is
+4. **Q4 (resolved as to winget; not as to the MSI):** No upstream report needed. The MSI
+   silent-install defect is
    [velopack/velopack#945](https://github.com/velopack/velopack/issues/945), closed
    2026-07-01 by a fix on master (`SetQuietDefaultInstallFolder` for `UILevel<5` in
-   `MsiTemplate.hbs`), shipped so far only in the 1.2.110 prerelease. The release
-   workflow installs the latest *stable* vpk, so the MSI is fixed automatically by the
-   next stable Velopack. Tracked in #554, which also keeps the still-open MSI-over-MSI
-   uninstall/prompt behavior (#245) in view. Winget is unaffected either way.
+   `MsiTemplate.hbs`), shipped so far only in the 1.2.110 prerelease. Tracked in #554,
+   which also keeps the still-open MSI-over-MSI uninstall/prompt behavior (#245) in view.
+   Winget is unaffected either way, since it installs Setup.exe.
+
+   Do not read this as "the MSI fixes itself." NuGet still shows **1.2.0** as the newest
+   stable `vpk` (checked 2026-08-16); every version above it, including 1.2.110, carries a
+   prerelease suffix. There is no stable release with the fix to upgrade *to*, and no
+   published date for one.
+5. **Q5 (new):** Should `vpk` be pinned? The release workflow installs it with
+   `dotnet tool install -g vpk`, unpinned, so a future release run silently packs with
+   whatever version is newest that day. Two things in the tree currently pull in opposite
+   directions on this: the workflow comment above the ARM64 pack step says "re-check this
+   listing if vpk is ever upgraded — a collision here would corrupt the x64 feed and strand
+   every existing install", which assumes upgrades are events somebody notices, while Q4
+   above treats the silent upgrade as the delivery mechanism for a fix. Both cannot hold.
+
+   Pinning and bumping deliberately looks like the right answer: it makes the feed-collision
+   re-check possible, and it turns "wait for a stable Velopack" into a scheduled action
+   rather than a hope. `.github/workflows/winget-install-matrix.yml` re-measures the packed
+   output and the install paths on demand, so a bump can be verified before it ships rather
+   than after.
 
 ## Out of scope
 
