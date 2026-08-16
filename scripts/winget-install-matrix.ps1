@@ -6,7 +6,7 @@
 .DESCRIPTION
   Written for issue #536 (winget distribution). The winget plan's Phase 1 was done by hand
   on one ARM64 machine and left three gaps: x64 was never tested, Setup.exe over an
-  MSI-installed copy — the path every existing user takes — was never tested at all, and
+  MSI-installed copy -- the path every existing user takes -- was never tested at all, and
   the winget correlation claims were inferred from registry state rather than measured.
 
   This script closes those gaps on a CI runner, so the answers are reproducible and nobody
@@ -30,7 +30,7 @@
 .NOTES
   Non-destructive on a developer machine only in the sense that it removes QuickMail.
   It uninstalls QuickMail repeatedly and deletes its install directories. Do not run it
-  on a machine with a QuickMail install you care about — it is meant for CI runners.
+  on a machine with a QuickMail install you care about -- it is meant for CI runners.
 #>
 [CmdletBinding()]
 param(
@@ -64,7 +64,7 @@ $UninstallRoots = @(
 function Get-ArpRows {
     <#  Every Add/Remove Programs row that mentions QuickMail, from all three hives.
         SystemComponent is carried through because an MSI row with SystemComponent=1 is
-        hidden from Settings > Apps but is still a real product registration — the
+        hidden from Settings > Apps but is still a real product registration -- the
         distinction the migration question turns on. #>
     $rows = @()
     foreach ($root in $UninstallRoots) {
@@ -190,14 +190,14 @@ function Format-Snapshot {
         foreach ($r in $Snap.Arp) {
             $hidden = if ($r.SystemComponent -eq 1) { 'yes' } else { 'no' }
             $loc = if ($r.InstallLocation) { $r.InstallLocation.Replace($env:LOCALAPPDATA, '%LocalAppData%') } else { '' }
-            $q = if ($r.QuietUninstallString) { '`' + $r.QuietUninstallString.Replace($env:LOCALAPPDATA, '%LocalAppData%') + '`' } else { '—' }
+            $q = if ($r.QuietUninstallString) { '`' + $r.QuietUninstallString.Replace($env:LOCALAPPDATA, '%LocalAppData%') + '`' } else { '--' }
             [void]$sb.AppendLine("| $($r.Scope) | ``$($r.KeyName)`` | $($r.DisplayName) | $($r.DisplayVersion) | $hidden | $loc | $q |")
         }
         [void]$sb.AppendLine()
     }
 
     [void]$sb.AppendLine("Windows Installer product registrations: **$($Snap.MsiProducts.Count)**" +
-        $(if ($Snap.MsiProducts.Count) { ' — ' + (($Snap.MsiProducts | ForEach-Object { "$($_.Scope) $($_.ProductName)" }) -join '; ') } else { '' }))
+        $(if ($Snap.MsiProducts.Count) { ' -- ' + (($Snap.MsiProducts | ForEach-Object { "$($_.Scope) $($_.ProductName)" }) -join '; ') } else { '' }))
     [void]$sb.AppendLine()
 
     [void]$sb.AppendLine('Install directories:')
@@ -205,7 +205,7 @@ function Format-Snapshot {
     if ($Snap.Dirs.Count) {
         foreach ($d in $Snap.Dirs) {
             $p = $d.Path.Replace($env:LOCALAPPDATA, '%LocalAppData%')
-            [void]$sb.AppendLine("- ``$p`` — exe version $($d.ExeVersion); contains: $($d.Entries)")
+            [void]$sb.AppendLine("- ``$p`` -- exe version $($d.ExeVersion); contains: $($d.Entries)")
         }
     } else { [void]$sb.AppendLine('- (none)') }
     [void]$sb.AppendLine()
@@ -225,7 +225,7 @@ function Format-Snapshot {
 function Reset-Machine {
     <#  Return to a verified-clean state so the next scenario measures only its own
         actions. Uninstalls through the product's own strings first (the supported path),
-        then removes anything left behind by force — a scenario that leaves residue is
+        then removes anything left behind by force -- a scenario that leaves residue is
         itself a finding, recorded by the caller's post-uninstall snapshot, not here. #>
     Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
@@ -234,7 +234,7 @@ function Reset-Machine {
             if ($row.KeyName -match '^\{[0-9A-Fa-f-]+\}$') {
                 Start-Process msiexec -ArgumentList "/x $($row.KeyName) /qn" -Wait -ErrorAction SilentlyContinue
             } elseif ($row.QuietUninstallString) {
-                # "path\Update.exe" --uninstall --silent  →  split exe from arguments
+                # "path\Update.exe" --uninstall --silent  ->  split exe from arguments
                 if ($row.QuietUninstallString -match '^"([^"]+)"\s*(.*)$') {
                     $exe = $Matches[1]; $argline = $Matches[2]
                     if (Test-Path $exe) {
@@ -310,9 +310,9 @@ $oldSetup = Get-PackedFile $OldDir "QuickMail-$OldVersion-$suffix-Setup.exe"
 $newMsi   = Get-PackedFile $NewDir "QuickMail-$NewVersion-$suffix.msi"
 $newSetup = Get-PackedFile $NewDir "QuickMail-$NewVersion-$suffix-Setup.exe"
 
-Write-Section "# Installer path matrix — $Arch"
+Write-Section "# Installer path matrix -- $Arch"
 Write-Section ''
-Write-Section "Old version **$OldVersion**, new version **$NewVersion**, both packed locally by this run — neither is a shipped QuickMail artifact."
+Write-Section "Old version **$OldVersion**, new version **$NewVersion**, both packed locally by this run -- neither is a shipped QuickMail artifact."
 Write-Section ''
 Write-Section "Runner: $((Get-CimInstance Win32_OperatingSystem).Caption) build $([Environment]::OSVersion.Version). vpk: $(if ($env:VPK_VERSION) { $env:VPK_VERSION } else { 'unrecorded' }). winget: $(if ($script:WingetAvailable) { (& winget --version) } else { 'not available' })."
 Write-Section ''
@@ -331,7 +331,7 @@ function Get-PEMachine {
 }
 $machineNames = @{ 0x8664 = 'x64'; 0xAA64 = 'ARM64'; 0x14C = 'x86' }
 
-Write-Section '## Scenario 0 — what `vpk pack` emits'
+Write-Section '## Scenario 0 -- what `vpk pack` emits'
 Write-Section ''
 Write-Section 'Filenames, verbatim, from the same `vpk pack` arguments the release workflow uses (`--msi --instLocation PerUser`):'
 Write-Section ''
@@ -374,32 +374,32 @@ function Invoke-Scenario {
     Write-Section ''
 }
 
-Invoke-Scenario 'Scenario 1 — silent MSI, fresh machine' `
+Invoke-Scenario 'Scenario 1 -- silent MSI, fresh machine' `
     'Does `msiexec /qn` land in C:\QuickMail on this architecture too (issue #554 was only ever measured on ARM64)?' {
     $r = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/qn', '/l*v', "$PWD\msi-fresh.log")
-    Write-Section "``msiexec /i … /qn`` → exit $($r.ExitCode) in $($r.Seconds)s"
+    Write-Section "``msiexec /i ... /qn`` -> exit $($r.ExitCode) in $($r.Seconds)s"
     Write-Section ''
     Write-Section (Format-Snapshot (Get-Snapshot 'after silent MSI install'))
     if (Test-Path 'C:\QuickMail') {
-        Add-Finding "Confirmed on $Arch: a silent MSI install lands in C:\QuickMail, not %LocalAppData%. Issue #554 is not architecture-specific."
+        Add-Finding "Confirmed on ${Arch}: a silent MSI install lands in C:\QuickMail, not %LocalAppData%. Issue #554 is not architecture-specific."
     } elseif (Test-Path (Join-Path $env:LOCALAPPDATA 'QuickMail')) {
-        Add-Finding "On $Arch a silent MSI install landed in %LocalAppData% — the opposite of the ARM64 Phase 1 result. Issue #554 may be fixed in this vpk, or architecture-specific."
+        Add-Finding "On $Arch a silent MSI install landed in %LocalAppData% -- the opposite of the ARM64 Phase 1 result. Issue #554 may be fixed in this vpk, or architecture-specific."
     }
 }
 
-Invoke-Scenario 'Scenario 2 — Setup.exe over an MSI install (the migration path)' `
-    'Every existing user installed from the MSI wizard into %LocalAppData%. What does `winget install`/`upgrade` — that is, `Setup.exe --silent` — do to that machine?' {
+Invoke-Scenario 'Scenario 2 -- Setup.exe over an MSI install (the migration path)' `
+    'Every existing user installed from the MSI wizard into %LocalAppData%. What does `winget install`/`upgrade` -- that is, `Setup.exe --silent` -- do to that machine?' {
     # Reproduce the wizard's install location without driving the wizard: VELOPACK_INSTALLDIR
     # is exactly what the Next button sets, per the #554 investigation.
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
     $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldMsi`"", '/qn') -Env @{ VELOPACK_INSTALLDIR = $target }
-    Write-Section "Step 1 — MSI $OldVersion into ``%LocalAppData%\QuickMail`` (wizard-equivalent): exit $($r1.ExitCode) in $($r1.Seconds)s"
+    Write-Section "Step 1 -- MSI $OldVersion into ``%LocalAppData%\QuickMail`` (wizard-equivalent): exit $($r1.ExitCode) in $($r1.Seconds)s"
     Write-Section ''
     $before = Get-Snapshot "after MSI $OldVersion (wizard-equivalent)"
     Write-Section (Format-Snapshot $before)
 
     $r2 = Invoke-Installer $newSetup @('--silent')
-    Write-Section "Step 2 — ``Setup.exe --silent`` $NewVersion over it: exit $($r2.ExitCode) in $($r2.Seconds)s"
+    Write-Section "Step 2 -- ``Setup.exe --silent`` $NewVersion over it: exit $($r2.ExitCode) in $($r2.Seconds)s"
     Write-Section ''
     $after = Get-Snapshot "after Setup.exe $NewVersion over the MSI install"
     Write-Section (Format-Snapshot $after)
@@ -416,15 +416,15 @@ Invoke-Scenario 'Scenario 2 — Setup.exe over an MSI install (the migration pat
     }
 }
 
-Invoke-Scenario 'Scenario 3 — Setup.exe over Setup.exe (the steady-state upgrade)' `
+Invoke-Scenario 'Scenario 3 -- Setup.exe over Setup.exe (the steady-state upgrade)' `
     'Phase 1 measured this by hand on ARM64. Does it hold on this runner, and does winget see the version advance?' {
     $r1 = Invoke-Installer $oldSetup @('--silent')
-    Write-Section "Step 1 — ``Setup.exe --silent`` $OldVersion, fresh: exit $($r1.ExitCode) in $($r1.Seconds)s"
+    Write-Section "Step 1 -- ``Setup.exe --silent`` $OldVersion, fresh: exit $($r1.ExitCode) in $($r1.Seconds)s"
     Write-Section ''
     Write-Section (Format-Snapshot (Get-Snapshot "after Setup.exe $OldVersion"))
 
     $r2 = Invoke-Installer $newSetup @('--silent')
-    Write-Section "Step 2 — ``Setup.exe --silent`` $NewVersion over it: exit $($r2.ExitCode) in $($r2.Seconds)s"
+    Write-Section "Step 2 -- ``Setup.exe --silent`` $NewVersion over it: exit $($r2.ExitCode) in $($r2.Seconds)s"
     Write-Section ''
     $after = Get-Snapshot "after Setup.exe $NewVersion over Setup.exe $OldVersion"
     Write-Section (Format-Snapshot $after)
@@ -437,10 +437,10 @@ Invoke-Scenario 'Scenario 3 — Setup.exe over Setup.exe (the steady-state upgra
     }
 }
 
-Invoke-Scenario 'Scenario 4 — uninstall through the quiet string winget uses' `
+Invoke-Scenario 'Scenario 4 -- uninstall through the quiet string winget uses' `
     'winget uninstall runs QuietUninstallString. Does it complete unattended, and what does it leave behind?' {
     $r1 = Invoke-Installer $newSetup @('--silent')
-    Write-Section "Step 1 — install $NewVersion: exit $($r1.ExitCode) in $($r1.Seconds)s"
+    Write-Section "Step 1 -- install ${NewVersion}: exit $($r1.ExitCode) in $($r1.Seconds)s"
     $installed = Get-Snapshot "installed $NewVersion"
     $row = @($installed.Arp | Where-Object { $_.QuietUninstallString })
     if (-not $row.Count) { throw 'No QuietUninstallString on any ARP row; winget uninstall would have nothing to run.' }
@@ -450,7 +450,7 @@ Invoke-Scenario 'Scenario 4 — uninstall through the quiet string winget uses' 
 
     if ($row[0].QuietUninstallString -match '^"([^"]+)"\s*(.*)$') {
         $r2 = Invoke-Installer $Matches[1] ($Matches[2] -split '\s+')
-        Write-Section "Step 2 — running it: exit $($r2.ExitCode) in $($r2.Seconds)s"
+        Write-Section "Step 2 -- running it: exit $($r2.ExitCode) in $($r2.Seconds)s"
     }
     Write-Section ''
     $after = Get-Snapshot 'after quiet uninstall'
@@ -463,20 +463,20 @@ Invoke-Scenario 'Scenario 4 — uninstall through the quiet string winget uses' 
     }
 }
 
-Invoke-Scenario 'Scenario 5 — MSI over a Setup.exe install (the reverse migration)' `
+Invoke-Scenario 'Scenario 5 -- MSI over a Setup.exe install (the reverse migration)' `
     'A user who installs from winget and later downloads the MSI from the release page ends up here. Is it survivable?' {
     $r1 = Invoke-Installer $oldSetup @('--silent')
-    Write-Section "Step 1 — ``Setup.exe --silent`` $OldVersion: exit $($r1.ExitCode) in $($r1.Seconds)s"
+    Write-Section "Step 1 -- ``Setup.exe --silent`` ${OldVersion}: exit $($r1.ExitCode) in $($r1.Seconds)s"
     Write-Section ''
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
     $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/qn') -Env @{ VELOPACK_INSTALLDIR = $target }
-    Write-Section "Step 2 — MSI $NewVersion over it (wizard-equivalent location): exit $($r2.ExitCode) in $($r2.Seconds)s"
+    Write-Section "Step 2 -- MSI $NewVersion over it (wizard-equivalent location): exit $($r2.ExitCode) in $($r2.Seconds)s"
     Write-Section ''
     $after = Get-Snapshot "after MSI $NewVersion over Setup.exe $OldVersion"
     Write-Section (Format-Snapshot $after)
     $visible = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
     if ($visible.Count -gt 1) {
-        Add-Finding "MSI over a Setup.exe install leaves $($visible.Count) visible ARP rows — the reverse migration is as messy as the forward one."
+        Add-Finding "MSI over a Setup.exe install leaves $($visible.Count) visible ARP rows -- the reverse migration is as messy as the forward one."
     }
 }
 
@@ -485,7 +485,7 @@ Invoke-Scenario 'Scenario 5 — MSI over a Setup.exe install (the reverse migrat
 Reset-Machine
 
 $header = @()
-$header += "# QuickMail installer path matrix — $Arch"
+$header += "# QuickMail installer path matrix -- $Arch"
 $header += ''
 $header += "Generated by ``scripts/winget-install-matrix.ps1`` on a GitHub-hosted runner. Every scenario starts from a verified-clean machine."
 $header += ''

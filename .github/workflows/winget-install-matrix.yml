@@ -50,6 +50,21 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Before the six-minute publish, not after it. The probe script is the last step in
+      # this job, so a syntax error in it costs a full build to discover otherwise — which
+      # it did, once.
+      - name: Syntax-check the probe script
+        shell: pwsh
+        run: |
+          $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/winget-install-matrix.ps1), [ref]$null, [ref]$errors)
+          if ($errors) {
+            $errors | ForEach-Object { Write-Host "::error file=scripts/winget-install-matrix.ps1,line=$($_.Extent.StartLineNumber)::$($_.Message)" }
+            throw "$($errors.Count) parse error(s) in scripts/winget-install-matrix.ps1."
+          }
+          Write-Host 'scripts/winget-install-matrix.ps1 parses.'
+
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
