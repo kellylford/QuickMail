@@ -227,13 +227,20 @@ function Format-Snapshot {
     [void]$sb.AppendLine("Add/Remove Programs rows: **$($Snap.Arp.Count)**")
     [void]$sb.AppendLine()
     if ($Snap.Arp.Count) {
-        [void]$sb.AppendLine('| Hive | Key | DisplayName | DisplayVersion | Hidden | InstallLocation | QuietUninstallString |')
-        [void]$sb.AppendLine('| --- | --- | --- | --- | --- | --- | --- |')
+        # Publisher is printed, not just captured. A winget manifest's AppsAndFeaturesEntries
+        # must match the ARP row on EVERY field it names, and the manifest in #557 names
+        # DisplayName, Publisher and ProductCode. Two of those were verifiable from this table
+        # and Publisher was not, so a manifest asserting a publisher string Velopack does not
+        # write would fail correlation outright -- winget would treat the package as not
+        # installed after installing it. Do not remove this column to save width.
+        [void]$sb.AppendLine('| Hive | Key | DisplayName | Publisher | DisplayVersion | Hidden | InstallLocation | QuietUninstallString |')
+        [void]$sb.AppendLine('| --- | --- | --- | --- | --- | --- | --- | --- |')
         foreach ($r in $Snap.Arp) {
             $hidden = if ($r.SystemComponent -eq 1) { 'yes' } else { 'no' }
             $loc = if ($r.InstallLocation) { $r.InstallLocation.Replace($env:LOCALAPPDATA, '%LocalAppData%') } else { '' }
             $q = if ($r.QuietUninstallString) { '`' + $r.QuietUninstallString.Replace($env:LOCALAPPDATA, '%LocalAppData%') + '`' } else { '--' }
-            [void]$sb.AppendLine("| $($r.Scope) | ``$($r.KeyName)`` | $($r.DisplayName) | $($r.DisplayVersion) | $hidden | $loc | $q |")
+            $pub = if ($r.Publisher) { $r.Publisher } else { '*(not set)*' }
+            [void]$sb.AppendLine("| $($r.Scope) | ``$($r.KeyName)`` | $($r.DisplayName) | $pub | $($r.DisplayVersion) | $hidden | $loc | $q |")
         }
         [void]$sb.AppendLine()
     }
@@ -586,8 +593,25 @@ Invoke-Scenario 'Scenario 3 -- Setup.exe over Setup.exe (the steady-state upgrad
     $visible = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
     if ($visible.Count -ne 1) {
         Add-Finding "Setup-over-Setup left $($visible.Count) visible ARP rows; exactly one was expected."
-    } elseif ($visible[0].DisplayVersion -ne $NewVersion) {
-        Add-Finding "After upgrading to $NewVersion the ARP DisplayVersion still reads '$($visible[0].DisplayVersion)'. winget correlates on this value, so it would keep offering an upgrade that has already been applied."
+    } else {
+        if ($visible[0].DisplayVersion -ne $NewVersion) {
+            Add-Finding "After upgrading to $NewVersion the ARP DisplayVersion still reads '$($visible[0].DisplayVersion)'. winget correlates on this value, so it would keep offering an upgrade that has already been applied."
+        }
+        # This is the row the winget manifest (#557) is written against, in its steady state.
+        # That manifest's AppsAndFeaturesEntries names DisplayName, Publisher and ProductCode,
+        # and winget requires EVERY field a manifest names to match: one wrong value is not a
+        # weaker match, it is no match, after which winget treats QuickMail as not installed
+        # immediately after installing it. Only ProductCode had been checked -- indirectly, by
+        # the key name appearing in `winget list`. Mirror the manifest's values here so a
+        # change on either side shows up as a finding rather than as a support ticket.
+        $manifestEntries = @{ DisplayName = 'QuickMail'; Publisher = 'Kelly Ford'; KeyName = 'QuickMail' }
+        foreach ($field in @($manifestEntries.Keys)) {
+            $actual = $visible[0].$field
+            if ($actual -ne $manifestEntries[$field]) {
+                $named = if ($field -eq 'KeyName') { 'ProductCode' } else { $field }
+                Add-Finding "Velopack's Add/Remove Programs row has $field '$actual', but the winget manifest's AppsAndFeaturesEntries names $named '$($manifestEntries[$field])'. winget requires every field the manifest names to match, so correlation would fail outright."
+            }
+        }
     }
 }
 
