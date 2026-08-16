@@ -18,9 +18,10 @@ search on 2026-08-14 confirms no existing QuickMail package, and `KellyBrazil.*`
 `KellyElton.*` publishers show the naming convention this follows).
 
 The original draft assumed the MSI would be the winget installer. **Phase 1 testing
-disproved that** (details below): a silent MSI install lands in `C:\QuickMail`, and a
-silent MSI upgrade over an existing install uninstalls the old copy — data-removal prompt
-and all — and relocates the app. Velopack's one-click `Setup.exe` does everything winget
+disproved that** (details below): a silent MSI install lands in a drive root — `C:\QuickMail`
+on the ARM64 machine, `D:\QuickMail` on the x64 CI runner, since Windows Installer picks the
+drive — and a silent MSI upgrade over an existing install uninstalls the old copy
+— data-removal prompt and all — and relocates the app. Velopack's one-click `Setup.exe` does everything winget
 needs correctly, so the plan now ships Setup.exe as a release asset and points the manifest
 at it. The only code change is a few lines in the release workflow.
 
@@ -152,6 +153,9 @@ Identical on ARM64 (`ARP\User\Arm64\…`). Three consequences:
 3. **The manifest's `AppsAndFeaturesEntries` matches both rows**, since both have
    `DisplayName: QuickMail`. Whichever winget picks, the other stays.
 
+`Publisher` is `Kelly Ford` on both rows too, measured — so neither DisplayName nor Publisher
+discriminates, and `ProductCode` is the only field that does.
+
 The fix in the manifest is to correlate on the ARP key name rather than the display name:
 winget's identifier for a non-MSI entry ends in that key (`ARP\User\X64\QuickMail`), so
 `ProductCode: QuickMail` in `AppsAndFeaturesEntries` selects the Velopack row and excludes
@@ -170,6 +174,15 @@ would hit) is equally messy: 2 visible rows, same shape.
 | `Setup.exe --silent` over Setup.exe | still exactly 1 row; DisplayVersion advances 1.0.0 -> 1.0.1; `winget list` shows one row at the new version | same |
 | Quiet uninstall (`Update.exe --uninstall --silent`, what `winget uninstall` runs) | exit 0; 0 ARP rows, 0 install directories, 0 shortcuts, 0 product registrations | same |
 | `vpk pack` output filenames | `QuickMail-win-Setup.exe`, `QuickMail-win.msi`, `QuickMail-win-Portable.zip`, `RELEASES`, `releases.win.json`, `assets.win.json`, `QuickMail-<v>-full.nupkg` | the same set, each suffixed `win-arm64` |
+
+One caveat on the uninstall row, from the independent review of #560: a CI machine never has
+a `%APPDATA%\QuickMail` profile, and `LaunchUninstallDataPrompt` returns early when there is
+none. So the measurement proves the uninstall leaves nothing behind; it does **not** exercise
+the detached "remove your data?" prompt, which is the part with interesting failure modes
+(`INSTALLER.md` records it as best-effort and silently skipped on script-restricted
+machines). Phase 1's ARM64 run did see that prompt appear. Deliberately not automated —
+creating the profile directory on a runner would strand a hidden modal with nothing to
+answer it. This is one of the cases issue #561 (a persistent test machine) exists for.
 
 ### Two corrections to the Phase 1 table above
 
