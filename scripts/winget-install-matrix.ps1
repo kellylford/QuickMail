@@ -27,10 +27,20 @@
 .PARAMETER Report
   Path to write the Markdown report to.
 
+.PARAMETER EmittedListing
+  Optional file listing the pack folder's contents as `vpk pack` emitted them, captured by
+  the caller BEFORE it renames anything. Scenario 0 reports vpk's own filenames; without
+  this it can only report the post-rename ones, which is not the same claim.
+
+.PARAMETER Force
+  Run outside CI. Required there because Reset-Machine deletes %APPDATA%\QuickMail.
+
 .NOTES
-  Non-destructive on a developer machine only in the sense that it removes QuickMail.
-  It uninstalls QuickMail repeatedly and deletes its install directories. Do not run it
-  on a machine with a QuickMail install you care about -- it is meant for CI runners.
+  This is destructive well beyond "it removes QuickMail". It uninstalls QuickMail
+  repeatedly, deletes its install directories, force-deletes its registry keys, and
+  deletes %APPDATA%\QuickMail -- the profile directory holding accounts, settings, rules,
+  templates and cached mail. It is meant for a throwaway CI runner and refuses to start
+  anywhere else unless -Force says the machine is disposable.
 #>
 [CmdletBinding()]
 param(
@@ -39,16 +49,27 @@ param(
     [Parameter(Mandatory)][string]$OldVersion,
     [Parameter(Mandatory)][string]$NewVersion,
     [Parameter(Mandatory)][ValidateSet('x64', 'arm64')][string]$Arch,
-    [string]$Report = 'winget-matrix-report.md'
+    [string]$Report = 'winget-matrix-report.md',
+    [string]$EmittedListing,
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+if (-not $Force -and -not $env:GITHUB_ACTIONS -and -not $env:CI) {
+    throw ('Refusing to run outside CI. This script deletes %APPDATA%\QuickMail, which on a ' +
+           'developer machine is the real profile directory -- accounts, settings, rules, ' +
+           'templates, cached mail. Pass -Force only if this machine is genuinely disposable.')
+}
+
 # Scenario failures must not abort the run: a scenario that misbehaves is a finding, and
 # the scenarios after it are still worth measuring. Only harness errors should be fatal.
 $script:Findings = [System.Collections.Generic.List[string]]::new()
 $script:Sections = [System.Collections.Generic.List[string]]::new()
+# A scenario that aborted measured nothing. Counted so the exit code can say the matrix has
+# a hole in it, rather than reporting success for a run that half happened.
+$script:Aborted = 0
 
 function Write-Section { param([string]$Text) $script:Sections.Add($Text) | Out-Null }
 function Add-Finding { param([string]$Text) $script:Findings.Add($Text) | Out-Null; Write-Host "FINDING: $Text" }
@@ -244,10 +265,15 @@ function Format-Snapshot {
 # --- machine reset -------------------------------------------------------------------
 
 function Reset-Machine {
-    <#  Return to a verified-clean state so the next scenario measures only its own
-        actions. Uninstalls through the product's own strings first (the supported path),
-        then removes anything left behind by force -- a scenario that leaves residue is
-        itself a finding, recorded by the caller's post-uninstall snapshot, not here. #>
+    <#  Return to a clean state so the next scenario measures only its own actions.
+        Uninstalls through the product's own strings first (the supported path), then
+        removes anything left behind by force -- a scenario that leaves residue is itself a
+        finding, recorded by the caller's post-uninstall snapshot, not here.
+
+        Returns what survived. "Every scenario starts from a verified-clean machine" is a
+        claim the report makes; the caller turns this object into the evidence for it, or
+        into a finding when it is not true. A reset that silently fails is the one way this
+        probe can report a previous scenario's residue as the current scenario's result. #>
     Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
     foreach ($row in Get-ArpRows) {
@@ -279,14 +305,49 @@ function Reset-Machine {
             ForEach-Object { Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # Windows Installer's own product registration outlives the ARP row and is NOT removed by
+    # deleting it. When msiexec /x succeeds it goes with the product, but scenario 2 leaves an
+    # MSI registration pointing at files Setup.exe has overwritten, and an /x against that can
+    # fail -- after which the stale key would be counted as the NEXT scenario's MSI
+    # registration. Scenario 2's second finding is exactly a count of these, so a leak here
+    # fabricates that finding for a scenario that never installed an MSI.
+    foreach ($prod in Get-MsiProductRows) {
+        $installerRoot = if ($prod.Scope -eq 'HKCU-Installer') {
+            'HKCU:\Software\Microsoft\Installer'
+        } else {
+            'HKLM:\SOFTWARE\Classes\Installer'
+        }
+        foreach ($sub in 'Products', 'Features') {
+            Remove-Item (Join-Path $installerRoot "$sub\$($prod.PackedCode)") -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     foreach ($d in (@(Get-InstallDirs | ForEach-Object { $_.Path }) + (Join-Path $env:APPDATA 'QuickMail'))) {
         Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
     }
-    Get-ChildItem (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs') -Recurse -Filter '*QuickMail*.lnk' -ErrorAction SilentlyContinue |
-        Remove-Item -Force -ErrorAction SilentlyContinue
+    # Both Start Menu roots, not just the per-user one: Get-Shortcuts reports the machine-wide
+    # root too, so cleaning only one leaves residue this function would then report as
+    # unclearable forever.
+    foreach ($menu in @((Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'),
+                        (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'))) {
+        if (-not (Test-Path $menu)) { continue }
+        Get-ChildItem $menu -Recurse -Filter '*QuickMail*.lnk' -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+    }
 
-    $left = @(Get-ArpRows).Count + @(Get-InstallDirs).Count
-    if ($left -ne 0) { Write-Host "reset: warning, $left QuickMail traces survived the reset" }
+    $residue = [pscustomobject]@{
+        Arp         = @(Get-ArpRows).Count
+        MsiProducts = @(Get-MsiProductRows).Count
+        Dirs        = @(Get-InstallDirs).Count
+        Shortcuts   = @(Get-Shortcuts).Count
+    }
+    $residue | Add-Member -NotePropertyName Total `
+        -NotePropertyValue ($residue.Arp + $residue.MsiProducts + $residue.Dirs + $residue.Shortcuts)
+    if ($residue.Total -ne 0) {
+        Write-Host ("reset: warning, QuickMail traces survived: {0} ARP, {1} MSI registration, {2} dir, {3} shortcut" -f
+            $residue.Arp, $residue.MsiProducts, $residue.Dirs, $residue.Shortcuts)
+    }
+    return $residue
 }
 
 # --- install primitives --------------------------------------------------------------
@@ -329,8 +390,21 @@ Write-Section "# Installer path matrix -- $Arch"
 Write-Section ''
 Write-Section "Old version **$OldVersion**, new version **$NewVersion**, both packed locally by this run -- neither is a shipped QuickMail artifact."
 Write-Section ''
-Write-Section "Runner: $((Get-CimInstance Win32_OperatingSystem).Caption) build $([Environment]::OSVersion.Version). vpk: $(if ($env:VPK_VERSION) { $env:VPK_VERSION } else { 'unrecorded' }). winget: $(if ($script:WingetAvailable) { (& winget --version) } else { 'not available' })."
+# Record the architecture the probe actually ran on. The whole value of the ARM64 leg is
+# that it is native; "runs-on: windows-11-arm" is an assertion about a runner label, and the
+# report is where it has to become a measurement. ProcessArchitecture matters separately:
+# a non-native PowerShell would read HKLM:\SOFTWARE through the WOW64 view.
+$osArch   = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+$procArch = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
+Write-Section "Runner: $((Get-CimInstance Win32_OperatingSystem).Caption) build $([Environment]::OSVersion.Version), OS architecture **$osArch**, probe process **$procArch**. vpk: $(if ($env:VPK_VERSION) { $env:VPK_VERSION } else { 'unrecorded' }). winget: $(if ($script:WingetAvailable) { (& winget --version) } else { 'not available' })."
 Write-Section ''
+
+$expectedOsArch = if ($Arch -eq 'arm64') { 'Arm64' } else { 'X64' }
+if ("$osArch" -ne $expectedOsArch) {
+    Add-Finding "The $Arch leg ran on a $osArch runner, so it is not measuring $Arch behaviour at all. Every result below is mislabelled."
+} elseif ("$procArch" -ne $expectedOsArch) {
+    Add-Finding "The $Arch leg's PowerShell is a $procArch process on a $osArch OS. Registry reads under HKLM:\SOFTWARE go through the WOW64 view, so the ARP snapshots may be incomplete."
+}
 
 # --- scenario 0: what vpk emitted, and what architecture it is -----------------------
 
@@ -348,7 +422,22 @@ $machineNames = @{ 0x8664 = 'x64'; 0xAA64 = 'ARM64'; 0x14C = 'x86' }
 
 Write-Section '## Scenario 0 -- what `vpk pack` emits'
 Write-Section ''
-Write-Section 'Filenames, verbatim, from the same `vpk pack` arguments the release workflow uses (`--msi --instLocation PerUser`):'
+Write-Section 'Filenames from the same `vpk pack` arguments the release workflow uses (`--msi --instLocation PerUser`).'
+Write-Section ''
+if ($EmittedListing -and (Test-Path $EmittedListing)) {
+    # Read the pre-rename listing the caller captured. Listing the pack folder here instead
+    # would print names this workflow assigned, while calling them vpk's -- and #555 hardcodes
+    # vpk's names, so that is precisely the claim that must not be second-hand.
+    Write-Section 'As `vpk pack` wrote them, before this workflow renames the MSI and Setup.exe to carry a version:'
+    Write-Section ''
+    Write-Section '```'
+    Write-Section (((Get-Content $EmittedListing) | Where-Object { $_.Trim() }) -join "`n")
+    Write-Section '```'
+    Write-Section ''
+    Write-Section 'After the rename (what the scenarios below install):'
+} else {
+    Write-Section '**The caller did not record the pre-rename listing**, so these are the names *after* this workflow renamed the MSI and Setup.exe. They are not evidence of what `vpk pack` emits.'
+}
 Write-Section ''
 Write-Section '```'
 Write-Section (Get-ChildItem $NewDir | Select-Object -ExpandProperty Name | Sort-Object | Out-String).Trim()
@@ -364,8 +453,17 @@ foreach ($f in @($newSetup, $newMsi)) {
     $m = Get-PEMachine $f
     $shown = if ($machineNames.ContainsKey([int]$m)) { $machineNames[[int]$m] } else { "unknown (0x$('{0:X4}' -f $m))" }
     Write-Section "| ``$name`` | $shown |"
-    if ($Arch -eq 'arm64' -and $shown -ne 'ARM64') {
-        Add-Finding "ARM64 channel's Setup.exe is a $shown binary. komac infers architecture from the binary when the filename carries no architecture token; the ARM64 asset's name does carry one, so this is survivable, but the x64 asset's does not."
+    # Emit this on BOTH legs. Gating it on arm64 meant the x64 report -- the leg where the
+    # filename carries no architecture token and the PE header is therefore the ONLY thing
+    # komac can read -- printed "x86" in the table and listed no finding at all.
+    $expectedMachine = if ($Arch -eq 'arm64') { 'ARM64' } else { 'x64' }
+    if ($shown -ne $expectedMachine) {
+        $consequence = if ($Arch -eq 'arm64') {
+            "The ARM64 asset's filename does carry an architecture token, so komac has something other than this header to go on."
+        } else {
+            "The x64 asset ships as ``QuickMail-<v>-win-Setup.exe``, whose filename carries NO architecture token, so this header is all komac has: it would infer ``Architecture: x86``. Check the first automated winget-pkgs PR before letting it merge."
+        }
+        Add-Finding "The $Arch channel's Setup.exe is a $shown PE image, not $expectedMachine. $consequence"
     }
 }
 Write-Section ''
@@ -382,11 +480,19 @@ function Invoke-Scenario {
     try {
         # Inside the try: a reset that cannot clean the machine is this scenario's failure
         # to report, not a reason to abandon every scenario after it.
-        Reset-Machine
+        $residue = Reset-Machine
+        if ($residue.Total -ne 0) {
+            Write-Section "**Start state NOT clean:** $($residue.Arp) ARP row(s), $($residue.MsiProducts) Windows Installer registration(s), $($residue.Dirs) install director(ies) and $($residue.Shortcuts) shortcut(s) survived the reset. Everything below may be the previous scenario's residue."
+            Add-Finding "$Title started from a machine the reset could not clean ($($residue.Total) trace(s) left behind). Its measurements may be contaminated by the scenario before it."
+        } else {
+            Write-Section '*Start state: verified clean -- no QuickMail ARP rows, Windows Installer registrations, install directories or shortcuts.*'
+        }
+        Write-Section ''
         & $Body
     } catch {
         Write-Section "**Scenario aborted:** ``$_``"
         Add-Finding "$Title aborted: $_"
+        $script:Aborted++
     }
     Write-Section ''
 }
@@ -396,11 +502,26 @@ Invoke-Scenario 'Scenario 1 -- silent MSI, fresh machine' `
     $r = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/qn', '/l*v', "$PWD\msi-fresh.log")
     Write-Section "``msiexec /i ... /qn`` -> exit $($r.ExitCode) in $($r.Seconds)s"
     Write-Section ''
-    Write-Section (Format-Snapshot (Get-Snapshot 'after silent MSI install'))
-    if (Test-Path 'C:\QuickMail') {
-        Add-Finding "Confirmed on ${Arch}: a silent MSI install lands in C:\QuickMail, not %LocalAppData%. Issue #554 is not architecture-specific."
-    } elseif (Test-Path (Join-Path $env:LOCALAPPDATA 'QuickMail')) {
+    $snap = Get-Snapshot 'after silent MSI install'
+    Write-Section (Format-Snapshot $snap)
+    if ($r.ExitCode -ne 0) {
+        Add-Finding "On $Arch the silent MSI install exited $($r.ExitCode); everything measured for this scenario is the state after a failed install. See msi-fresh.log."
+    }
+    # Read the answer off the directories actually measured, rather than testing C:\ by name.
+    # Windows Installer resolves TARGETDIR to a drive root -- whichever fixed drive it picks --
+    # and the x64 runner picked D:. A C:-only test therefore matched neither branch and left
+    # the x64 report with NO finding for this scenario, while its own table showed
+    # D:\QuickMail. The defect was measured and then not reported.
+    $perUser = Join-Path $env:LOCALAPPDATA 'QuickMail'
+    $stray = @($snap.Dirs | Where-Object { $_.Path -ne $perUser })
+    if ($stray.Count) {
+        Add-Finding ("Confirmed on ${Arch}: a silent MSI install lands in " +
+            (($stray | ForEach-Object { $_.Path }) -join ', ') +
+            ", not %LocalAppData%. Issue #554 is neither architecture-specific nor specific to C: -- Windows Installer resolves TARGETDIR to a drive root, and which drive is the runner's choice.")
+    } elseif ($snap.Dirs.Count) {
         Add-Finding "On $Arch a silent MSI install landed in %LocalAppData% -- the opposite of the ARM64 Phase 1 result. Issue #554 may be fixed in this vpk, or architecture-specific."
+    } else {
+        Add-Finding "On $Arch a silent MSI install produced no QuickMail install directory anywhere this probe looks. The scenario measured nothing; do not read its silence as a pass."
     }
 }
 
@@ -421,9 +542,14 @@ Invoke-Scenario 'Scenario 2 -- Setup.exe over an MSI install (the migration path
 
     # Assert the premise before measuring anything on top of it. If the MSI did not land
     # where the wizard would have put it, this scenario is not the migration path and its
-    # result must not be read as one.
-    if (-not (@($before.Dirs | Where-Object { $_.Path -eq $target }).Count)) {
-        throw "Premise failed: the MSI did not install to $target, so this is not the wizard-equivalent starting state. Installed instead at: $(($before.Arp | ForEach-Object { $_.InstallLocation }) -join ', ')"
+    # result must not be read as one. "Exactly one directory" rather than "the right one is
+    # among them": a second install elsewhere means the starting state is not a wizard
+    # install either, and the ARP rows counted below would include its row.
+    if ($r1.ExitCode -ne 0) {
+        throw "Premise failed: the MSI install exited $($r1.ExitCode), so there is no wizard-equivalent starting state to migrate from."
+    }
+    if (@($before.Dirs).Count -ne 1 -or $before.Dirs[0].Path -ne $target) {
+        throw "Premise failed: the MSI did not install to $target and nowhere else, so this is not the wizard-equivalent starting state. Directories found: $(($before.Dirs | ForEach-Object { $_.Path }) -join ', ')"
     }
 
     $r2 = Invoke-Installer $newSetup @('--silent')
@@ -476,24 +602,41 @@ Invoke-Scenario 'Scenario 4 -- uninstall through the quiet string winget uses' `
     Write-Section "QuietUninstallString: ``$($row[0].QuietUninstallString)``"
     Write-Section ''
 
+    $ran = $false
     if ($row[0].QuietUninstallString -match '^"([^"]+)"\s*(.*)$') {
         # Copy out of $Matches at once: any later -match in this scope replaces it. The
         # Where-Object drops the empty element -split yields for an argument-less string.
         $exe  = $Matches[1]
         $argv = @($Matches[2] -split '\s+' | Where-Object { $_ })
         $r2 = Invoke-Installer $exe $argv
+        $ran = $true
         Write-Section "Step 2 -- running it: exit $($r2.ExitCode) in $($r2.Seconds)s"
+        if ($r2.ExitCode -ne 0) {
+            Add-Finding "The quiet uninstall string exited $($r2.ExitCode). ``winget uninstall`` runs exactly this and would report a failure."
+        }
     } else {
         Add-Finding "QuietUninstallString did not parse as a quoted path plus arguments: $($row[0].QuietUninstallString)"
     }
     Write-Section ''
     $after = Get-Snapshot 'after quiet uninstall'
     Write-Section (Format-Snapshot $after)
-    if ($after.Arp.Count -gt 0) {
-        Add-Finding "The quiet uninstall left $($after.Arp.Count) Add/Remove Programs row(s) behind."
-    }
-    if ($after.Dirs.Count -gt 0) {
-        Add-Finding "The quiet uninstall left directories behind: $(($after.Dirs | ForEach-Object { $_.Path }) -join ', ')."
+    # Only judge the leftovers when the uninstall actually ran. Otherwise the app is simply
+    # still installed, and the three checks below would report a healthy install as three
+    # separate uninstall defects.
+    if (-not $ran) {
+        Write-Section '*The uninstall was never run, so the state above is the install, not what an uninstall leaves behind.*'
+    } else {
+        if ($after.Arp.Count -gt 0) {
+            Add-Finding "The quiet uninstall left $($after.Arp.Count) Add/Remove Programs row(s) behind."
+        }
+        if ($after.Dirs.Count -gt 0) {
+            Add-Finding "The quiet uninstall left directories behind: $(($after.Dirs | ForEach-Object { $_.Path }) -join ', ')."
+        }
+        # Snapshotted since the first run and never judged. A leftover Start Menu entry
+        # pointing at a deleted exe is exactly the kind of thing this scenario exists to catch.
+        if ($after.Shortcuts.Count -gt 0) {
+            Add-Finding "The quiet uninstall left Start Menu shortcuts behind: $(($after.Shortcuts) -join ', ')."
+        }
     }
 }
 
@@ -503,26 +646,48 @@ Invoke-Scenario 'Scenario 5 -- MSI over a Setup.exe install (the reverse migrati
     Write-Section "Step 1 -- ``Setup.exe --silent`` ${OldVersion}: exit $($r1.ExitCode) in $($r1.Seconds)s"
     Write-Section ''
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
+    # Show the starting state and assert it, exactly as scenario 2 does. Without this the
+    # scenario asserts "over it" in prose only: if VELOPACK_INSTALLDIR stopped taking effect
+    # the MSI would land on a drive root beside the Setup install, and the two ARP rows that
+    # produces would still be reported as "the reverse migration is as messy as the forward
+    # one" -- a correct-looking finding about a completely different machine state.
+    $before = Get-Snapshot "after Setup.exe $OldVersion"
+    Write-Section (Format-Snapshot $before)
+    if (@($before.Dirs).Count -ne 1 -or $before.Dirs[0].Path -ne $target) {
+        throw "Premise failed: Setup.exe $OldVersion did not install to $target and nowhere else. Directories found: $(($before.Dirs | ForEach-Object { $_.Path }) -join ', ')"
+    }
+
     $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/qn', "VELOPACK_INSTALLDIR=`"$target`"")
     Write-Section "Step 2 -- MSI $NewVersion over it (wizard-equivalent location): exit $($r2.ExitCode) in $($r2.Seconds)s"
     Write-Section ''
     $after = Get-Snapshot "after MSI $NewVersion over Setup.exe $OldVersion"
     Write-Section (Format-Snapshot $after)
+    if ($r2.ExitCode -ne 0) {
+        Add-Finding "MSI over a Setup.exe install exited $($r2.ExitCode) on $Arch."
+    }
+    $onTop = @($after.Dirs | Where-Object { $_.Path -eq $target }).Count -eq 1 -and @($after.Dirs).Count -eq 1
+    if (-not $onTop) {
+        Add-Finding "MSI over a Setup.exe install did not land on top of it: directories after the MSI are $(($after.Dirs | ForEach-Object { $_.Path }) -join ', '). This measured two side-by-side installs, not an overwrite, so read the ARP rows below accordingly."
+    }
     $visible = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
-    if ($visible.Count -gt 1) {
-        Add-Finding "MSI over a Setup.exe install leaves $($visible.Count) visible ARP rows -- the reverse migration is as messy as the forward one."
+    if ($visible.Count -gt 1 -and $onTop) {
+        Add-Finding "MSI over a Setup.exe install leaves $($visible.Count) visible ARP rows ($(($visible | ForEach-Object { $_.KeyName }) -join ', ')) over a single install directory -- the reverse migration is as messy as the forward one."
     }
 }
 
 # --- report --------------------------------------------------------------------------
 
-Reset-Machine
+$null = Reset-Machine
 
 $header = @()
 $header += "# QuickMail installer path matrix -- $Arch"
 $header += ''
-$header += "Generated by ``scripts/winget-install-matrix.ps1`` on a GitHub-hosted runner. Every scenario starts from a verified-clean machine."
+$header += "Generated by ``scripts/winget-install-matrix.ps1`` on a GitHub-hosted runner. Each scenario resets the machine first and states, in its own section, whether that reset actually left it clean."
 $header += ''
+if ($script:Aborted -gt 0) {
+    $header += "**$($script:Aborted) scenario(s) aborted.** The matrix below is incomplete; do not cite it as covering every path."
+    $header += ''
+}
 if ($script:Findings.Count) {
     $header += '## Findings'
     $header += ''
@@ -540,3 +705,18 @@ $body = ($header + $script:Sections) -join "`n"
 $body | Out-File -FilePath $Report -Encoding utf8
 Write-Host "`nReport written to $Report"
 if ($env:GITHUB_STEP_SUMMARY) { $body | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append }
+
+# Decide the exit code explicitly, and never let it be decided for us. GitHub's pwsh handler
+# appends `exit $LASTEXITCODE`, and the last thing to set $LASTEXITCODE here is
+# `cmd /c winget ...` -- winget exits non-zero when a list comes back empty. Leaving it
+# implicit means the step's pass/fail is settled by whether some unrelated package on the
+# runner happened to have an update available, which has already failed one run.
+#
+# Findings are data, not failures: recording misbehaviour is the entire job. An aborted
+# scenario is different -- it measured nothing, and a green step would advertise a matrix
+# with a hole in it.
+if ($script:Aborted -gt 0) {
+    Write-Host "$($script:Aborted) scenario(s) aborted; failing the step so the gap is not mistaken for coverage."
+    exit 1
+}
+exit 0

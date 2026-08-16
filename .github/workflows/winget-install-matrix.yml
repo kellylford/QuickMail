@@ -32,11 +32,13 @@ jobs:
   matrix:
     name: ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
-    # A leg whose runner label is unavailable, or whose scenarios misbehave badly enough to
-    # abort, must not hide the other leg's results.
-    continue-on-error: true
     timeout-minutes: 60
     strategy:
+      # This alone is what keeps one leg's failure from cancelling the other. Job-level
+      # continue-on-error was here too and did something quite different: it made the run
+      # report success no matter what either leg did. For a harness whose output is cited as
+      # evidence in other PRs, "the run was green" has to mean the measurements happened.
+      # Artifacts still upload on failure (`if: always()` below), so a red leg loses nothing.
       fail-fast: false
       matrix:
         include:
@@ -132,10 +134,22 @@ jobs:
               --instLicense installer/velopack/license.txt `
               --instConclusion installer/velopack/conclusion.txt @archArgs
             if ($LASTEXITCODE -ne 0) { throw "vpk pack $v failed with exit code $LASTEXITCODE." }
-            # Match the release workflow's rename so the probe exercises the shipped filenames.
+            # Record what vpk emitted BEFORE renaming anything. Scenario 0 reports these as
+            # vpk's own filenames, and PR #555 hardcodes those names -- so the listing behind
+            # that claim must not be one this workflow wrote. Kept outside $out so it cannot
+            # be mistaken for a pack artifact.
+            Write-Host "--- $v : as vpk emitted ---"
+            $emitted = Get-ChildItem $out | Select-Object -ExpandProperty Name | Sort-Object
+            $emitted
+            $emitted | Set-Content "packs/vpk-emitted-$v.txt" -Encoding utf8
+            # Rename to the shipped filenames, so the probe installs what users will. This
+            # matches the release workflow for the MSI today, and for Setup.exe once #555
+            # lands -- vpk emits it unversioned as QuickMail-<channel>-Setup.exe. Rename-Item
+            # throws if either name ever changes, which is itself the check that #555's
+            # hardcoded names still hold.
             Rename-Item "$out/QuickMail-$suffix.msi"       "QuickMail-$v-$suffix.msi"
             Rename-Item "$out/QuickMail-$suffix-Setup.exe" "QuickMail-$v-$suffix-Setup.exe"
-            Write-Host "--- $v ---"
+            Write-Host "--- $v : after rename ---"
             Get-ChildItem $out | Select-Object -ExpandProperty Name
           }
 
@@ -179,6 +193,7 @@ jobs:
             -OldDir packs/1.0.0 -NewDir packs/1.0.1 `
             -OldVersion 1.0.0 -NewVersion 1.0.1 `
             -Arch '${{ matrix.arch }}' `
+            -EmittedListing packs/vpk-emitted-1.0.1.txt `
             -Report "winget-matrix-${{ matrix.arch }}.md"
 
       - name: Upload report
@@ -189,5 +204,6 @@ jobs:
           path: |
             winget-matrix-${{ matrix.arch }}.md
             msi-fresh.log
+            packs/vpk-emitted-*.txt
           if-no-files-found: warn
           retention-days: 14
