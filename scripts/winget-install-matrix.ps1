@@ -312,7 +312,9 @@ $newSetup = Get-PackedFile $NewDir "QuickMail-$NewVersion-$suffix-Setup.exe"
 
 Write-Section "# Installer path matrix — $Arch"
 Write-Section ''
-Write-Section "Old version **$OldVersion**, new version **$NewVersion**. Runner: $((Get-CimInstance Win32_OperatingSystem).Caption) build $([Environment]::OSVersion.Version). winget: $(if ($script:WingetAvailable) { (& winget --version) } else { 'not available' })."
+Write-Section "Old version **$OldVersion**, new version **$NewVersion**, both packed locally by this run — neither is a shipped QuickMail artifact."
+Write-Section ''
+Write-Section "Runner: $((Get-CimInstance Win32_OperatingSystem).Caption) build $([Environment]::OSVersion.Version). vpk: $(if ($env:VPK_VERSION) { $env:VPK_VERSION } else { 'unrecorded' }). winget: $(if ($script:WingetAvailable) { (& winget --version) } else { 'not available' })."
 Write-Section ''
 
 # --- scenario 0: what vpk emitted, and what architecture it is -----------------------

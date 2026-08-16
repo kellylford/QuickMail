@@ -89,7 +89,9 @@ jobs:
         shell: pwsh
         run: |
           dotnet tool install -g vpk
-          $v = (vpk --version 2>&1 | Out-String).Trim()
+          # vpk has no --version; the installed version comes from the tool manifest. Kept to
+          # one line because GITHUB_ENV rejects a multi-line value written this way.
+          $v = ((dotnet tool list -g | Select-String '^vpk\s') -split '\s+')[1]
           Write-Host "vpk version: $v"
           "VPK_VERSION=$v" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
