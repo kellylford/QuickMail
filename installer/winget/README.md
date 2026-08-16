@@ -1,12 +1,24 @@
 # winget manifest for `KellyLford.QuickMail`
 
+> [!IMPORTANT]
+> **On hold — do not submit these manifests.** Winget distribution was stopped on
+> 2026-08-16 before any release shipped the installer it points at. `Setup.exe` run over an
+> existing MSI install leaves two Add/Remove Programs entries, and removing the stale one
+> deletes the working install (measured; see the plan document and `docs/INSTALLER.md`).
+> Every QuickMail user today installed from the MSI, so that is the path a winget install
+> would take. These files stay as the finished starting point for whenever the underlying
+> Velopack behaviour is fixed — issue #536 records what has to be true first.
+
+
 Reference copy of the three manifests that describe QuickMail to the
 [Windows Package Manager community repository](https://github.com/microsoft/winget-pkgs)
 (issue #536, `docs/planning/winget-distribution-plan.md`). The **published** manifests live
 in winget-pkgs under `manifests/k/KellyLford/QuickMail/<version>/`; the files here are the
 template for the first, manual submission and the record of every deliberate choice in it.
-After that first version merges, `.github/workflows/winget-publish.yml` opens the PR for
-each promoted release automatically and these files are reference only.
+After that first version merges, a per-release workflow is meant to open the PR for each
+promoted release automatically, leaving these files as reference only. That workflow
+(`winget-publish.yml`) existed briefly and was **deleted** when this was stopped — Phase 4
+of the plan document describes rebuilding it.
 
 ## What the choices mean
 
@@ -40,8 +52,10 @@ each promoted release automatically and these files are reference only.
 
 ## First submission (manual, once)
 
-Prerequisite: a promoted release that carries both Setup.exe assets (0.8.41 onward — 0.8.40
-predates PR #555).
+Prerequisite: a promoted release that carries both Setup.exe assets. **No release carries
+them, and none is planned** — shipping `Setup.exe` was reverted before it reached a release,
+for the reason in the banner above. These steps are the finished recipe for whenever that
+decision is revisited, not something to start now.
 
 1. Fill `<VERSION>`, `<X64-SHA256>`, `<ARM64-SHA256>` and `<RELEASE-DATE>` (YYYY-MM-DD)
    into copies of these three files in a folder named after the version. Hashes:
@@ -71,5 +85,8 @@ predates PR #555).
 
 ## Every later release
 
-Nothing to do by hand once `WINGET_TOKEN` is set: promoting a release fires the
-`released` event and `winget-publish.yml` opens the winget-pkgs PR. Confirm it appeared.
+**Nothing in this repository publishes to winget.** The `winget-publish.yml` workflow that
+was to open the winget-pkgs PR on each promoted release — gated on a `WINGET_TOKEN` secret
+that was never created — was deleted when this was stopped. Promoting a release triggers no
+winget action of any kind. Plan Phase 4 describes what to rebuild, and the release checklist
+gains its "confirm the winget PR appeared" line only then.

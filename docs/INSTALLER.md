@@ -7,15 +7,12 @@ containing:
 - `QuickMail-win.msi` — **the user-facing installer**: a standard Windows Installer wizard
   (WiX 5) with welcome, license acceptance, and conclusion pages fed from
   `installer/velopack/*.txt` and the repo `LICENSE`
-- `QuickMail-win-Setup.exe` — Velopack's one-click installer (no wizard, no license page).
-  **Shipped since issue #536 as `QuickMail-<version>-win-Setup.exe`**: it is what the winget
-  package (`KellyLford.QuickMail`) installs, because `Setup.exe --silent` installs and
-  upgrades in place under `%LocalAppData%\QuickMail` while a silent MSI install does not (see
-  *Silent installs* below). The MSI remains the installer the download page offers people.
-  Accept the consequence knowingly: this asset is public, so anyone browsing the release
-  page can install QuickMail without ever seeing the license acceptance page the MSI wizard
-  shows. That is already true of every winget install — winget shows no license page for any
-  package — so restricting the asset would not buy the license page back.
+- `QuickMail-win-Setup.exe` — Velopack's one-click installer (no wizard, no license page);
+  produced by `vpk pack` but **not shipped** — the MSI is the installer users download.
+  It was briefly shipped for winget (issue #536) and that was **reverted before any release
+  carried it**. Do not ship it again without reading *Setup.exe over an MSI install* below:
+  running it on top of an existing MSI install leaves the machine with two Add/Remove
+  Programs entries, and removing the wrong one deletes the working install.
 - `QuickMail-<version>-full.nupkg` — the full update package consumed by the in-app updater
 - `QuickMail-<version>-delta.nupkg` — binary delta from the previous release (generated only
   when the previous release's packages are present; CI fetches them with `vpk download github`
@@ -37,7 +34,6 @@ two architectures would offer each build's update to the wrong machine.
 | Channel | `win` (Velopack's default) | `win-arm64` |
 | Pack arguments | none extra | `--runtime win-arm64 --channel win-arm64` |
 | Installer | `QuickMail-<version>-win.msi` | `QuickMail-<version>-win-arm64.msi` |
-| One-click / winget | `QuickMail-<version>-win-Setup.exe` | `QuickMail-<version>-win-arm64-Setup.exe` |
 | Portable | `QuickMail.exe` | `QuickMail-arm64.exe` |
 | Feed metadata | `RELEASES`, `releases.win.json`, `assets.win.json` | `RELEASES-win-arm64`, `releases.win-arm64.json`, `assets.win-arm64.json` |
 | Package | `QuickMail-<version>-full.nupkg` | `QuickMail-<version>-win-arm64-full.nupkg` |
@@ -121,10 +117,33 @@ leaves ARM64 output in `bin/Release` until the next ordinary build.
   existing install then uninstalls the old copy
   (data-removal prompt included, per the #245 investigation) and relocates the app. If an
   MSI must be deployed silently, pass `VELOPACK_INSTALLDIR="<absolute per-user path>"`.
-  `Setup.exe --silent` has none of these problems: it installs to `%LocalAppData%\QuickMail`,
+  `Setup.exe --silent` has none of *those* problems: it installs to `%LocalAppData%\QuickMail`,
   overwrites an existing install in place without invoking its uninstall hook, and writes
-  the `HKCU\…\Uninstall\QuickMail` entry (3-part `DisplayVersion`, `QuietUninstallString`)
-  that `winget list` / `upgrade` / `uninstall` key off.
+  the `HKCU\…\Uninstall\QuickMail` entry (3-part `DisplayVersion`, `QuietUninstallString`).
+  It has a different one — see immediately below.
+- **`Setup.exe` over an MSI install leaves a booby-trapped Add/Remove Programs entry.** This
+  is why `Setup.exe` is not a release asset, and it is not specific to winget: it applies to
+  anyone who runs `Setup.exe` on a machine where QuickMail was installed from the MSI.
+  Measured on both architectures by `.github/workflows/winget-install-matrix.yml`
+  (scenarios 2, 6 and 7); full results in `docs/planning/winget-distribution-plan.md`.
+
+  Velopack writes its own uninstall entry under the key `QuickMail`, while an MSI install
+  registers under `MSI:QuickMail`. Setup.exe does not remove the MSI's registration, so the
+  machine ends up with **two entries both named QuickMail** — and both are dangerous to act
+  on:
+
+  - Removing the **stale `MSI:QuickMail` entry deletes the working install.** Windows
+    Installer removes the files it recorded, which Setup.exe has overwritten in place: the
+    install root, `Update.exe`, `QuickMail.exe` and everything under `current\` are gone,
+    in about a second, exit code 0. The stale entry shows the *older* version number, so it
+    is the one a tidy-minded user removes.
+  - Removing the **live `QuickMail` entry leaves the stale one behind**, still listed in
+    Settings → Apps, along with the hidden HKLM row and the Windows Installer product
+    registration — so the app appears still installed after being uninstalled.
+
+  The only clean sequence is uninstall-then-install, never install-over. Until Velopack
+  cleans up its own MSI registration (or QuickMail does it in the install hook), shipping
+  `Setup.exe` hands users a way to destroy their own install with no warning.
 
 ## Release flow (CI)
 
@@ -134,11 +153,16 @@ On a `v*` tag, `.github/workflows/quickmail.yml`:
 2. `dotnet publish` (unchanged single-file self-contained build).
 3. `vpk download github` — fetches the previous release's packages so a delta can be built.
    Allowed to fail (the first Velopack release has no prior packages).
-4. `vpk pack` — builds setup exe, full/delta packages, and feed metadata; then deletes the
-   downloaded previous-version `.nupkg` so only current-version assets upload.
-5. `softprops/action-gh-release` uploads the portable `QuickMail.exe`, the MSI installer, the
-   one-click `Setup.exe` (for winget), the `.nupkg` packages, and the feed metadata files —
-   for both architectures. The in-app updater reads these from the latest GitHub release.
+4. `vpk pack` — builds setup exe, MSI, full/delta packages, and feed metadata. The
+   previous version's full `.nupkg` fetched in step 3 stays in the folder and uploads with
+   the rest: `vpk pack` writes an entry for every package it saw into
+   `RELEASES`/`releases.win.json`, so deleting it would publish feed metadata pointing at
+   an asset the release does not carry. An old-version `.nupkg` on a release page is
+   expected, not a mistake.
+5. `softprops/action-gh-release` uploads the portable `QuickMail.exe`, the MSI installer,
+   the `.nupkg` packages, and the feed metadata files — for both architectures. The in-app
+   updater reads these from the latest GitHub release. `Setup.exe` and `Portable.zip` are
+   produced by `vpk pack` and deliberately not uploaded.
 
 ## Testing updates locally (no GitHub release needed)
 
