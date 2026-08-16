@@ -41,7 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # `secrets.*` cannot be referenced in a job-level `if`, so surface presence via env and
-      # gate the step. Empty string when the secret is unset.
+      # gate the steps instead. The expression yields a boolean, which lands in env as the
+      # string "true" or "false" — never an empty string, so compare against 'true'.
       HAS_TOKEN: ${{ secrets.WINGET_TOKEN != '' }}
     steps:
       - name: Skip until WINGET_TOKEN is configured

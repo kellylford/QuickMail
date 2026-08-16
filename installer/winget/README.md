@@ -20,6 +20,11 @@ each promoted release automatically and these files are reference only.
 - **`UpgradeBehavior: install`** — winget just runs the newer Setup.exe; that *is* the
   upgrade. `uninstallPrevious` would run `Update.exe --uninstall` first and fire the
   data-removal prompt on every upgrade.
+  Accept one consequence knowingly: Setup.exe force-stops a running instance before it
+  overwrites. So `winget upgrade --all` — a routine, unattended thing to run — closes
+  QuickMail if it is open, without asking. There is no better option (`uninstallPrevious`
+  does the same *and* prompts about the user's data), but it belongs in the user guide's
+  winget section rather than being discovered.
 - **`AppsAndFeaturesEntries`** — Velopack writes `HKCU\…\Uninstall\QuickMail` with
   `DisplayName: QuickMail`, `Publisher: Kelly Ford` and a 3-part `DisplayVersion`; this is
   how `winget list`/`upgrade` correlate an installed copy to the package.
@@ -37,9 +42,12 @@ predates PR #555).
    `wingetcreate new <x64-url> <arm64-url>` produces the same files interactively if you
    would rather start from its prompts — but check its output against these choices.
 2. `winget validate --manifest <folder>`
-3. `winget install --manifest <folder>` on a machine without QuickMail (needs the
-   `LocalManifestFiles` setting enabled once, from an elevated prompt:
-   `winget settings --enable LocalManifestFiles`). Then `winget uninstall quickmail`.
+3. Install from the local manifest **in Windows Sandbox**, not on your own machine.
+   winget-pkgs ships `Tools/SandboxTest.ps1` for exactly this. The reason to keep it out of
+   a working machine is the package's own upgrade semantics: `Setup.exe --silent` overwrites
+   an existing install in place, so testing it against the copy you use replaces that copy.
+   Inside the Sandbox: `winget settings --enable LocalManifestFiles` (elevated, once),
+   `winget install --manifest <folder>`, launch, then `winget uninstall quickmail`.
 4. Fork microsoft/winget-pkgs, add the folder as
    `manifests/k/KellyLford/QuickMail/<version>/`, open the PR. Or from the folder:
    `wingetcreate submit --token <classic PAT with public_repo> <folder>`.
