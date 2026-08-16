@@ -382,7 +382,20 @@ function Invoke-Installer {
         # The no-argument overload after a timed wait: it is what flushes the process's
         # exit bookkeeping, without which ExitCode can come back unset.
         $p.WaitForExit()
-    } else {
+        # Setup.exe returns before the install it launched has finished. Start-Process -Wait
+        # waits for the whole tree and hid that; waiting only on the process we started does
+        # not, and scenario 4 then read an Add/Remove Programs row whose Update.exe was not
+        # on disk yet (run 31972063636, both legs). Wait for the installer's descendants to
+        # settle too, bounded by the same timeout.
+        # Deliberately NOT msiexec: for an MSI the process we started is the msiexec client,
+        # which already waits for the Windows Installer service, and the service host lingers
+        # idle for minutes afterwards -- waiting on it would burn the timeout on every call.
+        $deadline = [Diagnostics.Stopwatch]::StartNew()
+        while ($deadline.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+            $busy = @(Get-Process -Name 'Update', '*Setup*' -ErrorAction SilentlyContinue)
+            if (-not $busy.Count) { break }
+            Start-Sleep -Milliseconds 250
+        }
         $timedOut = $true
         try { $p.Kill($true) } catch { Write-Host "could not kill $Path after timeout: $_" }
         # Whatever it was waiting on may still be running; the uninstall hook detaches by
