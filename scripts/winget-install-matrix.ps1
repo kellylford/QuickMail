@@ -116,11 +116,16 @@ function Get-MsiProductRows {
 }
 
 function Get-InstallDirs {
+    # Every fixed drive's root, not just C:. A silent MSI install takes the Directory
+    # table's TARGETDIR default, which Windows Installer resolves to the drive with the
+    # most free space -- on a GitHub runner that is D:, and hardcoding C: reported "no
+    # install directories" for an install that had plainly happened.
     $candidates = @(
-        'C:\QuickMail'
+        (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+            Where-Object { $null -ne $_.Free } | ForEach-Object { "$($_.Name):\QuickMail" })
         (Join-Path $env:LOCALAPPDATA 'QuickMail')
         (Join-Path $env:ProgramFiles 'QuickMail')
-    )
+    ) | Select-Object -Unique
     $out = @()
     foreach ($c in $candidates) {
         if (-not (Test-Path $c)) { continue }
@@ -151,14 +156,26 @@ function Get-Shortcuts {
 }
 
 function Get-WingetView {
-    <#  winget's own opinion, when it is usable. Reported verbatim rather than parsed:
-        the question is what a user sees, and the raw table is the answer. #>
+    <#  winget's own opinion, when it is usable. Reported verbatim rather than filtered:
+        the question is what a user sees, and an empty filtered result is indistinguishable
+        from a command that refused to run. --accept-source-agreements matters on a fresh
+        machine -- without it, and with interactivity disabled, winget declines rather than
+        prompting, which is exactly how the first run of this probe recorded nothing at
+        all for every scenario. #>
     if (-not $script:WingetAvailable) { return '(winget not available on this runner)' }
     $out = @()
-    foreach ($cmd in @('list --query QuickMail', 'upgrade')) {
-        $text = & { cmd /c "winget $cmd --disable-interactivity 2>&1" } | Out-String
-        $quickmailLines = ($text -split "`r?`n" | Where-Object { $_ -match 'QuickMail|No installed package|No applicable' }) -join "`n"
-        $out += "`$ winget $cmd`n" + ($(if ($quickmailLines) { $quickmailLines } else { '(no QuickMail lines)' }))
+    foreach ($cmd in @('list --accept-source-agreements', 'upgrade --accept-source-agreements')) {
+        $text = (& cmd /c "winget $cmd --disable-interactivity 2>&1" | Out-String)
+        $lines = @($text -split "`r?`n" | Where-Object { $_.Trim() })
+        $hits  = @($lines | Where-Object { $_ -match 'QuickMail' })
+        $body = if ($hits.Count) {
+            ($hits -join "`n")
+        } else {
+            # No QuickMail row: show the head of the raw output so a refusal, an error, or a
+            # genuinely empty list can be told apart.
+            "(no QuickMail row; raw output follows)`n" + (($lines | Select-Object -First 8) -join "`n")
+        }
+        $out += "`$ winget $cmd`n$body"
     }
     return ($out -join "`n`n")
 }
@@ -262,7 +279,7 @@ function Reset-Machine {
             ForEach-Object { Remove-Item $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    foreach ($d in @('C:\QuickMail', (Join-Path $env:LOCALAPPDATA 'QuickMail'), (Join-Path $env:APPDATA 'QuickMail'))) {
+    foreach ($d in (@(Get-InstallDirs | ForEach-Object { $_.Path }) + (Join-Path $env:APPDATA 'QuickMail'))) {
         Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
     }
     Get-ChildItem (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs') -Recurse -Filter '*QuickMail*.lnk' -ErrorAction SilentlyContinue |
@@ -275,18 +292,12 @@ function Reset-Machine {
 # --- install primitives --------------------------------------------------------------
 
 function Invoke-Installer {
-    param([string]$Path, [string[]]$Arguments, [hashtable]$EnvVars = @{})
-
-    foreach ($k in $EnvVars.Keys) { Set-Item "env:$k" $EnvVars[$k] }
-    try {
-        $sw = [Diagnostics.Stopwatch]::StartNew()
-        $p = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru
-        $sw.Stop()
-        Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        return [pscustomobject]@{ ExitCode = $p.ExitCode; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1) }
-    } finally {
-        foreach ($k in $EnvVars.Keys) { Remove-Item "env:$k" -ErrorAction SilentlyContinue }
-    }
+    param([string]$Path, [string[]]$Arguments)
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $p = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru
+    $sw.Stop()
+    Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    return [pscustomobject]@{ ExitCode = $p.ExitCode; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1) }
 }
 
 function Get-PackedFile {
@@ -396,13 +407,24 @@ Invoke-Scenario 'Scenario 1 -- silent MSI, fresh machine' `
 Invoke-Scenario 'Scenario 2 -- Setup.exe over an MSI install (the migration path)' `
     'Every existing user installed from the MSI wizard into %LocalAppData%. What does `winget install`/`upgrade` -- that is, `Setup.exe --silent` -- do to that machine?' {
     # Reproduce the wizard's install location without driving the wizard: VELOPACK_INSTALLDIR
-    # is exactly what the Next button sets, per the #554 investigation.
+    # is exactly what the Next button sets, per the #554 investigation. It must be passed as
+    # an msiexec PROPERTY, not an environment variable -- the install runs in the Windows
+    # Installer service, which does not inherit this process's environment. Setting it as an
+    # env var silently did nothing, and the first run of this probe measured an MSI install
+    # sitting on D:\ while claiming to be the wizard-equivalent %LocalAppData% one.
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
-    $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldMsi`"", '/qn') -EnvVars @{ VELOPACK_INSTALLDIR = $target }
+    $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldMsi`"", '/qn', "VELOPACK_INSTALLDIR=`"$target`"")
     Write-Section "Step 1 -- MSI $OldVersion into ``%LocalAppData%\QuickMail`` (wizard-equivalent): exit $($r1.ExitCode) in $($r1.Seconds)s"
     Write-Section ''
     $before = Get-Snapshot "after MSI $OldVersion (wizard-equivalent)"
     Write-Section (Format-Snapshot $before)
+
+    # Assert the premise before measuring anything on top of it. If the MSI did not land
+    # where the wizard would have put it, this scenario is not the migration path and its
+    # result must not be read as one.
+    if (-not (@($before.Dirs | Where-Object { $_.Path -eq $target }).Count)) {
+        throw "Premise failed: the MSI did not install to $target, so this is not the wizard-equivalent starting state. Installed instead at: $(($before.Arp | ForEach-Object { $_.InstallLocation }) -join ', ')"
+    }
 
     $r2 = Invoke-Installer $newSetup @('--silent')
     Write-Section "Step 2 -- ``Setup.exe --silent`` $NewVersion over it: exit $($r2.ExitCode) in $($r2.Seconds)s"
@@ -481,7 +503,7 @@ Invoke-Scenario 'Scenario 5 -- MSI over a Setup.exe install (the reverse migrati
     Write-Section "Step 1 -- ``Setup.exe --silent`` ${OldVersion}: exit $($r1.ExitCode) in $($r1.Seconds)s"
     Write-Section ''
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
-    $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/qn') -EnvVars @{ VELOPACK_INSTALLDIR = $target }
+    $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/qn', "VELOPACK_INSTALLDIR=`"$target`"")
     Write-Section "Step 2 -- MSI $NewVersion over it (wizard-equivalent location): exit $($r2.ExitCode) in $($r2.Seconds)s"
     Write-Section ''
     $after = Get-Snapshot "after MSI $NewVersion over Setup.exe $OldVersion"
