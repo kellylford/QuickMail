@@ -16,6 +16,11 @@ public class ConfigFeatureGate : IFeatureGate
     private static readonly Dictionary<FeatureFlag, bool> Defaults = new Dictionary<FeatureFlag, bool>
     {
         [FeatureFlag.GraphBackend] = true,
+        // Off until personal-Graph has mileage (#529 step 3): with it on, a NEW Microsoft account —
+        // personal included — defaults to the Graph backend instead of IMAP. IMAP stays hand-selectable
+        // under Advanced. Testers opt in with MicrosoftGraphDefault=true under [features]; the default
+        // flips in a later release.
+        [FeatureFlag.MicrosoftGraphDefault] = false,
         // Off since v0.8.37: Google no longer grants QuickMail new authorizations, so offering the
         // option to everyone only produced sign-ins that could not succeed. Opt-in for the users
         // whose authorization predates the block (#369).

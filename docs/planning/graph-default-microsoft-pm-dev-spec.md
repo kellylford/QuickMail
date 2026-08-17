@@ -86,7 +86,11 @@ put real accounts on it by default — reversibly, behind a flag, testers first.
   token-before-purge, cache purge + re-sync, idempotency marker). New accounts only here.
 - **Removing the IMAP/SMTP option or the Exchange scopes from the app registration** — #529 keeps
   them; nothing is removed.
-- **Flipping the flag's default to true** — a later release, gated on accumulated mileage.
+- **Flipping the flag's default to true** — a later release, gated on accumulated personal-Graph
+  mileage **and** on #544's declined-consent fallback being in place. With the flag on, a new personal
+  account lands on the Graph backend, which is the exact path #544's consent fold takes — so its
+  fold and its retry-on-decline become the default consumer onboarding, and must be settled before the
+  default flips, not after.
 - **Any work/school behavior change** — already Graph; this flag does not alter that path.
 - **A one-time migration or announcement UX** — new accounts only; no existing account is touched.
 

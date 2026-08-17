@@ -267,8 +267,12 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         if (HostsUserEdited) return;   // the user has taken over the servers
         if (_backendUserChosen) return; // ...or the connection method itself
 
-        // A consumer domain, or a sign-in that reported a personal account, means IMAP.
-        var wantGraph = !provider.MatchesEmail(Username) && IsPersonalMicrosoftAccount != true;
+        // A consumer domain, or a sign-in that reported a personal account, means IMAP — UNLESS the
+        // MicrosoftGraphDefault flag makes Graph the default for every Microsoft account (#529 step 3).
+        var graphIsDefault = _gate.IsEnabled(FeatureFlag.GraphBackend)
+                             && _gate.IsEnabled(FeatureFlag.MicrosoftGraphDefault);
+        var wantGraph = graphIsDefault
+                        || (!provider.MatchesEmail(Username) && IsPersonalMicrosoftAccount != true);
         MoveToBackend(wantGraph ? BackendKind.MicrosoftGraph : BackendKind.ImapSmtp);
     }
 
@@ -283,9 +287,18 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
     /// uses. Its absence here was the #527 bug: an explicit "Microsoft 365 (Graph)" pick for a
     /// personal account survived the address-commit step and was then silently reverted after sign-in,
     /// leaving no way to reach Graph for a personal account through the UI at all.
+    ///
+    /// And when the MicrosoftGraphDefault flag is on (#529 step 3), the revert is off entirely: a
+    /// personal account is deliberately defaulted to Graph, so there is nothing to put back on IMAP.
     /// </summary>
     protected override void OnMicrosoftSignInCompleted(bool isPersonalAccount)
     {
+        // Graph is the default for every Microsoft account (#529 step 3) — a personal account is meant
+        // to stay on Graph, so do not revert it. Checked first, before the guards below, because the
+        // whole revert is suppressed when the flag is on.
+        if (_gate.IsEnabled(FeatureFlag.GraphBackend)
+            && _gate.IsEnabled(FeatureFlag.MicrosoftGraphDefault)) return;
+
         if (!isPersonalAccount) return;
         if (SelectedProvider is not { } provider || provider.Id != ProviderCatalog.MicrosoftId) return;
         if (BackendKind != BackendKind.MicrosoftGraph) return;
