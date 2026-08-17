@@ -336,7 +336,11 @@ public class LastMessageDestinationCallSiteTests
         var source = File.ReadAllText(SourcePath("Views/MainWindow.xaml.cs"));
         var calls  = Regex.Matches(source, @"BuildMessageFolderPicker\(\s*[^;]*?""(?<title>[^""]*)""[^;]*?\)\s*;");
 
-        Assert.Equal(10, calls.Count);   // update deliberately when an entry point is added or removed
+        // Update deliberately when an entry point is added or removed. It was 10 until the two
+        // menu-bar handlers stopped building their own picker and delegated to the command's
+        // method instead (#566), which is one entry point fewer to keep in step for each of
+        // move and copy, not one fewer place the user can file from.
+        Assert.Equal(8, calls.Count);
 
         foreach (Match call in calls)
         {

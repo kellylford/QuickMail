@@ -360,12 +360,15 @@
                 <!-- Keep IsEnabled off these three items so they remain keyboard-navigable
                      per Windows convention (dimmed items are still focusable). Visual dimming
                      is applied via DataTrigger; the Click handlers guard against invalid state. -->
+                <!-- HasMessageTarget, not HasSelectedMessage: these also file a selected conversation,
+                     whose header selection leaves SelectedMessage untouched (issue #566). It is
+                     recomputed in MessageMenu_SubmenuOpened, as HasWatchTarget above is. -->
                 <MenuItem Header="_Move to Folder…"
                           Click="MenuMoveToFolder_Click">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding HasSelectedMessage}" Value="False">
+                                <DataTrigger Binding="{Binding HasMessageTarget}" Value="False">
                                     <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
                                 </DataTrigger>
                             </Style.Triggers>
@@ -377,7 +380,7 @@
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding HasSelectedMessage}" Value="False">
+                                <DataTrigger Binding="{Binding HasMessageTarget}" Value="False">
                                     <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
                                 </DataTrigger>
                             </Style.Triggers>
