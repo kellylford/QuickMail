@@ -1043,9 +1043,11 @@ public partial class MainWindow : Window
         // VM; this hands it the resolver. (Same shape as MainViewModel.RegisterAccountBackend.)
         _vm.WatchTargetResolver = WatchTargetSubject;
 
-        // Same shape, same reason: whether Move/Copy to Folder have a target depends on the group
-        // tree's selection, which the VM cannot see (issue #566).
-        _vm.FileTargetResolver = CanFileSelection;
+        // Same shape, same reason: which messages a mail action acts on depends on the group tree's
+        // selection, which the VM cannot see. Every command that reads the mail selection goes
+        // through this — reply and forward answer the group's newest message, delete, archive and
+        // file act on all of it (issue #566).
+        _vm.SelectedGroupResolver = () => SelectedGroupTarget()?.Messages;
 
         // No default gesture: like the Flag, Theme and Row Fields managers, this is reached from its
         // menu item or the palette. A free Ctrl+Shift chord is worth more to a per-message action.
@@ -1065,7 +1067,7 @@ public partial class MainWindow : Window
             id: "mail.pickFlag", category: "Mail", title: "Pick Flag…",
             execute: async () => await PickFlagCommandAsync(),
             defaultKey: Key.K, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: () => _vm.HasSelectedMessage));
+            isAvailable: _vm.CanActOnSelection));
 
         _registry.Register(new CommandDefinition(
             id: "mail.openFlagManager", category: "Mail", title: "Manage Flags…",
@@ -1089,7 +1091,7 @@ public partial class MainWindow : Window
             id: "mail.delete", category: "Mail", title: "Delete",
             execute: () => _vm.DeleteMessageCommand.Execute(null),
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
-            isAvailable: () => _vm.HasSelectedMessage
+            isAvailable: () => _vm.CanActOnSelection()
                 && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
                 && !IsGroupTreeFocused()
                 && !FolderList.IsKeyboardFocusWithin)); // folder.delete owns Delete in the folder tree
@@ -1102,7 +1104,7 @@ public partial class MainWindow : Window
             id: "mail.archive", category: "Mail", title: "Move to Archive",
             execute: () => _vm.ArchiveMessageCommand.Execute(null),
             defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: () => _vm.HasSelectedMessage
+            isAvailable: () => _vm.CanActOnSelection()
                 && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
                 && !IsGroupTreeFocused()
                 && !FolderList.IsKeyboardFocusWithin));
@@ -1224,15 +1226,18 @@ public partial class MainWindow : Window
             execute: () => _vm.PromoteActiveTabToWindow(),
             isAvailable: () => _vm.ActiveTab != null));
 
+        // On a group header these open its newest message, the one Reply answers — opening the
+        // message the user happened to select before arrowing onto the header is never what they
+        // asked for (issue #566).
         _registry.Register(new CommandDefinition(
             id: "mail.openInNewTab", category: "Mail", title: "Open in New Tab",
-            execute: () => { if (_vm.SelectedMessage != null) _vm.OpenMessageTab(_vm.SelectedMessage); },
-            isAvailable: () => _vm.SelectedMessage != null));
+            execute: () => { if (TargetMessage() is { } msg) _vm.OpenMessageTab(msg); },
+            isAvailable: _vm.CanActOnSelection));
 
         _registry.Register(new CommandDefinition(
             id: "mail.openInWindow", category: "Mail", title: "Open in New Window",
-            execute: () => { if (_vm.SelectedMessage != null) OpenMessageInNewWindow(_vm.SelectedMessage); },
-            isAvailable: () => _vm.SelectedMessage != null));
+            execute: () => { if (TargetMessage() is { } msg) OpenMessageInNewWindow(msg); },
+            isAvailable: _vm.CanActOnSelection));
 
         // Available on a selected group header too, not just a selected message: gating on
         // HasSelectedMessage alone meant a user's hotkey did nothing at all on a conversation
@@ -1240,12 +1245,12 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "mail.moveToFolder", category: "Mail", title: "Move to Folder…",
             execute: async () => await MoveMessageToFolderAsync(),
-            isAvailable: CanFileSelection));
+            isAvailable: _vm.CanActOnSelection));
 
         _registry.Register(new CommandDefinition(
             id: "mail.copyToFolder", category: "Mail", title: "Copy to Folder…",
             execute: async () => await CopyMessageToFolderAsync(),
-            isAvailable: CanFileSelection));
+            isAvailable: _vm.CanActOnSelection));
 
         // ── Calendar list commands (T/Enter while the calendar list has focus) ──
         // F5 is not registered separately here: MainViewModel.RefreshAsync (mail.refresh)
@@ -2843,33 +2848,48 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The group header selected in the active grouped view: every message it holds, and its index
-    /// in the view's collection so focus can land on the row that replaces it after a move. Null
-    /// when no header is selected — a message node, the flat list, or an ungrouped view.
-    /// <para>Commands that file messages must consult this before <see cref="GetSelectedMessages"/>,
-    /// for the reason <see cref="WatchTargetSubject"/> and <see cref="ToggleFlagCommandAsync"/> read
-    /// the tree's selection first: selecting a header does not update <c>_vm.SelectedMessage</c>
-    /// (<c>GroupedMessageTreeController.OnSelectedItemChanged</c>). Move to Folder did not, so on a
-    /// conversation it filed whatever message had been selected before the user arrowed onto the
-    /// header — or, when none had been, did nothing at all. That was issue #566.</para>
+    /// The group header selected in the active grouped view — the header itself and every message
+    /// it holds, newest first. Null when no header is selected: a message node, the flat list, an
+    /// ungrouped view, or an empty group.
+    /// <para>This is what the window hands the VM as <c>SelectedGroupResolver</c>, and what
+    /// commands must consult before <see cref="GetSelectedMessages"/>, for the reason
+    /// <see cref="WatchTargetSubject"/> and <see cref="ToggleFlagCommandAsync"/> read the tree's
+    /// selection first: selecting a header does not update <c>_vm.SelectedMessage</c>
+    /// (<c>GroupedMessageTreeController.OnSelectedItemChanged</c>). The mail commands did not, so
+    /// on a conversation they acted on whatever message had been selected before the user arrowed
+    /// onto the header — or, when none had been, did nothing at all. That was issue #566.</para>
     /// </summary>
-    private (IReadOnlyList<MailMessageSummary> Messages, int Index)? SelectedGroupTarget()
+    private (object Group, IReadOnlyList<MailMessageSummary> Messages)? SelectedGroupTarget()
     {
-        if (_vm.IsConversationsView && ConversationTree.SelectedItem is ConversationGroup cg)
-            return (cg.Messages, _vm.Conversations.IndexOf(cg));
-        if (_vm.IsFromView && SenderGroupTree.SelectedItem is SenderGroup sg)
-            return (sg.Messages, _vm.SenderGroups.IndexOf(sg));
-        if (_vm.IsToView && ToGroupTree.SelectedItem is SenderGroup tg)
-            return (tg.Messages, _vm.ToGroups.IndexOf(tg));
+        if (_vm.IsConversationsView && ConversationTree.SelectedItem is ConversationGroup cg && cg.Messages.Count > 0)
+            return (cg, cg.Messages);
+        if (_vm.IsFromView && SenderGroupTree.SelectedItem is SenderGroup sg && sg.Messages.Count > 0)
+            return (sg, sg.Messages);
+        if (_vm.IsToView && ToGroupTree.SelectedItem is SenderGroup tg && tg.Messages.Count > 0)
+            return (tg, tg.Messages);
         return null;
     }
 
     /// <summary>
-    /// True when Move/Copy to Folder have something to act on: a selected message, or a selected
-    /// group header. The availability gate for both commands and the source of the VM's
-    /// <c>HasFileTarget</c>, so the hotkey, the palette and the Message menu all agree.
+    /// Where a group sits in its view's collection, so focus can land on the row that replaces it
+    /// once it is filed away. Kept apart from <see cref="SelectedGroupTarget"/> because only the
+    /// move path needs it and the scan is wasted work everywhere else. Falls back to 0 when the
+    /// collection was rebuilt out from under the selection.
     /// </summary>
-    private bool CanFileSelection() => _vm.HasSelectedMessage || IsGroupRowSelected();
+    private int SelectedGroupIndex(object group) => group switch
+    {
+        ConversationGroup cg          => Math.Max(0, _vm.Conversations.IndexOf(cg)),
+        SenderGroup sg when _vm.IsFromView => Math.Max(0, _vm.SenderGroups.IndexOf(sg)),
+        SenderGroup sg                => Math.Max(0, _vm.ToGroups.IndexOf(sg)),
+        _                             => 0,
+    };
+
+    /// <summary>
+    /// The one message a single-message action answers: the newest in a selected group — one reply
+    /// to the latest word in a thread, not one per message — or the selected message.
+    /// </summary>
+    private MailMessageSummary? TargetMessage() =>
+        SelectedGroupTarget()?.Messages[0] ?? _vm.SelectedMessage;
 
     /// <summary>
     /// The subject whose conversation Ctrl+Shift+W acts on, or null when there is no valid target.
@@ -2896,7 +2916,7 @@ public partial class MainWindow : Window
     private void MessageMenu_SubmenuOpened(object sender, RoutedEventArgs e)
     {
         _vm.RefreshWatchTarget();
-        _vm.RefreshFileTarget();
+        _vm.RefreshMessageTarget();
     }
 
     private void MenuWatchConversation_Click(object sender, RoutedEventArgs e) =>
@@ -2959,7 +2979,10 @@ public partial class MainWindow : Window
     private async Task PickFlagCommandAsync()
     {
         if (_flagService == null) return;
-        var msg = _vm.SelectedMessage;
+        // On a group header the chosen flag applies to the whole group, as K (toggle) already does;
+        // the picker opens on the newest message's flag, which is what the row speaks (issue #566).
+        var group = SelectedGroupTarget();
+        var msg = group?.Messages[0] ?? _vm.SelectedMessage;
         if (msg == null) return;
 
         var prev = Keyboard.FocusedElement as IInputElement;
@@ -2967,7 +2990,11 @@ public partial class MainWindow : Window
         picker.ShowDialog();
         (prev ?? MessageList).Focus();
 
-        if (picker.DialogResult == true)
+        if (picker.DialogResult != true) return;
+
+        if (group != null)
+            await _vm.SetGroupFlagAsync(group.Value.Messages, picker.ResultFlagId);
+        else
             await _vm.SetMessageFlagAsync(msg, picker.ResultFlagId);
     }
 
@@ -6047,7 +6074,12 @@ public partial class MainWindow : Window
         // A selected group header wins over the selected message — see SelectedGroupTarget (#566).
         var group = SelectedGroupTarget();
         IReadOnlyList<MailMessageSummary> messages = group?.Messages ?? GetSelectedMessages();
-        if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
+        if (messages.Count == 0) return;
+        if (!FoldersAreReady()) return;
+
+        // Read now, not after the move: by then the view has been rebuilt and the group this came
+        // from is no longer in the collection to be found. The group context menus do the same.
+        var targetIdx = group != null ? SelectedGroupIndex(group.Value.Group) : 0;
 
         // Naming the conversation is the only signal the picker gives that this files the whole
         // thread rather than one message, and its title is what a screen reader reads on open.
@@ -6065,7 +6097,6 @@ public partial class MainWindow : Window
         // Messages view: MessageListFocusRequested in MoveSelectedMessagesToFolderAsync handles it.
         // Filing a whole group empties its row, so land where it was — the row that takes its place,
         // as the group context menus do — rather than jumping the user back to the top of the list.
-        var targetIdx = group?.Index ?? 0;
         if (_vm.IsConversationsView)
             LandOnConversationAfterRebuild(targetIdx);
         else if (_vm.IsFromView)
@@ -6074,11 +6105,26 @@ public partial class MainWindow : Window
             LandOnToGroupAfterRebuild(targetIdx);
     }
 
+    /// <summary>
+    /// True when there are cached folders to file into. Otherwise says so — in the status bar and,
+    /// for anyone not watching it, as an announcement. Returning in silence is what made #566 read
+    /// as "nothing happened", and an unsynced folder list would have produced exactly that again.
+    /// </summary>
+    private bool FoldersAreReady()
+    {
+        if (_vm.CachedFolders.Count > 0) return true;
+
+        _vm.StatusText = "Folders are still loading.";
+        AccessibilityHelper.Announce(this, _vm.StatusText, category: AnnouncementCategory.Result);
+        return false;
+    }
+
     private async Task CopyMessageToFolderAsync()
     {
         var group = SelectedGroupTarget();
         IReadOnlyList<MailMessageSummary> messages = group?.Messages ?? GetSelectedMessages();
-        if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
+        if (messages.Count == 0) return;
+        if (!FoldersAreReady()) return;
 
         var picker = BuildMessageFolderPicker(
             messages,

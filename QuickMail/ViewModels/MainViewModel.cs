@@ -2265,29 +2265,32 @@ public partial class MainViewModel : ObservableObject, IDisposable
             execute: () => NewMessageCommand.Execute(null),
             defaultKey: Key.N, defaultModifiers: ModifierKeys.Control));
 
+        // These gate on CanActOnSelection, not HasSelectedMessage: a selected group header is a
+        // target too, and gating on the selected message alone left them unavailable — the hotkey
+        // doing nothing at all — whenever no message had been selected yet (issue #566).
         registry.Register(new CommandDefinition(
             id: "mail.reply", category: "Mail", title: "Reply",
             execute: () => ReplyCommand.Execute(null),
             defaultKey: Key.R, defaultModifiers: ModifierKeys.Control,
-            isAvailable: () => HasSelectedMessage));
+            isAvailable: CanActOnSelection));
 
         registry.Register(new CommandDefinition(
             id: "mail.replyAll", category: "Mail", title: "Reply All",
             execute: () => ReplyAllCommand.Execute(null),
             defaultKey: Key.R, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: () => HasSelectedMessage));
+            isAvailable: CanActOnSelection));
 
         registry.Register(new CommandDefinition(
             id: "mail.forward", category: "Mail", title: "Forward",
             execute: () => ForwardCommand.Execute(null),
             defaultKey: Key.F, defaultModifiers: ModifierKeys.Control,
-            isAvailable: () => HasSelectedMessage));
+            isAvailable: CanActOnSelection));
 
         registry.Register(new CommandDefinition(
             id: "mail.delete", category: "Mail", title: "Delete",
             execute: () => DeleteMessageCommand.Execute(null),
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
-            isAvailable: () => HasSelectedMessage));
+            isAvailable: CanActOnSelection));
 
         // Archive (issue #318) — moves the selection to the account's Archive folder instead of
         // deleting. Default gesture Ctrl+Shift+M. (Not Alt+Delete: that collides with the common
@@ -2298,7 +2301,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             id: "mail.archive", category: "Mail", title: "Move to Archive",
             execute: () => ArchiveMessageCommand.Execute(null),
             defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: () => HasSelectedMessage));
+            isAvailable: CanActOnSelection));
 
         registry.Register(new CommandDefinition(
             id: "mail.refresh", category: "Mail", title: "Refresh",
@@ -2456,7 +2459,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             id: "mail.createRuleFromMessage", category: "Mail", title: "Create Rule from Message",
             execute: () => CreateRuleFromMessageCommand.Execute(null),
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: () => HasSelectedMessage));
+            isAvailable: CanActOnSelection));
 
         registry.Register(new CommandDefinition(
             id: "mail.acceptInvite", category: "Mail", title: "Accept Invitation",
@@ -5923,24 +5926,49 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool HasWatchTarget => _watchService != null && HasWatchableSubject(WatchTargetSubject);
 
     /// <summary>
-    /// Supplied by the View: resolves whether Move/Copy to Folder have anything to act on.
-    /// <para>Same shape and same reason as <see cref="WatchTargetResolver"/> — a selected group
-    /// header does not update <see cref="SelectedMessage"/>, so only the View can tell that a whole
-    /// conversation is selected. Null falls back to the selected message, which is correct for any
-    /// host without group trees.</para>
+    /// Supplied by the View: the messages of the group header selected in the active grouped view,
+    /// newest first, or null when the selection is a single message.
+    /// <para>Same shape and same reason as <see cref="WatchTargetResolver"/> — selecting a group
+    /// header does not update <see cref="SelectedMessage"/> (see
+    /// <c>GroupedMessageTreeController.OnSelectedItemChanged</c>), so only the View can tell that a
+    /// whole conversation, sender, or recipient is selected. Without it every action below reads
+    /// the message that was selected before the user arrowed onto the header, and acts on that —
+    /// silently the wrong one. That was issue #566.</para>
     /// </summary>
-    public Func<bool>? FileTargetResolver { get; set; }
+    public Func<IReadOnlyList<MailMessageSummary>?>? SelectedGroupResolver { get; set; }
+
+    /// <summary>The selected group's messages, or null when a group header is not the selection.</summary>
+    private IReadOnlyList<MailMessageSummary>? SelectedGroupMessages() =>
+        SelectedGroupResolver?.Invoke() is { Count: > 0 } messages ? messages : null;
 
     /// <summary>
-    /// True when Move/Copy to Folder have a target: a selected message, or a selected group header
-    /// (issue #566). Recomputed as the Message menu opens, because a header selection changes it
+    /// True when a message action has something to act on: a selected message, or a selected group
+    /// header. The availability gate for every command that acts on the mail selection, so the
+    /// hotkey, the menu bar and the Command Palette agree on what is possible (issue #566).
+    /// </summary>
+    public bool CanActOnSelection() => HasSelectedMessage || SelectedGroupMessages() != null;
+
+    /// <summary>
+    /// Backs the Message menu's dimming — a property, because the menu binds to it. Recomputed as
+    /// the menu opens (<see cref="RefreshMessageTarget"/>), because a header selection changes it
     /// without changing <see cref="SelectedMessage"/>.
     /// </summary>
     [ObservableProperty]
-    private bool _hasFileTarget;
+    private bool _hasMessageTarget;
 
-    /// <summary>Recomputes <see cref="HasFileTarget"/> from the View's resolver.</summary>
-    public void RefreshFileTarget() => HasFileTarget = FileTargetResolver?.Invoke() ?? HasSelectedMessage;
+    /// <summary>Recomputes <see cref="HasMessageTarget"/> from the View's resolver.</summary>
+    public void RefreshMessageTarget() => HasMessageTarget = CanActOnSelection();
+
+    /// <summary>
+    /// Points Reply, Reply All and Forward at the newest message of a selected group: one reply to
+    /// the latest word in the thread, not one per message. The group context menus already work
+    /// this way — they set <see cref="SelectedMessage"/> to <c>Messages[0]</c> before composing —
+    /// and this is the same rule for the menu bar, the hotkeys and the Command Palette.
+    /// </summary>
+    private void RetargetToGroupNewest()
+    {
+        if (SelectedGroupMessages() is { } messages) SelectedMessage = messages[0];
+    }
 
     /// <summary>
     /// Opens the Watched Conversations folder and selects the newest message of one conversation.
@@ -6601,6 +6629,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task DeleteMessageAsync()
     {
+        // A selected group header deletes the whole group, as the group trees' own Delete key and
+        // the group context menus already do (issue #566).
+        if (SelectedGroupMessages() is { } group) { await DeleteMessagesAsync(group); return; }
         if (SelectedMessage == null) return;
         await DeleteMessagesAsync([SelectedMessage]);
     }
@@ -6757,6 +6788,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ArchiveMessageAsync()
     {
+        if (SelectedGroupMessages() is { } group) { await ArchiveMessagesAsync(group); return; }
         if (SelectedMessage == null) return;
         await ArchiveMessagesAsync([SelectedMessage]);
     }
@@ -7155,6 +7187,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task Reply()
     {
+        RetargetToGroupNewest();
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
         ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, detail.AccountId));
@@ -7163,6 +7196,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ReplyAll()
     {
+        RetargetToGroupNewest();
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
         var ownAddress = Accounts.FirstOrDefault(a => a.Id == detail.AccountId)?.Username ?? string.Empty;
@@ -7172,6 +7206,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task Forward()
     {
+        // No-op when a group command already set the target to this same newest message.
+        RetargetToGroupNewest();
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
 
@@ -7325,6 +7361,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void CreateRuleFromMessage()
     {
+        // On a group header the rule comes from its newest message, the same one Reply answers.
+        RetargetToGroupNewest();
         var source = SelectedMessage;
         if (source == null) return;
 
