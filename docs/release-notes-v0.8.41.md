@@ -58,6 +58,21 @@ the same result without disturbing anything else.
 
 ([#558](https://github.com/kellylford/QuickMail/issues/558))
 
+## Changed: the Rules manager says how the account's rules run
+
+The Rules manager lists an account's QuickMail rules and its server rules together, but an account
+with no rules yet said nothing about which kind it can even have — the distinction only showed up on
+the rules themselves, once there were some.
+
+Landing on an account now says one of two things, and says it again whenever you switch accounts:
+
+- *Rules for this account run in QuickMail while it's open.*
+- *This account also supports server-side rules that run in the cloud.*
+
+It is spoken as a hint, so it follows your **Announce hints** setting, and it waits its turn rather
+than cutting off the account name. Adding, deleting or switching a rule off does not repeat it — only
+arriving at an account does. ([#545](https://github.com/kellylford/QuickMail/issues/545))
+
 ## Fixed: the calendar opened weeks in the past
 
 Opening the calendar in **Agenda** view put you on the oldest appointment in the list — which, if you
@@ -68,6 +83,18 @@ are rather than where you have been. Nothing is hidden: past appointments are st
 Up arrow away. If everything on the calendar is already past, it opens on the most recent one. The
 same applies when you press **A** to return to Agenda from Day, Week or Month view.
 ([#567](https://github.com/kellylford/QuickMail/issues/567))
+
+## Fixed: server rules offered to personal Microsoft accounts that could never have them
+
+A personal Microsoft account — outlook.com, hotmail.com, live.com — was offered server-side rules in
+the Rules manager, and saving one failed with *"your organization hasn't granted it permission. Ask
+your administrator"*. A personal account has no organization and no administrator, so that was a dead
+end: server rules are a work and school Microsoft 365 feature and were never going to work there.
+
+Personal Microsoft accounts now use QuickMail rules only, like any other account without server rules,
+and the offer that led nowhere is gone. The same correction applies where shared mailboxes are added —
+a personal Microsoft account is no longer listed as one that can host one.
+([#541](https://github.com/kellylford/QuickMail/issues/541))
 
 ## Fixed: "speak only when true" did nothing on a field that was switched off
 
