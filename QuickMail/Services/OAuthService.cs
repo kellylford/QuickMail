@@ -346,13 +346,17 @@ public class OAuthService : IOAuthService
         {
             result = await Build(extraScopesToConsent).ExecuteAsync(ct);
         }
-        catch (MsalException ex) when (extraScopesToConsent is { Length: > 0 } && !IsUserCancellation(ex))
+        catch (MsalException ex) when (extraScopesToConsent is { Length: > 0 })
         {
-            // The user authenticated but declined consent to the folded contact/calendar scopes (e.g.
-            // balked at calendar write). Retry mail-only so they still get a working account instead of
-            // no account at all — the declined capability falls back to its own post-add consent prompt,
-            // which they can decline there too without losing mail. A genuine window-close (cancellation)
-            // is excluded above, so closing the sign-in still aborts as the user intended.
+            // The folded acquisition failed. The common cause is the user declining consent to the extra
+            // contact/calendar scopes — but MSAL reports a decline (access_denied with
+            // error_subcode=cancel) as a UserCancel, identically to a window-close, discarding the
+            // access_denied text (verified against MSAL 4.85.2, AuthorizationResult.FromParsedValues).
+            // So the two are indistinguishable at this catch, and we retry mail-only regardless: a decline
+            // still yields a working mail account (the declined capability falls back to its own post-add
+            // consent), and a genuine window-close simply re-shows the mail sign-in, which the user can
+            // close again to abort. The retry has no catch of its own, so a second failure propagates to
+            // the caller's "Sign-in failed" handler — one retry, never a loop.
             LogService.Log($"OAuthService: sign-in with folded contact/calendar consent failed " +
                            $"({ex.ErrorCode}); retrying mail-only for {account.Username}.");
             result = await Build(null).ExecuteAsync(ct);
@@ -418,12 +422,6 @@ public class OAuthService : IOAuthService
         if (syncCalendar) scopes.AddRange(GraphCalendarScopes);
         return scopes.ToArray();
     }
-
-    // The user closed/aborted the sign-in window, as opposed to a server-side failure like a declined
-    // consent (access_denied). Used to decide whether a folded-consent failure is worth a mail-only
-    // retry: a decline is (retry so mail still signs in), a deliberate cancel is not (respect the abort).
-    private static bool IsUserCancellation(MsalException ex)
-        => ex.ErrorCode == MsalError.AuthenticationCanceledError;
 
     public async Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default)
     {
