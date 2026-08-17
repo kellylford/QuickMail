@@ -58,6 +58,17 @@ the same result without disturbing anything else.
 
 ([#558](https://github.com/kellylford/QuickMail/issues/558))
 
+## Fixed: the calendar opened weeks in the past
+
+Opening the calendar in **Agenda** view put you on the oldest appointment in the list — which, if you
+had appointments from last month, meant arrowing down past all of them to reach anything current.
+
+Agenda now opens on the first appointment that starts today or later, so the calendar lands where you
+are rather than where you have been. Nothing is hidden: past appointments are still in the list, one
+Up arrow away. If everything on the calendar is already past, it opens on the most recent one. The
+same applies when you press **A** to return to Agenda from Day, Week or Month view.
+([#567](https://github.com/kellylford/QuickMail/issues/567))
+
 ## Fixed: "speak only when true" did nothing on a field that was switched off
 
 In **View → Message List Fields**, the **Speak only when true** and **Always speak** choices stayed

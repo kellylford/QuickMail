@@ -316,6 +316,104 @@ public class CalendarViewModelTests
         Assert.Contains(target.ToString("MMMM yyyy"), vm.PeriodLabel);
     }
 
+    // ---- Opening selection (issue #567): the agenda opens on today, not on the oldest event ----
+
+    [Fact]
+    public async Task LoadAsync_InAgenda_SelectsFirstEventOnOrAfterToday()
+    {
+        var today = DateTime.Today;
+        var vm = MakeVm(new List<CalendarEvent>
+        {
+            MakeEvent("past-1",  today.AddDays(-25).AddHours(9)),
+            MakeEvent("past-2",  today.AddDays(-3).AddHours(9)),
+            MakeEvent("today-1", today.AddHours(14)),
+            MakeEvent("future",  today.AddDays(6).AddHours(9)),
+        });
+
+        await vm.LoadAsync();
+
+        Assert.Equal(4, vm.VisibleEvents.Count);            // past events stay in the list
+        Assert.Equal("today-1", vm.SelectedEvent?.Uid);     // but selection opens on today
+    }
+
+    [Fact]
+    public async Task LoadAsync_InAgenda_WithNoEventsToday_SelectsNextUpcoming()
+    {
+        var today = DateTime.Today;
+        var vm = MakeVm(new List<CalendarEvent>
+        {
+            MakeEvent("past",   today.AddDays(-10).AddHours(9)),
+            MakeEvent("soon",   today.AddDays(2).AddHours(9)),
+            MakeEvent("later",  today.AddDays(20).AddHours(9)),
+        });
+
+        await vm.LoadAsync();
+
+        Assert.Equal("soon", vm.SelectedEvent?.Uid);
+    }
+
+    [Fact]
+    public async Task LoadAsync_InAgenda_WithOnlyPastEvents_SelectsMostRecent()
+    {
+        var today = DateTime.Today;
+        var vm = MakeVm(new List<CalendarEvent>
+        {
+            MakeEvent("oldest", today.AddDays(-30).AddHours(9)),
+            MakeEvent("newest", today.AddDays(-1).AddHours(9)),
+        });
+
+        await vm.LoadAsync();
+
+        Assert.Equal("newest", vm.SelectedEvent?.Uid);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WithNoEvents_SelectsNothing()
+    {
+        var vm = MakeVm(new List<CalendarEvent>());
+
+        await vm.LoadAsync();
+
+        Assert.Null(vm.SelectedEvent);
+    }
+
+    [Fact]
+    public async Task ShowAgenda_AfterDayView_SelectsFirstEventOnOrAfterToday()
+    {
+        var today = DateTime.Today;
+        var vm = MakeVm(new List<CalendarEvent>
+        {
+            MakeEvent("past",    today.AddDays(-14).AddHours(9)),
+            MakeEvent("today-1", today.AddHours(11)),
+        });
+        await vm.LoadAsync();
+        vm.ShowDayCommand.Execute(null);
+
+        vm.ShowAgendaCommand.Execute(null);
+
+        Assert.True(vm.IsAgendaView);
+        Assert.Equal(2, vm.VisibleEvents.Count);
+        Assert.Equal("today-1", vm.SelectedEvent?.Uid);
+    }
+
+    [Fact]
+    public async Task ShowWeek_SelectsFirstRowOfTheWindow()
+    {
+        // Day/Week/Month are already windowed on ReferenceDate, so they keep opening on row 0 —
+        // including a row earlier in the same week than today.
+        var today = DateTime.Today;
+        var vm = MakeVm(new List<CalendarEvent>
+        {
+            MakeEvent("past", today.AddDays(-40).AddHours(9)),
+            MakeEvent("now",  today.AddHours(9)),
+        });
+        await vm.LoadAsync();
+
+        vm.ShowWeekCommand.Execute(null);
+
+        Assert.Same(vm.VisibleEvents[0], vm.SelectedEvent);
+    }
+
     [Fact]
     public async Task WeekView_IncludesWholeWeek_ExcludesNextWeek()
     {

@@ -281,7 +281,32 @@ public partial class CalendarViewModel : ObservableObject
         IsUnavailable = false;
         await _calendarService.RefreshAsync(ct);
         ApplyFilters();
+        SelectStartingEvent();
         AnnounceOpenHint();
+    }
+
+    /// <summary>
+    /// Chooses the row the list opens on. Agenda-all holds past appointments as well as future
+    /// ones, so opening on index 0 landed the user weeks in the past and left them arrowing down
+    /// to reach today (issue #567): open on the first event that starts on or after today instead.
+    /// When every dated event is already past, open on the last of them — the one nearest today —
+    /// which is still closer to what the user wants than the top of the list. Day/Week/Month are
+    /// already windowed on <see cref="ReferenceDate"/>, so they keep opening on their first row.
+    /// </summary>
+    private void SelectStartingEvent()
+    {
+        if (_filteredEvents.Count == 0) { SelectedEvent = null; return; }
+
+        if (ViewMode != CalendarViewMode.Agenda || IsTodayFilter)
+        {
+            SelectedEvent = _filteredEvents[0];
+            return;
+        }
+
+        var today = DateTime.Today;
+        var index = _filteredEvents.FindIndex(e => e.StartTime.HasValue && e.StartTime.Value.Date >= today);
+        if (index < 0) index = _filteredEvents.FindLastIndex(e => e.StartTime.HasValue);
+        SelectedEvent = _filteredEvents[index < 0 ? 0 : index];
     }
 
     /// <summary>Re-harvests from the cache and reloads. Bound to F5.</summary>
@@ -347,7 +372,7 @@ public partial class CalendarViewModel : ObservableObject
     {
         ViewMode = mode;
         ApplyFilters();
-        SelectedEvent = Events.Count > 0 ? Events[0] : null;
+        SelectStartingEvent();
         AnnouncePeriod();
         // Move keyboard focus to the control the new view shows (the Month grid, or the event list).
         // Switching views swaps which control is visible; without this, focus is stranded on the
