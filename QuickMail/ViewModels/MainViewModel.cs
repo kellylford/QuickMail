@@ -5923,6 +5923,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool HasWatchTarget => _watchService != null && HasWatchableSubject(WatchTargetSubject);
 
     /// <summary>
+    /// Supplied by the View: resolves whether Move/Copy to Folder have anything to act on.
+    /// <para>Same shape and same reason as <see cref="WatchTargetResolver"/> — a selected group
+    /// header does not update <see cref="SelectedMessage"/>, so only the View can tell that a whole
+    /// conversation is selected. Null falls back to the selected message, which is correct for any
+    /// host without group trees.</para>
+    /// </summary>
+    public Func<bool>? FileTargetResolver { get; set; }
+
+    /// <summary>
+    /// True when Move/Copy to Folder have a target: a selected message, or a selected group header
+    /// (issue #566). Recomputed as the Message menu opens, because a header selection changes it
+    /// without changing <see cref="SelectedMessage"/>.
+    /// </summary>
+    [ObservableProperty]
+    private bool _hasFileTarget;
+
+    /// <summary>Recomputes <see cref="HasFileTarget"/> from the View's resolver.</summary>
+    public void RefreshFileTarget() => HasFileTarget = FileTargetResolver?.Invoke() ?? HasSelectedMessage;
+
+    /// <summary>
     /// Opens the Watched Conversations folder and selects the newest message of one conversation.
     /// Called by the manager's "go to conversation". Selecting the folder rather than filtering
     /// keeps every other view control (mode, sort, fields) behaving exactly as it does when the

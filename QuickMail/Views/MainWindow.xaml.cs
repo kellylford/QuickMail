@@ -1043,6 +1043,10 @@ public partial class MainWindow : Window
         // VM; this hands it the resolver. (Same shape as MainViewModel.RegisterAccountBackend.)
         _vm.WatchTargetResolver = WatchTargetSubject;
 
+        // Same shape, same reason: whether Move/Copy to Folder have a target depends on the group
+        // tree's selection, which the VM cannot see (issue #566).
+        _vm.FileTargetResolver = CanFileSelection;
+
         // No default gesture: like the Flag, Theme and Row Fields managers, this is reached from its
         // menu item or the palette. A free Ctrl+Shift chord is worth more to a per-message action.
         _registry.Register(new CommandDefinition(
@@ -1230,15 +1234,18 @@ public partial class MainWindow : Window
             execute: () => { if (_vm.SelectedMessage != null) OpenMessageInNewWindow(_vm.SelectedMessage); },
             isAvailable: () => _vm.SelectedMessage != null));
 
+        // Available on a selected group header too, not just a selected message: gating on
+        // HasSelectedMessage alone meant a user's hotkey did nothing at all on a conversation
+        // whose messages had never been selected (issue #566).
         _registry.Register(new CommandDefinition(
             id: "mail.moveToFolder", category: "Mail", title: "Move to Folder…",
             execute: async () => await MoveMessageToFolderAsync(),
-            isAvailable: () => _vm.HasSelectedMessage));
+            isAvailable: CanFileSelection));
 
         _registry.Register(new CommandDefinition(
             id: "mail.copyToFolder", category: "Mail", title: "Copy to Folder…",
             execute: async () => await CopyMessageToFolderAsync(),
-            isAvailable: () => _vm.HasSelectedMessage));
+            isAvailable: CanFileSelection));
 
         // ── Calendar list commands (T/Enter while the calendar list has focus) ──
         // F5 is not registered separately here: MainViewModel.RefreshAsync (mail.refresh)
@@ -2824,6 +2831,9 @@ public partial class MainWindow : Window
     // while focus is elsewhere (folder tree, account list) and steal that control's type-ahead.
     private bool IsMessageAreaFocused() => IsMessageListFocused() || IsGroupTreeFocused();
 
+    // Deliberately a type check rather than SelectedGroupTarget() != null: this runs from
+    // isAvailable on every keystroke, and resolving the full target scans the view's collection
+    // for the group's index.
     private bool IsGroupRowSelected()
     {
         if (_vm.IsConversationsView) return ConversationTree.SelectedItem is ConversationGroup;
@@ -2831,6 +2841,35 @@ public partial class MainWindow : Window
         if (_vm.IsToView)            return ToGroupTree.SelectedItem is SenderGroup;
         return false;
     }
+
+    /// <summary>
+    /// The group header selected in the active grouped view: every message it holds, and its index
+    /// in the view's collection so focus can land on the row that replaces it after a move. Null
+    /// when no header is selected — a message node, the flat list, or an ungrouped view.
+    /// <para>Commands that file messages must consult this before <see cref="GetSelectedMessages"/>,
+    /// for the reason <see cref="WatchTargetSubject"/> and <see cref="ToggleFlagCommandAsync"/> read
+    /// the tree's selection first: selecting a header does not update <c>_vm.SelectedMessage</c>
+    /// (<c>GroupedMessageTreeController.OnSelectedItemChanged</c>). Move to Folder did not, so on a
+    /// conversation it filed whatever message had been selected before the user arrowed onto the
+    /// header — or, when none had been, did nothing at all. That was issue #566.</para>
+    /// </summary>
+    private (IReadOnlyList<MailMessageSummary> Messages, int Index)? SelectedGroupTarget()
+    {
+        if (_vm.IsConversationsView && ConversationTree.SelectedItem is ConversationGroup cg)
+            return (cg.Messages, _vm.Conversations.IndexOf(cg));
+        if (_vm.IsFromView && SenderGroupTree.SelectedItem is SenderGroup sg)
+            return (sg.Messages, _vm.SenderGroups.IndexOf(sg));
+        if (_vm.IsToView && ToGroupTree.SelectedItem is SenderGroup tg)
+            return (tg.Messages, _vm.ToGroups.IndexOf(tg));
+        return null;
+    }
+
+    /// <summary>
+    /// True when Move/Copy to Folder have something to act on: a selected message, or a selected
+    /// group header. The availability gate for both commands and the source of the VM's
+    /// <c>HasFileTarget</c>, so the hotkey, the palette and the Message menu all agree.
+    /// </summary>
+    private bool CanFileSelection() => _vm.HasSelectedMessage || IsGroupRowSelected();
 
     /// <summary>
     /// The subject whose conversation Ctrl+Shift+W acts on, or null when there is no valid target.
@@ -2851,9 +2890,14 @@ public partial class MainWindow : Window
         return _vm.SelectedMessage?.Subject;
     }
 
-    // Keeps the Message menu's Watch Conversation check state honest: the target can change without
-    // SelectedMessage changing (a group header selection), so it is recomputed as the menu opens.
-    private void MessageMenu_SubmenuOpened(object sender, RoutedEventArgs e) => _vm.RefreshWatchTarget();
+    // Keeps the Message menu's Watch Conversation check state, and the Move/Copy to Folder dimming,
+    // honest: both targets can change without SelectedMessage changing (a group header selection),
+    // so they are recomputed as the menu opens.
+    private void MessageMenu_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        _vm.RefreshWatchTarget();
+        _vm.RefreshFileTarget();
+    }
 
     private void MenuWatchConversation_Click(object sender, RoutedEventArgs e) =>
         _vm.ToggleWatchConversation();
@@ -5990,45 +6034,27 @@ public partial class MainWindow : Window
     private void MenuSearchFolders_Click(object sender, RoutedEventArgs e)
         => OpenFolderPicker();
 
+    // The menu-bar items are the same action as the command; they delegate so the two entry points
+    // cannot drift (they were duplicate copies of the body below).
     private async void MenuMoveToFolder_Click(object sender, RoutedEventArgs e)
-    {
-        var messages = GetSelectedMessages();
-        if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
-
-        var picker = BuildMessageFolderPicker(messages, "Move to Folder", copy: false);
-        var pickerOpened = picker.ShowDialog();
-        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
-        if (pickerOpened != true || picker.SelectedFolder == null) return;
-
-        await _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
-
-        if (_vm.IsConversationsView)
-            LandOnConversationAfterRebuild(0);
-        else if (_vm.IsFromView)
-            LandOnSenderGroupAfterRebuild(0);
-        else if (_vm.IsToView)
-            LandOnToGroupAfterRebuild(0);
-    }
+        => await MoveMessageToFolderAsync();
 
     private async void MenuCopyToFolder_Click(object sender, RoutedEventArgs e)
-    {
-        var messages = GetSelectedMessages();
-        if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
-
-        var picker = BuildMessageFolderPicker(messages, "Copy to Folder", copy: true);
-        var pickerOpened = picker.ShowDialog();
-        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
-        if (pickerOpened != true || picker.SelectedFolder == null) return;
-
-        await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
-    }
+        => await CopyMessageToFolderAsync();
 
     private async Task MoveMessageToFolderAsync()
     {
-        var messages = GetSelectedMessages();
+        // A selected group header wins over the selected message — see SelectedGroupTarget (#566).
+        var group = SelectedGroupTarget();
+        IReadOnlyList<MailMessageSummary> messages = group?.Messages ?? GetSelectedMessages();
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
-        var picker = BuildMessageFolderPicker(messages, "Move to Folder", copy: false);
+        // Naming the conversation is the only signal the picker gives that this files the whole
+        // thread rather than one message, and its title is what a screen reader reads on open.
+        var picker = BuildMessageFolderPicker(
+            messages,
+            group != null && _vm.IsConversationsView ? "Move Conversation to Folder" : "Move to Folder",
+            copy: false);
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
@@ -6037,20 +6063,27 @@ public partial class MainWindow : Window
 
         // Conversations/From: LandOnX waits for the async rebuild before focusing.
         // Messages view: MessageListFocusRequested in MoveSelectedMessagesToFolderAsync handles it.
+        // Filing a whole group empties its row, so land where it was — the row that takes its place,
+        // as the group context menus do — rather than jumping the user back to the top of the list.
+        var targetIdx = group?.Index ?? 0;
         if (_vm.IsConversationsView)
-            LandOnConversationAfterRebuild(0);
+            LandOnConversationAfterRebuild(targetIdx);
         else if (_vm.IsFromView)
-            LandOnSenderGroupAfterRebuild(0);
+            LandOnSenderGroupAfterRebuild(targetIdx);
         else if (_vm.IsToView)
-            LandOnToGroupAfterRebuild(0);
+            LandOnToGroupAfterRebuild(targetIdx);
     }
 
     private async Task CopyMessageToFolderAsync()
     {
-        var messages = GetSelectedMessages();
+        var group = SelectedGroupTarget();
+        IReadOnlyList<MailMessageSummary> messages = group?.Messages ?? GetSelectedMessages();
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
-        var picker = BuildMessageFolderPicker(messages, "Copy to Folder", copy: true);
+        var picker = BuildMessageFolderPicker(
+            messages,
+            group != null && _vm.IsConversationsView ? "Copy Conversation to Folder" : "Copy to Folder",
+            copy: true);
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
