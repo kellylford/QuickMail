@@ -570,30 +570,26 @@ jobs:
           # (clients would then quietly stop seeing updates).
           fail_on_unmatched_files: true
           body_path: docs/release-notes-${{ github.ref_name }}.md
-          # PUBLISH AS A PRE-RELEASE — deliberate, and the thing that stops every
-          # installed client updating the moment the tag lands.
+          # PUBLISHED AS A NORMAL, LATEST RELEASE. There is deliberately no `prerelease:`
+          # input here — the action's default (false) plus GitHub's default `make_latest`
+          # is what every consumer expects, and adding one back silently withholds the
+          # release from all of them.
           #
-          # UpdateCheckService builds `new GithubSource(RepoUrl, accessToken: null,
-          # prerelease: false)`, and Velopack's GithubSource filters the candidate list
-          # with `.Where(x => includePrereleases || !x.Prerelease)` — so a pre-release is
-          # never seen, clients keep reading the previous release's feed, and Help >
-          # Check for Updates reports nothing. The portable exe's fallback path hits
-          # /releases/latest, which excludes pre-releases by GitHub's own definition.
-          # Both channels' feeds (win and win-arm64) ride on this one release, so ARM
-          # installs are covered by the same switch.
+          # What a pre-release would cost: UpdateCheckService builds `new
+          # GithubSource(RepoUrl, accessToken: null, prerelease: false)`, and Velopack's
+          # GithubSource filters candidates with `.Where(x => includePrereleases ||
+          # !x.Prerelease)` — so installed clients never see a pre-release, keep reading
+          # the previous release's feed, and Help > Check for Updates reports nothing. The
+          # portable exe's fallback path hits /releases/latest, which excludes
+          # pre-releases by GitHub's own definition. Both channels' feeds (win and
+          # win-arm64) ride on this one release, so ARM installs are withheld too. On top
+          # of that, the delta step above (`vpk download github`, which defaults to
+          # stable) baselines against the newest *stable* release, so a chain of
+          # unpromoted pre-releases quietly builds deltas from the wrong version.
           #
-          # The assets are still public: a pre-release shows on /releases, so anyone can
-          # download the MSI or the portable exe and install manually. That is the point
-          # — manual installers exercise the build before anyone is moved onto it.
-          #
-          # TO PROMOTE: on the release page, untick "Set as a pre-release" and tick "Set
-          # as the latest release". Nothing is rebuilt or re-uploaded; clients pick it up
-          # on their next launch. Do this BEFORE tagging the next version, or the delta
-          # step above (`vpk download github`, which defaults to stable) baselines against
-          # the release before this one.
-          #
-          # TO GO BACK to publishing normal releases: delete this input. It is hardcoded
-          # rather than driven by a repo variable on purpose — an unset variable would
-          # publish as latest and auto-update everyone, which is the failure this exists
-          # to prevent, while a forgotten `true` only leaves a release nobody is offered.
-          prerelease: true
+          # `prerelease: true` was set once, for one release that needed manual soak
+          # testing before anyone was moved onto it, and it should have come off with that
+          # release. It stayed, and every release since has had to be promoted by hand on
+          # the release page. If a future release needs the same treatment, add the input
+          # for that release and REMOVE IT IN THE SAME PR THAT TAGS THE NEXT ONE — or
+          # simply tag it, then untick "Set as the latest release" once by hand.

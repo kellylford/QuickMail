@@ -1,8 +1,9 @@
 <!--
   Reusable "Reporting Issues" footer for release notes.
 
-  Copy everything below the divider (from "## Reporting Issues" to the end) to the END of
-  every docs/release-notes-vX.Y.Z.md. Keep it in sync with the User Guide's Reporting Issues
+  Copy everything below the divider (from "## Reporting Issues" to the end) to every
+  docs/release-notes-vX.Y.Z.md, after what is new in the release and before the Download
+  footer (docs/download-footer.md). Keep it in sync with the User Guide's Reporting Issues
   page (docs/USER-GUIDE.md -> https://kellylford.github.io/QuickMail/reporting-issues.html).
 -->
 

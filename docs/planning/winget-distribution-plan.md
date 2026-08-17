@@ -57,8 +57,9 @@ at it. The only code change is a few lines in the release workflow.
    without elevation, into `%LocalAppData%\QuickMail` — the same place the wizard installs.
 2. `winget upgrade` behaves sanely alongside Velopack self-updates — no downgrade loops, no
    mid-upgrade data prompt, no relocation.
-3. Every future release updates the winget manifest automatically from CI; the
-   pre-release-then-promote cadence continues to work unchanged.
+3. Every future release updates the winget manifest automatically from CI, whether the
+   release is published as latest (the cadence from 0.8.41 on) or promoted from a
+   pre-release.
 4. `winget uninstall` behaves identically to uninstalling from Settings → Apps, including
    the existing best-effort "remove user data?" prompt semantics (default: keep).
 
@@ -327,9 +328,11 @@ Do the first submission by hand to learn the pipeline before automating it:
 
 Add a small workflow using the **winget-releaser** action (vedantmgoyal9/winget-releaser),
 triggered on the release **`released`** event. That event fires both when a full release is
-published *and when a pre-release is promoted to a release* — exactly the promote-based
-cadence this repo uses. Pre-releases themselves never trigger it, so winget only ever sees
-promoted builds.
+published *and when a pre-release is promoted to a release*, which covers both cadences: as
+of 0.8.41 `quickmail.yml` publishes normal latest releases, and the earlier
+pre-release-then-promote flow would still have fired on the promotion. Pre-releases
+themselves never trigger it, so a build held back for soak testing never reaches winget
+until it is promoted.
 
 - The action reads the release's assets, matches the two Setup.exe files by pattern,
   computes hashes, writes the new version folder, and opens the PR to

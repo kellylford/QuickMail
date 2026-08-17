@@ -87,7 +87,9 @@ The user guide (`docs/USER-GUIDE.md`) is automatically converted to HTML and pub
 
 **Before you ship a release**: Update `docs/USER-GUIDE.md` with any changes, then publish (manual or automatic).
 
-**Release notes footer**: Every `docs/release-notes-vX.Y.Z.md` must end with the standard **Reporting Issues** footer. The canonical text lives in `docs/reporting-issues-footer.md` — copy the section below its divider to the end of each release notes file. Keep it in sync with the User Guide's Reporting Issues page (`reporting-issues.html`).
+**Release notes structure**: Every `docs/release-notes-vX.Y.Z.md` runs in this order — what is new (the Changed/Fixed sections), then the **Reporting Issues** footer, then the **Download** footer last. What shipped is what people came to read; the download table is reference material and does not go first. The canonical text of both footers lives in `docs/reporting-issues-footer.md` and `docs/download-footer.md` — copy the section below each one's divider. Keep Reporting Issues in sync with the User Guide's page (`reporting-issues.html`), and replace every `X.Y.Z` in the Download footer with the version being released.
+
+The Download footer's asset links are **live URLs written before the release exists**: `https://github.com/kellylford/QuickMail/releases/download/v<TAG>/<ASSET>` is predictable, and the four asset names are exactly what `quickmail.yml` uploads, so they resolve the moment the tag's release is published. If you rename a release asset in that workflow, fix `docs/download-footer.md` in the same change or every future release ships four dead links.
 
 ### GitHub Pages Setup (One-time)
 
