@@ -55,7 +55,12 @@
                         Click="AddSharedMailboxButton_Click"
                         AutomationProperties.Name="Add shared mailbox"
                         Visibility="{Binding IsSharedMailboxesEnabled, Converter={StaticResource BoolToVisibility}}"
-                        MinWidth="90" TabIndex="4"/>
+                        MinWidth="90" Margin="0,0,4,0" TabIndex="4"/>
+                <Button Content="Con_vert to Microsoft 365"
+                        Command="{Binding ConvertToGraphCommand}"
+                        AutomationProperties.Name="Convert to Microsoft 365"
+                        Visibility="{Binding CanConvertToGraph, Converter={StaticResource BoolToVisibility}}"
+                        MinWidth="90" TabIndex="5"/>
             </StackPanel>
             <ListBox x:Name="AccountListBox"
                      TabIndex="0"
