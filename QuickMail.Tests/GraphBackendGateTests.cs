@@ -447,6 +447,21 @@ public class ConfigFeatureGateTests
             .IsEnabled(FeatureFlag.MicrosoftGraphDefault));
 
     [Fact]
+    public void EveryFeatureFlag_ResolvesToADefault() // #571 follow-up
+    {
+        // ConfigFeatureGate resolves an un-overridden flag through Defaults[flag], which throws
+        // KeyNotFoundException for a FeatureFlag member with no entry. Iterating every member turns
+        // that omission into a red test here, instead of a runtime crash at the first call site.
+        var gate = new ConfigFeatureGate(new ConfigModel(), Array.Empty<string>());
+        var ex = Record.Exception(() =>
+        {
+            foreach (var flag in Enum.GetValues<FeatureFlag>())
+                _ = gate.IsEnabled(flag);
+        });
+        Assert.Null(ex);
+    }
+
+    [Fact]
     public void Config_EnablesMicrosoftGraphDefault()
         => Assert.True(new ConfigFeatureGate(ConfigWith("MicrosoftGraphDefault", "true"), Array.Empty<string>())
             .IsEnabled(FeatureFlag.MicrosoftGraphDefault));
