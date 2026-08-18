@@ -1659,6 +1659,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public Action<AccountModel>? RegisterAccountBackend { get; set; }
 
+    /// <summary>
+    /// #529 step 4: the Account Manager just converted an account to the Graph backend (it flipped its
+    /// own copy, persisted the <see cref="AccountModel.GraphConversionPending"/> marker, and purged the
+    /// local cache). Bring THIS window's live copy in line so nothing re-syncs the account over IMAP this
+    /// session: disconnect the IMAP session, flip our copy to Graph, seed the in-session rule-refire
+    /// baseline (so the Graph re-download does not run client rules over the pre-existing mail — the #454
+    /// safeguard, matching the startup seed), and rebind the router to the Graph backend. The normal sync
+    /// then re-downloads the account over Graph. The marker clear and folder-reference remap are the
+    /// follow-up; the marker keeps it crash-safe until then.
+    /// </summary>
+    public async Task OnAccountConvertedToGraphAsync(Guid accountId)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null) return;
+
+        // Best effort — the IMAP session may already be down; either way stop it before rebinding.
+        try { await _imap.DisconnectAsync(accountId); } catch { }
+
+        account.GraphConversionPending = true;
+        account.BackendKind = BackendKind.MicrosoftGraph;
+        _syncService.SeedRebuildBaseline([accountId]);
+        RegisterAccountBackend?.Invoke(account);
+    }
+
     public void LoadAccountList(List<AccountModel>? preloaded = null)
     {
         var accounts = preloaded ?? _accountService.LoadAccounts();

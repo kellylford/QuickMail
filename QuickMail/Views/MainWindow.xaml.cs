@@ -5074,6 +5074,9 @@ public partial class MainWindow : Window
     private void OpenAccountManager()
     {
         var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _providerCatalog, _autoDiscover, _smtp, _contactSyncService, _graphCalendarSyncService);
+        // #529 step 4: keep the main sync loop safe in-session after an IMAP→Graph convert (disconnect,
+        // flip our copy, seed the rule-refire baseline, rebind the router).
+        accountVm.AccountConvertedToGraph = id => _vm.OnAccountConvertedToGraphAsync(id);
         var dialog = new AccountManagerDialog(accountVm) { Owner = this };
         dialog.ShowDialog();
         // Refresh regardless of the dialog result: the contact- and calendar-sync toggles apply
@@ -5085,6 +5088,7 @@ public partial class MainWindow : Window
     private void OpenAccountManagerForAccount(AccountModel account)
     {
         var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _providerCatalog, _autoDiscover, _smtp, _contactSyncService, _graphCalendarSyncService);
+        accountVm.AccountConvertedToGraph = id => _vm.OnAccountConvertedToGraphAsync(id);  // #529 step 4 (see OpenAccountManager)
         var dialog    = new AccountManagerDialog(accountVm) { Owner = this };
         // Pre-select the account in the manager
         accountVm.SelectedAccount = accountVm.Accounts.FirstOrDefault(a => a.Id == account.Id);

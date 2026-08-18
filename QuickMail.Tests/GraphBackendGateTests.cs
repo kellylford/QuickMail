@@ -467,6 +467,11 @@ public class ConfigFeatureGateTests
             .IsEnabled(FeatureFlag.MicrosoftGraphDefault));
 
     [Fact]
+    public void Default_MicrosoftGraphMigrationOff() // #529 step 4: opt-in convert, ships off
+        => Assert.False(new ConfigFeatureGate(new ConfigModel(), Array.Empty<string>())
+            .IsEnabled(FeatureFlag.MicrosoftGraphMigration));
+
+    [Fact]
     public void Config_DisablesFlag() // now the meaningful override: turn the default off
         => Assert.False(new ConfigFeatureGate(ConfigWith("GraphBackend", "false"), Array.Empty<string>())
             .IsEnabled(FeatureFlag.GraphBackend));

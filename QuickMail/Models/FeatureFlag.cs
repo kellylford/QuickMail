@@ -29,6 +29,19 @@ public enum FeatureFlag
     MicrosoftGraphDefault,
 
     /// <summary>
+    /// Offers the opt-in "Convert to Microsoft 365 (Graph)" command in the Account Manager, which moves
+    /// an existing Microsoft IMAP account onto the Graph backend in place (#529 step 4). Effective only
+    /// when <see cref="GraphBackend"/> is also on. Nothing converts automatically; the command is per
+    /// account and asks first.
+    ///
+    /// Default: false. Ships off while the convert is exercised by testers — it purges and re-downloads
+    /// the account's local cache, so it stays opt-in until it has real mileage. Turn it on with
+    /// MicrosoftGraphMigration=true under [features] in config.ini, or --feature MicrosoftGraphMigration
+    /// at launch.
+    /// </summary>
+    MicrosoftGraphMigration,
+
+    /// <summary>
     /// Offers Google sign-in for Gmail accounts: the "Gmail (sign in with Google)" provider entry
     /// and the Google OAuth item in the Authentication combo.
     ///

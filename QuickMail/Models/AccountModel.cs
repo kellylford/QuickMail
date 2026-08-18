@@ -69,6 +69,16 @@ public partial class AccountModel : ObservableObject
     /// <summary>Optional Azure AD tenant ID for Graph accounts. Null = "common" authority.</summary>
     public string? TenantId { get; set; }
 
+    /// <summary>
+    /// Crash-safe marker for an in-progress IMAP→Graph conversion (#529 step 4). Set — and persisted —
+    /// before the local cache is purged, and cleared only after the first post-convert Graph sync has
+    /// baselined the account's folders. While it is true, startup seeds the SyncService rule-refire
+    /// baseline for this account, so a crash between the purge and the first sync cannot re-fire client
+    /// rules over pre-existing mail (the #454 failure this safeguard exists to prevent). See
+    /// docs/planning/graph-migrate-existing-accounts-pm-dev-spec.md §5.3.
+    /// </summary>
+    public bool GraphConversionPending { get; set; }
+
     // IMAP
     public string ImapHost { get; set; } = string.Empty;
     public int ImapPort { get; set; } = 993;
