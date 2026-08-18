@@ -21,6 +21,10 @@ public class ConfigFeatureGate : IFeatureGate
         // under Advanced. Testers opt in with MicrosoftGraphDefault=true under [features]; the default
         // flips in a later release.
         [FeatureFlag.MicrosoftGraphDefault] = false,
+        // Off while the opt-in IMAP→Graph convert (#529 step 4) is exercised by testers — it purges and
+        // re-downloads the account's local cache, so it stays opt-in. Set MicrosoftGraphMigration=true
+        // under [features] to test.
+        [FeatureFlag.MicrosoftGraphMigration] = false,
         // Off since v0.8.37: Google no longer grants QuickMail new authorizations, so offering the
         // option to everyone only produced sign-ins that could not succeed. Opt-in for the users
         // whose authorization predates the block (#369).

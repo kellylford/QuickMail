@@ -169,8 +169,21 @@ sealed class StubGoogleOAuthService : IGoogleOAuthService
 
 sealed class StubOAuthService : IOAuthService
 {
+    /// <summary>The scope array handed to the last explicit-scope GetAccessTokenAsync — lets a test
+    /// assert a caller asked for Graph scopes rather than IMAP scopes (#529 step 4 token-before-purge).</summary>
+    public string[]? LastAccessTokenScopes { get; private set; }
+
+    /// <summary>When set, the explicit-scope GetAccessTokenAsync throws it — to simulate a failed or
+    /// declined Graph sign-in so a test can assert the caller left state untouched.</summary>
+    public Exception? ThrowOnGetAccessToken { get; set; }
+
     public Task<string> GetAccessTokenAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(string.Empty);
-    public Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default) => Task.FromResult(string.Empty);
+    public Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
+    {
+        LastAccessTokenScopes = scopes;
+        if (ThrowOnGetAccessToken is { } ex) throw ex;
+        return Task.FromResult(string.Empty);
+    }
     public Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default) => Task.FromResult(string.Empty);
     public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
     /// <summary>
@@ -216,7 +229,14 @@ class StubLocalStoreService : ILocalStoreService
             ? Newest(rows.Where(m => m.Date >= since)) : []);
     public virtual Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
     public virtual Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
-    public virtual Task ClearCachedMailAsync(System.Collections.Generic.IEnumerable<System.Guid> accountIds) => Task.CompletedTask;
+    /// <summary>Account ids passed to <see cref="ClearCachedMailAsync"/>, so a test can assert the
+    /// convert purged the right account (#529 step 4).</summary>
+    public List<Guid> ClearedMailAccountIds { get; } = [];
+    public virtual Task ClearCachedMailAsync(System.Collections.Generic.IEnumerable<System.Guid> accountIds)
+    {
+        ClearedMailAccountIds.AddRange(accountIds);
+        return Task.CompletedTask;
+    }
     public virtual Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds) => Task.CompletedTask;
 
     /// <summary>Folders the stub hands back from <see cref="LoadFoldersAsync"/> — seed this to stand in

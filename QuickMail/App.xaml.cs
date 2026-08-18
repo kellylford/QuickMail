@@ -389,6 +389,15 @@ public partial class App : Application
             // read old mail as new and re-run rules over it on upgrade day. Baseline it (#366/N5).
             if (immutableIdRebuilt) syncService.SeedRebuildBaseline(rebuiltGraphAccountIds);
 
+            // #529 step 4: an IMAP→Graph convert purges the account's store before it re-syncs. If the
+            // app closed (or crashed) between the purge and the first baselined sync, the store is empty
+            // and the in-memory baseline is gone, so the first re-sync would read all pre-existing mail as
+            // new and re-fire client rules over it (the #454 failure). The persisted GraphConversionPending
+            // marker survives that, so seed the baseline for every account still mid-convert — before any
+            // sync runs (the sync service is built above; StartBackgroundSyncAsync runs later).
+            var convertingAccountIds = accounts.Where(a => a.GraphConversionPending).Select(a => a.Id).ToList();
+            if (convertingAccountIds.Count > 0) syncService.SeedRebuildBaseline(convertingAccountIds);
+
             // Contact sync (issue #256): Graph source reuses the Graph backend's client; Google source
             // gets its own People API client (owns an HttpClient → disposed in OnExit).
             var graphContactSource  = new GraphContactSource(graphBackend.Client);

@@ -34,7 +34,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     [NotifyPropertyChangedFor(nameof(IsSharedSelected))]
     [NotifyPropertyChangedFor(nameof(ShowNormalAccountFields))]
     [NotifyPropertyChangedFor(nameof(SharedParentName))]
+    [NotifyPropertyChangedFor(nameof(CanConvertToGraph))]
     [NotifyCanExecuteChangedFor(nameof(SetDefaultCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConvertToGraphCommand))]
     private AccountModel? _selectedAccount;
 
     public bool IsEditing => SelectedAccount != null;
@@ -97,6 +99,18 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
          || ProviderCatalog.IsICloud(acct));
 
     protected override bool IsGoogleAuthEnabled => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
+
+    /// <summary>
+    /// #529 step 4: offers the opt-in "Convert to Microsoft 365 (Graph)" command for the selected
+    /// account. Shown only for a real (non-shared) Microsoft OAuth IMAP account, and only when Graph is
+    /// an available backend (<see cref="FeatureFlag.GraphBackend"/>) and the convert feature is on
+    /// (<see cref="FeatureFlag.MicrosoftGraphMigration"/>). A Graph account is already converted; a
+    /// password/non-Microsoft account has no Graph identity; a shared mailbox reads through its parent.
+    /// </summary>
+    public bool CanConvertToGraph =>
+        SelectedAccount is { BackendKind: BackendKind.ImapSmtp, AuthType: AuthType.OAuth2Microsoft, IsShared: false }
+        && _featureGate.IsEnabled(FeatureFlag.GraphBackend)
+        && _featureGate.IsEnabled(FeatureFlag.MicrosoftGraphMigration);
 
     /// <summary>#31: gates the "Add shared…" button — the sole path that can create a shared mailbox.
     /// Off by default while the multi-PR feature is built (see <see cref="FeatureFlag.SharedMailboxes"/>).</summary>
@@ -401,6 +415,107 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             Accounts.RemoveAt(idx);
             Accounts.Insert(idx, account);
             SelectedAccount = Accounts[idx];
+        }
+    }
+
+    /// <summary>Set by the View to confirm an IMAP→Graph conversion (#529 step 4): message → user's
+    /// yes/no. The convert purges and re-downloads the account's local cache, so it must be confirmed;
+    /// an unset callback fails closed (treated as declined), never converting unconfirmed. The shipped
+    /// View wires it.</summary>
+    public Func<string, bool>? ConfirmConvertToGraph { get; set; }
+
+    /// <summary>
+    /// Set by the View to hand a just-converted account (by id) to the main window's sync loop, which
+    /// owns the live account list, the backend router, and the SyncService. Without this, the main loop
+    /// keeps its own IMAP-backed copy of the account and would re-download the pre-existing mail we just
+    /// purged and re-fire client rules over it (the #454 symptom) — the startup seed only protects the
+    /// NEXT launch. The handler flips the main copy to Graph, disconnects the IMAP session, seeds the
+    /// in-session rule-refire baseline, and rebinds the router. Unset (e.g. in tests) is safe: the
+    /// persisted marker still makes the next launch recover.
+    /// </summary>
+    public Func<Guid, Task>? AccountConvertedToGraph { get; set; }
+
+    /// <summary>
+    /// #529 step 4 — moves an existing Microsoft IMAP account onto the Graph backend in place. This PR
+    /// performs the safe half of the sequence (spec §5.1 steps 1–5): confirm, acquire a Graph token
+    /// BEFORE any destructive step, then persist a crash-safe marker + flip the backend and purge the
+    /// local cache. It deliberately does not yet drive the in-session re-sync or remap the account's
+    /// folder-referencing settings — those are the follow-up; the marker keeps it crash-safe and the
+    /// next sync re-downloads from Graph. See the spec's §5.3 for why the marker is set before the purge.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanConvertToGraph))]
+    private async Task ConvertToGraphAsync()
+    {
+        if (SelectedAccount is not
+            { BackendKind: BackendKind.ImapSmtp, AuthType: AuthType.OAuth2Microsoft, IsShared: false } account)
+            return;
+        if (!CanConvertToGraph) return;
+
+        // Step 2 — confirm. No side effect until yes; fail closed if the View didn't wire the callback.
+        var confirmed = ConfirmConvertToGraph?.Invoke(
+            $"Convert {account.AccountLabel} to Microsoft 365? This re-downloads the mailbox once. Mail older " +
+            "than your sync window stays on the server and is not kept on this PC. Continue?") ?? false;
+        if (!confirmed) return;
+
+        var flipped = false;
+        try
+        {
+            // Step 3 — token BEFORE purge. Acquire a GRAPH token with an EXPLICIT scope array. Do NOT let
+            // DefaultScopesFor pick: BackendKind is still ImapSmtp here, so it would return the IMAP scopes
+            // and the convert would proceed on a token with no Graph access, defeating this safeguard.
+            // Resolve personal-vs-work with ResolveIsPersonalMicrosoftAccount (the flag is nullable on
+            // older accounts and falls back to a domain guess). A failure or decline stops here with the
+            // account entirely unchanged — still IMAP; MSAL's cache is scope-additive, so its existing
+            // IMAP grant is not evicted.
+            // Fully qualified: the base class exposes an instance property also named OAuthService, which
+            // would otherwise shadow the static scope helpers on the service class.
+            var graphScopes = Services.OAuthService.ResolveIsPersonalMicrosoftAccount(account)
+                ? Services.OAuthService.GraphMailScopesPersonal
+                : Services.OAuthService.GraphMailScopesWorkSchool;
+            StatusText = "Signing in to Microsoft 365…";
+            await _oauth.GetAccessTokenAsync(account, graphScopes);
+
+            // Steps 4 + 5 — mark, flip, persist, purge, in that order. The marker is persisted WITH the
+            // backend flip and BEFORE the purge, so a crash after this point leaves a converting Graph
+            // account whose startup baseline seeding suppresses client rules over the pre-existing mail
+            // (the #454 safeguard). ClearCachedMailAsync drops the IMAP-keyed messages; SaveFoldersAsync
+            // with an empty list clears the IMAP folder rows too, so the tree does not render IMAP names
+            // (invalid Graph ids) under a Graph account before the first Graph folder fetch.
+            account.GraphConversionPending = true;
+            account.BackendKind = BackendKind.MicrosoftGraph;
+            _accountService.SaveAccounts([.. Accounts]);
+            flipped = true;
+
+            await _localStore.ClearCachedMailAsync([account.Id]);
+            await _localStore.SaveFoldersAsync(account.Id, []);
+
+            // Hand the account to the main sync loop so it flips its own copy to Graph, disconnects the
+            // IMAP session, seeds the in-session rule-refire baseline, and rebinds the router — otherwise
+            // the main loop would re-sync the purged account over IMAP and re-fire rules on old mail this
+            // session (the startup marker only guards the next launch). Unset in tests; the marker covers it.
+            if (AccountConvertedToGraph is { } handoff)
+                await handoff(account.Id);
+
+            StatusText = $"{account.AccountLabel} now connects through Microsoft 365 and is re-downloading.";
+
+            // Refresh the list item so the editor reflects the new backend (mirrors SaveAccount).
+            var idx = Accounts.IndexOf(account);
+            if (idx >= 0)
+            {
+                Accounts.RemoveAt(idx);
+                Accounts.Insert(idx, account);
+                SelectedAccount = Accounts[idx];
+            }
+        }
+        catch (Exception ex)
+        {
+            // Distinguish "never started" (token/confirm failed — account untouched on IMAP) from a
+            // failure AFTER the backend flip was persisted, where the conversion did start and the
+            // persisted marker will resume it on the next launch — reporting "didn't start" there would
+            // be wrong.
+            StatusText = flipped
+                ? $"{account.AccountLabel} is converting to Microsoft 365; a step didn't finish ({ex.Message}). It will resume on the next restart."
+                : $"Conversion didn't start: {ex.Message}";
         }
     }
 
