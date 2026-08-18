@@ -1681,6 +1681,66 @@ public partial class MainViewModel : ObservableObject, IDisposable
         account.BackendKind = BackendKind.MicrosoftGraph;
         _syncService.SeedRebuildBaseline([accountId]);
         RegisterAccountBackend?.Invoke(account);
+
+        // Drive the re-download + folder-reference remap + marker clear in the background so the convert
+        // returns promptly. If the app closes before it finishes, the persisted marker makes startup
+        // resume it (see StartBackgroundSyncAsync).
+        FinishGraphConversionAsync(accountId, CancellationToken.None).LogFaults("FinishGraphConversion");
+    }
+
+    /// <summary>
+    /// #529 step 4: completes a conversion — connect the now-Graph account, force its Inbox to sync so the
+    /// rule-refire baseline is consumed, remap the account's folder-referencing settings to the new Graph
+    /// folder ids (§5.2), and finally clear the <see cref="AccountModel.GraphConversionPending"/> marker.
+    /// Runs both from the in-session handoff and from the startup crash-resume; idempotent — a re-run
+    /// re-connects and re-syncs harmlessly, and it no-ops once the marker is clear.
+    /// </summary>
+    private async Task FinishGraphConversionAsync(Guid accountId, CancellationToken ct)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null || !account.GraphConversionPending) return;
+
+        // Connect the Graph account and take the folders it returns DIRECTLY — not a read-back through
+        // _cachedFolders, which on the in-session path still holds the pre-convert IMAP folder models (the
+        // purge cleared only the SQLite rows). A transient no-folders result must retry next launch, not
+        // remap references against stale IMAP folders.
+        var (_, folders) = await ConnectOneAccountAsync(account);
+        if (folders is not { Count: > 0 }) return;
+        SetCachedFolders(accountId, folders);
+        var graphFolders = folders;
+
+        // Force an Inbox sync so its rule-refire baseline is consumed BEFORE the marker clears (client
+        // rules only ever run on the Inbox, so it is the one that matters). No Inbox exposed yet → do NOT
+        // clear the marker; retry next launch, because clearing without a baselined Inbox and then crashing
+        // would leave the next launch re-firing rules over the pre-existing mail (#454, §5.3).
+        var inbox = graphFolders.FirstOrDefault(f => f.Kind == SpecialFolderKind.Inbox);
+        if (inbox is null) return;
+        await _syncService.SyncFolderFullAsync(account, inbox, ct);
+
+        // Remap folder-referencing settings now that the Graph folders exist.
+        var rules = _ruleService.LoadRules();
+        var views = _viewService.Load();
+        var cfg = _configService.Load();
+        var report = FolderReferenceRemapper.Remap(accountId, graphFolders, rules, views, cfg);
+        if (report.AnythingChanged)
+        {
+            _ruleService.SaveRules(rules);
+            _viewService.Save(views);
+            _configService.Save(cfg);
+        }
+
+        // Clear the marker — resolve the CURRENT instance (a reload may have replaced it) and persist.
+        var current = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (current != null)
+        {
+            current.GraphConversionPending = false;
+            _accountService.SaveAccounts([.. Accounts]);
+        }
+
+        var summary = report.Summary();
+        Announce(
+            $"{account.AccountLabel} finished converting to Microsoft 365." + (summary.Length > 0 ? " " + summary : ""),
+            AnnouncementCategory.Result);
     }
 
     public void LoadAccountList(List<AccountModel>? preloaded = null)
@@ -2964,6 +3024,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             await _syncService.SyncAllAccountsAsync(accountList, _cachedFolders, ct);
+
+            // #529 step 4 crash-resume: an account whose convert didn't finish (marker still set, e.g. the
+            // app closed mid-convert) had its rule-refire baseline seeded before this sweep. Complete it
+            // now — remap its folder references and clear the marker. Fire-and-forget so a slow account
+            // doesn't hold up the rest of startup; the marker keeps it recoverable if this is interrupted.
+            foreach (var acct in accountList.Where(a => a.GraphConversionPending))
+                FinishGraphConversionAsync(acct.Id, ct).LogFaults("resume Graph conversion");
 
             // Sync done — refresh the current view/folder once so the UI reflects every
             // folder that was synced without N intermediate screen-reader announcements.
