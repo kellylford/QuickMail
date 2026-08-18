@@ -40,6 +40,12 @@ public partial class AccountManagerDialog : Window
         vm.ConfirmCascadeRemoval = message =>
             MessageBox.Show(this, message, "Remove shared mailboxes",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        // #529 step 4: the convert re-downloads the mailbox and can leave older mail off this PC — confirm
+        // first. A plain Yes/No MessageBox (no editable field) is safe here, the same as the cascade
+        // confirmation above; an unset callback fails closed in the VM, so nothing converts unconfirmed.
+        vm.ConfirmConvertToGraph = message =>
+            MessageBox.Show(this, message, "Convert to Microsoft 365",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
     }
 
     private void AddSharedMailboxButton_Click(object sender, RoutedEventArgs e)
