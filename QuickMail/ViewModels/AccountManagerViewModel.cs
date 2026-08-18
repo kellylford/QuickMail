@@ -157,6 +157,10 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Signature = value.Signature;
         SyncContacts = value.SyncContacts;
         SyncCalendar = value.SyncCalendar;
+        // Restore the persisted personal-account flag (#233) so a re-auth resolves personal-vs-work from
+        // the tenant-derived truth, not the domain guess — the vanity-domain personal case the
+        // single-consent fold (#544) most needs.
+        IsPersonalMicrosoftAccount = value.IsPersonalMicrosoftAccount;
         StatusText = string.Empty;
         // These are the account's saved values, not something typed just now — clear the edit flag so
         // switching between accounts doesn't look like a hand edit. Advanced starts collapsed; the

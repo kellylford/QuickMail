@@ -164,6 +164,112 @@ public class OAuthServiceScopeSelectionTests
         => Assert.Equal(Prompt.SelectAccount,
             OAuthService.PromptForSignIn(firstConnect: false, null, usesDefaultScope: true));
 
+    // ── Single-consent fold-in for Microsoft (contacts/calendar into the mail sign-in) ─────────
+    // A personal Microsoft account has no admin-consent model, so mail, contacts, and calendar were
+    // three separate interactive prompts. MicrosoftExtraConsentScopes is what the mail sign-in pre-
+    // consents via WithExtraScopesToConsent so the opted-in capabilities are approved in one prompt.
+
+    [Fact]
+    public void ExtraConsentScopes_NeitherRequested_IsEmpty()
+        => Assert.Empty(OAuthService.MicrosoftExtraConsentScopes(syncContacts: false, syncCalendar: false));
+
+    [Fact]
+    public void ExtraConsentScopes_ContactsOnly_IsContactScopes()
+        => Assert.Equal(OAuthService.GraphContactScopes,
+            OAuthService.MicrosoftExtraConsentScopes(syncContacts: true, syncCalendar: false));
+
+    [Fact]
+    public void ExtraConsentScopes_CalendarOnly_IsCalendarScopes()
+        => Assert.Equal(OAuthService.GraphCalendarScopes,
+            OAuthService.MicrosoftExtraConsentScopes(syncContacts: false, syncCalendar: true));
+
+    [Fact]
+    public void ExtraConsentScopes_Both_UnionsContactsAndCalendar()
+    {
+        var scopes = OAuthService.MicrosoftExtraConsentScopes(syncContacts: true, syncCalendar: true);
+        Assert.Contains("https://graph.microsoft.com/Contacts.Read", scopes);
+        Assert.Contains("https://graph.microsoft.com/People.Read", scopes);
+        Assert.Contains("https://graph.microsoft.com/Calendars.ReadWrite", scopes);
+        // No mail scopes here — mail is the primary sign-in scope, not an "extra to consent".
+        Assert.DoesNotContain("https://graph.microsoft.com/Mail.ReadWrite", scopes);
+    }
+
+    // The account-level gate: consent is folded into the mail sign-in ONLY for personal accounts. A
+    // work/school account returns empty so its opted-in contact/calendar consent stays on the graceful
+    // post-add path and never dead-ends a consent-restricted tenant's whole sign-in (review finding).
+
+    [Fact]
+    public void FoldForSignIn_PersonalAccount_FoldsTheOptIns()
+    {
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.MicrosoftGraph, Username = "me@outlook.com",
+            SyncContacts = true, SyncCalendar = false,
+        };
+        Assert.Equal(OAuthService.GraphContactScopes, OAuthService.ExtraConsentScopesForMicrosoftSignIn(account));
+    }
+
+    [Fact]
+    public void FoldForSignIn_PersonalOnVanityDomain_ByFlag_FoldsTheOptIns()
+    {
+        // Tenant flag says personal even though the domain looks like work — still folds.
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.MicrosoftGraph, Username = "me@myvanitydomain.com",
+            IsPersonalMicrosoftAccount = true, SyncContacts = false, SyncCalendar = true,
+        };
+        Assert.Equal(OAuthService.GraphCalendarScopes, OAuthService.ExtraConsentScopesForMicrosoftSignIn(account));
+    }
+
+    [Fact]
+    public void FoldForSignIn_WorkSchoolAccount_FoldsNothing_EvenWhenBothOptedIn()
+    {
+        // The regression guard: folding these into a consent-restricted tenant's mail sign-in would
+        // dead-end the whole sign-in. Work/school must stay on the graceful post-add consent path.
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.MicrosoftGraph, Username = "user@contoso.com",
+            SyncContacts = true, SyncCalendar = true,
+        };
+        Assert.Empty(OAuthService.ExtraConsentScopesForMicrosoftSignIn(account));
+    }
+
+    [Fact]
+    public void FoldForSignIn_WorkAccountOnConsumerLookingDomain_ByFlagFalse_FoldsNothing()
+    {
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.MicrosoftGraph, Username = "user@outlook.com",
+            IsPersonalMicrosoftAccount = false, SyncContacts = true, SyncCalendar = true,
+        };
+        Assert.Empty(OAuthService.ExtraConsentScopesForMicrosoftSignIn(account));
+    }
+
+    [Fact]
+    public void FoldForSignIn_PersonalButNoSyncRequested_FoldsNothing()
+    {
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.MicrosoftGraph, Username = "me@outlook.com",
+            SyncContacts = false, SyncCalendar = false,
+        };
+        Assert.Empty(OAuthService.ExtraConsentScopesForMicrosoftSignIn(account));
+    }
+
+    [Fact]
+    public void FoldForSignIn_PersonalOnImapBackend_FoldsNothing() // #544 review finding 1
+    {
+        // A personal Microsoft account DEFAULTS to the IMAP backend (outlook.office.com mail scopes).
+        // Folding graph.microsoft.com contact/calendar scopes onto that sign-in is a fragile cross-
+        // resource authorize (#239) on the DEFAULT consumer path — only a Graph sign-in folds.
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.ImapSmtp, Username = "me@outlook.com",
+            SyncContacts = true, SyncCalendar = true,
+        };
+        Assert.Empty(OAuthService.ExtraConsentScopesForMicrosoftSignIn(account));
+    }
+
     [Fact]
     public void ImapScopes_AreExplicit_NotDefault() // #239
     {
