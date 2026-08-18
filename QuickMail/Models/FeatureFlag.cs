@@ -14,6 +14,21 @@ public enum FeatureFlag
     GraphBackend,
 
     /// <summary>
+    /// Makes Microsoft 365 (Graph) the default connection method for a NEW Microsoft account —
+    /// personal Outlook.com included, not only work/school — instead of IMAP. IMAP/SMTP stays
+    /// selectable under Advanced → Connection method, and a hand-pick there is always honored.
+    /// Effective only when <see cref="GraphBackend"/> is also on (Graph must be an offered backend);
+    /// "Graph is offered" vs "Graph is the default" are the two distinct knobs.
+    ///
+    /// Default: false. Ships off so the broad release keeps today's behavior (personal → IMAP);
+    /// testers turn it on, and the default is flipped in a later release once personal-Graph has
+    /// mileage (#529 step 3). Only the DEFAULT for new accounts changes — existing accounts are not
+    /// touched. Turn it on with MicrosoftGraphDefault=true under [features] in config.ini, or
+    /// --feature MicrosoftGraphDefault at launch.
+    /// </summary>
+    MicrosoftGraphDefault,
+
+    /// <summary>
     /// Offers Google sign-in for Gmail accounts: the "Gmail (sign in with Google)" provider entry
     /// and the Google OAuth item in the Authentication combo.
     ///
