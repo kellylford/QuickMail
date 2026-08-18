@@ -55,6 +55,12 @@ reproducing the #454 rule-refire bug that lives in exactly the wipe-then-resync 
   `CalendarEvent` and the `Folder` table intact (folders are replace-all on next connect via
   `SaveFoldersAsync`, `:572`). (`DeleteAccountDataAsync`, `:528`, is the full-removal purge — wrong for a
   convert, it drops calendar and folder rows.)
+- **But the surviving `Folder` rows are IMAP rows, and this convert changes the backend.** Leaving them
+  was right for #366, which purged Graph accounts and left Graph folder rows behind — same namespace, so
+  the stale rows were merely old, not wrong. Here the account becomes `MicrosoftGraph` while its
+  persisted `Folder` rows still hold **IMAP folder names**, which are not valid Graph folder ids. So the
+  convert needs one thing `ClearCachedMailAsync` does not do: clear this account's folder rows too
+  (§5.1 step 5).
 - **The schema/cache-rebuild precedent is app-layer, not a DB migration.** `CurrentSchemaVersion` is
   still `5` (`LocalStoreService.cs:212`); the #366 immutable-id rebuild was done as a marker-gated,
   account-scoped `ClearCachedMailAsync` at startup (`App.xaml.cs:319-390`), explicitly *not* a version
@@ -135,6 +141,9 @@ convert that disappoints can be undone by re-adding on IMAP.
   re-synced from Graph, and the account keeps its Id, name, and list position.
 - A crash at any point between purge and the first completed Graph Inbox sync does **not** cause client
   rules to run over pre-existing mail on the next launch.
+- At no point after the flip does the folder tree present an IMAP folder name under the converted
+  account — the account's folder rows are cleared with its mail, so the tree is empty until Graph
+  folders arrive.
 - A move-to-folder rule / real-folder saved view / startup folder that named an IMAP folder is either
   remapped to the matching Graph folder or invalidated with a message; never left silently pointing at a
   non-existent folder.
@@ -153,16 +162,28 @@ in §4.1. Steps, in order, each a barrier for the next:
 2. **Confirm with the user** (modeless, per the modal-dialog rules): "This re-downloads *account* once
    from Microsoft 365. Mail older than your sync window stays on the server. These rules/views may need
    a folder reset: …. Continue?" No side effects until Yes.
-3. **Token before purge.** Acquire a **Graph** token for the account
-   (`OAuthService.GetAccessTokenAsync(account, GraphMailScopes…)`; interactive if needed — an IMAP-OAuth
-   account holds IMAP scopes, not Graph, so this generally prompts once for Graph consent). If it fails
-   or is declined, **stop: the account is untouched, still on IMAP.**
+3. **Token before purge.** Acquire a **Graph** token for the account with an *explicit* scope array —
+   `GraphMailScopesPersonal` or `GraphMailScopesWorkSchool`, chosen by `ResolveIsPersonalMicrosoftAccount`
+   (`OAuthService.cs:145-151`). It cannot be left to `DefaultScopesFor(account)`: that branches on
+   `BackendKind`, which is still `ImapSmtp` at this point, so it would hand back `ImapSmtpScopes` and the
+   convert would proceed on a token with no Graph access. Note `IsPersonalMicrosoftAccount` is nullable on
+   an account added before it existed and falls back to domain sniffing, so resolve it, don't read the
+   field. Interactive if needed — an IMAP-OAuth account holds IMAP scopes, not Graph, so this generally
+   prompts once for Graph consent. If it fails or is declined, **stop: the account is untouched, still on
+   IMAP.** (Safe by construction: MSAL's cache is scope-additive per account, so asking for Graph scopes
+   here does not evict the account's existing IMAP grant — a declined or failed convert really does leave
+   it working exactly as before.)
 4. **Persist the crash-safe marker** (§5.3) recording "account X is converting; rule-refire baseline
    pending" — *before* the purge, and cleared only after step 7.
 5. **Flip and purge.** `BackendKind = MicrosoftGraph`; persist via `_accountService` (the
    `AccountStartupRepair` precedent shows the save path). Then
-   `ClearCachedMailAsync([account.Id])`. Register/rebind the account's backend so the router sends it to
-   the Graph service.
+   `ClearCachedMailAsync([account.Id])`, **and clear the account's folder rows** —
+   `SaveFoldersAsync(account.Id, [])` does it through the existing replace-all path, no new primitive.
+   Without it the tree renders IMAP folder names under a Graph account until the first Graph folder fetch
+   lands, and activating one issues a Graph request with an IMAP path where an opaque id belongs; across a
+   crash (Path C) that is the state the next launch loads *before* anything connects. An empty pending
+   tree is honest; a tree of names that resolve to nothing is not. Register/rebind the account's backend
+   so the router sends it to the Graph service.
 6. **Resync from Graph.** Seed the rule-refire baseline for this account from the persisted marker
    (§5.3), then run the initial Graph sync (bounded by `SyncDays`/initial count). The baseline makes the
    first sync of each folder cache messages **without** running client rules over them.
@@ -232,7 +253,12 @@ in-scope requirement here is only that step 4 does not reproduce the bug.
 ### 5.5 Shared component audit
 
 - **`LocalStoreService.ClearCachedMailAsync`** — reused as-is; already account-scoped and idempotent.
-  No change.
+  No change. It is **not sufficient on its own** here, though: it leaves the `Folder` table alone, and a
+  backend change makes those rows wrong rather than merely stale, so the convert pairs it with
+  `SaveFoldersAsync(id, [])` (§5.1 step 5). Both are existing primitives; neither changes.
+- **`LocalStoreService.SaveFoldersAsync`** — reused as-is for the folder-row clear; its replace-all
+  semantics already delete every row for the account before inserting, so passing an empty list is a
+  purge. No change.
 - **`SyncService` rebuild baseline** — the seeding source changes from "purged this launch" to "marker
   set"; `SeedRebuildBaseline` / the chokepoint logic are reused, not rewritten. This is the one shared
   component the feature actually modifies, and the modification is what makes it crash-safe.
@@ -275,6 +301,10 @@ in-scope requirement here is only that step 4 does not reproduce the bug.
 2. On next launch, the persisted marker is found. The rule-refire baseline is seeded for the account, the
    Graph sync resumes, and no client rules run over the pre-existing mail. The user is not asked to do
    anything. (If the flip hadn't persisted yet, the account simply resumes on IMAP.)
+3. The account's folder tree is **empty** until the Graph folder fetch lands, not populated with the old
+   IMAP names — the folder rows were cleared with the mail in step 5. The user hears the account with no
+   folders under it briefly, then the real Graph folders. Nothing announces a name that cannot be opened,
+   which is the §5.4 "corrected before the user sees stale content" requirement applied to the crash path.
 
 ## 7. Accessibility Checklist (Mandatory)
 
@@ -299,6 +329,14 @@ Unit / integration tests:
   hosts, and the cache untouched (`ClearCachedMailAsync` never called).
 - **Flip + purge** — on success, `BackendKind == MicrosoftGraph` and `ClearCachedMailAsync` was called
   for exactly this account.
+- **Folder rows cleared** — after the flip and before any Graph folder fetch, the account has zero
+  persisted `Folder` rows (no IMAP name survives the convert). Assert on the store, not the tree, so the
+  test does not need a UI.
+- **The #454 negative case** — the test that would have caught the original bug, and the reason §5.3
+  exists: with the marker set and *no* completed baselined sync, simulate a relaunch and run a sync over
+  a folder whose store is empty but whose server mail is pre-existing. Assert **no** client rule ran.
+  Then complete the baselined sync, clear the marker, sync again, and assert rules **do** run on genuinely
+  new mail. Ordering alone is not enough — pin the behaviour.
 - **Crash-safe marker** — with the marker set and no completed sync, startup seeds the rebuild baseline
   for the account (so rules are suppressed); once the baselined sync completes, the marker is cleared and
   a subsequent sync runs rules normally. Pin the ordering: marker cleared only after the first baselined
@@ -323,9 +361,19 @@ counts behave. Kill the app mid-convert and relaunch; confirm no rule re-fires o
 3. **Remap matching — no guessing.** Exact full-path match first; then a leaf-name match only when it is
    unique; if two folders share the name, the reference is left unmatched (the move-to-folder rule
    disabled and named in the result), never retargeted to a guessed folder.
-4. **#491 is a tester-pool gate, not a merge gate.** #491 is the primary-mailbox folder-count badge going
+4. **Review questions settled (Kelly's read, 2026-08-18).** The convert sequence is accepted in the order
+   above, with the folder-row clear added to step 5 (the one gap found in review — `ClearCachedMailAsync`
+   leaves `Folder` rows that are IMAP-namespaced under an account that is now Graph). The §5.3 persisted
+   marker is accepted as the right safeguard and correctly scoped, with the negative test added to §8.
+   The dedicated flag is confirmed: "Graph is the default for new accounts" and "convert an account that
+   already holds mail and rules" carry different blast radii, and only the second destroys local state.
+   The new flag needs its own `ConfigFeatureGate.Defaults` entry — #572 now makes a missing one a red
+   test rather than a runtime `KeyNotFoundException`.
+5. **#491 is a tester-pool gate, not a merge gate.** #491 is the primary-mailbox folder-count badge going
    stale on Graph (the delta poll updates message rows, not the folder badge; the count is spoken via the
    folder's accessible name). A converted daily-driver inherits it, so it is worth fixing before
-   *widening* who runs the flag — but it does not block building the opt-in convert. A #491 fix would also
-   make the personal-Graph soak that generates step-4 coverage less irritating, so it may be worth doing
-   ahead of the soak rather than after.
+   *widening* who runs the flag — but it does not block building the opt-in convert. **Closed ahead of
+   the soak, as hoped:** PR #574 admitted Graph to `ScheduleFolderCountRefresh`, so a converted account
+   no longer inherits a frozen unread badge. One watch item survives it — Graph's `unreadItemCount` is a
+   server-computed aggregate that may lag the mark-read that triggered the refresh, where IMAP's `STATUS`
+   does not — so testers converting a daily driver should still report what the folder badge says.
