@@ -76,7 +76,11 @@ public static class FolderReferenceRemapper
                 .Where(f => string.Equals(f.DisplayName, reference, StringComparison.OrdinalIgnoreCase))
                 .ToList();
             if (exact.Count == 1) return exact[0].FullName;
-            // Otherwise the leaf (last path segment), only if it resolves to exactly one folder.
+            // Otherwise the leaf (last path segment), only if it resolves to exactly one folder. '/' is
+            // the only delimiter handled, which is enough: the sole reference that reaches here came
+            // from a Microsoft IMAP account, and Exchange/Outlook IMAP delimits with '/'. A '.'-delimited
+            // hierarchy would fall through to unmatched — safe (the rule is disabled and named, not
+            // silently retargeted), just not remapped.
             var slash = reference.LastIndexOf('/');
             var leaf = slash >= 0 ? reference[(slash + 1)..] : reference;
             var byLeaf = graphFolders
@@ -90,15 +94,16 @@ public static class FolderReferenceRemapper
                      r.AccountId == accountId && r.Action == RuleAction.MoveToFolder && !string.IsNullOrEmpty(r.TargetFolder)))
         {
             var match = Match(rule.TargetFolder);
-            if (match != null)
-            {
-                rule.TargetFolder = match;
-                report.RemappedRules.Add(rule.Name);
-            }
-            else
+            if (match == null)
             {
                 rule.IsEnabled = false;   // disabled, not deleted — the user can set a folder to re-enable
                 report.DisabledRules.Add(rule.Name);
+            }
+            // Already equal to the match is an idempotent re-run, not a rewrite — do not report one.
+            else if (!string.Equals(rule.TargetFolder, match, StringComparison.Ordinal))
+            {
+                rule.TargetFolder = match;
+                report.RemappedRules.Add(rule.Name);
             }
         }
 
@@ -110,8 +115,13 @@ public static class FolderReferenceRemapper
             foreach (var vf in view.Folders.Where(f => f.AccountId == accountId))
             {
                 var match = Match(vf.FolderFullName);
-                if (match != null) { vf.FolderFullName = match; touched = true; }
-                else drop.Add(vf);
+                if (match == null) { drop.Add(vf); continue; }
+                // Compare before assigning: on an idempotent re-run every reference matches the value
+                // it already holds, and reporting that as "updated" makes AnythingChanged permanently
+                // true — an unnecessary re-save of all three files and a spoken summary of no change.
+                if (string.Equals(vf.FolderFullName, match, StringComparison.Ordinal)) continue;
+                vf.FolderFullName = match;
+                touched = true;
             }
             foreach (var vf in drop) view.Folders.Remove(vf);
             if (touched || drop.Count > 0) report.AffectedViews.Add(view.Name);
@@ -122,18 +132,21 @@ public static class FolderReferenceRemapper
             && !string.IsNullOrEmpty(config.StartupFolder))
         {
             var match = Match(config.StartupFolder);
-            if (match != null)
-            {
-                config.StartupFolder = match;   // StartupFolderLabel stays; it is display text
-            }
-            else
+            if (match == null)
             {
                 // Fall back to the "sync wide" / All Mail default rather than pointing at nothing.
                 config.StartupFolder = string.Empty;
                 config.StartupFolderAccount = string.Empty;
                 config.StartupFolderLabel = string.Empty;
+                report.StartupFolderChanged = true;
             }
-            report.StartupFolderChanged = true;
+            // Already equal to the match is an idempotent re-run, not a change: reporting one there
+            // makes AnythingChanged permanently true. Same guard as the saved-view references above.
+            else if (!string.Equals(config.StartupFolder, match, StringComparison.Ordinal))
+            {
+                config.StartupFolder = match;   // StartupFolderLabel stays; it is display text
+                report.StartupFolderChanged = true;
+            }
         }
 
         return report;

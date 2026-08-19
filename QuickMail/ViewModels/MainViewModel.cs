@@ -1682,6 +1682,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _syncService.SeedRebuildBaseline([accountId]);
         RegisterAccountBackend?.Invoke(account);
 
+        // Drop this account's cached folder models. They are the pre-convert IMAP list — the purge
+        // cleared only the SQLite rows — and their FullNames are IMAP paths, which are not valid Graph
+        // folder ids. Left in place they draw a tree of folders that no longer resolve, so selecting
+        // one lands on nothing. Assigning the cache directly rather than calling SetCachedFolders,
+        // which would also mark the account connected (it is not — the IMAP session just went down and
+        // Graph has not connected yet) and skip an empty write anyway.
+        //
+        // The tree is deliberately NOT rebuilt here: this runs inside the Account Manager's modal
+        // message loop, and rebuilding parent-window UI from there is exactly the re-entrancy the
+        // modal-dialog rule forbids. RefreshAccountList rebuilds from this cache the moment the dialog
+        // closes, and FinishGraphConversionAsync refills it with the real Graph folders when they land.
+        _cachedFolders[accountId] = [];
+
         // Drive the re-download + folder-reference remap + marker clear in the background so the convert
         // returns promptly. If the app closes before it finishes, the persisted marker makes startup
         // resume it (see StartBackgroundSyncAsync).
@@ -1700,10 +1713,39 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
         if (account is null || !account.GraphConversionPending) return;
 
-        // Connect the Graph account and take the folders it returns DIRECTLY — not a read-back through
-        // _cachedFolders, which on the in-session path still holds the pre-convert IMAP folder models (the
-        // purge cleared only the SQLite rows). A transient no-folders result must retry next launch, not
-        // remap references against stale IMAP folders.
+        // One finisher per account. Converting while the startup sweep is still running reaches this
+        // twice for the same account: the in-session handoff fires immediately, and StartBackgroundSyncAsync's
+        // resume loop then sees the same live AccountModel still carrying the marker when SyncAllAccountsAsync
+        // returns. Both would connect and force-sync the same Inbox concurrently. Dropping the second is
+        // right rather than merely cheaper — the first is already driving the account to the same end state,
+        // and if it fails the marker survives for the next launch either way.
+        lock (_graphConversionsInFlight)
+        {
+            if (!_graphConversionsInFlight.Add(accountId)) return;
+        }
+
+        try
+        {
+            await FinishGraphConversionCoreAsync(account, accountId, ct);
+        }
+        finally
+        {
+            lock (_graphConversionsInFlight) _graphConversionsInFlight.Remove(accountId);
+        }
+    }
+
+    /// <summary>Accounts with a <see cref="FinishGraphConversionAsync"/> already running, so the
+    /// in-session handoff and the startup resume loop cannot both drive the same one (#529 step 4).</summary>
+    private readonly HashSet<Guid> _graphConversionsInFlight = [];
+
+    /// <summary>The body of <see cref="FinishGraphConversionAsync"/>, which owns the one-at-a-time guard.</summary>
+    private async Task FinishGraphConversionCoreAsync(AccountModel account, Guid accountId, CancellationToken ct)
+    {
+        // Connect the Graph account and take the folders it returns DIRECTLY, never a read-back through
+        // _cachedFolders. The remap has to run against folders this account genuinely exposes now: a
+        // transient no-folders connect must retry next launch rather than remap against whatever the
+        // cache happens to hold. (The handoff clears that cache of its pre-convert IMAP models, but the
+        // startup-resume path does not go through the handoff, so this cannot rely on it being empty.)
         var (_, folders) = await ConnectOneAccountAsync(account);
         if (folders is not { Count: > 0 }) return;
         SetCachedFolders(accountId, folders);

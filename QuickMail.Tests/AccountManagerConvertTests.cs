@@ -27,7 +27,8 @@ public class AccountManagerConvertTests
 
     private static AccountManagerViewModel Vm(
         AccountModel selected, bool migration = true, bool graph = true,
-        StubOAuthService? oauth = null, StubLocalStoreService? store = null)
+        StubOAuthService? oauth = null, StubLocalStoreService? store = null,
+        IAccountService? accounts = null)
     {
         var gate = new StubFeatureGate
         {
@@ -35,7 +36,7 @@ public class AccountManagerConvertTests
             [FeatureFlag.MicrosoftGraphMigration] = migration,
         };
         var vm = new AccountManagerViewModel(
-            new StubAccountService(), new StubCredentialService(), new StubImapMailService(),
+            accounts ?? new StubAccountService(), new StubCredentialService(), new StubImapMailService(),
             oauth ?? new StubOAuthService(), store ?? new StubLocalStoreService(), new StubConfigService(),
             gate, Catalog);
         vm.Accounts.Add(selected);
@@ -186,5 +187,80 @@ public class AccountManagerConvertTests
         await vm.ConvertToGraphCommand.ExecuteAsync(null);
 
         Assert.Same(OAuthService.GraphMailScopesWorkSchool, oauth.LastAccessTokenScopes);
+    }
+
+    // ── The conversion marker is not this dialog's to write ───────────────────────
+
+    /// <summary>An account service that actually round-trips, so a test can see what a save wrote and
+    /// can stand in for another writer (MainViewModel) changing the file underneath the dialog.</summary>
+    private sealed class RecordingAccountService : IAccountService
+    {
+        // Copies, not the caller's instances: the real service round-trips through JSON, so a loaded
+        // account is a distinct object. Sharing references here would let a test mutate "the file" and
+        // the VM's copy at once, which is precisely the confusion these tests exist to rule out.
+        private static AccountModel Copy(AccountModel a) => new()
+        {
+            Id = a.Id, AccountName = a.AccountName, Username = a.Username,
+            BackendKind = a.BackendKind, AuthType = a.AuthType,
+            GraphConversionPending = a.GraphConversionPending,
+        };
+
+        public List<AccountModel> Stored { get; private set; } = [];
+        public int SaveCount { get; private set; }
+        public List<AccountModel> LoadAccounts() => [.. Stored.Select(Copy)];
+        public void SaveAccounts(List<AccountModel> accounts) { SaveCount++; Stored = [.. accounts.Select(Copy)]; }
+        public void SetDefaultAccount(Guid accountId) { }
+    }
+
+    [Fact]
+    public async Task Convert_PersistsTheMarkerAsSet() // the one place allowed to RAISE it
+    {
+        var acct = MsImap();
+        var svc = new RecordingAccountService();
+        var vm = Vm(acct, accounts: svc);
+
+        await vm.ConvertToGraphCommand.ExecuteAsync(null);
+
+        var written = Assert.Single(svc.Stored.Where(a => a.Id == acct.Id));
+        Assert.True(written.GraphConversionPending);
+        Assert.Equal(BackendKind.MicrosoftGraph, written.BackendKind);
+    }
+
+    [Fact]
+    public async Task ALaterSave_DoesNotResurrectAMarkerClearedElsewhere()
+    {
+        var acct = MsImap();
+        var svc = new RecordingAccountService();
+        var vm = Vm(acct, accounts: svc);
+        await vm.ConvertToGraphCommand.ExecuteAsync(null);
+        Assert.True(acct.GraphConversionPending);   // the dialog's copy still says "converting"
+
+        // MainViewModel finishes the conversion and clears the marker on disk while this dialog is
+        // still open — it owns the re-sync, not the dialog.
+        foreach (var stored in svc.Stored) stored.GraphConversionPending = false;
+
+        // Any later save from the dialog (here: the account Save button) must not write our stale copy
+        // back over that. Doing so would cost a full redundant re-download on the next launch.
+        var savesBefore = svc.SaveCount;
+        vm.SaveAccountCommand.Execute(null);
+        Assert.True(svc.SaveCount > savesBefore, "the Save command did not reach a save");
+
+        Assert.All(svc.Stored, a => Assert.False(a.GraphConversionPending));
+        Assert.False(acct.GraphConversionPending);   // and our copy is reconciled, not just the file
+    }
+
+    [Fact]
+    public void SaveOfAnAccountTheFileDoesNotKnow_KeepsItsOwnMarker()
+    {
+        // A brand-new account has no persisted row to read the marker from; the save must keep what the
+        // in-memory model says rather than defaulting it away.
+        var acct = MsImap();
+        acct.GraphConversionPending = true;
+        var svc = new RecordingAccountService();   // empty store
+        var vm = Vm(acct, accounts: svc);
+
+        vm.SaveAccountCommand.Execute(null);
+
+        Assert.True(Assert.Single(svc.Stored.Where(a => a.Id == acct.Id)).GraphConversionPending);
     }
 }
