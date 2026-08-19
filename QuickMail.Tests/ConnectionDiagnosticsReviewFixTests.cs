@@ -396,6 +396,22 @@ public class ConnectionTruthProbeLoopLifetimeTests : IDisposable
             probe.NoteConnected(_account, $"recovered {i}");
         }
 
+        // Let the last flap's probe finish before taking the baseline. NoteConnected cancels the
+        // loop but does not wait for it — deliberately, since it is called from the UI thread on
+        // every status change — so a probe can still be in flight here. Snapshotting mid-probe made
+        // the counter tick once more as that probe completed, and the test read a FINISHING probe as
+        // an orphaned loop: it failed intermittently with "expected 5, actual 6".
+        //
+        // Caveat found while fixing that, and NOT addressed here: this assertion is weaker than it
+        // reads. Disabling BOTH orphan protections — the StopLoop in NoteConnected and the
+        // StopAndDispose in StartLoop's AddOrUpdate — leaves it green. An orphan only survives while
+        // the account is in _disconnected, so once flapping stops every orphan wakes within
+        // MinInterval (60ms here), finds the account absent and exits, well before the 400ms window
+        // below opens. The original defect was visible because the shipped interval is 60 SECONDS,
+        // so orphans were still asleep long after. Measuring probe count DURING the flapping, against
+        // the number of flaps, is what would actually pin this.
+        await Task.Delay(200);
+
         var afterFlapping = backend.Calls;
         await Task.Delay(400);
 
@@ -418,9 +434,15 @@ public class ConnectionTruthProbeLoopLifetimeTests : IDisposable
         Assert.True(whileDown >= 1, "the first check should run immediately");
 
         probe.NoteConnected(_account, "recovered");
+
+        // Same reason as FlappingDoesNotAccumulateVerificationLoops: re-baseline after the cancelled
+        // loop's in-flight probe has had time to finish, so a probe that was already running when we
+        // reconnected is not counted as one the loop started afterwards.
+        await Task.Delay(200);
+        var afterReconnect = backend.Calls;
         await Task.Delay(300);
 
-        Assert.Equal(whileDown, backend.Calls);
+        Assert.Equal(afterReconnect, backend.Calls);
     }
 
     [Fact]
