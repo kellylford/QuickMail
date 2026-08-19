@@ -32,7 +32,14 @@
         <!-- Account list. TabIndex is explicit on everything in this column: without it these
              controls default to int.MaxValue like the Advanced-settings contents do, and — because
              the form's fields carry low explicit indices — the account list and its buttons landed
-             in the MIDDLE of the form, between the password box and Advanced settings. -->
+             in the MIDDLE of the form, between the password box and Advanced settings.
+
+             The two columns share one flat run of indices and must not overlap: this column owns
+             0–5 (the list, then its buttons left to right), the edit form owns 6–15. A duplicate
+             index across the columns does not fail loudly — WPF breaks the tie on tree order, which
+             happens to give the right result here — so a collision reads as working and only bites
+             when something later moves. Adding a button here means renumbering the form, not
+             reusing an index the form already holds. -->
         <DockPanel Grid.Column="0" Grid.Row="0">
             <TextBlock DockPanel.Dock="Top" Text="Accounts" FontWeight="SemiBold" Margin="0,0,0,4"/>
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
@@ -105,7 +112,7 @@
                          Text="{Binding SelectedProvider.DisplayName, Mode=OneWay}"
                          IsReadOnly="True"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblProvider}"
-                         TabIndex="5"
+                         TabIndex="6"
                          Margin="0,0,0,4"/>
 
                 <!-- Account Name -->
@@ -113,7 +120,7 @@
                 <TextBox x:Name="AccountNameBox"
                          Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
-                         TabIndex="6"/>
+                         TabIndex="7"/>
 
                 <!-- Sender Display Name — hidden for a shared mailbox (#31): its outgoing identity is the
                      mailbox's own directory display name on send, not a name set per-account here. -->
@@ -122,7 +129,7 @@
                     <TextBox x:Name="DisplayNameBox"
                              Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
-                             TabIndex="7"/>
+                             TabIndex="8"/>
                 </StackPanel>
 
                 <!-- The account's own email address. Since #396 it is only that: a server whose
@@ -132,7 +139,7 @@
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          IsReadOnly="{Binding IsSharedSelected}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
-                         TabIndex="8"/>
+                         TabIndex="9"/>
 
                 <!-- #31: a shared mailbox has no credentials or connection of its own — it reads through
                      its parent account and shows mail only. In place of the connection/auth/sync
@@ -159,7 +166,7 @@
                     <Label x:Name="LblPassword" Content="Pass_word:" Target="{Binding ElementName=PasswordBox}" Padding="0" Margin="0,8,0,2"/>
                     <PasswordBox x:Name="PasswordBox"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
-                                 TabIndex="9"
+                                 TabIndex="10"
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
 
                     <!-- App-specific password warning, driven by the account's provider (Gmail, Yahoo,
@@ -173,7 +180,7 @@
                         <StackPanel>
                             <TextBlock Text="{Binding AppPasswordHint}" TextWrapping="Wrap" FontWeight="SemiBold"/>
                             <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
-                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="10"
+                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="11"
                                            RequestNavigate="AppPasswordLink_RequestNavigate"
                                            AutomationProperties.Name="Create an app password">
                                     <Run Text="{Binding AppPasswordUrl, Mode=OneWay}"/>
@@ -188,13 +195,13 @@
                         Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
                         Command="{Binding SignInMicrosoftCommand}"
                         AutomationProperties.Name="Sign in with Microsoft"
-                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="11"/>
+                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="12"/>
 
                 <Button Content="Sign in _with Google…"
                         Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
                         Command="{Binding SignInGoogleCommand}"
                         AutomationProperties.Name="Sign in with Google"
-                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="12"/>
+                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="13"/>
 
                 </StackPanel>
                 <!-- end #31 ShowNormalAccountFields wrapper (password + OAuth sign-in) -->
@@ -209,7 +216,7 @@
                               IsChecked="{Binding SyncContacts}"
                               Click="SyncContactsCheckBox_Click"
                               AutomationProperties.Name="Sync contacts from this account"
-                              Margin="0,0,0,4" TabIndex="13"/>
+                              Margin="0,0,0,4" TabIndex="14"/>
                 </StackPanel>
 
                 <!-- Calendar sync (#282) — shown for Microsoft, Google, and iCloud accounts. -->
@@ -221,7 +228,7 @@
                               IsChecked="{Binding SyncCalendar}"
                               Click="SyncCalendarCheckBox_Click"
                               AutomationProperties.Name="Sync calendar from this account"
-                              Margin="0,0,0,4" TabIndex="14"/>
+                              Margin="0,0,0,4" TabIndex="15"/>
                 </StackPanel>
 
                 <!-- Server settings live behind the same expander as the Add Account dialog, so an

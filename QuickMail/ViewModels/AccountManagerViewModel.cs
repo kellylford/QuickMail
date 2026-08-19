@@ -216,7 +216,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
                     StatusText = "Requesting permission to read your contacts…";
                     await _oauth.RequestContactsConsentAsync(account);
                 }
-                _accountService.SaveAccounts([.. Accounts]);
+                SaveAccountsPreservingConversionMarkers();
                 // Pull an initial snapshot so contacts appear without waiting for the next launch.
                 _contactSync?.SyncAccountAsync(account).LogFaults("contact sync after enable");
                 StatusText = "Contact sync enabled — new contact data will be available in QuickMail.";
@@ -224,7 +224,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             else
             {
                 account.SyncContacts = false;
-                _accountService.SaveAccounts([.. Accounts]);
+                SaveAccountsPreservingConversionMarkers();
                 if (_contactSync != null)
                     await _contactSync.RemoveAccountContactsAsync(account.Id);
                 StatusText = "Contact sync disabled.";
@@ -236,7 +236,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             // against a missing grant.
             account.SyncContacts = false;
             SyncContacts = false;
-            _accountService.SaveAccounts([.. Accounts]);
+            SaveAccountsPreservingConversionMarkers();
             StatusText = $"Contact sync not enabled: {ex.Message}";
             LogService.Log($"AccountManager: contact-sync enable failed for {account.AccountLabel} — {ex.Message}");
         }
@@ -267,7 +267,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
                     StatusText = "Requesting permission to read your calendar…";
                     await _oauth.RequestCalendarConsentAsync(account);
                 }
-                _accountService.SaveAccounts([.. Accounts]);
+                SaveAccountsPreservingConversionMarkers();
                 // Pull an initial snapshot so events appear without waiting for the next sync pass.
                 _graphCalendarSync?.SyncAccountCalendarAsync(account).LogFaults("calendar sync after enable");
                 StatusText = "Calendar sync enabled — this account's events will appear in the Calendar.";
@@ -275,7 +275,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             else
             {
                 account.SyncCalendar = false;
-                _accountService.SaveAccounts([.. Accounts]);
+                SaveAccountsPreservingConversionMarkers();
                 if (_graphCalendarSync != null)
                     await _graphCalendarSync.RemoveAccountCalendarAsync(account.Id);
                 StatusText = "Calendar sync disabled.";
@@ -287,7 +287,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             // against a missing grant.
             account.SyncCalendar = false;
             SyncCalendar = false;
-            _accountService.SaveAccounts([.. Accounts]);
+            SaveAccountsPreservingConversionMarkers();
             StatusText = $"Calendar sync not enabled: {ex.Message}";
             LogService.Log($"AccountManager: calendar-sync enable failed for {account.AccountLabel} — {ex.Message}");
         }
@@ -301,7 +301,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         if (!string.IsNullOrEmpty(password))
             _credentials.SavePassword(account.Id, password);
         Accounts.Add(account);
-        _accountService.SaveAccounts([.. Accounts]);
+        SaveAccountsPreservingConversionMarkers();
         SelectedAccount = account;
         StatusText = "Account added.";
 
@@ -329,7 +329,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         catch (Exception ex)
         {
             account.SyncContacts = false;
-            _accountService.SaveAccounts([.. Accounts]);
+            SaveAccountsPreservingConversionMarkers();
             StatusText = $"Account added, but contact sync couldn't be enabled: {ex.Message}";
             LogService.Log($"AccountManager: new-account contact sync failed for {account.AccountLabel} — {ex.Message}");
         }
@@ -347,7 +347,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         catch (Exception ex)
         {
             account.SyncCalendar = false;
-            _accountService.SaveAccounts([.. Accounts]);
+            SaveAccountsPreservingConversionMarkers();
             StatusText = $"Account added, but calendar sync couldn't be enabled: {ex.Message}";
             LogService.Log($"AccountManager: new-account calendar sync failed for {account.AccountLabel} — {ex.Message}");
         }
@@ -405,7 +405,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         if (AuthType == AuthType.Password && !string.IsNullOrEmpty(Password))
             _credentials.SavePassword(account.Id, Password);
 
-        _accountService.SaveAccounts([.. Accounts]);
+        SaveAccountsPreservingConversionMarkers();
         StatusText = "Account saved.";
 
         // Force list item refresh
@@ -416,6 +416,32 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             Accounts.Insert(idx, account);
             SelectedAccount = Accounts[idx];
         }
+    }
+
+    /// <summary>
+    /// Persists the account list, taking <see cref="AccountModel.GraphConversionPending"/> from disk
+    /// rather than from our copy (#529 step 4).
+    ///
+    /// That marker is not this dialog's to write once a convert is under way: MainViewModel owns the
+    /// re-sync and clears it when the Inbox has been baselined, which can land while this dialog is
+    /// still open. Our copy then still reads "converting", and any later save here — a contact-sync
+    /// toggle, a rename — would write that stale true back over the cleared value and cost a redundant
+    /// full re-download on the next launch. ConvertToGraphAsync is the one place that legitimately
+    /// RAISES the marker, so it saves directly instead of calling this.
+    /// </summary>
+    private void SaveAccountsPreservingConversionMarkers()
+    {
+        // Not ToDictionary: a duplicated id in accounts.json must not turn a tolerable data oddity into
+        // a crash on every save (same reasoning as MainViewModel.LoadAccountList). Last one wins.
+        var persisted = new Dictionary<Guid, bool>();
+        foreach (var stored in _accountService.LoadAccounts())
+            persisted[stored.Id] = stored.GraphConversionPending;
+
+        foreach (var account in Accounts)
+            if (persisted.TryGetValue(account.Id, out var pending))
+                account.GraphConversionPending = pending;
+
+        _accountService.SaveAccounts([.. Accounts]);
     }
 
     /// <summary>Set by the View to confirm an IMAP→Graph conversion (#529 step 4): message → user's
@@ -550,7 +576,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Accounts.Remove(account);
         foreach (var child in sharedChildren) Accounts.Remove(child);
         SelectedAccount = null;
-        _accountService.SaveAccounts([.. Accounts]);
+        SaveAccountsPreservingConversionMarkers();
 
         var config = _configService.Load();
         var configChanged = config.Accounts.Remove(account.Id);
@@ -595,7 +621,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     public void CommitNewSharedMailbox(AccountModel sharedMailbox)
     {
         Accounts.Add(sharedMailbox);
-        _accountService.SaveAccounts([.. Accounts]);
+        SaveAccountsPreservingConversionMarkers();
         SelectedAccount = sharedMailbox;
         // Result, not Status: the add succeeded and the add window has already closed, so this is the
         // only feedback — it must be spoken even for a user who has AnnounceStatus off (#396 pattern).

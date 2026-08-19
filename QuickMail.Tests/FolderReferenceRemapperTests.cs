@@ -188,6 +188,47 @@ public class FolderReferenceRemapperTests
         Assert.Equal("id-archive", rules[0].TargetFolder);
         Assert.True(rules[0].IsEnabled);
         Assert.Empty(r2.DisabledRules);
+        // …and must not report a rewrite it did not perform. AnythingChanged drives a re-save of
+        // rules + views + config and a spoken summary, so a re-run that reports work makes both
+        // permanent once an account has been converted.
+        Assert.Empty(r2.RemappedRules);
+        Assert.False(r2.AnythingChanged);
+    }
+
+    [Fact]
+    public void Remap_SecondRun_ReportsNothingChanged_AcrossRulesViewsAndStartupFolder()
+    {
+        var rules = new List<MailRule> { MoveRule("File to Archive", "Archive") };
+        var view = new SavedView
+        {
+            Name = "My view",
+            Folders = [new ViewFolder { AccountId = Acct, FolderFullName = "Priority" }],
+        };
+        var views = new List<SavedView> { view };
+        var config = new ConfigModel
+        {
+            StartupFolder = "Archive",
+            StartupFolderAccount = Acct.ToString(),
+            StartupFolderLabel = "Archive",
+        };
+
+        var first = FolderReferenceRemapper.Remap(Acct, Folders(), rules, views, config);
+        Assert.True(first.AnythingChanged);
+
+        var second = FolderReferenceRemapper.Remap(Acct, Folders(), rules, views, config);
+
+        // Every reference already holds the value the match returns — that is not a change.
+        Assert.False(second.AnythingChanged);
+        Assert.Empty(second.RemappedRules);
+        Assert.Empty(second.DisabledRules);
+        Assert.Empty(second.AffectedViews);
+        Assert.False(second.StartupFolderChanged);
+        Assert.Equal(string.Empty, second.Summary());
+
+        // And nothing was actually rewritten the second time.
+        Assert.Equal("id-archive", rules[0].TargetFolder);
+        Assert.Equal("id-priority", view.Folders[0].FolderFullName);
+        Assert.Equal("id-archive", config.StartupFolder);
     }
 
     [Fact]
