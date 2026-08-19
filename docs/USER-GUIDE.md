@@ -517,7 +517,7 @@ Each is reachable three ways:
 - Press **Shift+F10** on the folder tree and choose it from the context menu. On a calendar the first two read **Expand Calendar** and **Collapse Calendar**; they do the same thing.
 - Open the Command Palette (**Ctrl+Shift+P**) and choose it there. None of the four has a shortcut key to begin with, so if you use one often, assign it your own in [Keyboard Customization](#keyboard-customization).
 
-The two "all folders" actions say what they did — "All folders collapsed" — because you can start them from the menu bar with focus anywhere. The two single-folder actions say nothing extra: the folder keeps focus and your screen reader reports its own expanded or collapsed state.
+The two "all folders" actions say what they did — "All folders collapsed" — because you can start them from the menu bar with focus anywhere. The two single-folder actions say nothing extra when you use the context menu: the folder keeps focus and your screen reader reports its own expanded or collapsed state. Started from the Folder menu or the Command Palette with focus outside the tree, where nothing is there to report it, they say what they did instead.
 
 If collapsing hides the folder you were on, the selection moves up to the nearest folder still showing rather than disappearing into a closed branch. Choosing Expand or Collapse Folder on a folder with nothing inside it says so instead of doing nothing.
 

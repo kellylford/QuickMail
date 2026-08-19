@@ -2070,7 +2070,7 @@ public partial class MainWindow : Window
         // that holds the current folder. Without this, F6 or Ctrl+2 quietly undid Collapse All
         // Folders (#590) the moment the user came back to look at the result. Going to a different
         // folder clears it, so the tree still reveals wherever the user navigates next.
-        if (ReferenceEquals(_collapsedWhileViewing, _vm.SelectedFolder) &&
+        if (IsStillCollapsedAround(_vm.SelectedFolder) &&
             FolderList.SelectedItem is FolderTreeNode shown &&
             FlattenVisibleFolderNodes(roots).Contains(shown))
             return SelectTreeViewNode(FolderList, shown, focusNode);
@@ -5813,7 +5813,16 @@ public partial class MainWindow : Window
 
     // The folder that was open when the user last collapsed something. Read by
     // SyncFolderTreeSelection to decide whether re-entering the tree may expand a path.
+    //
+    // Compared by identity rather than by object reference: RebuildFolderListFromCache re-resolves
+    // SelectedFolder against a freshly fetched folder list, so the very same mailbox arrives as a
+    // new MailFolderModel after any folder refresh. A reference comparison therefore stopped
+    // matching a few seconds after the collapse, and the branch re-opened after all.
     private MailFolderModel? _collapsedWhileViewing;
+
+    private bool IsStillCollapsedAround(MailFolderModel? folder) =>
+        _collapsedWhileViewing is { } collapsed && folder != null &&
+        TreeViewFocusHelper.FoldersMatch(collapsed, folder);
 
     private void FolderContextMenu_ExpandFolder_Click(object sender, RoutedEventArgs e)
         => SetFolderBranchExpanded(GetContextMenuFolderNode(sender), true, focusNode: true);
@@ -5871,14 +5880,25 @@ public partial class MainWindow : Window
         MainViewModel.SetFolderBranchExpanded(node, expanded);
         _collapsedWhileViewing = expanded ? null : _vm.SelectedFolder;
 
-        // No Announce here: the node keeps focus and the platform reports its own expanded state.
-        // The status bar still carries it for sighted users.
-        _vm.StatusText = $"'{node.Label}' {(expanded ? "expanded" : "collapsed")}.";
+        var outcome = $"'{node.Label}' {(expanded ? "expanded" : "collapsed")}.";
+        _vm.StatusText = outcome;
 
         if (focusNode)
+        {
+            // The node keeps focus and the platform reports its own expanded state, so announcing
+            // on top of that would say it twice.
             FocusTreeItem(FolderList, node);
-        else
-            KeepFolderSelectionVisible();
+            return;
+        }
+
+        KeepFolderSelectionVisible();
+
+        // Reached from the Folder menu or the Command Palette. If focus is not in the tree it never
+        // moves there, nothing has an expanded state to report, and the action would land in
+        // silence — the dead end this change exists to remove. Announce it ourselves in that case
+        // only; when focus is already in the tree the platform has it covered.
+        if (!FolderList.IsKeyboardFocusWithin)
+            AccessibilityHelper.Announce(this, outcome, category: AnnouncementCategory.Result);
     }
 
     // <paramref name="cameFrom"/> is the context-menu node when the action came from the tree, and

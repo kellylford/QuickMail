@@ -239,6 +239,36 @@ public class FolderExpansionTests
         Assert.Contains("id: \"" + commandId + "\"", Source("Views/MainWindow.xaml.cs"), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TheCollapseGuard_ComparesFoldersByIdentityNotByReference()
+    {
+        // SyncFolderTreeSelection holds back the path expansion while the folder the user collapsed
+        // around is still the open one. RebuildFolderListFromCache re-resolves SelectedFolder
+        // against a freshly fetched folder list, so the same mailbox comes back as a NEW
+        // MailFolderModel after any folder refresh — a reference comparison stopped matching
+        // seconds later and let the branch re-open, which is the bug the guard exists to stop.
+        // Virtual folders are singletons, so the fault hides from anyone testing on All Inboxes.
+        var source = Source("Views/MainWindow.xaml.cs");
+
+        Assert.DoesNotContain("ReferenceEquals(_collapsedWhileViewing", source, StringComparison.Ordinal);
+        Assert.Contains("TreeViewFocusHelper.FoldersMatch(collapsed, folder)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheMenuBarPath_SaysWhatHappenedWhenTheTreeNeverGetsFocus()
+    {
+        // From the folder tree's context menu the collapsed node keeps focus and the platform
+        // reports its own expanded state, so QuickMail says nothing extra. From the Folder menu or
+        // the Command Palette focus never enters the tree, nothing has a state to report, and the
+        // action would land in silence — the dead end #250 and #590 are both about.
+        var source = Source("Views/MainWindow.xaml.cs");
+
+        Assert.Contains("if (!FolderList.IsKeyboardFocusWithin)", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "AccessibilityHelper.Announce(this, outcome, category: AnnouncementCategory.Result)",
+            source, StringComparison.Ordinal);
+    }
+
     private static string Source(string relativePath)
     {
         var path = Path.Combine(RepoRoot(), "QuickMail", relativePath.Replace('/', Path.DirectorySeparatorChar));
