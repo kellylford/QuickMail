@@ -231,16 +231,7 @@ public class AddressBookTypeAheadTests
         System.Windows.Threading.Dispatcher.PushFrame(frame);
     }
 
-    private static void EnsureApplication()
-    {
-        lock (typeof(Application))
-        {
-            if (Application.Current == null)
-                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            const string stylesUri = "pack://application:,,,/QuickMail;component/Styles/AccessibleStyles.xaml";
-            var uri = new Uri(stylesUri, UriKind.Absolute);
-            if (Application.Current!.Resources.MergedDictionaries.All(d => d.Source != uri))
-                Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
-        }
-    }
+    /// <summary>Delegates to the shared host: the Application must live on a thread that outlives
+    /// the run, not on whichever [StaFact] thread happened to be first (issue #211).</summary>
+    private static void EnsureApplication() => WpfTestHost.EnsureApplication();
 }

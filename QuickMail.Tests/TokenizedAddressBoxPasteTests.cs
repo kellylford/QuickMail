@@ -74,14 +74,9 @@ public class TokenizedAddressBoxPasteTests
         Assert.Equal(string.Empty, box.InputBox.Text);
     }
 
-    private static void EnsureApplication()
-    {
-        lock (typeof(Application))
-        {
-            if (Application.Current == null)
-                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        }
-    }
+    /// <summary>Delegates to the shared host: the Application must live on a thread that outlives
+    /// the run, not on whichever [StaFact] thread happened to be first (issue #211).</summary>
+    private static void EnsureApplication() => WpfTestHost.EnsureApplication();
 
     private static void DoEvents()
     {
