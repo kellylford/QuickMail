@@ -406,7 +406,23 @@ public sealed class ConnectionTruthProbe : IDisposable
         // Cancel before disposing so in-flight probes see OperationCanceledException rather than
         // ObjectDisposedException (see the IDisposable rules in CLAUDE.md).
         try { _shutdown.Cancel(); } catch { }
+
+        // Capture the loop tasks BEFORE StopLoop forgets them, then WAIT. Cancelling only asks: a
+        // loop already inside RunProbeAsync goes on to record its verdict in the static
+        // ConnectionJournal, and does so after Dispose has returned. A class whose contract is to
+        // "never be part of the problem it measures" must not still be writing to the journal once
+        // it has been disposed. It also broke the test suite: the leaked verdict landed in whichever
+        // test ran next, and ConnectionTruthProbeTests.Verdict_ReportsTheLabelAsConnectedWhenItIs —
+        // which reads First(verdict) — intermittently read a DISCONNECTED verdict it never wrote.
+        //
+        // Bounded, so a probe wedged in a socket cannot hang shutdown. The loops run on the thread
+        // pool via Task.Run (no captured SynchronizationContext, so no deadlock when Dispose is
+        // called from the UI thread) and are already cancelled, so in practice this returns at once.
+        var running = _loops.Values.Select(l => l.Task).ToArray();
         foreach (var id in _loops.Keys.ToArray()) StopLoop(id);
+        try { Task.WaitAll(running, TimeSpan.FromSeconds(2)); }
+        catch { /* cancelled or faulted — either way there is nothing left to do at shutdown */ }
+
         _shutdown.Dispose();
         _oneAtATime.Dispose();
         GC.SuppressFinalize(this);

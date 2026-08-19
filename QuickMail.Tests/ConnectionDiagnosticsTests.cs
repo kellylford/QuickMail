@@ -313,6 +313,43 @@ public class ConnectionTruthProbeTests : IDisposable
     }
 
     [Fact]
+    public async Task ADisposedProbeStopsWritingToTheJournal()
+    {
+        // Dispose cancelled the verification loop without waiting for it. A loop already inside
+        // RunProbeAsync went on to Record its verdict — after Dispose had returned, after the owning
+        // test had reset the journal, and (the part that bit) after the NEXT test's constructor had
+        // reset it too. The stray verdict was therefore sitting in the journal when the next test
+        // started, and Verdict_ReportsTheLabelAsConnectedWhenItIs — which reads First(verdict) —
+        // read a "label=DISCONNECTED actual=UNREACHABLE ... trigger=auto round 1" line it never
+        // wrote, on roughly one full-suite run in three.
+        //
+        // Unreachable matters: it is what keeps the account marked disconnected, so the loop stays
+        // alive and has a probe in flight when Dispose lands. A Reachable probe stops the loop and
+        // reproduces nothing.
+        // Mirrors the real sequence exactly: the loop's round-1 probe queues behind the test's own
+        // explicit probe on the process-wide one-at-a-time semaphore, so it is still pending when
+        // Dispose lands and completes — and Records — afterwards. Repeated, because that is a race:
+        // one pass caught it about a third of the time, which is precisely the rate at which the
+        // suite was failing.
+        for (var attempt = 0; attempt < 25; attempt++)
+        {
+            var probe = new ConnectionTruthProbe(
+                new StubConnectionProbe(_ => new ProbeResult(ProbeOutcome.Unreachable, 5, "refused")),
+                _ => "Kelly");
+            probe.NoteDisconnected(_account, "reachability-event");
+            await probe.RunProbeAsync(_account, "test");
+
+            probe.Dispose();
+            ConnectionJournal.ResetForTests();
+            await Task.Delay(60, TestContext.Current.CancellationToken);
+
+            Assert.True(ConnectionJournal.Snapshot().Count == 0,
+                $"attempt {attempt}: a disposed probe wrote " +
+                string.Join(" | ", ConnectionJournal.Snapshot().Select(e => $"{e.Phase}:{e.Detail}")));
+        }
+    }
+
+    [Fact]
     public async Task RunProbeAsync_RecordsTheTriggerSoProbeTrafficIsIdentifiable()
     {
         using var probe = Create(reachable: true);
