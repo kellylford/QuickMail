@@ -66,6 +66,15 @@
 | *(unassigned)* | `view.density.comfortable` | Density: Comfortable |
 | *(unassigned)* | `view.density.compact` | Density: Compact |
 | *(unassigned)* | `view.rowFields` | Message List Fields… |
+| *(unassigned)* | `folder.expand` | Expand Folder — the selected folder and every subfolder in it |
+| *(unassigned)* | `folder.collapse` | Collapse Folder — the selected folder and every subfolder in it |
+| *(unassigned)* | `folder.expandAll` | Expand All Folders |
+| *(unassigned)* | `folder.collapseAll` | Collapse All Folders — account headers included |
+
+The folder tree's own Right and Left arrow keys expand and collapse one level. They are
+in-control navigation — the same kind as the arrow keys inside a list box — and are not registered
+commands. The four `folder.expand*` / `folder.collapse*` commands above are the bulk equivalents
+(#590): they act on the whole branch, or on the whole tree.
 
 ## Message List Fields Window
 

@@ -1128,6 +1128,30 @@ public partial class MainWindow : Window
             isAvailable: () => FolderList.IsKeyboardFocusWithin
                 && FolderList.SelectedItem is FolderTreeNode n && IsDeletableFolderNode(n)));
 
+        // Folder tree expansion (#590). No default keys — Right and Left arrow already expand and
+        // collapse one level, and these do the whole branch; users can bind their own in keyboard
+        // customizations. Registered so all four also appear in the Command Palette, which is the
+        // third entry point the issue asks for alongside the context menu and the Folder menu.
+        _registry.Register(new CommandDefinition(
+            id: "folder.expand", category: "Mail", title: "Expand Folder",
+            execute: () => ExpandSelectedFolder(true),
+            isAvailable: () => CurrentFolderNode() is { Children.Count: > 0 }));
+
+        _registry.Register(new CommandDefinition(
+            id: "folder.collapse", category: "Mail", title: "Collapse Folder",
+            execute: () => ExpandSelectedFolder(false),
+            isAvailable: () => CurrentFolderNode() is { Children.Count: > 0 }));
+
+        _registry.Register(new CommandDefinition(
+            id: "folder.expandAll", category: "Mail", title: "Expand All Folders",
+            execute: () => SetAllFoldersExpanded(true, null),
+            isAvailable: () => _vm.HasExpandableFolders));
+
+        _registry.Register(new CommandDefinition(
+            id: "folder.collapseAll", category: "Mail", title: "Collapse All Folders",
+            execute: () => SetAllFoldersExpanded(false, null),
+            isAvailable: () => _vm.HasExpandableFolders));
+
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(
             id: "view.focusAccounts", category: "View", title: "Focus Account List",
@@ -2040,6 +2064,16 @@ public partial class MainWindow : Window
         var roots = FolderList.Items.OfType<FolderTreeNode>().ToList();
         if (roots.Count == 0)
             return false;
+
+        // A deliberate collapse holds: while the folder the user collapsed around is still the open
+        // one, returning to the tree keeps its visible selection rather than re-opening the branch
+        // that holds the current folder. Without this, F6 or Ctrl+2 quietly undid Collapse All
+        // Folders (#590) the moment the user came back to look at the result. Going to a different
+        // folder clears it, so the tree still reveals wherever the user navigates next.
+        if (IsStillCollapsedAround(_vm.SelectedFolder) &&
+            FolderList.SelectedItem is FolderTreeNode shown &&
+            FlattenVisibleFolderNodes(roots).Contains(shown))
+            return SelectTreeViewNode(FolderList, shown, focusNode);
 
         if (!FindAndExpandFolderPath(roots, _vm.SelectedFolder))
             return false;
@@ -5764,6 +5798,180 @@ public partial class MainWindow : Window
                 foreach (var c in FlattenVisibleFolderNodes(n.Children))
                     yield return c;
         }
+    }
+
+    // ── Folder tree expansion (#590) ─────────────────────────────────────────
+    // Before this, Right and Left arrow on a tree item were the only way to expand or collapse
+    // anything, and there was no way at all to fold the whole tree away. All four actions are
+    // reachable three ways, per the issue: the folder tree's context menu, the Folder menu, and
+    // the Command Palette (folder.expand / folder.collapse / folder.expandAll / folder.collapseAll,
+    // rebindable in keyboard customizations).
+    //
+    // "Expand Folder" and "Collapse Folder" act on the whole branch, not one level: one level is
+    // what the arrow keys already do, so a command repeating it would add nothing, while folding a
+    // deeply nested folder back to one line has no keyboard equivalent at all.
+
+    // The folder that was open when the user last collapsed something. Read by
+    // SyncFolderTreeSelection to decide whether re-entering the tree may expand a path.
+    //
+    // Compared by identity rather than by object reference: RebuildFolderListFromCache re-resolves
+    // SelectedFolder against a freshly fetched folder list, so the very same mailbox arrives as a
+    // new MailFolderModel after any folder refresh. A reference comparison therefore stopped
+    // matching a few seconds after the collapse, and the branch re-opened after all.
+    private MailFolderModel? _collapsedWhileViewing;
+
+    private bool IsStillCollapsedAround(MailFolderModel? folder) =>
+        _collapsedWhileViewing is { } collapsed && folder != null &&
+        TreeViewFocusHelper.FoldersMatch(collapsed, folder);
+
+    private void FolderContextMenu_ExpandFolder_Click(object sender, RoutedEventArgs e)
+        => SetFolderBranchExpanded(GetContextMenuFolderNode(sender), true, focusNode: true);
+
+    private void FolderContextMenu_CollapseFolder_Click(object sender, RoutedEventArgs e)
+        => SetFolderBranchExpanded(GetContextMenuFolderNode(sender), false, focusNode: true);
+
+    private void FolderContextMenu_ExpandAllFolders_Click(object sender, RoutedEventArgs e)
+        => SetAllFoldersExpanded(true, GetContextMenuFolderNode(sender));
+
+    private void FolderContextMenu_CollapseAllFolders_Click(object sender, RoutedEventArgs e)
+        => SetAllFoldersExpanded(false, GetContextMenuFolderNode(sender));
+
+    // Menu-bar and Command Palette twins. They act on the folder tree's selection, so the same
+    // action is reachable without the context menu — the dead end #250 was filed about. They do not
+    // pull focus into the tree: the user may be in the message list and only wanted the tree tidied.
+    private void MenuExpandFolder_Click(object sender, RoutedEventArgs e) => ExpandSelectedFolder(true);
+
+    private void MenuCollapseFolder_Click(object sender, RoutedEventArgs e) => ExpandSelectedFolder(false);
+
+    private void MenuExpandAllFolders_Click(object sender, RoutedEventArgs e) => SetAllFoldersExpanded(true, null);
+
+    private void MenuCollapseAllFolders_Click(object sender, RoutedEventArgs e) => SetAllFoldersExpanded(false, null);
+
+    private void ExpandSelectedFolder(bool expanded)
+    {
+        if (CurrentFolderNode() is { } node)
+            SetFolderBranchExpanded(node, expanded, focusNode: false);
+        else
+            Report("Select a folder first.");
+    }
+
+    // The folder the menu-bar and palette entries act on. The tree's own selection when there is
+    // one, and otherwise the folder currently open — the tree does not get a selection until it is
+    // first focused, and "select a folder first" is a poor answer to someone sitting in the very
+    // folder they meant.
+    private FolderTreeNode? CurrentFolderNode() =>
+        FolderList.SelectedItem as FolderTreeNode
+        ?? (_vm.SelectedFolder is { } folder
+            ? TreeViewFocusHelper.FindFolderTreeNode(_vm.FolderTree, folder)
+            : null);
+
+    private void SetFolderBranchExpanded(FolderTreeNode? node, bool expanded, bool focusNode)
+    {
+        if (node == null) return;
+
+        // Say why rather than do nothing. A leaf has no expansion state to change, and silence
+        // there reads as a broken menu item.
+        if (node.Children.Count == 0)
+        {
+            Report($"'{node.Label}' has nothing inside it to {(expanded ? "expand" : "collapse")}.");
+            return;
+        }
+
+        MainViewModel.SetFolderBranchExpanded(node, expanded);
+        _collapsedWhileViewing = expanded ? null : _vm.SelectedFolder;
+
+        var outcome = $"'{node.Label}' {(expanded ? "expanded" : "collapsed")}.";
+        _vm.StatusText = outcome;
+
+        if (focusNode)
+        {
+            // The node keeps focus and the platform reports its own expanded state, so announcing
+            // on top of that would say it twice.
+            FocusTreeItem(FolderList, node);
+            return;
+        }
+
+        KeepFolderSelectionVisible();
+
+        // Reached from the Folder menu or the Command Palette. If focus is not in the tree it never
+        // moves there, nothing has an expanded state to report, and the action would land in
+        // silence — the dead end this change exists to remove. Announce it ourselves in that case
+        // only; when focus is already in the tree the platform has it covered.
+        if (!FolderList.IsKeyboardFocusWithin)
+            AccessibilityHelper.Announce(this, outcome, category: AnnouncementCategory.Result);
+    }
+
+    // <paramref name="cameFrom"/> is the context-menu node when the action came from the tree, and
+    // null from the menu bar or the palette. It is the difference between landing focus in the tree
+    // (the user was there) and leaving focus alone (they were not).
+    private void SetAllFoldersExpanded(bool expanded, FolderTreeNode? cameFrom)
+    {
+        if (!_vm.HasExpandableFolders)
+        {
+            Report("There are no folders to expand or collapse.");
+            return;
+        }
+
+        _vm.SetAllFoldersExpanded(expanded);
+        _collapsedWhileViewing = expanded ? null : _vm.SelectedFolder;
+
+        // This one is announced: it can be invoked from the menu bar with focus anywhere, and a
+        // whole tree folding away with nothing said is exactly the silence #590 reports.
+        Report(expanded ? "All folders expanded." : "All folders collapsed.");
+
+        var landing = cameFrom ?? CurrentFolderNode();
+        if (landing == null) return;
+
+        if (DeepestVisibleAncestor(landing) is not { } visible) return;
+        if (cameFrom != null || FolderList.IsKeyboardFocusWithin)
+            FocusTreeItem(FolderList, visible);
+        else
+            SelectTreeViewNode(FolderList, visible, focusNode: false);
+    }
+
+    // Collapsing can hide the selected folder. A TreeView left selecting a node inside a collapsed
+    // branch has no visible selection at all, so the next arrow key starts from nowhere.
+    private void KeepFolderSelectionVisible()
+    {
+        if (FolderList.SelectedItem is not FolderTreeNode selected) return;
+        if (DeepestVisibleAncestor(selected) is not { } visible || ReferenceEquals(visible, selected))
+            return;
+
+        if (FolderList.IsKeyboardFocusWithin)
+            FocusTreeItem(FolderList, visible);
+        else
+            SelectTreeViewNode(FolderList, visible, focusNode: false);
+    }
+
+    // The deepest node on the path to <paramref name="node"/> that is still on screen — the node
+    // itself when every ancestor is expanded. Null when the node is not in the tree at all.
+    private FolderTreeNode? DeepestVisibleAncestor(FolderTreeNode node)
+    {
+        var path = new List<FolderTreeNode>();
+        if (!TryFindFolderPath(_vm.FolderTree, node, path) || path.Count == 0) return null;
+
+        var visible = path[0];   // root nodes are always on screen
+        for (var i = 1; i < path.Count; i++)
+        {
+            if (!path[i - 1].IsExpanded) break;
+            visible = path[i];
+        }
+        return visible;
+    }
+
+    // Fills <paramref name="path"/> with the nodes from a root down to (and including) the target.
+    private static bool TryFindFolderPath(
+        IEnumerable<FolderTreeNode>? nodes, FolderTreeNode target, List<FolderTreeNode> path)
+    {
+        if (nodes == null) return false;
+        foreach (var n in nodes)
+        {
+            path.Add(n);
+            if (ReferenceEquals(n, target) || TryFindFolderPath(n.Children, target, path))
+                return true;
+            path.RemoveAt(path.Count - 1);
+        }
+        return false;
     }
 
     // ── Message context menu handlers ────────────────────────────────────────

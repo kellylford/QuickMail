@@ -262,6 +262,22 @@
             <MenuItem Header="_Delete Folder"
                       AutomationProperties.Name="Delete Folder"
                       Click="FolderContextMenu_DeleteFolder_Click"/>
+            <Separator/>
+            <!-- #590. Access keys still free after the items above (N, M, C, A, U, S, F, D): X, P,
+                 E and L. Both single-folder items act on the whole branch, not one level — Right
+                 and Left arrow already do one level. -->
+            <MenuItem Header="E_xpand Folder"
+                      AutomationProperties.Name="Expand Folder"
+                      Click="FolderContextMenu_ExpandFolder_Click"/>
+            <MenuItem Header="Colla_pse Folder"
+                      AutomationProperties.Name="Collapse Folder"
+                      Click="FolderContextMenu_CollapseFolder_Click"/>
+            <MenuItem Header="_Expand All Folders"
+                      AutomationProperties.Name="Expand All Folders"
+                      Click="FolderContextMenu_ExpandAllFolders_Click"/>
+            <MenuItem Header="Collapse A_ll Folders"
+                      AutomationProperties.Name="Collapse All Folders"
+                      Click="FolderContextMenu_CollapseAllFolders_Click"/>
         </ContextMenu>
 
         <!-- Calendar context menu — replaces FolderContextMenu on the Calendar node and its
@@ -276,6 +292,22 @@
             <MenuItem Header="_Clear Default Calendar"
                       AutomationProperties.Name="Clear Default Calendar"
                       Click="CalendarContextMenu_ClearDefault_Click"/>
+            <Separator/>
+            <!-- #590. Calendar nodes sit in the same tree and nest the same way, so they get the
+                 same expansion actions — worded for a calendar, since "Expand Folder" on the
+                 Calendar node would name something the user is not looking at. -->
+            <MenuItem Header="E_xpand Calendar"
+                      AutomationProperties.Name="Expand Calendar"
+                      Click="FolderContextMenu_ExpandFolder_Click"/>
+            <MenuItem Header="Colla_pse Calendar"
+                      AutomationProperties.Name="Collapse Calendar"
+                      Click="FolderContextMenu_CollapseFolder_Click"/>
+            <MenuItem Header="_Expand All Folders"
+                      AutomationProperties.Name="Expand All Folders"
+                      Click="FolderContextMenu_ExpandAllFolders_Click"/>
+            <MenuItem Header="Collapse A_ll Folders"
+                      AutomationProperties.Name="Collapse All Folders"
+                      Click="FolderContextMenu_CollapseAllFolders_Click"/>
         </ContextMenu>
     </Window.Resources>
 
@@ -408,6 +440,21 @@
                 <MenuItem Header="_New Folder…"
                           Click="MenuNewFolder_Click"
                           AutomationProperties.Name="New Folder"/>
+                <Separator/>
+                <!-- #590. These act on the folder tree's selection, so they work the same whether
+                     the user got here from the menu bar or from the tree's own context menu. -->
+                <MenuItem Header="E_xpand Folder"
+                          Click="MenuExpandFolder_Click"
+                          AutomationProperties.Name="Expand Folder"/>
+                <MenuItem Header="Colla_pse Folder"
+                          Click="MenuCollapseFolder_Click"
+                          AutomationProperties.Name="Collapse Folder"/>
+                <MenuItem Header="_Expand All Folders"
+                          Click="MenuExpandAllFolders_Click"
+                          AutomationProperties.Name="Expand All Folders"/>
+                <MenuItem Header="Collapse A_ll Folders"
+                          Click="MenuCollapseAllFolders_Click"
+                          AutomationProperties.Name="Collapse All Folders"/>
             </MenuItem>
 
             <!-- View -->

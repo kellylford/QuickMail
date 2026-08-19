@@ -481,6 +481,39 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return $"Startup folder '{previous}' cleared. QuickMail will open in All Mail.";
     }
 
+    // ── Folder tree expansion (#590) ─────────────────────────────────────────
+    // Expanding and collapsing was arrow-keys-only: there was no way to fold a whole account away,
+    // and no way to reach either action from a menu, the context menu, or the Command Palette.
+    //
+    // Both operate on the branch, not one level. Right and Left arrow already do one level, so a
+    // command that did the same would be a duplicate; what neither arrow can do is fold a folder
+    // with nested subfolders back to a single line, or open one all the way down.
+
+    /// <summary>
+    /// Expands or collapses <paramref name="node"/> and every node beneath it.
+    /// </summary>
+    public static void SetFolderBranchExpanded(FolderTreeNode? node, bool expanded)
+    {
+        if (node == null) return;
+        foreach (var n in FlattenAllNodes([node]))
+            n.IsExpanded = expanded;
+    }
+
+    /// <summary>
+    /// Expands or collapses every node in the folder tree, account headers included — collapsing
+    /// all is how a many-account tree gets back to a list of accounts.
+    /// </summary>
+    public void SetAllFoldersExpanded(bool expanded)
+    {
+        if (FolderTree == null) return;
+        foreach (var n in FlattenAllNodes(FolderTree))
+            n.IsExpanded = expanded;
+    }
+
+    /// <summary>Whether the folder tree holds a node whose expansion state could be changed.</summary>
+    public bool HasExpandableFolders =>
+        FolderTree != null && FlattenAllNodes(FolderTree).Any(n => n.Children.Count > 0);
+
     private void PersistDefaultCalendar()
     {
         var cfg = _configService.Load();
@@ -4512,12 +4545,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void BuildFolderTree()
     {
-        // Capture which folders the user has expanded so the rebuild (which creates fresh, collapsed
-        // node objects) doesn't collapse the whole tree on a refresh.
-        var expandedKeys = new HashSet<string>(StringComparer.Ordinal);
+        // Capture the expansion state of every current node so the rebuild (which creates fresh
+        // node objects) doesn't undo what the user did. Both directions are remembered, not just
+        // the expanded ones: an account header is built expanded, so remembering only expansions
+        // silently re-opened every account the user had collapsed on the next folder refresh —
+        // which made Collapse All Folders (#590) look like it had not worked.
+        var expansion = new Dictionary<string, bool>(StringComparer.Ordinal);
         if (FolderTree != null)
             foreach (var n in FlattenAllNodes(FolderTree))
-                if (n.IsExpanded) expandedKeys.Add(NodeKey(n));
+                expansion[NodeKey(n)] = n.IsExpanded;
 
         var roots = new List<FolderTreeNode>();
 
@@ -4677,11 +4713,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        // Restore expansion captured above (additive: header groups keep their built-in expanded
-        // default; previously-expanded folders are re-expanded).
+        // Restore the state captured above. A node the tree has not seen before keeps the default
+        // it was built with (header groups expanded, folders collapsed).
         foreach (var n in FlattenAllNodes(roots))
-            if (expandedKeys.Contains(NodeKey(n)))
-                n.IsExpanded = true;
+            if (expansion.TryGetValue(NodeKey(n), out var wasExpanded))
+                n.IsExpanded = wasExpanded;
 
         FolderTree = new ObservableCollection<FolderTreeNode>(roots);
         // Fresh node objects start unmarked; restore the default calendar's marker on the rebuild.
