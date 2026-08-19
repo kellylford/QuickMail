@@ -113,4 +113,69 @@ public class AddAccountTabOrderTests
         }
         finally { window.Close(); }
     }
+
+    /// <summary>
+    /// #584: the OAuth "Sign in with Microsoft" button is the LAST stop in the form — after the
+    /// Advanced expander and everything it reveals — so signing in is the final thing a keyboard user
+    /// Tabs to, not a control stranded above Advanced that forces a Shift+Tab back up. The sync
+    /// opt-ins stay before sign-in so their permission is part of the same consent (#256, #282).
+    /// </summary>
+    [StaFact]
+    public void OAuthSignInIsTheLastStop_AfterAdvancedSettings()
+    {
+        var vm = NewVm();
+        // A Microsoft provider makes the account OAuth (ApplyProvider sets AuthType.OAuth2Microsoft),
+        // so the "Sign in with Microsoft" button and the sync opt-ins appear.
+        vm.SelectedProvider = new ProviderCatalog().All.First(p => p.Id == ProviderCatalog.MicrosoftId);
+        var window = new AddAccountDialog(vm)
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+        };
+        window.Show();
+        try
+        {
+            vm.IsAdvancedExpanded = true;
+            window.UpdateLayout();
+            Drain();
+
+            var provider = (Control)window.FindName("ProviderComboBox");
+
+            // The button has no x:Name, so the walker reports it by its AutomationProperties.Name.
+            const string SignIn = "Sign in with Microsoft";
+
+            // Forward (Tab): sign-in comes after the expander header and after the last Advanced
+            // control (Signature); the sync opt-ins still precede it.
+            TabOrderWalker.StartAt(window, provider, "ProviderComboBox");
+            var stops = WalkTabOrder(window);
+            var order = string.Join(" -> ", stops);
+            int At(string name) => stops.IndexOf(name);
+
+            Assert.True(At(SignIn) >= 0, $"sign-in button not reachable. Order: {order}");
+            Assert.True(At("HeaderSite") >= 0, $"expander header never reached. Order: {order}");
+            Assert.True(At("SignatureBox") >= 0, $"Signature never reached. Order: {order}");
+            Assert.True(At("HeaderSite") < At(SignIn), $"sign-in precedes the Advanced expander. Order: {order}");
+            Assert.True(At("SignatureBox") < At(SignIn), $"sign-in precedes the Advanced contents. Order: {order}");
+            // Guard the >= 0 explicitly: IndexOf returns -1 for an unreachable control, and -1 < a
+            // real index passes vacuously — that would hide the very regression this pins.
+            Assert.True(At("SyncContactsCheckBox") >= 0 && At("SyncContactsCheckBox") < At(SignIn),
+                $"sync contacts opt-in is unreachable or falls after sign-in. Order: {order}");
+            Assert.True(At("SyncCalendarCheckBox") >= 0 && At("SyncCalendarCheckBox") < At(SignIn),
+                $"sync calendar opt-in is unreachable or falls after sign-in. Order: {order}");
+
+            // Backward (Shift+Tab): from the Add button, past the bottom row, going back reaches
+            // sign-in first, then the Advanced contents — the exact reverse of Tab.
+            var add = (Control)window.FindName("AddButton");
+            TabOrderWalker.StartAt(window, add, "AddButton");
+            var back = TabOrderWalker.WalkBackward(window);
+            var backOrder = string.Join(" -> ", back);
+            int BackAt(string name) => back.IndexOf(name);
+
+            Assert.True(BackAt(SignIn) >= 0, $"Shift+Tab never reached sign-in. Backward: {backOrder}");
+            Assert.True(BackAt(SignIn) < BackAt("SignatureBox"),
+                $"Shift+Tab reached Advanced before sign-in. Backward: {backOrder}");
+            Assert.True(BackAt("SignatureBox") < BackAt("HeaderSite"),
+                $"Shift+Tab order is not the reverse of Tab. Backward: {backOrder}");
+        }
+        finally { window.Close(); }
+    }
 }

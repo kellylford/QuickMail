@@ -106,20 +106,6 @@
                           AutomationProperties.Name="Sync calendar from this account"
                           Margin="0,6,0,0" TabIndex="6"/>
 
-                <!-- OAuth sign-in stays on the main surface too: for an OAuth provider this is the
-                     primary action, not an advanced one. -->
-                <Button Content="Sign in _with Microsoft…"
-                        Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
-                        Command="{Binding SignInMicrosoftCommand}"
-                        AutomationProperties.Name="Sign in with Microsoft"
-                        HorizontalAlignment="Left" MinWidth="200" Margin="0,10,0,0" TabIndex="7"/>
-
-                <Button Content="Sign in _with Google…"
-                        Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
-                        Command="{Binding SignInGoogleCommand}"
-                        AutomationProperties.Name="Sign in with Google"
-                        HorizontalAlignment="Left" MinWidth="200" Margin="0,10,0,0" TabIndex="8"/>
-
                 <!-- Everything a recognized provider already answers for the user. Collapsed unless
                      the provider is "Other" or discovery came back empty (VM.IsAdvancedExpanded). -->
                 <Expander x:Name="AdvancedExpander"
@@ -288,6 +274,27 @@
                                 />
                     </StackPanel>
                 </Expander>
+
+                <!-- OAuth sign-in is the LAST tab stop in the form, after Advanced settings and
+                     everything it reveals (#584). Signing in is the final action, so tabbing top to
+                     bottom now ends on it, instead of stranding it above Advanced where a keyboard
+                     user had to Shift+Tab back up to reach settings they had just opened. It carries
+                     no explicit TabIndex, so it falls into the default (int.MaxValue) bucket ordered
+                     by tree position — declared here, after the expander, it sorts after the
+                     expander's contents. Still a main-surface primary action (it sits below the
+                     expander, not inside it), and still after the sync opt-ins above, so the
+                     same-consent ordering (#256, #282) is unchanged. -->
+                <Button Content="Sign in _with Microsoft…"
+                        Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
+                        Command="{Binding SignInMicrosoftCommand}"
+                        AutomationProperties.Name="Sign in with Microsoft"
+                        HorizontalAlignment="Left" MinWidth="200" Margin="0,14,0,0"/>
+
+                <Button Content="Sign in _with Google…"
+                        Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
+                        Command="{Binding SignInGoogleCommand}"
+                        AutomationProperties.Name="Sign in with Google"
+                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0"/>
 
             </StackPanel>
         </ScrollViewer>

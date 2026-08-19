@@ -58,10 +58,22 @@ internal static class TabOrderWalker
     }
 
     /// <summary>
-    /// Tabs forward from the current focus, recording each stop, until the order wraps or
+    /// Tabs forward (Tab) from the current focus, recording each stop, until the order wraps or
     /// <paramref name="maxStops"/> is reached.
     /// </summary>
-    public static List<string> Walk(Window window, int maxStops = 50)
+    public static List<string> Walk(Window window, int maxStops = 50) =>
+        Walk(window, FocusNavigationDirection.Next, maxStops);
+
+    /// <summary>
+    /// Tabs backward (Shift+Tab) from the current focus, recording each stop. Shift+Tab must be the
+    /// exact reverse of Tab; a test that pins the forward order should pin this too, because a
+    /// control can be correct going forward yet unreachable or out of place going backward.
+    /// </summary>
+    public static List<string> WalkBackward(Window window, int maxStops = 50) =>
+        Walk(window, FocusNavigationDirection.Previous, maxStops);
+
+    /// <summary>Walks Tab traversal in <paramref name="direction"/>, recording each stop.</summary>
+    public static List<string> Walk(Window window, FocusNavigationDirection direction, int maxStops = 50)
     {
         var stops = new List<string>();
         var seen = new HashSet<FrameworkElement>();
@@ -69,7 +81,7 @@ internal static class TabOrderWalker
         for (var i = 0; i < maxStops; i++)
         {
             if (FocusManager.GetFocusedElement(window) is not UIElement current) break;
-            if (!current.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next))) break;
+            if (!current.MoveFocus(new TraversalRequest(direction))) break;
             Drain();
 
             if (FocusManager.GetFocusedElement(window) is not FrameworkElement next) break;

@@ -190,21 +190,8 @@
                     </Border>
                 </StackPanel>
 
-                <!-- OAuth sign-in -->
-                <Button Content="Sign in _with Microsoft…"
-                        Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
-                        Command="{Binding SignInMicrosoftCommand}"
-                        AutomationProperties.Name="Sign in with Microsoft"
-                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="12"/>
-
-                <Button Content="Sign in _with Google…"
-                        Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
-                        Command="{Binding SignInGoogleCommand}"
-                        AutomationProperties.Name="Sign in with Google"
-                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="13"/>
-
                 </StackPanel>
-                <!-- end #31 ShowNormalAccountFields wrapper (password + OAuth sign-in) -->
+                <!-- end #31 ShowNormalAccountFields wrapper (password panel) -->
 
                 <!-- Contact sync (issue #256) — shown only for accounts with a contact API. Stays on
                      the main surface: it is a per-account choice, not a server setting. -->
@@ -379,6 +366,29 @@
                                 />
                     </StackPanel>
                 </Expander>
+
+                <!-- OAuth sign-in is the LAST tab stop in the form, after Advanced settings and
+                     everything it reveals (#584). Signing in / re-authenticating is the final action,
+                     so tabbing top to bottom now ends on it, instead of stranding it above Advanced
+                     where a keyboard user had to Shift+Tab back up to reach settings they had just
+                     opened. The buttons carry no explicit TabIndex, so they fall into the default
+                     (int.MaxValue) bucket ordered by tree position — declared here, after the
+                     expander, they sort after the expander's contents. Wrapped in the same
+                     ShowNormalAccountFields gate as the password panel above (#31): a shared mailbox
+                     authenticates through its parent and shows no sign-in of its own. -->
+                <StackPanel Visibility="{Binding ShowNormalAccountFields, Converter={StaticResource BoolToVisibility}}">
+                    <Button Content="Sign in _with Microsoft…"
+                            Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
+                            Command="{Binding SignInMicrosoftCommand}"
+                            AutomationProperties.Name="Sign in with Microsoft"
+                            HorizontalAlignment="Left" MinWidth="200" Margin="0,14,0,0"/>
+
+                    <Button Content="Sign in _with Google…"
+                            Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
+                            Command="{Binding SignInGoogleCommand}"
+                            AutomationProperties.Name="Sign in with Google"
+                            HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0"/>
+                </StackPanel>
 
             </StackPanel>
         </ScrollViewer>

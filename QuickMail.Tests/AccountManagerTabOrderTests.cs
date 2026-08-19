@@ -27,7 +27,7 @@ namespace QuickMail.Tests;
 [Collection("WpfTests")]
 public class AccountManagerTabOrderTests
 {
-    private static AccountManagerViewModel NewVm()
+    private static AccountManagerViewModel NewVm(AuthType authType = AuthType.Password)
     {
         var vm = new AccountManagerViewModel(
             new StubAccountService(), new StubCredentialService(), new StubImapMailService(),
@@ -36,12 +36,15 @@ public class AccountManagerTabOrderTests
 
         // An account must be selected: with none, the whole edit form is disabled (IsEditing) and a
         // disabled control is not a tab stop at all, so there would be nothing to measure.
+        // OAuth2Microsoft shows the "Sign in with Microsoft" button (IsOAuth2); Password shows the
+        // password box instead. Either way the account stays on the IMAP/SMTP backend, so Advanced
+        // shows the auth combo and host fields.
         var account = new AccountModel
         {
             Id = Guid.NewGuid(),
             AccountName = "Test account",
             Username = "kelly@example.com",
-            AuthType = AuthType.Password,
+            AuthType = authType,
             ImapHost = "imap.example.com",
             SmtpHost = "smtp.example.com",
         };
@@ -144,6 +147,65 @@ public class AccountManagerTabOrderTests
             Assert.True(At("AuthTypeCombo") < At("ImapHostBox"), $"Order: {order}");
             Assert.True(At("ImapHostBox") < At("SmtpHostBox"), $"Order: {order}");
             Assert.True(At("SmtpHostBox") < At("SignatureBox"), $"Order: {order}");
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// #584: the OAuth "Sign in with Microsoft" button is the LAST stop in the edit form — after the
+    /// Advanced expander and everything it reveals — so re-authenticating is the final thing a
+    /// keyboard user Tabs to, not a control stranded above Advanced that forces a Shift+Tab back up.
+    /// The forward walk pins the position; the backward walk pins that Shift+Tab is its exact reverse.
+    /// </summary>
+    [StaFact]
+    public void OAuthSignInIsTheLastStop_AfterAdvancedSettings()
+    {
+        var vm = NewVm(AuthType.OAuth2Microsoft);
+        var window = new AccountManagerDialog(vm)
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+        };
+        window.Show();
+        try
+        {
+            vm.IsAdvancedExpanded = true;
+            window.UpdateLayout();
+            Drain();
+
+            var close = window.FindName("CloseButton") as Button;
+            Assert.NotNull(close);
+
+            // The button has no x:Name, so the walker reports it by its AutomationProperties.Name.
+            const string SignIn = "Sign in with Microsoft";
+
+            // Forward (Tab): sign-in comes after the expander header and after the last Advanced
+            // control (Signature), and did not jump above the main-surface fields.
+            TabOrderWalker.StartAt(window, close!, "Close");
+            var stops = TabOrderWalker.Walk(window);
+            var order = string.Join(" -> ", stops);
+            int At(string name) => stops.IndexOf(name);
+
+            Assert.True(At(SignIn) >= 0, $"sign-in button not reachable. Order: {order}");
+            Assert.True(At("HeaderSite") >= 0, $"expander header never reached. Order: {order}");
+            Assert.True(At("SignatureBox") >= 0, $"Signature never reached. Order: {order}");
+            // >= 0 guarded: -1 < a real index passes vacuously and would hide the regression.
+            Assert.True(At("UsernameBox") >= 0 && At("UsernameBox") < At(SignIn),
+                $"email field unreachable, or sign-in jumped above the form. Order: {order}");
+            Assert.True(At("HeaderSite") < At(SignIn), $"sign-in precedes the Advanced expander. Order: {order}");
+            Assert.True(At("SignatureBox") < At(SignIn), $"sign-in precedes the Advanced contents. Order: {order}");
+
+            // Backward (Shift+Tab): from Close, the stop after sign-in, going back reaches sign-in
+            // first, then the Advanced contents, then the expander header — the exact reverse.
+            TabOrderWalker.StartAt(window, close!, "Close");
+            var back = TabOrderWalker.WalkBackward(window);
+            var backOrder = string.Join(" -> ", back);
+            int BackAt(string name) => back.IndexOf(name);
+
+            Assert.True(BackAt(SignIn) >= 0, $"Shift+Tab never reached sign-in. Backward: {backOrder}");
+            Assert.True(BackAt(SignIn) < BackAt("SignatureBox"),
+                $"Shift+Tab reached Advanced before sign-in. Backward: {backOrder}");
+            Assert.True(BackAt("SignatureBox") < BackAt("HeaderSite"),
+                $"Shift+Tab order is not the reverse of Tab. Backward: {backOrder}");
         }
         finally { window.Close(); }
     }
