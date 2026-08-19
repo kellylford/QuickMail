@@ -37,23 +37,11 @@ public class SelectorItemAccessibilityTests
     /// ThemeService before the first window is created. Without them the XAML fails to parse with
     /// "Cannot find resource named 'System.Windows.Controls.ListViewItem'".
     /// </summary>
-    private static void EnsureThemedApplication()
-    {
-        lock (typeof(Application))
-        {
-            if (Application.Current == null)
-                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        }
-
-        var app = Application.Current!;
-        foreach (var style in new[] { "AccessibleStyles", "ThemedControls" })
-        {
-            var uri = new Uri($"pack://application:,,,/QuickMail;component/Styles/{style}.xaml",
-                UriKind.Absolute);
-            if (app.Resources.MergedDictionaries.All(d => d.Source != uri))
-                app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
-        }
-    }
+    /// <summary>The shared host owns the Application (issue #211); this suite additionally needs
+    /// ThemedControls, or the XAML fails to parse with "Cannot find resource named
+    /// 'System.Windows.Controls.ListViewItem'".</summary>
+    private static void EnsureThemedApplication() =>
+        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
 
     // End-to-end: the actual reported control. Reads the real UIA item peer names a
     // screen reader would speak — this is what the reviews never checked.

@@ -195,30 +195,9 @@ public class XamlParseTests
     /// required for StaticResource / DynamicResource resolution during XAML parsing.
     /// Uses a process-wide lock so that parallel [StaFact] threads from different test
     /// classes don't race to create a second Application (WPF forbids more than one).
-    private static void EnsureApplication()
-    {
-        // Lock on the Application type object — shared across all test classes.
-        lock (typeof(Application))
-        {
-            if (Application.Current == null)
-                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        }
-
-        // Merge the same resource dictionaries the running app has present when its
-        // windows are parsed, so StaticResource references resolve: AccessibleStyles
-        // (merged by App.xaml) and ThemedControls (merged by ThemeService.Initialize
-        // before the first window is created). ThemedControls defines the implicit
-        // container styles ({x:Type ListView/TreeView/ListBox}) that window XAML now
-        // references via BasedOn; its DynamicResource Theme.* tokens resolve to nothing
-        // in the test (no ThemeService), which is harmless for parsing.
-        var app = Application.Current!;
-        foreach (var style in new[] { "AccessibleStyles", "ThemedControls" })
-        {
-            var uri = new Uri($"pack://application:,,,/QuickMail;component/Styles/{style}.xaml", UriKind.Absolute);
-            if (app.Resources.MergedDictionaries.All(d => d.Source != uri))
-                app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
-        }
-    }
+    /// <summary>Delegates to the shared host: the Application must live on a thread that outlives
+    /// the run, not on whichever [StaFact] thread happened to be first (issue #211).</summary>
+    private static void EnsureApplication() => WpfTestHost.EnsureApplication();
 
     private static void ParseXamlFile(string relativePathFromAssembly)
     {

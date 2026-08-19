@@ -21,23 +21,11 @@ namespace QuickMail.Tests;
 /// </summary>
 public class CalendarContextMenuTests
 {
-    private static void EnsureThemedApplication()
-    {
-        lock (typeof(Application))
-        {
-            if (Application.Current == null)
-                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        }
-
-        var app = Application.Current!;
-        foreach (var style in new[] { "AccessibleStyles", "ThemedControls" })
-        {
-            var uri = new Uri($"pack://application:,,,/QuickMail;component/Styles/{style}.xaml",
-                UriKind.Absolute);
-            if (app.Resources.MergedDictionaries.All(d => d.Source != uri))
-                app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
-        }
-    }
+    /// <summary>The shared host owns the Application (issue #211); this suite additionally needs
+    /// ThemedControls, or the XAML fails to parse with "Cannot find resource named
+    /// 'System.Windows.Controls.ListViewItem'".</summary>
+    private static void EnsureThemedApplication() =>
+        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
 
     private static MainWindow MakeWindow()
     {

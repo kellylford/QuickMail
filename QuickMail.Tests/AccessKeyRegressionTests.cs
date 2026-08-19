@@ -343,20 +343,9 @@ public class AccessKeyRegressionTests
         try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); } catch { }
     }
 
-    private static void EnsureApplication()
-    {
-        // The XamlParseTests class uses the same lock; both classes
-        // share a single Application instance per process.
-        lock (typeof(Application))
-        {
-            if (Application.Current == null)
-                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            const string stylesUri = "pack://application:,,,/QuickMail;component/Styles/AccessibleStyles.xaml";
-            var uri = new Uri(stylesUri, UriKind.Absolute);
-            if (Application.Current!.Resources.MergedDictionaries.All(d => d.Source != uri))
-                Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
-        }
-    }
+    /// <summary>Delegates to the shared host: the Application must live on a thread that outlives
+    /// the run, not on whichever [StaFact] thread happened to be first (issue #211).</summary>
+    private static void EnsureApplication() => WpfTestHost.EnsureApplication();
 
     private static Button FindButtonByContent(Window window, string contentText, int occurrence = 1)
     {

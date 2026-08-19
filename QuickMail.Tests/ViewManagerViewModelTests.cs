@@ -240,24 +240,9 @@ public class ViewManagerViewModelTests
 [Collection("WpfTests")]
 public class ViewManagerWindowTests
 {
-    private static void EnsureApplication()
-    {
-        // Lock on the Application type object — the same lock used by XamlParseTests —
-        // so that parallel [StaFact] threads from different classes don't race to create
-        // a second Application (WPF only allows one per AppDomain).
-        lock (typeof(Application))
-        {
-            if (Application.Current == null)
-                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        }
-
-        const string stylesUri = "pack://application:,,,/QuickMail;component/Styles/AccessibleStyles.xaml";
-        var uri = new Uri(stylesUri, UriKind.Absolute);
-        // Capture to local so nullable analysis knows it's non-null (it was just created above).
-        var app = Application.Current!;
-        if (app.Resources.MergedDictionaries.All(d => d.Source != uri))
-            app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
-    }
+    /// <summary>Delegates to the shared host: the Application must live on a thread that outlives
+    /// the run, not on whichever [StaFact] thread happened to be first (issue #211).</summary>
+    private static void EnsureApplication() => WpfTestHost.EnsureApplication();
 
     /// <summary>
     /// WPF schedules binding updates at <see cref="System.Windows.Threading.DispatcherPriority.DataBind"/>

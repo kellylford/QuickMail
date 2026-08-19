@@ -31,24 +31,20 @@ namespace QuickMail.Tests;
 [Collection("WpfTests")]
 public class TabStripNavigationTests
 {
+    /// <summary>The shared host owns the Application — it must live on a thread that outlives the
+    /// run, not on whichever [StaFact] thread happened to be first (issue #211). The rest is this
+    /// suite's own setup.</summary>
     private static void EnsureApplication()
     {
-        lock (typeof(Application))
-        {
-            if (Application.Current == null)
-                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            const string stylesUri = "pack://application:,,,/QuickMail;component/Styles/AccessibleStyles.xaml";
-            var uri = new Uri(stylesUri, UriKind.Absolute);
-            if (Application.Current!.Resources.MergedDictionaries.All(d => d.Source != uri))
-                Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
-        }
+        WpfTestHost.EnsureApplication();
         TabStripNavigation.Install();
         // Pin the modifier read. The shipped guard asks the keyboard device, which reports what is
         // PHYSICALLY held at that instant — so someone holding Shift anywhere on the machine made the
         // handler ignore a synthesized press, and the test failed as a bogus navigation regression.
-        // ModifiersWhenPressed below covers the guard itself, which had no test before.
+        // AModifiedArrow_IsLeftToTheTabControl covers the guard itself, which had no test before.
         TabStripNavigation.ModifiersOf = _ => ModifiersWhenPressed;
     }
+
 
     /// <summary>What the handler sees as the held modifiers. None for every test but the one that
     /// checks a modified key is left alone.</summary>
