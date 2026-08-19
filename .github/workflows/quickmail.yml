@@ -170,12 +170,10 @@ jobs:
           # here. If this variable is ever dropped, the guard below fails the job rather than
           # letting them silently run nowhere.
           QUICKMAIL_RUN_INPUT_TESTS: "1"
-        # PropertiesViewModelTests and ReportBugViewModelTests exercise real clipboard access
-        # (Clipboard.SetText), which is unreliable on GitHub-hosted Windows runners — no
-        # interactive desktop session backs the clipboard, so these intermittently throw
-        # COMException("OpenClipboard Failed") or crash the whole test host on shutdown even
-        # when every assertion passed. Excluded here; run them locally where clipboard access
-        # is real.
+        # Both classes that were excluded here for driving the real clipboard now assert against an
+        # injected IClipboardService instead, so nothing in the unit suite touches the OS clipboard
+        # and the filter that skipped them is gone. It had been silently costing two whole classes of
+        # coverage on every CI run.
         #
         # Pass/fail is decided from the trx result counters, not the `dotnet test` exit code.
         # WPF StaFact tests intermittently crash the xUnit host *after* every test has passed:
@@ -187,8 +185,7 @@ jobs:
         # still must. Root-cause tracked in issue #211.
         run: |
           dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release `
-            --logger "trx;LogFileName=results.trx" `
-            --filter "FullyQualifiedName!~PropertiesViewModelTests&FullyQualifiedName!~ReportBugViewModelTests"
+            --logger "trx;LogFileName=results.trx"
           $testExit = $LASTEXITCODE
           $trx = "QuickMail.Tests/TestResults/results.trx"
           if (-not (Test-Path $trx)) {
