@@ -154,10 +154,12 @@ Press **New** in Manage Accounts. The Add Account dialog opens with focus on the
 2. Tab to **Email address** and type it. Leaving this field is also what starts the settings lookup for an address QuickMail does not already know; see [Automatic settings lookup](#automatic-settings-lookup).
 3. Tab to **Password** and enter it. Gmail, Yahoo Mail, and iCloud Mail all need an **app password** rather than your ordinary account password; QuickMail says so above the box and links to the page where you create one. Microsoft accounts have no password box at all — a **Sign in with Microsoft** button stands in its place.
 4. **Account name** and **Sender display name** are both optional. Leave the account name blank and the account is labelled with your email address, which is what most people want; give it a name when you have two accounts at the same provider. The sender display name is the name recipients see on messages you send.
-5. **Sync contacts from this account** and **Sync calendar from this account** appear for iCloud accounts and for accounts that sign in — Microsoft, and Gmail when you choose Google sign-in. Check them *before* signing in, so the permission is part of the same sign-in. (A Gmail account using an app password has no contact or calendar sync, so the boxes do not appear.)
+5. **Sync contacts from this account** and **Sync calendar from this account** appear for iCloud accounts and for accounts that sign in — Microsoft, and Gmail when you choose Google sign-in. Check them *before* signing in, so the permission can be part of the same sign-in. (A Gmail account using an app password has no contact or calendar sync, so the boxes do not appear.)
 6. Press **Add Account**.
 
-Server names, ports, and SSL settings are behind **Advanced settings**, an expander that stays closed unless you need it. Tab reaches its header before its contents, so one keystroke moves past the whole thing.
+Whether that permission really is part of the same sign-in depends on the account. Google sign-in folds it in, and so does a personal Outlook.com account set to connect over **Microsoft 365 (Graph)** — one screen lists mail, contacts, and calendar together. A work or school Microsoft account asks separately once the account is added, on purpose: organizations that restrict what their users may approve would turn one over-asking screen into a failed sign-in, and no account at all.
+
+Server names, ports, and SSL settings are behind **Advanced settings**, an expander that stays closed unless you need it. Tab reaches its header before its contents, so one keystroke moves past the whole thing. **Sign in with Microsoft** and **Sign in with Google** come last of all, after Advanced settings and everything inside it — signing in is the last thing you do, so it is the last thing you tab to. The same is true in Manage Accounts.
 
 If something required is missing, **Add Account** does not close the dialog. It says what is missing and moves focus to the field that needs attention — the email address, the password, or, when there are no server settings at all, the **IMAP host** with Advanced settings opened for you.
 
@@ -227,7 +229,7 @@ The result is announced and stays on screen as status text near the buttons. In 
 QuickMail signs in to Microsoft mailboxes rather than asking for a password — work or school **Microsoft 365 / Exchange Online** accounts and personal **Outlook.com / Hotmail / Live.com** accounts alike.
 
 1. In the Add Account dialog, set **Provider** to **Outlook.com / Microsoft 365** — or just type your address, which selects it for you. The password box disappears; Microsoft accounts sign in instead.
-2. Activate **Sign in with Microsoft**. A Microsoft sign-in window opens inside QuickMail. Sign in and approve the permissions QuickMail requests; the window closes itself and returns you to the dialog.
+2. Activate **Sign in with Microsoft** — the last tab stop in the dialog, after Advanced settings. A Microsoft sign-in window opens inside QuickMail. Sign in and approve the permissions QuickMail requests; the window closes itself and returns you to the dialog.
 3. Activate **Add Account**.
 
 Sign in as **the same address you typed** into the account. If the account you sign in with does not match, QuickMail warns you and keeps the address you entered rather than silently switching to a different mailbox — this matters most in organizations where an administrator signs in at the approval screen.
