@@ -56,7 +56,13 @@
 
                     <!-- App-specific password warning, driven by the selected provider (Gmail, Yahoo,
                          iCloud). The same text is announced as a Hint when the provider changes, so it
-                         is deliberately not duplicated into any AutomationProperties.Name. -->
+                         is deliberately not duplicated into any AutomationProperties.Name.
+
+                         The link below carries TabIndex 3, its own: this form's indices run 0-7 with no
+                         duplicates. It used to share 2 with the password box above it, and the order
+                         still came out right only because WPF breaks a tie on declaration order — so
+                         the collision read as working and would have bitten the first time anything
+                         moved. Adding a control here means renumbering, not reusing an index. -->
                     <Border Visibility="{Binding ShowAppPasswordHint, Converter={StaticResource BoolToVisibility}}"
                             Background="{DynamicResource Theme.WarningBackground}"
                             BorderBrush="{DynamicResource Theme.Warning}"
@@ -68,7 +74,7 @@
                                        TextWrapping="Wrap"
                                        FontWeight="SemiBold"/>
                             <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
-                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="2"
+                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="3"
                                            RequestNavigate="AppPasswordLink_RequestNavigate"
                                            AutomationProperties.Name="Create an app password">
                                     <Run Text="{Binding AppPasswordUrl, Mode=OneWay}"/>
@@ -82,13 +88,13 @@
                 <TextBox x:Name="AccountNameBox"
                          Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
-                         TabIndex="3"/>
+                         TabIndex="4"/>
 
                 <Label x:Name="LblDisplayName" Content="Sender _display name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>
                 <TextBox x:Name="DisplayNameBox"
                          Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
-                         TabIndex="4"/>
+                         TabIndex="5"/>
 
                 <!-- Sync opt-ins stay on the main surface: they must be checked BEFORE sign-in so the
                      permission is part of the same consent (#256, #282). -->
@@ -97,14 +103,14 @@
                           Visibility="{Binding ShowContactSyncOption, Converter={StaticResource BoolToVisibility}}"
                           IsChecked="{Binding SyncContacts, Mode=TwoWay}"
                           AutomationProperties.Name="Sync contacts from this account"
-                          Margin="0,12,0,0" TabIndex="5"/>
+                          Margin="0,12,0,0" TabIndex="6"/>
 
                 <CheckBox x:Name="SyncCalendarCheckBox"
                           Content="Sync ca_lendar from this account"
                           Visibility="{Binding ShowCalendarSyncOption, Converter={StaticResource BoolToVisibility}}"
                           IsChecked="{Binding SyncCalendar, Mode=TwoWay}"
                           AutomationProperties.Name="Sync calendar from this account"
-                          Margin="0,6,0,0" TabIndex="6"/>
+                          Margin="0,6,0,0" TabIndex="7"/>
 
                 <!-- Everything a recognized provider already answers for the user. Collapsed unless
                      the provider is "Other" or discovery came back empty (VM.IsAdvancedExpanded). -->

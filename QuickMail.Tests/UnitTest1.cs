@@ -191,13 +191,19 @@ public class ViewModelConstructionTests
 [Collection("WpfTests")]
 public class XamlParseTests
 {
-    /// Ensure Application.Current exists and has the app's resource dictionaries loaded —
-    /// required for StaticResource / DynamicResource resolution during XAML parsing.
-    /// Uses a process-wide lock so that parallel [StaFact] threads from different test
-    /// classes don't race to create a second Application (WPF forbids more than one).
-    /// <summary>Delegates to the shared host: the Application must live on a thread that outlives
-    /// the run, not on whichever [StaFact] thread happened to be first (issue #211).</summary>
-    private static void EnsureApplication() => WpfTestHost.EnsureApplication();
+    /// <summary>
+    /// The Application and the resource dictionaries StaticResource/DynamicResource need while the
+    /// XAML is parsed. The shared host owns it, on a thread that outlives the run rather than
+    /// whichever [StaFact] thread happened to be first (issue #211).
+    ///
+    /// ThemedControls is named explicitly, not left to whichever other suite happens to merge it
+    /// first: MainWindow's XAML resolves ListView's themed style, so parsing it fails with "Cannot
+    /// find resource named 'System.Windows.Controls.ListView'" whenever this class runs without
+    /// CalendarContextMenuTests or SelectorItemAccessibilityTests alongside it — which is what any
+    /// `dotnet test --filter` narrow enough to exclude them does.
+    /// </summary>
+    private static void EnsureApplication() =>
+        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
 
     private static void ParseXamlFile(string relativePathFromAssembly)
     {
