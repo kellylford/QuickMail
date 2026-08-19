@@ -1,6 +1,5 @@
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -30,10 +29,24 @@ sealed class FakeBugReportService : IBugReportService
 [Collection("WpfTests")]
 public class ReportBugViewModelTests
 {
-    private static ReportBugViewModel Make(out FakeBugReportService service)
+    /// <summary>Records what the VM copied. No Windows clipboard, no apartment requirements —
+    /// see IClipboardService, and the same fake in PropertiesViewModelTests.</summary>
+    private sealed class FakeClipboard : IClipboardService
     {
-        service = new FakeBugReportService();
-        return new ReportBugViewModel(service);
+        public int SetCount { get; private set; }
+        public string Text { get; private set; } = string.Empty;
+        public bool SetText(string text) { SetCount++; Text = text; return true; }
+        public string GetText() => Text;
+    }
+
+    private static ReportBugViewModel Make(out FakeBugReportService service) =>
+        Make(out service, out _);
+
+    private static ReportBugViewModel Make(out FakeBugReportService service, out FakeClipboard clipboard)
+    {
+        service   = new FakeBugReportService();
+        clipboard = new FakeClipboard();
+        return new ReportBugViewModel(service, clipboard: clipboard);
     }
 
     [Fact]
@@ -104,15 +117,21 @@ public class ReportBugViewModelTests
     // test run (see ExternalUriPolicyTests, which for the same reason only tests blocked
     // schemes, never an allowed one). The blank-summary guard below is safe to test because it
     // returns before either the clipboard or ExternalUriPolicy is touched.
-    [StaFact]
+    // Asserts against an injected clipboard, never the real one. The Windows clipboard is a
+    // machine-wide shared resource: when any other process holds it, SetText throws — and from the
+    // STA thread this test used to need, that exception was unhandled on a foreground thread, which
+    // terminates the process. One contended clipboard took the whole test host down mid-run. That is
+    // why IClipboardService exists and why PropertiesViewModelTests already asserts this way; this
+    // test was simply missed. It also no longer needs an STA apartment.
+    [Fact]
     public void CopyAndOpen_BlankSummary_DoesNotCopyOrOpen()
     {
-        var vm = Make(out var service);
-        Clipboard.SetText("unchanged");
+        var vm = Make(out _, out var clipboard);
 
         vm.CopyAndOpenCommand.Execute(null);
 
-        Assert.Equal("unchanged", Clipboard.GetText());
+        Assert.Equal(0, clipboard.SetCount);
+        Assert.Equal(string.Empty, clipboard.Text);
     }
 
     [Fact]

@@ -43,7 +43,16 @@ public class TabStripNavigationTests
                 Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
         }
         TabStripNavigation.Install();
+        // Pin the modifier read. The shipped guard asks the keyboard device, which reports what is
+        // PHYSICALLY held at that instant — so someone holding Shift anywhere on the machine made the
+        // handler ignore a synthesized press, and the test failed as a bogus navigation regression.
+        // ModifiersWhenPressed below covers the guard itself, which had no test before.
+        TabStripNavigation.ModifiersOf = _ => ModifiersWhenPressed;
     }
+
+    /// <summary>What the handler sees as the held modifiers. None for every test but the one that
+    /// checks a modified key is left alone.</summary>
+    private static ModifierKeys ModifiersWhenPressed = ModifierKeys.None;
 
     /// <summary>A tab strip in a shown window, so the containers and layout are real.</summary>
     private static (Window window, TabControl tabs, TabItem[] items) BuildStrip(int count = 4)
@@ -72,7 +81,7 @@ public class TabStripNavigationTests
     /// <c>StartAt</c> verifies the seed landed and throws as a setup failure if it did not.
     /// </para>
     /// </summary>
-    private static void Press(Window window, DependencyObject from, Key key)
+    private static void Press(Window window, DependencyObject from, Key key, bool expectHandled = true)
     {
         TabOrderWalker.StartAt(window, (FrameworkElement)from, Header(from) ?? from.GetType().Name);
 
@@ -81,7 +90,15 @@ public class TabStripNavigationTests
             RoutedEvent = UIElement.PreviewKeyDownEvent,
             Source      = from,
         };
+        var modsBefore = Keyboard.PrimaryDevice.Modifiers;
         ((UIElement)from).RaiseEvent(args);
+        if (expectHandled && !args.Handled)
+            throw new InvalidOperationException(
+                $"PRESS SWALLOWED key={key} from={Header(from)} " +
+                $"modsBefore={modsBefore} modsNow={Keyboard.PrimaryDevice.Modifiers} " +
+                $"argsDevMods={args.KeyboardDevice.Modifiers} " +
+                $"origSrcIsTabItem={args.OriginalSource is TabItem} " +
+                $"kbFocus={(Keyboard.FocusedElement as FrameworkElement)?.GetType().Name}");
         TabOrderWalker.Drain();
     }
 
@@ -175,7 +192,7 @@ public class TabStripNavigationTests
         try
         {
             var box = (TextBox)items[0].Content;
-            Press(window, box, Key.Right);
+            Press(window, box, Key.Right, expectHandled: false);
 
             Assert.Equal("Tab 0", Header(tabs.SelectedItem));
         }
@@ -263,6 +280,24 @@ public class TabStripNavigationTests
             Assert.Equal(expected, visited);
         }
         finally { dialog.Close(); }
+    }
+
+    [StaFact]
+    public void AModifiedArrow_IsLeftToTheTabControl()
+    {
+        // Ctrl+Tab and Ctrl+Shift+Tab are the TabControl's own, so any modifier means the key is not
+        // ours. Previously untestable: the guard read the physical keyboard, which a synthesized event
+        // cannot set — the reason it now reads through ModifiersOf.
+        EnsureApplication();
+        var (window, tabs, items) = BuildStrip();
+        try
+        {
+            ModifiersWhenPressed = ModifierKeys.Control;
+            Press(window, items[0], Key.Right, expectHandled: false);
+
+            Assert.Equal("Tab 0", Header(tabs.SelectedItem));   // untouched
+        }
+        finally { ModifiersWhenPressed = ModifierKeys.None; window.Close(); }
     }
 
     private static TabControl? FindTabControl(DependencyObject root)

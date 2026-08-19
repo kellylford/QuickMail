@@ -18,6 +18,16 @@ namespace QuickMail.Tests;
 [Collection("WpfTests")]
 public class RadioGroupNavigationTests
 {
+    /// <summary>What the handler sees as the held modifiers. The shipped guard asks the keyboard
+    /// device, which reports what is PHYSICALLY held at that instant — so someone holding Shift
+    /// anywhere on the machine made the handler ignore a synthesized press, and the test failed as a
+    /// bogus selection-follows-focus regression. Pinned here; AModifiedArrow_IsLeftAlone covers the
+    /// guard itself, which had no test before.</summary>
+    private static ModifierKeys ModifiersWhenPressed = ModifierKeys.None;
+
+    static RadioGroupNavigationTests() =>
+        RadioGroupNavigation.ModifiersOf = _ => ModifiersWhenPressed;
+
     private static (StackPanel panel, RadioButton[] buttons) BuildGroup(bool followFocus = true)
     {
         var panel = new StackPanel();
@@ -163,5 +173,22 @@ public class RadioGroupNavigationTests
         PressKey(panel, buttons[0], Key.Down);
 
         Assert.True(checkedBeforeFocus, "the button was focused before it was checked");
+    }
+
+    [StaFact]
+    public void AModifiedArrow_IsLeftAlone()
+    {
+        // A modifier means the key is not ours. Previously untestable: the guard read the physical
+        // keyboard, which a synthesized event cannot set — the reason it now reads through ModifiersOf.
+        var (panel, buttons) = BuildGroup();
+        try
+        {
+            ModifiersWhenPressed = ModifierKeys.Control;
+            PressKey(panel, buttons[0], Key.Down);
+
+            Assert.True(buttons[0].IsChecked);    // selection did not follow
+            Assert.False(buttons[1].IsChecked);
+        }
+        finally { ModifiersWhenPressed = ModifierKeys.None; }
     }
 }
