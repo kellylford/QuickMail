@@ -175,14 +175,15 @@ jobs:
         # and the filter that skipped them is gone. It had been silently costing two whole classes of
         # coverage on every CI run.
         #
-        # Pass/fail is decided from the trx result counters, not the `dotnet test` exit code.
-        # WPF StaFact tests intermittently crash the xUnit host *after* every test has passed:
-        # a leftover window's HWND receives a message once its owning STA thread is gone, so
-        # MS.Win32.HwndSubclass.SubclassWndProc calls Thread.get_CurrentThread() and throws a
-        # NullReferenceException. xUnit reports this as a "catastrophic failure" and exits
-        # non-zero even though the trx records failed=0/error=0. That benign teardown crash must
-        # not fail the release, but a genuine test failure (failed>0, error>0, or no tests run)
-        # still must. Root-cause tracked in issue #211.
+        # This step fails on THREE things, and the third is the one that used to be missing:
+        # a genuine test failure, no tests at all, or a run that did not execute every discovered
+        # test class. A truncated run reports failed=0 and reads as a pass, which is exactly how
+        # issue #211 hid for months while costing up to 46% of the suite per run. It is fixed
+        # (StaDispatcherShutdown / WpfTestHost), so short runs are now errors rather than warnings.
+        #
+        # The trx counters, not the `dotnet test` exit code, still decide what "a test failed"
+        # means — the exit code alone cannot distinguish a failing assertion from a host-level
+        # crash — but a non-zero exit is no longer tolerated on its own either.
         run: |
           dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release `
             --logger "trx;LogFileName=results.trx"
@@ -254,18 +255,34 @@ jobs:
             Select-String -Pattern '^\s+(QuickMail\.Tests\.[A-Za-z0-9_]+)\.' |
             ForEach-Object { $_.Matches[0].Groups[1].Value } |
             Sort-Object -Unique)
-          if ($allClasses.Count -gt 0) {
-            $missing = @($allClasses | Where-Object { $ranClasses -notcontains $_ })
-            Write-Host "Test classes: $($ranClasses.Count) ran of $($allClasses.Count) discovered."
-            if ($missing.Count -gt 0) {
-              Write-Warning ("$($missing.Count) test class(es) never executed, so 'failed=0' does NOT mean the " +
-                             "suite passed. Investigate the host crash before trusting this run (issue #380):`n  " +
-                             (($missing) -join "`n  "))
-            }
+          # A class that never ran is a FAILURE, not a warning. This was a warning while issue #211
+          # made truncation routine, and the cost of that was invisible: four main runs measured
+          # 3042, 1597, 2729 and 3024 cases against 3115 discovered — one of them silently skipped
+          # 46% of the suite and reported success. The nine ConnectionDiagnostics classes were
+          # missing from every single run, so they had never executed in CI at all. #211 is fixed
+          # now, so a short run means something new is wrong and must stop the job.
+          if ($allClasses.Count -le 0) {
+            Write-Error "Could not discover the test classes, so completeness cannot be checked; failing rather than guessing."
+            exit 1
+          }
+          $missing = @($allClasses | Where-Object { $ranClasses -notcontains $_ })
+          Write-Host "Test classes: $($ranClasses.Count) ran of $($allClasses.Count) discovered."
+          if ($missing.Count -gt 0) {
+            Write-Error ("$($missing.Count) test class(es) never executed, so 'failed=0' does NOT mean the suite " +
+                         "passed. The usual cause is the xUnit host dying mid-run and taking the remaining tests " +
+                         "with it — see issue #211, and check the run for a 'Catastrophic failure'.`n  " +
+                         (($missing) -join "`n  "))
+            exit 1
           }
 
+          # Likewise: the benign-teardown-crash allowance existed only for #211. With that fixed, a
+          # non-zero exit alongside failed=0 is an unexplained host-level failure, and swallowing it
+          # is how #211 survived for months.
           if ($testExit -ne 0) {
-            Write-Warning "dotnet test exited $testExit but all $passed tests passed (failed=0, error=0). Treating as the benign WPF STA test-host teardown crash (HwndSubclass.SubclassWndProc / Thread.get_CurrentThread NRE, issue #211)."
+            Write-Error ("dotnet test exited $testExit even though every test passed (failed=0, error=0) and all " +
+                         "$($allClasses.Count) classes ran. That is a host-level failure with no known benign " +
+                         "cause since #211 was fixed; do not re-add a blanket allowance for it without one.")
+            exit 1
           }
           exit 0
 
