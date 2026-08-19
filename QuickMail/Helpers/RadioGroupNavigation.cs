@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -56,11 +57,29 @@ public static class RadioGroupNavigation
             container.PreviewKeyDown += OnContainerPreviewKeyDown;
     }
 
+    /// <summary>
+    /// Reads the modifier state for a key event. Shipped behaviour asks the event's own keyboard
+    /// device — which is <c>Keyboard.PrimaryDevice</c>, so it reports whatever is <em>physically
+    /// held right now</em>, not what produced this event.
+    ///
+    /// That is correct in the app and unusable in a test. A synthesized <c>KeyEventArgs</c> cannot
+    /// carry modifier state of its own, so a test that raises one is at the mercy of the machine:
+    /// hold Shift or Ctrl anywhere while the suite runs and this returns early, the key does
+    /// nothing, and the test fails looking like a navigation regression rather than like someone
+    /// touching the keyboard. That is what made these suites fail about one full run in three,
+    /// always by exactly one swallowed press. Tests pin it — and pin it to a modifier too, which
+    /// finally covers the early return below. Nothing in the app assigns it.
+    /// </summary>
+    internal static Func<KeyEventArgs, ModifierKeys> ModifiersOf { get; set; } =
+        e => e.KeyboardDevice.Modifiers;
+
     private static void OnContainerPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // The event's own device state, not the global Keyboard.Modifiers: the latter reports
-        // whatever is physically held right now, which is not necessarily what produced this key.
-        if (e.Handled || e.KeyboardDevice.Modifiers != ModifierKeys.None) return;
+        // Any modifier means the key is not ours. Read through ModifiersOf so a test can pin it;
+        // see the note there. (The comment this replaced claimed the event carried its own device
+        // state, distinct from the global Keyboard.Modifiers. It does not: e.KeyboardDevice IS
+        // Keyboard.PrimaryDevice, so this always read whatever was physically held at that instant.)
+        if (e.Handled || ModifiersOf(e) != ModifierKeys.None) return;
 
         var forward = e.Key is Key.Down or Key.Right;
         if (!forward && e.Key is not (Key.Up or Key.Left)) return;

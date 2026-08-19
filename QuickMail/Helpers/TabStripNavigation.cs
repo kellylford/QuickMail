@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -40,6 +41,22 @@ public static class TabStripNavigation
     private static bool _installed;
 
     /// <summary>
+    /// Reads the modifier state for a key event. Shipped behaviour asks the event's own keyboard
+    /// device — which is <c>Keyboard.PrimaryDevice</c>, so it reports whatever is <em>physically
+    /// held right now</em>, not what produced this event.
+    ///
+    /// That is correct in the app and unusable in a test. A synthesized <c>KeyEventArgs</c> cannot
+    /// carry modifier state of its own, so a test that raises one is at the mercy of the machine:
+    /// hold Shift or Ctrl anywhere while the suite runs and this returns early, the key does
+    /// nothing, and the test fails looking like a navigation regression rather than like someone
+    /// touching the keyboard. That is what made these suites fail about one full run in three,
+    /// always by exactly one swallowed press. Tests pin it — and pin it to a modifier too, which
+    /// finally covers the early return below. Nothing in the app assigns it.
+    /// </summary>
+    internal static Func<KeyEventArgs, ModifierKeys> ModifiersOf { get; set; } =
+        e => e.KeyboardDevice.Modifiers;
+
+    /// <summary>
     /// Registers the behaviour for every <see cref="TabControl"/> in the process. Called once from
     /// application startup: a class handler cannot be forgotten when a new window with tabs is
     /// added, which a per-control attached property can. Idempotent, so tests can call it too.
@@ -61,10 +78,8 @@ public static class TabStripNavigation
         if (e.Handled || sender is not TabControl tabControl) return;
 
         // Any modifier means the key is not ours: Ctrl+Tab and Ctrl+Shift+Tab are TabControl's own.
-        // This reads live device state (e.KeyboardDevice is Keyboard.PrimaryDevice, so this is the
-        // same value as Keyboard.Modifiers), which a synthesized KeyEventArgs cannot set — hence no
-        // test for this line, and none that would mean anything.
-        if (e.KeyboardDevice.Modifiers != ModifierKeys.None) return;
+        // Read through ModifiersOf so a test can pin it; see the note there.
+        if (ModifiersOf(e) != ModifierKeys.None) return;
 
         // Only when focus is on a tab header of this tab control. For a keyboard event
         // OriginalSource is the focused element; Keyboard.FocusedElement is the fallback for
