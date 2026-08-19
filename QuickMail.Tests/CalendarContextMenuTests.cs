@@ -19,6 +19,9 @@ namespace QuickMail.Tests;
 /// nothing — and an over-broad trigger would strip real folders of the menu that is their only
 /// mouse path to Move, Copy, and Set as Archive.
 /// </summary>
+// Loads a real MainWindow, so it belongs in the collection that serializes window-loading
+// tests: two of them constructing a MainWindow at once race inside XAML loading (#590).
+[Collection("WpfTests")]
 public class CalendarContextMenuTests
 {
     /// <summary>The shared host owns the Application (issue #211); this suite additionally needs

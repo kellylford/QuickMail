@@ -502,6 +502,27 @@ What each list matches is the text you would expect to hear first: the folder na
 
 The same typing works in the **Go to Folder** picker, in the address book's contact, group, and member lists, and in the [Message List Fields](#message-list-fields) window.
 
+### Expanding and Collapsing Folders
+
+Right and Left arrow still open and close one folder at a time, and that has not changed. What is new is four actions for doing it in bulk — useful when an account has folders nested several levels deep, or when several accounts have filled the tree.
+
+- **Expand Folder** opens the selected folder and everything inside it, all the way down, rather than one level.
+- **Collapse Folder** closes it and everything inside it, so the whole branch folds back to a single line.
+- **Expand All Folders** opens every folder in the tree.
+- **Collapse All Folders** closes everything, account headers included, leaving the tree as a short list of accounts.
+
+Each is reachable three ways:
+
+- Choose **Folder → Expand Folder**, **Collapse Folder**, **Expand All Folders**, or **Collapse All Folders** from the menu bar.
+- Press **Shift+F10** on the folder tree and choose it from the context menu. On a calendar the first two read **Expand Calendar** and **Collapse Calendar**; they do the same thing.
+- Open the Command Palette (**Ctrl+Shift+P**) and choose it there. None of the four has a shortcut key to begin with, so if you use one often, assign it your own in [Keyboard Customization](#keyboard-customization).
+
+The two "all folders" actions say what they did — "All folders collapsed" — because you can start them from the menu bar with focus anywhere. The two single-folder actions say nothing extra: the folder keeps focus and your screen reader reports its own expanded or collapsed state.
+
+If collapsing hides the folder you were on, the selection moves up to the nearest folder still showing rather than disappearing into a closed branch. Choosing Expand or Collapse Folder on a folder with nothing inside it says so instead of doing nothing.
+
+How you leave the tree is how you find it: a folder you collapse stays collapsed while QuickMail refreshes its folder list, and coming back to the tree with **F6** or **Ctrl+2** leaves it collapsed rather than re-opening the branch holding the folder you are reading. Go to a different folder and the tree opens up to show it again, as it always has. Expansion is not remembered between runs — QuickMail starts each account open, and opens whatever it needs to reach the folder it lands in.
+
 ### Creating Folders
 
 Create a new folder in any of these ways:
@@ -1847,7 +1868,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Shift+.` | Last message in group |
 | `Escape` | Close contact mail results (message list focus) |
 
-**Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, **Message List Fields…**, **Density: Comfortable**, **Density: Compact**, **Manage Flags…**, and **Report a Bug** likewise have no default key — reach them from the menus or the command palette, or assign a shortcut yourself in File → Settings → Keyboard Shortcuts.
+**Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, **Message List Fields…**, **Density: Comfortable**, **Density: Compact**, **Manage Flags…**, **Expand Folder**, **Collapse Folder**, **Expand All Folders**, **Collapse All Folders**, and **Report a Bug** likewise have no default key — reach them from the menus or the command palette, or assign a shortcut yourself in File → Settings → Keyboard Shortcuts.
 
 `Ctrl+1`, `Ctrl+2`, and `Ctrl+3` jump to a pane when no message tabs are open; with tabs open they select tab 1, 2, and 3 instead. **`Ctrl+Alt+1`, `Ctrl+Alt+2`, and `Ctrl+Alt+3` always** go to the account list, folder tree, and message list, whatever else is open. `Ctrl+0` moves to the toolbar.
 
