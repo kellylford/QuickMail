@@ -76,7 +76,9 @@ public static class FolderReferenceRemapper
                 .Where(f => string.Equals(f.DisplayName, reference, StringComparison.OrdinalIgnoreCase))
                 .ToList();
             if (exact.Count == 1) return exact[0].FullName;
-            // Otherwise the leaf (last path segment), only if it resolves to exactly one folder.
+            // Otherwise the leaf (last path segment), only if it resolves to exactly one folder. Splitting
+            // on '/' is correct here: only a Microsoft IMAP account can be converted to Graph, and its
+            // stored folder paths use '/'. A '.'-delimited hierarchy would fall through to unmatched.
             var slash = reference.LastIndexOf('/');
             var leaf = slash >= 0 ? reference[(slash + 1)..] : reference;
             var byLeaf = graphFolders
@@ -121,6 +123,7 @@ public static class FolderReferenceRemapper
         if (Guid.TryParse(config.StartupFolderAccount, out var sfa) && sfa == accountId
             && !string.IsNullOrEmpty(config.StartupFolder))
         {
+            var original = config.StartupFolder;
             var match = Match(config.StartupFolder);
             if (match != null)
             {
@@ -133,7 +136,9 @@ public static class FolderReferenceRemapper
                 config.StartupFolderAccount = string.Empty;
                 config.StartupFolderLabel = string.Empty;
             }
-            report.StartupFolderChanged = true;
+            // Only report a change when there actually was one — an idempotent re-run (Match returns the
+            // startup folder's Graph id unchanged) must not re-announce "startup folder updated".
+            if (config.StartupFolder != original) report.StartupFolderChanged = true;
         }
 
         return report;

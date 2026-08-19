@@ -145,6 +145,22 @@ public class FolderReferenceRemapperTests
     }
 
     [Fact]
+    public void StartupFolder_AlreadyGraphId_NotReportedChanged() // idempotent re-run (crash between save and marker-clear)
+    {
+        var config = new ConfigModel
+        {
+            StartupFolder = "id-archive",                 // already the Graph id from a prior pass
+            StartupFolderAccount = Acct.ToString(),
+            StartupFolderLabel = "Archive",
+        };
+
+        var r = FolderReferenceRemapper.Remap(Acct, Folders(), [], [], config);
+
+        Assert.Equal("id-archive", config.StartupFolder);  // unchanged
+        Assert.False(r.StartupFolderChanged);              // and not re-announced
+    }
+
+    [Fact]
     public void StartupFolder_FallsBackToAllMail_WhenUnmatched()
     {
         var config = new ConfigModel

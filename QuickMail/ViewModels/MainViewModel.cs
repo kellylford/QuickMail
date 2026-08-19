@@ -1695,10 +1695,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// Runs both from the in-session handoff and from the startup crash-resume; idempotent — a re-run
     /// re-connects and re-syncs harmlessly, and it no-ops once the marker is clear.
     /// </summary>
+    // Conversions currently being finished, so the in-session handoff and the startup crash-resume don't
+    // both drive a connect + full Inbox sync for the same account at once (they can overlap when a convert
+    // happens while the startup sweep is still running). UI-thread only, so a plain HashSet is enough.
+    private readonly HashSet<Guid> _convertingInFlight = [];
+
     private async Task FinishGraphConversionAsync(Guid accountId, CancellationToken ct)
     {
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
         if (account is null || !account.GraphConversionPending) return;
+        if (!_convertingInFlight.Add(accountId)) return;   // already finishing this one — don't double-run
+        try
+        {
 
         // Connect the Graph account and take the folders it returns DIRECTLY — not a read-back through
         // _cachedFolders, which on the in-session path still holds the pre-convert IMAP folder models (the
@@ -1741,6 +1749,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Announce(
             $"{account.AccountLabel} finished converting to Microsoft 365." + (summary.Length > 0 ? " " + summary : ""),
             AnnouncementCategory.Result);
+        }
+        finally { _convertingInFlight.Remove(accountId); }
     }
 
     public void LoadAccountList(List<AccountModel>? preloaded = null)
