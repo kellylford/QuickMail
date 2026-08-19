@@ -1,0 +1,174 @@
+name: Flaky test hunt
+
+# Runs the unit-test suite N times on a runner and reports which tests failed in
+# how many of those runs. The point is to find order- and timing-dependent tests
+# WITHOUT tying up a developer machine for an hour: a flaky test that fails one run
+# in three needs a dozen runs to characterise, and doing that locally makes the
+# machine unusable — and worse, perturbs the very tests being measured, since some
+# of them are sensitive to what else is running.
+#
+# Deliberately different from the `test` job in quickmail.yml:
+#   * no clipboard exclusion filter — the whole point is to see everything
+#   * every iteration's trx is kept, so a failure can be read after the fact
+#   * a failing iteration does NOT stop the run; all N always execute
+#
+# Trigger it by hand: Actions -> Flaky test hunt -> Run workflow. Pushing a branch named
+# flaky-hunt/** also runs it, which is how it was used before it lived on main — keep that,
+# it is the only way to hunt against a branch's own version of the workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: 'How many times to run the suite'
+        required: false
+        default: '10'
+      filter:
+        description: 'Optional dotnet test --filter expression (blank = whole suite)'
+        required: false
+        default: ''
+      input_tests:
+        description: 'Run the opt-in synthesized-input tests (QUICKMAIL_RUN_INPUT_TESTS)'
+        required: false
+        default: 'true'
+  push:
+    branches:
+      - 'flaky-hunt/**'
+
+jobs:
+  hunt:
+    runs-on: windows-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      # The two credential partials are gitignored, so the tree does not build without
+      # them. The values are irrelevant here — nothing in the unit tests calls out — but
+      # they must exist and must be the real secrets on this repo, same as every other job.
+      - name: Write Google OAuth credentials
+        shell: pwsh
+        env:
+          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          @"
+          namespace QuickMail.Services;
+          public partial class GoogleOAuthService
+          {
+              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
+              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
+          }
+          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
+
+      - name: Write bug-report credentials
+        shell: pwsh
+        env:
+          BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
+          BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
+        run: |
+          @"
+          namespace QuickMail.Services;
+          public partial class BugReportService
+          {
+              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
+              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
+          }
+          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+
+      - name: Build once
+        shell: pwsh
+        run: dotnet build QuickMail.Tests/QuickMail.Tests.csproj -c Release
+
+      - name: Run the suite repeatedly
+        shell: pwsh
+        env:
+          QUICKMAIL_RUN_INPUT_TESTS: ${{ (github.event.inputs.input_tests != 'false') && '1' || '' }}
+        run: |
+          $iterations = [int]("${{ github.event.inputs.iterations }}" -replace '^$', '10')
+          $filter     = "${{ github.event.inputs.filter }}"
+          New-Item -ItemType Directory -Force trx | Out-Null
+
+          # test -> how many iterations it failed in. Also track per-iteration totals: a run whose
+          # host died partway records FEWER cases with failed=0, which reads as a pass. Comparing
+          # totals across iterations is the only way to see that from the outside (issue #211).
+          $failures = @{}
+          $totals   = @()
+
+          for ($i = 1; $i -le $iterations; $i++) {
+            $name = "run$i"
+            $args = @(
+              'test', 'QuickMail.Tests/QuickMail.Tests.csproj', '-c', 'Release', '--no-build',
+              '--logger', "trx;LogFileName=$name.trx",
+              '--results-directory', 'trx'
+            )
+            if ($filter) { $args += @('--filter', $filter) }
+
+            # Keep the console output. When the xUnit host dies mid-run (issue #211) the trx simply
+            # ends early with failed=0, and the only record of WHY is the [FATAL ERROR] block and the
+            # tests logged either side of it. Discarding this output is what made #211 unfindable.
+            # A failing iteration must not stop the hunt — all N always run.
+            dotnet @args *> "trx/$name.log"
+            $path = "trx/$name.trx"
+            if (-not (Test-Path $path)) {
+              Write-Host "iteration $i : NO TRX (host died before writing results)"
+              $totals += 0
+              continue
+            }
+
+            [xml]$doc = Get-Content $path
+            $c = $doc.TestRun.ResultSummary.Counters
+            $totals += [int]$c.total
+            $failed = @($doc.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -ne 'Passed' -and $_.outcome -ne 'NotExecuted' })
+            foreach ($f in $failed) { $failures[$f.testName] = 1 + ($failures[$f.testName] ?? 0) }
+            Write-Host ("iteration {0,2} : total={1} passed={2} failed={3} error={4}" -f `
+              $i, [int]$c.total, [int]$c.passed, [int]$c.failed, [int]$c.error)
+          }
+
+          Write-Host ''
+          Write-Host "=== $iterations iterations ==="
+
+          # Where did the short runs stop? The console tail holds the crash that ended them.
+          $best = ($totals | Measure-Object -Maximum).Maximum
+          foreach ($i in 1..$iterations) {
+            if ($totals[$i - 1] -eq 0 -or $totals[$i - 1] -eq $best) { continue }
+            Write-Host ''
+            Write-Host "--- iteration ${i}: stopped $($best - $totals[$i - 1]) cases short; tail of its output ---"
+            if (Test-Path "trx/run$i.log") { Get-Content "trx/run$i.log" -Tail 25 | ForEach-Object { Write-Host "    $_" } }
+          }
+          Write-Host ''
+          $distinct = ($totals | Where-Object { $_ -gt 0 } | Sort-Object -Unique)
+          Write-Host ("case counts seen: " + ($distinct -join ', '))
+          if ($distinct.Count -gt 1) {
+            Write-Host 'NOTE: iterations executed different numbers of cases. A run whose host dies'
+            Write-Host '      partway still reports failed=0, so this is the signal for it (issue #211).'
+          }
+
+          if ($failures.Count -eq 0) {
+            Write-Host "No failures in $iterations runs."
+            exit 0
+          }
+
+          Write-Host ''
+          Write-Host 'FLAKY (or broken) TESTS — failed in N of the iterations:'
+          $failures.GetEnumerator() | Sort-Object Value -Descending | ForEach-Object {
+            Write-Host ("  {0,3}/{1}  {2}" -f $_.Value, $iterations, $_.Key)
+          }
+          Write-Host ''
+          Write-Host 'A test failing in every iteration is simply broken, not flaky.'
+          # Non-zero so the run is visibly red: this workflow is only ever run to answer
+          # "is anything flaky", and a green tick must mean "nothing failed in N runs".
+          exit 1
+
+      - name: Upload every iteration's results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flaky-hunt-trx
+          path: trx/
+          if-no-files-found: warn
+          retention-days: 7
