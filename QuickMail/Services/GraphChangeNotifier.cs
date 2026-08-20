@@ -42,7 +42,11 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
         StopWatchers();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-        foreach (var account in accounts.Where(a => a.BackendKind == BackendKind.MicrosoftGraph))
+        // #31: never poll a shared mailbox. Its delegated .Shared scopes can't hold a change-notification
+        // subscription and delta over them is out of scope, so a shared Graph mailbox is sweep-only
+        // (spec §5.1). WireUpWatchers already excludes shared accounts from the set it passes; this
+        // boundary guard keeps the notifier from ever spinning a poll loop against one regardless.
+        foreach (var account in accounts.Where(a => a.BackendKind == BackendKind.MicrosoftGraph && !a.IsShared))
         {
             var captured = account;
             _watchers[captured.Id] = Task.Run(() => PollLoopAsync(captured, _cts.Token), _cts.Token);

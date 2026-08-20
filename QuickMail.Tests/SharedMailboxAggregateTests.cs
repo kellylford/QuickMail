@@ -60,10 +60,10 @@ public class SharedMailboxAggregateTests
             [Normal(NormalId, "Work"), Shared(SharedId, ParentId, "Support")],
             new() { [NormalId] = [Inbox(NormalId)], [SharedId] = [sharedInbox] });
 
-        // Seed the shared account's folder cache (ConnectAllAccounts skips shared, so it would otherwise
-        // be absent and the TryGetValue guard — not the new IsShared guard — would do the excluding).
-        // With the cache populated, the exclusion can only come from `if (account.IsShared) continue;`,
-        // which is the line this test exists to pin (and the state PR 2 will actually be in).
+        // Ensure the shared account's folder cache is populated. From PR 2 a Graph-parent shared account
+        // is connected by ConnectAllAccountsAsync (above), which already caches its folders; this refresh
+        // is belt-and-suspenders. With the cache populated, the exclusion can only come from
+        // `if (account.IsShared) continue;` — the line this test exists to pin — not the TryGetValue guard.
         await vm.RefreshFolderListAsync(SharedId);
         Assert.NotEmpty(vm.FolderScopedAggregateSources(MainViewModel.AllInboxesFolder.FullName)); // sanity: cache is live
 
@@ -113,8 +113,9 @@ public class SharedMailboxAggregateTests
     [Fact]
     public async Task SharedAccount_HasOwnTopLevelTreeNode_WithSharedAccessibleName()
     {
-        // PR 1 reality: a shared account has no backend access yet, so it renders as a placeholder
-        // top-level node (no folders) — which must still carry the account id and the shared qualifier.
+        // No folders are seeded for the shared account here, so even though PR 2 now connects it,
+        // GetFoldersAsync returns nothing and it renders as a placeholder top-level node — which must
+        // still carry the account id and the shared qualifier.
         var vm = await MakeVmAsync([Shared(SharedId, ParentId, "Support")], new());
 
         var node = vm.FolderTree.FirstOrDefault(n => n.IsHeader && n.AccountId == SharedId);

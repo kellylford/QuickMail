@@ -69,6 +69,19 @@ public class OAuthService : IOAuthService
         "https://graph.microsoft.com/User.Read",                  // /me profile read (GraphMailService)
     ];
 
+    // Shared mailboxes (#31, PR 2): a shared mailbox reads through its PARENT work/school account's
+    // token, but against the shared address's messages (/users/{SharedAddress}/…), which needs the
+    // delegated *.Shared* permission — Mail.ReadWrite.Shared covers read, mark-read, and (PR 3+) move.
+    // WORK/SCHOOL ONLY: personal Microsoft accounts have no Exchange shared mailboxes, and the Add-shared
+    // dialog already excludes personal parents. Like the work/school scopes above, this is hand-maintained
+    // AND must be declared on the app registration (delegated Mail.ReadWrite.Shared) or the call 403s at
+    // runtime — see docs/ENTRA-APP-REGISTRATION.md and #31. Mail.Send.Shared (send-as) is PR 4, not here.
+    // No /me is ever called on the shared path, so User.Read is deliberately absent.
+    public static readonly string[] GraphMailScopesShared =
+    [
+        "https://graph.microsoft.com/Mail.ReadWrite.Shared",
+    ];
+
     // Personal Microsoft accounts (Outlook.com/Hotmail/Live): `.default` under-delivers for MSA,
     // because personal accounts have no admin-consent model — `.default` returns only the permissions
     // the user already consented to, which came back read-only (delete/move → 403 ErrorAccessDenied,
@@ -144,6 +157,12 @@ public class OAuthService : IOAuthService
 
     internal static string[] DefaultScopesFor(AccountModel account)
     {
+        // A Graph-parent shared mailbox (#31) borrows its parent's token but requests the .Shared scope
+        // against /users/{SharedAddress}. It is always work/school (the Add-shared dialog excludes
+        // personal parents). An IMAP-parent shared account falls through to ImapSmtpScopes (PR 3, XOAUTH2
+        // user=), the same as any IMAP account.
+        if (account.IsShared && account.BackendKind == BackendKind.MicrosoftGraph)
+            return GraphMailScopesShared;
         if (account.BackendKind != BackendKind.MicrosoftGraph)
             return ImapSmtpScopes;
         // Both personal and work/school use explicit Graph scopes — personal for write access (#217),
@@ -229,22 +248,48 @@ public class OAuthService : IOAuthService
         LogService.Log("OAuthService: token cache registered.");
     }
 
+    /// <summary>
+    /// Looks up a live <see cref="AccountModel"/> by id. Set once at startup to
+    /// <c>mainVm.Accounts</c> (the authoritative, disk-rebuilt list) so a shared mailbox added at
+    /// runtime resolves its parent without a restart. Used only by <see cref="ResolveTokenIdentity"/>;
+    /// left null in tests that don't exercise the shared path.
+    /// </summary>
+    public Func<Guid, AccountModel?>? ResolveAccount { get; set; }
+
+    /// <summary>
+    /// The Microsoft identity whose cached sign-in backs this account's token. For a normal account
+    /// that is the account itself; for a credential-less shared mailbox (#31) it is the PARENT account,
+    /// whose token is borrowed to read <c>/users/{SharedAddress}</c> with the <c>.Shared</c> scope. A
+    /// shared account has no MSAL entry of its own, so every MSAL identity lookup must go through here.
+    /// Throws <see cref="InteractiveSignInRequiredException"/> — surfaced as "disconnected" by
+    /// <c>ConnectOneAccountAsync</c>, never a silent empty state — when the parent can't be resolved.
+    /// </summary>
+    internal AccountModel ResolveTokenIdentity(AccountModel account)
+    {
+        if (!account.IsShared) return account;
+        if (account.ParentAccountId is { } pid && ResolveAccount?.Invoke(pid) is { } parent)
+            return parent;
+        throw new InteractiveSignInRequiredException(
+            $"Shared mailbox '{account.SharedAddress}' has no signed-in parent account.");
+    }
+
     public Task<string> GetAccessTokenAsync(AccountModel account, CancellationToken ct = default)
         => GetAccessTokenAsync(account, DefaultScopesFor(account), ct);
 
     public async Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
     {
         await EnsureTokenCacheAsync();
+        var identity = ResolveTokenIdentity(account);   // #31: a shared mailbox borrows its parent's token
         var msalAccounts = await _msal.GetAccountsAsync();
         var msalAccount  = msalAccounts.FirstOrDefault(a =>
-            string.Equals(a.Username, account.Username, StringComparison.OrdinalIgnoreCase));
+            string.Equals(a.Username, identity.Username, StringComparison.OrdinalIgnoreCase));
 
         if (msalAccount is not null)
         {
             try
             {
                 var silent = await _msal.AcquireTokenSilent(scopes, msalAccount).ExecuteAsync(ct);
-                LogService.Log($"OAuthService: silent token acquired for {account.Username}");
+                LogService.Log($"OAuthService: silent token acquired for {identity.Username}");
                 return silent.AccessToken;
             }
             catch (MsalUiRequiredException)
@@ -253,6 +298,13 @@ public class OAuthService : IOAuthService
             }
         }
 
+        // A shared mailbox (#31) never drives its own interactive sign-in: it has no MSAL entry, and a
+        // background read (the #456 sweep) must not spawn a sign-in window. When the parent's token isn't
+        // silently available the shared mailbox is simply disconnected, surfaced by the caller.
+        if (account.IsShared)
+            throw new InteractiveSignInRequiredException(
+                $"Shared mailbox '{account.SharedAddress}' is disconnected — sign in to its parent account.");
+
         var result = await SignInInteractiveAsync(account, scopes, ct);
         return result.AccessToken;
     }
@@ -260,12 +312,13 @@ public class OAuthService : IOAuthService
     public async Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
     {
         await EnsureTokenCacheAsync();
+        var identity = ResolveTokenIdentity(account);   // #31: shared mailbox → parent's cached sign-in
         var msalAccounts = await _msal.GetAccountsAsync();
         var msalAccount  = msalAccounts.FirstOrDefault(a =>
-            string.Equals(a.Username, account.Username, StringComparison.OrdinalIgnoreCase));
+            string.Equals(a.Username, identity.Username, StringComparison.OrdinalIgnoreCase));
 
         if (msalAccount is null)
-            throw new InteractiveSignInRequiredException($"No cached sign-in for {account.Username}.");
+            throw new InteractiveSignInRequiredException($"No cached sign-in for {identity.Username}.");
 
         try
         {
@@ -283,13 +336,14 @@ public class OAuthService : IOAuthService
     public async Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default)
     {
         await EnsureTokenCacheAsync();
+        var identity = ResolveTokenIdentity(account);   // #31: shared mailbox → parent's cached sign-in
         var msalAccounts = await _msal.GetAccountsAsync();
         var msalAccount  = msalAccounts.FirstOrDefault(a =>
-            string.Equals(a.Username, account.Username, StringComparison.OrdinalIgnoreCase));
+            string.Equals(a.Username, identity.Username, StringComparison.OrdinalIgnoreCase));
 
         // No cached account at all → the only way to a token is interactive.
         if (msalAccount is null)
-            throw new InteractiveSignInRequiredException($"No cached sign-in for {account.Username}.");
+            throw new InteractiveSignInRequiredException($"No cached sign-in for {identity.Username}.");
 
         try
         {

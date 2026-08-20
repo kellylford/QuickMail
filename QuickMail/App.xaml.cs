@@ -494,6 +494,10 @@ public partial class App : Application
                 watchService: watchService,
                 folderViewState: folderViewState);
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
+            // #31: a credential-less shared mailbox borrows its parent account's token. Point the token
+            // resolver at the live account list (rebuilt from disk on every LoadAccountList) so a shared
+            // mailbox added at runtime resolves its parent without a restart.
+            msOAuthService.ResolveAccount = id => mainVm.Accounts.FirstOrDefault(a => a.Id == id);
             mainVm.ImmutableIdRebuildAnnouncePending = immutableIdRebuilt;   // #366 one-time re-sync notice
             // Registers/unregisters the Help command and shows or hides the menu item, and sets
             // ConnectionJournal.Enabled — so nothing records until the user opts in.

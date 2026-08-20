@@ -3175,7 +3175,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Connected means "this session reached the server", not "we have folders for it" — the
         // folder cache is restored from SQLite at launch (#516), so keying off it here would start
         // watchers against accounts that never connected.
-        var connected    = Accounts.Where(a => _connectedAccountIds.Contains(a.Id)).ToList();
+        //
+        // #31: a shared mailbox never gets a live watcher. A Graph shared mailbox's .Shared scopes can't
+        // hold change-notification subscriptions (and delta over them is out of scope), so its only
+        // freshness is the #456 sweep (which still includes it — it filters on the folder flag, not
+        // IsShared). An IMAP-parent shared mailbox (PR 3) reads through its parent's connection and gets
+        // no watcher of its own either. Excluding here covers every notifier type in one place.
+        var connected    = Accounts.Where(a => _connectedAccountIds.Contains(a.Id) && !a.IsShared).ToList();
         var connectedIds = connected.Select(a => a.Id).ToHashSet();
 
         // Only (re)start watchers when the connected set changed — StartWatchers stops and restarts
@@ -3785,6 +3791,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Settings change takes effect without a restart.
     internal void MaybeNotifyNewMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
     {
+        // #31: no new-mail toast for a shared mailbox. Now that shared accounts connect (PR 2) the #456
+        // sweep delivers their inbox arrivals here, but a shared mailbox is someone else's inbox you also
+        // watch — it stays off, defaulting off, until the per-account opt-in ships (spec §4.1, PR 5).
+        if (account.IsShared) return;
         if (_notifications is not { IsSupported: true }) return;
         if (!_configService.Load().NotifyOnNewMail) return;
 
@@ -3844,6 +3854,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // argument for this pair of methods and is not observable from any public surface.
     internal void MaybeNotifyWatchedMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
     {
+        if (account.IsShared) return;   // #31: no toast for a shared mailbox (spec §4.1) — see MaybeNotifyNewMail
         if (_notifications is not { IsSupported: true }) return;
         if (_watchService == null) return;
         if (!_configService.Load().NotifyOnWatchedConversation) return;
@@ -4299,7 +4310,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // POP3 account against an IMAP account on the same host. Serializing matters more for POP3
         // than for IMAP: RFC 1939 gives a session an exclusive lock on the maildrop.
         var resultsByHost = await Task.WhenAll(
-            Accounts.Where(a => !a.IsShared)   // #31: shared mailboxes are not connected in PR 1 (no own creds)
+            // #31: a Graph-parent shared mailbox connects in PR 2 — it borrows the parent's token
+            // (OAuthService resolver) and reads /users/{SharedAddress}. An IMAP-parent shared mailbox
+            // stays deferred to PR 3 (XOAUTH2 user=), so it is still skipped here.
+            Accounts.Where(a => !a.IsShared || a.BackendKind == BackendKind.MicrosoftGraph)
                     .GroupBy(a => a.IncomingHost, StringComparer.OrdinalIgnoreCase)
                     .Select(async hostGroup =>
                     {
@@ -8911,9 +8925,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IEnumerable<AccountModel> accounts,
         Func<Guid, bool> isBackendConnected,
         Func<Guid, bool> hasCachedFolders)
-        // #31: a shared mailbox has no credentials of its own — it reads through its parent's token
-        // (from PR 2). PR 1 never connects it: it's a navigable, empty top-level node until then.
-        => accounts.Where(a => !a.IsShared && (!isBackendConnected(a.Id) || !hasCachedFolders(a.Id))).ToList();
+        // #31: a shared mailbox has no credentials of its own — it reads through its parent's token. A
+        // Graph-parent shared mailbox connects from PR 2 (the resolver borrows the parent's token); an
+        // IMAP-parent shared mailbox stays deferred to PR 3, so it is excluded here and remains a
+        // navigable, empty top-level node until then.
+        => accounts.Where(a => (!a.IsShared || a.BackendKind == BackendKind.MicrosoftGraph)
+                               && (!isBackendConnected(a.Id) || !hasCachedFolders(a.Id))).ToList();
 
     public void RefreshAccountList()
     {
