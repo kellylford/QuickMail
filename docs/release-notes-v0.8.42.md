@@ -56,13 +56,17 @@ The cause was that QuickMail is built keyboard-first, and every one of these lis
   you on to the message list, and a click leaves you looking at the tree you just used.
 - **Accounts** connect on a single click.
 - **Messages in the Conversations, From and To views** open on a single click, which they already
-  did in the plain message list.
+  did in the plain message list. A conversation holding a single message opens that message, the
+  same as pressing Enter on it.
 - **Attachments** open on a double click, in both the reading pane and an open message window.
 
-Two smaller mouse faults went with them. In the message list, selecting several messages with
-**Ctrl** or **Shift** held used to open each one as you added it — in Window mode, that meant a
-window per message on the way to deleting them; those now only add to the selection. And a click on
-the empty space below the last message no longer re-opens whichever message was selected.
+Three smaller faults in the message list went with them, all of them about a click that meant
+something other than "open this". Selecting several messages with **Ctrl** or **Shift** held used to
+open each one as you added it — in Window mode, a window per message on the way to deleting them.
+Dragging across several messages to select them used to open the last one, which dropped the
+selection back to that message, so the Delete that followed deleted one message instead of the five
+you had selected. And a click on the empty space below the last message re-opened whichever message
+was selected. All three now leave the selection alone.
 
 Nothing about the keyboard changed: no shortcut, no announcement, and no reading order is different
 from 0.8.41. ([#601](https://github.com/kellylford/QuickMail/pull/601))
