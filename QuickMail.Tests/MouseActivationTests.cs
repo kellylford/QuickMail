@@ -184,6 +184,38 @@ public class MouseActivationTests
         Assert.Null(MouseActivation.ItemFromClick<MailMessageSummary>(row));
     }
 
+    [StaFact]
+    public void AClickOnARow_ReachesAHandlerOnTheTreeItself()
+    {
+        // The assumption the folder fix rests on: TreeViewItem handles the button-DOWN (that is how
+        // it selects), and nothing marks the button-up handled — so a handler declared on the
+        // TreeView sees the click. If that stopped being true the fix would be inert, the app would
+        // build, every other test here would pass, and clicking a folder would do nothing again.
+        //
+        // Raised as Mouse.MouseUpEvent, which is the bubbling event WPF actually routes.
+        // MouseLeftButtonUp is Direct: UIElement re-raises it on each element the MouseUp bubbles
+        // through, so raising MouseLeftButtonUp here directly would travel nowhere and prove nothing.
+        InFolderTree((tree, roots) =>
+        {
+            var row = Row(tree, roots[0]);
+            var label = Descendant<TextBlock>(row);
+            Assert.NotNull(label);
+
+            object? seen = null;
+            tree.AddHandler(UIElement.MouseLeftButtonUpEvent,
+                            new MouseButtonEventHandler((_, e) => seen = e.OriginalSource));
+
+            label!.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+            {
+                RoutedEvent = Mouse.MouseUpEvent,
+                Source = label,
+            });
+
+            Assert.True(seen is not null, "the button-up never reached the tree.");
+            Assert.Same(roots[0].Folder, MouseActivation.FolderFromClick(seen));
+        });
+    }
+
     // ── Multi-select gestures are not activations ───────────────────────────
 
     [Theory]
