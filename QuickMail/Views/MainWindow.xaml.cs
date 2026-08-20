@@ -2684,11 +2684,53 @@ public partial class MainWindow : Window
         MessageList.ItemContainerGenerator.StatusChanged += OnStatusChanged;
     }
 
-    // Single click: load message into the reading pane (standard reading-pane UX).
+    // Single click: open the message, the same as Enter does. Resolved from the clicked row rather
+    // than from SelectedItem, so a click on the empty space below the last message is a no-op — it
+    // used to re-open whatever was selected, which in Window mode meant a second message window.
     private async void MessageList_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (MessageList.SelectedItem is MailMessageSummary summary)
+        if (MouseActivation.ExtendsSelection(Keyboard.Modifiers)) return;
+        if (MouseActivation.ItemFromClick<MailMessageSummary>(e.OriginalSource) is { } summary)
             await OpenMessageFromListAsync(summary);
+    }
+
+    // Single click on a folder loads it, the same as Enter — minus the move to the message panel,
+    // which is a keyboard affordance: the mouse user is looking at the tree they just clicked.
+    // Without this the click only highlighted the row (the tree has no SelectedItemChanged handler,
+    // deliberately — arrowing must not fetch every folder it passes over), so the message list went
+    // on showing the folder the user came from and the next F6 into the tree undid the highlight.
+    private async void FolderList_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (MouseActivation.FolderFromClick(e.OriginalSource) is { } folder)
+            await _vm.SelectFolderCommand.ExecuteAsync(folder);
+    }
+
+    // Single click on an account connects it, the same as Enter. The ListBox's SelectedItem binding
+    // moved SelectedAccount on its own, which left the app naming an account it had never connected.
+    private async void AccountList_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (MouseActivation.ItemFromClick<AccountModel>(e.OriginalSource) is { } account)
+            await _vm.SelectAccountCommand.ExecuteAsync(account);
+    }
+
+    // Single click on a message in any of the grouped trees opens it, matching the flat message
+    // list. A click on a group header resolves to no message and just selects the header, and the
+    // expander chevron keeps its own click.
+    private async void GroupTree_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (MouseActivation.ItemFromClick<MailMessageSummary>(e.OriginalSource) is not { } msg)
+            return;
+        _vm.SelectedMessage = msg;
+        await OpenMessageFromListAsync(msg);
+    }
+
+    // Attachments open on double-click — the gesture a file row has everywhere else in Windows.
+    // Single click stays selection only, so clicking through a list of attachments does not launch
+    // each one in turn.
+    private void ReadingPaneAttachmentList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (MouseActivation.ItemFromClick<AttachmentModel>(e.OriginalSource) is { } attachment)
+            _vm.OpenAttachmentCommand.Execute(attachment);
     }
 
     // Ctrl+Shift+M = Archive (issue #318). Used by the message list and all three group trees when

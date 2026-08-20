@@ -767,6 +767,14 @@ public partial class MessageWindow : Window
         }
     }
 
+    // Attachments open on double-click, the mouse counterpart of Enter above. Single click stays
+    // selection only, so clicking down a list of attachments does not launch each one in turn.
+    private void AttachmentList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (MouseActivation.ItemFromClick<AttachmentModel>(e.OriginalSource) is { } attachment)
+            _ = _vm.OpenAttachmentCommand.ExecuteAsync(attachment);
+    }
+
     // Alt+A (window.focusAttachments, issue #350): move focus to this message's attachment list.
     // GotKeyboardFocus selects the first item so the screen reader lands on an attachment rather
     // than the empty list shell. When the message has none, announce it instead of moving focus
