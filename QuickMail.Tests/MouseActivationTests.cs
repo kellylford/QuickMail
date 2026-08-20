@@ -62,7 +62,7 @@ public class MouseActivationTests
             var label = Descendant<TextBlock>(Row(tree, inbox));
             Assert.NotNull(label);
 
-            Assert.Same(inbox.Folder, MouseActivation.FolderFromClick(label));
+            Assert.Same(inbox.Folder, FolderAt(label));
         });
     }
 
@@ -78,7 +78,7 @@ public class MouseActivationTests
             var run = Descendant<TextBlock>(Row(tree, inbox))?.Inlines.OfType<Run>().FirstOrDefault();
             Assert.NotNull(run);
 
-            Assert.Same(inbox.Folder, MouseActivation.FolderFromClick(run));
+            Assert.Same(inbox.Folder, FolderAt(run));
         });
     }
 
@@ -94,7 +94,7 @@ public class MouseActivationTests
             var label = Descendant<TextBlock>(Row(parentRow, child));
             Assert.NotNull(label);
 
-            Assert.Same(child.Folder, MouseActivation.FolderFromClick(label));
+            Assert.Same(child.Folder, FolderAt(label));
         });
     }
 
@@ -109,7 +109,7 @@ public class MouseActivationTests
             var expander = row.Template.FindName("Expander", row) as ToggleButton;
             Assert.NotNull(expander);
 
-            Assert.Null(MouseActivation.FolderFromClick(expander));
+            Assert.Null(FolderAt(expander));
         });
     }
 
@@ -122,8 +122,8 @@ public class MouseActivationTests
             var host = Descendant<ItemsPresenter>(tree);
             Assert.NotNull(host);
 
-            Assert.Null(MouseActivation.FolderFromClick(host));
-            Assert.Null(MouseActivation.FolderFromClick(tree));
+            Assert.Null(FolderAt(host));
+            Assert.Null(FolderAt(tree));
         });
     }
 
@@ -135,7 +135,7 @@ public class MouseActivationTests
             var bar = Descendant<ScrollBar>(tree);
             Assert.NotNull(bar);
 
-            Assert.Null(MouseActivation.FolderFromClick(bar));
+            Assert.Null(FolderAt(bar));
         });
     }
 
@@ -148,7 +148,7 @@ public class MouseActivationTests
             var label = Descendant<TextBlock>(Row(tree, roots[1]));
             Assert.NotNull(label);
 
-            Assert.Null(MouseActivation.FolderFromClick(label));
+            Assert.Null(FolderAt(label));
             Assert.Same(roots[1], MouseActivation.ItemFromClick<FolderTreeNode>(label));
         });
     }
@@ -163,13 +163,13 @@ public class MouseActivationTests
             DataContext = new FolderTreeNode { Label = "Work", Folder = Folder("Work", isHeader: true) },
         };
 
-        Assert.Null(MouseActivation.FolderFromClick(row));
+        Assert.Null(FolderAt(row));
     }
 
     [Fact]
     public void NoSource_ResolvesNothing()
     {
-        Assert.Null(MouseActivation.FolderFromClick(null));
+        Assert.Null(FolderAt(null));
         Assert.Null(MouseActivation.ItemFromClick<FolderTreeNode>(null));
         Assert.Null(MouseActivation.ItemFromClick<FolderTreeNode>("not a dependency object"));
     }
@@ -212,9 +212,164 @@ public class MouseActivationTests
             });
 
             Assert.True(seen is not null, "the button-up never reached the tree.");
-            Assert.Same(roots[0].Folder, MouseActivation.FolderFromClick(seen));
+            Assert.Same(roots[0].Folder, FolderAt(seen));
         });
     }
+
+    // ── A press and its release must land on the same row ────────────────────
+    //
+    // Found by an independent review of the first pass, which measured what the handlers actually
+    // did rather than reading them: every one of them ran twice on a double-click.
+
+    [Fact]
+    public void APressAndReleaseOnTheSameRow_Activates()
+    {
+        var tracker = new RowClickTracker();
+        var row = new object();
+
+        tracker.Press(row, clickCount: 1);
+
+        Assert.Same(row, tracker.Release(row));
+    }
+
+    [Fact]
+    public void ADoubleClick_ActivatesOnce()
+    {
+        // Two clicks deliver two button-ups. Unpaired, the second one opened a second message
+        // window in Window mode, and on the account list started a second connect that cancelled
+        // the first — leaving "Connection cancelled." on an account that had just connected.
+        var tracker = new RowClickTracker();
+        var row = new object();
+
+        tracker.Press(row, clickCount: 1);
+        Assert.Same(row, tracker.Release(row));
+
+        tracker.Press(row, clickCount: 2);
+
+        Assert.Null(tracker.Release(row));
+    }
+
+    [Fact]
+    public void APressOnOneRowReleasedOverAnother_ActivatesNeither()
+    {
+        // The list selects on the press, so activating the row under the release would leave the
+        // tree highlighting one folder while the message list showed another — the same split this
+        // whole change exists to remove, mirrored.
+        var tracker = new RowClickTracker();
+        var pressed = new object();
+        var released = new object();
+
+        tracker.Press(pressed, clickCount: 1);
+
+        Assert.Null(tracker.Release(released));
+    }
+
+    [Fact]
+    public void ADragAcrossRows_LeavesTheSelectionAlone()
+    {
+        // Drag from the first message to the fifth to select five, release, press Delete. The
+        // release used to activate the fifth row, and opening a message reduces an Extended
+        // selection to that one row — so Delete deleted one message, not five.
+        var tracker = new RowClickTracker();
+        var first = new object();
+        var fifth = new object();
+
+        tracker.Press(first, clickCount: 1);
+
+        Assert.Null(tracker.Release(fifth));
+    }
+
+    [Fact]
+    public void AReleaseWithNoPress_ActivatesNothing()
+    {
+        // A button-up that arrives without its press: released over the list after a drag that
+        // began somewhere else entirely.
+        Assert.Null(new RowClickTracker().Release(new object()));
+    }
+
+    [Fact]
+    public void OnePress_CannotActivateTwice()
+    {
+        var tracker = new RowClickTracker();
+        var row = new object();
+        tracker.Press(row, clickCount: 1);
+
+        Assert.Same(row, tracker.Release(row));
+        Assert.Null(tracker.Release(row));
+    }
+
+    [Fact]
+    public void NothingUnderThePress_ActivatesNothing()
+    {
+        // Pressing the empty space below the rows, then releasing over a row as the mouse drifts.
+        var tracker = new RowClickTracker();
+        tracker.Press(null, clickCount: 1);
+
+        Assert.Null(tracker.Release(null));
+        Assert.Null(tracker.Release(new object()));
+    }
+
+    // ── Single-message groups open, the same as Enter ────────────────────────
+
+    [Fact]
+    public void ASingleMessageConversation_OpensThatMessage()
+    {
+        // The gap the independent review caught. Enter on a one-message conversation opens the
+        // message rather than expanding a branch with one row in it; the click understood message
+        // rows only, and in Conversations view most top-level rows are single-message
+        // conversations — so most of that view still did nothing when clicked.
+        var message = Message();
+        var group = new ConversationGroup { NormalizedSubject = "Lunch", Messages = [message] };
+
+        Assert.Same(message, MouseActivation.ActivatableMessage(group));
+    }
+
+    [Fact]
+    public void ASingleMessageSenderGroup_OpensThatMessage()
+    {
+        // From and To views, whose Enter paths do the same for the same reason.
+        var message = Message();
+        var group = new SenderGroup { SenderKey = "alice@example.com", Messages = [message] };
+
+        Assert.Same(message, MouseActivation.ActivatableMessage(group));
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(5)]
+    public void AGroupHoldingMoreThanOneMessage_StaysSelectionOnly(int count)
+    {
+        // Enter toggles the branch here; a click leaves that to the chevron, as a tree click does
+        // everywhere in Windows. Opening the newest message instead would be a guess.
+        var messages = Enumerable.Range(0, count).Select(_ => Message()).ToList();
+
+        Assert.Null(MouseActivation.ActivatableMessage(
+            new ConversationGroup { NormalizedSubject = "Budget", Messages = messages }));
+        Assert.Null(MouseActivation.ActivatableMessage(
+            new SenderGroup { SenderKey = "alice@example.com", Messages = messages }));
+    }
+
+    [Fact]
+    public void AMessageRow_OpensItself()
+    {
+        var message = Message();
+
+        Assert.Same(message, MouseActivation.ActivatableMessage(message));
+    }
+
+    [Fact]
+    public void ARowThatIsNeither_OpensNothing()
+    {
+        Assert.Null(MouseActivation.ActivatableMessage(new FolderTreeNode { Label = "Inbox" }));
+        Assert.Null(MouseActivation.ActivatableMessage(null));
+    }
+
+    private static MailMessageSummary Message() => new()
+    {
+        MessageId = "1", AccountId = AccountId, FolderName = "INBOX",
+        From = "alice@example.com", Subject = "Hello",
+        Date = new DateTimeOffset(2026, 8, 20, 10, 0, 0, TimeSpan.Zero),
+    };
 
     // ── Multi-select gestures are not activations ───────────────────────────
 
@@ -295,6 +450,36 @@ public class MouseActivationTests
     }
 
     [Fact]
+    public void EveryClickActivatedListPairsThePressWithTheRelease()
+    {
+        // Six declarations: the message list, the folder tree, the account list, and the three
+        // grouped trees. A list wired for the release alone is a list where a double-click
+        // activates twice and a drag ends in an activation.
+        var declarations = Source("Views/MainWindow.xaml")
+            .Split("PreviewMouseLeftButtonDown=").Length - 1;
+
+        Assert.Equal(6, declarations);
+    }
+
+    [Fact]
+    public void TheFolderClickGoesThroughItsTracker()
+    {
+        Assert.Contains("_folderListClick.Release(", FolderClickHandler(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Views/MainWindow.xaml.cs")]
+    [InlineData("Views/MessageWindow.xaml.cs")]
+    public void AttachmentsOpenOnTheLeftButtonOnly(string file)
+    {
+        // Control.MouseDoubleClick is raised for any button, so without this a double right-click
+        // shell-opens the file. Both attachment lists carry a context menu, which makes it awkward
+        // to reach rather than impossible.
+        Assert.Contains("if (e.ChangedButton != MouseButton.Left) return;",
+                        Source(file), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheMessageWindowsAttachmentListOpensOnDoubleClick()
     {
         Assert.Contains("MouseDoubleClick=\"AttachmentList_MouseDoubleClick\"",
@@ -346,6 +531,10 @@ public class MouseActivationTests
     private static string FolderClickHandler() =>
         Between(Source("Views/MainWindow.xaml.cs"),
                 "private async void FolderList_MouseLeftButtonUp", "\n    }");
+
+    // What the handler does in two steps: resolve the clicked row, then ask what it activates.
+    private static MailFolderModel? FolderAt(object? source) =>
+        MouseActivation.ActivatableFolder(MouseActivation.RowFromClick(source));
 
     // ── Harness ──────────────────────────────────────────────────────────────
 
