@@ -209,4 +209,57 @@ public class AccountManagerTabOrderTests
         }
         finally { window.Close(); }
     }
+
+    /// <summary>
+    /// #584 follow-up (PR #585 review note 3): pins the common case — Advanced COLLAPSED. Its contents
+    /// are then not focusable, so the expander header is the only Advanced stop, and sign-in must still
+    /// sort after it (and after the main-surface fields), in both Tab and Shift+Tab directions.
+    /// </summary>
+    [StaFact]
+    public void OAuthSignInIsTheLastStop_WithAdvancedCollapsed()
+    {
+        var vm = NewVm(AuthType.OAuth2Microsoft);
+        var window = new AccountManagerDialog(vm)
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+        };
+        window.Show();
+        try
+        {
+            vm.IsAdvancedExpanded = false;   // the common case: Advanced stays closed
+            window.UpdateLayout();
+            Drain();
+
+            var close = window.FindName("CloseButton") as Button;
+            Assert.NotNull(close);
+            const string SignIn = "Sign in with Microsoft";
+
+            TabOrderWalker.StartAt(window, close!, "Close");
+            var stops = TabOrderWalker.Walk(window);
+            var order = string.Join(" -> ", stops);
+            int At(string name) => stops.IndexOf(name);
+
+            Assert.True(At(SignIn) >= 0, $"sign-in button not reachable. Order: {order}");
+            Assert.True(At("HeaderSite") >= 0, $"expander header never reached. Order: {order}");
+            // Collapsed: no Advanced contents are tab stops...
+            Assert.True(At("SignatureBox") < 0, $"Advanced contents are reachable while collapsed. Order: {order}");
+            Assert.True(At("ImapHostBox") < 0, $"Advanced contents are reachable while collapsed. Order: {order}");
+            // ...and sign-in still sorts after the collapsed Advanced header and after the form fields.
+            Assert.True(At("UsernameBox") >= 0 && At("UsernameBox") < At(SignIn),
+                $"email field unreachable, or sign-in jumped above the form. Order: {order}");
+            Assert.True(At("HeaderSite") < At(SignIn), $"sign-in precedes the Advanced header. Order: {order}");
+
+            // Backward (Shift+Tab): from Close, going back reaches sign-in before the Advanced header.
+            TabOrderWalker.StartAt(window, close!, "Close");
+            var back = TabOrderWalker.WalkBackward(window);
+            var backOrder = string.Join(" -> ", back);
+            int BackAt(string name) => back.IndexOf(name);
+
+            Assert.True(BackAt(SignIn) >= 0, $"Shift+Tab never reached sign-in. Backward: {backOrder}");
+            Assert.True(BackAt("HeaderSite") >= 0, $"Shift+Tab never reached the Advanced header. Backward: {backOrder}");
+            Assert.True(BackAt(SignIn) < BackAt("HeaderSite"),
+                $"Shift+Tab reached the Advanced header before sign-in. Backward: {backOrder}");
+        }
+        finally { window.Close(); }
+    }
 }

@@ -178,4 +178,61 @@ public class AddAccountTabOrderTests
         }
         finally { window.Close(); }
     }
+
+    /// <summary>
+    /// #584 follow-up (PR #585 review note 3): the common case is Advanced COLLAPSED. Its contents
+    /// are then not focusable, so the expander header is the only Advanced stop — sign-in must still
+    /// sort after it (and after the sync opt-ins), in both directions. The expanded case is pinned
+    /// above; this pins the case a user actually meets most of the time.
+    /// </summary>
+    [StaFact]
+    public void OAuthSignInIsTheLastStop_WithAdvancedCollapsed()
+    {
+        var vm = NewVm();
+        vm.SelectedProvider = new ProviderCatalog().All.First(p => p.Id == ProviderCatalog.MicrosoftId);
+        var window = new AddAccountDialog(vm)
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+        };
+        window.Show();
+        try
+        {
+            vm.IsAdvancedExpanded = false;   // the common case: Advanced stays closed
+            window.UpdateLayout();
+            Drain();
+
+            var provider = (Control)window.FindName("ProviderComboBox");
+            const string SignIn = "Sign in with Microsoft";
+
+            TabOrderWalker.StartAt(window, provider, "ProviderComboBox");
+            var stops = WalkTabOrder(window);
+            var order = string.Join(" -> ", stops);
+            int At(string name) => stops.IndexOf(name);
+
+            Assert.True(At(SignIn) >= 0, $"sign-in button not reachable. Order: {order}");
+            Assert.True(At("HeaderSite") >= 0, $"expander header never reached. Order: {order}");
+            // Collapsed: the Advanced contents are not tab stops at all...
+            Assert.True(At("SignatureBox") < 0, $"Advanced contents are reachable while collapsed. Order: {order}");
+            Assert.True(At("ImapHostBox") < 0, $"Advanced contents are reachable while collapsed. Order: {order}");
+            // ...and sign-in still sorts after the collapsed Advanced header and after the sync opt-ins.
+            Assert.True(At("HeaderSite") < At(SignIn), $"sign-in precedes the Advanced header. Order: {order}");
+            Assert.True(At("SyncContactsCheckBox") >= 0 && At("SyncContactsCheckBox") < At(SignIn),
+                $"sync contacts opt-in is unreachable or falls after sign-in. Order: {order}");
+            Assert.True(At("SyncCalendarCheckBox") >= 0 && At("SyncCalendarCheckBox") < At(SignIn),
+                $"sync calendar opt-in is unreachable or falls after sign-in. Order: {order}");
+
+            // Backward (Shift+Tab): from Add, going back reaches sign-in before the Advanced header.
+            var add = (Control)window.FindName("AddButton");
+            TabOrderWalker.StartAt(window, add, "AddButton");
+            var back = TabOrderWalker.WalkBackward(window);
+            var backOrder = string.Join(" -> ", back);
+            int BackAt(string name) => back.IndexOf(name);
+
+            Assert.True(BackAt(SignIn) >= 0, $"Shift+Tab never reached sign-in. Backward: {backOrder}");
+            Assert.True(BackAt("HeaderSite") >= 0, $"Shift+Tab never reached the Advanced header. Backward: {backOrder}");
+            Assert.True(BackAt(SignIn) < BackAt("HeaderSite"),
+                $"Shift+Tab reached the Advanced header before sign-in. Backward: {backOrder}");
+        }
+        finally { window.Close(); }
+    }
 }
