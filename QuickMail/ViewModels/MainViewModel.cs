@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -984,6 +985,41 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private ObservableCollection<AccountModel> _accounts = [];
 
+    // #31: a thread-safe id→account snapshot for the OAuthService shared-mailbox token resolver, which
+    // runs on background sweep threads (GraphClient acquires the token deep in a ConfigureAwait(false)
+    // flow). Accounts is a UI-thread-owned ObservableCollection — enumerating it off the UI thread while
+    // the user adds/removes an account throws "Collection was modified". Instead the resolver reads this
+    // volatile reference to an immutable map, rebuilt on the UI thread whenever the collection changes
+    // (reassignment via the generated OnAccountsChanged, and in-place add/remove via CollectionChanged).
+    private volatile Dictionary<Guid, AccountModel> _accountsById = new();
+    private ObservableCollection<AccountModel>? _accountsSubscription;
+
+    /// <summary>Thread-safe by-id account lookup for the shared-mailbox token resolver (App wires this to
+    /// <see cref="Services.OAuthService.ResolveAccount"/>). Safe to call from any thread.</summary>
+    public AccountModel? ResolveAccountById(Guid id) => _accountsById.TryGetValue(id, out var a) ? a : null;
+
+    partial void OnAccountsChanged(ObservableCollection<AccountModel> value)
+    {
+        // Re-subscribe when the whole collection is replaced (LoadAccountList), so in-place add/remove on
+        // the new instance keeps the snapshot current.
+        if (_accountsSubscription is not null) _accountsSubscription.CollectionChanged -= OnAccountsCollectionChanged;
+        _accountsSubscription = value;
+        if (value is not null) value.CollectionChanged += OnAccountsCollectionChanged;
+        RebuildAccountsById();
+    }
+
+    private void OnAccountsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => RebuildAccountsById();
+
+    // Runs on the UI thread (collection mutations are UI-thread-owned). Publishes a fresh immutable map;
+    // readers on other threads see the new reference atomically via the volatile field. Last-wins on the
+    // (unexpected) duplicate-id case so a rebuild never throws.
+    private void RebuildAccountsById()
+    {
+        var map = new Dictionary<Guid, AccountModel>(Accounts.Count);
+        foreach (var a in Accounts) map[a.Id] = a;
+        _accountsById = map;
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedAccount))]
     private AccountModel? _selectedAccount;
@@ -1677,6 +1713,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _rowLayoutService.LayoutsChanged += _onRowLayoutsChanged;
             ReloadRowSpeech();
         }
+
+        // #31: subscribe the initial account collection so ResolveAccountById reflects add/remove even
+        // before the first LoadAccountList reassigns it (which re-subscribes the new instance).
+        OnAccountsChanged(Accounts);
 
         // Load saved views and register their commands before the UI is shown.
         LoadSavedViews();

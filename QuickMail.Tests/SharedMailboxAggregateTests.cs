@@ -80,6 +80,25 @@ public class SharedMailboxAggregateTests
     }
 
     [Fact]
+    public async Task ResolveAccountById_TracksTheLiveAccountList() // #31 PR 2 — thread-safe token-resolver snapshot
+    {
+        // The shared-mailbox token resolver (App wires OAuthService.ResolveAccount to this) reads a
+        // snapshot rebuilt on every add/remove, so it never enumerates the UI-thread-owned collection off
+        // a background sweep thread. Pin that the snapshot actually tracks the list.
+        var vm = await MakeVmAsync(
+            [Normal(NormalId, "Work"), Shared(SharedId, ParentId, "Support")],
+            new() { [NormalId] = [Inbox(NormalId)], [SharedId] = [Inbox(SharedId)] });
+
+        Assert.Equal(NormalId, vm.ResolveAccountById(NormalId)?.Id);
+        Assert.Equal(SharedId, vm.ResolveAccountById(SharedId)?.Id);
+        Assert.Null(vm.ResolveAccountById(Guid.NewGuid()));   // unknown id → null, not a throw
+
+        // In-place removal updates the snapshot — the resolver must not resolve a removed account.
+        vm.Accounts.Remove(vm.Accounts.First(a => a.Id == NormalId));
+        Assert.Null(vm.ResolveAccountById(NormalId));
+    }
+
+    [Fact]
     public async Task MainWindowDelete_OfParent_CascadesSharedChildren()
     {
         // The main-window account context menu delete (MainViewModel) must cascade a parent's shared
