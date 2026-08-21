@@ -108,6 +108,8 @@ declared scopes). Both must still be declared here.
 | `Contacts.Read` | **In use, required.** Contact sync (#256, shipped v0.8.32) reads saved contacts from `/me/contacts` via `OAuthService.GraphContactScopes`. **The contact-consent flow requests this scope EXPLICITLY for BOTH work/school and personal accounts** (`RequestContactsConsentAsync` → `GetAccessTokenAsync(GraphContactScopes)`), **not** via `.default` — so this exact scope string must be declared and admin-consented, or the request dead-ends. Declaring only `Contacts.ReadWrite` does **not** satisfy an explicit `Contacts.Read` request (AAD matches the exact scope). This scope was missing until 2026-07-21 (only `ReadWrite` was declared), which is why contact sync dead-ended on admin-consent tenants — see #323. Added 2026-07-21 via the §7 device-code runbook. |
 | `Contacts.ReadWrite` | **Forward declaration only** — the write half for a future two-way contact sync; no code path writes contacts yet. Scope id `d56682ec-c09e-4743-aaf4-1a3aac4caa21`, added 2026-07-21. Note this does **not** cover the read path: the code requests `Contacts.Read` explicitly (see the row above). |
 | `People.Read` | **In use** — contact sync (#256, shipped v0.8.32) reads relevance-ranked prior recipients from `/me/people` (`OAuthService.GraphContactScopes`). Like `Contacts.Read`, it is requested **explicitly** by the contact-consent flow for work/school and personal accounts alike — not via `.default`. Scope id `ba47897c-39ec-4d83-8086-ee8256fa737d`, added 2026-07-21 via the §7 device-code runbook. |
+| `Mail.ReadWrite.Shared` | **Forward declaration** for shared mailboxes (#31/#461). Read/move/flag a Microsoft 365 shared mailbox the user has been delegated, via Graph `/users/{sharedAddress}/messages`. Scope id `5df07973-7d5d-46ed-9847-1271055cbd51`, added 2026-08-20 via the §7 device-code runbook, ahead of the shared-mailbox read PR. Delegated (`Scope`), **not** an application permission — the design deliberately avoids app-level `Mail.Read` so no tenant admin is needed for the common case. `Mail.Read.Shared` would cover read alone; ReadWrite.Shared subsumes it and is what the feature needs. **Not yet in `OAuthService`** — the shared-mailbox token request must add this exact string when that code lands, or the call 403s. |
+| `Mail.Send.Shared` | **Forward declaration** for shared mailboxes (#31/#461) — send-as / send-on-behalf-of the shared address via Graph `sendMail` on `/users/{sharedAddress}`. Scope id `a367ab51-6b49-43bf-a716-a1fb06d2a174`, added 2026-08-20 alongside the row above so the registration is touched once, not twice. Same caveat: declared but **not yet requested** by any code path. |
 | `MailboxSettings.ReadWrite` | Server-side Inbox rules (messageRule API). **Superset of `MailboxSettings.Read`** — declare ReadWrite, not Read. |
 | `User.Read` | Resolve the signed-in user's address/profile |
 | `User.ReadBasic.All` | Resolve other users (recipient display names) |
@@ -171,6 +173,18 @@ and was removed then; its reappearance here is intentional, not a regression. As
 change, already-consented accounts get one re-consent prompt on next sign-in, and **admin-consent
 tenants must re-grant admin consent** (§4) before the newly-declared scopes become acquirable.
 
+**Scopes added (2026-08-20):** `Mail.ReadWrite.Shared` and `Mail.Send.Shared` (both delegated),
+declared ahead of the shared-mailbox PRs (#31, design settled in #461) at the request on issue #31 —
+so the registration is edited once, before the feature work, rather than mid-feature. The live
+before/after audit confirmed nothing else moved: audience `AzureADandPersonalMicrosoftAccount`,
+`isFallbackPublicClient=True`, redirect exactly `http://localhost`, empty web redirects, both
+Exchange Online scopes intact. The declared Graph set is now **twelve** scopes (the ten above plus
+these two). Neither is requested by any code path yet — when the shared-mailbox token request lands
+it must use these exact strings (see the §6 note on the hand-maintained scope arrays); a declared
+scope that no array requests is simply never acquired. Standard consequences apply: already-consented
+accounts get one re-consent prompt on next interactive sign-in, and admin-consent tenants must
+re-grant admin consent (§4).
+
 **Code audit (2026-07-21):** this list was re-checked against every Graph, IMAP, and SMTP call in
 the codebase (supersedes the 2026-07-14 audit, which predated contact and calendar sync). It is
 **complete** — no code path needs a permission missing here, and every declared scope is either in
@@ -186,8 +200,9 @@ use or a documented forward declaration.
   strategy above): `MailboxSettings.ReadWrite` (server-side rules — `RuleService` is still 100%
   local, no `messageRule` call exists); `User.ReadBasic.All` (Graph `/users` directory lookup — no
   such call exists; contact sync reaches people via `/me/people` + `/me/contacts`, which are
-  governed by `People.Read` / `Contacts.Read`, **not** `/users`); and the **write half** of
-  `Contacts.ReadWrite` (no code writes contacts yet).
+  governed by `People.Read` / `Contacts.Read`, **not** `/users`); the **write half** of
+  `Contacts.ReadWrite` (no code writes contacts yet); and, since 2026-08-20,
+  `Mail.ReadWrite.Shared` / `Mail.Send.Shared` (shared mailboxes — declared, not yet requested).
 
 No POP3 or EWS code exists, so `POP.AccessAsUser.All` and `EWS.AccessAsUser.All` are correctly
 absent. Re-run this audit when a feature adds a new Graph endpoint category.
