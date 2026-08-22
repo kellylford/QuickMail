@@ -11,11 +11,12 @@
 // container never realizes - all of it fails here and nowhere else.
 //
 // Gated behind QUICKMAIL_RUN_INPUT_TESTS=1 (CI sets it; quickmail.yml fails the job if these did not
-// run there). They move the machine's real pointer, so every click first confirms that Windows puts
-// our window at that screen point and that WPF's own input hit test finds the intended element
-// there - a scaling or layout mismatch fails the assertion instead of clicking whatever was really
-// at that point. Press and release are paired in a finally, so a failed assertion mid-gesture can
-// never leave the machine's button held down.
+// run there). They move the machine's real pointer, so before any button is pressed every gesture
+// asks three questions about WHERE THE POINTER ACTUALLY IS - not about the point it aimed at, which
+// would be circular, since that coordinate came from this window's own layout and would agree with
+// itself no matter where the pointer went: did it land where it was sent, does Windows put our
+// window there, and would a click there hit the intended element. Press and release are paired in a
+// finally, so a failed assertion mid-gesture can never leave the machine's button held down.
 //
 // THE WINDOW RUNS ON ITS OWN THREAD, with a real Dispatcher.Run() message loop, and the test drives
 // it from outside. That is not incidental. The obvious harness - show the window on the test's own
@@ -66,6 +67,10 @@ public class MouseClickInputTests
 
             app.WaitUntil(() => app.SelectedFolderIs(app.Inbox),
                           "clicking Inbox never opened it; tree selection is " + app.TreeSelection);
+            // SelectFolderAsync sets SelectedFolder synchronously and THEN fetches, so WaitUntil can
+            // return while a second activation is still queued behind the first - which is the whole
+            // thing this count exists to catch.
+            app.Settle();
             Assert.Equal(before + 1, app.Store.FolderLoads);
         });
     }
@@ -98,7 +103,7 @@ public class MouseClickInputTests
 
             app.ClickFolderChevron(app.Inbox);
 
-            app.WaitUntil(() => !app.Inbox.IsExpanded, "the chevron did not collapse the branch");
+            app.WaitUntil(() => app.IsCollapsed(app.Inbox), "the chevron did not collapse the branch");
             app.Settle();
             Assert.Equal(open, app.OpenFolder);
             Assert.Equal(before, app.Store.FolderLoads);
@@ -140,6 +145,15 @@ public class MouseClickInputTests
             app.WaitUntil(() => app.SelectedFolderIs(app.Inbox),
                           "the double-click never opened the folder at all");
             app.Settle();
+
+            // Windows decides a double-click by elapsed time, so this has to check the window was
+            // actually given one. Otherwise a machine slow enough to push the second press past
+            // GetDoubleClickTime turns this into a test of two single clicks that happens to pass,
+            // and the path it exists to guard - RowClickTracker dropping ClickCount > 1 - is never
+            // reached.
+            Assert.True(app.HighestClickCount >= 2,
+                        $"the window was never given a double-click (highest ClickCount was " +
+                        $"{app.HighestClickCount}), so this run did not exercise the path it claims to.");
             Assert.Equal(before + 1, app.Store.FolderLoads);
         });
     }
@@ -154,9 +168,13 @@ public class MouseClickInputTests
         {
             app.ClickMessageRow(app.Messages[0]);
 
+            // IsMessageOpen and the loaded detail are what prove the click ACTIVATED the row: only
+            // MessageList_MouseLeftButtonUp -> SelectMessageAsync sets them. The selection assertion
+            // below is weaker on purpose - the ListView's own two-way binding moves SelectedMessage on
+            // the button-down - and is here to pin down WHICH row was hit, not that anything opened.
             app.WaitUntil(() => app.IsMessageOpen, "clicking a message did not open it");
-            Assert.True(app.SelectedMessageIs(app.Messages[0]));
             Assert.NotNull(app.OpenDetail);
+            Assert.True(app.SelectedMessageIs(app.Messages[0]));
         });
     }
 
@@ -219,20 +237,32 @@ public class MouseClickInputTests
                           "cannot reach the window.");
 
         var cursor = RealMouse.CursorPosition;
-        var app = new AppUnderMouse();
+        var foreground = RealMouse.ForegroundWindow;
         try
         {
+            // Constructed inside the try: it shows a Topmost window and then seeds it, and seeding
+            // asserts. A throw from there used to skip the whole finally, stranding a topmost window
+            // with a live message loop for the rest of the process - which then fails every later
+            // mouse test on "another top-level window is in front" and takes the other windowed
+            // classes in this collection with it. One seeding regression, a whole-suite failure that
+            // looks nothing like its cause.
+            using var app = new AppUnderMouse();
             test(app);
         }
         finally
         {
             // Backstop for the machine's own state: whatever went wrong, the button and the modifier
-            // must not still be down when this returns, or every test after it runs against a
-            // desktop stuck mid-gesture.
+            // must not still be down when this returns, and the pointer and the foreground window go
+            // back where they were - even if disposing the window threw on the way out.
+            //
+            // The foreground restore is not politeness. Clicking makes this process foreground, and
+            // closing the window afterwards leaves it wherever it falls; the account-dialog hint
+            // tests then cannot give keyboard focus to a control on a window shown with
+            // ShowActivated = false, and six of them fail in a run where these tests all passed.
             RealMouse.ReleaseLeft();
             RealMouse.ReleaseControl();
-            app.Dispose();
             RealMouse.RestoreCursor(cursor);
+            RealMouse.RestoreForeground(foreground);
         }
     }
 
@@ -251,6 +281,15 @@ public class MouseClickInputTests
         private MainViewModel _vm = null!;
         private int _moves;
         private int _downs;
+        private int _clickCount;
+
+        /// <summary>
+        /// The highest <c>ClickCount</c> the window has actually been given. Windows decides a
+        /// double-click by elapsed time, so whether one was delivered is a property of the run, not
+        /// of the code - a test that means to exercise the double-click path has to check it was on
+        /// that path rather than assume it.
+        /// </summary>
+        public int HighestClickCount => Volatile.Read(ref _clickCount);
 
         /// <summary>Mouse input the window itself saw, for failure messages.</summary>
         public string InputSeen =>
@@ -291,7 +330,12 @@ public class MouseClickInputTests
             };
             _thread.SetApartmentState(ApartmentState.STA);
             _thread.Start();
-            ready.Wait();
+
+            // Bounded: a hang inside Build - WebView2 initialization being the obvious candidate -
+            // would otherwise hang the whole run with no output at all, which is the single worst
+            // failure mode a test can have and the one this file's header records happening once.
+            Assert.True(ready.Wait(Patience),
+                        $"the window under test did not finish starting up within {Patience.TotalSeconds}s.");
 
             if (failure is not null)
                 throw new InvalidOperationException("Could not stand up the window under test.", failure);
@@ -300,15 +344,46 @@ public class MouseClickInputTests
 
             // Let the ViewModel's own start-up work run out before seeding over it, and again after,
             // so the rows are realized by the time the first click asks where they are.
-            Settle();
-            On(Seed);
-            Settle();
+            //
+            // Guarded, because Seed asserts and On/Settle time out: by this point the window is up
+            // with its own message loop running, and a throw that escaped here would leave it on
+            // screen - Topmost - for the rest of the process.
+            try
+            {
+                // Seeded repeatedly until it sticks. The ViewModel's own start-up load runs on its
+                // own schedule and clears the message list when it lands, so a single seed is a race
+                // against a machine we do not control - lost on CI, where the load arrives later than
+                // on a developer's desktop and left the list empty (measured: "MessageList=Visible/0
+                // rows" in a run where seeding had just asserted five).
+                for (var attempt = 1; ; attempt++)
+                {
+                    Settle();
+                    On(Seed);
+                    Settle();
+
+                    if (On(SeedHeld)) break;
+                    Assert.True(attempt < 3,
+                                "the ViewModel kept rebuilding over the seeded folders and messages, " +
+                                "so the rows the test needs never settled.");
+                }
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
         }
 
         public void Dispose()
         {
+            // Catching everything, not just TimeoutException: Dispatcher.Invoke rethrows whatever the
+            // delegate threw, and MainWindow.OnClosed tears down child windows, the tray icon and the
+            // ViewModel - any of which can throw over a fixture that a failing test left half set up.
+            // Letting that escape would skip the shutdown and the Join below AND replace the real test
+            // failure with a secondary one from the cleanup path, which is the diagnosis you actually
+            // needed.
             try { _dispatcher.Invoke(() => _window.Close(), DispatcherPriority.Send, CancellationToken.None, Patience); }
-            catch (TimeoutException) { /* falling through to shutdown is the point */ }
+            catch (Exception) { /* getting the loop shut down matters more than closing cleanly */ }
             _dispatcher.InvokeShutdown();
             _thread.Join(Patience);
         }
@@ -327,6 +402,14 @@ public class MouseClickInputTests
             var creds = new StubCredentialService();
             var config = new StubConfigService();
             var registry = new StubCommandRegistry();
+
+            // Explicit, not left to the model default: with close-to-tray on, MainWindow.OnClosing
+            // CANCELS the close and hides to the notification area instead. Dispose would then return
+            // successfully having closed nothing, and the shutdown that follows would strand a hidden
+            // window and a real tray icon.
+            var settings = config.Load();
+            settings.CloseToTray = false;
+            config.Save(settings);
 
             _vm = new MainViewModel(imap, accounts, creds, Store, new StubOAuthService(),
                 new StubSyncService(), config, registry, new StubViewService(), new StubRuleService(),
@@ -350,14 +433,23 @@ public class MouseClickInputTests
             _window.WindowStartupLocation = WindowStartupLocation.Manual;
             _window.Left = 40;
             _window.Top = 40;
-            _window.Width = 1100;
-            _window.Height = 700;
+            // Clamped to the desktop it is actually running on. A CI runner's desktop can be smaller
+            // than a developer's, and a window hanging off the edge puts the message list where there
+            // is no screen: the pointer cannot be moved onto it, and the failure reads as "another
+            // window is in front" rather than "the window does not fit".
+            _window.Width = Math.Min(1100, SystemParameters.VirtualScreenWidth - _window.Left - 8);
+            _window.Height = Math.Min(700, SystemParameters.VirtualScreenHeight - _window.Top - 8);
             _window.Topmost = true;
             // Counted at the window, before anything can handle them: this is what separates "the
             // input never reached the window" from "it reached it and nothing acted on it". The two
             // are indistinguishable at the ViewModel, and the first one is not a bug in the app.
             _window.PreviewMouseMove += (_, _) => Interlocked.Increment(ref _moves);
-            _window.PreviewMouseDown += (_, _) => Interlocked.Increment(ref _downs);
+            _window.PreviewMouseDown += (_, e) =>
+            {
+                Interlocked.Increment(ref _downs);
+                if (e.ClickCount > Volatile.Read(ref _clickCount))
+                    Volatile.Write(ref _clickCount, e.ClickCount);
+            };
 
             _window.Show();
             _window.Activate();
@@ -382,15 +474,32 @@ public class MouseClickInputTests
             foreach (var message in Messages) _vm.Messages.Add(message);
             _window.UpdateLayout();
 
-            // The seed is what every row lookup depends on. If the ViewModel rebuilt over it, say so
-            // here rather than letting it surface later as a mouse problem.
-            Assert.True(FolderTree.Items.Count == 1,
-                        $"the folder tree shows {FolderTree.Items.Count} rows, not the one seeded - " +
-                        "the ViewModel rebuilt it after seeding.");
-            Assert.True(MessageList.Items.Count == Messages.Count,
-                        $"the message list shows {MessageList.Items.Count} rows, not the " +
-                        $"{Messages.Count} seeded - the ViewModel replaced them after seeding.");
+            // MainWindow has a MinWidth/MinHeight, so the clamp in Build cannot always win. Say
+            // plainly that the window does not fit rather than letting it surface later as a pointer
+            // that cannot be moved onto a row.
+            //
+            // All in device-independent units - Window.Left/ActualWidth and SystemParameters are
+            // both in those. PointToScreen is NOT: it returns physical pixels, and mixing the two
+            // makes this fail on any scaled display, which is exactly what it did first time out.
+            var right = _window.Left + _window.ActualWidth;
+            var bottom = _window.Top + _window.ActualHeight;
+            var deskRight = SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth;
+            var deskBottom = SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight;
+            Assert.True(right <= deskRight && bottom <= deskBottom,
+                        $"the window under test extends to {right}x{bottom}, past the desktop's " +
+                        $"{deskRight}x{deskBottom}. Its panes cannot all be clicked; this desktop is " +
+                        "too small to run these tests on.");
+
         }
+
+        /// <summary>
+        /// Whether what is on screen is still what was seeded. The seed is what every row lookup
+        /// depends on, and the ViewModel's start-up load can land after it and wipe it - so this is
+        /// checked once things have gone quiet, not immediately after seeding, when it would only be
+        /// reporting that the assignment worked.
+        /// </summary>
+        private bool SeedHeld() =>
+            FolderTree.Items.Count == 1 && MessageList.Items.Count == Messages.Count;
 
         // -- Crossing to the window's thread ----------------------------------
 
@@ -449,7 +558,13 @@ public class MouseClickInputTests
                 if (done()) return;
                 Thread.Sleep(10);
             }
-            Assert.True(done(), $"{what} (waited 5s; the window saw {InputSeen}).");
+            // InputSeen crosses to the window's thread, which is exactly the thing that may have
+            // stopped responding. It must not be able to replace the real assertion message with a
+            // timeout from the failure path.
+            var seen = "unknown";
+            try { seen = InputSeen; }
+            catch (Exception ex) { seen = "could not be read: " + ex.GetType().Name; }
+            Assert.True(done(), $"{what} (waited 5s; the window saw {seen}).");
         }
 
         // -- What the tests assert on -----------------------------------------
@@ -462,6 +577,13 @@ public class MouseClickInputTests
         /// selects a folder of its own, so nothing here begins with none open.
         /// </summary>
         public string OpenFolder => On(() => _vm.SelectedFolder?.FullName ?? "none");
+
+        /// <summary>
+        /// Read on the window's thread like everything else here. IsExpanded is a plain bool written
+        /// there and polled from the test thread; going through On makes the read ordered rather than
+        /// relying on a non-volatile field being seen.
+        /// </summary>
+        public bool IsCollapsed(FolderTreeNode node) => On(() => !node.IsExpanded);
 
         /// <summary>Which message pane is actually showing, for failure messages.</summary>
         public string PaneState => On(() =>
@@ -496,37 +618,44 @@ public class MouseClickInputTests
         // -- Clicking ---------------------------------------------------------
 
         public void ClickFolderLabel(FolderTreeNode node, int clicks = 1) =>
-            Click(() => LabelOf(RowFor(node)), clicks);
+            Click(() => LabelOf(RowFor(node)),
+                  hit => ReferenceEquals(MouseActivation.ItemFromClick<FolderTreeNode>(hit), node),
+                  clicks);
 
-        public void ClickFolderChevron(FolderTreeNode node) => Click(() =>
-        {
-            var row = RowFor(node);
-            var chevron = row.Template.FindName("Expander", row) as ToggleButton;
-            Assert.True(chevron is not null, "the folder row template no longer has an Expander.");
-            return chevron!;
-        });
+        public void ClickFolderChevron(FolderTreeNode node) => Click(
+            () =>
+            {
+                var row = RowFor(node);
+                var chevron = row.Template.FindName("Expander", row) as ToggleButton;
+                Assert.True(chevron is not null, "the folder row template no longer has an Expander.");
+                return chevron!;
+            },
+            // Chrome, so the app's row lookup deliberately finds nothing here - which is the property
+            // the chevron test is about. Also require it to really be the chevron and not some other
+            // button, or a template change could quietly point this at the wrong thing.
+            hit => MouseActivation.RowFromClick(hit) is null && Ancestors(hit).OfType<ToggleButton>().Any());
 
         public void ClickMessageRow(MailMessageSummary message, bool withControl = false) =>
-            Click(() => RowFor(message), withControl: withControl);
+            Click(() => RowFor(message),
+                  hit => ReferenceEquals(MouseActivation.ItemFromClick<MailMessageSummary>(hit), message),
+                  withControl: withControl);
 
         /// <summary>
-        /// Moves the pointer to the centre of the element, confirms WPF reports it under the cursor,
-        /// and only then clicks. That confirmation is what makes a real click safe to run on
-        /// someone's desktop: if the coordinates do not land where the test thinks they do - a
-        /// display-scaling mismatch, a window in front, a row scrolled out of view - the test fails
-        /// without ever pressing the button.
+        /// Moves the pointer to the centre of the element, confirms the pointer really is over that
+        /// element, and only then clicks. That confirmation is what makes a real click safe to run on
+        /// someone's desktop: if the pointer did not land where the test aimed - or something else is
+        /// in front of it there - the test fails without ever pressing the button.
         /// </summary>
-        private void Click(Func<FrameworkElement> resolve, int clicks = 1, bool withControl = false)
+        private void Click(Func<FrameworkElement> resolve, Func<DependencyObject?, bool> hitIsRight,
+                           int clicks = 1, bool withControl = false)
         {
-            var (element, point, what) = On(() =>
+            var (point, what) = On(() =>
             {
                 var e = resolve();
-                return (e, CentreOf(e), Describe(e));
+                return (CentreOf(e), Describe(e));
             });
 
-            RealMouse.MoveTo(point);
-            Delivered();
-            On(() => AssertPointerIsOver(element, point, what));
+            MovePointerOnto(hitIsRight, point, what);
 
             if (withControl) RealMouse.HoldControl();
             try
@@ -534,10 +663,20 @@ public class MouseClickInputTests
                 for (var i = 0; i < clicks; i++)
                 {
                     RealMouse.PressLeft();
-                    try { Delivered(); }
+                    try
+                    {
+                        // Deliberately NOT waiting between the clicks of a multi-click: Windows
+                        // decides a double-click by elapsed time (GetDoubleClickTime, 500ms by
+                        // default), and waiting for the window to go idle after the first one means
+                        // waiting out a whole folder load. That drops the second press to
+                        // ClickCount 1 on any slow enough machine, which turns this from a
+                        // double-click test into a coin flip. Send the pair back to back and let the
+                        // window sort them out afterwards.
+                        if (i == clicks - 1) Delivered();
+                    }
                     finally { RealMouse.ReleaseLeft(); }
-                    Delivered();
                 }
+                Delivered();
             }
             finally
             {
@@ -546,19 +685,29 @@ public class MouseClickInputTests
             }
         }
 
+        /// <summary>
+        /// Moves the pointer and verifies where it actually ended up, before anyone presses a button.
+        /// </summary>
+        private void MovePointerOnto(Func<DependencyObject?, bool> hitIsRight, Point point, string what)
+        {
+            RealMouse.MoveTo(point);
+            Delivered();
+            var landed = RealMouse.CursorPosition;
+            On(() => AssertPointerIsOver(hitIsRight, point, landed, what));
+        }
+
         /// <summary>Presses on one message row, moves to another, and releases there.</summary>
         public void DragAcrossMessages(MailMessageSummary from, MailMessageSummary to)
         {
-            var (element, start, what) = On(() =>
+            var (start, what) = On(() =>
             {
                 var e = RowFor(from);
-                return (e, CentreOf(e), Describe(e));
+                return (CentreOf(e), Describe(e));
             });
             var end = On(() => CentreOf(RowFor(to)));
 
-            RealMouse.MoveTo(start);
-            Delivered();
-            On(() => AssertPointerIsOver(element, start, what));
+            MovePointerOnto(hit => ReferenceEquals(MouseActivation.ItemFromClick<MailMessageSummary>(hit), from),
+                            start, what);
 
             RealMouse.PressLeft();
             try
@@ -594,9 +743,10 @@ public class MouseClickInputTests
                 return new Point(topLeft.X + ((bottomRight.X - topLeft.X) / 3), bottomRight.Y - 8);
             });
 
-            RealMouse.MoveTo(point);
-            Delivered();
-            On(() => AssertPointerIsOver(FolderTree, point, "the empty space below the last row"));
+            // On NO row - which is the whole point of this test - and still inside the tree. Asked of
+            // the app's own row lookup, the one the click handler uses.
+            MovePointerOnto(hit => MouseActivation.RowFromClick(hit) is null && IsWithin(hit, FolderTree),
+                            point, "the empty space below the last row");
 
             RealMouse.PressLeft();
             try { Delivered(); }
@@ -616,27 +766,50 @@ public class MouseClickInputTests
         /// once the window has processed mouse input of its own. Hit-testing asks the same question
         /// of the same visual tree without depending on that.</para>
         /// </summary>
-        private void AssertPointerIsOver(DependencyObject target, Point point, string what)
+        /// <summary>
+        /// Everything here is asked about <paramref name="landed"/> - where the pointer REALLY is -
+        /// and never about the point the test aimed at. Asking about the aim point would be circular:
+        /// that coordinate came from this window's own layout, so of course the window is there and
+        /// of course the row hit-tests. It would pass no matter where the pointer actually went, and
+        /// the press that follows would land in another application.
+        ///
+        /// <para><paramref name="hitIsRight"/> is asked about the DATA the hit resolves to, not about
+        /// the visual instance. Containers are recycled and re-created: the ViewModel finishing a
+        /// load between resolving a row and moving onto it leaves the same row on screen with a
+        /// different container object, and an instance comparison then rejects a pointer that is
+        /// exactly where it should be. That is a real failure this test suite hit on CI, where the
+        /// start-up load lands later than on a developer's machine.</para>
+        /// </summary>
+        private void AssertPointerIsOver(Func<DependencyObject?, bool> hitIsRight,
+                                         Point aimedAt, Point landed, string what)
         {
+            Assert.True(Math.Abs(landed.X - aimedAt.X) <= 1 && Math.Abs(landed.Y - aimedAt.Y) <= 1,
+                $"the pointer was aimed at {aimedAt} for {what} but landed at {landed}. No click was " +
+                "sent - it would have gone wherever the pointer really is. Screen coordinates and the " +
+                "input pipeline disagree, which is what a display-scaling mismatch in the test host " +
+                "looks like.");
+
             var expectedWindow = new WindowInteropHelper(_window).Handle;
-            var actualWindow = RealMouse.TopLevelWindowAt(point);
+            var actualWindow = RealMouse.TopLevelWindowAt(landed);
             Assert.True(actualWindow == expectedWindow,
-                $"aimed at {point} for {what}, but Windows reports another top-level window there " +
-                $"(got {actualWindow:X}, expected {expectedWindow:X}). No click was sent - it would " +
-                "have gone to whatever is really in front.");
+                $"the pointer is at {landed} for {what}, but Windows reports another top-level window " +
+                $"there (got {actualWindow:X}, expected {expectedWindow:X}). No click was sent - it " +
+                "would have gone to whatever is really in front.");
 
             // InputHitTest, not VisualTreeHelper.HitTest: the latter is a pure geometric test over
             // the visual tree and happily returns visuals inside a COLLAPSED subtree, still carrying
             // the bounds they were last arranged with. Here that meant a hidden group tree answering
             // for the message list underneath it. InputHitTest asks the question a click asks.
-            var hit = _window.InputHitTest(_window.PointFromScreen(point)) as DependencyObject;
-            Assert.True(hit is not null && IsWithin(hit, target),
-                $"aimed at {point} for {what}, and the cursor reports {RealMouse.CursorPosition}, " +
-                $"but the topmost visual there is '{DescribeChain(hit)}' ({PaneState}). No click was " +
-                "sent. The element " +
-                "is not where layout says it is - a row scrolled out of view, a pane other than the " +
-                "one expected, or a display-scaling mismatch in the test host.");
+            var hit = HitTestAt(landed);
+            Assert.True(hit is not null && hitIsRight(hit),
+                $"the pointer is at {landed} for {what}, but the element a click there would hit is " +
+                $"'{DescribeChain(hit)}' ({PaneState}). No click was sent. The target is not where " +
+                "layout says it is - a row scrolled out of view, or a pane other than the one " +
+                "expected.");
         }
+
+        private DependencyObject? HitTestAt(Point screenPoint) =>
+            _window.InputHitTest(_window.PointFromScreen(screenPoint)) as DependencyObject;
 
         private static Point CentreOf(FrameworkElement element)
         {
@@ -645,19 +818,21 @@ public class MouseClickInputTests
             return element.PointToScreen(new Point(element.ActualWidth / 2, element.ActualHeight / 2));
         }
 
-        private static bool IsWithin(object? candidate, DependencyObject target)
+        private static bool IsWithin(object? candidate, DependencyObject target) =>
+            Ancestors(candidate as DependencyObject).Any(node => ReferenceEquals(node, target));
+
+        /// <summary>The element and everything above it, visual tree first.</summary>
+        private static IEnumerable<DependencyObject> Ancestors(DependencyObject? node)
         {
-            var node = candidate as DependencyObject;
             while (node is not null)
             {
-                if (ReferenceEquals(node, target)) return true;
+                yield return node;
                 // A Run has no visual parent - VisualTreeHelper throws on content elements - so fall
                 // back to the logical tree, the same hop MouseActivation makes.
                 node = node is Visual
                     ? VisualTreeHelper.GetParent(node) ?? LogicalTreeHelper.GetParent(node)
                     : LogicalTreeHelper.GetParent(node);
             }
-            return false;
         }
 
         // -- Finding rows (window thread only) --------------------------------

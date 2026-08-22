@@ -214,10 +214,10 @@ jobs:
           # env var above is dropped or the gate breaks, that claim becomes false and the tests
           # silently protect nothing.
           #
-          # Assert "nothing in these classes was skipped" rather than "at least N passed": they also
-          # hold non-gated [Fact]s, so a count-based floor is satisfied by the wrong tests and one of
-          # the gated ones can stop executing with no signal. This form states the intent directly
-          # and survives renames and additions within the classes.
+          # Assert "nothing in these classes was skipped" rather than "at least N passed": a
+          # count-based floor can be satisfied by the wrong tests, and a gated one can stop executing
+          # with no signal. This form states the intent directly and survives renames and additions
+          # within the classes.
           #
           # MouseClickInputTests is the same bargain for the mouse: it sends real clicks through
           # SendInput at a real window, needs an unlocked and otherwise-idle desktop, and so runs
@@ -231,7 +231,10 @@ jobs:
                       else { "not passed: " + (($notPassed | ForEach-Object { "$($_.testName) [$($_.outcome)]" }) -join ', ') }
             Write-Error ("Synthesized-input tests did not all run here ($detail). They are skipped by " +
                          "default and rely on QUICKMAIL_RUN_INPUT_TESTS=1 being set for this step; without " +
-                         "it they run nowhere. See issue #380.")
+                         "it they run nowhere. See issue #380. Note the mouse tests skip themselves for " +
+                         "a second reason - a secure desktop, i.e. a locked session or a UAC prompt on " +
+                         "the runner - so check their skip reason above before assuming the variable is " +
+                         "the problem.")
             exit 1
           }
           Write-Host "Synthesized-input tests executed: $($inputResults.Count) passed, 0 skipped."

@@ -177,6 +177,30 @@ internal static class RealMouse
             : "the window is DISABLED by a modal dialog with no title";
     }
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr window);
+
+    /// <summary>
+    /// The foreground window, so a test that takes it can hand it back.
+    ///
+    /// <para>Worth the trouble: clicking a window makes this process foreground, and closing that
+    /// window afterwards does not necessarily give it to anyone in particular. Other tests in the
+    /// run care - the account-dialog hint tests focus a control on a window shown with
+    /// <c>ShowActivated = false</c> and expect the focus to take, which needs the process to hold the
+    /// foreground. Leaving it wherever it fell made six of them fail, in a way that reads as
+    /// flakiness somewhere else entirely.</para>
+    /// </summary>
+    public static IntPtr ForegroundWindow => GetForegroundWindow();
+
+    public static void RestoreForeground(IntPtr window)
+    {
+        if (window != IntPtr.Zero) SetForegroundWindow(window);
+    }
+
     /// <summary>Where the user left the pointer, so the test can put it back.</summary>
     public static Point CursorPosition =>
         GetCursorPos(out var point) ? new Point(point.X, point.Y) : new Point(0, 0);
@@ -206,20 +230,26 @@ internal static class RealMouse
 
         // GetSystemMetrics answers for the calling THREAD's DPI awareness, so asking again under a
         // per-monitor-aware context is what reveals the real desktop. Per-thread and reversible -
-        // nothing about the process, or any window, is changed.
+        // nothing about the process, or any window, is changed. Restored in a finally: leaving the
+        // calling thread permanently per-monitor-aware would silently change every later
+        // PointToScreen and GetSystemMetrics on it.
         var previous = SetThreadDpiAwarenessContext(PerMonitorAwareV2);
-        var real = previous == IntPtr.Zero ? seen : VirtualScreen();
-        if (previous != IntPtr.Zero) SetThreadDpiAwarenessContext(previous);
+        (double Left, double Top, double Width, double Height) real;
+        try { real = previous == IntPtr.Zero ? seen : VirtualScreen(); }
+        finally { if (previous != IntPtr.Zero) SetThreadDpiAwarenessContext(previous); }
 
         var physicalX = real.Left + ((screenPoint.X - seen.Left) * real.Width / seen.Width);
         var physicalY = real.Top + ((screenPoint.Y - seen.Top) * real.Height / seen.Height);
 
         // Absolute mouse input is normalized to 0..65535 across the virtual desktop, not given in
-        // pixels.
-        var x = (int)Math.Round((physicalX - real.Left) * 65535.0 / (real.Width - 1));
-        var y = (int)Math.Round((physicalY - real.Top) * 65535.0 / (real.Height - 1));
+        // pixels. Ceiling, not Round: Windows maps a normalized value back with a floor, so rounding
+        // down lands one pixel short of the target - at width 1920, pixel 3 needs 102.4 and rounding
+        // gives 102, which floors back to pixel 2.
+        var x = (int)Math.Ceiling((physicalX - real.Left) * 65535.0 / (real.Width - 1));
+        var y = (int)Math.Ceiling((physicalY - real.Top) * 65535.0 / (real.Height - 1));
 
-        Send(MoveFlag | AbsoluteFlag | VirtualDeskFlag, x, y);
+        Send(MoveFlag | AbsoluteFlag | VirtualDeskFlag,
+             Math.Clamp(x, 0, 65535), Math.Clamp(y, 0, 65535));
     }
 
     private static (double Left, double Top, double Width, double Height) VirtualScreen() =>
@@ -235,9 +265,14 @@ internal static class RealMouse
 
     /// <summary>
     /// Holds Ctrl down at the OS level, so <c>Keyboard.Modifiers</c> reports it the way it does for
-    /// a real Ctrl+click. Only the focused window's process sees this, so the caller must have
-    /// clicked the window first. Always release it in a <c>finally</c>: a key left down by a failed
-    /// test stays down on the machine.
+    /// a real Ctrl+click.
+    ///
+    /// <para>This goes to whichever window is in the FOREGROUND, not to the one being clicked, and
+    /// the resulting key state is global - so the caller must have clicked the window first to bring
+    /// it forward. If it did not, the modifier is pressed into whatever is really in front (the
+    /// console running the tests, say); the test then fails rather than passing wrongly, but that is
+    /// luck, not design. Always release in a <c>finally</c>: a key left down by a failed test stays
+    /// down on the machine.</para>
     /// </summary>
     public static void HoldControl()    => SendKey(ControlKey, down: true);
     public static void ReleaseControl() => SendKey(ControlKey, down: false);
