@@ -635,8 +635,11 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         // window reconnects. On failure it stays added but DISCONNECTED (surfaced by its accessible
         // name, per PR 1), self-healing on a later connect once consent lands. Consent is never allowed
         // to roll back the add, and never a silent data loss.
+        // Shared-mailbox consent is a Microsoft Graph flow. An IMAP-parent shared mailbox (PR 3, XOAUTH2)
+        // must NOT trigger a Graph consent — that would pop a spurious Microsoft sign-in window at a
+        // non-Microsoft account. It is added here and stays disconnected until PR 3 wires its access.
         var parent = Accounts.FirstOrDefault(a => a.Id == sharedMailbox.ParentAccountId);
-        if (parent is null) return;
+        if (parent is null || parent.BackendKind != BackendKind.MicrosoftGraph) return;
         try
         {
             await _oauth.RequestSharedMailboxConsentAsync(parent);
@@ -644,10 +647,11 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         catch (Exception ex)
         {
             // Declined / admin-approval pending / offline: the interactive window already showed the
-            // user what was needed; the disconnected state carries it from here.
+            // user what was needed; the disconnected state carries it from here. Log the message too —
+            // for a pending-approval case it is the actionable detail.
             LogService.Log($"Shared mailbox '{sharedMailbox.SharedAddress}': consent not granted on parent " +
-                           $"'{parent.AccountLabel}' ({ex.GetType().Name}); it will stay disconnected until " +
-                           "access is granted.");
+                           $"'{parent.AccountLabel}' ({ex.GetType().Name}: {ex.Message}); it will stay " +
+                           "disconnected until access is granted.");
         }
     }
 

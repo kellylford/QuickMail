@@ -66,4 +66,34 @@ public class SharedMailboxConsentTests
         Assert.Contains(parent.Id, oauth.SharedConsentRequestedFor);
         Assert.Contains(vm.Accounts, a => a.Id == shared.Id);   // kept, not rolled back
     }
+
+    [Fact]
+    public async Task ImapParentSharedMailbox_DoesNotDriveGraphConsent() // #31 — IMAP-parent shared is PR 3
+    {
+        // The Add-shared dialog allows IMAP parents. A shared mailbox under one must NOT trigger the
+        // Microsoft Graph consent — that would pop a spurious Microsoft sign-in at a non-Microsoft
+        // account. It is added (disconnected until PR 3 wires XOAUTH2 access), with no consent request.
+        var oauth = new StubOAuthService();
+        var vm = new AccountManagerViewModel(
+            new StubAccountService(), new StubCredentialService(), new StubImapMailService(),
+            oauth, new StubLocalStoreService(), new StubConfigService(),
+            new StubFeatureGate(), new ProviderCatalog());
+        var imapParent = new AccountModel
+        {
+            Id = Guid.NewGuid(), AccountName = "Fastmail", Username = "me@fastmail.com",
+            BackendKind = BackendKind.ImapSmtp, AuthType = AuthType.Password,
+        };
+        vm.Accounts.Add(imapParent);
+        var shared = new AccountModel
+        {
+            Id = Guid.NewGuid(), AccountName = "team@fastmail.com", Username = "team@fastmail.com",
+            SharedAddress = "team@fastmail.com", IsShared = true, ParentAccountId = imapParent.Id,
+            BackendKind = imapParent.BackendKind,
+        };
+
+        await vm.CommitNewSharedMailboxAsync(shared);
+
+        Assert.Empty(oauth.SharedConsentRequestedFor);          // no Graph consent for an IMAP parent
+        Assert.Contains(vm.Accounts, a => a.Id == shared.Id);   // still added (disconnected until PR 3)
+    }
 }
