@@ -59,7 +59,16 @@ public partial class AccountManagerDialog : Window
             return;
         }
 
-        addVm.SharedMailboxAdded += _vm.CommitNewSharedMailbox;   // commit + persist; the window closes itself
+        // Commit + persist, then drive the shared-mailbox consent (#31). async void is the sanctioned
+        // View pattern for a fire-and-forget UI reaction; CommitNewSharedMailboxAsync handles its own
+        // consent failures (leaving the mailbox added but disconnected), so this only guards the add.
+        async void OnSharedMailboxAdded(AccountModel shared)
+        {
+            try { await _vm.CommitNewSharedMailboxAsync(shared); }
+            catch (Exception ex) { LogService.Log($"AccountManagerDialog: committing shared mailbox failed — {ex.Message}"); }
+        }
+
+        addVm.SharedMailboxAdded += OnSharedMailboxAdded;   // the add window closes itself on the same event
         // Modeless (Show), not ShowDialog: this window has an editable field and can sit over the main
         // window's live WebView2. Note the manager itself is modal (ShowDialog), so the editable field is
         // already inside a nested modal loop — the same position the manager's own text boxes occupy and
@@ -70,7 +79,7 @@ public partial class AccountManagerDialog : Window
         AddSharedButton.IsEnabled = false;
         window.Closed += (_, _) =>
         {
-            addVm.SharedMailboxAdded -= _vm.CommitNewSharedMailbox;   // pair the += so no ghost callback survives
+            addVm.SharedMailboxAdded -= OnSharedMailboxAdded;   // pair the += so no ghost callback survives
             AddSharedButton.IsEnabled = true;
             // Focus restoration (New-Window-Checklist): a modeless window does not reliably return focus
             // to its launcher, so put it back on the button that opened this dialog.

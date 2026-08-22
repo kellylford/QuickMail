@@ -616,9 +616,10 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         new(Accounts, SelectedAccount?.Id);
 
     /// <summary>Adds a created shared mailbox to the list and persists it — no credentials to save (it
-    /// reads through its parent). The dialog closes on success; the manager's close refreshes the main
-    /// window, which registers the backend and shows the new top-level node.</summary>
-    public void CommitNewSharedMailbox(AccountModel sharedMailbox)
+    /// reads through its parent) — then drives the one-time shared-mailbox consent on the parent. The
+    /// manager's close refreshes the main window, which registers the backend and connects the mailbox
+    /// (silently, using the consent obtained here). Consent failure never rolls back the add.</summary>
+    public async Task CommitNewSharedMailboxAsync(AccountModel sharedMailbox)
     {
         Accounts.Add(sharedMailbox);
         SaveAccountsPreservingConversionMarkers();
@@ -626,6 +627,28 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         // Result, not Status: the add succeeded and the add window has already closed, so this is the
         // only feedback — it must be spoken even for a user who has AnnounceStatus off (#396 pattern).
         SetStatusOutcome("Shared mailbox added.");
+
+        // #31: drive the one-time shared-mailbox consent on the PARENT now — silent if already granted
+        // (e.g. admin-consented), otherwise the real Microsoft consent window, where the user consents,
+        // an admin grants for the org, or it is declined / pending admin approval. On success the grant
+        // lands in the shared MSAL cache, so the mailbox connects when the manager closes and the main
+        // window reconnects. On failure it stays added but DISCONNECTED (surfaced by its accessible
+        // name, per PR 1), self-healing on a later connect once consent lands. Consent is never allowed
+        // to roll back the add, and never a silent data loss.
+        var parent = Accounts.FirstOrDefault(a => a.Id == sharedMailbox.ParentAccountId);
+        if (parent is null) return;
+        try
+        {
+            await _oauth.RequestSharedMailboxConsentAsync(parent);
+        }
+        catch (Exception ex)
+        {
+            // Declined / admin-approval pending / offline: the interactive window already showed the
+            // user what was needed; the disconnected state carries it from here.
+            LogService.Log($"Shared mailbox '{sharedMailbox.SharedAddress}': consent not granted on parent " +
+                           $"'{parent.AccountLabel}' ({ex.GetType().Name}); it will stay disconnected until " +
+                           "access is granted.");
+        }
     }
 
     /// <summary>A shared mailbox cannot be the default account (#31, spec §4: default-account semantics

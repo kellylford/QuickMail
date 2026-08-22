@@ -82,6 +82,17 @@ public class OAuthService : IOAuthService
         "https://graph.microsoft.com/Mail.ReadWrite.Shared",
     ];
 
+    // The scopes CONSENTED when a shared mailbox is added (RequestSharedMailboxConsentAsync). Read AND
+    // send together, so the one consent covers PR 2 (read) and PR 4 (send-as) — the user is never
+    // re-prompted when sending ships. Both are declared on the app registration (Kelly). The ongoing
+    // read path still requests only GraphMailScopesShared; this wider set exists purely to drive the
+    // one-time consent up front.
+    public static readonly string[] GraphSharedMailboxConsentScopes =
+    [
+        "https://graph.microsoft.com/Mail.ReadWrite.Shared",
+        "https://graph.microsoft.com/Mail.Send.Shared",
+    ];
+
     // Personal Microsoft accounts (Outlook.com/Hotmail/Live): `.default` under-delivers for MSA,
     // because personal accounts have no admin-consent model — `.default` returns only the permissions
     // the user already consented to, which came back read-only (delete/move → 403 ErrorAccessDenied,
@@ -485,6 +496,19 @@ public class OAuthService : IOAuthService
         // grant now lives in the MSAL cache, so later silent acquisition (including background sync)
         // succeeds without another prompt.
         await GetAccessTokenAsync(account, GraphContactScopes, ct);
+    }
+
+    public async Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default)
+    {
+        // #31: the one-time consent that lets a shared mailbox be read (and, from PR 4, sent as) through
+        // this PARENT account's token. Acquiring a token for the .Shared scopes drives it — silent if the
+        // grant already exists (e.g. the tenant admin-consented), otherwise the real Microsoft consent
+        // window, where the user consents, an admin grants for the org, or it is declined/pending. The
+        // token is discarded; the grant now lives in the MSAL cache, so the shared account's later silent
+        // acquisition succeeds. Runs on the PARENT (not IsShared), so the interactive fallback is allowed —
+        // a shared account is silent-only and would throw instead of prompting. A decline/pending consent
+        // throws MsalException up to the caller, which leaves the shared mailbox added-but-disconnected.
+        await GetAccessTokenAsync(parent, GraphSharedMailboxConsentScopes, ct);
     }
 
     public async Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default)

@@ -93,6 +93,11 @@ public class OAuthRouter : IOAuthService
             : _microsoft.RequestCalendarConsentAsync(account, ct);
     }
 
+    // #31: shared mailboxes are a Microsoft-only, work/school-only feature — the parent is always a
+    // Microsoft Graph account, so this always routes to the Microsoft implementation.
+    public Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default)
+        => _microsoft.RequestSharedMailboxConsentAsync(parent, ct);
+
     public Task SignOutAsync(AccountModel account)
     {
         return account.AuthType == AuthType.OAuth2Google

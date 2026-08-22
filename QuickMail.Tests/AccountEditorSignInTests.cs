@@ -44,6 +44,7 @@ public class AccountEditorSignInTests
         public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
         public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
         public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default) => Task.CompletedTask;
         public Task SignOutAsync(AccountModel account) => Task.CompletedTask;
     }
 
