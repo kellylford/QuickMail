@@ -55,10 +55,23 @@ public class ReconnectConditionTests
     }
 
     [Fact]
-    public void ImapParentSharedMailbox_IsNotConnected() // #31 — deferred to PR 3 (XOAUTH2 user=)
+    public void ImapParentSharedMailbox_IsConnected() // #31 PR 3 (XOAUTH2 user={SharedAddress})
     {
+        // An IMAP-parent shared mailbox authenticates with the parent's token but user={SharedAddress}
+        // (a shared account's Username == SharedAddress), so it now connects too (was deferred in PR 2).
         var id = Guid.NewGuid();
         var shared = new AccountModel { Id = id, IsShared = true, BackendKind = BackendKind.ImapSmtp };
+        var result = MainViewModel.AccountsNeedingConnect([shared], _ => false, _ => false);
+        Assert.Contains(result, a => a.Id == id);
+    }
+
+    [Fact]
+    public void Pop3SharedMailbox_IsNotConnected() // #31 — POP3 can't host a delegated shared mailbox
+    {
+        // A shared account is only ever Graph or IMAP (parent eligibility is a work/school Microsoft
+        // account); guard that a POP3-backed shared account is never admitted by the widened predicate.
+        var id = Guid.NewGuid();
+        var shared = new AccountModel { Id = id, IsShared = true, BackendKind = BackendKind.Pop3Smtp };
         var result = MainViewModel.AccountsNeedingConnect([shared], _ => false, _ => false);
         Assert.DoesNotContain(result, a => a.Id == id);
     }
