@@ -376,7 +376,7 @@ Server settings sit behind the same **Advanced settings** expander as in Add Acc
 
 ### Removing an account
 
-Select the account and press **Delete**. There is no confirmation step, and the removal happens at once: QuickMail forgets the account's password from Windows Credential Manager, deletes the mail it had cached, removes any contacts synced from it, and for Microsoft and Google accounts signs out as well. You hear "Account deleted. Cleaning up…", then "Account deleted." when the tidying has finished.
+Select the account and press **Delete**. For an ordinary account there is no confirmation step, and the removal happens at once: QuickMail forgets the account's password from Windows Credential Manager, deletes the mail it had cached, removes any contacts synced from it, and for Microsoft and Google accounts signs out as well. You hear "Account deleted. Cleaning up…", then "Account deleted." when the tidying has finished. (Deleting an account that a shared mailbox reads through does ask first, because it removes the shared mailbox too — see [Shared mailboxes](#shared-mailboxes).)
 
 **Nothing is deleted from the mail server.** Removing an account removes it from QuickMail only — add it again and your mail is still there.
 
