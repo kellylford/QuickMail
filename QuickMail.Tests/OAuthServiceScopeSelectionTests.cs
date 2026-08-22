@@ -108,7 +108,10 @@ public class OAuthServiceScopeSelectionTests
         };
         Assert.Same(OAuthService.GraphMailScopesShared, OAuthService.DefaultScopesFor(account));
         Assert.Contains("https://graph.microsoft.com/Mail.ReadWrite.Shared", OAuthService.GraphMailScopesShared);
-        // Not the work/school set — a shared read never touches /me, so no User.Read etc.
+        // #31 PR 4: the shared default token also carries Mail.Send.Shared, so send-as works without a
+        // separate scope request (the non-shared work/school default likewise includes Mail.Send).
+        Assert.Contains("https://graph.microsoft.com/Mail.Send.Shared", OAuthService.GraphMailScopesShared);
+        // Not the work/school set — a shared read/send never touches /me, so no User.Read etc.
         Assert.DoesNotContain("https://graph.microsoft.com/User.Read", OAuthService.GraphMailScopesShared);
     }
 

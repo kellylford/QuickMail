@@ -49,6 +49,16 @@ public class GraphSendMailServiceTests
         BackendKind = BackendKind.MicrosoftGraph,
     };
 
+    private static AccountModel SharedGraphAccount() => new()
+    {
+        Id = Guid.NewGuid(),
+        Username = "support@contoso.com",
+        SharedAddress = "support@contoso.com",
+        IsShared = true,
+        ParentAccountId = Guid.NewGuid(),
+        BackendKind = BackendKind.MicrosoftGraph,
+    };
+
     /// <summary>The body is ASCII base64; decode it back to the raw MIME text.</summary>
     private static string DecodeMime(byte[] body) =>
         Encoding.UTF8.GetString(Convert.FromBase64String(Encoding.ASCII.GetString(body)));
@@ -65,6 +75,22 @@ public class GraphSendMailServiceTests
         Assert.Equal("text/plain", handler.ContentType);
         var mime = DecodeMime(handler.Body!);
         Assert.Contains("Subject: Hi there", mime);
+        Assert.Contains("alice@x.com", mime);
+    }
+
+    [Fact]
+    public async Task SendAsync_SharedMailbox_PostsToUsersSendMail_FromSharedAddress() // #31 PR 4
+    {
+        var (svc, handler) = Make();
+        var compose = new ComposeModel { To = "alice@x.com", Subject = "From shared", Body = "Hi" };
+
+        await svc.SendAsync(compose, SharedGraphAccount(), null, TestContext.Current.CancellationToken);
+
+        // Routed to the shared mailbox, not /me — GraphClient.ApplySharedRoot rewrites the path for a
+        // shared account, so send-as posts against /users/{SharedAddress}/sendMail.
+        Assert.Equal("https://graph.microsoft.com/v1.0/users/support@contoso.com/sendMail", handler.Url);
+        var mime = DecodeMime(handler.Body!);
+        Assert.Contains("support@contoso.com", mime);   // From carries the shared address
         Assert.Contains("alice@x.com", mime);
     }
 
