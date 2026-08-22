@@ -55,8 +55,10 @@ public class ReconnectConditionTests
     }
 
     [Fact]
-    public void ImapParentSharedMailbox_IsNotConnected() // #31 — deferred to PR 3 (XOAUTH2 user=)
+    public void ImapParentSharedMailbox_IsNotConnected() // #31 — shared is Graph-only (IMAP PR 3 dropped)
     {
+        // Shared mailboxes are Graph-only for v1; an IMAP-backed shared account should never be created
+        // (parent eligibility is Graph-only), and if one somehow exists it must not connect.
         var id = Guid.NewGuid();
         var shared = new AccountModel { Id = id, IsShared = true, BackendKind = BackendKind.ImapSmtp };
         var result = MainViewModel.AccountsNeedingConnect([shared], _ => false, _ => false);

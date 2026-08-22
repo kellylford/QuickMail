@@ -241,6 +241,16 @@ public partial class AccountModel : ObservableObject
     public string? SharedAddress { get; set; }
 
     /// <summary>
+    /// Per-account new-mail notification opt-in for a shared mailbox (#31 PR 5). Shared mailboxes are
+    /// excluded from new-mail and watched-conversation toasts by default — they are often high-volume role
+    /// mailboxes and a user rarely wants a toast for each one. Turning this on adds THIS shared mailbox
+    /// back into the notification set; the global master switches (<c>ConfigModel.NotifyOnNewMail</c> /
+    /// <c>NotifyOnWatchedConversation</c>) still govern, so a toast fires only when both are on. Ignored
+    /// for a normal account (the global switch alone governs those). Defaults false; no migration.
+    /// </summary>
+    public bool NotifyOnNewMail { get; set; }
+
+    /// <summary>
     /// The shared mailboxes (#31) that read through <paramref name="parent"/>, taken from
     /// <paramref name="all"/>. Empty when <paramref name="parent"/> is itself shared — a shared mailbox
     /// is never a parent. Both account-delete paths (the Account Manager and the main-window account
@@ -271,6 +281,23 @@ public partial class AccountModel : ObservableObject
     public string AccountLabel => string.IsNullOrWhiteSpace(AccountName) ? Username : AccountName;
     public string SenderDisplayName => string.IsNullOrWhiteSpace(DisplayName) ? AccountLabel : DisplayName;
     public string AccountLabelWithDefault => IsDefault ? $"{AccountLabel} - default" : AccountLabel;
+
+    /// <summary>
+    /// Accessible name for the Account Manager list item (#31 PR 5): the label plus the "shared mailbox"
+    /// qualifier so a screen-reader user can tell a shared mailbox from a normal account without selecting
+    /// it — matching the main-window account list. Unlike <see cref="AccessibleName"/> it omits the live
+    /// connection/unread state, which is monitoring detail the editor list doesn't need; it keeps the
+    /// "- default" marker so that distinction is still spoken.
+    /// </summary>
+    public string ManagerListAccessibleName
+    {
+        get
+        {
+            var shared = IsShared ? ", shared mailbox" : "";
+            var def = IsDefault ? " - default" : "";
+            return $"{AccountLabel}{shared}{def}";
+        }
+    }
 
     /// <summary>
     /// Short status line shown below the account name in the account list, and as a tooltip.

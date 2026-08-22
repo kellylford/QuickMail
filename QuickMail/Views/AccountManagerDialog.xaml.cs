@@ -257,4 +257,13 @@ public partial class AccountManagerDialog : Window
         if (sender is CheckBox { IsChecked: { } isChecked })
             await _vm.SetCalendarSyncAsync(isChecked);
     }
+
+    // The shared-mailbox "Notify me of new mail" checkbox (#31 PR 5) applies immediately and persists,
+    // same pattern as the sync toggles. Click fires only on real user interaction, so the programmatic
+    // assignment in OnSelectedAccountChanged does not re-trigger it.
+    private void SharedNotifyCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { IsChecked: { } isChecked })
+            _vm.SetNotifyOnNewMail(isChecked);
+    }
 }

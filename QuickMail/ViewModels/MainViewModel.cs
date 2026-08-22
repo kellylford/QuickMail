@@ -3831,10 +3831,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Settings change takes effect without a restart.
     internal void MaybeNotifyNewMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
     {
-        // #31: no new-mail toast for a shared mailbox. Now that shared accounts connect (PR 2) the #456
-        // sweep delivers their inbox arrivals here, but a shared mailbox is someone else's inbox you also
-        // watch — it stays off, defaulting off, until the per-account opt-in ships (spec §4.1, PR 5).
-        if (account.IsShared) return;
+        // #31: a shared mailbox is excluded from new-mail toasts by default — it is often a high-volume role
+        // mailbox and the #456 sweep would toast for each arrival. The per-account opt-in (PR 5) adds it back
+        // in; the global master switch below still governs, so a shared mailbox toasts only when both are on.
+        if (account.IsShared && !account.NotifyOnNewMail) return;
         if (_notifications is not { IsSupported: true }) return;
         if (!_configService.Load().NotifyOnNewMail) return;
 
@@ -3894,7 +3894,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // argument for this pair of methods and is not observable from any public surface.
     internal void MaybeNotifyWatchedMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
     {
-        if (account.IsShared) return;   // #31: no toast for a shared mailbox (spec §4.1) — see MaybeNotifyNewMail
+        // #31: a shared mailbox is off by default here too; its per-account opt-in (PR 5) covers watched
+        // conversations as well as new mail. The global watched-conversation switch below still governs.
+        if (account.IsShared && !account.NotifyOnNewMail) return;
         if (_notifications is not { IsSupported: true }) return;
         if (_watchService == null) return;
         if (!_configService.Load().NotifyOnWatchedConversation) return;

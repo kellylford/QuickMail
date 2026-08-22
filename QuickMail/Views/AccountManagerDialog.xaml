@@ -57,7 +57,7 @@
                         CommandParameter="{Binding SelectedAccount}"
                         AutomationProperties.Name="Set as default"
                         MinWidth="75" Margin="0,0,4,0" TabIndex="3"/>
-                <Button Content="Add _shared…"
+                <Button Content="Add shared mail_box…"
                         x:Name="AddSharedButton"
                         Click="AddSharedMailboxButton_Click"
                         AutomationProperties.Name="Add shared mailbox"
@@ -78,7 +78,7 @@
                      BorderThickness="1">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
-                        <Setter Property="AutomationProperties.Name" Value="{Binding AccountLabelWithDefault}"/>
+                        <Setter Property="AutomationProperties.Name" Value="{Binding ManagerListAccessibleName}"/>
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
@@ -154,6 +154,15 @@
                              IsReadOnlyCaretVisible="True"
                              TextWrapping="Wrap"
                              AutomationProperties.LabeledBy="{Binding ElementName=LblSharedParent}"/>
+
+                    <!-- #31 PR 5: a shared mailbox is excluded from new-mail toasts by default (it is often a
+                         high-volume role mailbox). This opt-in adds it back in; the global new-mail
+                         notification switch in Settings still governs. Applied immediately (no Save step). -->
+                    <CheckBox x:Name="SharedNotifyCheckBox"
+                              Content="Notify me of new _mail in this shared mailbox"
+                              IsChecked="{Binding NotifyOnNewMail}"
+                              Click="SharedNotifyCheckBox_Click"
+                              Margin="0,8,0,0"/>
                 </StackPanel>
 
                 <!-- #31: the whole editable connection surface (password, OAuth sign-in) is hidden for a
