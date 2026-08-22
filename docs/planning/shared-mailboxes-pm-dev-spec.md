@@ -34,8 +34,10 @@ they add one.
   option; Outlook is the only thing that automaps it, and imperfectly.
 - **Team-mailbox member.** Shares `info@` / `sales@` with colleagues on Exchange. Wants it
   alongside personal mail but clearly separate.
-- **Small-business IMAP user.** A generic-IMAP host with a shared role mailbox exposed via
-  RFC 2342 NAMESPACE. Wants the same experience without Microsoft.
+
+(A "small-business generic-IMAP shared role mailbox" persona was considered and **dropped** — see
+§4.2: non-Microsoft IMAP "shared" is RFC 2342 namespace folders, not a delegated mailbox, and is
+out of scope. Both remaining personas are work/school Exchange, which is the whole feature.)
 
 ### 2.3 Why now
 
@@ -66,14 +68,20 @@ missing when #59 was written.
 | Feature | Setting / Shortcut | Default | Notes |
 |---|---|---|---|
 | Add shared mailbox by address | Command `account.addShared` (Account category, no default key) + button in Manage Accounts | — | The durable entry point; no EWS. |
-| Read shared mail | — | — | Graph `/users/{shared}/…` or IMAP `user=`, by parent backend. |
-| Send *from* shared mailbox | Shared address appears in compose `SenderAccounts` | — | Graph `sendMail` on `/users/{shared}` (`Mail.Send.Shared`) or IMAP-parent SMTP XOAUTH2 `user=`. |
+| Read shared mail | — | — | Work/school Microsoft only: Graph `/users/{shared}/…`, or Exchange-IMAP XOAUTH2 `user={shared}`, by the parent's backend. |
+| Send *from* shared mailbox | Shared address appears in compose `SenderAccounts` | — | Graph `sendMail` on `/users/{shared}` (`Mail.Send.Shared`) or Exchange-IMAP SMTP XOAUTH2 `user=`. |
 | Own top-level tree node | — | — | Sibling of real accounts; label "{name} (shared)". |
 | New-mail toast for shared mailbox | new per-account `NotifyOnNewMail` opt-in | **off** for shared | Global `NotifyOnNewMail` (`MainViewModel.cs:2678`) still governs real accounts; shared adds a per-account gate defaulting off. |
-| Generic-IMAP discovery | RFC 2342 `NAMESPACE` | — | For non-Microsoft IMAP only. |
 
 ### 4.2 Explicitly out of scope (v1)
 
+- **Non-Microsoft ("generic") IMAP shared access** — a shared mailbox is a work/school Exchange
+  concept. Consumer/other IMAP servers have no delegated mailbox added by address; RFC 2342
+  `NAMESPACE` exposes "Other Users"/"Shared" *folders* inside the user's own connection (governed by
+  RFC 4314 ACLs), which is a different concept that does not fit the separate-account model. Only
+  **work/school Microsoft** accounts (Graph or Exchange-IMAP) can be shared-mailbox parents; the
+  Add-shared dialog restricts eligibility to them. (Amended after PR 2; the original spec listed
+  generic-IMAP NAMESPACE in scope.)
 - **EWS auto-detection of automapped mailboxes** — deferred (EWS retirement, §13). Manual
   add-by-address is the v1 path. Revisit only if Microsoft ships a Graph enumeration API.
 - **No setting to include shared mail in the unified All Inboxes / All Mail views** — the
@@ -133,22 +141,26 @@ shared account routes through `MailServiceRouter` by its own id (`Services/MailS
 `RegisterAccount`), and the existing `RegisterAccountBackend` hook (`App.xaml.cs:460`,
 `MainViewModel.cs:1259`) already fires per account.
 
-**Decision: access follows the parent's backend.**
+**Decision: access follows the parent's backend — and the parent is always a work/school Microsoft
+account** (the only place a shared mailbox exists). Eligibility is enforced in
+`AddSharedMailboxViewModel` (parent must be `AuthType.OAuth2Microsoft` and not personal).
 - **Graph parent** → `/users/{SharedAddress}/…` with delegated `Mail.ReadWrite.Shared` and
-  `Mail.Send.Shared` (no admin consent). New scope constants in `OAuthService`; because
-  work/school uses `.default` (`OAuthService.cs:33-38`) these must **also** be declared on
-  the app registration or they're never granted. **Work/school only** — personal MS accounts
-  use `GraphMailScopesPersonal` and don't have Exchange shared mailboxes.
-- **IMAP parent** → XOAUTH2 `user={SharedAddress}` over the parent's token (read *and* SMTP send).
-- **Generic IMAP** → ordinary IMAP; RFC 2342 NAMESPACE for discovery.
+  `Mail.Send.Shared`. New scope constants in `OAuthService`, requested at add-time consent
+  (`RequestSharedMailboxConsentAsync`) and declared on the app registration.
+- **Exchange-IMAP parent** (work/school Microsoft on IMAP-OAuth) → XOAUTH2 `user={SharedAddress}`
+  over the parent's token (read *and* SMTP send). A shrinking case as Microsoft accounts move to
+  Graph (#529); PR 3.
+- **Generic (non-Microsoft) IMAP** → **out of scope** (§4.2): RFC 2342 shared *folders* are not a
+  delegated mailbox added by address and do not fit the separate-account model.
 
 **Decision: freshness is backend-conditional (corrects rev-1's blanket "no live watcher").**
 - **Graph parent:** `.Shared` scopes **do not support change-notification subscriptions**
   (that needs the app-only `Mail.Read`, admin-consented — out of scope). So a Graph shared
   mailbox has **no delta, no live watcher**; its only freshness is the #456 sweep
   (`StartFallbackSyncAsync`), which already iterates every account. Poll-interval, not instant.
-- **IMAP parent / generic IMAP:** an ordinary IMAP account with its own connection — it gets
-  **IMAP IDLE** like any account (`ImapMailService.cs:932`). Live, not poll-only.
+- **Exchange-IMAP parent** (work/school Microsoft on IMAP-OAuth): an ordinary IMAP account with its
+  own connection — it gets **IMAP IDLE** like any account (`ImapMailService.cs:932`). Live, not
+  poll-only.
 - Consequence: the "updates every few minutes, not instantly" caveat (§7) applies **only to
   Graph-backed** shared mailboxes; the add dialog shows it conditionally on the resolved
   backend.
@@ -299,11 +311,13 @@ shipping a feature that breaks in ~2 months. Manual add-by-address is the v1 pat
    `IsShared` exclusion, cascade removal. **No backend access yet** (the account exists and
    is navigable; folders empty until PR 2/3). Proves Approach B.
 2. **Graph read access.** `/users/{SharedAddress}/…` in `GraphMailService`; `.Shared` scope
-   consts; the `IsShared` → parent-token resolver. Behind the manual-add path; needs the scope
-   declared to run end-to-end.
-3. **IMAP read access + RFC 2342 NAMESPACE.** XOAUTH2 `user=` for an IMAP parent; NAMESPACE
-   for generic IMAP.
-4. **Send.** Graph `sendMail` on `/users/{shared}` (`Mail.Send.Shared`) + IMAP-parent SMTP
+   consts; the `IsShared` → parent-token resolver; add-time consent. DONE (#600). Parent
+   eligibility tightened to work/school Microsoft only (generic-IMAP dropped from scope, §4.2).
+3. **Exchange-IMAP read access.** XOAUTH2 `user={SharedAddress}` for a work/school Microsoft
+   IMAP-OAuth parent (much of the plumbing — parent-token resolver, `user=` from the shared
+   account's Username — already exists from PR 2; the main work is letting IMAP-parent shared
+   accounts connect). A shrinking case (#529). No generic-IMAP / NAMESPACE (out of scope, §4.2).
+4. **Send.** Graph `sendMail` on `/users/{shared}` (`Mail.Send.Shared`) + Exchange-IMAP SMTP
    XOAUTH2 `user=`; compose sender-identity wiring; send keyboard walkthrough (§6 Path C).
 5. **Toast opt-in + polish.** Per-account `NotifyOnNewMail` gate, docs (User Guide page + the
    poll-interval note), accessibility pass.

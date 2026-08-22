@@ -249,7 +249,7 @@ public class XamlParseTests
         EnsureApplication();
         // Guards the {StaticResource BoolToVisibility} converter being declared locally — a build
         // compiles the XAML but the converter only resolves at parse time (#31).
-        var vm = new AddSharedMailboxViewModel([new AccountModel { AccountName = "Work", BackendKind = BackendKind.MicrosoftGraph }]);
+        var vm = new AddSharedMailboxViewModel([new AccountModel { AccountName = "Work", Username = "work@work.com", BackendKind = BackendKind.MicrosoftGraph, AuthType = AuthType.OAuth2Microsoft }]);
         var window = new AddSharedMailboxWindow(vm);
         Assert.NotNull(window);
         window.Close();
