@@ -21,5 +21,6 @@ internal sealed class NoOpOAuthService : IOAuthService
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => throw Fail();
     public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => throw Fail();
     public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => throw Fail();
+    public Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default) => throw Fail();
     public Task SignOutAsync(AccountModel account) => throw Fail();
 }
