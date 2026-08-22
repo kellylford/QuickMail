@@ -74,5 +74,6 @@ public sealed class ProbeOfflineOAuthService : IOAuthService
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromException<OAuthResult>(Refused());
     public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.FromException(Refused());
     public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.FromException(Refused());
+    public Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default) => Task.FromException(Refused());
     public Task SignOutAsync(AccountModel account) => Task.FromException(Refused());
 }

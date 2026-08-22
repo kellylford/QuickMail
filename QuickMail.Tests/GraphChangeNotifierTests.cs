@@ -83,6 +83,28 @@ public class GraphChangeNotifierTests : IDisposable
     }
 
     [Fact]
+    public async Task StartWatchers_SkipsSharedMailbox_SoNoPollLoopRuns() // #31 PR 2, spec §5.1
+    {
+        // A shared Graph mailbox is sweep-only: its .Shared scopes can't hold a change-notification
+        // subscription, so the notifier must never spin a delta-poll loop against it. If it did, the
+        // stub would record the first (immediate) delta request.
+        var handler = new StubHttpHandler(_ => (HttpStatusCode.OK, """{"value":[]}"""));
+        using var notifier = MakeNotifier(handler);
+
+        var shared = GraphAccount();
+        shared.IsShared = true;
+        shared.SharedAddress = "support@contoso.com";
+        shared.ParentAccountId = Guid.NewGuid();
+
+        notifier.StartWatchers(new[] { shared }, TestContext.Current.CancellationToken);
+
+        // Give any erroneously-started loop time to fire its immediate first request, then assert none did.
+        await Task.Delay(300, TestContext.Current.CancellationToken);
+        Assert.Empty(handler.Requests);
+        notifier.StopWatchers();
+    }
+
+    [Fact]
     public async Task FirstPoll_WithMessages_RaisesInboxNewMail_AndPersistsDeltaLink()
     {
         const string deltaLink = "https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$deltatoken=NEW";

@@ -56,13 +56,29 @@ public class GraphMailService : IMailService, IConnectionProbe
     // ── Connect ────────────────────────────────────────────────────────────────────
     public async Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
     {
-        var me = await _client.GetAsync<GraphMe>(account, "/me?$select=id,userPrincipalName", ct);
-        if (string.IsNullOrEmpty(me?.UserPrincipalName))
-            throw new InvalidOperationException("Graph /me returned no userPrincipalName.");
-        if (!string.Equals(account.Username, me.UserPrincipalName, StringComparison.OrdinalIgnoreCase))
+        if (account.IsShared)
         {
-            LogService.Log($"GraphMailService: token UPN {me.UserPrincipalName} differs from account.Username {account.Username}; updating.");
-            account.Username = me.UserPrincipalName;
+            // #31: a shared mailbox has no /me identity of its own — its token is the parent's, and the
+            // bare /users/{address} directory object needs a permission we don't hold. So skip the
+            // identity reconciliation (Username is already the shared address, fixed at add time) and
+            // probe a MAIL endpoint instead. This proves the .Shared grant and the address are good, and
+            // FAILS the connect (→ disconnected, surfaced) rather than returning an empty mailbox — the
+            // well-known folder resolve below swallows per-folder errors, so it can't be the check.
+            _ = await _client.GetAsync<GraphMailFolder>(account, "/me/mailFolders/Inbox?$select=id", ct)
+                ?? throw new InvalidOperationException(
+                    $"Shared mailbox '{account.SharedAddress}' returned no Inbox — check that access is " +
+                    "granted and the address is correct.");
+        }
+        else
+        {
+            var me = await _client.GetAsync<GraphMe>(account, "/me?$select=id,userPrincipalName", ct);
+            if (string.IsNullOrEmpty(me?.UserPrincipalName))
+                throw new InvalidOperationException("Graph /me returned no userPrincipalName.");
+            if (!string.Equals(account.Username, me.UserPrincipalName, StringComparison.OrdinalIgnoreCase))
+            {
+                LogService.Log($"GraphMailService: token UPN {me.UserPrincipalName} differs from account.Username {account.Username}; updating.");
+                account.Username = me.UserPrincipalName;
+            }
         }
         var wellKnown = await ResolveWellKnownFolderIdsAsync(account, ct);
 

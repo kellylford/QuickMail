@@ -93,6 +93,13 @@ public class OAuthRouter : IOAuthService
             : _microsoft.RequestCalendarConsentAsync(account, ct);
     }
 
+    // #31: shared-mailbox consent is a Microsoft Graph flow (Mail.ReadWrite.Shared / Mail.Send.Shared).
+    // Callers drive it only for a Graph parent (CommitNewSharedMailboxAsync gates on BackendKind — an
+    // IMAP-parent shared mailbox is PR 3 and must not trigger a Graph sign-in), so it routes to the
+    // Microsoft implementation. There is no Google/IMAP equivalent.
+    public Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default)
+        => _microsoft.RequestSharedMailboxConsentAsync(parent, ct);
+
     public Task SignOutAsync(AccountModel account)
     {
         return account.AuthType == AuthType.OAuth2Google

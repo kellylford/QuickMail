@@ -64,6 +64,38 @@ public class GraphMailServiceTests
         Assert.Equal("user@contoso.com", account.Username);
     }
 
+    private static AccountModel SharedGraphAccount() => new()
+    {
+        Id = Guid.NewGuid(),
+        Username = "support@contoso.com",
+        SharedAddress = "support@contoso.com",
+        IsShared = true,
+        ParentAccountId = Guid.NewGuid(),
+        BackendKind = BackendKind.MicrosoftGraph,   // stamped from the parent at add time
+    };
+
+    [Fact]
+    public async Task SharedMailbox_RoutesReadsToUsersEndpoint_NeverMe() // #31 PR 2
+    {
+        // Every folder/message read for a shared account must hit /users/{SharedAddress}, never /me —
+        // and ConnectAsync must NOT overwrite the shared address with a /me identity (the token belongs
+        // to the parent, so /me would be the parent UPN).
+        var (svc, handler) = Make(url =>
+            url.Contains("/messages")       ? (HttpStatusCode.OK, """{"value":[]}""")
+            : url.Contains("/mailFolders/") ? (HttpStatusCode.OK, """{"id":"wk"}""")   // Inbox probe + well-known
+            : (HttpStatusCode.OK, """{"value":[]}"""));                                 // folder list (empty)
+
+        var shared = SharedGraphAccount();
+        await svc.ConnectAsync(shared, ct: TestContext.Current.CancellationToken);
+        await svc.GetFoldersAsync(shared.Id, TestContext.Current.CancellationToken);
+        await svc.GetMessageSummariesAsync(shared.Id, "inbox-id", 50, TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(handler.Requests);
+        Assert.All(handler.Requests, url => Assert.DoesNotContain("/v1.0/me", url));   // no /me/ and no /me?
+        Assert.Contains(handler.Requests, url => url.Contains("/users/support@contoso.com/mailFolders"));
+        Assert.Equal("support@contoso.com", shared.Username);   // not clobbered by a /me identity read
+    }
+
     [Fact]
     public async Task GetFoldersAsync_MapsFolders_FollowsNextLink_AndFlagsSpecial()
     {
