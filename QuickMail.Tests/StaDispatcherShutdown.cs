@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Windows.Threading;
@@ -49,8 +51,64 @@ public sealed class ShutDownStaDispatcherAttribute : BeforeAfterTestAttribute
         // dispatcher down here would break every later test in a way that looks nothing like the cause.
         if (System.Windows.Application.Current?.Dispatcher == dispatcher) return;
 
+        // Not yet if more rows of this theory are still to come — see MoreRowsToCome.
+        if (MoreRowsToCome(test)) return;
+
         // InvokeShutdown, not BeginInvokeShutdown: this must complete before the thread ends, and we
         // are already on that thread, so it runs synchronously.
         dispatcher.InvokeShutdown();
+    }
+
+    /// <summary>
+    /// True while a <c>[StaTheory]</c> still has data rows left to run on this thread.
+    ///
+    /// <para><b>Why this is needed.</b> Xunit.StaFact gives each test METHOD a fresh STA thread, but
+    /// every data row of one theory shares that thread — measured: both rows of a two-row StaTheory
+    /// reported the same managed thread id, while each StaFact got its own. Shutting the Dispatcher
+    /// down after the first row therefore leaves the remaining rows running on a thread whose
+    /// Dispatcher is dead, and the first WPF operation in them throws "Cannot perform requested
+    /// operation because the Dispatcher shut down". That is how
+    /// <c>AccountDialogHintTests.TheSmtpSslHintNamesBothPorts</c> failed on its second row while
+    /// passing on its first, and it would silently claim any future StaTheory whose later rows touch
+    /// WPF. Shutting down after the LAST row keeps the issue #211 protection intact — the thread
+    /// still never outlives its Dispatcher — without breaking the rows in between.</para>
+    ///
+    /// <para>Rows are counted rather than detected: xUnit exposes no "is this the last case" flag,
+    /// and <see cref="IXunitTestMethod"/> has no test-case collection to ask. When the expected count
+    /// cannot be worked out (a data source other than <c>[InlineData]</c>, whose rows are only known
+    /// after running it), this returns false and the old behaviour stands: better to shut down early
+    /// than to leak a Dispatcher onto a thread that is about to die. The same applies to a filtered
+    /// run where some rows are never executed — the count is simply never reached, and one Dispatcher
+    /// survives on a dying thread, which is the pre-existing hazard rather than a new one.</para>
+    /// </summary>
+    private static bool MoreRowsToCome(IXunitTest test)
+    {
+        var expected = ExpectedRows(test.TestMethod);
+        if (expected is not { } total || total <= 1) return false;
+
+        var key = (Environment.CurrentManagedThreadId, test.TestMethod.Method.MetadataToken);
+        lock (RowsRun)
+        {
+            var run = RowsRun.TryGetValue(key, out var already) ? already + 1 : 1;
+            RowsRun[key] = run;
+            return run < total;
+        }
+    }
+
+    /// <summary>Rows completed so far, per (thread, test method).</summary>
+    private static readonly Dictionary<(int Thread, int Method), int> RowsRun = [];
+
+    private static int? ExpectedRows(IXunitTestMethod method)
+    {
+        if (method.DataAttributes.Count == 0) return 1;   // a plain [StaFact]
+
+        var rows = 0;
+        foreach (var data in method.DataAttributes)
+        {
+            // One row each, and countable without running the data source.
+            if (data is not InlineDataAttribute) return null;
+            rows++;
+        }
+        return rows;
     }
 }
