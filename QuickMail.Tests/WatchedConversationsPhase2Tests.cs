@@ -514,6 +514,28 @@ public class WatchedConversationsPhase2Tests
     }
 
     [Fact]
+    public void SharedMailbox_ProducesNoToast_EvenWithNotificationsOn() // #31 PR 2, spec §4.1
+    {
+        // Now that shared accounts connect (PR 2), the #456 sweep delivers their inbox arrivals to the
+        // notify path. A shared mailbox is someone else's inbox you also watch, so it must not toast —
+        // the same incoming that produces two toasts for a normal account (test above) produces none.
+        var (vm, watch, toasts, _) = MakeNotifyVm();
+        watch.Watch("Budget Review");
+        var shared = new AccountModel
+        {
+            Id = Guid.NewGuid(), AccountName = "Support", Username = "support@example.com",
+            AuthType = AuthType.OAuth2Microsoft, IsShared = true, ParentAccountId = AccountA,
+            SharedAddress = "support@example.com", BackendKind = BackendKind.MicrosoftGraph,
+        };
+        var incoming = new[] { Msg("1", "Re: Budget Review"), Msg("2", "Something unrelated") };
+
+        vm.MaybeNotifyWatchedMail(shared, incoming);
+        vm.MaybeNotifyNewMail(shared, incoming);
+
+        Assert.Empty(toasts.Toasts);
+    }
+
+    [Fact]
     public void OrdinaryInboxMail_StillToastsNormally_AfterTheWatchedPathHasRun()
     {
         // The consumption trap: if the watched path were handed the whole incoming list it would

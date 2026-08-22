@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -984,6 +985,41 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private ObservableCollection<AccountModel> _accounts = [];
 
+    // #31: a thread-safe id→account snapshot for the OAuthService shared-mailbox token resolver, which
+    // runs on background sweep threads (GraphClient acquires the token deep in a ConfigureAwait(false)
+    // flow). Accounts is a UI-thread-owned ObservableCollection — enumerating it off the UI thread while
+    // the user adds/removes an account throws "Collection was modified". Instead the resolver reads this
+    // volatile reference to an immutable map, rebuilt on the UI thread whenever the collection changes
+    // (reassignment via the generated OnAccountsChanged, and in-place add/remove via CollectionChanged).
+    private volatile Dictionary<Guid, AccountModel> _accountsById = new();
+    private ObservableCollection<AccountModel>? _accountsSubscription;
+
+    /// <summary>Thread-safe by-id account lookup for the shared-mailbox token resolver (App wires this to
+    /// <see cref="Services.OAuthService.ResolveAccount"/>). Safe to call from any thread.</summary>
+    public AccountModel? ResolveAccountById(Guid id) => _accountsById.TryGetValue(id, out var a) ? a : null;
+
+    partial void OnAccountsChanged(ObservableCollection<AccountModel> value)
+    {
+        // Re-subscribe when the whole collection is replaced (LoadAccountList), so in-place add/remove on
+        // the new instance keeps the snapshot current.
+        if (_accountsSubscription is not null) _accountsSubscription.CollectionChanged -= OnAccountsCollectionChanged;
+        _accountsSubscription = value;
+        if (value is not null) value.CollectionChanged += OnAccountsCollectionChanged;
+        RebuildAccountsById();
+    }
+
+    private void OnAccountsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => RebuildAccountsById();
+
+    // Runs on the UI thread (collection mutations are UI-thread-owned). Publishes a fresh immutable map;
+    // readers on other threads see the new reference atomically via the volatile field. Last-wins on the
+    // (unexpected) duplicate-id case so a rebuild never throws.
+    private void RebuildAccountsById()
+    {
+        var map = new Dictionary<Guid, AccountModel>(Accounts.Count);
+        foreach (var a in Accounts) map[a.Id] = a;
+        _accountsById = map;
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedAccount))]
     private AccountModel? _selectedAccount;
@@ -1677,6 +1713,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _rowLayoutService.LayoutsChanged += _onRowLayoutsChanged;
             ReloadRowSpeech();
         }
+
+        // #31: subscribe the initial account collection so ResolveAccountById reflects add/remove even
+        // before the first LoadAccountList reassigns it (which re-subscribes the new instance).
+        OnAccountsChanged(Accounts);
 
         // Load saved views and register their commands before the UI is shown.
         LoadSavedViews();
@@ -3175,7 +3215,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Connected means "this session reached the server", not "we have folders for it" — the
         // folder cache is restored from SQLite at launch (#516), so keying off it here would start
         // watchers against accounts that never connected.
-        var connected    = Accounts.Where(a => _connectedAccountIds.Contains(a.Id)).ToList();
+        //
+        // #31: a shared mailbox never gets a live watcher. A Graph shared mailbox's .Shared scopes can't
+        // hold change-notification subscriptions (and delta over them is out of scope), so its only
+        // freshness is the #456 sweep (which still includes it — it filters on the folder flag, not
+        // IsShared). An IMAP-parent shared mailbox (PR 3) reads through its parent's connection and gets
+        // no watcher of its own either. Excluding here covers every notifier type in one place.
+        var connected    = Accounts.Where(a => _connectedAccountIds.Contains(a.Id) && !a.IsShared).ToList();
         var connectedIds = connected.Select(a => a.Id).ToHashSet();
 
         // Only (re)start watchers when the connected set changed — StartWatchers stops and restarts
@@ -3785,6 +3831,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Settings change takes effect without a restart.
     internal void MaybeNotifyNewMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
     {
+        // #31: no new-mail toast for a shared mailbox. Now that shared accounts connect (PR 2) the #456
+        // sweep delivers their inbox arrivals here, but a shared mailbox is someone else's inbox you also
+        // watch — it stays off, defaulting off, until the per-account opt-in ships (spec §4.1, PR 5).
+        if (account.IsShared) return;
         if (_notifications is not { IsSupported: true }) return;
         if (!_configService.Load().NotifyOnNewMail) return;
 
@@ -3844,6 +3894,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // argument for this pair of methods and is not observable from any public surface.
     internal void MaybeNotifyWatchedMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
     {
+        if (account.IsShared) return;   // #31: no toast for a shared mailbox (spec §4.1) — see MaybeNotifyNewMail
         if (_notifications is not { IsSupported: true }) return;
         if (_watchService == null) return;
         if (!_configService.Load().NotifyOnWatchedConversation) return;
@@ -4299,7 +4350,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // POP3 account against an IMAP account on the same host. Serializing matters more for POP3
         // than for IMAP: RFC 1939 gives a session an exclusive lock on the maildrop.
         var resultsByHost = await Task.WhenAll(
-            Accounts.Where(a => !a.IsShared)   // #31: shared mailboxes are not connected in PR 1 (no own creds)
+            // #31: a Graph-parent shared mailbox connects in PR 2 — it borrows the parent's token
+            // (OAuthService resolver) and reads /users/{SharedAddress}. An IMAP-parent shared mailbox
+            // stays deferred to PR 3 (XOAUTH2 user=), so it is still skipped here.
+            Accounts.Where(a => !a.IsShared || a.BackendKind == BackendKind.MicrosoftGraph)
                     .GroupBy(a => a.IncomingHost, StringComparer.OrdinalIgnoreCase)
                     .Select(async hostGroup =>
                     {
@@ -8911,9 +8965,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IEnumerable<AccountModel> accounts,
         Func<Guid, bool> isBackendConnected,
         Func<Guid, bool> hasCachedFolders)
-        // #31: a shared mailbox has no credentials of its own — it reads through its parent's token
-        // (from PR 2). PR 1 never connects it: it's a navigable, empty top-level node until then.
-        => accounts.Where(a => !a.IsShared && (!isBackendConnected(a.Id) || !hasCachedFolders(a.Id))).ToList();
+        // #31: a shared mailbox has no credentials of its own — it reads through its parent's token. A
+        // Graph-parent shared mailbox connects from PR 2 (the resolver borrows the parent's token); an
+        // IMAP-parent shared mailbox stays deferred to PR 3, so it is excluded here and remains a
+        // navigable, empty top-level node until then.
+        => accounts.Where(a => (!a.IsShared || a.BackendKind == BackendKind.MicrosoftGraph)
+                               && (!isBackendConnected(a.Id) || !hasCachedFolders(a.Id))).ToList();
 
     public void RefreshAccountList()
     {

@@ -201,6 +201,20 @@ sealed class StubOAuthService : IOAuthService
     private OAuthResult SignInResult() => new(string.Empty, SignInUsername ?? string.Empty, SignInIsPersonalAccount);
     public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
     public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <summary>Parent account ids RequestSharedMailboxConsentAsync was called for (#31) — lets a test
+    /// assert the add-shared flow drove consent on the parent.</summary>
+    public List<Guid> SharedConsentRequestedFor { get; } = [];
+    /// <summary>When set, RequestSharedMailboxConsentAsync throws it — to simulate a declined or
+    /// admin-approval-pending consent so a test can assert the shared mailbox is left disconnected.</summary>
+    public Exception? ThrowOnSharedMailboxConsent { get; set; }
+    public Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default)
+    {
+        SharedConsentRequestedFor.Add(parent.Id);
+        if (ThrowOnSharedMailboxConsent is { } ex) throw ex;
+        return Task.CompletedTask;
+    }
+
     public Task SignOutAsync(AccountModel account) => Task.CompletedTask;
 }
 

@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using Microsoft.Identity.Client;
 using QuickMail.Models;
 using QuickMail.Services;
@@ -89,6 +91,80 @@ public class OAuthServiceScopeSelectionTests
         // The personal-domain check applies only to the Graph backend; IMAP always gets IMAP scopes.
         var account = new AccountModel { BackendKind = BackendKind.ImapSmtp, Username = "me@outlook.com" };
         Assert.Same(OAuthService.ImapSmtpScopes, OAuthService.DefaultScopesFor(account));
+    }
+
+    [Fact]
+    public void GraphParentSharedMailbox_UsesSharedScope() // #31 PR 2
+    {
+        // A shared mailbox borrows its parent's token but requests the delegated .Shared scope against
+        // /users/{SharedAddress}. It is always work/school Graph (the Add-shared dialog excludes personal
+        // parents), and its BackendKind is stamped from the parent at creation.
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.MicrosoftGraph,
+            Username = "support@contoso.com",
+            SharedAddress = "support@contoso.com",
+            IsShared = true,
+        };
+        Assert.Same(OAuthService.GraphMailScopesShared, OAuthService.DefaultScopesFor(account));
+        Assert.Contains("https://graph.microsoft.com/Mail.ReadWrite.Shared", OAuthService.GraphMailScopesShared);
+        // Not the work/school set — a shared read never touches /me, so no User.Read etc.
+        Assert.DoesNotContain("https://graph.microsoft.com/User.Read", OAuthService.GraphMailScopesShared);
+    }
+
+    [Fact]
+    public void ImapParentSharedMailbox_StillUsesImapScopes() // #31 PR 2 — IMAP-parent shared is PR 3
+    {
+        // An IMAP-parent shared account (BackendKind ImapSmtp) is not a Graph read; it falls through to
+        // the IMAP scopes (PR 3 will use XOAUTH2 user=). The shared branch is Graph-only.
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.ImapSmtp,
+            Username = "support@example.com",
+            SharedAddress = "support@example.com",
+            IsShared = true,
+        };
+        Assert.Same(OAuthService.ImapSmtpScopes, OAuthService.DefaultScopesFor(account));
+    }
+
+    // ── Shared-mailbox token identity (#31 PR 2) ────────────────────────────────
+    // A credential-less shared mailbox has no MSAL entry of its own; every token lookup resolves to the
+    // PARENT account's cached sign-in. ResolveTokenIdentity is that single resolution point.
+
+    private static OAuthService NewOAuth() =>
+        new(new ProfileContext(Path.Combine(Path.GetTempPath(), "qm-oauth-" + Guid.NewGuid().ToString("N"))));
+
+    [Fact]
+    public void ResolveTokenIdentity_SharedAccount_ResolvesToParent()
+    {
+        var parent = new AccountModel { Id = Guid.NewGuid(), Username = "user@contoso.com" };
+        var oauth = NewOAuth();
+        oauth.ResolveAccount = id => id == parent.Id ? parent : null;
+
+        var shared = new AccountModel
+        {
+            IsShared = true, ParentAccountId = parent.Id, SharedAddress = "support@contoso.com",
+            BackendKind = BackendKind.MicrosoftGraph,
+        };
+
+        Assert.Same(parent, oauth.ResolveTokenIdentity(shared));   // borrows the parent's identity
+        Assert.Same(parent, oauth.ResolveTokenIdentity(parent));   // a normal account resolves to itself
+    }
+
+    [Fact]
+    public void ResolveTokenIdentity_SharedWithNoResolvableParent_Throws()
+    {
+        // Parent signed out / removed → surfaced as InteractiveSignInRequiredException, which
+        // ConnectOneAccountAsync turns into a disconnected shared account, never a silent empty state.
+        var oauth = NewOAuth();
+        oauth.ResolveAccount = _ => null;   // parent not found
+        var shared = new AccountModel
+        {
+            IsShared = true, ParentAccountId = Guid.NewGuid(), SharedAddress = "support@contoso.com",
+            BackendKind = BackendKind.MicrosoftGraph,
+        };
+
+        Assert.Throws<InteractiveSignInRequiredException>(() => oauth.ResolveTokenIdentity(shared));
     }
 
     [Fact]
