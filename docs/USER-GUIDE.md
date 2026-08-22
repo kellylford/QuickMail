@@ -380,6 +380,22 @@ Select the account and press **Delete**. There is no confirmation step, and the 
 
 **Nothing is deleted from the mail server.** Removing an account removes it from QuickMail only — add it again and your mail is still there.
 
+### Shared mailboxes
+
+A shared mailbox is a mailbox several people read and send from — a `support@`, `info@`, or `sales@` address that belongs to a team rather than a person. If your organization has given you access to one, you can add it to QuickMail and it appears as its own mailbox in the folder tree, alongside your own accounts.
+
+Shared mailboxes are a **Microsoft 365 work or school** feature. You add one through an account you already have: QuickMail reads and sends the shared mailbox using your existing sign-in, so there is no separate password and no separate sign-in for it. Personal Outlook.com accounts and non-Microsoft (IMAP) accounts do not have shared mailboxes, so the option is offered only when you have a work or school Microsoft 365 account to read it through.
+
+**To add a shared mailbox:** open **Account Manager** (Tools menu), activate **Add shared mailbox**, choose the work or school account that has access to it if you are asked, and type the shared mailbox's email address. Press **Add**. The mailbox connects using that account and its folders load. You do not need access to a password — access comes from your own account's permission to the mailbox, which your organization grants.
+
+**Reading and sending.** A shared mailbox reads like any other: select it in the folder tree and open its folders. To send from it, choose the shared address in the **From** list when composing — the message goes out as the shared mailbox, not as you.
+
+**Freshness.** A shared mailbox updates on a timer rather than the instant new mail arrives: **shared mailboxes update every few minutes, not instantly.** Your own mailboxes still update live; only the shared one waits for the next check.
+
+**New-mail notifications are off for a shared mailbox by default.** A shared mailbox is often a busy team address, so QuickMail does not pop a notification for every message that lands in it. If you do want notifications for a particular shared mailbox, select it in Account Manager and turn on **Notify me of new mail in this shared mailbox**. The main **Show a Notification When New Mail Arrives** setting still has to be on for any notification to appear.
+
+**Removing.** Removing the account that a shared mailbox reads through also removes the shared mailbox — you are told which shared mailboxes will go when you delete their parent account. Removing a shared mailbox on its own leaves the account it read through untouched.
+
 ---
 
 ## For Microsoft 365 Administrators and Tenant Owners
@@ -1450,6 +1466,8 @@ New-mail notifications and the option to keep QuickMail running in the notificat
 When this setting is on, QuickMail shows a Windows notification as new mail arrives in any inbox. The notification is announced by screen readers and appears in the Windows notification center, which you open with **Win+N** on Windows 11 (or **Win+A** on Windows 10). Pressing **Enter** on a notification brings QuickMail to the foreground and opens that message.
 
 If multiple messages arrive together, the notification shows a count ("5 new messages") and brings QuickMail to the foreground when activated. Single-message notifications show the sender's name and subject and open that message.
+
+**Shared mailboxes are an exception:** they do not notify by default, even with this setting on, because a shared mailbox is often a busy team address. To get notifications for a specific shared mailbox, turn on **Notify me of new mail in this shared mailbox** for it in Account Manager. This setting still has to be on for those notifications to appear. See [Shared mailboxes](#shared-mailboxes).
 
 Notifications require **Windows 10 1809 or later**.
 
