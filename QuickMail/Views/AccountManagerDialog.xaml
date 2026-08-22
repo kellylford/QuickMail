@@ -78,7 +78,7 @@
                      BorderThickness="1">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
-                        <Setter Property="AutomationProperties.Name" Value="{Binding AccountLabelWithDefault}"/>
+                        <Setter Property="AutomationProperties.Name" Value="{Binding ManagerListAccessibleName}"/>
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>

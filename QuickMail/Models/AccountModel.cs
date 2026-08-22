@@ -283,6 +283,23 @@ public partial class AccountModel : ObservableObject
     public string AccountLabelWithDefault => IsDefault ? $"{AccountLabel} - default" : AccountLabel;
 
     /// <summary>
+    /// Accessible name for the Account Manager list item (#31 PR 5): the label plus the "shared mailbox"
+    /// qualifier so a screen-reader user can tell a shared mailbox from a normal account without selecting
+    /// it — matching the main-window account list. Unlike <see cref="AccessibleName"/> it omits the live
+    /// connection/unread state, which is monitoring detail the editor list doesn't need; it keeps the
+    /// "- default" marker so that distinction is still spoken.
+    /// </summary>
+    public string ManagerListAccessibleName
+    {
+        get
+        {
+            var shared = IsShared ? ", shared mailbox" : "";
+            var def = IsDefault ? " - default" : "";
+            return $"{AccountLabel}{shared}{def}";
+        }
+    }
+
+    /// <summary>
     /// Short status line shown below the account name in the account list, and as a tooltip.
     /// TotalUnread covers all folders.
     /// Examples: "Disconnected", "Connected", "Connected — 1,630 unread"

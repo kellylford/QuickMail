@@ -49,6 +49,20 @@ public class SharedMailboxModelTests
     }
 
     [Fact]
+    public void ManagerListAccessibleName_QualifiesSharedMailbox() // #31 PR 5
+    {
+        var shared = new AccountModel { AccountName = "Support", Username = "support@work.com", IsShared = true };
+        var normal = new AccountModel { AccountName = "Work", Username = "me@work.com" };
+        var sharedDefault = new AccountModel { AccountName = "Support", IsShared = true, IsDefault = true };
+
+        Assert.Equal("Support, shared mailbox", shared.ManagerListAccessibleName);
+        Assert.Equal("Work", normal.ManagerListAccessibleName);                       // no qualifier for a normal account
+        Assert.Equal("Support, shared mailbox - default", sharedDefault.ManagerListAccessibleName);
+        // Deliberately no connection/unread state — unlike AccessibleName — so the editor list stays quiet.
+        Assert.DoesNotContain("connected", shared.ManagerListAccessibleName);
+    }
+
+    [Fact]
     public void NotifyOnNewMail_RoundTripsThroughJson() // #31 PR 5
     {
         var back = RoundTrip(new AccountModel
