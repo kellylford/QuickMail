@@ -163,12 +163,12 @@ jobs:
       - name: Test
         shell: pwsh
         env:
-          # Synthesized-input tests ([InputStaFact]) are opt-in and skipped by default: they drive
-          # real keystrokes at a shown window and depend on focus and elapsed time, so any tool on
-          # the machine that reacts to windows appearing perturbs them (issue #380). A CI runner is
-          # the one environment that can honestly assert "nothing else is running", so they run
-          # here. If this variable is ever dropped, the guard below fails the job rather than
-          # letting them silently run nowhere.
+          # Synthesized-input tests are opt-in and skipped by default: they drive real keystrokes,
+          # and real SendInput mouse clicks, at a shown window, and depend on focus, the machine's
+          # own pointer, and elapsed time - so any tool on the machine that reacts to windows
+          # appearing perturbs them (issue #380). A CI runner is the one environment that can
+          # honestly assert "nothing else is running", so they run here. If this variable is ever
+          # dropped, the guard below fails the job rather than letting them silently run nowhere.
           QUICKMAIL_RUN_INPUT_TESTS: "1"
         # Both classes that were excluded here for driving the real clipboard now assert against an
         # injected IClipboardService instead, so nothing in the unit suite touches the OS clipboard
@@ -214,12 +214,17 @@ jobs:
           # env var above is dropped or the gate breaks, that claim becomes false and the tests
           # silently protect nothing.
           #
-          # Assert "nothing in the class was skipped" rather than "at least N passed": the class also
-          # holds a non-gated [Fact], so a count-based floor is satisfied by the wrong tests and one
-          # of the gated three can stop executing with no signal. This form states the intent
-          # directly and survives renames and additions within the class.
+          # Assert "nothing in these classes was skipped" rather than "at least N passed": they also
+          # hold non-gated [Fact]s, so a count-based floor is satisfied by the wrong tests and one of
+          # the gated ones can stop executing with no signal. This form states the intent directly
+          # and survives renames and additions within the classes.
+          #
+          # MouseClickInputTests is the same bargain for the mouse: it sends real clicks through
+          # SendInput at a real window, needs an unlocked and otherwise-idle desktop, and so runs
+          # here and nowhere else.
           $inputResults = @($doc.TestRun.Results.UnitTestResult |
-            Where-Object { $_.testName -like '*AddressBookTypeAheadTests*' })
+            Where-Object { $_.testName -like '*AddressBookTypeAheadTests*' -or
+                           $_.testName -like '*MouseClickInputTests*' })
           $notPassed = @($inputResults | Where-Object { $_.outcome -ne 'Passed' })
           if ($inputResults.Count -eq 0 -or $notPassed.Count -gt 0) {
             $detail = if ($inputResults.Count -eq 0) { "none were recorded at all" }
