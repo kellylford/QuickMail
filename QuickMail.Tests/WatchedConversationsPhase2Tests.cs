@@ -514,11 +514,11 @@ public class WatchedConversationsPhase2Tests
     }
 
     [Fact]
-    public void SharedMailbox_ProducesNoToast_EvenWithNotificationsOn() // #31 PR 2, spec §4.1
+    public void SharedMailbox_ProducesNoToast_ByDefault_EvenWithNotificationsOn() // #31 PR 2/5, spec §4.1
     {
-        // Now that shared accounts connect (PR 2), the #456 sweep delivers their inbox arrivals to the
-        // notify path. A shared mailbox is someone else's inbox you also watch, so it must not toast —
-        // the same incoming that produces two toasts for a normal account (test above) produces none.
+        // A shared mailbox is off by DEFAULT (NotifyOnNewMail unset): the #456 sweep delivers its inbox
+        // arrivals to the notify path, but the same incoming that produces two toasts for a normal account
+        // (test above) produces none — even with the global notification switches on.
         var (vm, watch, toasts, _) = MakeNotifyVm();
         watch.Watch("Budget Review");
         var shared = new AccountModel
@@ -526,6 +526,7 @@ public class WatchedConversationsPhase2Tests
             Id = Guid.NewGuid(), AccountName = "Support", Username = "support@example.com",
             AuthType = AuthType.OAuth2Microsoft, IsShared = true, ParentAccountId = AccountA,
             SharedAddress = "support@example.com", BackendKind = BackendKind.MicrosoftGraph,
+            // NotifyOnNewMail defaults false → excluded from toasts.
         };
         var incoming = new[] { Msg("1", "Re: Budget Review"), Msg("2", "Something unrelated") };
 
@@ -533,6 +534,32 @@ public class WatchedConversationsPhase2Tests
         vm.MaybeNotifyNewMail(shared, incoming);
 
         Assert.Empty(toasts.Toasts);
+    }
+
+    [Fact]
+    public void SharedMailbox_WithPerAccountOptIn_Toasts() // #31 PR 5
+    {
+        // The per-account opt-in (NotifyOnNewMail = true) adds a shared mailbox back into the notification
+        // set, so the same incoming now produces the watched + new-mail toasts a normal account gets. The
+        // global switches (on here, via MakeNotifyVm) still govern.
+        var (vm, watch, toasts, _) = MakeNotifyVm();
+        watch.Watch("Budget Review");
+        var shared = new AccountModel
+        {
+            Id = Guid.NewGuid(), AccountName = "Support", Username = "support@example.com",
+            AuthType = AuthType.OAuth2Microsoft, IsShared = true, ParentAccountId = AccountA,
+            SharedAddress = "support@example.com", BackendKind = BackendKind.MicrosoftGraph,
+            NotifyOnNewMail = true,   // opt-in ON
+        };
+        var incoming = new[] { Msg("1", "Re: Budget Review"), Msg("2", "Something unrelated") };
+
+        vm.MaybeNotifyWatchedMail(shared, incoming);
+        vm.MaybeNotifyNewMail(shared, incoming);
+
+        // Watched claims the matching subject; new-mail toasts the remainder — exactly the normal-account
+        // behaviour, now reached because the shared mailbox opted in.
+        Assert.Contains(toasts.Toasts, t => t.Kind == "watched" && t.Subjects.Contains("Re: Budget Review"));
+        Assert.Contains(toasts.Toasts, t => t.Kind == "new"     && t.Subjects.Contains("Something unrelated"));
     }
 
     [Fact]

@@ -45,6 +45,20 @@ public class SharedMailboxModelTests
         Assert.False(back.IsShared);
         Assert.Null(back.ParentAccountId);
         Assert.Null(back.SharedAddress);
+        Assert.False(back.NotifyOnNewMail);   // #31 PR 5: notify opt-in defaults off, no migration
+    }
+
+    [Fact]
+    public void NotifyOnNewMail_RoundTripsThroughJson() // #31 PR 5
+    {
+        var back = RoundTrip(new AccountModel
+        {
+            AccountName = "Support", Username = "support@bits-acb.org",
+            BackendKind = BackendKind.MicrosoftGraph, IsShared = true,
+            SharedAddress = "support@bits-acb.org", NotifyOnNewMail = true,
+        });
+
+        Assert.True(back.NotifyOnNewMail);
     }
 
     [Fact]

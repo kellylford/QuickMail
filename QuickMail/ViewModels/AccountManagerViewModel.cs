@@ -89,6 +89,15 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     // SyncContacts / SyncCalendar are inherited from AccountEditorViewModel (shared with Add Account).
 
     /// <summary>
+    /// #31 PR 5: per-account new-mail notification opt-in for a shared mailbox. Bound to the checkbox in
+    /// the shared-only editor block; mirrors <see cref="AccountModel.NotifyOnNewMail"/> for the selected
+    /// account. Assigned (not toggled) in <see cref="OnSelectedAccountChanged"/>; the checkbox's Click
+    /// handler calls <see cref="SetNotifyOnNewMail"/> to apply and persist on real user interaction only.
+    /// </summary>
+    [ObservableProperty]
+    private bool _notifyOnNewMail;
+
+    /// <summary>
     /// Calendar sync (#282) is offered for a superset of contact sync: Microsoft and Google (calendar
     /// API), plus iCloud accounts (CalDAV via the account's app-specific password). Other password/IMAP
     /// accounts show no checkbox.
@@ -171,6 +180,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Signature = value.Signature;
         SyncContacts = value.SyncContacts;
         SyncCalendar = value.SyncCalendar;
+        NotifyOnNewMail = value.NotifyOnNewMail;   // #31 PR 5: shared-mailbox notify opt-in for the checkbox
         // Restore the persisted personal-account flag (#233) so a re-auth resolves personal-vs-work from
         // the tenant-derived truth, not the domain guess — the vanity-domain personal case the
         // single-consent fold (#544) most needs.
@@ -291,6 +301,23 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             StatusText = $"Calendar sync not enabled: {ex.Message}";
             LogService.Log($"AccountManager: calendar-sync enable failed for {account.AccountLabel} — {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// #31 PR 5: applies the shared-mailbox new-mail notification opt-in immediately and persists it —
+    /// no Save step, mirroring the contact/calendar-sync toggles. Called from the checkbox's Click handler
+    /// (real user interaction only, never the programmatic assignment in <see cref="OnSelectedAccountChanged"/>).
+    /// Returns without side effects if the selection isn't a shared account. <paramref name="enabled"/> is
+    /// the new checkbox state.
+    /// </summary>
+    public void SetNotifyOnNewMail(bool enabled)
+    {
+        if (SelectedAccount is not { IsShared: true } account) return;   // box shows only for shared; defensive
+        account.NotifyOnNewMail = enabled;
+        SaveAccountsPreservingConversionMarkers();
+        StatusText = enabled
+            ? "New-mail notifications enabled for this shared mailbox."
+            : "New-mail notifications disabled for this shared mailbox.";
     }
 
     public AddAccountViewModel CreateAddAccountViewModel() =>
