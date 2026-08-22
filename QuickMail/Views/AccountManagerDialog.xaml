@@ -57,7 +57,7 @@
                         CommandParameter="{Binding SelectedAccount}"
                         AutomationProperties.Name="Set as default"
                         MinWidth="75" Margin="0,0,4,0" TabIndex="3"/>
-                <Button Content="Add _shared…"
+                <Button Content="Add shared mail_box…"
                         x:Name="AddSharedButton"
                         Click="AddSharedMailboxButton_Click"
                         AutomationProperties.Name="Add shared mailbox"
@@ -159,7 +159,7 @@
                          high-volume role mailbox). This opt-in adds it back in; the global new-mail
                          notification switch in Settings still governs. Applied immediately (no Save step). -->
                     <CheckBox x:Name="SharedNotifyCheckBox"
-                              Content="_Notify me of new mail in this shared mailbox"
+                              Content="Notify me of new _mail in this shared mailbox"
                               IsChecked="{Binding NotifyOnNewMail}"
                               Click="SharedNotifyCheckBox_Click"
                               Margin="0,8,0,0"/>
