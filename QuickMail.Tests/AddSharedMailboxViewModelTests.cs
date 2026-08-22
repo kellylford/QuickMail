@@ -9,15 +9,24 @@ namespace QuickMail.Tests;
 
 public class AddSharedMailboxViewModelTests
 {
+    // Work/school Microsoft on Graph (Microsoft OAuth). personal:true makes it a consumer account.
     private static AccountModel Graph(string name, bool personal = false) => new()
     {
         Id = Guid.NewGuid(), AccountName = name, Username = name.ToLowerInvariant() + "@work.com",
-        BackendKind = BackendKind.MicrosoftGraph, IsPersonalMicrosoftAccount = personal,
+        BackendKind = BackendKind.MicrosoftGraph, AuthType = AuthType.OAuth2Microsoft,
+        IsPersonalMicrosoftAccount = personal,
     };
+    // Work/school Microsoft on Exchange IMAP (Microsoft OAuth) — the IMAP-parent shared case.
+    private static AccountModel MsImap(string name) => new()
+    {
+        Id = Guid.NewGuid(), AccountName = name, Username = name.ToLowerInvariant() + "@work.com",
+        BackendKind = BackendKind.ImapSmtp, AuthType = AuthType.OAuth2Microsoft,
+    };
+    // A non-Microsoft IMAP account (password auth) — Gmail app-password, Fastmail, "Other", etc.
     private static AccountModel Imap(string name) => new()
     {
         Id = Guid.NewGuid(), AccountName = name, Username = name.ToLowerInvariant() + "@host.com",
-        BackendKind = BackendKind.ImapSmtp,
+        BackendKind = BackendKind.ImapSmtp, AuthType = AuthType.Password,
     };
     private static AccountModel SharedOf(AccountModel parent, string addr) => new()
     {
@@ -26,19 +35,37 @@ public class AddSharedMailboxViewModelTests
     };
 
     [Fact]
-    public void ParentOptions_ExcludeSharedAndPersonalMicrosoft()
+    public void ParentOptions_OnlyWorkSchoolMicrosoft() // #31 — shared mailboxes exist only there
     {
-        var work = Graph("Work");
-        var personal = Graph("Personal", personal: true);
-        var imap = Imap("Home");
-        var shared = SharedOf(work, "support@work.com");
+        var workGraph    = Graph("WorkGraph");                       // work/school MS on Graph → IN
+        var workImap     = MsImap("WorkImap");                       // work/school MS on Exchange IMAP → IN
+        var personalGraph = Graph("PersonalG", personal: true);     // personal MS on Graph → OUT
+        var personalImap = new AccountModel                          // personal MS on IMAP → OUT (the gap this closes)
+        {
+            Id = Guid.NewGuid(), AccountName = "PersonalI", Username = "me@outlook.com",
+            BackendKind = BackendKind.ImapSmtp, AuthType = AuthType.OAuth2Microsoft,
+            IsPersonalMicrosoftAccount = true,
+        };
+        var genericImap  = Imap("Fastmail");                        // non-Microsoft IMAP → OUT (RFC 2342, out of scope)
+        var google       = new AccountModel                          // Gmail via Google OAuth → OUT
+        {
+            Id = Guid.NewGuid(), AccountName = "Gmail", Username = "me@gmail.com",
+            BackendKind = BackendKind.ImapSmtp, AuthType = AuthType.OAuth2Google,
+        };
+        var pop3         = new AccountModel { Id = Guid.NewGuid(), AccountName = "Pop", Username = "me@pop.com", BackendKind = BackendKind.Pop3Smtp, AuthType = AuthType.Password };
+        var shared       = SharedOf(workGraph, "support@work.com"); // a shared account itself → OUT
 
-        var vm = new AddSharedMailboxViewModel([work, personal, imap, shared]);
+        var vm = new AddSharedMailboxViewModel(
+            [workGraph, workImap, personalGraph, personalImap, genericImap, google, pop3, shared]);
 
-        Assert.Contains(work, vm.ParentOptions);
-        Assert.Contains(imap, vm.ParentOptions);
-        Assert.DoesNotContain(personal, vm.ParentOptions);   // personal MS has no shared mailboxes
-        Assert.DoesNotContain(shared, vm.ParentOptions);     // a shared account can't be a parent
+        Assert.Contains(workGraph, vm.ParentOptions);
+        Assert.Contains(workImap, vm.ParentOptions);
+        Assert.DoesNotContain(personalGraph, vm.ParentOptions);   // personal MS has no shared mailboxes
+        Assert.DoesNotContain(personalImap, vm.ParentOptions);    // ...on IMAP either — the gap this fix closes
+        Assert.DoesNotContain(genericImap, vm.ParentOptions);     // non-Microsoft IMAP: RFC 2342 folders, not delegated mailboxes
+        Assert.DoesNotContain(google, vm.ParentOptions);
+        Assert.DoesNotContain(pop3, vm.ParentOptions);
+        Assert.DoesNotContain(shared, vm.ParentOptions);
     }
 
     [Fact]
@@ -49,7 +76,8 @@ public class AddSharedMailboxViewModelTests
         var undetected = new AccountModel
         {
             Id = Guid.NewGuid(), AccountName = "Undetected", Username = "me@outlook.com",
-            BackendKind = BackendKind.MicrosoftGraph, // IsPersonalMicrosoftAccount left null
+            BackendKind = BackendKind.MicrosoftGraph, AuthType = AuthType.OAuth2Microsoft,
+            // IsPersonalMicrosoftAccount left null — so only the consumer-domain guess can exclude it
         };
         var work = Graph("Work");
 
@@ -62,7 +90,7 @@ public class AddSharedMailboxViewModelTests
     [Fact]
     public void ShowGraphPollNote_TrueForGraphParent_FalseForImap()
     {
-        var vm = new AddSharedMailboxViewModel([Graph("Work"), Imap("Home")]);
+        var vm = new AddSharedMailboxViewModel([Graph("Work"), MsImap("Home")]);
 
         vm.SelectedParent = vm.ParentOptions.First(a => a.BackendKind == BackendKind.MicrosoftGraph);
         Assert.True(vm.ShowGraphPollNote);
