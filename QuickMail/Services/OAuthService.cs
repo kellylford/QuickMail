@@ -74,7 +74,7 @@ public class OAuthService : IOAuthService
     // delegated *.Shared* permissions — Mail.ReadWrite.Shared covers read/mark-read/move, and
     // Mail.Send.Shared covers send-as (PR 4). This is the shared account's DEFAULT scope set (like the
     // work/school set above includes Mail.Send for a normal account), so a single token carries both;
-    // both were already granted at add time (GraphSharedMailboxConsentScopes), so no extra prompt.
+    // both are granted together at add time via RequestSharedMailboxConsentAsync, so no extra prompt.
     // WORK/SCHOOL ONLY: personal Microsoft accounts have no Exchange shared mailboxes, and the Add-shared
     // dialog already excludes personal parents. Hand-maintained AND must be declared on the app
     // registration or the call 403s at runtime — see docs/ENTRA-APP-REGISTRATION.md and #31. No /me is
