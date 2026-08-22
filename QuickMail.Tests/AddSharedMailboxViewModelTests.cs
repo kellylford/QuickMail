@@ -35,12 +35,12 @@ public class AddSharedMailboxViewModelTests
     };
 
     [Fact]
-    public void ParentOptions_OnlyWorkSchoolMicrosoft() // #31 — shared mailboxes exist only there
+    public void ParentOptions_OnlyWorkSchoolMicrosoftGraph() // #31 PR 5 — shared mailboxes are Graph-only
     {
         var workGraph    = Graph("WorkGraph");                       // work/school MS on Graph → IN
-        var workImap     = MsImap("WorkImap");                       // work/school MS on Exchange IMAP → IN
+        var workImap     = MsImap("WorkImap");                       // work/school MS on Exchange IMAP → OUT (PR 3 dropped)
         var personalGraph = Graph("PersonalG", personal: true);     // personal MS on Graph → OUT
-        var personalImap = new AccountModel                          // personal MS on IMAP → OUT (the gap this closes)
+        var personalImap = new AccountModel                          // personal MS on IMAP → OUT
         {
             Id = Guid.NewGuid(), AccountName = "PersonalI", Username = "me@outlook.com",
             BackendKind = BackendKind.ImapSmtp, AuthType = AuthType.OAuth2Microsoft,
@@ -59,9 +59,9 @@ public class AddSharedMailboxViewModelTests
             [workGraph, workImap, personalGraph, personalImap, genericImap, google, pop3, shared]);
 
         Assert.Contains(workGraph, vm.ParentOptions);
-        Assert.Contains(workImap, vm.ParentOptions);
+        Assert.DoesNotContain(workImap, vm.ParentOptions);        // work/school on IMAP: dropped in PR 3, Graph-only now
         Assert.DoesNotContain(personalGraph, vm.ParentOptions);   // personal MS has no shared mailboxes
-        Assert.DoesNotContain(personalImap, vm.ParentOptions);    // ...on IMAP either — the gap this fix closes
+        Assert.DoesNotContain(personalImap, vm.ParentOptions);    // ...on IMAP either
         Assert.DoesNotContain(genericImap, vm.ParentOptions);     // non-Microsoft IMAP: RFC 2342 folders, not delegated mailboxes
         Assert.DoesNotContain(google, vm.ParentOptions);
         Assert.DoesNotContain(pop3, vm.ParentOptions);
@@ -88,14 +88,19 @@ public class AddSharedMailboxViewModelTests
     }
 
     [Fact]
-    public void ShowGraphPollNote_TrueForGraphParent_FalseForImap()
+    public void ShowGraphPollNote_TrueForGraphParent_FalseOtherwise()
     {
-        var vm = new AddSharedMailboxViewModel([Graph("Work"), MsImap("Home")]);
+        // Parents are Graph-only now, so the only eligible parent shows the poll note. The false branch is
+        // the property's defensive guard: assigning a non-Graph account directly still returns false.
+        var vm = new AddSharedMailboxViewModel([Graph("Work")]);
 
         vm.SelectedParent = vm.ParentOptions.First(a => a.BackendKind == BackendKind.MicrosoftGraph);
         Assert.True(vm.ShowGraphPollNote);
 
-        vm.SelectedParent = vm.ParentOptions.First(a => a.BackendKind == BackendKind.ImapSmtp);
+        vm.SelectedParent = MsImap("Home");   // not from ParentOptions — a defensive non-Graph selection
+        Assert.False(vm.ShowGraphPollNote);
+
+        vm.SelectedParent = null;
         Assert.False(vm.ShowGraphPollNote);
     }
 
