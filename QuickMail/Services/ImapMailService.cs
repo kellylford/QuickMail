@@ -1306,7 +1306,8 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         left.RequireStartTls == right.RequireStartTls &&
         left.ImapAcceptInvalidCert == right.ImapAcceptInvalidCert;
 
-    private static AccountModel CloneAccount(AccountModel account) =>
+    // internal for a focused regression test (#31 PR 3) that the shared-mailbox identity survives.
+    internal static AccountModel CloneAccount(AccountModel account) =>
         new()
         {
             Id                    = account.Id,
@@ -1325,6 +1326,16 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             SmtpAcceptInvalidCert = account.SmtpAcceptInvalidCert,
             RequireStartTls       = account.RequireStartTls,
             IsDefault             = account.IsDefault,
+            // #31 PR 3: the shared-mailbox identity MUST survive the clone. This clone is what the IDLE
+            // watcher and per-folder calls pass to CreateAuthenticatedClientAsync → GetAccessTokenAsync,
+            // where ResolveTokenIdentity needs IsShared/ParentAccountId to borrow the PARENT's token and
+            // the silent-only guard needs IsShared to avoid a spurious interactive sign-in for the shared
+            // address. Dropping them made an IMAP shared mailbox authenticate as itself (no MSAL entry) and
+            // fall through to an interactive prompt. BackendKind is carried for the same fidelity reason.
+            BackendKind           = account.BackendKind,
+            IsShared              = account.IsShared,
+            ParentAccountId       = account.ParentAccountId,
+            SharedAddress         = account.SharedAddress,
         };
 
     private static bool IsClientUsable(ImapClient client)
