@@ -41,6 +41,36 @@ Three details worth knowing:
 Expansion is not remembered between runs — QuickMail still starts with each account open.
 ([#590](https://github.com/kellylford/QuickMail/issues/590))
 
+## Fixed: the mouse did nothing in the folder tree
+
+Selecting a folder with the mouse left the folder highlighted and nothing else: the message list
+went on showing the folder you came from, and moving back to the tree with **F6** put the highlight
+back on the folder that was really open, as though the mouse had never been used. Reported by a
+sighted user as *"clicking on folders does not select the folders"*, which is exactly what it
+looked like.
+
+The cause was that QuickMail is built keyboard-first, and every one of these lists was wired to
+**Enter** only. They all respond to the mouse now:
+
+- **Folders** open on a single click, the same as Enter — with the difference that Enter also moves
+  you on to the message list, and a click leaves you looking at the tree you just used.
+- **Accounts** connect on a single click.
+- **Messages in the Conversations, From and To views** open on a single click, which they already
+  did in the plain message list. A conversation holding a single message opens that message, the
+  same as pressing Enter on it.
+- **Attachments** open on a double click, in both the reading pane and an open message window.
+
+Three smaller faults in the message list went with them, all of them about a click that meant
+something other than "open this". Selecting several messages with **Ctrl** or **Shift** held used to
+open each one as you added it — in Window mode, a window per message on the way to deleting them.
+Dragging across several messages to select them used to open the last one, which dropped the
+selection back to that message, so the Delete that followed deleted one message instead of the five
+you had selected. And a click on the empty space below the last message re-opened whichever message
+was selected. All three now leave the selection alone.
+
+Nothing about the keyboard changed: no shortcut, no announcement, and no reading order is different
+from 0.8.41. ([#601](https://github.com/kellylford/QuickMail/pull/601))
+
 ## Fixed: Microsoft 365 unread counts went stale until you refreshed
 
 On a Microsoft 365 account, the unread count beside a folder only changed when the whole folder list

@@ -945,7 +945,9 @@
                          TabIndex="1"
                          KeyboardNavigation.TabNavigation="Once"
                          GotKeyboardFocus="List_GotKeyboardFocus"
-                         PreviewKeyDown="AccountList_PreviewKeyDown">
+                         PreviewKeyDown="AccountList_PreviewKeyDown"
+                         PreviewMouseLeftButtonDown="AccountList_PreviewMouseLeftButtonDown"
+                         MouseLeftButtonUp="AccountList_MouseLeftButtonUp">
 
                     <!-- Two-line item: account name + live status (connected/disconnected + inbox counts).
                          AutomationProperties.Name on the container announces the full detail to screen
@@ -1003,7 +1005,9 @@
                           KeyboardNavigation.TabNavigation="Once"
                           GotKeyboardFocus="FolderList_GotKeyboardFocus"
                           PreviewTextInput="FolderList_PreviewTextInput"
-                          PreviewKeyDown="FolderList_PreviewKeyDown">
+                          PreviewKeyDown="FolderList_PreviewKeyDown"
+                          PreviewMouseLeftButtonDown="FolderList_PreviewMouseLeftButtonDown"
+                          MouseLeftButtonUp="FolderList_MouseLeftButtonUp">
                     <TreeView.Resources>
                         <HierarchicalDataTemplate DataType="{x:Type models:FolderTreeNode}"
                                                   ItemsSource="{Binding Children}">
@@ -1223,7 +1227,8 @@
                                      KeyboardNavigation.DirectionalNavigation="Contained"
                                      AutomationProperties.Name="Attachments"
                                      PreviewKeyDown="ReadingPaneAttachmentList_PreviewKeyDown"
-                                     GotKeyboardFocus="ReadingPaneAttachmentList_GotKeyboardFocus">
+                                     GotKeyboardFocus="ReadingPaneAttachmentList_GotKeyboardFocus"
+                                     MouseDoubleClick="ReadingPaneAttachmentList_MouseDoubleClick">
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
                                         <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
@@ -1535,6 +1540,7 @@
                               GotKeyboardFocus="List_GotKeyboardFocus"
                               PreviewTextInput="MessageList_PreviewTextInput"
                               PreviewKeyDown="MessageList_PreviewKeyDown"
+                              PreviewMouseLeftButtonDown="MessageList_PreviewMouseLeftButtonDown"
                               MouseLeftButtonUp="MessageList_MouseLeftButtonUp">
                         <ListView.Style>
                             <Style TargetType="ListView" BasedOn="{StaticResource {x:Type ListView}}">
@@ -1724,7 +1730,9 @@
                               PreviewTextInput="ConversationTree_PreviewTextInput"
                               PreviewKeyDown="ConversationTree_PreviewKeyDown"
                               PreviewMouseRightButtonDown="ConversationTree_PreviewMouseRightButtonDown"
-                              ContextMenuOpening="ConversationTree_ContextMenuOpening">
+                              ContextMenuOpening="ConversationTree_ContextMenuOpening"
+                              PreviewMouseLeftButtonDown="GroupTree_PreviewMouseLeftButtonDown"
+                              MouseLeftButtonUp="GroupTree_MouseLeftButtonUp">
                         <TreeView.Style>
                             <Style TargetType="TreeView" BasedOn="{StaticResource {x:Type TreeView}}">
                                 <Setter Property="Visibility" Value="{Binding IsConversationsView, Converter={StaticResource BoolToVisibilityConverter}}"/>
@@ -1852,7 +1860,9 @@
                               PreviewTextInput="SenderGroupTree_PreviewTextInput"
                               PreviewKeyDown="SenderGroupTree_PreviewKeyDown"
                               PreviewMouseRightButtonDown="SenderGroupTree_PreviewMouseRightButtonDown"
-                              ContextMenuOpening="SenderGroupTree_ContextMenuOpening">
+                              ContextMenuOpening="SenderGroupTree_ContextMenuOpening"
+                              PreviewMouseLeftButtonDown="GroupTree_PreviewMouseLeftButtonDown"
+                              MouseLeftButtonUp="GroupTree_MouseLeftButtonUp">
                         <TreeView.Style>
                             <Style TargetType="TreeView" BasedOn="{StaticResource {x:Type TreeView}}">
                                 <Setter Property="Visibility" Value="{Binding IsFromView, Converter={StaticResource BoolToVisibilityConverter}}"/>
@@ -1980,7 +1990,9 @@
                               PreviewTextInput="ToGroupTree_PreviewTextInput"
                               PreviewKeyDown="ToGroupTree_PreviewKeyDown"
                               PreviewMouseRightButtonDown="ToGroupTree_PreviewMouseRightButtonDown"
-                              ContextMenuOpening="ToGroupTree_ContextMenuOpening">
+                              ContextMenuOpening="ToGroupTree_ContextMenuOpening"
+                              PreviewMouseLeftButtonDown="GroupTree_PreviewMouseLeftButtonDown"
+                              MouseLeftButtonUp="GroupTree_MouseLeftButtonUp">
                         <TreeView.Style>
                             <Style TargetType="TreeView" BasedOn="{StaticResource {x:Type TreeView}}">
                                 <Setter Property="Visibility" Value="{Binding IsToView, Converter={StaticResource BoolToVisibilityConverter}}"/>
