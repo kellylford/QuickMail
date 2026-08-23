@@ -719,9 +719,12 @@ public abstract partial class AccountEditorViewModel : ObservableObject
                 SyncContacts = SyncContacts, SyncCalendar = SyncCalendar,
                 IsPersonalMicrosoftAccount = IsPersonalMicrosoftAccount,
             };
-            var result = (SyncContacts || SyncCalendar)
-                ? await OAuthService.SignInInteractiveWithContactsAsync(tempAccount, CancellationToken.None)
-                : await OAuthService.SignInInteractiveAsync(tempAccount, CancellationToken.None);
+            // Always go through the folding entry point: it decides the extra scopes itself
+            // (ExtraConsentScopesForMicrosoftSignIn) — the full set for a work/school Graph account so an
+            // admin can consent everything org-wide in one sign-in (#607), the opted-into scopes for a
+            // personal account, and none for IMAP. When there are no extras it behaves exactly like a plain
+            // sign-in (no WithExtraScopesToConsent attached), so this is safe to call unconditionally.
+            var result = await OAuthService.SignInInteractiveWithContactsAsync(tempAccount, CancellationToken.None);
 
             // #202: guard against a DIFFERENT identity completing sign-in than the one entered —
             // typically an admin signing in to approve consent in an admin-approval tenant. Adopting
