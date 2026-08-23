@@ -96,6 +96,12 @@ public class AddressBookFilterMenuTests
             var menu = button!.ContextMenu;
             Assert.NotNull(menu);
 
+            // Deliberately not the default filter: with "All accounts" in effect, "the filter in
+            // effect" and "the first item" are the same MenuItem, so the assertion below would
+            // hold even for a menu that always opened on the first item.
+            vm.SelectAccountFilter(vm.AccountFilterOptions.Single(o => o.Name == "Work"));
+            DoEvents();
+
             Click(button);
             DoEvents();
 
@@ -105,9 +111,28 @@ public class AddressBookFilterMenuTests
                 menu.Items.OfType<AccountFilterOption>().Select(o => o.Name).ToArray());
 
             // Focus lands on the filter in effect, not on the first item.
+            //
+            // Asserted through the menu's own focus scope rather than Keyboard.FocusedElement.
+            // What AddressBookWindow.AccountFilterMenu_Opened does is call item.Focus(); whether
+            // Win32 keyboard focus then follows into the popup's separate HWND is up to WPF's menu
+            // mode, which a synthesized ClickEvent never enters. Measured mid-test: the window was
+            // active and the right MenuItem held focus in the menu's scope (IsFocused true), while
+            // Keyboard.FocusedElement was still the window's search box. So the Keyboard form of
+            // this assertion passed or failed on how the run happened to be launched, not on
+            // anything the window did — it was the suite's one flaky test for exactly that reason.
+            // A ContextMenu is a focus scope (WPF sets IsFocusScope on it), so this is the same
+            // claim without the dependency.
             var active = ItemFor(menu, vm.SelectedAccountFilter);
             Assert.NotNull(active);
-            Assert.Same(active, Keyboard.FocusedElement);
+            Assert.Same(active, FocusManager.GetFocusedElement(menu));
+            Assert.True(active!.IsFocused);
+
+            // ...and nowhere else. The regression this guards is the menu opening on the first
+            // item, which on a non-default filter is a different item than the one above.
+            foreach (var other in menu.Items.OfType<AccountFilterOption>()
+                         .Select(o => ItemFor(menu, o))
+                         .Where(i => i != null && !ReferenceEquals(i, active)))
+                Assert.False(other!.IsFocused);
 
             menu.IsOpen = false;
             DoEvents();
