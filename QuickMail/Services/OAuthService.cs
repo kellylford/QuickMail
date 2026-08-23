@@ -457,42 +457,52 @@ public class OAuthService : IOAuthService
     }
 
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default)
-        // Microsoft: sign in for mail AND — for a PERSONAL account only — fold the requested contact/
-        // calendar consent into the same interactive prompt via WithExtraScopesToConsent, so a personal
-        // account (no admin-consent model) is prompted once instead of once per capability. The extra
-        // grants land in the token cache, so the post-add RequestContactsConsentAsync /
-        // RequestCalendarConsentAsync calls then acquire silently.
+        // Microsoft: sign in for mail AND fold extra Graph consent into the same interactive prompt via
+        // WithExtraScopesToConsent, so the whole set is approved in one screen instead of once per
+        // capability. The extra grants land in the token cache, so the post-add RequestContactsConsentAsync /
+        // RequestCalendarConsentAsync calls (and shared-mailbox reads) then acquire silently. What gets
+        // folded is decided by ExtraConsentScopesForMicrosoftSignIn: for a WORK/SCHOOL Graph account the FULL
+        // set (contacts + calendar + shared), so an admin can grant everything org-wide in one sign-in
+        // (#607); for a PERSONAL account only the opted-into scopes; for IMAP nothing.
         //
-        // We DELIBERATELY do NOT fold for work/school. On a tenant that disables user consent and hasn't
-        // admin-consented contacts/calendar, surfacing those scopes at the mail sign-in would dead-end the
-        // WHOLE interactive acquisition — no token, so the account is never added. The unfolded path
-        // degrades gracefully instead: mail signs in, the account is added, and only the post-add
-        // RequestContactsConsentAsync dead-ends (caught in AccountManagerViewModel, which just disables
-        // contact sync). This is the same admin-consent dead-end hazard the mail scope list avoids for
-        // User.ReadBasic.All. Folding only ever helped personal accounts anyway — work/school usually has
-        // admin pre-consent, so its post-add consent is already silent.
-        //
-        // (Pre-#511 nothing could be folded because work/school signed in with `.default`, which can't be
-        // combined with explicit scopes; both paths use explicit Graph scopes now, so personal folds
-        // cleanly. The account carries the two opt-in bits from the editor VM.)
+        // The work/school fold is safe on a consent-restricted tenant because SignInInteractiveAsync retries
+        // MAIL-ONLY if the folded acquisition fails: a non-admin who can't consent the extras still gets a
+        // working mail account, and the extras fall back to their own post-add consent. (Earlier this method
+        // folded for personal only, to avoid dead-ending work/school on such tenants; the mail-only retry —
+        // #544 — now provides that graceful fallback, so folding the full set for work/school is what unlocks
+        // one-pass admin consent without dead-ending anyone.) When there are no extras it attaches no
+        // WithExtraScopesToConsent, i.e. behaves as a plain sign-in — safe to call unconditionally.
         => SignInInteractiveAsync(account, DefaultScopesFor(account), firstConnect: true,
             ExtraConsentScopesForMicrosoftSignIn(account), ct);
 
     // The extra Graph scopes to fold into THIS account's mail sign-in consent, or empty when none should
-    // be folded. Two gates, both required:
-    //   • Graph backend — the primary mail scopes must be graph.microsoft.com, so the folded contact/
-    //     calendar scopes ride the SAME resource. A personal Microsoft account DEFAULTS to the IMAP backend
-    //     (outlook.office.com mail scopes); folding graph.microsoft.com scopes onto that sign-in is a
-    //     cross-resource authorize the MSA + outlook.office.com path handles badly (#239) — and it is the
-    //     DEFAULT consumer onboarding path, not an edge case. Only a Graph sign-in folds.
-    //   • Personal — work/school returns empty so its opted-in consent stays on the graceful post-add path
-    //     and never dead-ends a consent-restricted tenant's sign-in (see SignInInteractiveWithContactsAsync).
+    // be folded. Gated first on the Graph backend: the primary mail scopes must be graph.microsoft.com so
+    // the folded scopes ride the SAME resource. A personal Microsoft account DEFAULTS to the IMAP backend
+    // (outlook.office.com); folding graph.microsoft.com scopes onto that sign-in is a cross-resource
+    // authorize the MSA + outlook.office.com path handles badly (#239), so IMAP returns empty. Among Graph
+    // accounts, work/school folds the full set and personal folds only its opt-ins — see the body.
     // Personal is resolved via ResolveIsPersonalMicrosoftAccount (persisted flag, else the domain guess),
     // the same resolution DefaultScopesFor uses.
     internal static string[] ExtraConsentScopesForMicrosoftSignIn(AccountModel account)
-        => account.BackendKind == BackendKind.MicrosoftGraph && ResolveIsPersonalMicrosoftAccount(account)
-            ? MicrosoftExtraConsentScopes(account.SyncContacts, account.SyncCalendar)
-            : Array.Empty<string>();
+    {
+        if (account.BackendKind != BackendKind.MicrosoftGraph) return Array.Empty<string>();
+
+        // #607 part 1: a WORK/SCHOOL Graph sign-in folds in EVERYTHING QuickMail uses beyond the primary
+        // mail scopes (contacts + calendar + shared), regardless of the sync opt-ins — so if the person
+        // signing in is (or has) an admin, the consent screen shows the full set with the "consent for your
+        // organization" option, and they grant it ALL org-wide in this one sign-in. Then no later user hits
+        // a per-capability consent wall, and nobody has to find the Help-menu admin-consent action. Primary
+        // (GraphMailScopesWorkSchool) + these extras == AllGraphAdminConsentScopes, so the fold and the
+        // standalone admin-consent request cover the same set. A non-admin who can't consent them falls back
+        // to a mail-only account via the retry in SignInInteractiveAsync; usage stays gated by the sync
+        // opt-ins and the shared-mailbox feature flag, so an unused grant is harmless.
+        if (!ResolveIsPersonalMicrosoftAccount(account))
+            return AllGraphAdminConsentScopes.Except(GraphMailScopesWorkSchool, StringComparer.OrdinalIgnoreCase).ToArray();
+
+        // PERSONAL Microsoft: no admin/org model, so folding everything would only over-ask an individual
+        // with no upside. Fold only what they opted into (least-privilege), as before (#544).
+        return MicrosoftExtraConsentScopes(account.SyncContacts, account.SyncCalendar);
+    }
 
     // The extra Graph scopes to pre-consent alongside the mail sign-in for the two opt-in bits. Empty
     // when neither is requested (the caller then attaches no WithExtraScopesToConsent). Pure and

@@ -159,8 +159,12 @@ public class AccountEditorSignInTests
     }
 
     [Fact]
-    public async Task MicrosoftSignIn_NoSyncRequested_UsesPlainSignIn()
+    public async Task MicrosoftSignIn_AlwaysUsesFoldingEntryPoint_EvenWithNoSync() // #607 part 1
     {
+        // The caller no longer branches on the sync opt-ins — it always goes through the folding entry
+        // point, which decides the extras itself (the full set for a work/school Graph account so an admin
+        // can consent everything org-wide in one sign-in; the opt-ins for personal; none for IMAP). With no
+        // extras it behaves as a plain sign-in, so calling it unconditionally is safe.
         var (vm, oauth) = NewVm();
         vm.Username = "user@contoso.com";
         oauth.ReturnUsername = "user@contoso.com";
@@ -169,7 +173,7 @@ public class AccountEditorSignInTests
 
         await vm.SignInMicrosoftCommand.ExecuteAsync(null);
 
-        Assert.False(oauth.WithContactsPathUsed);
+        Assert.True(oauth.WithContactsPathUsed);
     }
 
     // #544 review finding 3: the known personal flag must reach the sign-in, or the fold's personal check
