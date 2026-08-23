@@ -593,6 +593,25 @@ Press `Ctrl+Shift+V` (or use the **View** menu) to switch how messages are group
 - **From** — messages grouped by sender
 - **To** — messages grouped by recipient
 
+### Moving to the Next Unread Message
+
+`Alt+Down` moves to the nearest unread message below where you are; `Alt+Up` moves to the nearest
+one above. They are also **Next Unread Message** and **Previous Unread Message** in the command
+palette, and you can give them different keys in **File → Settings → Keyboard Shortcuts**.
+
+In the **Messages** view they move down or up the list, skipping everything already read. In
+**Conversations**, **From**, and **To** they run through every message in the tree in the order it
+is shown — so they cross from one conversation or sender into the next, and a group that is closed
+is opened so the message inside it can take focus.
+
+Both work from the message list or a group tree. Below and above mean what they say on screen: which
+of them is newer depends on how the folder is sorted.
+
+Neither wraps around. When there is no unread message left in the direction you are going, nothing
+moves and QuickMail says "No unread messages below" or "No unread messages above", so that running
+out is never mistaken for a key that did not register. (That is a **Result** announcement — see
+[Screen Reader Announcements](#screen-reader-announcements) if you have those switched off.)
+
 ### Each Folder Remembers How You Left It
 
 Folders do not all want the same treatment. An inbox reads well grouped into **Conversations**; a
@@ -1888,6 +1907,8 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+Shift+L` | Rules Manager |
 | `Ctrl+,` | Settings |
 | `F1` | User Guide |
+| `Alt+Down` | Next unread message |
+| `Alt+Up` | Previous unread message |
 | `Shift+,` | First message in group |
 | `Shift+.` | Last message in group |
 | `Escape` | Close contact mail results (message list focus) |

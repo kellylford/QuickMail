@@ -40,6 +40,8 @@
 | K | `mail.toggleFlag` | Toggle Flag |
 | Ctrl+Shift+K | `mail.pickFlag` | Pick Flag… |
 | *(unassigned)* | `mail.openFlagManager` | Manage Flags… |
+| Alt+Down | `mail.nextUnread` | Next Unread Message — the nearest unread message below the current one, in the flat list or a group tree (message-area focus only) |
+| Alt+Up | `mail.previousUnread` | Previous Unread Message — the nearest unread message above the current one (message-area focus only) |
 | Shift+, | `mail.jumpToFirstInGroup` | First Message in Group |
 | Shift+. | `mail.jumpToLastInGroup` | Last Message in Group |
 | *(unassigned)* | `mail.acceptInvite` | Accept Invitation |

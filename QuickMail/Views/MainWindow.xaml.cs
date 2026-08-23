@@ -1027,6 +1027,24 @@ public partial class MainWindow : Window
             defaultKey: Key.OemPeriod, defaultModifiers: ModifierKeys.Shift,
             isAvailable: IsGroupedViewActive));
 
+        // Alt+Down / Alt+Up, gated on message-area focus for the reason the bare-K flag command
+        // is (#255): unavailable leaves e.Handled false, so Alt+Down still opens the dropdown of
+        // whatever ComboBox the user is actually in. The palette runs commands without consulting
+        // IsAvailable, so gating costs nothing there.
+        _registry.Register(new CommandDefinition(
+            id: "mail.nextUnread", category: "Mail", title: "Next Unread Message",
+            execute: GoToNextUnread,
+            defaultKey: Key.Down, defaultModifiers: ModifierKeys.Alt,
+            description: "Move to the nearest unread message below the current one.",
+            isAvailable: IsMessageAreaFocused));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.previousUnread", category: "Mail", title: "Previous Unread Message",
+            execute: GoToPreviousUnread,
+            defaultKey: Key.Up, defaultModifiers: ModifierKeys.Alt,
+            description: "Move to the nearest unread message above the current one.",
+            isAvailable: IsMessageAreaFocused));
+
         _registry.Register(new CommandDefinition(
             id: "mail.selectAll", category: "Mail", title: "Select All Messages",
             execute: SelectAllMessages,
@@ -4554,6 +4572,96 @@ public partial class MainWindow : Window
                 FocusToGroupMessage(group, first ? 0 : group.Messages.Count - 1);
         }
     }
+
+    // ── Next / previous unread message (Alt+Down / Alt+Up) ──────────────────
+
+    private void GoToNextUnread()     => GoToUnread(forward: true);
+    private void GoToPreviousUnread() => GoToUnread(forward: false);
+
+    /// <summary>
+    /// Moves the selection to the nearest unread message below (<paramref name="forward"/>) or
+    /// above the current one, and puts focus on it. In the grouped views the search runs over
+    /// every message the tree holds, collapsed groups included, and the group it lands in is
+    /// expanded — the same thing <see cref="JumpToGroupBoundary"/> does (issue #617).
+    /// <para>The search does not wrap. Running out of unread mail is announced, because nothing
+    /// moving is the one outcome the platform does not report on its own.</para>
+    /// </summary>
+    private void GoToUnread(bool forward)
+    {
+        // The calendar has no unread mail, and in Tab mode a message tab covers the list. Either
+        // way the panel this would move through is not on screen — reachable only from the palette,
+        // which runs a command without consulting IsAvailable.
+        if (_vm.IsCalendarView) return;
+
+        if (_vm.IsConversationsView)
+            GoToUnreadInGroupTree(ConversationTree, _vm.Conversations, g => g.Messages, (g, i) => FocusConversationMessage(g, i), forward);
+        else if (_vm.IsFromView)
+            GoToUnreadInGroupTree(SenderGroupTree, _vm.SenderGroups, g => g.Messages, (g, i) => FocusSenderGroupMessage(g, i), forward);
+        else if (_vm.IsToView)
+            GoToUnreadInGroupTree(ToGroupTree, _vm.ToGroups, g => g.Messages, (g, i) => FocusToGroupMessage(g, i), forward);
+        else
+            GoToUnreadInMessageList(forward);
+    }
+
+    private void GoToUnreadInMessageList(bool forward)
+    {
+        if (!MessageList.IsVisible) return;
+
+        var messages = _vm.Messages;
+
+        // SelectedIndex is the first row of an Extended selection, and -1 when nothing is
+        // selected at all — in which case the search covers the whole list from the near end.
+        var from = MessageList.SelectedIndex >= 0
+            ? MessageList.SelectedIndex
+            : UnreadNavigator.SearchOriginForNoSelection(messages.Count, forward);
+
+        var idx = UnreadNavigator.FindNextUnread(messages, from, forward);
+        if (idx < 0) { AnnounceNoMoreUnread(forward); return; }
+
+        // Assigning SelectedIndex replaces an Extended selection rather than adding to it, so the
+        // message landed on is the only one selected — what arrowing onto it would have done.
+        MessageList.SelectedIndex = idx;
+        MessageList.ScrollIntoView(MessageList.Items[idx]);
+        FocusItemAt(idx);
+    }
+
+    private void GoToUnreadInGroupTree<TGroup>(
+        TreeView tree,
+        IReadOnlyList<TGroup> groups,
+        Func<TGroup, IReadOnlyList<MailMessageSummary>> messagesOf,
+        Action<TGroup, int> focusMessage,
+        bool forward) where TGroup : class
+    {
+        if (!tree.IsVisible) return;
+
+        var flat = UnreadNavigator.Flatten(groups, messagesOf);
+
+        int from;
+        switch (tree.SelectedItem)
+        {
+            case MailMessageSummary msg when UnreadNavigator.IndexOfMessage(flat, msg) is var i and >= 0:
+                from = i;
+                break;
+            case TGroup group when UnreadNavigator.IndexOfGroupStart(flat, group) is var start and >= 0:
+                from = UnreadNavigator.SearchOriginForGroupHeader(start, forward);
+                break;
+            default:
+                from = UnreadNavigator.SearchOriginForNoSelection(flat.Count, forward);
+                break;
+        }
+
+        var idx = UnreadNavigator.FindNextUnread(flat, e => e.Message.IsUnread, from, forward);
+        if (idx < 0) { AnnounceNoMoreUnread(forward); return; }
+
+        focusMessage(flat[idx].Group, flat[idx].MessageIndex);
+    }
+
+    // "Below"/"above" rather than "newer"/"older": which of those a direction means depends on the
+    // sort, but the direction on screen is the same whichever way the list is sorted.
+    private void AnnounceNoMoreUnread(bool forward) =>
+        AccessibilityHelper.Announce(this,
+            forward ? "No unread messages below." : "No unread messages above.",
+            category: AnnouncementCategory.Result);
 
     // ── Mark as Read ─────────────────────────────────────────────────────────
 
