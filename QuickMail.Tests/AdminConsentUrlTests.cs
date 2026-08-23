@@ -46,7 +46,8 @@ public class AdminConsentUrlTests
                  })
             Assert.Contains(expected, scopes);
 
-        // No Exchange Online (outlook.office.com) — those declared perms are stale and would 65006 the grant.
+        // No Exchange Online (outlook.office.com): requesting the full declared set at once 65006s on that
+        // resource, so the admin-consent request stays Graph-only (the correct scope for #607 regardless).
         Assert.DoesNotContain(scopes, s => s.Contains("outlook.office.com", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(scopes.Length, scopes.Distinct().Count()); // deduped union
     }

@@ -131,14 +131,17 @@ public class OAuthService : IOAuthService
     // URL and tests.
     //
     // Graph-ONLY on purpose, and the admin-consent request MUST list these scopes explicitly (the v2.0
-    // endpoint) rather than consenting the app's whole declared set (the v1 /adminconsent endpoint). The
-    // app registration also declares Office 365 Exchange Online IMAP/SMTP permissions whose ids Exchange no
-    // longer offers, so a "consent everything declared" request fails the WHOLE grant with AADSTS65006
-    // ("resource 00000002-0000-0ff1-ce00-000000000000 had no entitlements matching…"). Listing only these
-    // Graph scopes never touches the Exchange resource, so it grants cleanly — verified live. (The stale
-    // EXO permission ids are an app-registration fix, Kelly's; #607 is Graph consent regardless — the IMAP
-    // path is legacy.) User.ReadBasic.All is intentionally absent: it is a forward-declared directory scope
-    // with no call site (see GraphMailScopesWorkSchool), so there is nothing to consent for it yet.
+    // endpoint) rather than consenting the app's whole declared set (the v1 /adminconsent endpoint).
+    // OBSERVED: any flow that requests the FULL DECLARED SET at once — the v1 /adminconsent, and the old
+    // `.default` (#511) — returns AADSTS65006 involving the Office 365 Exchange Online resource
+    // ("resource 00000002-0000-0ff1-ce00-000000000000 had no entitlements matching…"), while every flow that
+    // requests EXPLICIT scopes by name works: Graph sign-in, IMAP sign-in (the two EXO scopes consent fine,
+    // incl. admin consent), and this v2.0 Graph-only adminconsent. The root cause of the full-set failure is
+    // UNRESOLVED — it is NOT a confirmed app-registration defect (the EXO perms are valid; they consent by
+    // name). Listing only these Graph scopes sidesteps it and is the correct scope for #607 regardless (the
+    // IMAP path is legacy). Verified live. User.ReadBasic.All is intentionally absent: it is a forward-
+    // declared directory scope with no call site (see GraphMailScopesWorkSchool), so there is nothing to
+    // consent for it yet.
     public static readonly string[] AllGraphAdminConsentScopes =
         GraphMailScopesWorkSchool
             .Concat(GraphContactScopes)
@@ -550,10 +553,10 @@ public class OAuthService : IOAuthService
     /// <summary>
     /// The <c>/organizations/v2.0/adminconsent</c> URL that grants <see cref="AllGraphAdminConsentScopes"/>
     /// org-wide. Uses the v2.0 endpoint with an EXPLICIT scope list, NOT the v1 <c>/adminconsent</c> (which
-    /// consents the app's whole declared set): the registration also declares Exchange Online IMAP/SMTP
-    /// permissions whose ids Exchange no longer offers, so a "consent everything declared" request fails the
-    /// entire grant with AADSTS65006 — listing only these Graph scopes never touches that resource and grants
-    /// cleanly (verified live). Uses <c>/organizations</c> (not <c>/common</c> or a fixed tenant) so Azure AD
+    /// consents the app's whole declared set): a full-declared-set request returns AADSTS65006 involving the
+    /// Exchange Online resource (cause unresolved — see the <see cref="AllGraphAdminConsentScopes"/> note),
+    /// whereas listing only these Graph scopes grants cleanly (verified live). Uses <c>/organizations</c>
+    /// (not <c>/common</c> or a fixed tenant) so Azure AD
     /// resolves the tenant from the admin's sign-in — no tenant id to type and no account needed first — and,
     /// being an admin-consent request, it CREATES the service principal, so it works on a tenant no user has
     /// touched. <paramref name="state"/> is echoed back on the redirect and checked by
