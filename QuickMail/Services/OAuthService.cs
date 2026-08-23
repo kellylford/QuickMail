@@ -124,6 +124,29 @@ public class OAuthService : IOAuthService
         "https://graph.microsoft.com/Calendars.ReadWrite",
     ];
 
+    // #607: the full set of graph.microsoft.com delegated scopes QuickMail uses, for a one-shot org
+    // admin-consent. Union of every Graph capability — mail + rules + profile (GraphMailScopesWorkSchool),
+    // contacts, calendar, and shared-mailbox — deduped, so a Global Admin consents to everything QuickMail
+    // needs in ONE screen with no per-capability cascade. Order is stable (mail first) for a deterministic
+    // URL and tests.
+    //
+    // Graph-ONLY on purpose, and the admin-consent request MUST list these scopes explicitly (the v2.0
+    // endpoint) rather than consenting the app's whole declared set (the v1 /adminconsent endpoint). The
+    // app registration also declares Office 365 Exchange Online IMAP/SMTP permissions whose ids Exchange no
+    // longer offers, so a "consent everything declared" request fails the WHOLE grant with AADSTS65006
+    // ("resource 00000002-0000-0ff1-ce00-000000000000 had no entitlements matching…"). Listing only these
+    // Graph scopes never touches the Exchange resource, so it grants cleanly — verified live. (The stale
+    // EXO permission ids are an app-registration fix, Kelly's; #607 is Graph consent regardless — the IMAP
+    // path is legacy.) User.ReadBasic.All is intentionally absent: it is a forward-declared directory scope
+    // with no call site (see GraphMailScopesWorkSchool), so there is nothing to consent for it yet.
+    public static readonly string[] AllGraphAdminConsentScopes =
+        GraphMailScopesWorkSchool
+            .Concat(GraphContactScopes)
+            .Concat(GraphCalendarScopes)
+            .Concat(GraphMailScopesShared)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
     // Authoritative "is this a personal Microsoft account" signal: every consumer account lives in the
     // well-known MSA "consumers" tenant. Detected from the MSAL account at sign-in and persisted on
     // AccountModel (#233), so it's correct even for personal accounts on custom/vanity domains.
@@ -525,23 +548,21 @@ public class OAuthService : IOAuthService
     // tested; the View drives the WebView2 that navigates the URL and reports the redirect back.
 
     /// <summary>
-    /// The <c>/organizations/adminconsent</c> URL that grants QuickMail's permissions org-wide. This is the
-    /// v1 admin-consent endpoint: it consents the app's ENTIRE DECLARED permission set from the registration
-    /// (no <c>scope</c> parameter), which is exactly right for a tenant-wide grant — it covers everything
-    /// QuickMail may need in one screen, stays correct as declared permissions change (no hand-maintained
-    /// list), and crucially grants the permissions user sign-in deliberately never requests: forward-declared
-    /// directory scopes like <c>User.ReadBasic.All</c> that would dead-end a locked-down tenant's interactive
-    /// sign-in but are fine for an admin to consent (see the GraphMailScopesWorkSchool note). Uses
-    /// <c>/organizations</c> (not <c>/common</c> or a fixed tenant) so Azure AD resolves the tenant from the
-    /// admin's sign-in — no tenant id to type and no account needed first — and, being an admin-consent
-    /// request, it also CREATES the service principal, so it works on a tenant no user has touched.
-    /// <paramref name="state"/> is echoed back on the redirect and checked by
-    /// <see cref="ParseAdminConsentRedirect"/> (CSRF guard). Mirrors the manual "Option B" URL in the
-    /// User Guide's admin section, with a redirect + state added so the embedded WebView2 can read the outcome.
+    /// The <c>/organizations/v2.0/adminconsent</c> URL that grants <see cref="AllGraphAdminConsentScopes"/>
+    /// org-wide. Uses the v2.0 endpoint with an EXPLICIT scope list, NOT the v1 <c>/adminconsent</c> (which
+    /// consents the app's whole declared set): the registration also declares Exchange Online IMAP/SMTP
+    /// permissions whose ids Exchange no longer offers, so a "consent everything declared" request fails the
+    /// entire grant with AADSTS65006 — listing only these Graph scopes never touches that resource and grants
+    /// cleanly (verified live). Uses <c>/organizations</c> (not <c>/common</c> or a fixed tenant) so Azure AD
+    /// resolves the tenant from the admin's sign-in — no tenant id to type and no account needed first — and,
+    /// being an admin-consent request, it CREATES the service principal, so it works on a tenant no user has
+    /// touched. <paramref name="state"/> is echoed back on the redirect and checked by
+    /// <see cref="ParseAdminConsentRedirect"/> (CSRF guard).
     /// </summary>
     public static string BuildAdminConsentUrl(string state) =>
-        "https://login.microsoftonline.com/organizations/adminconsent" +
+        "https://login.microsoftonline.com/organizations/v2.0/adminconsent" +
         $"?client_id={ClientId}" +
+        $"&scope={Uri.EscapeDataString(string.Join(" ", AllGraphAdminConsentScopes))}" +
         $"&redirect_uri={Uri.EscapeDataString("http://localhost")}" +
         $"&state={Uri.EscapeDataString(state)}";
 

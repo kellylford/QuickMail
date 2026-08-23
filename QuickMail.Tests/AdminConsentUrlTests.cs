@@ -13,17 +13,42 @@ namespace QuickMail.Tests;
 public class AdminConsentUrlTests
 {
     [Fact]
-    public void BuildAdminConsentUrl_UsesV1OrganizationsAdminConsentEndpoint()
+    public void BuildAdminConsentUrl_UsesV2OrganizationsAdminConsentWithExplicitScopes()
     {
         var url = OAuthService.BuildAdminConsentUrl("state123");
 
-        // v1 /adminconsent (NOT /v2.0): consents the app's whole DECLARED permission set, no scope list.
-        Assert.StartsWith("https://login.microsoftonline.com/organizations/adminconsent?", url);
-        Assert.DoesNotContain("/v2.0/", url);
-        Assert.DoesNotContain("scope=", url);   // declared-perms grant carries no scope parameter
+        // v2.0 + explicit scope list (NOT v1 declared-perms): only these Graph scopes are consented, so the
+        // request never touches the app registration's stale Exchange Online perms (AADSTS65006).
+        Assert.StartsWith("https://login.microsoftonline.com/organizations/v2.0/adminconsent?", url);
+        Assert.Contains("scope=", url);
         Assert.Contains("client_id=bcdc84f1-d37c-4581-b14a-a01f7b3a1312", url);
         Assert.Contains("redirect_uri=http%3A%2F%2Flocalhost", url);
         Assert.Contains("state=state123", url);
+    }
+
+    [Fact]
+    public void BuildAdminConsentUrl_RequestsEveryGraphScope_AndNoExchangeScope()
+    {
+        var url = OAuthService.BuildAdminConsentUrl("s");
+        var scopes = Uri.UnescapeDataString(url.Split("scope=")[1].Split('&')[0]).Split(' ');
+
+        foreach (var expected in new[]
+                 {
+                     "https://graph.microsoft.com/Mail.ReadWrite",
+                     "https://graph.microsoft.com/Mail.Send",
+                     "https://graph.microsoft.com/MailboxSettings.ReadWrite",
+                     "https://graph.microsoft.com/User.Read",
+                     "https://graph.microsoft.com/Contacts.Read",
+                     "https://graph.microsoft.com/People.Read",
+                     "https://graph.microsoft.com/Calendars.ReadWrite",
+                     "https://graph.microsoft.com/Mail.ReadWrite.Shared",
+                     "https://graph.microsoft.com/Mail.Send.Shared",
+                 })
+            Assert.Contains(expected, scopes);
+
+        // No Exchange Online (outlook.office.com) — those declared perms are stale and would 65006 the grant.
+        Assert.DoesNotContain(scopes, s => s.Contains("outlook.office.com", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(scopes.Length, scopes.Distinct().Count()); // deduped union
     }
 
     [Fact]
