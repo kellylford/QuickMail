@@ -334,7 +334,16 @@ public class OAuthService : IOAuthService
             throw new InteractiveSignInRequiredException(
                 $"Shared mailbox '{account.SharedAddress}' is disconnected — sign in to its parent account.");
 
-        var result = await SignInInteractiveAsync(account, scopes, ct);
+        // #607: this interactive fallback fires when a cached token is gone (revoked/expired) and an
+        // operation — e.g. a manual refresh — needs one, i.e. a RE-AUTH. Fold the same extra scopes the
+        // add-account/editor sign-in does (ExtraConsentScopesForMicrosoftSignIn: the full set for a
+        // work/school Graph account) so a re-auth ALSO shows an admin the complete permission list to grant
+        // org-wide — otherwise this was the one interactive Microsoft path that still asked for only the
+        // primary scopes. Empty extras (personal-no-opt-in, IMAP) make this behave exactly as before; the
+        // mail-only retry inside SignInInteractiveAsync keeps a non-admin who can't consent the extras from
+        // dead-ending (they still get a token for the requested `scopes`).
+        var result = await SignInInteractiveAsync(account, scopes, firstConnect: false,
+            ExtraConsentScopesForMicrosoftSignIn(account), ct);
         return result.AccessToken;
     }
 
