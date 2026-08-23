@@ -18,11 +18,12 @@ The following issues from this review have been addressed:
 | QUALITY-5 | ✅ Fixed | `TutorialOverlay.SetViewModel` now stores the handler in a field and unsubscribes before re-subscribing, preventing event subscription leaks on restart. |
 | QUALITY-7 | ✅ Fixed | Added `LIMITATION:` comment to `IcsModel.ParseIcsDateTime` documenting that TZID parameters are ignored. |
 | QUALITY-8 | ✅ Fixed | `TutorialViewModel.Start()` now notifies `CurrentStepNumber` in addition to `CurrentStep`. |
+| DESIGN-1 | ✅ Fixed | Removed `OnContextMenuOpening` from `GroupedMessageTreeController`, along with `FocusMessage`, `LandOnAfterRebuild` and `LandOnMessageAfterRebuild` — none of the four had a call site. The three `*Tree_ContextMenuOpening` handlers in `MainWindow` keep their own implementations, which is the "remove it" arm of the two options below. Seven constructor parameters went with them (2026-08-23). |
 | DOC-1 | ✅ Fixed | Added missing entries to CLAUDE.md shortcut table: `mail.acceptInvite`, `mail.declineInvite`, `mail.tentativeInvite`, `help.keyboardTutorial`. Added note about compose window's private `CommandRegistry`. |
 
 **Not addressed (deferred):**
 - BUG-3 (false positive test) — low priority, no production impact
-- DESIGN-1 through DESIGN-4 — design observations, not bugs
+- DESIGN-2 through DESIGN-4 — design observations, not bugs
 - QUALITY-4, QUALITY-6 — very low priority
 - TEST-1 through TEST-5 — test coverage gaps
 - DOC-2 — addressed via QUALITY-7 comment
@@ -147,12 +148,20 @@ Assert.Equal("T1 Modified", all[0].Title);
 ## DESIGN & ARCHITECTURE ISSUES
 
 ### DESIGN-1 — `GroupedMessageTreeController.OnContextMenuOpening` exists but is never called  
+**Status:** ✅ Fixed 2026-08-23 — removed, together with three more uncalled members of the same class.  
 **Severity:** Low (dead code)  
 **File:** `QuickMail/Views/GroupedMessageTreeController.cs:666-682`
 
 The refactoring to `GroupedMessageTreeController` extracted `GotKeyboardFocus`, `SelectedItemChanged`, `PreviewTextInput`, `PreviewMouseRightButtonDown`, and `FocusFirstItem` handlers. The controller also defines `OnContextMenuOpening`, but the three `*Tree_ContextMenuOpening` handlers in `MainWindow.xaml.cs` still have their own inline implementations and do not delegate to the controller. The `OnContextMenuOpening` method is dead code.
 
 Either remove `OnContextMenuOpening` from the controller, or complete the extraction and replace the inline handlers with controller delegation.
+
+Resolved by removing it. The audit that followed found three more members in the same class with no
+call site — `FocusMessage`, `LandOnAfterRebuild`, `LandOnMessageAfterRebuild` — which mattered more
+than the dead-code tidiness: they used the wait-for-a-container shape that cannot work for a group
+outside the virtualized viewport, so wiring any of them up after #617 would have silently
+reintroduced the fault that issue fixed. The inline `*Tree_ContextMenuOpening` handlers in
+`MainWindow` are unchanged.
 
 ---
 

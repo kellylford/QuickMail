@@ -581,40 +581,16 @@ public partial class MainWindow : Window
         // ── Grouped-message tree controllers ──────────────────────────────────
         _convTreeController = new GroupedMessageTreeController(
             ConversationTree, _vm, "ConvTree",
-            nameof(MainViewModel.Conversations),
-            () => _vm.Conversations.Count,
-            item => item is ConversationGroup g ? _vm.Conversations.IndexOf(g) : -1,
-            idx => _vm.Conversations[idx],
-            g => ((ConversationGroup)g).NormalizedSubject,
-            key => _vm.Conversations.FirstOrDefault(c =>
-                string.Equals(c.NormalizedSubject, key, StringComparison.OrdinalIgnoreCase)),
-            g => ((ConversationGroup)g).Messages,
             () => GetVisibleConversationItems(_vm.Conversations),
             TryHandleMessageTreeTypeAhead);
 
         _senderTreeController = new GroupedMessageTreeController(
             SenderGroupTree, _vm, "SenderTree",
-            nameof(MainViewModel.SenderGroups),
-            () => _vm.SenderGroups.Count,
-            item => item is SenderGroup g ? _vm.SenderGroups.IndexOf(g) : -1,
-            idx => _vm.SenderGroups[idx],
-            g => ((SenderGroup)g).SenderKey,
-            key => _vm.SenderGroups.FirstOrDefault(g =>
-                string.Equals(g.SenderKey, key, StringComparison.OrdinalIgnoreCase)),
-            g => ((SenderGroup)g).Messages,
             () => GetVisibleSenderItems(_vm.SenderGroups),
             TryHandleMessageTreeTypeAhead);
 
         _toTreeController = new GroupedMessageTreeController(
             ToGroupTree, _vm, "ToTree",
-            nameof(MainViewModel.ToGroups),
-            () => _vm.ToGroups.Count,
-            item => item is SenderGroup g ? _vm.ToGroups.IndexOf(g) : -1,
-            idx => _vm.ToGroups[idx],
-            g => ((SenderGroup)g).SenderKey,
-            key => _vm.ToGroups.FirstOrDefault(g =>
-                string.Equals(g.SenderKey, key, StringComparison.OrdinalIgnoreCase)),
-            g => ((SenderGroup)g).Messages,
             () => GetVisibleSenderItems(_vm.ToGroups),
             TryHandleMessageTreeTypeAhead);
     }
