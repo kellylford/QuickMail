@@ -515,6 +515,83 @@ public class OAuthService : IOAuthService
         await GetAccessTokenAsync(account, GraphCalendarScopes, ct);
     }
 
+    // ── Organization admin consent (#607) ───────────────────────────────────────
+    // A Global Admin can grant every Graph scope QuickMail may need, org-wide, in ONE screen —
+    // before any user signs in. This is the /adminconsent ENDPOINT (an org grant), NOT a user sign-in:
+    // a plain /authorize sign-in only ever grants the signing-in user, requests a subset, and on an
+    // admin-gated tenant dead-ends (see #607). Unlike a user sign-in it also CREATES the service
+    // principal as part of the grant, so it works even when no user has ever launched QuickMail on the
+    // tenant. These are pure helpers (no MSAL, no UI) so the URL and the redirect handling are unit-
+    // tested; the View drives the WebView2 that navigates the URL and reports the redirect back.
+
+    /// <summary>
+    /// The <c>/organizations/adminconsent</c> URL that grants QuickMail's permissions org-wide. This is the
+    /// v1 admin-consent endpoint: it consents the app's ENTIRE DECLARED permission set from the registration
+    /// (no <c>scope</c> parameter), which is exactly right for a tenant-wide grant — it covers everything
+    /// QuickMail may need in one screen, stays correct as declared permissions change (no hand-maintained
+    /// list), and crucially grants the permissions user sign-in deliberately never requests: forward-declared
+    /// directory scopes like <c>User.ReadBasic.All</c> that would dead-end a locked-down tenant's interactive
+    /// sign-in but are fine for an admin to consent (see the GraphMailScopesWorkSchool note). Uses
+    /// <c>/organizations</c> (not <c>/common</c> or a fixed tenant) so Azure AD resolves the tenant from the
+    /// admin's sign-in — no tenant id to type and no account needed first — and, being an admin-consent
+    /// request, it also CREATES the service principal, so it works on a tenant no user has touched.
+    /// <paramref name="state"/> is echoed back on the redirect and checked by
+    /// <see cref="ParseAdminConsentRedirect"/> (CSRF guard). Mirrors the manual "Option B" URL in the
+    /// User Guide's admin section, with a redirect + state added so the embedded WebView2 can read the outcome.
+    /// </summary>
+    public static string BuildAdminConsentUrl(string state) =>
+        "https://login.microsoftonline.com/organizations/adminconsent" +
+        $"?client_id={ClientId}" +
+        $"&redirect_uri={Uri.EscapeDataString("http://localhost")}" +
+        $"&state={Uri.EscapeDataString(state)}";
+
+    /// <summary>
+    /// Interprets the <c>http://localhost</c> redirect the admin-consent flow lands on. Success is
+    /// <c>admin_consent=True</c> with the matching <paramref name="expectedState"/>; an <c>error</c> param is
+    /// a decline/failure; a mismatched or missing state is treated as an error (never as success). Returns
+    /// null when <paramref name="redirect"/> is not yet the localhost redirect (the caller keeps waiting).
+    /// </summary>
+    public static AdminConsentResult? ParseAdminConsentRedirect(Uri redirect, string expectedState)
+    {
+        if (!string.Equals(redirect.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return null; // still on the AAD pages — not the redirect yet
+
+        var q = ParseQuery(redirect.Query);
+
+        // CSRF guard: a redirect whose state doesn't match the one we sent is never trusted as success.
+        if (!q.TryGetValue("state", out var state) || !string.Equals(state, expectedState, StringComparison.Ordinal))
+            return new AdminConsentResult(AdminConsentStatus.Error, "State mismatch on the admin-consent redirect.");
+
+        if (q.TryGetValue("error", out var error))
+        {
+            var desc = q.TryGetValue("error_description", out var d) && !string.IsNullOrWhiteSpace(d) ? d : error;
+            return new AdminConsentResult(AdminConsentStatus.Error, desc);
+        }
+
+        // admin_consent=True is the grant signal. Anything else on the localhost redirect (e.g. the admin
+        // backed out to it without granting) is a decline rather than a spurious success.
+        return q.TryGetValue("admin_consent", out var granted) &&
+               string.Equals(granted, "True", StringComparison.OrdinalIgnoreCase)
+            ? new AdminConsentResult(AdminConsentStatus.Granted, null)
+            : new AdminConsentResult(AdminConsentStatus.Declined, null);
+    }
+
+    // Minimal query-string parser (last value wins) — avoids a System.Web dependency for the few params
+    // the redirect carries. Lookup is case-insensitive. Query strings are form-encoded, so '+' means a
+    // space (Uri.UnescapeDataString handles %XX but not '+'); decode it as such before percent-unescaping.
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        static string Decode(string s) => Uri.UnescapeDataString(s.Replace('+', ' '));
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = pair.IndexOf('=');
+            if (eq < 0) { result[Decode(pair)] = ""; continue; }
+            result[Decode(pair[..eq])] = Decode(pair[(eq + 1)..]);
+        }
+        return result;
+    }
+
     public async Task SignOutAsync(AccountModel account)
     {
         await EnsureTokenCacheAsync();

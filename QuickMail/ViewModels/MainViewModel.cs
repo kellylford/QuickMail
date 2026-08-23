@@ -2687,6 +2687,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             id: "help.reportBug", category: "Help", title: "Report a Bug",
             execute: () => ReportBugRequested?.Invoke(this, EventArgs.Empty)));
 
+        // #607: a Global Admin grants QuickMail's Graph permissions org-wide in one screen. No default
+        // hotkey — it is a rare, one-time setup action, discoverable via the Help menu and the palette.
+        registry.Register(new CommandDefinition(
+            id: "help.adminConsent", category: "Help",
+            title: "Grant Admin Consent for Your Organization",
+            execute: () => AdminConsentRequested?.Invoke(this, EventArgs.Empty)));
+
         // help.connectionDiagnostics is deliberately NOT registered here. It is registered and
         // unregistered by ApplyConnectionDiagnosticsSetting so the command palette only offers it
         // while the feature is switched on, matching the Help menu. No default hotkey either way.
@@ -7235,6 +7242,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event EventHandler? TutorialRequested;
     public event EventHandler? AboutRequested;
     public event EventHandler? ReportBugRequested;
+
+    /// <summary>Raised when the user asks to grant organization admin consent (#607). The View opens the
+    /// AdminConsentWindow in response — the VM never opens windows.</summary>
+    public event EventHandler? AdminConsentRequested;
 
     /// <summary>Raised when the user asks for the Connection Diagnostics window.</summary>
     public event EventHandler? ConnectionDiagnosticsRequested;

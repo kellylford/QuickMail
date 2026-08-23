@@ -744,6 +744,12 @@
                           Visibility="{Binding IsConnectionDiagnosticsEnabled, Converter={StaticResource BoolToVisibilityConverter}}"
                           Click="MenuConnectionDiagnostics_Click"/>
                 <Separator/>
+                <!-- #607: one-time org setup for a Global Admin — grants QuickMail's Graph permissions
+                     tenant-wide so users then sign in with no consent prompts. -->
+                <MenuItem Header="Grant Admin _Consent for Your Organization…"
+                          AutomationProperties.Name="Grant Admin Consent for Your Organization"
+                          Click="MenuAdminConsent_Click"/>
+                <Separator/>
                 <MenuItem Header="_About QuickMail"
                           AutomationProperties.Name="About QuickMail"
                           Click="MenuAbout_Click"/>
