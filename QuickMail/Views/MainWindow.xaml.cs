@@ -4654,7 +4654,7 @@ public partial class MainWindow : Window
         TreeView tree,
         IReadOnlyList<TGroup> groups,
         Func<TGroup, IReadOnlyList<MailMessageSummary>> messagesOf,
-        Action<TGroup, int> focusMessage,
+        Func<TGroup, int, GroupedMessageFocus> focusMessage,
         bool forward) where TGroup : class
     {
         var flat = UnreadNavigator.Flatten(groups, messagesOf);
@@ -4676,7 +4676,11 @@ public partial class MainWindow : Window
         var idx = UnreadNavigator.FindNextUnread(flat, e => e.Message.IsUnread, from, forward);
         if (idx < 0) { AnnounceNoMoreUnread(forward); return; }
 
-        focusMessage(flat[idx].Group, flat[idx].MessageIndex);
+        // Only None is announced. Landing on the group header instead of the message is still a
+        // focus move, and the platform reports that one itself.
+        if (focusMessage(flat[idx].Group, flat[idx].MessageIndex) == GroupedMessageFocus.None)
+            AccessibilityHelper.Announce(this, "Could not move to the unread message.",
+                category: AnnouncementCategory.Result);
     }
 
     // "Below"/"above" rather than "newer"/"older": which of those a direction means depends on the
@@ -4716,24 +4720,24 @@ public partial class MainWindow : Window
     // index is the only thing that works here and why the scroll-and-wait version this replaced
     // silently did nothing whenever the target group sat outside the viewport (#617).
 
-    private void FocusSenderGroupMessage(SenderGroup group, int msgIdx)
+    private GroupedMessageFocus FocusSenderGroupMessage(SenderGroup group, int msgIdx)
     {
-        if (msgIdx < 0 || msgIdx >= group.Messages.Count) return;
-        TreeViewItemRealizer.FocusMessage(
+        if (msgIdx < 0 || msgIdx >= group.Messages.Count) return GroupedMessageFocus.None;
+        return TreeViewItemRealizer.FocusMessage(
             SenderGroupTree, _vm.SenderGroups.IndexOf(group), group, group.Messages[msgIdx], msgIdx);
     }
 
-    private void FocusToGroupMessage(SenderGroup group, int msgIdx)
+    private GroupedMessageFocus FocusToGroupMessage(SenderGroup group, int msgIdx)
     {
-        if (msgIdx < 0 || msgIdx >= group.Messages.Count) return;
-        TreeViewItemRealizer.FocusMessage(
+        if (msgIdx < 0 || msgIdx >= group.Messages.Count) return GroupedMessageFocus.None;
+        return TreeViewItemRealizer.FocusMessage(
             ToGroupTree, _vm.ToGroups.IndexOf(group), group, group.Messages[msgIdx], msgIdx);
     }
 
-    private void FocusConversationMessage(ConversationGroup group, int msgIdx)
+    private GroupedMessageFocus FocusConversationMessage(ConversationGroup group, int msgIdx)
     {
-        if (msgIdx < 0 || msgIdx >= group.Messages.Count) return;
-        TreeViewItemRealizer.FocusMessage(
+        if (msgIdx < 0 || msgIdx >= group.Messages.Count) return GroupedMessageFocus.None;
+        return TreeViewItemRealizer.FocusMessage(
             ConversationTree, _vm.Conversations.IndexOf(group), group, group.Messages[msgIdx], msgIdx);
     }
 

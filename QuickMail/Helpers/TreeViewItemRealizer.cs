@@ -33,25 +33,27 @@ public static class TreeViewItemRealizer
 {
     /// <summary>
     /// Selects and focuses <paramref name="message"/>, expanding <paramref name="group"/> if it is
-    /// closed. Returns true when focus landed on the message.
-    /// <para>When the message container still cannot be produced, focus lands on the group header
-    /// instead and this returns false: somewhere inside the tree, next to what was asked for, beats
-    /// leaving focus wherever it was with nothing to show for the keystroke.</para>
+    /// closed.
+    /// <para>The three outcomes are distinguished because the caller has to treat them differently:
+    /// only <see cref="GroupedMessageFocus.None"/> leaves focus where it was, and only that case
+    /// needs anything said about it. Landing on the header is a focus move the platform reports on
+    /// its own.</para>
     /// </summary>
     /// <param name="groupIndex">The group's index in the tree's own <c>ItemsSource</c>.</param>
     /// <param name="messageIndex">The message's index within the group.</param>
-    public static bool FocusMessage(
+    public static GroupedMessageFocus FocusMessage(
         TreeView tree, int groupIndex, object group, object message, int messageIndex)
     {
-        if (groupIndex < 0 || groupIndex >= tree.Items.Count || messageIndex < 0) return false;
+        if (groupIndex < 0 || groupIndex >= tree.Items.Count || messageIndex < 0)
+            return GroupedMessageFocus.None;
 
         // Realize the group's own container. Nothing below can happen until this exists.
-        if (FindItemsHost(tree) is not { } rootPanel) return false;
+        if (FindItemsHost(tree) is not { } rootPanel) return GroupedMessageFocus.None;
         rootPanel.BringIndexIntoViewPublic(groupIndex);
         tree.UpdateLayout();
 
         if (tree.ItemContainerGenerator.ContainerFromItem(group) is not TreeViewItem groupTvi)
-            return false;
+            return GroupedMessageFocus.None;
 
         if (!groupTvi.IsExpanded)
         {
@@ -71,29 +73,49 @@ public static class TreeViewItemRealizer
             msgTvi.IsSelected = true;
             msgTvi.Focus();
             msgTvi.BringIntoView();
-            return true;
+            return GroupedMessageFocus.Message;
         }
 
+        // Somewhere inside the tree, next to what was asked for, beats leaving focus where it was
+        // with nothing to show for the keystroke.
         groupTvi.IsSelected = true;
         groupTvi.Focus();
-        return false;
+        return GroupedMessageFocus.Group;
     }
 
     /// <summary>
-    /// The virtualizing panel holding <paramref name="root"/>'s <em>own</em> items.
-    /// <para>The <c>IsItemsHost</c> test is what keeps this from returning a panel that belongs to
-    /// something nested in an item's template. Depth-first order alone is not enough of a guarantee
-    /// to rest on: a header template that ever gained an items control would silently start
-    /// answering here.</para>
+    /// The virtualizing panel holding <paramref name="owner"/>'s <em>own</em> items.
+    /// <para>The ownership test is <c>ItemsControl.GetItemsOwner</c>, not <c>IsItemsHost</c>: a panel
+    /// nested inside an item's template is the items host of <em>that</em> control, so
+    /// <c>IsItemsHost</c> is true for it too and would not exclude it. Nor does depth-first order
+    /// save us — the real <c>TreeViewItem</c> template puts <c>PART_Header</c> before
+    /// <c>ItemsHost</c>, so a header that ever gained a list would be reached first and
+    /// <c>BringIndexIntoViewPublic</c> would then be called on a stranger's panel, throwing out of a
+    /// key handler as soon as that list held fewer items than the group.</para>
     /// </summary>
-    public static VirtualizingStackPanel? FindItemsHost(DependencyObject? root)
-    {
-        if (root == null) return null;
-        if (root is VirtualizingStackPanel { IsItemsHost: true } host) return host;
+    public static VirtualizingStackPanel? FindItemsHost(ItemsControl owner) => Search(owner);
 
-        var count = VisualTreeHelper.GetChildrenCount(root);
+    private static VirtualizingStackPanel? Search(DependencyObject node, ItemsControl? owner = null)
+    {
+        owner ??= node as ItemsControl;
+        if (node is VirtualizingStackPanel panel
+            && ReferenceEquals(ItemsControl.GetItemsOwner(panel), owner))
+            return panel;
+
+        var count = VisualTreeHelper.GetChildrenCount(node);
         for (var i = 0; i < count; i++)
-            if (FindItemsHost(VisualTreeHelper.GetChild(root, i)) is { } found) return found;
+            if (Search(VisualTreeHelper.GetChild(node, i), owner) is { } found) return found;
         return null;
     }
+}
+
+/// <summary>Where <see cref="TreeViewItemRealizer.FocusMessage"/> left keyboard focus.</summary>
+public enum GroupedMessageFocus
+{
+    /// <summary>Focus did not move. The only outcome that needs announcing.</summary>
+    None,
+    /// <summary>Focus landed on the group header — the message container could not be produced.</summary>
+    Group,
+    /// <summary>Focus landed on the message, which is what was asked for.</summary>
+    Message,
 }

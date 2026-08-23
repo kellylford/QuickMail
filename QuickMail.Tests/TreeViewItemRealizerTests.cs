@@ -36,7 +36,7 @@ public class TreeViewItemRealizerTests
 
     // Mirrors the real trees' configuration. Returns the tree and the window holding it; the
     // window must be shown, because virtualization only realizes containers during a real layout.
-    private static (TreeView Tree, Window Window) BuildTree(List<Group> groups)
+    private static (TreeView Tree, Window Window) BuildTree(List<Group> groups, bool nestedListInHeader = false)
     {
         var tree = new TreeView { ItemsSource = groups };
         VirtualizingPanel.SetIsVirtualizing(tree, true);
@@ -49,6 +49,15 @@ public class TreeViewItemRealizerTests
             var text = new FrameworkElementFactory(typeof(TextBlock));
             text.SetBinding(TextBlock.TextProperty, new Binding("Name"));
             rowFactory.AppendChild(text);
+        }
+        if (nestedListInHeader)
+        {
+            // A ListBox's default items panel IS a VirtualizingStackPanel with IsItemsHost=true, and
+            // the real TreeViewItem template puts PART_Header before ItemsHost — so a depth-first or
+            // IsItemsHost-only search reaches this one first and answers with a stranger's panel.
+            var list = new FrameworkElementFactory(typeof(ListBox));
+            list.SetValue(ItemsControl.ItemsSourceProperty, new[] { "a", "b" });
+            rowFactory.AppendChild(list);
         }
         tree.ItemTemplate = new HierarchicalDataTemplate
         {
@@ -109,11 +118,14 @@ public class TreeViewItemRealizerTests
             var landed = TreeViewItemRealizer.FocusMessage(
                 tree, groupIndex: 60, groups[60], groups[60].Messages[7], messageIndex: 7);
 
-            Assert.True(landed);
+            Assert.Equal(GroupedMessageFocus.Message, landed);
             var groupTvi = Assert.IsType<TreeViewItem>(tree.ItemContainerGenerator.ContainerFromItem(groups[60]));
             var msgTvi   = Assert.IsType<TreeViewItem>(groupTvi.ItemContainerGenerator.ContainerFromItem(groups[60].Messages[7]));
             Assert.True(msgTvi.IsSelected);
-            Assert.Same(msgTvi, Keyboard.FocusedElement);
+            // FocusManager over Keyboard.FocusedElement deliberately: the latter answers only while
+            // the test's window holds Win32 activation, which nothing on a shared machine guarantees.
+            // AddressBookFilterMenuTests asserts the Keyboard form and is the suite's one flaky test.
+            Assert.Same(msgTvi, FocusManager.GetFocusedElement(window));
         }
         finally { window.Close(); }
     }
@@ -130,7 +142,7 @@ public class TreeViewItemRealizerTests
             var landed = TreeViewItemRealizer.FocusMessage(
                 tree, groupIndex: 30, groups[30], groups[30].Messages[4], messageIndex: 4);
 
-            Assert.True(landed);
+            Assert.Equal(GroupedMessageFocus.Message, landed);
             // TwoWay-bound, so the model records it and the expansion survives a rebuild.
             Assert.True(groups[30].IsExpanded);
         }
@@ -147,7 +159,7 @@ public class TreeViewItemRealizerTests
             var landed = TreeViewItemRealizer.FocusMessage(
                 tree, groupIndex: 99, groups[99], groups[99].Messages[19], messageIndex: 19);
 
-            Assert.True(landed);
+            Assert.Equal(GroupedMessageFocus.Message, landed);
         }
         finally { window.Close(); }
     }
@@ -162,24 +174,53 @@ public class TreeViewItemRealizerTests
         var (tree, window) = BuildTree(groups);
         try
         {
-            Assert.False(TreeViewItemRealizer.FocusMessage(tree, groupIndex, groups[0], "nope", messageIndex));
+            Assert.Equal(
+                GroupedMessageFocus.None,
+                TreeViewItemRealizer.FocusMessage(tree, groupIndex, groups[0], "nope", messageIndex));
         }
         finally { window.Close(); }
     }
 
     [StaFact]
-    public void FindItemsHost_ReturnsTheTreesOwnPanel_NotANestedOne()
+    public void FindItemsHost_ReturnsTheOwnersPanel_NotOneNestedInItsHeader()
     {
+        // The nested ListBox is the whole point: its panel is a VirtualizingStackPanel with
+        // IsItemsHost true, so only an ownership test can tell the two apart. Without one this
+        // returns the ListBox's panel and BringIndexIntoViewPublic(msgIdx) is called on a two-item
+        // list — an ArgumentOutOfRangeException out of a key handler.
         var groups = BuildGroups(10, 5);
-        var (tree, window) = BuildTree(groups);
+        var (tree, window) = BuildTree(groups, nestedListInHeader: true);
         try
         {
-            var host = TreeViewItemRealizer.FindItemsHost(tree);
-            Assert.NotNull(host);
-            Assert.True(host!.IsItemsHost);
-            // The tree's own host holds the group containers, one per root item.
-            Assert.IsType<TreeViewItem>(host.Children[0]);
-            Assert.Same(tree.ItemContainerGenerator.ContainerFromIndex(0), host.Children[0]);
+            var treeHost = TreeViewItemRealizer.FindItemsHost(tree);
+            Assert.NotNull(treeHost);
+            Assert.Same(tree, ItemsControl.GetItemsOwner(treeHost));
+            Assert.Same(tree.ItemContainerGenerator.ContainerFromIndex(0), treeHost!.Children[0]);
+
+            var groupTvi = (TreeViewItem)tree.ItemContainerGenerator.ContainerFromIndex(0);
+            groupTvi.IsExpanded = true;
+            tree.UpdateLayout();
+
+            var groupHost = TreeViewItemRealizer.FindItemsHost(groupTvi);
+            Assert.NotNull(groupHost);
+            Assert.Same(groupTvi, ItemsControl.GetItemsOwner(groupHost));
+            Assert.Equal(groups[0].Messages.Count, groupHost!.Children.Count);
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void FocusMessage_StillLands_WhenTheHeaderTemplateHoldsItsOwnList()
+    {
+        // End-to-end version of the above: with an IsItemsHost-only search this throws.
+        var groups = BuildGroups(60, 20);
+        var (tree, window) = BuildTree(groups, nestedListInHeader: true);
+        try
+        {
+            Assert.Equal(
+                GroupedMessageFocus.Message,
+                TreeViewItemRealizer.FocusMessage(
+                    tree, groupIndex: 40, groups[40], groups[40].Messages[9], messageIndex: 9));
         }
         finally { window.Close(); }
     }
