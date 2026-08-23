@@ -5,28 +5,25 @@ namespace QuickMail.Helpers;
 public static class AccountSignInMessages
 {
     /// <summary>
-    /// Shown when a Microsoft/Google sign-in completes as a DIFFERENT identity than the one entered — the
-    /// #202 guard has kept the account bound to <paramref name="entered"/> and discarded the other sign-in.
+    /// Body of the prompt shown when a Microsoft/Google sign-in completes as a DIFFERENT identity than the
+    /// one entered — the #202 guard has kept the account bound to <paramref name="entered"/> and discarded
+    /// the other sign-in. Phrased as a yes/no question because the dialog offers to sign in again as
+    /// <paramref name="entered"/> (Yes) or return to the account screen (No).
     ///
-    /// For a Microsoft sign-in (<paramref name="isMicrosoftSignIn"/>) this is usually an administrator who
-    /// signed in at the "needs admin approval" screen to approve QuickMail for the organization — but signing
-    /// in there does NOT grant organization consent, and the guard discards the admin's sign-in, leaving the
-    /// user stuck (#606). So the message points to the path that actually works: the in-app admin-consent
-    /// action (#607). For any other provider it is just a wrong-account warning (no admin-consent model).
+    /// The common Microsoft case (#606) is an administrator signing in at the "needs admin approval" screen
+    /// to approve QuickMail for the organization. That approval IS granted when they do it — so the message
+    /// reassures that it's saved and simply invites the user to finish by signing in as themselves. (It does
+    /// NOT tell them to go grant consent again — they just did.) For any other provider it's a plain
+    /// wrong-account retry prompt (no admin-consent model).
     /// </summary>
-    public static string IdentityMismatchGuidance(string entered, string actual, bool isMicrosoftSignIn)
+    public static string IdentityMismatchPrompt(string entered, string actual, bool isMicrosoftSignIn)
     {
-        var lead = $"You entered {entered}, but sign-in completed as {actual}. The account was not changed.";
+        var lead = $"You signed in as {actual}, but you're adding {entered} — so your account was left as {entered}.";
 
-        if (!isMicrosoftSignIn)
-            return $"{lead}\n\nPlease sign in again as {entered}.";
+        var middle = isMicrosoftSignIn
+            ? "\n\nIf an administrator just approved QuickMail for your organization here, that approval is saved.\n\n"
+            : "\n\n";
 
-        return $"{lead}\n\n" +
-               "If an administrator signed in here to approve QuickMail for your organization: signing in " +
-               "on this screen does not grant that approval. To approve QuickMail for the whole " +
-               "organization, an administrator should choose Help → Grant Admin Consent for Your " +
-               "Organization (or grant consent in the Microsoft Entra admin center). Once that is done, " +
-               $"everyone signs in as themselves with no further prompts.\n\n" +
-               $"Otherwise, if you simply used the wrong account, sign in again as {entered}.";
+        return $"{lead}{middle}Sign in again as {entered} to finish?";
     }
 }

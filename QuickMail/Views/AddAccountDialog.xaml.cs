@@ -54,14 +54,19 @@ public partial class AddAccountDialog : Window
 
     private void WarnIdentityMismatch(string entered, string actual)
     {
-        // #606: beyond the bare "different account" warning, point a Microsoft sign-in toward the path that
-        // actually grants organization access (Help → Grant Admin Consent, #607) — signing in as an admin at
-        // the consent screen does not, and the #202 guard discards it. Provider-aware: Google gets the plain
-        // wrong-account message (no admin-consent model).
-        MessageBox.Show(this,
-            Helpers.AccountSignInMessages.IdentityMismatchGuidance(entered, actual, _vm.IsOAuth2),
+        // #606: the #202 guard kept the account as `entered` and discarded the other sign-in (typically an
+        // admin who just approved QuickMail for the org — that approval IS saved). Instead of a dead-end OK,
+        // ask whether to sign in again as `entered`: Yes re-runs the sign-in (which now succeeds if consent
+        // was just granted); No returns to the account screen. Re-invoked via the dispatcher so the current
+        // sign-in call unwinds first (no re-entrancy).
+        var answer = MessageBox.Show(this,
+            Helpers.AccountSignInMessages.IdentityMismatchPrompt(entered, actual, _vm.IsOAuth2),
             "Different account signed in",
-            MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (answer != MessageBoxResult.Yes) return;
+        var retry = _vm.IsOAuth2 ? _vm.SignInMicrosoftCommand : _vm.SignInGoogleCommand;
+        Dispatcher.BeginInvoke(() => retry.Execute(null), System.Windows.Threading.DispatcherPriority.Background);
     }
 
     /// <summary>

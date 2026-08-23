@@ -122,12 +122,17 @@ public partial class AccountManagerDialog : Window
 
     private void WarnIdentityMismatch(string entered, string actual)
     {
-        // #606: same guidance as Add Account — point a Microsoft sign-in to Help → Grant Admin Consent (#607)
-        // rather than dead-ending. Provider-aware via the VM's IsOAuth2 (Microsoft) flag.
-        MessageBox.Show(this,
-            Helpers.AccountSignInMessages.IdentityMismatchGuidance(entered, actual, _vm.IsOAuth2),
+        // #606: same behavior as Add Account — offer to sign in again as `entered` (Yes re-runs the sign-in,
+        // which now succeeds if an admin just granted consent; No returns to the screen) rather than a
+        // dead-end OK. Re-invoked via the dispatcher so the current sign-in call unwinds first.
+        var answer = MessageBox.Show(this,
+            Helpers.AccountSignInMessages.IdentityMismatchPrompt(entered, actual, _vm.IsOAuth2),
             "Different account signed in",
-            MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (answer != MessageBoxResult.Yes) return;
+        var retry = _vm.IsOAuth2 ? _vm.SignInMicrosoftCommand : _vm.SignInGoogleCommand;
+        Dispatcher.BeginInvoke(() => retry.Execute(null), System.Windows.Threading.DispatcherPriority.Background);
     }
 
     /// <summary>
