@@ -24,9 +24,10 @@ Three details worth knowing:
 - **Neither wraps around.** Reaching the end says "No unread messages below" — QuickMail does not
   quietly start again from the top, and nothing moving is never left unexplained.
 - **They stay out of the way of everything else.** The keys act while you are in the message list or
-  a group tree, so Alt+Down still opens a drop-down list when that is what you are on. They do
-  nothing in the reading pane, in an open message window, or while a message tab is showing; in a
-  message window Alt+Left and Alt+Right already move between messages.
+  a group tree, so Alt+Down still opens a drop-down list when that is what you are on. They do not
+  move you in the reading pane, in an open message window, or while a message tab is showing; in a
+  message window Alt+Left and Alt+Right already move between messages. Started from the command
+  palette somewhere they cannot act, they say why instead of going quiet.
 
 ([#617](https://github.com/kellylford/QuickMail/issues/617))
 

@@ -609,9 +609,10 @@ yourself.
 Below and above mean what they say on screen: which of them is newer depends on how the folder is
 sorted.
 
-Both keys act while you are in the message list or a group tree. They do nothing inside the reading
-pane, in an open message window, or while a message tab is showing — in a message window, **Alt+Left**
-and **Alt+Right** already move to the previous and next message.
+Both keys act while you are in the message list or a group tree. They do not move you inside the
+reading pane, in an open message window, or while a message tab is showing — in a message window,
+**Alt+Left** and **Alt+Right** already move to the previous and next message. Run one from the
+command palette somewhere it cannot act and QuickMail says why rather than doing nothing quietly.
 
 Neither wraps around. When there is no unread message left in the direction you are going, nothing
 moves and QuickMail says "No unread messages below" or "No unread messages above", so that running
