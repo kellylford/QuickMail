@@ -449,6 +449,8 @@ https://login.microsoftonline.com/organizations/adminconsent?client_id=bcdc84f1-
 
 Replace `organizations` with your tenant ID or a verified domain to target a specific tenant. Review the permission list Microsoft shows and approve. This grants consent tenant-wide in one step.
 
+**Option C — from inside QuickMail.** If you have QuickMail installed, choose **Help → Grant Admin Consent for Your Organization…**. Sign in as one of the admin roles above in the window that opens, review the permission list, and approve. This grants QuickMail's Microsoft Graph permissions tenant-wide in one step without building a URL by hand, and it works even before anyone in your organization has added an account — the consent itself registers QuickMail in your tenant. QuickMail tells you when consent has been granted.
+
 After approval, your users sign in normally with no further prompts.
 
 ### If you would rather not grant blanket approval

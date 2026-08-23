@@ -124,6 +124,32 @@ public class OAuthService : IOAuthService
         "https://graph.microsoft.com/Calendars.ReadWrite",
     ];
 
+    // #607: the full set of graph.microsoft.com delegated scopes QuickMail uses, for a one-shot org
+    // admin-consent. Union of every Graph capability — mail + rules + profile (GraphMailScopesWorkSchool),
+    // contacts, calendar, and shared-mailbox — deduped, so a Global Admin consents to everything QuickMail
+    // needs in ONE screen with no per-capability cascade. Order is stable (mail first) for a deterministic
+    // URL and tests.
+    //
+    // Graph-ONLY on purpose, and the admin-consent request MUST list these scopes explicitly (the v2.0
+    // endpoint) rather than consenting the app's whole declared set (the v1 /adminconsent endpoint).
+    // OBSERVED: any flow that requests the FULL DECLARED SET at once — the v1 /adminconsent, and the old
+    // `.default` (#511) — returns AADSTS65006 involving the Office 365 Exchange Online resource
+    // ("resource 00000002-0000-0ff1-ce00-000000000000 had no entitlements matching…"), while every flow that
+    // requests EXPLICIT scopes by name works: Graph sign-in, IMAP sign-in (the two EXO scopes consent fine,
+    // incl. admin consent), and this v2.0 Graph-only adminconsent. The root cause of the full-set failure is
+    // UNRESOLVED — it is NOT a confirmed app-registration defect (the EXO perms are valid; they consent by
+    // name). Listing only these Graph scopes sidesteps it and is the correct scope for #607 regardless (the
+    // IMAP path is legacy). Verified live. User.ReadBasic.All is intentionally absent: it is a forward-
+    // declared directory scope with no call site (see GraphMailScopesWorkSchool), so there is nothing to
+    // consent for it yet.
+    public static readonly string[] AllGraphAdminConsentScopes =
+        GraphMailScopesWorkSchool
+            .Concat(GraphContactScopes)
+            .Concat(GraphCalendarScopes)
+            .Concat(GraphMailScopesShared)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
     // Authoritative "is this a personal Microsoft account" signal: every consumer account lives in the
     // well-known MSA "consumers" tenant. Detected from the MSAL account at sign-in and persisted on
     // AccountModel (#233), so it's correct even for personal accounts on custom/vanity domains.
@@ -513,6 +539,84 @@ public class OAuthService : IOAuthService
         // is discarded here — GraphCalendarSyncService acquires its own when it syncs. Google needs
         // no equivalent: its calendar scope is already requested at mail sign-in.
         await GetAccessTokenAsync(account, GraphCalendarScopes, ct);
+    }
+
+    // ── Organization admin consent (#607) ───────────────────────────────────────
+    // A Global Admin can grant every Graph scope QuickMail may need, org-wide, in ONE screen —
+    // before any user signs in. This is the /adminconsent ENDPOINT (an org grant), NOT a user sign-in:
+    // a plain /authorize sign-in only ever grants the signing-in user, requests a subset, and on an
+    // admin-gated tenant dead-ends (see #607). Unlike a user sign-in it also CREATES the service
+    // principal as part of the grant, so it works even when no user has ever launched QuickMail on the
+    // tenant. These are pure helpers (no MSAL, no UI) so the URL and the redirect handling are unit-
+    // tested; the View drives the WebView2 that navigates the URL and reports the redirect back.
+
+    /// <summary>
+    /// The <c>/organizations/v2.0/adminconsent</c> URL that grants <see cref="AllGraphAdminConsentScopes"/>
+    /// org-wide. Uses the v2.0 endpoint with an EXPLICIT scope list, NOT the v1 <c>/adminconsent</c> (which
+    /// consents the app's whole declared set): a full-declared-set request returns AADSTS65006 involving the
+    /// Exchange Online resource (cause unresolved — see the <see cref="AllGraphAdminConsentScopes"/> note),
+    /// whereas listing only these Graph scopes grants cleanly (verified live). Uses <c>/organizations</c>
+    /// (not <c>/common</c> or a fixed tenant) so Azure AD
+    /// resolves the tenant from the admin's sign-in — no tenant id to type and no account needed first — and,
+    /// being an admin-consent request, it CREATES the service principal, so it works on a tenant no user has
+    /// touched. <paramref name="state"/> is echoed back on the redirect and checked by
+    /// <see cref="ParseAdminConsentRedirect"/> (CSRF guard).
+    /// </summary>
+    public static string BuildAdminConsentUrl(string state) =>
+        "https://login.microsoftonline.com/organizations/v2.0/adminconsent" +
+        $"?client_id={ClientId}" +
+        $"&scope={Uri.EscapeDataString(string.Join(" ", AllGraphAdminConsentScopes))}" +
+        $"&redirect_uri={Uri.EscapeDataString("http://localhost")}" +
+        $"&state={Uri.EscapeDataString(state)}";
+
+    /// <summary>
+    /// Interprets the <c>http://localhost</c> redirect the admin-consent flow lands on. Success is
+    /// <c>admin_consent=True</c> with the matching <paramref name="expectedState"/>; an <c>error</c> param is
+    /// a decline/failure; a mismatched or missing state is treated as an error (never as success). Returns
+    /// null when <paramref name="redirect"/> is not yet the localhost redirect (the caller keeps waiting).
+    /// </summary>
+    public static AdminConsentResult? ParseAdminConsentRedirect(Uri redirect, string expectedState)
+    {
+        if (!string.Equals(redirect.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return null; // still on the AAD pages — not the redirect yet
+
+        var q = ParseQuery(redirect.Query);
+
+        // Surface a real Azure AD error first, with its own description — an error is never a grant, so
+        // reporting it doesn't depend on the state check (and AAD does not always echo state on an error).
+        if (q.TryGetValue("error", out var error))
+        {
+            var desc = q.TryGetValue("error_description", out var d) && !string.IsNullOrWhiteSpace(d) ? d : error;
+            return new AdminConsentResult(AdminConsentStatus.Error, desc);
+        }
+
+        // CSRF guard on the SUCCESS path: a redirect whose state doesn't match the one we sent is never
+        // trusted as a grant.
+        if (!q.TryGetValue("state", out var state) || !string.Equals(state, expectedState, StringComparison.Ordinal))
+            return new AdminConsentResult(AdminConsentStatus.Error, "State mismatch on the admin-consent redirect.");
+
+        // admin_consent=True is the grant signal. Anything else on the localhost redirect (e.g. the admin
+        // backed out to it without granting) is a decline rather than a spurious success.
+        return q.TryGetValue("admin_consent", out var granted) &&
+               string.Equals(granted, "True", StringComparison.OrdinalIgnoreCase)
+            ? new AdminConsentResult(AdminConsentStatus.Granted, null)
+            : new AdminConsentResult(AdminConsentStatus.Declined, null);
+    }
+
+    // Minimal query-string parser (last value wins) — avoids a System.Web dependency for the few params
+    // the redirect carries. Lookup is case-insensitive. Query strings are form-encoded, so '+' means a
+    // space (Uri.UnescapeDataString handles %XX but not '+'); decode it as such before percent-unescaping.
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        static string Decode(string s) => Uri.UnescapeDataString(s.Replace('+', ' '));
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = pair.IndexOf('=');
+            if (eq < 0) { result[Decode(pair)] = ""; continue; }
+            result[Decode(pair[..eq])] = Decode(pair[(eq + 1)..]);
+        }
+        return result;
     }
 
     public async Task SignOutAsync(AccountModel account)

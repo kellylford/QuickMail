@@ -373,6 +373,7 @@ public partial class MainWindow : Window
         };
         vm.AboutRequested += (_, _) => ShowAboutDialog();
         vm.ReportBugRequested += (_, _) => ShowReportBugWindow();
+        vm.AdminConsentRequested += (_, _) => ShowAdminConsentWindow();
         vm.ConnectionDiagnosticsRequested += (_, _) => ShowConnectionDiagnosticsWindow();
         vm.PropertiesRequested += propertiesVm =>
         {
@@ -4025,6 +4026,22 @@ public partial class MainWindow : Window
     private void MenuConnectionDiagnostics_Click(object sender, RoutedEventArgs e)
     {
         ShowConnectionDiagnosticsWindow();
+    }
+
+    // #607: the org admin-consent window. Modeless for the same reason as the two above — it hosts a live
+    // WebView2 (the Microsoft consent page) opened over this window's live reading-pane WebView2, where a
+    // modal nested message loop can deadlock the UI thread. Focus returns to wherever it was on close.
+    private void ShowAdminConsentWindow()
+    {
+        var previousFocus = Keyboard.FocusedElement as IInputElement;
+        var window = new AdminConsentWindow { Owner = this };
+        window.Closed += (_, _) => previousFocus?.Focus();
+        window.Show();
+    }
+
+    private void MenuAdminConsent_Click(object sender, RoutedEventArgs e)
+    {
+        ShowAdminConsentWindow();
     }
 
     private void MenuAbout_Click(object sender, RoutedEventArgs e)

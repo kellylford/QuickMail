@@ -256,6 +256,17 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void AdminConsentWindow_XamlParsesWithoutException() // #607
+    {
+        EnsureApplication();
+        // Parameterless: constructing it parses the XAML (WebView2 host + theme resources); the WebView2
+        // async load is in Loaded, which does not fire on mere construction, so no runtime is needed.
+        var window = new AdminConsentWindow();
+        Assert.NotNull(window);
+        window.Close();
+    }
+
+    [StaFact]
     public void ComposeWindow_XamlParsesWithoutException()
     {
         EnsureApplication();
