@@ -1027,6 +1027,24 @@ public partial class MainWindow : Window
             defaultKey: Key.OemPeriod, defaultModifiers: ModifierKeys.Shift,
             isAvailable: IsGroupedViewActive));
 
+        // Alt+Down / Alt+Up, gated on message-area focus for the reason the bare-K flag command
+        // is (#255): unavailable leaves e.Handled false, so Alt+Down still opens the dropdown of
+        // whatever ComboBox the user is actually in. The palette runs commands without consulting
+        // IsAvailable, so gating costs nothing there.
+        _registry.Register(new CommandDefinition(
+            id: "mail.nextUnread", category: "Mail", title: "Next Unread Message",
+            execute: GoToNextUnread,
+            defaultKey: Key.Down, defaultModifiers: ModifierKeys.Alt,
+            description: "Move to the nearest unread message below the current one.",
+            isAvailable: IsMessageAreaFocused));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.previousUnread", category: "Mail", title: "Previous Unread Message",
+            execute: GoToPreviousUnread,
+            defaultKey: Key.Up, defaultModifiers: ModifierKeys.Alt,
+            description: "Move to the nearest unread message above the current one.",
+            isAvailable: IsMessageAreaFocused));
+
         _registry.Register(new CommandDefinition(
             id: "mail.selectAll", category: "Mail", title: "Select All Messages",
             execute: SelectAllMessages,
@@ -4555,6 +4573,123 @@ public partial class MainWindow : Window
         }
     }
 
+    // ── Next / previous unread message (Alt+Down / Alt+Up) ──────────────────
+
+    private void GoToNextUnread()     => GoToUnread(forward: true);
+    private void GoToPreviousUnread() => GoToUnread(forward: false);
+
+    /// <summary>
+    /// Moves the selection to the nearest unread message below (<paramref name="forward"/>) or
+    /// above the current one, and puts focus on it. In the grouped views the search runs over
+    /// every message the tree holds, collapsed groups included, and the group it lands in is
+    /// expanded — the same thing <see cref="JumpToGroupBoundary"/> does (issue #617).
+    /// <para>The search does not wrap. Running out of unread mail is announced, because nothing
+    /// moving is the one outcome the platform does not report on its own.</para>
+    /// </summary>
+    private void GoToUnread(bool forward)
+    {
+        // Both guards are reachable only from the palette, which runs a command without consulting
+        // IsAvailable. Neither is silent: a command that declines to act has to say so, for the same
+        // reason running out of unread mail does.
+        //
+        // Tab mode is IsMessageListAreaVisible, not MessageList.IsVisible: an active message tab
+        // hides the list by collapsing its grid row to zero height, which leaves Visibility — and so
+        // IsVisible — untouched. Focusing a row in a zero-height list strands the user on something
+        // they cannot see or scroll to.
+        // Neither says "no unread messages": no search has run, and there may be plenty.
+        if (_vm.IsCalendarView)
+        {
+            AccessibilityHelper.Announce(this, "Cannot move to an unread message while the calendar is open.",
+                category: AnnouncementCategory.Result);
+            return;
+        }
+        if (!_vm.IsMessageListAreaVisible)
+        {
+            AccessibilityHelper.Announce(this, "Cannot move to an unread message while the message list is hidden.",
+                category: AnnouncementCategory.Result);
+            return;
+        }
+
+        if (_vm.IsConversationsView)
+            GoToUnreadInGroupTree(ConversationTree, _vm.Conversations, g => g.Messages, (g, i) => FocusConversationMessage(g, i), forward);
+        else if (_vm.IsFromView)
+            GoToUnreadInGroupTree(SenderGroupTree, _vm.SenderGroups, g => g.Messages, (g, i) => FocusSenderGroupMessage(g, i), forward);
+        else if (_vm.IsToView)
+            GoToUnreadInGroupTree(ToGroupTree, _vm.ToGroups, g => g.Messages, (g, i) => FocusToGroupMessage(g, i), forward);
+        else
+            GoToUnreadInMessageList(forward);
+    }
+
+    private void GoToUnreadInMessageList(bool forward)
+    {
+        var messages = _vm.Messages;
+
+        // The focused row, not SelectedIndex: SelectedIndex is the FIRST item added to an Extended
+        // selection, not the topmost one, and ExtendMessageSelection builds Shift+Up selections by
+        // adding rows downward-to-upward. Searching out from SelectedIndex after Shift+Up therefore
+        // started below the caret, and Alt+Up could land on a message below where the user was.
+        // Same resolution order ExtendMessageSelection uses, for the same reason.
+        var focusedIndex = Keyboard.FocusedElement is ListViewItem focusedRow
+            ? MessageList.ItemContainerGenerator.IndexFromContainer(focusedRow)
+            : -1;
+        if (focusedIndex < 0) focusedIndex = MessageList.SelectedIndex;
+
+        // Still -1 when nothing is selected at all: the search then covers the whole list from
+        // whichever end it is travelling away from.
+        var from = focusedIndex >= 0
+            ? focusedIndex
+            : UnreadNavigator.SearchOriginForNoSelection(messages.Count, forward);
+
+        var idx = UnreadNavigator.FindNextUnread(messages, from, forward);
+        if (idx < 0) { AnnounceNoMoreUnread(forward); return; }
+
+        // Assigning SelectedIndex replaces an Extended selection rather than adding to it, so the
+        // message landed on is the only one selected — what arrowing onto it would have done.
+        MessageList.SelectedIndex = idx;
+        MessageList.ScrollIntoView(MessageList.Items[idx]);
+        FocusItemAt(idx);
+    }
+
+    private void GoToUnreadInGroupTree<TGroup>(
+        TreeView tree,
+        IReadOnlyList<TGroup> groups,
+        Func<TGroup, IReadOnlyList<MailMessageSummary>> messagesOf,
+        Func<TGroup, int, GroupedMessageFocus> focusMessage,
+        bool forward) where TGroup : class
+    {
+        var flat = UnreadNavigator.Flatten(groups, messagesOf);
+
+        int from;
+        switch (tree.SelectedItem)
+        {
+            case MailMessageSummary msg when UnreadNavigator.IndexOfMessage(flat, msg) is var i and >= 0:
+                from = i;
+                break;
+            case TGroup group when UnreadNavigator.IndexOfGroupStart(flat, group) is var start and >= 0:
+                from = UnreadNavigator.SearchOriginForGroupHeader(start, forward);
+                break;
+            default:
+                from = UnreadNavigator.SearchOriginForNoSelection(flat.Count, forward);
+                break;
+        }
+
+        var idx = UnreadNavigator.FindNextUnread(flat, e => e.Message.IsUnread, from, forward);
+        if (idx < 0) { AnnounceNoMoreUnread(forward); return; }
+
+        // Only None is announced. Landing on the group header instead of the message is still a
+        // focus move, and the platform reports that one itself.
+        if (focusMessage(flat[idx].Group, flat[idx].MessageIndex) == GroupedMessageFocus.None)
+            AccessibilityHelper.Announce(this, "Could not move to the unread message.",
+                category: AnnouncementCategory.Result);
+    }
+
+    // "Below"/"above" rather than "newer"/"older": which of those a direction means depends on the
+    // sort, but the direction on screen is the same whichever way the list is sorted.
+    private void AnnounceNoMoreUnread(bool forward) =>
+        AccessibilityHelper.Announce(this,
+            forward ? "No unread messages below." : "No unread messages above.",
+            category: AnnouncementCategory.Result);
+
     // ── Mark as Read ─────────────────────────────────────────────────────────
 
     private async Task MarkReadCommand()
@@ -4581,83 +4716,29 @@ public partial class MainWindow : Window
 
     // ── Message-level focus helpers for grouped views ────────────────────────
 
-    // Finds the ScrollViewer inside a TreeView so we can set the scroll offset directly.
-    private static System.Windows.Controls.ScrollViewer? FindScrollViewer(System.Windows.DependencyObject d)
+    // All three delegate to TreeViewItemRealizer, which explains why realizing the container by
+    // index is the only thing that works here and why the scroll-and-wait version this replaced
+    // silently did nothing whenever the target group sat outside the viewport (#617).
+
+    private GroupedMessageFocus FocusSenderGroupMessage(SenderGroup group, int msgIdx)
     {
-        int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(d);
-        for (int i = 0; i < n; i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(d, i);
-            if (child is System.Windows.Controls.ScrollViewer sv) return sv;
-            var found = FindScrollViewer(child);
-            if (found != null) return found;
-        }
-        return null;
+        if (msgIdx < 0 || msgIdx >= group.Messages.Count) return GroupedMessageFocus.None;
+        return TreeViewItemRealizer.FocusMessage(
+            SenderGroupTree, _vm.SenderGroups.IndexOf(group), group, group.Messages[msgIdx], msgIdx);
     }
 
-    // Scrolls a SenderGroup-based tree so that the message at msgIdx within targetGroup
-    // is within the virtual viewport, ensuring its container is generated on the next layout
-    // pass. Uses item-based scroll offsets (CanContentScroll="True").
-    private static void ScrollSenderGroupMessageIntoView(
-        TreeView tree,
-        IEnumerable<SenderGroup> groups,
-        SenderGroup targetGroup,
-        int msgIdx)
+    private GroupedMessageFocus FocusToGroupMessage(SenderGroup group, int msgIdx)
     {
-        int offset = 0;
-        foreach (var g in groups)
-        {
-            offset++; // group header
-            if (ReferenceEquals(g, targetGroup)) { offset += msgIdx; break; }
-            if (g.IsExpanded) offset += g.Messages.Count;
-        }
-        FindScrollViewer(tree)?.ScrollToVerticalOffset(offset);
+        if (msgIdx < 0 || msgIdx >= group.Messages.Count) return GroupedMessageFocus.None;
+        return TreeViewItemRealizer.FocusMessage(
+            ToGroupTree, _vm.ToGroups.IndexOf(group), group, group.Messages[msgIdx], msgIdx);
     }
 
-    // Same for ConversationGroup-based trees.
-    private static void ScrollConversationMessageIntoView(
-        TreeView tree,
-        IEnumerable<ConversationGroup> groups,
-        ConversationGroup targetGroup,
-        int msgIdx)
+    private GroupedMessageFocus FocusConversationMessage(ConversationGroup group, int msgIdx)
     {
-        int offset = 0;
-        foreach (var g in groups)
-        {
-            offset++;
-            if (ReferenceEquals(g, targetGroup)) { offset += msgIdx; break; }
-            if (g.IsExpanded) offset += g.Messages.Count;
-        }
-        FindScrollViewer(tree)?.ScrollToVerticalOffset(offset);
-    }
-
-    private void FocusSenderGroupMessage(SenderGroup group, int msgIdx, bool isRetry = false)
-    {
-        var target   = group.Messages[msgIdx];
-        var groupTvi = SenderGroupTree.ItemContainerGenerator.ContainerFromItem(group) as TreeViewItem;
-        if (groupTvi == null)
-        {
-            if (!isRetry)
-                Dispatcher.InvokeAsync(() => FocusSenderGroupMessage(group, msgIdx, true), DispatcherPriority.Background);
-            return;
-        }
-        if (!groupTvi.IsExpanded) groupTvi.IsExpanded = true;
-        var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
-        if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
-        if (!isRetry)
-        {
-            // After a full rebuild the TreeView scroll resets to 0. Scroll the target into
-            // the viewport now; the resulting layout pass (Render priority) generates its
-            // container before the Background-priority retry runs.
-            ScrollSenderGroupMessageIntoView(SenderGroupTree, _vm.SenderGroups, group, msgIdx);
-            Dispatcher.InvokeAsync(() =>
-            {
-                var t2 = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
-                if (t2 != null) { t2.IsSelected = true; t2.Focus(); }
-                else             { groupTvi.IsSelected = true; groupTvi.Focus(); }
-            }, DispatcherPriority.Background);
-        }
-        else { groupTvi.IsSelected = true; groupTvi.Focus(); }
+        if (msgIdx < 0 || msgIdx >= group.Messages.Count) return GroupedMessageFocus.None;
+        return TreeViewItemRealizer.FocusMessage(
+            ConversationTree, _vm.Conversations.IndexOf(group), group, group.Messages[msgIdx], msgIdx);
     }
 
     private void LandOnSenderMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
@@ -4693,31 +4774,6 @@ public partial class MainWindow : Window
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
-    private void FocusToGroupMessage(SenderGroup group, int msgIdx, bool isRetry = false)
-    {
-        var target   = group.Messages[msgIdx];
-        var groupTvi = ToGroupTree.ItemContainerGenerator.ContainerFromItem(group) as TreeViewItem;
-        if (groupTvi == null)
-        {
-            if (!isRetry)
-                Dispatcher.InvokeAsync(() => FocusToGroupMessage(group, msgIdx, true), DispatcherPriority.Background);
-            return;
-        }
-        if (!groupTvi.IsExpanded) groupTvi.IsExpanded = true;
-        var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
-        if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
-        if (!isRetry)
-        {
-            ScrollSenderGroupMessageIntoView(ToGroupTree, _vm.ToGroups, group, msgIdx);
-            Dispatcher.InvokeAsync(() =>
-            {
-                var t2 = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
-                if (t2 != null) { t2.IsSelected = true; t2.Focus(); }
-                else             { groupTvi.IsSelected = true; groupTvi.Focus(); }
-            }, DispatcherPriority.Background);
-        }
-        else { groupTvi.IsSelected = true; groupTvi.Focus(); }
-    }
 
     private void LandOnToMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
     {
@@ -4752,31 +4808,6 @@ public partial class MainWindow : Window
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
-    private void FocusConversationMessage(ConversationGroup group, int msgIdx, bool isRetry = false)
-    {
-        var target   = group.Messages[msgIdx];
-        var groupTvi = ConversationTree.ItemContainerGenerator.ContainerFromItem(group) as TreeViewItem;
-        if (groupTvi == null)
-        {
-            if (!isRetry)
-                Dispatcher.InvokeAsync(() => FocusConversationMessage(group, msgIdx, true), DispatcherPriority.Background);
-            return;
-        }
-        if (!groupTvi.IsExpanded) groupTvi.IsExpanded = true;
-        var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
-        if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
-        if (!isRetry)
-        {
-            ScrollConversationMessageIntoView(ConversationTree, _vm.Conversations, group, msgIdx);
-            Dispatcher.InvokeAsync(() =>
-            {
-                var t2 = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
-                if (t2 != null) { t2.IsSelected = true; t2.Focus(); }
-                else             { groupTvi.IsSelected = true; groupTvi.Focus(); }
-            }, DispatcherPriority.Background);
-        }
-        else { groupTvi.IsSelected = true; groupTvi.Focus(); }
-    }
 
     private void LandOnConversationMessageAfterRebuild(string normalizedSubject, int msgIdx, int fallbackGroupIdx)
     {

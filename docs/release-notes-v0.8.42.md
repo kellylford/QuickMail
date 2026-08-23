@@ -1,5 +1,37 @@
 # QuickMail v0.8.42 Release Notes
 
+## New: a key that goes straight to the next unread message
+
+A user wrote in asking for one, mentioning that Space did this in the mail program they came from.
+Until now the only way to find unread mail in a long folder was to arrow through everything you had
+already read.
+
+**Alt+Down** goes to the nearest unread message below where you are. **Alt+Up** goes to the nearest
+one above. Both are also in the Command Palette (**Ctrl+Shift+P**) as **Next Unread Message** and
+**Previous Unread Message**, and either can be given a key of your own in **File → Settings →
+Keyboard Shortcuts**.
+
+They work in every view. In **Messages** they move down or up the list, skipping what you have read.
+In **Conversations**, **From**, and **To** they run through every message the tree holds, in group
+order, so they cross from one conversation or sender into the next rather than stopping at the end of
+the one you are in.
+
+Three details worth knowing:
+
+- **A closed group is searched, and opened.** An unread message inside a conversation you have not
+  opened is still found, and the conversation opens so that message can take focus. It stays open
+  afterwards, the same as one you opened yourself.
+- **Neither wraps around.** Reaching the end says "No unread messages below" — QuickMail does not
+  quietly start again from the top, and nothing moving is never left unexplained.
+- **They stay out of the way of everything else.** The keys act while you are in the message list or
+  a group tree — the reading pane can be open beside it — so Alt+Down still opens a drop-down list
+  when that is what you are on. They do nothing while focus is inside the reading pane itself, and an
+  open message window has its own keys: Alt+Left and Alt+Right already move between messages there.
+  Started from the palette where there is no list to move through, they say why instead of going
+  quiet.
+
+([#617](https://github.com/kellylford/QuickMail/issues/617))
+
 ## New: expanding and collapsing folders
 
 Until now the only way to open or close a folder was Right and Left arrow on the folder itself, one
