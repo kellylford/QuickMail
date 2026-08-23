@@ -122,12 +122,17 @@ public partial class AccountManagerDialog : Window
 
     private void WarnIdentityMismatch(string entered, string actual)
     {
-        MessageBox.Show(this,
-            $"You entered {entered}, but sign-in completed as {actual}.\n\n" +
-            "This usually happens when an administrator signs in to approve access for your " +
-            $"organization. The account was not changed. Please sign in again as {entered}.",
+        // #606: same behavior as Add Account — offer to sign in again as `entered` (Yes re-runs the sign-in,
+        // which now succeeds if an admin just granted consent; No returns to the screen) rather than a
+        // dead-end OK. Re-invoked via the dispatcher so the current sign-in call unwinds first.
+        var answer = MessageBox.Show(this,
+            Helpers.AccountSignInMessages.IdentityMismatchPrompt(entered, actual, _vm.IsOAuth2),
             "Different account signed in",
-            MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (answer != MessageBoxResult.Yes) return;
+        var retry = _vm.IsOAuth2 ? _vm.SignInMicrosoftCommand : _vm.SignInGoogleCommand;
+        Dispatcher.BeginInvoke(() => retry.Execute(null), System.Windows.Threading.DispatcherPriority.Background);
     }
 
     /// <summary>
