@@ -96,6 +96,12 @@ public class AddressBookFilterMenuTests
             var menu = button!.ContextMenu;
             Assert.NotNull(menu);
 
+            // Deliberately not the default filter: with "All accounts" in effect, "the filter in
+            // effect" and "the first item" are the same MenuItem, so the assertion below would
+            // hold even for a menu that always opened on the first item.
+            vm.SelectAccountFilter(vm.AccountFilterOptions.Single(o => o.Name == "Work"));
+            DoEvents();
+
             Click(button);
             DoEvents();
 
@@ -105,9 +111,30 @@ public class AddressBookFilterMenuTests
                 menu.Items.OfType<AccountFilterOption>().Select(o => o.Name).ToArray());
 
             // Focus lands on the filter in effect, not on the first item.
+            //
+            // Asserted through the menu's own focus scope rather than Keyboard.FocusedElement.
+            // What AddressBookWindow.AccountFilterMenu_Opened does is call item.Focus(); whether
+            // Win32 keyboard focus then follows into the popup's own HWND depends on the test
+            // process holding the foreground, which it does not. Measured mid-test, and again in an
+            // isolated probe: Window.IsActive was true — that is WPF's own notion, true of any shown
+            // window — while the process was not foreground, and so Keyboard.FocusedElement stayed
+            // on the window's search box even though the right MenuItem held focus in the menu's
+            // scope. The Keyboard form of this assertion therefore passed or failed on how the run
+            // happened to be launched, which is what made it the suite's one flaky test.
+            //
+            // Opening the menu differently does not change that: setting menu.IsOpen = true with no
+            // button involved measures identically, and OpenAccountFilterMenu is that one line, so a
+            // real mouse click, Enter on the button, and this synthesized ClickEvent all converge on
+            // it. There is no code path a real click takes that the test misses.
+            //
+            // A ContextMenu is a focus scope by default, and one element per scope holds focus, so
+            // this is the same claim as the Keyboard form — every other item excluded — without the
+            // dependency on foreground state. What it cannot speak for is whether the popup takes
+            // keyboard focus in a real, foreground session; that was never covered here either, and
+            // would need a foreground-gated test under QUICKMAIL_RUN_INPUT_TESTS.
             var active = ItemFor(menu, vm.SelectedAccountFilter);
             Assert.NotNull(active);
-            Assert.Same(active, Keyboard.FocusedElement);
+            Assert.Same(active, FocusManager.GetFocusedElement(menu));
 
             menu.IsOpen = false;
             DoEvents();
