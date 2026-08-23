@@ -18,7 +18,9 @@ public static class AccountSignInMessages
     /// </summary>
     public static string IdentityMismatchPrompt(string entered, string actual, bool isMicrosoftSignIn)
     {
-        var lead = $"You signed in as {actual}, but you're adding {entered} — so your account was left as {entered}.";
+        // "this account is {entered}" (not "you're adding") so the wording fits both dialogs — Add Account
+        // and the Account Manager re-authenticating an existing account.
+        var lead = $"You signed in as {actual}, but this account is {entered} — so it was left as {entered}.";
 
         var middle = isMicrosoftSignIn
             ? "\n\nIf an administrator just approved QuickMail for your organization here, that approval is saved.\n\n"
