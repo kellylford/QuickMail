@@ -241,6 +241,8 @@ Sign in as **the same address you typed** into the account. If the account you s
 You can also choose for yourself. Open **Advanced settings** and use the **Connection method** list to pick **Standard IMAP/SMTP** or **Microsoft 365 (Graph)**; choosing Graph announces that IMAP and SMTP settings are not required, and choosing IMAP fills the Outlook server settings back in. This choice is fixed when the account is created — to change it later, remove the account and add it again.
 
 > **Work or school accounts may need your administrator's approval first.** Many organizations require an administrator to approve a new app for the whole organization before anyone can sign in. If your sign-in ends at a **"needs admin approval"** message with no way to continue, QuickMail is working correctly — your organization has not yet approved it. Send your IT administrator to [For Microsoft 365 Administrators and Tenant Owners](#for-microsoft-365-administrators-and-tenant-owners); once they approve QuickMail, sign-in works normally. Personal Outlook.com accounts are not affected and need no approval.
+>
+> Signing in *as an administrator* on that approval screen does **not** grant the approval, and QuickMail will tell you the account was not changed — that is expected. An administrator approves QuickMail for the organization out of band: the quickest way is **Help → Grant Admin Consent for Your Organization**, or the steps in the administrators section above. After that, sign in as yourself.
 
 To bring this account's contacts into your address book, check **Sync contacts from this account** before signing in. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts).
 

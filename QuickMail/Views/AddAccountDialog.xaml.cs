@@ -54,10 +54,12 @@ public partial class AddAccountDialog : Window
 
     private void WarnIdentityMismatch(string entered, string actual)
     {
+        // #606: beyond the bare "different account" warning, point a Microsoft sign-in toward the path that
+        // actually grants organization access (Help → Grant Admin Consent, #607) — signing in as an admin at
+        // the consent screen does not, and the #202 guard discards it. Provider-aware: Google gets the plain
+        // wrong-account message (no admin-consent model).
         MessageBox.Show(this,
-            $"You entered {entered}, but sign-in completed as {actual}.\n\n" +
-            "This usually happens when an administrator signs in to approve access for your " +
-            $"organization. The account was not changed. Please sign in again as {entered}.",
+            Helpers.AccountSignInMessages.IdentityMismatchGuidance(entered, actual, _vm.IsOAuth2),
             "Different account signed in",
             MessageBoxButton.OK, MessageBoxImage.Warning);
     }

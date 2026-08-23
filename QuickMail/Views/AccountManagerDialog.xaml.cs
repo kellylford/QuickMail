@@ -122,10 +122,10 @@ public partial class AccountManagerDialog : Window
 
     private void WarnIdentityMismatch(string entered, string actual)
     {
+        // #606: same guidance as Add Account — point a Microsoft sign-in to Help → Grant Admin Consent (#607)
+        // rather than dead-ending. Provider-aware via the VM's IsOAuth2 (Microsoft) flag.
         MessageBox.Show(this,
-            $"You entered {entered}, but sign-in completed as {actual}.\n\n" +
-            "This usually happens when an administrator signs in to approve access for your " +
-            $"organization. The account was not changed. Please sign in again as {entered}.",
+            Helpers.AccountSignInMessages.IdentityMismatchGuidance(entered, actual, _vm.IsOAuth2),
             "Different account signed in",
             MessageBoxButton.OK, MessageBoxImage.Warning);
     }
