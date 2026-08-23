@@ -12,17 +12,21 @@ one above. Both are also in the Command Palette (**Ctrl+Shift+P**) as **Next Unr
 Keyboard Shortcuts**.
 
 They work in every view. In **Messages** they move down or up the list, skipping what you have read.
-In **Conversations**, **From**, and **To** they run through the messages in the order the tree shows
-them, so they cross from one conversation or sender into the next rather than stopping at the end of
-the one you are in — and a group that is closed is opened so the unread message inside it can take
-focus.
+In **Conversations**, **From**, and **To** they run through every message the tree holds, in group
+order, so they cross from one conversation or sender into the next rather than stopping at the end of
+the one you are in.
 
-Two details worth knowing:
+Three details worth knowing:
 
+- **A closed group is searched, and opened.** An unread message inside a conversation you have not
+  opened is still found, and the conversation opens so that message can take focus. It stays open
+  afterwards, the same as one you opened yourself.
 - **Neither wraps around.** Reaching the end says "No unread messages below" — QuickMail does not
   quietly start again from the top, and nothing moving is never left unexplained.
-- **They stay out of the way of everything else.** The keys act only while you are in the message
-  list or a group tree, so Alt+Down still opens a drop-down list when that is what you are on.
+- **They stay out of the way of everything else.** The keys act while you are in the message list or
+  a group tree, so Alt+Down still opens a drop-down list when that is what you are on. They do
+  nothing in the reading pane, in an open message window, or while a message tab is showing; in a
+  message window Alt+Left and Alt+Right already move between messages.
 
 ([#617](https://github.com/kellylford/QuickMail/issues/617))
 

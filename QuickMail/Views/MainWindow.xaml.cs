@@ -4588,10 +4588,26 @@ public partial class MainWindow : Window
     /// </summary>
     private void GoToUnread(bool forward)
     {
-        // The calendar has no unread mail, and in Tab mode a message tab covers the list. Either
-        // way the panel this would move through is not on screen — reachable only from the palette,
-        // which runs a command without consulting IsAvailable.
-        if (_vm.IsCalendarView) return;
+        // Both guards are reachable only from the palette, which runs a command without consulting
+        // IsAvailable. Neither is silent: a command that declines to act has to say so, for the same
+        // reason running out of unread mail does.
+        //
+        // Tab mode is IsMessageListAreaVisible, not MessageList.IsVisible: an active message tab
+        // hides the list by collapsing its grid row to zero height, which leaves Visibility — and so
+        // IsVisible — untouched. Focusing a row in a zero-height list strands the user on something
+        // they cannot see or scroll to.
+        if (_vm.IsCalendarView)
+        {
+            AccessibilityHelper.Announce(this, "No unread messages. The calendar is open.",
+                category: AnnouncementCategory.Result);
+            return;
+        }
+        if (!_vm.IsMessageListAreaVisible)
+        {
+            AccessibilityHelper.Announce(this, "No unread messages. The message list is not showing.",
+                category: AnnouncementCategory.Result);
+            return;
+        }
 
         if (_vm.IsConversationsView)
             GoToUnreadInGroupTree(ConversationTree, _vm.Conversations, g => g.Messages, (g, i) => FocusConversationMessage(g, i), forward);
@@ -4605,14 +4621,22 @@ public partial class MainWindow : Window
 
     private void GoToUnreadInMessageList(bool forward)
     {
-        if (!MessageList.IsVisible) return;
-
         var messages = _vm.Messages;
 
-        // SelectedIndex is the first row of an Extended selection, and -1 when nothing is
-        // selected at all — in which case the search covers the whole list from the near end.
-        var from = MessageList.SelectedIndex >= 0
-            ? MessageList.SelectedIndex
+        // The focused row, not SelectedIndex: SelectedIndex is the FIRST item added to an Extended
+        // selection, not the topmost one, and ExtendMessageSelection builds Shift+Up selections by
+        // adding rows downward-to-upward. Searching out from SelectedIndex after Shift+Up therefore
+        // started below the caret, and Alt+Up could land on a message below where the user was.
+        // Same resolution order ExtendMessageSelection uses, for the same reason.
+        var focusedIndex = Keyboard.FocusedElement is ListViewItem focusedRow
+            ? MessageList.ItemContainerGenerator.IndexFromContainer(focusedRow)
+            : -1;
+        if (focusedIndex < 0) focusedIndex = MessageList.SelectedIndex;
+
+        // Still -1 when nothing is selected at all: the search then covers the whole list from
+        // whichever end it is travelling away from.
+        var from = focusedIndex >= 0
+            ? focusedIndex
             : UnreadNavigator.SearchOriginForNoSelection(messages.Count, forward);
 
         var idx = UnreadNavigator.FindNextUnread(messages, from, forward);
@@ -4632,8 +4656,6 @@ public partial class MainWindow : Window
         Action<TGroup, int> focusMessage,
         bool forward) where TGroup : class
     {
-        if (!tree.IsVisible) return;
-
         var flat = UnreadNavigator.Flatten(groups, messagesOf);
 
         int from;
@@ -4703,6 +4725,13 @@ public partial class MainWindow : Window
         return null;
     }
 
+    /// <summary>
+    /// How many scroll-then-wait passes the group-tree focus helpers make before settling for
+    /// whatever container exists. Two covers the worst real case — scroll the group in, expand it,
+    /// scroll the message in — without letting a tree that never realizes a container loop forever.
+    /// </summary>
+    private const int MaxGroupFocusAttempts = 2;
+
     // Scrolls a SenderGroup-based tree so that the message at msgIdx within targetGroup
     // is within the virtual viewport, ensuring its container is generated on the next layout
     // pass. Uses item-based scroll offsets (CanContentScroll="True").
@@ -4739,20 +4768,27 @@ public partial class MainWindow : Window
         FindScrollViewer(tree)?.ScrollToVerticalOffset(offset);
     }
 
-    private void FocusSenderGroupMessage(SenderGroup group, int msgIdx, bool isRetry = false)
+    private void FocusSenderGroupMessage(SenderGroup group, int msgIdx, int attempt = 0)
     {
         var target   = group.Messages[msgIdx];
         var groupTvi = SenderGroupTree.ItemContainerGenerator.ContainerFromItem(group) as TreeViewItem;
         if (groupTvi == null)
         {
-            if (!isRetry)
-                Dispatcher.InvokeAsync(() => FocusSenderGroupMessage(group, msgIdx, true), DispatcherPriority.Background);
+            // The group is outside the virtualized viewport, so its container does not exist and
+            // waiting will not create one — scroll it in, exactly as the message-level branch below
+            // already does, and let the layout pass generate it before the retry runs. Until #617 the
+            // only caller was the group-boundary jump, which acts on the selected (therefore realized)
+            // group; next-unread crosses group boundaries, so it targets distant groups routinely and
+            // the bare retry left it doing nothing at all past the first screenful.
+            if (attempt >= MaxGroupFocusAttempts) return;
+            ScrollSenderGroupMessageIntoView(SenderGroupTree, _vm.SenderGroups, group, msgIdx);
+            Dispatcher.InvokeAsync(() => FocusSenderGroupMessage(group, msgIdx, attempt + 1), DispatcherPriority.Background);
             return;
         }
         if (!groupTvi.IsExpanded) groupTvi.IsExpanded = true;
         var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
         if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
-        if (!isRetry)
+        if (attempt < MaxGroupFocusAttempts)
         {
             // After a full rebuild the TreeView scroll resets to 0. Scroll the target into
             // the viewport now; the resulting layout pass (Render priority) generates its
@@ -4801,20 +4837,27 @@ public partial class MainWindow : Window
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
-    private void FocusToGroupMessage(SenderGroup group, int msgIdx, bool isRetry = false)
+    private void FocusToGroupMessage(SenderGroup group, int msgIdx, int attempt = 0)
     {
         var target   = group.Messages[msgIdx];
         var groupTvi = ToGroupTree.ItemContainerGenerator.ContainerFromItem(group) as TreeViewItem;
         if (groupTvi == null)
         {
-            if (!isRetry)
-                Dispatcher.InvokeAsync(() => FocusToGroupMessage(group, msgIdx, true), DispatcherPriority.Background);
+            // The group is outside the virtualized viewport, so its container does not exist and
+            // waiting will not create one — scroll it in, exactly as the message-level branch below
+            // already does, and let the layout pass generate it before the retry runs. Until #617 the
+            // only caller was the group-boundary jump, which acts on the selected (therefore realized)
+            // group; next-unread crosses group boundaries, so it targets distant groups routinely and
+            // the bare retry left it doing nothing at all past the first screenful.
+            if (attempt >= MaxGroupFocusAttempts) return;
+            ScrollSenderGroupMessageIntoView(ToGroupTree, _vm.ToGroups, group, msgIdx);
+            Dispatcher.InvokeAsync(() => FocusToGroupMessage(group, msgIdx, attempt + 1), DispatcherPriority.Background);
             return;
         }
         if (!groupTvi.IsExpanded) groupTvi.IsExpanded = true;
         var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
         if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
-        if (!isRetry)
+        if (attempt < MaxGroupFocusAttempts)
         {
             ScrollSenderGroupMessageIntoView(ToGroupTree, _vm.ToGroups, group, msgIdx);
             Dispatcher.InvokeAsync(() =>
@@ -4860,20 +4903,27 @@ public partial class MainWindow : Window
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
-    private void FocusConversationMessage(ConversationGroup group, int msgIdx, bool isRetry = false)
+    private void FocusConversationMessage(ConversationGroup group, int msgIdx, int attempt = 0)
     {
         var target   = group.Messages[msgIdx];
         var groupTvi = ConversationTree.ItemContainerGenerator.ContainerFromItem(group) as TreeViewItem;
         if (groupTvi == null)
         {
-            if (!isRetry)
-                Dispatcher.InvokeAsync(() => FocusConversationMessage(group, msgIdx, true), DispatcherPriority.Background);
+            // The group is outside the virtualized viewport, so its container does not exist and
+            // waiting will not create one — scroll it in, exactly as the message-level branch below
+            // already does, and let the layout pass generate it before the retry runs. Until #617 the
+            // only caller was the group-boundary jump, which acts on the selected (therefore realized)
+            // group; next-unread crosses group boundaries, so it targets distant groups routinely and
+            // the bare retry left it doing nothing at all past the first screenful.
+            if (attempt >= MaxGroupFocusAttempts) return;
+            ScrollConversationMessageIntoView(ConversationTree, _vm.Conversations, group, msgIdx);
+            Dispatcher.InvokeAsync(() => FocusConversationMessage(group, msgIdx, attempt + 1), DispatcherPriority.Background);
             return;
         }
         if (!groupTvi.IsExpanded) groupTvi.IsExpanded = true;
         var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
         if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
-        if (!isRetry)
+        if (attempt < MaxGroupFocusAttempts)
         {
             ScrollConversationMessageIntoView(ConversationTree, _vm.Conversations, group, msgIdx);
             Dispatcher.InvokeAsync(() =>

@@ -95,9 +95,13 @@ public static class UnreadNavigator
 
     /// <summary>
     /// Where a search out from the selected group header starts. A header sits above its own
-    /// messages, so moving down considers the group's first message and moving up starts at the
-    /// row above the header — matching what Down and Up arrow do from the same place.
+    /// messages, so moving down considers the group's first message and moving up starts before
+    /// the header, leaving the group entirely.
     /// </summary>
+    /// <remarks>This matches Down and Up arrow from an <em>expanded</em> header. From a collapsed
+    /// one it deliberately diverges: Down arrow steps over the group to the next header, while this
+    /// descends into it and the caller expands it — finding the unread message inside a closed
+    /// conversation is the point of the command, not a side effect.</remarks>
     public static int SearchOriginForGroupHeader(int groupStartIndex, bool forward) =>
         forward ? groupStartIndex - 1 : groupStartIndex;
 

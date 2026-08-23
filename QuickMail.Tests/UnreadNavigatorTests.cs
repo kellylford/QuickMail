@@ -76,15 +76,24 @@ public class UnreadNavigatorTests
     }
 
     [Fact]
-    public void Flatten_IncludesCollapsedGroups()
+    public void Flatten_IsBlindToExpansionState()
     {
-        // Expansion state is not consulted: the caller expands whatever group it lands in, so a
-        // collapsed conversation holding the only unread message must still be reachable.
-        var collapsed = Group("collapsed", "u");
+        // Guards against anyone later teaching Flatten to skip closed groups. It must not: the
+        // caller expands whatever group it lands in, so a collapsed conversation holding the only
+        // unread message has to stay reachable. Both states must flatten identically.
+        var collapsed = Group("g", "ru");
         collapsed.IsExpanded = false;
+        var expanded = Group("g", "ru");
+        expanded.IsExpanded = true;
 
-        var flat = UnreadNavigator.Flatten([collapsed], g => g.Messages);
-        Assert.Equal(0, UnreadNavigator.FindNextUnread(flat, e => e.Message.IsUnread, -1, forward: true));
+        var closed = UnreadNavigator.Flatten([collapsed], g => g.Messages);
+        var open   = UnreadNavigator.Flatten([expanded],  g => g.Messages);
+
+        Assert.Equal(open.Count, closed.Count);
+        Assert.Equal(
+            UnreadNavigator.FindNextUnread(open,   e => e.Message.IsUnread, -1, forward: true),
+            UnreadNavigator.FindNextUnread(closed, e => e.Message.IsUnread, -1, forward: true));
+        Assert.Equal(1, UnreadNavigator.FindNextUnread(closed, e => e.Message.IsUnread, -1, forward: true));
     }
 
     [Fact]

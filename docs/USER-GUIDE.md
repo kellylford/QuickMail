@@ -600,12 +600,18 @@ one above. They are also **Next Unread Message** and **Previous Unread Message**
 palette, and you can give them different keys in **File → Settings → Keyboard Shortcuts**.
 
 In the **Messages** view they move down or up the list, skipping everything already read. In
-**Conversations**, **From**, and **To** they run through every message in the tree in the order it
-is shown — so they cross from one conversation or sender into the next, and a group that is closed
-is opened so the message inside it can take focus.
+**Conversations**, **From**, and **To** they run through every message the tree holds, in group
+order — so they cross from one conversation or sender into the next rather than stopping at the end
+of the one you are in. Closed groups are searched too, and a closed group holding the unread message
+is opened so that message can take focus. It stays open afterwards, like any group you open
+yourself.
 
-Both work from the message list or a group tree. Below and above mean what they say on screen: which
-of them is newer depends on how the folder is sorted.
+Below and above mean what they say on screen: which of them is newer depends on how the folder is
+sorted.
+
+Both keys act while you are in the message list or a group tree. They do nothing inside the reading
+pane, in an open message window, or while a message tab is showing — in a message window, **Alt+Left**
+and **Alt+Right** already move to the previous and next message.
 
 Neither wraps around. When there is no unread message left in the direction you are going, nothing
 moves and QuickMail says "No unread messages below" or "No unread messages above", so that running
