@@ -60,6 +60,18 @@ public partial class AdminConsentWindow : Window
             ConsentBrowser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
 
             ConsentBrowser.CoreWebView2.NavigationStarting += OnNavigationStarting;
+
+            // Ancillary links on the Microsoft pages (Terms, Privacy & cookies, "Can't access your
+            // account?", "Create one") carry target="_blank" and raise NewWindowRequested instead of
+            // NavigationStarting. Left unhandled, WebView2 opens its own in-app popup; route them to the
+            // user's default browser via the scheme allow-list instead (issue #483). The consent flow
+            // itself stays in this window — only these secondary links leave.
+            ConsentBrowser.CoreWebView2.NewWindowRequested += (_, args) =>
+            {
+                args.Handled = true;
+                ExternalUriPolicy.TryOpenExternal(args.Uri);
+            };
+
             ConsentBrowser.CoreWebView2.Navigate(OAuthService.BuildAdminConsentUrl(_state));
         }
         catch (Exception ex)
