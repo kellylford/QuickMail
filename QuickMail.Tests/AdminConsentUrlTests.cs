@@ -48,6 +48,18 @@ public class AdminConsentUrlTests
     }
 
     [Fact]
+    public void ParseRedirect_SurfacesAadErrorEvenWithoutState()
+    {
+        // Azure AD does not always echo state on an error redirect. An error is never a grant, so we
+        // report AAD's real description rather than a misleading "state mismatch".
+        var r = OAuthService.ParseAdminConsentRedirect(
+            new Uri("http://localhost/?error=access_denied&error_description=Consent+required"), "xyz");
+
+        Assert.Equal(AdminConsentStatus.Error, r!.Value.Status);
+        Assert.Equal("Consent required", r.Value.Error);
+    }
+
+    [Fact]
     public void ParseRedirect_StateMismatchIsErrorNeverSuccess() // CSRF guard
     {
         var r = OAuthService.ParseAdminConsentRedirect(

@@ -558,15 +558,18 @@ public class OAuthService : IOAuthService
 
         var q = ParseQuery(redirect.Query);
 
-        // CSRF guard: a redirect whose state doesn't match the one we sent is never trusted as success.
-        if (!q.TryGetValue("state", out var state) || !string.Equals(state, expectedState, StringComparison.Ordinal))
-            return new AdminConsentResult(AdminConsentStatus.Error, "State mismatch on the admin-consent redirect.");
-
+        // Surface a real Azure AD error first, with its own description — an error is never a grant, so
+        // reporting it doesn't depend on the state check (and AAD does not always echo state on an error).
         if (q.TryGetValue("error", out var error))
         {
             var desc = q.TryGetValue("error_description", out var d) && !string.IsNullOrWhiteSpace(d) ? d : error;
             return new AdminConsentResult(AdminConsentStatus.Error, desc);
         }
+
+        // CSRF guard on the SUCCESS path: a redirect whose state doesn't match the one we sent is never
+        // trusted as a grant.
+        if (!q.TryGetValue("state", out var state) || !string.Equals(state, expectedState, StringComparison.Ordinal))
+            return new AdminConsentResult(AdminConsentStatus.Error, "State mismatch on the admin-consent redirect.");
 
         // admin_consent=True is the grant signal. Anything else on the localhost redirect (e.g. the admin
         // backed out to it without granting) is a decline rather than a spurious success.

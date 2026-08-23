@@ -13,8 +13,8 @@ namespace QuickMail.Views;
 
 /// <summary>
 /// Organization admin-consent window (#607). Hosts a WebView2 that drives the
-/// <c>/organizations/v2.0/adminconsent</c> flow so a Global Admin grants every Graph scope QuickMail
-/// may need, org-wide, in one screen — before any user has signed in.
+/// <c>/organizations/adminconsent</c> flow so a Global Admin grants QuickMail's whole declared
+/// permission set, org-wide, in one screen — before any user has signed in.
 ///
 /// A LEAF window: no F6 ring and no command palette (there is nothing to cycle between but the one
 /// browser). Shown modeless (<c>Show()</c>) because it hosts a live WebView2 with editable content and
