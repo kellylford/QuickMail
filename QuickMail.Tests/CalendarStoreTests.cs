@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.Threading;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -292,26 +294,43 @@ public class CalendarStoreTests : IDisposable
     }
 
     /// <summary>
-    /// Sorted the way a person reads a list, not the way bytes compare — without NOCASE a
-    /// lowercase or accented calendar sorts after every capitalised one. The picker and the folder
-    /// tree both show this order, and this change is what turned it into a list worth scanning.
+    /// Sorted the way a person reads a list, not the way bytes compare. The picker and the folder
+    /// tree both show this order and are read down by ear, so it is worth pinning.
+    ///
+    /// <para>
+    /// Two orderings are wrong here and the test names both. Plain byte order puts every capital
+    /// ahead of every lowercase, so "apple" lands after "Zulu". SQLite's NOCASE fixes that and
+    /// nothing else — it folds ASCII A-Z only, so an accented name is still stranded at the bottom,
+    /// which is why the sort happens in C# against the current culture instead.
+    /// </para>
+    ///
+    /// <para>
+    /// Culture is pinned because that is what the comparison reads: in Swedish "ä" sorts after "z",
+    /// so an ambient-culture run would be asserting the machine's locale rather than the change.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task LoadCalendarSources_SortsCaseInsensitively()
+    public async Task LoadCalendarSources_SortsTheWayAPersonWouldRead()
     {
-        var account = Guid.NewGuid();
-        // Names chosen so BINARY and NOCASE disagree: every capital sorts before every lowercase
-        // in byte order, so a plain ORDER BY yields Beta, Zulu, apple.
-        await _store.ReplaceCalendarSourcesAsync(account,
-        [
-            new CalendarSourceInfo(account, "c1", "Zulu", CanWrite: true),
-            new CalendarSourceInfo(account, "c2", "apple", CanWrite: true),
-            new CalendarSourceInfo(account, "c3", "Beta", CanWrite: true),
-        ]);
+        var previous = Thread.CurrentThread.CurrentCulture;
+        Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
+        try
+        {
+            var account = Guid.NewGuid();
+            await _store.ReplaceCalendarSourcesAsync(account,
+            [
+                new CalendarSourceInfo(account, "c1", "Zulu", CanWrite: true),
+                new CalendarSourceInfo(account, "c2", "apple", CanWrite: true),
+                new CalendarSourceInfo(account, "c3", "Beta", CanWrite: true),
+                new CalendarSourceInfo(account, "c4", "Ärger", CanWrite: true),
+            ]);
 
-        var names = (await _store.LoadCalendarSourcesAsync()).Select(s => s.CalendarName).ToList();
+            var names = (await _store.LoadCalendarSourcesAsync()).Select(s => s.CalendarName).ToList();
 
-        Assert.Equal(new[] { "apple", "Beta", "Zulu" }, names);
+            // Byte order would give Beta, Zulu, apple, Ärger; NOCASE apple, Beta, Zulu, Ärger.
+            Assert.Equal(new[] { "apple", "Ärger", "Beta", "Zulu" }, names);
+        }
+        finally { Thread.CurrentThread.CurrentCulture = previous; }
     }
 
     [Fact]

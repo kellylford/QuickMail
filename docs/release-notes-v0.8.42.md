@@ -137,11 +137,15 @@ default calendar. There was no way to file one on **Team**, or on **Family**, sh
 afterwards in Outlook or Gmail. iCloud accounts have offered a choice for a while; the other two
 now do too.
 
-The **Calendar** picker in the appointment editor lists your **Local Calendar** first, then for each
-connected account an entry for the account itself — **Work (default calendar)**, meaning wherever
-that account normally files things — followed by every calendar you can write to on it, named
-account-first: **Work: Team**, **Apple: Family**. It still starts on your default calendar if you
-have set one, whether you set that to a whole account or to one calendar under it.
+The **Calendar** picker in the appointment editor lists your **Local Calendar** first, then every
+calendar you can write to on each connected account, named account-first: **Work: Team**,
+**Apple: Family**. Microsoft and Google accounts also get an entry for the account itself —
+**Work (default calendar)** — for when you do not mind which calendar it lands on and would rather
+it follow whatever you have set on the provider's own site. iCloud has no such entry, because an
+iCloud appointment always names the calendar it goes on.
+
+The picker still starts on your default calendar if you have set one, whether you set that to a
+whole account or to a single calendar under it.
 
 Two things worth knowing:
 

@@ -1612,6 +1612,13 @@ public class LocalStoreService : ILocalStoreService
             }
         }
 
+        // Ordered here rather than left to SQL. SQLite's NOCASE folds ASCII A-Z and nothing else, so
+        // it fixes "apple after Zulu" but strands every accented name — Ärger and Ábel sort after
+        // every unaccented calendar, and not even against each other. Both the picker and the folder
+        // tree show this order and are read down by ear, so it has to be the order a person would
+        // put them in. Sorting the combined list also stops the recorded accounts from bunching
+        // ahead of the un-enumerated ones.
+        list.Sort((a, b) => string.Compare(a.CalendarName, b.CalendarName, StringComparison.CurrentCultureIgnoreCase));
         return list;
     }
 
