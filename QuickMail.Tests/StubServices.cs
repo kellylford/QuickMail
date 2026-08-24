@@ -666,6 +666,15 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
     public Exception? CreateFailure { get; set; }
     public List<CalendarEvent> CreatedEvents { get; } = [];
 
+    /// <summary>
+    /// The calendar store the real service writes the server's copy into. Wire it and a create
+    /// push shows up in the calendar exactly as it does in the app: <c>GraphCalendarSyncService</c>
+    /// upserts the returned event before returning, so the <c>RefreshAsync</c> the ViewModel does
+    /// next reloads a list that already contains it. A stub that only records the push cannot tell
+    /// a working create apart from one the list never picks up until F5 (issue #519).
+    /// </summary>
+    public StubCalendarService? CalendarStore { get; set; }
+
     public Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default)
     {
         SyncCallCount++;
@@ -699,6 +708,7 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
             IsAllDay = evt.IsAllDay, ResponseStatus = CalendarResponseStatus.Accepted,
         };
         CreatedEvents.Add(created);
+        CalendarStore?.StoredEvents.Add(created);
         return Task.FromResult(created);
     }
 

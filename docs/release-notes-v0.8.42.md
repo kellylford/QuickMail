@@ -103,6 +103,34 @@ was selected. All three now leave the selection alone.
 Nothing about the keyboard changed: no shortcut, no announcement, and no reading order is different
 from 0.8.41. ([#601](https://github.com/kellylford/QuickMail/pull/601))
 
+## Fixed: typing a date or a time in the appointment editor did nothing at first
+
+Pressing **N** for a new appointment and typing a date into the **Starts** field left the field
+showing the date it had opened on. The same happened in the time field. As the report put it:
+*"The date field didn't change. The same thing happened in the time field. You have to move the
+field with an arrow key or select it all before it takes any input."*
+
+These fields open holding a full, spelled-out value — "Thursday, July 16, 2026" — with the cursor
+parked at the end of it and nothing selected. Typing `8/3` therefore made
+"Thursday, July 16, 20268/3", which means nothing as a date, so QuickMail quietly put the old value
+back. Nothing was said about it either: the value it restored was the one already there, so as far
+as the field was concerned nothing had changed.
+
+The value is now selected when you arrive at the field, so the first thing you type replaces it —
+the same as what already happened when a refused save sent you back to a field to correct it.
+Typing `8/3`, `tomorrow`, or `+7` works from the first keystroke. The arrow keys are unchanged: Up
+and Down still step the value by a day or a quarter hour and leave it unselected with the cursor at
+the end, so what you hear afterwards is the new value and not a selection.
+
+This applies everywhere these fields are used — the **Starts** and **Ends** dates and times, the
+repeat interval and **until** date, and **Go to Date** (**Ctrl+G**) in the calendar.
+
+It is also the likely story behind a second report, of an appointment that was not in the agenda
+where it was expected. A date that silently reverted saved the appointment on the day the editor
+opened on rather than the day that was typed — so it was real, and filed, but not where anyone went
+looking for it. ([#570](https://github.com/kellylford/QuickMail/issues/570),
+[#519](https://github.com/kellylford/QuickMail/issues/519))
+
 ## Fixed: Microsoft 365 unread counts went stale until you refreshed
 
 On a Microsoft 365 account, the unread count beside a folder only changed when the whole folder list

@@ -152,7 +152,9 @@ public class DateTimeField : TextBox
         {
             Text = formatted;
             // Caret to the end rather than selecting the whole value. Both were built and listened
-            // to; leaving the text unselected is the one that reads cleanly.
+            // to; leaving the text unselected is the one that reads cleanly. This is the *stepped*
+            // value — arriving at the field is the other case, and OnGotKeyboardFocus does select
+            // there so the first keystroke replaces rather than appends.
             CaretIndex = Text.Length;
         }
         finally { _updatingText = false; }
@@ -262,6 +264,26 @@ public class DateTimeField : TextBox
         // Typing is left uncommitted until Enter or focus loss. Parsing every keystroke would fight
         // the user halfway through "August" and push half-formed dates into the ViewModel, where
         // duration linking would drag the end along with each one.
+    }
+
+    protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
+    {
+        base.OnGotKeyboardFocus(e);
+        // Select the value on entry, so the first character typed replaces it.
+        //
+        // Without this the field is entered with the caret parked after "Thursday, July 16, 2026"
+        // and nothing selected, so typing a date appends to the formatted one: "8/3" becomes
+        // "Thursday, July 16, 20268/3", which parses as nothing, and Commit quietly puts the old
+        // value back. The field reads as if it ignores typing until the user selects the text
+        // themselves, and — worse — an appointment then saves on a date they did not enter
+        // (issues #570 and #519). Nothing is announced either, because the reverted text equals
+        // the text already there, so RefreshText finds no change and raises no UIA value change.
+        //
+        // Selecting the value is what a formatted value field does everywhere: the editor's own
+        // Title box does it on open, and FocusField does it when a refused save sends focus back
+        // to the offending field. Stepping is untouched — RefreshText still leaves the caret at
+        // the end with no selection, which is the reading that was chosen deliberately.
+        SelectAll();
     }
 
     protected override void OnLostFocus(RoutedEventArgs e)
