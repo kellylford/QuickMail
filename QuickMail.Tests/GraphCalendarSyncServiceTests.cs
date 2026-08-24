@@ -474,7 +474,7 @@ public class GraphCalendarSyncServiceTests : IDisposable
         var handler = new RecordingHandler(
             Json(EventJson("srv-1", "Board meeting", "2026-08-01T14:00:00.0000000",
                            "2026-08-01T15:00:00.0000000")),
-            Json(@"{ ""value"": [ { ""id"": ""cal-other"", ""name"": ""Team"", ""isDefaultCalendar"": false }, { ""id"": ""cal-default"", ""name"": ""Calendar"", ""isDefaultCalendar"": true } ] }"));
+            Json(@"{ ""id"": ""cal-default"", ""name"": ""Calendar"" }"));
 
         await Service(handler).CreateEventAsync(GraphAccount(), new CalendarEvent
         {
@@ -486,6 +486,56 @@ public class GraphCalendarSyncServiceTests : IDisposable
         var row = Assert.Single(await _store.LoadCalendarEventsAsync());
         Assert.Equal("cal-default", row.CalendarId);
         Assert.Equal("Calendar", row.CalendarName);
+    }
+
+    /// <summary>
+    /// A default calendar that cannot be fetched leaves the row untagged rather than costing the
+    /// user their appointment, which is already on the server by the time this runs.
+    ///
+    /// Untagged, specifically — NOT tagged with some other calendar. Microsoft documents that
+    /// <c>/me/calendars</c> can omit the default calendar, and that their own default calendar
+    /// example carries <c>isDefaultCalendar: false</c>, so an enumerate-and-guess approach lands on
+    /// the wrong one. A wrongly tagged row is worse than an untagged one: still missing from the
+    /// node the user is on, and now also under a node it does not belong to.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_WhenTheDefaultCalendarCannotBeResolved_StoresTheEventUntagged()
+    {
+        var handler = new RecordingHandler(
+            Json(EventJson("srv-1", "Board meeting", "2026-08-01T14:00:00.0000000",
+                           "2026-08-01T15:00:00.0000000")),
+            Json("nope", code: HttpStatusCode.InternalServerError));
+
+        var created = await Service(handler).CreateEventAsync(GraphAccount(), new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Board meeting",
+            StartTimeTicks = new DateTime(2026, 8, 1, 14, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal("srv-1", created.Uid);
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("srv-1", row.Uid);
+        Assert.Equal(string.Empty, row.CalendarId);
+    }
+
+    /// <summary>A nameless calendar still needs a label for the Calendar column to read.</summary>
+    [Fact]
+    public async Task CreateEvent_WhenTheDefaultCalendarHasNoName_LabelsItCalendar()
+    {
+        var handler = new RecordingHandler(
+            Json(EventJson("srv-1", "Board meeting", "2026-08-01T14:00:00.0000000",
+                           "2026-08-01T15:00:00.0000000")),
+            Json(@"{ ""id"": ""cal-default"", ""name"": ""   "" }"));
+
+        await Service(handler).CreateEventAsync(GraphAccount(), new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Board meeting",
+            StartTimeTicks = new DateTime(2026, 8, 1, 14, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal("Calendar", Assert.Single(await _store.LoadCalendarEventsAsync()).CalendarName);
     }
 
     /// <summary>
@@ -535,7 +585,7 @@ public class GraphCalendarSyncServiceTests : IDisposable
         // the calendar POST /me/events filed into (#569).
         Assert.Equal(["POST", "GET"], handler.Methods);
         Assert.EndsWith("/me/events", handler.Urls[0]);
-        Assert.Contains("isDefaultCalendar", handler.Urls[1]);
+        Assert.Contains("/me/calendar?", handler.Urls[1]);   // singular: the default calendar itself
         // Prefer header carries the machine's Windows zone (see Sync test); the body below still
         // sends explicit UTC start/end, so the created event's times are unambiguous.
         Assert.Equal($"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"", handler.PreferHeaders[0]);
