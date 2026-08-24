@@ -283,6 +283,16 @@ public class DateTimeField : TextBox
         // Title box does it on open, and FocusField does it when a refused save sends focus back
         // to the offending field. Stepping is untouched — RefreshText still leaves the caret at
         // the end with no selection, which is the reading that was chosen deliberately.
+        //
+        // Only ever the field's OWN formatted value, though. Keyboard focus comes back here for
+        // reasons that are not the user arriving at a fresh field: closing the command palette
+        // that Ctrl+Shift+P opens over the editor, or the window being reactivated. Typing is
+        // uncommitted until Enter or focus loss, and neither of those happens on that round trip
+        // — so the field still holds a half-finished entry, and re-selecting it would let the very
+        // next keystroke wipe it. Typing "August ", opening and closing the palette, then typing
+        // "3" would leave "3", which reads as the 3rd of the month shown: the same silent
+        // wrong-date save this override exists to prevent, just arrived at differently.
+        if (Text != FormatValue()) return;
         SelectAll();
     }
 

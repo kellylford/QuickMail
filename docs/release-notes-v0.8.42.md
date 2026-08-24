@@ -122,14 +122,13 @@ Typing `8/3`, `tomorrow`, or `+7` works from the first keystroke. The arrow keys
 and Down still step the value by a day or a quarter hour and leave it unselected with the cursor at
 the end, so what you hear afterwards is the new value and not a selection.
 
+Leaving a field part-way through typing and coming back to it — opening the Command Palette over
+the editor, or switching to another window and back — keeps what you had typed, and keeps the
+cursor where you left it.
+
 This applies everywhere these fields are used — the **Starts** and **Ends** dates and times, the
 repeat interval and **until** date, and **Go to Date** (**Ctrl+G**) in the calendar.
-
-It is also the likely story behind a second report, of an appointment that was not in the agenda
-where it was expected. A date that silently reverted saved the appointment on the day the editor
-opened on rather than the day that was typed — so it was real, and filed, but not where anyone went
-looking for it. ([#570](https://github.com/kellylford/QuickMail/issues/570),
-[#519](https://github.com/kellylford/QuickMail/issues/519))
+([#570](https://github.com/kellylford/QuickMail/issues/570))
 
 ## Fixed: Microsoft 365 unread counts went stale until you refreshed
 

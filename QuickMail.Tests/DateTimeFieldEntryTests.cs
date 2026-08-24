@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -28,14 +30,29 @@ public class DateTimeFieldEntryTests
 {
     private static readonly DateTime Start = new(2026, 7, 16, 9, 3, 0);
 
-    /// <summary>An open editor window that closes when the test ends, pass or fail.</summary>
+    /// <summary>
+    /// An open editor window that closes when the test ends, pass or fail, with the culture pinned
+    /// for as long as it is open.
+    ///
+    /// <para>
+    /// The control formats and parses with <see cref="CultureInfo.CurrentCulture"/>, so every
+    /// literal below — "Thursday, July 16, 2026", and "8/3" meaning the third of August — is only
+    /// true on an en-US machine. Measured under de-DE without this: the field reads
+    /// "Donnerstag, 16. Juli 2026" and "8/3" commits the 8th of March. That is the ambient culture
+    /// deciding the result, not the change under test, which is the same reason
+    /// <see cref="DateTimeFieldParserTests"/> pins a culture on every case.
+    /// </para>
+    /// </summary>
     private sealed class Editor : IDisposable
     {
+        private readonly CultureInfo _culture = Thread.CurrentThread.CurrentCulture;
+
         public EventEditorViewModel Vm { get; }
         public EventEditorWindow Window { get; }
 
         public Editor()
         {
+            Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
             WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
             Vm = new EventEditorViewModel(Start);
             Window = new EventEditorWindow(Vm);
@@ -49,7 +66,11 @@ public class DateTimeFieldEntryTests
             return field!;
         }
 
-        public void Dispose() => Window.Close();
+        public void Dispose()
+        {
+            Window.Close();
+            Thread.CurrentThread.CurrentCulture = _culture;
+        }
     }
 
     /// <summary>
@@ -57,6 +78,13 @@ public class DateTimeFieldEntryTests
     /// and each one after it lands at the caret. Assigning <c>SelectedText</c> leaves the inserted
     /// character selected, so the caret is collapsed past it between keystrokes — without that,
     /// every character would overwrite the one before and only the last would survive.
+    ///
+    /// <para>
+    /// This is a fair model of what a keystroke does to the text, but it does not go through the
+    /// key pipeline — no <c>PreviewKeyDown</c>, no <c>PreviewTextInput</c>, no window-level
+    /// handling. A character stolen before the TextBox ever sees it would not fail these tests.
+    /// Driving real keystrokes needs the opt-in input suite (see <c>InputTests</c> in CLAUDE.md).
+    /// </para>
     /// </summary>
     private static void Type(TextBox box, string text)
     {
@@ -144,6 +172,41 @@ public class DateTimeFieldEntryTests
         Assert.True(editor.Vm.TryBuildEvent(out var evt, out var error), error);
         var start = new DateTime(evt.StartTimeTicks!.Value, DateTimeKind.Utc).ToLocalTime();
         Assert.Equal(new DateTime(2026, 8, 3), start.Date);
+    }
+
+    /// <summary>
+    /// Focus coming BACK to a field that is part-way through an entry must not re-select it.
+    ///
+    /// Typing is uncommitted until Enter or focus loss, and a modal opened over the editor —
+    /// Ctrl+Shift+P opens the command palette exactly this way — takes keyboard focus and gives it
+    /// back without either happening. Selecting the half-typed text on the way back in would let
+    /// the next keystroke wipe it: "August " then "3" becomes "3", read as the third of the month
+    /// showing, and the appointment saves on a date nobody typed. That is the same silent failure
+    /// as #570 itself, which is why selecting on entry is limited to the field's own formatted
+    /// value.
+    /// </summary>
+    [StaFact]
+    public void ReturningToAPartlyTypedField_LeavesWhatWasTypedAlone()
+    {
+        using var editor = new Editor();
+        var field = editor.Field<DateTimeField>("StartDateField");
+
+        field.Focus();
+        Type(field, "Aug");
+
+        // A modal that opens over the editor and closes again — the command palette's shape.
+        var modal = new Window { Owner = editor.Window, Width = 100, Height = 100 };
+        modal.Loaded += (_, _) => modal.Close();
+        modal.ShowDialog();
+
+        Assert.Equal("Aug", field.Text);
+        Assert.Equal(0, field.SelectionLength);
+        Assert.Equal(3, field.CaretIndex);
+
+        // So the entry can be finished where it left off.
+        Type(field, "ust 3");
+        TabAway(field);
+        Assert.Equal(new DateTime(2026, 8, 3), editor.Vm.Start.Date);
     }
 
     /// <summary>
