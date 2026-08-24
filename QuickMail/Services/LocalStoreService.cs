@@ -143,6 +143,29 @@ public class LocalStoreService : ILocalStoreService
         // invite rows. Unversioned idempotent ALTER, like calendar_id/calendar_name above.
         RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN resource_url TEXT NOT NULL DEFAULT '';");
 
+        // CalendarSource table: an account's real calendar list, as the provider reports it.
+        //
+        // The calendar list used to be derived with SELECT DISTINCT over CalendarEvent — the
+        // calendars that happened to have synced rows. That is not the same set: a calendar with no
+        // events in the sync window was invisible, so it had no tree node and could not be picked
+        // as a save target, which made filing the FIRST appointment into a calendar impossible. And
+        // an events-derived list has nowhere to record whether a calendar can be written to, so a
+        // holidays feed looked exactly like the user's own calendar.
+        //
+        // Additive, no existing table touched, so no user_version bump — same reasoning as
+        // CalendarEvent above. LoadCalendarSourcesAsync still falls back to the old derivation for
+        // an account with no rows here, so an upgraded profile keeps its tree until the first sync.
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS CalendarSource (
+                account_id    TEXT    NOT NULL,
+                calendar_id   TEXT    NOT NULL,
+                calendar_name TEXT    NOT NULL DEFAULT '',
+                can_write     INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (account_id, calendar_id)
+            );
+            """;
+        cmd.ExecuteNonQuery();
+
         // Folder table (#516). The folder list used to live only in MainViewModel._cachedFolders,
         // filled by GetFoldersAsync after connect — so at launch nothing knew which folders existed,
         // let alone which were Inboxes. That made a startup folder impossible to honour before the
@@ -1540,23 +1563,95 @@ public class LocalStoreService : ILocalStoreService
         return list;
     }
 
-    public async Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync()
+    public async Task<IReadOnlyList<CalendarSourceInfo>> LoadCalendarSourcesAsync()
     {
-        var list = new List<(Guid, string, string)>();
+        var list = new List<CalendarSourceInfo>();
+        var recorded = new HashSet<Guid>();
+        await using var conn = await OpenAsync();
+
+        // What the providers actually reported, written by the sync when it enumerates calendars.
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                SELECT account_id, calendar_id, calendar_name, can_write
+                FROM CalendarSource
+                ORDER BY calendar_name;
+                """;
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var accountId = Guid.Parse(r.GetString(0));
+                recorded.Add(accountId);
+                list.Add(new CalendarSourceInfo(accountId, r.GetString(1), r.GetString(2), r.GetInt32(3) != 0));
+            }
+        }
+
+        // Accounts the sync has not enumerated yet — a profile upgraded between releases, or one
+        // whose first sync of the session has not landed. Fall back to the calendars its synced rows
+        // are tagged with, which is the whole list this used to return, so the folder tree does not
+        // empty out while waiting. Assumed writable: that is what they were treated as before.
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                SELECT DISTINCT account_id, calendar_id, calendar_name
+                FROM CalendarEvent
+                WHERE is_graph = 1 AND calendar_id <> ''
+                ORDER BY calendar_name;
+                """;
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var accountId = Guid.Parse(r.GetString(0));
+                if (recorded.Contains(accountId)) continue;
+                list.Add(new CalendarSourceInfo(accountId, r.GetString(1), r.GetString(2), CanWrite: true));
+            }
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// Replaces one account's recorded calendar list. Called by the sync each time it enumerates,
+    /// so a calendar the user has deleted or unsubscribed from stops being offered.
+    /// </summary>
+    public async Task ReplaceCalendarSourcesAsync(Guid accountId, IReadOnlyList<CalendarSourceInfo> sources)
+    {
+        await using var conn = await OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+
+        await using (var del = conn.CreateCommand())
+        {
+            del.CommandText = "DELETE FROM CalendarSource WHERE account_id=$aid;";
+            del.Parameters.AddWithValue("$aid", accountId.ToString());
+            await del.ExecuteNonQueryAsync();
+        }
+
+        foreach (var src in sources)
+        {
+            if (string.IsNullOrEmpty(src.CalendarId)) continue;
+            await using var ins = conn.CreateCommand();
+            ins.CommandText = """
+                INSERT OR REPLACE INTO CalendarSource (account_id, calendar_id, calendar_name, can_write)
+                VALUES ($aid, $cid, $name, $write);
+                """;
+            ins.Parameters.AddWithValue("$aid", accountId.ToString());
+            ins.Parameters.AddWithValue("$cid", src.CalendarId);
+            ins.Parameters.AddWithValue("$name", src.CalendarName ?? string.Empty);
+            ins.Parameters.AddWithValue("$write", src.CanWrite ? 1 : 0);
+            await ins.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+    }
+
+    /// <summary>Forgets an account's calendar list (its calendar sync was switched off, or it was removed).</summary>
+    public async Task DeleteCalendarSourcesAsync(Guid accountId)
+    {
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
-        // Distinct server calendars across all synced rows — one row per (account, calendar), used to
-        // build the per-calendar grandchild nodes under each account in the folder tree.
-        cmd.CommandText = """
-            SELECT DISTINCT account_id, calendar_id, calendar_name
-            FROM CalendarEvent
-            WHERE is_graph = 1 AND calendar_id <> ''
-            ORDER BY calendar_name;
-            """;
-        await using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
-            list.Add((Guid.Parse(r.GetString(0)), r.GetString(1), r.GetString(2)));
-        return list;
+        cmd.CommandText = "DELETE FROM CalendarSource WHERE account_id=$aid;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        await cmd.ExecuteNonQueryAsync();
     }
 
     public async Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status)

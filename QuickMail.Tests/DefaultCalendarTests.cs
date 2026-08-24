@@ -143,10 +143,10 @@ public class DefaultCalendarTests
             showDeclinedEvents: false, showFieldLabels: false,
             graphSync: new StubGraphCalendarSyncService(),
             graphAccountsProvider: () => new[] { apple },
-            calendarSourcesProvider: () => new List<(Guid, string, string)>
+            calendarSourcesProvider: () => new List<CalendarSourceInfo>
             {
-                (apple.Id, home, "Home"),
-                (apple.Id, family, "Family"),
+                new(apple.Id, home, "Home", CanWrite: true),
+                new(apple.Id, family, "Family", CanWrite: true),
             });
         return (vm, apple, home, family);
     }

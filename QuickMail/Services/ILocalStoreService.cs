@@ -208,7 +208,13 @@ public interface ILocalStoreService
     /// (<c>is_graph = 1</c> with a non-empty <c>calendar_id</c>), for building the per-calendar
     /// grandchild nodes under each account in the folder tree.
     /// </summary>
-    Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync();
+    Task<IReadOnlyList<CalendarSourceInfo>> LoadCalendarSourcesAsync();
+
+    /// <summary>Records one account's calendar list, as the provider reports it (replaces what was there).</summary>
+    Task ReplaceCalendarSourcesAsync(Guid accountId, IReadOnlyList<CalendarSourceInfo> sources);
+
+    /// <summary>Forgets an account's calendar list (calendar sync switched off, or the account removed).</summary>
+    Task DeleteCalendarSourcesAsync(Guid accountId);
 
     /// <summary>Updates only the response status for an event.</summary>
     Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status);

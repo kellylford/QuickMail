@@ -50,7 +50,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Distinct per-account server calendars (from the local store), cached on the UI thread so the
     // synchronous BuildFolderTree can add a grandchild node per calendar. Refreshed after each
     // calendar sync and on initial load.
-    private IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)> _calendarSources = [];
+    private IReadOnlyList<CalendarSourceInfo> _calendarSources = [];
     private readonly IUpdateCheckService? _updateCheckService;
     // Windows toast notifications for new mail. Null in tests and when the OS/platform is
     // unsupported. Calling into it is an OS side-effect a service owns, not a View-layer type,
@@ -4693,15 +4693,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // With 0 or 1 calendars the account node alone suffices (no redundant single child).
                 var acctCalendars = _calendarSources.Where(s => s.AccountId == acct.Id).ToList();
                 if (acctCalendars.Count > 1)
-                    foreach (var (_, calId, calName) in acctCalendars)
+                    foreach (var cal in acctCalendars)
                         acctNode.Children.Add(new FolderTreeNode
                         {
                             Folder = new MailFolderModel
                             {
-                                FullName    = CalendarSourcePrefix + acct.Id.ToString("D") + "|" + Uri.EscapeDataString(calId),
-                                DisplayName = calName,
+                                FullName    = CalendarSourcePrefix + acct.Id.ToString("D") + "|" + Uri.EscapeDataString(cal.CalendarId),
+                                DisplayName = cal.CalendarName,
                             },
-                            Label = calName,
+                            Label = cal.CalendarName,
                             IsCalendarNode = true,
                         });
 
