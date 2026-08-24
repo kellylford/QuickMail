@@ -996,7 +996,7 @@ public class CalendarViewModelTests
             Username = "work@example.com",
         };
         var store = new StubCalendarService();
-        var sync = new StubGraphCalendarSyncService();
+        var sync = new StubGraphCalendarSyncService { CalendarStore = store };
         var vm = new CalendarViewModel(store, onlineMode: false, showDeclinedEvents: false,
                                        showFieldLabels: false, graphSync: sync,
                                        graphAccountsProvider: () => new[] { account });
@@ -1227,5 +1227,48 @@ public class CalendarViewModelTests
 
         Assert.Empty(sync.CreatedEvents);
         Assert.Equal("local-only", Assert.Single(store.StoredEvents).Uid);
+    }
+
+    /// <summary>
+    /// A new appointment is in the list the moment it is saved, without the user pressing F5
+    /// (issue #519). Both save targets are covered because they persist by different routes: the
+    /// local target upserts through the calendar service, while an account target hands the event
+    /// to the sync service, which stores the server's copy — so only a reload-and-refilter after
+    /// the push puts it on screen.
+    /// </summary>
+    [Fact]
+    public async Task SaveNewEvent_AccountTarget_ShowsInTheListWithoutARefresh()
+    {
+        var (vm, _, _, account) = MakePushVm();
+        await vm.LoadAsync();
+        Assert.Empty(vm.VisibleEvents);
+
+        await vm.SaveNewEventAsync(new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = account.Id, Summary = "Pushed",
+            StartTimeTicks = DateTime.UtcNow.AddDays(3).Ticks,
+        });
+
+        var row = Assert.Single(vm.VisibleEvents);
+        Assert.Equal("Pushed", row.Summary);
+        // And selection lands on it, so the focus handoff to the list opens on the new appointment.
+        Assert.Equal(row.Uid, vm.SelectedEvent?.Uid);
+    }
+
+    [Fact]
+    public async Task SaveNewEvent_LocalTarget_ShowsInTheListWithoutARefresh()
+    {
+        var (vm, _, _, _) = MakePushVm();
+        await vm.LoadAsync();
+
+        await vm.SaveNewEventAsync(new CalendarEvent
+        {
+            Uid = "local-only", AccountId = CalendarEvent.LocalAccountId, Summary = "Local",
+            StartTimeTicks = DateTime.UtcNow.AddDays(3).Ticks,
+        });
+
+        var row = Assert.Single(vm.VisibleEvents);
+        Assert.Equal("Local", row.Summary);
+        Assert.Equal(row.Uid, vm.SelectedEvent?.Uid);
     }
 }

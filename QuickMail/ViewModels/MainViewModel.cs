@@ -100,6 +100,39 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private static readonly TimeSpan GraphCalendarSyncInterval = TimeSpan.FromMinutes(15);
 
     /// <summary>
+    /// How long after a pull opening the calendar will not start another one. Opening the calendar
+    /// is a deliberate action a user can repeat freely — out to the mail list and back — and each
+    /// one would otherwise be a fresh round of Graph and Google requests.
+    /// </summary>
+    private static readonly TimeSpan CalendarOpenSyncThrottle = TimeSpan.FromSeconds(30);
+    private DateTime _lastCalendarPullUtc = DateTime.MinValue;
+
+    /// <summary>What a finished calendar pull should do to the list the user is looking at.</summary>
+    private enum CalendarSyncFollowUp
+    {
+        /// <summary>Reload and announce the count — the background timer's pass.</summary>
+        RefreshAndAnnounce,
+
+        /// <summary>Nothing: the caller reloads and announces for itself (the F5 path).</summary>
+        CallerHandlesIt,
+
+        /// <summary>
+        /// Reload, and speak only if the reload actually changed the list — the open-the-calendar
+        /// pass.
+        ///
+        /// <para>
+        /// Opening the calendar has just announced the view and how many events it holds, so
+        /// repeating that number a moment later is chatter. Staying silent unconditionally is not
+        /// right either: when the pull does bring something down, the count the user was just given
+        /// is now wrong and the list has grown underneath them, which is not something the platform
+        /// reports. So: nothing at all in the common case where the server had nothing new, and one
+        /// Status announcement when there is something to say.
+        /// </para>
+        /// </summary>
+        RefreshAndAnnounceIfChanged,
+    }
+
+    /// <summary>
     /// Cancels and disposes the old CTS, creates a new one, and outputs its token.
     /// Thread-safe: the slot is atomically replaced via Interlocked.Exchange.
     /// </summary>
@@ -5145,6 +5178,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         await CalendarVm.LoadAsync();
         CalendarPaneFocusRequested?.Invoke();
+
+        // LoadAsync reads the local store and nothing else, so an appointment added on the server
+        // side — in Gmail, in Outlook, on a phone — was not here until the 15-minute timer came
+        // round or the user pressed F5. That is issue #519 exactly: "add an event to your Gmail
+        // calendar... it will not be there. Press F5... now it will show up."
+        //
+        // Deliberately not awaited: the calendar opens on the cache immediately, at the speed it
+        // always did, and the pull folds anything new in when it lands. RunGraphCalendarSyncAsync
+        // swallows its own failures, so nothing here can surface an error or break the open.
+        //
+        // Its continuations stay on the UI thread without an explicit _ui.Post hop, unlike the
+        // timer pass which needs one: this path is only ever reached through SelectFolderCommand,
+        // dispatched from the View, so the WPF SynchronizationContext is already in place when the
+        // awaits resume — which matters because the pull calls BuildFolderTree().
+        _ = SyncCalendarOnOpenAsync();
+    }
+
+    /// <summary>
+    /// The server pull that opening the calendar starts. Throttled, because opening the calendar is
+    /// something a user does repeatedly; quiet, because the view has just announced itself.
+    /// </summary>
+    private async Task SyncCalendarOnOpenAsync()
+    {
+        if (_graphCalendarSync == null || _calendarService == null || OnlineMode) return;
+        if (DateTime.UtcNow - _lastCalendarPullUtc < CalendarOpenSyncThrottle) return;
+
+        await RunGraphCalendarSyncAsync(CalendarSyncFollowUp.RefreshAndAnnounceIfChanged);
     }
 
     [RelayCommand]
@@ -5463,7 +5523,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // Pull the latest Graph calendar slice first so F5 reflects the server, then let the
             // calendar's own refresh reload from the store and announce the updated count.
-            await RunGraphCalendarSyncAsync(refreshAndAnnounce: false);
+            await RunGraphCalendarSyncAsync(CalendarSyncFollowUp.CallerHandlesIt);
             if (CalendarVm != null)
                 await CalendarVm.RefreshCommand.ExecuteAsync(null);
             return;
@@ -9433,7 +9493,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex) { LogService.Log("LoadCalendarSources", ex); }
     }
 
-    private async Task RunGraphCalendarSyncAsync(bool refreshAndAnnounce = true)
+    private async Task RunGraphCalendarSyncAsync(
+        CalendarSyncFollowUp followUp = CalendarSyncFollowUp.RefreshAndAnnounce)
     {
         if (_graphCalendarSync == null || _calendarService == null || OnlineMode) return;
         if (_graphCalendarSyncRunning) return;
@@ -9442,21 +9503,35 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             ReplaceCts(ref _graphCalSyncCts, out var ct);
             var result = await _graphCalendarSync.SyncAllAsync(ct);
+            _lastCalendarPullUtc = DateTime.UtcNow;
             // Refresh the per-calendar source list and rebuild the tree so newly discovered calendars
             // appear as their own nodes (and vanished ones drop off).
             await ReloadCalendarSourcesAsync();
             BuildFolderTree();
             // Nothing eligible (no Graph accounts) or nothing pulled — leave the calendar alone.
             if (result.AccountsSynced == 0) return;
-            if (!refreshAndAnnounce) return; // F5 path: CalendarVm.RefreshAsync reloads + announces
+            if (followUp == CalendarSyncFollowUp.CallerHandlesIt) return;
 
             await _calendarService.RefreshAsync(ct);
             if (IsCalendarView)
             {
+                var before = CalendarVm?.VisibleEvents.Count ?? 0;
                 CalendarVm?.ApplyFiltersFromExternalUpdate();
-                var n = result.EventsFetched;
-                Announce($"Calendar sync complete. {n} event{(n == 1 ? "" : "s")}.",
-                         AnnouncementCategory.Status);
+                var after = CalendarVm?.VisibleEvents.Count ?? 0;
+
+                if (followUp == CalendarSyncFollowUp.RefreshAndAnnounce)
+                {
+                    var n = result.EventsFetched;
+                    Announce($"Calendar sync complete. {n} event{(n == 1 ? "" : "s")}.",
+                             AnnouncementCategory.Status);
+                }
+                else if (after != before)
+                {
+                    // Opening the calendar: only when the list the user was just given a count for
+                    // has actually changed under them.
+                    Announce($"Calendar updated. {after} event{(after == 1 ? "" : "s")}.",
+                             AnnouncementCategory.Status);
+                }
             }
         }
         catch (OperationCanceledException) { /* shutdown or superseded pass — normal */ }

@@ -103,6 +103,61 @@ was selected. All three now leave the selection alone.
 Nothing about the keyboard changed: no shortcut, no announcement, and no reading order is different
 from 0.8.41. ([#601](https://github.com/kellylford/QuickMail/pull/601))
 
+## Fixed: typing a date or a time in the appointment editor did nothing at first
+
+Pressing **N** for a new appointment and typing a date into the **Starts** field left the field
+showing the date it had opened on. The same happened in the time field. As the report put it:
+*"The date field didn't change. The same thing happened in the time field. You have to move the
+field with an arrow key or select it all before it takes any input."*
+
+These fields open holding a full, spelled-out value — "Thursday, July 16, 2026" — with the cursor
+parked at the end of it and nothing selected. Typing `8/3` therefore made
+"Thursday, July 16, 20268/3", which means nothing as a date, so QuickMail quietly put the old value
+back. Nothing was said about it either: the value it restored was the one already there, so as far
+as the field was concerned nothing had changed.
+
+The value is now selected when you arrive at the field, so the first thing you type replaces it —
+the same as what already happened when a refused save sent you back to a field to correct it.
+Typing `8/3`, `tomorrow`, or `+7` works from the first keystroke. The arrow keys are unchanged: Up
+and Down still step the value by a day or a quarter hour and leave it unselected with the cursor at
+the end, so what you hear afterwards is the new value and not a selection.
+
+Leaving a field part-way through typing and coming back to it — opening the Command Palette over
+the editor, or switching to another window and back — keeps what you had typed, and keeps the
+cursor where you left it.
+
+This applies everywhere these fields are used — the **Starts** and **Ends** dates and times, the
+repeat interval and **until** date, and **Go to Date** (**Ctrl+G**) in the calendar.
+([#570](https://github.com/kellylford/QuickMail/issues/570))
+
+## Fixed: the calendar did not ask the server when you opened it
+
+An appointment added somewhere other than QuickMail — in Gmail or Outlook on the web, or on a phone
+— was not in the agenda when you opened the calendar. It turned up on its own eventually, because
+QuickMail checks connected calendars every fifteen minutes, but until then **F5** was the only way
+to see it. The report was precise about it: *"I added an appointment to my Gmail calendar and it
+didn't show in the agenda view... Press F5 to refresh the list. Now it will show up."*
+
+Opening the calendar now asks your accounts as well. The list still appears immediately from what
+QuickMail already had — you are never left waiting on the network to see your own calendar — and
+anything new folds in when the answer arrives.
+
+Three details worth knowing:
+
+- **It speaks only if something changed.** Opening the calendar already tells you which view you
+  are in and how many events it holds, so repeating that number a moment later would be chatter —
+  and in the ordinary case, where your accounts had nothing new, you hear nothing at all. When the
+  check does bring an appointment down, the count you were just given is out of date, so QuickMail
+  says the new one. The fifteen-minute background check announces itself as it always did.
+- **You keep your place.** When a check lands while you are reading, the appointment you were on
+  stays selected — and in Month view, so does the day you had moved to. Until now a check arriving
+  mid-read could drop you back to the top of the list, or back onto today in the month grid,
+  because the events had been rebuilt underneath you.
+- **Opening it again does not ask again.** Going out to your mail and straight back reuses what was
+  just fetched; there is a half-minute gap before another check.
+
+([#519](https://github.com/kellylford/QuickMail/issues/519))
+
 ## Fixed: Microsoft 365 unread counts went stale until you refreshed
 
 On a Microsoft 365 account, the unread count beside a folder only changed when the whole folder list

@@ -1325,7 +1325,7 @@ In a **time** field:
 
 Stepping a time past midnight moves the date with it, so 11:50 PM stepped up becomes 12:00 AM the next day.
 
-You can also just type. Dates accept "8/3", "August 3", "2026-08-03", "today", "tomorrow", "friday", "next tuesday", a bare day number like "3" for that day of the month shown, and offsets like "+7", "-3", "+2w", "+1m", "+1y". Times accept "9", "930", "9:30", "9:30 AM", "9p", "14:30", "noon", "midnight", and offsets like "+30" or "-15". Press Enter or move to another field to apply what you typed; if it isn't something QuickMail can read as a date or a time, the field puts its previous value back.
+You can also just type. Moving to one of these fields with the keyboard selects the value it is holding, so the first thing you type replaces it rather than being added on to the end of it. If you leave the field part-way through typing and come back to it, what you had typed is still there and still where you left it. Dates accept "8/3", "August 3", "2026-08-03", "today", "tomorrow", "friday", "next tuesday", a bare day number like "3" for that day of the month shown, and offsets like "+7", "-3", "+2w", "+1m", "+1y". Times accept "9", "930", "9:30", "9:30 AM", "9p", "14:30", "noon", "midnight", and offsets like "+30" or "-15". Press Enter or move to another field to apply what you typed; if it isn't something QuickMail can read as a date or a time, the field puts its previous value back.
 
 **The end follows the start.** When you change the start date or start time, the end moves by the same amount, so a 30-minute appointment stays 30 minutes long and you are never sent back to fix an end you didn't touch. Changing the end directly sets a new length, which the start then preserves from that point on.
 
@@ -1409,7 +1409,7 @@ Calendars connect **per account**, the same way contact sync does. When you add 
 
 **Turning it on for an account you already have:** open **Manage Accounts**, select the account, and check **Sync calendar from this account**. It applies immediately — a **Calendar → [account]** node appears in the folder tree and the events sync in the background. Unchecking it removes them.
 
-Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup). Press **F5** to refresh on demand, or use **Sync Calendars Now** from the command palette. Syncing is a one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
+Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup), and again whenever you open the calendar, so an appointment you added somewhere else is there when you look. The list opens straight away from what QuickMail already has and folds in anything new when the account answers; opening the calendar again within half a minute reuses what it just fetched rather than asking again. Press **F5** to refresh on demand, or use **Sync Calendars Now** from the command palette. Syncing is a one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
 
 ### What the calendar does and does not do
 

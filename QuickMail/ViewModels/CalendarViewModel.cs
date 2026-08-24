@@ -814,8 +814,47 @@ public partial class CalendarViewModel : ObservableObject
         ApplyFilters();
     }
 
-    /// <summary>Reapplies filters without re-fetching from the service. Called after external status updates.</summary>
-    public void ApplyFiltersFromExternalUpdate() => ApplyFilters();
+    /// <summary>
+    /// Rebuilds the visible list after something outside the calendar changed the events under it —
+    /// a status update, or a server pull landing while the user is reading the list — and puts the
+    /// selection back on the appointment it was on.
+    ///
+    /// <para>
+    /// Restoring the selection is the whole reason this is not a bare <c>ApplyFilters</c>. A pull
+    /// reloads every row from the store as a fresh object, so the one the list was sitting on stops
+    /// existing and the selection has nothing to bind to: the list drops to the top and takes
+    /// keyboard focus with it, in the middle of someone reading. Matching on identity rather than
+    /// reference puts them back where they were. A selection that genuinely went away — the
+    /// appointment was deleted on the server — is left as it was, which is what happened before.
+    /// </para>
+    /// </summary>
+    public void ApplyFiltersFromExternalUpdate()
+    {
+        var previousEvent = SelectedEvent;
+        var previousDay = SelectedMonthCell?.Date;
+
+        ApplyFilters();
+
+        if (previousEvent != null)
+        {
+            var again = _filteredEvents.FirstOrDefault(
+                e => e.Uid == previousEvent.Uid
+                     && e.AccountId == previousEvent.AccountId
+                     && e.StartTimeTicks == previousEvent.StartTimeTicks);
+            if (again != null) SelectedEvent = again;
+        }
+
+        // The Month grid needs its own restore, and needs it more: RebuildMonthCells reassigns
+        // SelectedMonthCell to the reference date's cell every time it runs, so a pull landing
+        // would move the user from the day they had arrowed to back onto today. Restoring the
+        // event alone does not cover it — in Month view SelectedEventDetail reads the CELL's
+        // DayDetail, so the day is what the user is actually on.
+        if (previousDay is { } day)
+        {
+            var cellAgain = MonthCells.FirstOrDefault(c => c.Date == day);
+            if (cellAgain != null) SelectedMonthCell = cellAgain;
+        }
+    }
 
     /// <summary>
     /// Rebuilds the visible list for the current view: applies declined/cancelled filters, windows

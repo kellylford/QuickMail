@@ -622,29 +622,70 @@ sealed class StubFlagService : IFlagService
 
 sealed class StubCalendarService : ICalendarService
 {
-    public List<CalendarEvent> StoredEvents { get; set; } = [];
+    /// <summary>
+    /// What the cache holds. Assigning the whole list is how a test says "the store already had
+    /// these" — a starting state, not a write — so it counts as loaded too and the test does not
+    /// have to refresh before reading. A write that goes through the service afterwards still
+    /// needs its reload to show up in <see cref="Events"/>, which is the part that matters.
+    /// </summary>
+    public List<CalendarEvent> StoredEvents
+    {
+        get => _stored;
+        set { _stored = value; _loaded = value.ToList(); }
+    }
+    private List<CalendarEvent> _stored = [];
+
     public int RefreshCallCount { get; private set; }
 
-    public IReadOnlyList<CalendarEvent> Events => StoredEvents;
+    /// <summary>
+    /// What a caller sees, which is what the last load put here — deliberately NOT an alias for
+    /// <see cref="StoredEvents"/>.
+    ///
+    /// <para>
+    /// The real <c>CalendarService</c> holds an in-memory list that changes only when something
+    /// reloads it from the provider, so a ViewModel that persists an event and then forgets to
+    /// reload goes on showing the list from before. A stub whose Events pointed straight at its
+    /// storage could not tell that apart from a working save — which is the shape of issue #519,
+    /// where a new appointment was not in the list until F5. Mirroring the real service's shape
+    /// (reload on refresh and upsert, mutate in place on status and delete) is what makes a
+    /// missing reload fail a test.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<CalendarEvent> Events => _loaded;
+    private List<CalendarEvent> _loaded = [];
 
     public Task RefreshAsync(CancellationToken ct = default)
     {
         RefreshCallCount++;
+        _loaded = StoredEvents.ToList();
         return Task.CompletedTask;
     }
 
     public Task UpsertEventAsync(CalendarEvent evt, CancellationToken ct = default)
+    {
+        Upsert(evt);
+        _loaded = StoredEvents.ToList();   // the real service reloads after an upsert
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// The same store write, callable from a stub whose own body is not async — the calendar sync
+    /// stub writes the server's copy here the way the real sync service writes it to SQLite.
+    /// </summary>
+    public void Upsert(CalendarEvent evt)
     {
         var idx = StoredEvents.FindIndex(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
         if (idx >= 0)
             StoredEvents[idx] = evt;
         else
             StoredEvents.Add(evt);
-        return Task.CompletedTask;
     }
 
     public Task SetResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status, CancellationToken ct = default)
     {
+        // In place, as the real service does. _loaded is a shallow copy, so its rows ARE these
+        // objects and this is visible through Events without touching it — unlike DeleteEventAsync
+        // below, which changes list membership and so has to be applied to both.
         var idx = StoredEvents.FindIndex(e => e.Uid == uid && e.AccountId == accountId);
         if (idx >= 0) StoredEvents[idx].ResponseStatus = status;
         return Task.CompletedTask;
@@ -653,6 +694,7 @@ sealed class StubCalendarService : ICalendarService
     public Task DeleteEventAsync(string uid, Guid accountId, CancellationToken ct = default)
     {
         StoredEvents.RemoveAll(e => e.Uid == uid && e.AccountId == accountId);
+        _loaded.RemoveAll(e => e.Uid == uid && e.AccountId == accountId);
         return Task.CompletedTask;
     }
 }
@@ -666,9 +708,26 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
     public Exception? CreateFailure { get; set; }
     public List<CalendarEvent> CreatedEvents { get; } = [];
 
+    /// <summary>
+    /// The calendar store the real service writes the server's copy into. Wire it and a create or
+    /// update push shows up in the calendar exactly as it does in the app:
+    /// <c>GraphCalendarSyncService</c> upserts the returned event before returning, so the
+    /// <c>RefreshAsync</c> the ViewModel does next reloads a list that already contains it. A stub
+    /// that only records the push cannot tell a working create apart from one the list never picks
+    /// up until F5 (issue #519).
+    /// </summary>
+    public StubCalendarService? CalendarStore { get; set; }
+
+    /// <summary>
+    /// Runs when a pull happens, so a test can put into the store what the server "had" — the real
+    /// service writes the fetched slice there before returning, and the caller reloads from it.
+    /// </summary>
+    public Action? OnSync { get; set; }
+
     public Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default)
     {
         SyncCallCount++;
+        OnSync?.Invoke();
         return Task.FromResult(Result);
     }
 
@@ -699,6 +758,7 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
             IsAllDay = evt.IsAllDay, ResponseStatus = CalendarResponseStatus.Accepted,
         };
         CreatedEvents.Add(created);
+        CalendarStore?.Upsert(created);
         return Task.FromResult(created);
     }
 
@@ -712,6 +772,7 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
         if (WriteFailure != null) throw WriteFailure;
         evt.IsGraph = true;
         UpdatedEvents.Add(evt);
+        CalendarStore?.Upsert(evt);
         return Task.FromResult(evt);
     }
 
