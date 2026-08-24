@@ -387,6 +387,95 @@ public class GoogleCalendarSyncTests : IDisposable
         Assert.DoesNotContain("/calendars/primary/", handler.Urls[0]);
     }
 
+    /// <summary>
+    /// A new appointment is TAGGED with the primary calendar's real id, not with the "primary"
+    /// alias the write used (#569).
+    ///
+    /// The alias is fine to write through, but it is not what anything else calls that calendar:
+    /// the read-down tags its rows with the real id, and so does the folder tree's per-calendar
+    /// node. A row left tagged "primary" therefore fails that node's filter and is invisible while
+    /// the user is looking at it — until the next sync's replace-slice restamps it with the real id
+    /// and it appears, which is exactly the "press F5 and now it shows up" the issue describes.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_TagsTheRowWithThePrimaryCalendarsRealId()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"), Json(@"{ ""items"": [ { ""id"": ""fam123@group.calendar.google.com"", ""summary"": ""Family"" }, { ""id"": ""kelly@gmail.com"", ""summary"": ""Kelly"", ""primary"": true } ] }"));
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("kelly@gmail.com", row.CalendarId);
+        Assert.Equal("Kelly", row.CalendarName);   // so the Calendar column reads right at once
+    }
+
+    /// <summary>
+    /// The tag is a display concern, and the appointment is already on the server by the time it is
+    /// resolved, so a calendar list that cannot be fetched must not cost the user their save. The
+    /// row falls back to what it was tagged with before this existed.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_WhenTheCalendarListFails_StillStoresTheAppointment()
+    {
+        var handler = new RecordingHandler(
+            GoogleEventResponse("gid-new"), Json("nope", HttpStatusCode.InternalServerError));
+
+        var created = await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                              TestContext.Current.CancellationToken);
+
+        Assert.Equal("gid-new", created.Uid);
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("gid-new", row.Uid);
+        // Falls back to exactly what it was tagged with before any of this existed.
+        Assert.Equal("primary", row.CalendarId);
+        Assert.Equal(string.Empty, row.CalendarName);
+    }
+
+    /// <summary>
+    /// No entry flagged primary — a delegated or subscribe-only account. Google identifies the
+    /// primary calendar by the account's own address, so that is what to match on. Picking an
+    /// arbitrary calendar instead would file the appointment under a node it does not belong to,
+    /// which is worse than leaving it untagged: it would still be missing from the node the user is
+    /// on, and would now also appear under one it is not.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_WhenNoCalendarIsFlaggedPrimary_MatchesTheAccountAddress()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"), Json(@"{ ""items"": [ { ""id"": ""fam123@group.calendar.google.com"", ""summary"": ""Family"" }, { ""id"": ""kelly@gmail.com"", ""summary"": ""Kelly"" } ] }"));
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("kelly@gmail.com", row.CalendarId);
+    }
+
+    /// <summary>A calendar the user has removed from their list is not a place to file anything.</summary>
+    [Fact]
+    public async Task CreateEvent_IgnoresADeletedPrimaryEntry()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"), Json(@"{ ""items"": [ { ""id"": ""kelly@gmail.com"", ""summary"": ""Kelly"", ""primary"": true, ""deleted"": true } ] }"));
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                TestContext.Current.CancellationToken);
+
+        // Nothing usable, so the alias stands rather than a calendar the user has thrown away.
+        Assert.Equal("primary", Assert.Single(await _store.LoadCalendarEventsAsync()).CalendarId);
+    }
+
+    /// <summary>A nameless calendar still needs a label for the Calendar column to read.</summary>
+    [Fact]
+    public async Task CreateEvent_WhenThePrimaryCalendarHasNoName_LabelsItCalendar()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"), Json(@"{ ""items"": [ { ""id"": ""kelly@gmail.com"", ""summary"": ""   "", ""primary"": true } ] }"));
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                TestContext.Current.CancellationToken);
+
+        Assert.Equal("Calendar", Assert.Single(await _store.LoadCalendarEventsAsync()).CalendarName);
+    }
+
     [Fact]
     public async Task CreateEvent_BlankCalendarId_FallsBackToPrimary()
     {

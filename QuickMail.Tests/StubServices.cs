@@ -719,6 +719,14 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
     public StubCalendarService? CalendarStore { get; set; }
 
     /// <summary>
+    /// What the account's default calendar resolves to — what a created event with no chosen
+    /// calendar gets tagged with. Set it to a calendar a test also filters on, to exercise the
+    /// per-calendar folder-tree node that #569 was reported against.
+    /// </summary>
+    public string DefaultCalendarId { get; set; } = string.Empty;
+    public string DefaultCalendarName { get; set; } = string.Empty;
+
+    /// <summary>
     /// Runs when a pull happens, so a test can put into the store what the server "had" — the real
     /// service writes the fetched slice there before returning, and the caller reloads from it.
     /// </summary>
@@ -756,6 +764,13 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
             Summary = evt.Summary, Location = evt.Location, Description = evt.Description,
             StartTimeTicks = evt.StartTimeTicks, EndTimeTicks = evt.EndTimeTicks,
             IsAllDay = evt.IsAllDay, ResponseStatus = CalendarResponseStatus.Accepted,
+            // Tagged with the calendar it was filed on, as the real service does since #569. The
+            // save target names no calendar for a Google or Microsoft account, so the service
+            // resolves the account's default; DefaultCalendar stands in for that here. A stub that
+            // left this blank would model the BUG — a row that fails the per-calendar folder-tree
+            // node's filter and is invisible under the calendar it was just saved to.
+            CalendarId = string.IsNullOrEmpty(evt.CalendarId) ? DefaultCalendarId : evt.CalendarId,
+            CalendarName = string.IsNullOrEmpty(evt.CalendarId) ? DefaultCalendarName : evt.CalendarName,
         };
         CreatedEvents.Add(created);
         CalendarStore?.Upsert(created);

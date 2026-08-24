@@ -592,7 +592,13 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         // Store the SERVER's copy (Uid = the Graph id), flagged is_graph — it shows up
         // immediately, and because it now exists on the server it survives (is re-fetched by)
         // the next replace-slice sync.
-        var mapped = MapEvent(created, account.Id);
+        //
+        // Tagged with the calendar it actually landed on. POST /me/events files into the account's
+        // default calendar, and the read-down tags every row with its calendar's real id — so a
+        // created row left untagged does not match the per-calendar tree node the user may be
+        // looking at, and stays invisible there until the next sync restamps it (#569).
+        var (tagId, tagName) = await DefaultGraphCalendarAsync(account, ct);
+        var mapped = MapEvent(created, account.Id, tagId, tagName);
         await _store.UpsertCalendarEventAsync(mapped);
         LogService.Log($"GraphCalendarSync: created event on {account.AccountLabel} ({mapped.Uid}).");
         return mapped;
@@ -614,7 +620,11 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             OAuthService.GraphCalendarScopes, silentOnly: true, UtcPreferHeader, ct)
             ?? throw new InvalidOperationException("Graph returned no event body for the updated event.");
 
-        var mapped = MapEvent(updated, account.Id);
+        // Carry the row's existing calendar tag through the edit. Without this an edit wiped it to
+        // empty, so an appointment the user had just edited dropped out of its own calendar's node
+        // until the next sync put the tag back — the Google update path preserves it for exactly
+        // this reason (see UpdateEvent_OnSecondaryCalendar_PatchesThatCalendar_AndKeepsTag).
+        var mapped = MapEvent(updated, account.Id, evt.CalendarId, evt.CalendarName);
         await _store.UpsertCalendarEventAsync(mapped);
         LogService.Log($"GraphCalendarSync: updated event on {account.AccountLabel} ({mapped.Uid}).");
         return mapped;
@@ -647,14 +657,99 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     // Target the calendar the event actually lives on. A blank CalendarId (e.g. a brand-new
     // event whose save target is the account's default) falls back to "primary". Using this for
     // update/delete is the fix for events on secondary Google calendars, which 404 against primary.
+    /// <summary>Google's stand-in for "whichever calendar is this account's own" on a write.</summary>
+    private const string PrimaryCalendarAlias = "primary";
+
     private static string GoogleCalendarId(CalendarEvent evt)
-        => string.IsNullOrWhiteSpace(evt.CalendarId) ? "primary" : evt.CalendarId;
+        => string.IsNullOrWhiteSpace(evt.CalendarId) ? PrimaryCalendarAlias : evt.CalendarId;
+
+    /// <summary>
+    /// The real id and display name of the calendar a Google write to <c>primary</c> lands on.
+    ///
+    /// <para>
+    /// Best-effort: a lookup that fails leaves the row tagged with the alias, which is what it was
+    /// tagged with before this existed. Tagging is a display concern — the appointment is already
+    /// safely on the server by the time this runs — and losing the save over it would be worse than
+    /// a row that waits for the next sync to be filed under the right node.
+    /// </para>
+    /// </summary>
+    private async Task<(string Id, string Name)> DefaultGoogleCalendarAsync(
+        AccountModel account, CancellationToken ct)
+    {
+        try
+        {
+            var calendars = await _google!.GetCalendarListAsync(account.Username, ct);
+            var primary = calendars.FirstOrDefault(
+                c => c.Primary && !c.Deleted && !string.IsNullOrEmpty(c.Id));
+            // No entry flagged primary — a delegated or subscribe-only account. Google's primary
+            // calendar is identified by the account's own address, so match on that rather than
+            // picking some arbitrary calendar, which would file the appointment under a node it
+            // does not belong to.
+            primary ??= calendars.FirstOrDefault(
+                c => !c.Deleted && string.Equals(c.Id, account.Username, StringComparison.OrdinalIgnoreCase));
+            if (primary != null)
+                return (primary.Id, string.IsNullOrWhiteSpace(primary.Summary)
+                    ? "Calendar" : primary.Summary.Trim());
+        }
+        catch (Exception ex)
+        {
+            // Swallows cancellation too, deliberately: see DefaultGraphCalendarAsync — the
+            // appointment is already on the server, so the row has to be stored either way.
+            LogService.Log($"CalendarSync: could not resolve the default Google calendar for {account.AccountLabel}", ex);
+        }
+        return (PrimaryCalendarAlias, string.Empty);
+    }
+
+    /// <summary>
+    /// The id and display name of the calendar <c>POST /me/events</c> files into.
+    ///
+    /// <para>
+    /// <c>GET /me/calendar</c> — singular — IS that calendar, so this is right by construction.
+    /// Enumerating <c>/me/calendars</c> and looking for <c>isDefaultCalendar</c> is not: Microsoft
+    /// documents that the collection can omit the default calendar altogether, and their own
+    /// example response for the default calendar carries <c>isDefaultCalendar: false</c>. Picking
+    /// some other calendar when the flag cannot be found would be worse than not tagging at all —
+    /// the appointment would still be missing from the node the user is on, and would now also show
+    /// under a node it does not belong to, with the wrong name in the Calendar column.
+    /// </para>
+    ///
+    /// <para>
+    /// Best-effort for the same reason as its Google counterpart: an untagged row beats a lost save.
+    /// </para>
+    /// </summary>
+    private async Task<(string Id, string Name)> DefaultGraphCalendarAsync(
+        AccountModel account, CancellationToken ct)
+    {
+        try
+        {
+            var calendar = await _graph.GetAsync<GraphCalendar>(
+                account, "/me/calendar?$select=id,name",
+                OAuthService.GraphCalendarScopes, silentOnly: true, ct);
+            if (calendar != null && !string.IsNullOrEmpty(calendar.Id))
+                return (calendar.Id, string.IsNullOrWhiteSpace(calendar.Name) ? "Calendar" : calendar.Name.Trim());
+        }
+        catch (Exception ex)
+        {
+            // Deliberately swallows cancellation too. The appointment is already on the server by
+            // the time this runs, so the row MUST be stored either way — abandoning it here would
+            // leave an event the user created existing on Microsoft's side and nowhere in QuickMail.
+            LogService.Log($"GraphCalendarSync: could not resolve the default calendar for {account.AccountLabel}", ex);
+        }
+        return (string.Empty, string.Empty);
+    }
 
     private async Task<CalendarEvent> CreateGoogleEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct)
     {
         var calId = GoogleCalendarId(evt);
         var created = await _google!.CreateEventAsync(account.Username, BuildGoogleWriteBody(evt), calId, ct);
-        var mapped = MapGoogleEvent(created, account.Id, calId, evt.CalendarName);
+        // "primary" is an alias, not an id: the read-down tags that same calendar's rows with its
+        // real id, so a row left tagged "primary" does not match the per-calendar tree node and
+        // stays invisible there until the next sync restamps it (#569). Resolve it. The write
+        // itself still goes to the alias, which is what the existing create tests pin.
+        var (tagId, tagName) = calId == PrimaryCalendarAlias
+            ? await DefaultGoogleCalendarAsync(account, ct)
+            : (calId, evt.CalendarName);
+        var mapped = MapGoogleEvent(created, account.Id, tagId, tagName);
         await _store.UpsertCalendarEventAsync(mapped);
         LogService.Log($"CalendarSync: created Google event on {account.AccountLabel} ({mapped.Uid}).");
         return mapped;

@@ -83,6 +83,20 @@ public sealed class GraphClient : IDisposable
         return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
     }
 
+    /// <summary>
+    /// GETs a single object with an explicit token scope set, optionally silent-only. The
+    /// scope-carrying counterpart of <see cref="GetAsync{T}(AccountModel, string, CancellationToken)"/>,
+    /// which acquires its token interactively — background and post-write calendar work must never
+    /// raise a sign-in, so it cannot use that one.
+    /// </summary>
+    public async Task<T?> GetAsync<T>(AccountModel account, string path,
+        string[]? scopes, bool silentOnly, CancellationToken ct = default)
+    {
+        using var resp = await SendAsync(account, HttpMethod.Get, path, null, scopes, silentOnly, headers: null, ct);
+        await EnsureSuccessAsync(resp, ct);
+        return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
+    }
+
     /// <summary>GET a collection, following <c>@odata.nextLink</c> until exhausted.</summary>
     public Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, CancellationToken ct = default)
         => GetAllPagesAsync<T>(account, path, null, ct);

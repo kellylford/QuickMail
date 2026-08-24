@@ -1271,4 +1271,38 @@ public class CalendarViewModelTests
         Assert.Equal("Local", row.Summary);
         Assert.Equal(row.Uid, vm.SelectedEvent?.Uid);
     }
+
+    /// <summary>
+    /// The symptom #569 was reported against, end to end: with ONE of an account's calendars
+    /// selected in the folder tree, a new appointment saved to that account is in the list at once,
+    /// without an F5.
+    ///
+    /// <para>
+    /// This is the configuration the bug needed. The other save tests run with no
+    /// <c>SourceFilter</c>, and with no calendar-id filter <c>ApplyFilters</c> short-circuits, so
+    /// they pass whatever the row is tagged with. Here the filter is live, so an untagged row — what
+    /// the service stored before #569 — fails it and the appointment is missing from the very
+    /// calendar it was just filed on, until the next sync restamps it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task SaveNewEvent_WhileOneCalendarIsSelected_ShowsUnderThatCalendar()
+    {
+        var (vm, _, sync, account) = MakePushVm();
+        sync.DefaultCalendarId = "cal-default";
+        sync.DefaultCalendarName = "Calendar";
+        vm.SourceFilter = new MainViewModel.CalendarFilter(account.Id, "cal-default");
+        await vm.LoadAsync();
+
+        await vm.SaveNewEventAsync(new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = account.Id, Summary = "Dentist",
+            StartTimeTicks = DateTime.UtcNow.AddDays(3).Ticks,
+        });
+
+        var row = Assert.Single(vm.VisibleEvents);
+        Assert.Equal("Dentist", row.Summary);
+        Assert.Equal("cal-default", row.CalendarId);
+        Assert.Equal(row.Uid, vm.SelectedEvent?.Uid);
+    }
 }

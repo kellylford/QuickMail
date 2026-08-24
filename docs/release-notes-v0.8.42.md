@@ -130,10 +130,36 @@ This applies everywhere these fields are used — the **Starts** and **Ends** da
 repeat interval and **until** date, and **Go to Date** (**Ctrl+G**) in the calendar.
 ([#570](https://github.com/kellylford/QuickMail/issues/570))
 
+## Fixed: a new appointment was missing from the calendar it was filed on
+
+If you had one of your calendars selected in the folder tree — not **Calendar** at the top, but a
+particular calendar underneath it — an appointment you created went in, and then was not in the
+list. Pressing **F5** brought it into view. Reported twice, once as *"I added a new event in my
+default Gmail calendar. I looked for it and it didn't show up. I pressed F5 to refresh and then it
+showed up."*
+
+The appointment was saved correctly the whole time; it just was not labelled with the calendar it
+had gone onto, so the list you were looking at filtered it out. The next sync relabelled it and it
+appeared. QuickMail now labels a new appointment with its calendar as soon as it saves it, so it is
+in the list straight away — and the **Calendar** column reads correctly instead of coming up blank.
+
+The same fault had a second form on Microsoft 365 accounts: *editing* an appointment stripped the
+label off one that already had it, so an appointment you had just edited dropped out of the list
+until the next sync. Edits keep the label now, as they already did on Google accounts.
+
+This is one half of a complaint that came in twice. Both halves looked identical from the outside —
+an appointment missing until F5 — but they had different causes. This one is about an appointment
+you created in QuickMail; the other, **"the calendar did not ask the server when you opened it"**
+below, is about one you added somewhere else.
+([#569](https://github.com/kellylford/QuickMail/issues/569),
+[#519](https://github.com/kellylford/QuickMail/issues/519))
+
 ## Fixed: the calendar did not ask the server when you opened it
 
-An appointment added somewhere other than QuickMail — in Gmail or Outlook on the web, or on a phone
-— was not in the agenda when you opened the calendar. It turned up on its own eventually, because
+The other half of the complaint described under **"a new appointment was missing from the calendar
+it was filed on"** above: the same symptom, a different cause. An appointment
+added somewhere other than QuickMail — in Gmail or Outlook on the web, or on a phone — was not in
+the agenda when you opened the calendar. It turned up on its own eventually, because
 QuickMail checks connected calendars every fifteen minutes, but until then **F5** was the only way
 to see it. The report was precise about it: *"I added an appointment to my Gmail calendar and it
 didn't show in the agenda view... Press F5 to refresh the list. Now it will show up."*
