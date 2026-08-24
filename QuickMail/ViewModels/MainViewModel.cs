@@ -117,11 +117,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         CallerHandlesIt,
 
         /// <summary>
-        /// Reload so anything new is on screen, and say nothing. Opening the calendar has just
-        /// announced the view and its count; a second announcement a moment later saying the same
-        /// number again is chatter, and the events arriving is what opening the view asked for.
+        /// Reload, and speak only if the reload actually changed the list — the open-the-calendar
+        /// pass.
+        ///
+        /// <para>
+        /// Opening the calendar has just announced the view and how many events it holds, so
+        /// repeating that number a moment later is chatter. Staying silent unconditionally is not
+        /// right either: when the pull does bring something down, the count the user was just given
+        /// is now wrong and the list has grown underneath them, which is not something the platform
+        /// reports. So: nothing at all in the common case where the server had nothing new, and one
+        /// Status announcement when there is something to say.
+        /// </para>
         /// </summary>
-        RefreshQuietly,
+        RefreshAndAnnounceIfChanged,
     }
 
     /// <summary>
@@ -5179,6 +5187,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Deliberately not awaited: the calendar opens on the cache immediately, at the speed it
         // always did, and the pull folds anything new in when it lands. RunGraphCalendarSyncAsync
         // swallows its own failures, so nothing here can surface an error or break the open.
+        //
+        // Its continuations stay on the UI thread without an explicit _ui.Post hop, unlike the
+        // timer pass which needs one: this path is only ever reached through SelectFolderCommand,
+        // dispatched from the View, so the WPF SynchronizationContext is already in place when the
+        // awaits resume — which matters because the pull calls BuildFolderTree().
         _ = SyncCalendarOnOpenAsync();
     }
 
@@ -5191,7 +5204,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (_graphCalendarSync == null || _calendarService == null || OnlineMode) return;
         if (DateTime.UtcNow - _lastCalendarPullUtc < CalendarOpenSyncThrottle) return;
 
-        await RunGraphCalendarSyncAsync(CalendarSyncFollowUp.RefreshQuietly);
+        await RunGraphCalendarSyncAsync(CalendarSyncFollowUp.RefreshAndAnnounceIfChanged);
     }
 
     [RelayCommand]
@@ -9502,11 +9515,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
             await _calendarService.RefreshAsync(ct);
             if (IsCalendarView)
             {
+                var before = CalendarVm?.VisibleEvents.Count ?? 0;
                 CalendarVm?.ApplyFiltersFromExternalUpdate();
+                var after = CalendarVm?.VisibleEvents.Count ?? 0;
+
                 if (followUp == CalendarSyncFollowUp.RefreshAndAnnounce)
                 {
                     var n = result.EventsFetched;
                     Announce($"Calendar sync complete. {n} event{(n == 1 ? "" : "s")}.",
+                             AnnouncementCategory.Status);
+                }
+                else if (after != before)
+                {
+                    // Opening the calendar: only when the list the user was just given a count for
+                    // has actually changed under them.
+                    Announce($"Calendar updated. {after} event{(after == 1 ? "" : "s")}.",
                              AnnouncementCategory.Status);
                 }
             }

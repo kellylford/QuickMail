@@ -298,4 +298,110 @@ public class MainViewModelCalendarTests
         Assert.NotSame(before, calendarVm.SelectedEvent);
         Assert.Contains(calendarVm.SelectedEvent, calendarVm.VisibleEvents);
     }
+
+    /// <summary>
+    /// A pull that brings something down while the calendar is open puts it on screen — the point
+    /// of the whole change. Needs <c>Result</c> set: <c>RunGraphCalendarSyncAsync</c> returns early
+    /// on <c>AccountsSynced == 0</c>, so a default stub never reaches the follow-up at all.
+    /// </summary>
+    [Fact]
+    public async Task APullThatBringsSomethingDown_PutsItOnScreen()
+    {
+        var store = new StubCalendarService();
+        var sync = new StubGraphCalendarSyncService
+        {
+            Result = new GraphCalendarSyncResult(AccountsSynced: 1, EventsFetched: 1, Error: null),
+        };
+        var vm = MakeVm(store, sync);
+        vm.SelectedFolder = MainViewModel.CalendarFolder;
+        // What the server had that the local cache did not; the pull's reload picks it up.
+        sync.OnSync = () => store.StoredEvents.Add(new CalendarEvent
+        {
+            Uid = "from-server", AccountId = CalendarEvent.LocalAccountId, Summary = "Dentist",
+            StartTimeTicks = DateTime.UtcNow.AddDays(2).Ticks,
+            ResponseStatus = CalendarResponseStatus.Accepted,
+        });
+
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.CalendarFolder);
+        await Task.Yield();
+
+        Assert.Contains(vm.CalendarVm!.VisibleEvents, e => e.Uid == "from-server");
+    }
+
+    /// <summary>
+    /// Opening the calendar speaks only when the pull actually changed the list.
+    ///
+    /// Silence in the common case, because opening the calendar has just announced the view and its
+    /// count and repeating it is chatter. But not silence unconditionally: when something does come
+    /// down, the count the user was just given is wrong and the list has grown underneath them,
+    /// which nothing else reports.
+    /// </summary>
+    [Fact]
+    public async Task OpeningTheCalendar_SaysNothingWhenThePullChangesNothing()
+    {
+        var sync = new StubGraphCalendarSyncService
+        {
+            Result = new GraphCalendarSyncResult(AccountsSynced: 1, EventsFetched: 0, Error: null),
+        };
+        var vm = MakeVm(new StubCalendarService(), sync);
+        var announced = new System.Collections.Generic.List<string>();
+        vm.AnnouncementRequested += (_, e) => announced.Add(e.Text);
+
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.CalendarFolder);
+        await Task.Yield();
+
+        Assert.DoesNotContain(announced, a => a.Contains("Calendar updated"));
+        Assert.DoesNotContain(announced, a => a.Contains("Calendar sync complete"));
+    }
+
+    [Fact]
+    public async Task OpeningTheCalendar_SaysSoWhenThePullAddsAnAppointment()
+    {
+        var store = new StubCalendarService();
+        var sync = new StubGraphCalendarSyncService
+        {
+            Result = new GraphCalendarSyncResult(AccountsSynced: 1, EventsFetched: 1, Error: null),
+        };
+        var vm = MakeVm(store, sync);
+        vm.SelectedFolder = MainViewModel.CalendarFolder;
+        sync.OnSync = () => store.StoredEvents.Add(new CalendarEvent
+        {
+            Uid = "from-server", AccountId = CalendarEvent.LocalAccountId, Summary = "Dentist",
+            StartTimeTicks = DateTime.UtcNow.AddDays(2).Ticks,
+            ResponseStatus = CalendarResponseStatus.Accepted,
+        });
+        var announced = new System.Collections.Generic.List<string>();
+        vm.AnnouncementRequested += (_, e) => announced.Add(e.Text);
+
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.CalendarFolder);
+        await Task.Yield();
+
+        Assert.Contains(announced, a => a.Contains("Calendar updated") && a.Contains("1 event"));
+        // The background timer's wording, which this path must not borrow.
+        Assert.DoesNotContain(announced, a => a.Contains("Calendar sync complete"));
+    }
+
+    /// <summary>
+    /// A pull landing must not move the Month grid off the day the user had arrowed to.
+    /// RebuildMonthCells reassigns SelectedMonthCell to the reference date on every rebuild, and in
+    /// Month view the day cell — not the event — is what the detail box reads from.
+    /// </summary>
+    [Fact]
+    public async Task AnExternalUpdate_KeepsTheSelectedDayInMonthView()
+    {
+        var store = new StubCalendarService();
+        var calendarVm = new CalendarViewModel(store, onlineMode: false, showDeclinedEvents: false,
+                                               showFieldLabels: false);
+        await calendarVm.LoadAsync();
+        calendarVm.ViewMode = CalendarViewMode.Month;
+        calendarVm.ApplyFiltersFromExternalUpdate();
+
+        // Arrow off today onto another day in the grid.
+        var elsewhere = calendarVm.MonthCells.First(c => c.IsInMonth && c.Date != DateTime.Today);
+        calendarVm.SelectedMonthCell = elsewhere;
+
+        calendarVm.ApplyFiltersFromExternalUpdate();
+
+        Assert.Equal(elsewhere.Date, calendarVm.SelectedMonthCell?.Date);
+    }
 }

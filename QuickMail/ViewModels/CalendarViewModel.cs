@@ -830,15 +830,30 @@ public partial class CalendarViewModel : ObservableObject
     /// </summary>
     public void ApplyFiltersFromExternalUpdate()
     {
-        var previous = SelectedEvent;
-        ApplyFilters();
-        if (previous == null) return;
+        var previousEvent = SelectedEvent;
+        var previousDay = SelectedMonthCell?.Date;
 
-        var again = _filteredEvents.FirstOrDefault(
-            e => e.Uid == previous.Uid
-                 && e.AccountId == previous.AccountId
-                 && e.StartTimeTicks == previous.StartTimeTicks);
-        if (again != null) SelectedEvent = again;
+        ApplyFilters();
+
+        if (previousEvent != null)
+        {
+            var again = _filteredEvents.FirstOrDefault(
+                e => e.Uid == previousEvent.Uid
+                     && e.AccountId == previousEvent.AccountId
+                     && e.StartTimeTicks == previousEvent.StartTimeTicks);
+            if (again != null) SelectedEvent = again;
+        }
+
+        // The Month grid needs its own restore, and needs it more: RebuildMonthCells reassigns
+        // SelectedMonthCell to the reference date's cell every time it runs, so a pull landing
+        // would move the user from the day they had arrowed to back onto today. Restoring the
+        // event alone does not cover it — in Month view SelectedEventDetail reads the CELL's
+        // DayDetail, so the day is what the user is actually on.
+        if (previousDay is { } day)
+        {
+            var cellAgain = MonthCells.FirstOrDefault(c => c.Date == day);
+            if (cellAgain != null) SelectedMonthCell = cellAgain;
+        }
     }
 
     /// <summary>

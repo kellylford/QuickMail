@@ -683,11 +683,11 @@ sealed class StubCalendarService : ICalendarService
 
     public Task SetResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status, CancellationToken ct = default)
     {
-        // In place on both, as the real service does — the loaded rows are the stored objects.
+        // In place, as the real service does. _loaded is a shallow copy, so its rows ARE these
+        // objects and this is visible through Events without touching it — unlike DeleteEventAsync
+        // below, which changes list membership and so has to be applied to both.
         var idx = StoredEvents.FindIndex(e => e.Uid == uid && e.AccountId == accountId);
         if (idx >= 0) StoredEvents[idx].ResponseStatus = status;
-        var loadedIdx = _loaded.FindIndex(e => e.Uid == uid && e.AccountId == accountId);
-        if (loadedIdx >= 0) _loaded[loadedIdx].ResponseStatus = status;
         return Task.CompletedTask;
     }
 
@@ -718,9 +718,16 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
     /// </summary>
     public StubCalendarService? CalendarStore { get; set; }
 
+    /// <summary>
+    /// Runs when a pull happens, so a test can put into the store what the server "had" — the real
+    /// service writes the fetched slice there before returning, and the caller reloads from it.
+    /// </summary>
+    public Action? OnSync { get; set; }
+
     public Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default)
     {
         SyncCallCount++;
+        OnSync?.Invoke();
         return Task.FromResult(Result);
     }
 

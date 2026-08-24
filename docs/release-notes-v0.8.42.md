@@ -144,12 +144,15 @@ anything new folds in when the answer arrives.
 
 Three details worth knowing:
 
-- **It stays quiet.** Opening the calendar already tells you which view you are in and how many
-  events it holds; repeating the number a moment later would be chatter. The fifteen-minute
-  background check still announces itself, exactly as before.
-- **You keep your place.** When a check lands while you are reading the list, the appointment you
-  were on stays selected. Until now a check arriving mid-read could drop you back at the top of the
-  list, because the events had been rebuilt underneath you.
+- **It speaks only if something changed.** Opening the calendar already tells you which view you
+  are in and how many events it holds, so repeating that number a moment later would be chatter —
+  and in the ordinary case, where your accounts had nothing new, you hear nothing at all. When the
+  check does bring an appointment down, the count you were just given is out of date, so QuickMail
+  says the new one. The fifteen-minute background check announces itself as it always did.
+- **You keep your place.** When a check lands while you are reading, the appointment you were on
+  stays selected — and in Month view, so does the day you had moved to. Until now a check arriving
+  mid-read could drop you back to the top of the list, or back onto today in the month grid,
+  because the events had been rebuilt underneath you.
 - **Opening it again does not ask again.** Going out to your mail and straight back reuses what was
   just fetched; there is a half-minute gap before another check.
 

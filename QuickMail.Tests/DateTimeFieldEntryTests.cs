@@ -68,8 +68,8 @@ public class DateTimeFieldEntryTests
 
         public void Dispose()
         {
-            Window.Close();
-            Thread.CurrentThread.CurrentCulture = _culture;
+            try { Window.Close(); }
+            finally { Thread.CurrentThread.CurrentCulture = _culture; }
         }
     }
 
