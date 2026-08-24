@@ -147,15 +147,17 @@ The same fault had a second form on Microsoft 365 accounts: *editing* an appoint
 label off one that already had it, so an appointment you had just edited dropped out of the list
 until the next sync. Edits keep the label now, as they already did on Google accounts.
 
-This and the next item are the two halves of one complaint. Both looked identical from the outside —
-an appointment missing until F5 — but one is about an appointment you created in QuickMail and this
-is it; the other is about one you added somewhere else, and is below.
+This is one half of a complaint that came in twice. Both halves looked identical from the outside —
+an appointment missing until F5 — but they had different causes. This one is about an appointment
+you created in QuickMail; the other, **"the calendar did not ask the server when you opened it"**
+below, is about one you added somewhere else.
 ([#569](https://github.com/kellylford/QuickMail/issues/569),
 [#519](https://github.com/kellylford/QuickMail/issues/519))
 
 ## Fixed: the calendar did not ask the server when you opened it
 
-The other half of the report above, with the same symptom and a different cause. An appointment
+The other half of the complaint described under **"a new appointment was missing from the calendar
+it was filed on"** above: the same symptom, a different cause. An appointment
 added somewhere other than QuickMail — in Gmail or Outlook on the web, or on a phone — was not in
 the agenda when you opened the calendar. It turned up on its own eventually, because
 QuickMail checks connected calendars every fifteen minutes, but until then **F5** was the only way
