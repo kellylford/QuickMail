@@ -463,16 +463,28 @@ public partial class CalendarViewModel : ObservableObject
         foreach (var a in _graphAccountsProvider?.Invoke() ?? [])
         {
             var calendars = sources.Where(s => s.AccountId == a.Id).ToList();
+
+            // "Wherever this account normally files things" comes first, and stays on offer even
+            // once the individual calendars are known. Three things need it:
+            //
+            //  - A default calendar set on the ACCOUNT node (#497) means exactly this, and it is
+            //    the only default a Microsoft account could have had while its calendars went
+            //    undiscovered. It has to keep resolving to something the user would recognise —
+            //    matching it against the first per-calendar target instead would silently open the
+            //    editor on whichever calendar happened to sort first.
+            //  - An account whose calendars are all read-only would otherwise contribute nothing,
+            //    and the picker would vanish with no explanation.
+            //  - An account that has never synced has no calendars to list at all.
+            //
+            // Only Microsoft and Google: they file into the account's default when the write names
+            // no calendar. A CalDAV PUT needs a collection URL, so iCloud cannot, and offers
+            // nothing until its collections are discovered — exactly as before.
+            if (!IsICloudAccount(a))
+                accountTargets.Add(new CalendarSaveTarget($"{a.AccountLabel} (default calendar)", a.Id));
+
             foreach (var cal in calendars.Where(c => c.CanWrite))
                 accountTargets.Add(new CalendarSaveTarget(
                     cal.LabelUnder(a.AccountLabel), a.Id, cal.CalendarId, cal.CalendarName));
-
-            // Nothing discovered yet — the account has never synced. Microsoft and Google can still
-            // be written to without naming a calendar (the server files into the account's default),
-            // so they keep a bare account entry rather than being unofferable. iCloud cannot: a
-            // CalDAV PUT needs a collection URL, so it offers nothing, exactly as before.
-            if (calendars.Count == 0 && !IsICloudAccount(a))
-                accountTargets.Add(new CalendarSaveTarget(a.AccountLabel, a.Id));
         }
         var editor = new EventEditorViewModel(DateTime.Now, accountTargets);
         // Preselect the user's default calendar (#497). Left alone the picker opens on Local, which

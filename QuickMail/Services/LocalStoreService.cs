@@ -558,7 +558,8 @@ public class LocalStoreService : ILocalStoreService
             "DELETE FROM MessageSummary    WHERE account_id = $aid;" +
             "DELETE FROM CalendarEvent     WHERE account_id = $aid;" +
             "DELETE FROM Folder            WHERE account_id = $aid;" +
-            "DELETE FROM Pop3CollectedUidl WHERE account_id = $aid;";
+            "DELETE FROM Pop3CollectedUidl WHERE account_id = $aid;" +
+            "DELETE FROM CalendarSource    WHERE account_id = $aid;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
@@ -1575,14 +1576,18 @@ public class LocalStoreService : ILocalStoreService
             cmd.CommandText = """
                 SELECT account_id, calendar_id, calendar_name, can_write
                 FROM CalendarSource
-                ORDER BY calendar_name;
+                ORDER BY calendar_name COLLATE NOCASE;
                 """;
             await using var r = await cmd.ExecuteReaderAsync();
             while (await r.ReadAsync())
             {
                 var accountId = Guid.Parse(r.GetString(0));
                 recorded.Add(accountId);
-                list.Add(new CalendarSourceInfo(accountId, r.GetString(1), r.GetString(2), r.GetInt32(3) != 0));
+                // The empty-id row records the enumeration itself, not a calendar — see
+                // ReplaceCalendarSourcesAsync.
+                var calendarId = r.GetString(1);
+                if (calendarId.Length == 0) continue;
+                list.Add(new CalendarSourceInfo(accountId, calendarId, r.GetString(2), r.GetInt32(3) != 0));
             }
         }
 
@@ -1596,7 +1601,7 @@ public class LocalStoreService : ILocalStoreService
                 SELECT DISTINCT account_id, calendar_id, calendar_name
                 FROM CalendarEvent
                 WHERE is_graph = 1 AND calendar_id <> ''
-                ORDER BY calendar_name;
+                ORDER BY calendar_name COLLATE NOCASE;
                 """;
             await using var r = await cmd.ExecuteReaderAsync();
             while (await r.ReadAsync())
@@ -1624,6 +1629,21 @@ public class LocalStoreService : ILocalStoreService
             del.CommandText = "DELETE FROM CalendarSource WHERE account_id=$aid;";
             del.Parameters.AddWithValue("$aid", accountId.ToString());
             await del.ExecuteNonQueryAsync();
+        }
+
+        // A row with an empty calendar_id records the FACT of the enumeration, separately from
+        // what it found. Without it an account whose calendar list legitimately came back empty
+        // would look un-enumerated forever, and LoadCalendarSourcesAsync would fall back to the
+        // calendars its stale rows are tagged with — resurrecting exactly the unsubscribed
+        // calendar the per-account fallback exists to keep out, and marking it writable too.
+        await using (var marker = conn.CreateCommand())
+        {
+            marker.CommandText = """
+                INSERT OR REPLACE INTO CalendarSource (account_id, calendar_id, calendar_name, can_write)
+                VALUES ($aid, '', '', 0);
+                """;
+            marker.Parameters.AddWithValue("$aid", accountId.ToString());
+            await marker.ExecuteNonQueryAsync();
         }
 
         foreach (var src in sources)

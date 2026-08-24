@@ -7,11 +7,12 @@ using QuickMail.Models;
 namespace QuickMail.ViewModels;
 
 /// <summary>
-/// One entry in the appointment editor's "Calendar" save-target picker: the local calendar
-/// (<see cref="CalendarEvent.LocalAccountId"/>) or a server-backed account's calendar.
-/// <paramref name="CalendarId"/> is the CalDAV collection URL for an iCloud target (which offers
-/// one entry per calendar, e.g. Home / Family); it is null for Local, Microsoft, and Google
-/// targets, which save to the account's default/primary calendar.
+/// One place an appointment can be saved, as the editor's Calendar picker lists it.
+///
+/// <paramref name="CalendarId"/> names a specific calendar: a CalDAV collection URL for iCloud, the
+/// provider's calendar id for Microsoft and Google. It is null for the local calendar, and for an
+/// account's "(default calendar)" entry — the one that means "wherever this account normally files
+/// things", which is what a write that names no calendar does.
 /// </summary>
 public sealed record CalendarSaveTarget(string Label, Guid AccountId,
                                         string? CalendarId = null, string? CalendarName = null);
@@ -57,9 +58,10 @@ public partial class EventEditorViewModel : ObservableObject
     public bool IsEdit { get; }
 
     /// <summary>
-    /// Labels for the "Calendar" save-target picker. Index 0 is always the local calendar;
-    /// the rest are server-backed (Microsoft or Google) accounts. Plain strings so the ComboBox
-    /// items announce correctly (Selector accessibility rule).
+    /// Labels for the "Calendar" save-target picker. Index 0 is always the local calendar; then,
+    /// per connected account, its "(default calendar)" entry followed by each calendar the user can
+    /// write to. Plain strings so the ComboBox items announce correctly (Selector accessibility
+    /// rule).
     /// </summary>
     public IReadOnlyList<string> SaveTargetLabels { get; }
 
@@ -70,9 +72,10 @@ public partial class EventEditorViewModel : ObservableObject
     public Guid SelectedTargetAccountId => SelectedTarget?.AccountId ?? CalendarEvent.LocalAccountId;
 
     /// <summary>
-    /// The chosen target's calendar (CalDAV collection URL) and display name — set only for an
-    /// iCloud target, which the save uses to tag and route the event. Null for Local / Microsoft /
-    /// Google (their default calendar).
+    /// The chosen target's calendar and display name — a CalDAV collection URL for iCloud, the
+    /// provider's calendar id for Microsoft and Google — which the save uses to tag and route the
+    /// event. Null for Local, and for an account's "(default calendar)" entry, where naming no
+    /// calendar is what makes the server file into its default.
     /// </summary>
     public string? SelectedTargetCalendarId => SelectedTarget?.CalendarId;
     public string? SelectedTargetCalendarName => SelectedTarget?.CalendarName;
@@ -345,11 +348,20 @@ public partial class EventEditorViewModel : ObservableObject
 
     /// <summary>
     /// Preselects the save target matching the user's default calendar (issue #497), and reports
-    /// whether one was found. Prefers the exact calendar; falls back to any target on the same
-    /// account, because the tree offers a node per discovered calendar while a Microsoft or Google
-    /// account contributes a single target (its default calendar) — "that account" is still the
-    /// right answer there. An unmatched default (the account was removed, or the calendar has not
-    /// synced yet) leaves the picker on the local calendar rather than guessing.
+    /// whether one was found.
+    ///
+    /// <para>
+    /// Prefers the exact calendar. A default set on the ACCOUNT rather than on one of its calendars
+    /// carries no calendar id, and matches the account's "(default calendar)" target — the entry
+    /// that means the same thing — because <see cref="CalendarSaveTarget.CalendarId"/> is null
+    /// there too. The fall back to any target on the same account is for a default naming a
+    /// calendar that is no longer offered: unsubscribed, or gone read-only.
+    /// </para>
+    ///
+    /// <para>
+    /// An unmatched default (the account was removed) leaves the picker on the local calendar
+    /// rather than guessing.
+    /// </para>
     /// </summary>
     public bool SelectTarget(Guid accountId, string? calendarId)
     {

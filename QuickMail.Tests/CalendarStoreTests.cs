@@ -242,6 +242,78 @@ public class CalendarStoreTests : IDisposable
         Assert.Equal("cal-home", Assert.Single(sources).CalendarId);
     }
 
+    /// <summary>
+    /// An enumeration that found nothing still counts as an enumeration. Otherwise the account
+    /// looks untouched forever and the per-account fallback resurrects the calendars its stale rows
+    /// are tagged with — the unsubscribed calendar it exists to keep out, marked writable.
+    /// </summary>
+    [Fact]
+    public async Task ReplaceCalendarSources_WithAnEmptyList_StillCountsAsEnumerated()
+    {
+        var account = Guid.NewGuid();
+        await _store.ReplaceGraphCalendarEventsAsync(account,
+            [new CalendarEvent { Uid = "x", AccountId = account, CalendarId = "cal-gone", CalendarName = "Unsubscribed" }]);
+
+        await _store.ReplaceCalendarSourcesAsync(account, []);
+
+        Assert.Empty(await _store.LoadCalendarSourcesAsync());
+    }
+
+    /// <summary>The marker row is bookkeeping, never a calendar anything can be filed onto.</summary>
+    [Fact]
+    public async Task LoadCalendarSources_NeverReturnsTheEnumerationMarker()
+    {
+        var account = Guid.NewGuid();
+        await _store.ReplaceCalendarSourcesAsync(account,
+            [new CalendarSourceInfo(account, "cal-home", "Home", CanWrite: true)]);
+
+        var sources = await _store.LoadCalendarSourcesAsync();
+
+        Assert.DoesNotContain(sources, s => s.CalendarId.Length == 0);
+        Assert.Equal("cal-home", Assert.Single(sources).CalendarId);
+    }
+
+    /// <summary>
+    /// Removing an account takes its calendar list with it, as it already took its messages,
+    /// folders and events. Without this the names of a former employer's calendars stayed in the
+    /// database indefinitely.
+    /// </summary>
+    [Fact]
+    public async Task DeleteAccountData_AlsoForgetsTheCalendarList()
+    {
+        var gone = Guid.NewGuid();
+        var kept = Guid.NewGuid();
+        await _store.ReplaceCalendarSourcesAsync(gone, [new CalendarSourceInfo(gone, "g", "Gone", CanWrite: true)]);
+        await _store.ReplaceCalendarSourcesAsync(kept, [new CalendarSourceInfo(kept, "k", "Kept", CanWrite: true)]);
+
+        await _store.DeleteAccountDataAsync(gone);
+
+        Assert.Equal(kept, Assert.Single(await _store.LoadCalendarSourcesAsync()).AccountId);
+    }
+
+    /// <summary>
+    /// Sorted the way a person reads a list, not the way bytes compare — without NOCASE a
+    /// lowercase or accented calendar sorts after every capitalised one. The picker and the folder
+    /// tree both show this order, and this change is what turned it into a list worth scanning.
+    /// </summary>
+    [Fact]
+    public async Task LoadCalendarSources_SortsCaseInsensitively()
+    {
+        var account = Guid.NewGuid();
+        // Names chosen so BINARY and NOCASE disagree: every capital sorts before every lowercase
+        // in byte order, so a plain ORDER BY yields Beta, Zulu, apple.
+        await _store.ReplaceCalendarSourcesAsync(account,
+        [
+            new CalendarSourceInfo(account, "c1", "Zulu", CanWrite: true),
+            new CalendarSourceInfo(account, "c2", "apple", CanWrite: true),
+            new CalendarSourceInfo(account, "c3", "Beta", CanWrite: true),
+        ]);
+
+        var names = (await _store.LoadCalendarSourcesAsync()).Select(s => s.CalendarName).ToList();
+
+        Assert.Equal(new[] { "apple", "Beta", "Zulu" }, names);
+    }
+
     [Fact]
     public async Task DeleteCalendarSources_ForgetsOnlyThatAccount()
     {

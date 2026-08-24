@@ -1347,7 +1347,9 @@ public class CalendarViewModelTests
 
         var editor = OpenEditor(vm);
 
-        Assert.Equal(3, editor.SaveTargetLabels.Count);   // Local, then the two calendars
+        // Local, the account's own default, then the two calendars.
+        Assert.Equal(4, editor.SaveTargetLabels.Count);
+        Assert.Contains("Work (default calendar)", editor.SaveTargetLabels);
         Assert.Contains("Work: Calendar", editor.SaveTargetLabels);
         Assert.Contains("Work: Team", editor.SaveTargetLabels);
 
@@ -1374,7 +1376,8 @@ public class CalendarViewModelTests
 
         var editor = OpenEditor(vm);
 
-        Assert.Equal(2, editor.SaveTargetLabels.Count);   // Local, then the one writable calendar
+        // Local, the account's own default, then the one writable calendar.
+        Assert.Equal(3, editor.SaveTargetLabels.Count);
         Assert.Contains("Work: Calendar", editor.SaveTargetLabels);
         Assert.DoesNotContain(editor.SaveTargetLabels, l => l.Contains("Holidays"));
     }
@@ -1393,7 +1396,69 @@ public class CalendarViewModelTests
         var editor = OpenEditor(vm);
 
         Assert.Equal(2, editor.SaveTargetLabels.Count);
-        Assert.Contains("Work", editor.SaveTargetLabels);
+        Assert.Contains("Work (default calendar)", editor.SaveTargetLabels);
+    }
+
+    /// <summary>
+    /// A default calendar set on the ACCOUNT node still opens the editor on that account's own
+    /// default calendar (#497).
+    ///
+    /// <para>
+    /// This is the regression the per-calendar picker nearly shipped. An account-level default
+    /// carries no calendar id, so once every target had one the exact match failed and the fallback
+    /// took the account's FIRST target — whichever calendar sorted first by name. A Microsoft
+    /// account whose calendars had never been discovered separately could only have had an
+    /// account-level default, so the editor would have opened on a calendar the user never chose,
+    /// and on Outlook's Birthdays calendar the save would have been refused outright.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void NewEvent_AccountLevelDefault_OpensOnTheAccountsOwnDefaultCalendar()
+    {
+        var (vm, account) = PickerVm(
+            // Deliberately sorted so the account's own default is NOT the first entry.
+            new CalendarSourceInfo(Guid.Empty, "cal-birthdays", "Birthdays", CanWrite: true),
+            new CalendarSourceInfo(Guid.Empty, "cal-default", "Calendar", CanWrite: true));
+        vm.DefaultCalendar = new MainViewModel.CalendarFilter(account.Id, null);
+
+        var editor = OpenEditor(vm);
+
+        Assert.Equal("Work (default calendar)", editor.SaveTargetLabels[editor.SelectedTargetIndex]);
+        editor.Title = "Dentist";
+        Assert.True(editor.TryBuildEvent(out var evt, out var error), error);
+        Assert.Equal(account.Id, evt.AccountId);
+        // No calendar named, so the server files into the account's default — not into Birthdays.
+        Assert.Equal(string.Empty, evt.CalendarId);
+    }
+
+    /// <summary>A default naming one specific calendar still opens on exactly that calendar.</summary>
+    [Fact]
+    public void NewEvent_CalendarLevelDefault_OpensOnThatCalendar()
+    {
+        var (vm, account) = PickerVm(
+            new CalendarSourceInfo(Guid.Empty, "cal-birthdays", "Birthdays", CanWrite: true),
+            new CalendarSourceInfo(Guid.Empty, "cal-team", "Team", CanWrite: true));
+        vm.DefaultCalendar = new MainViewModel.CalendarFilter(account.Id, "cal-team");
+
+        var editor = OpenEditor(vm);
+
+        Assert.Equal("Work: Team", editor.SaveTargetLabels[editor.SelectedTargetIndex]);
+    }
+
+    /// <summary>
+    /// An account with calendars but none writable keeps its account entry, so the picker does not
+    /// silently disappear and file the appointment locally with nothing said.
+    /// </summary>
+    [Fact]
+    public void NewEvent_AccountWithOnlyReadOnlyCalendars_StillOffersTheAccount()
+    {
+        var (vm, _) = PickerVm(
+            new CalendarSourceInfo(Guid.Empty, "cal-holidays", "Holidays", CanWrite: false));
+
+        var editor = OpenEditor(vm);
+
+        Assert.True(editor.ShowSaveTarget);
+        Assert.Contains("Work (default calendar)", editor.SaveTargetLabels);
     }
 
     /// <summary>

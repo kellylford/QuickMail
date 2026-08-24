@@ -1714,8 +1714,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                                _graphCalendarSync,
                                                () => Accounts.Where(IsCalendarPushAccount).ToList(),
                                                () => Accounts.ToList(),
-                                               // Discovered calendar sources (per iCloud calendar) feed the
-                                               // save-target picker so each iCloud calendar is its own target.
+                                               // Each account's calendars feed the save-target picker, so
+                                               // every calendar the user can write to is its own target.
                                                () => _calendarSources);
             _defaultCalendarSource = cfg.DefaultCalendarSource ?? string.Empty;
             CalendarVm.DefaultCalendar = DefaultCalendarFilter;

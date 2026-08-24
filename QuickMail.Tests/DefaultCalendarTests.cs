@@ -94,9 +94,9 @@ public class DefaultCalendarTests
     }
 
     /// <summary>
-    /// A Microsoft or Google account shows a node per synced calendar in the tree but offers ONE
-    /// save target (its default calendar). Defaulting to one of those calendars must land on the
-    /// account rather than falling back to Local, which is a different mailbox entirely.
+    /// A default naming a calendar that is no longer offered — unsubscribed, or gone read-only —
+    /// must still land on its account rather than falling back to Local, which is a different
+    /// mailbox entirely.
     /// </summary>
     [Fact]
     public void SelectTarget_UnofferedCalendar_FallsBackToTheSameAccount()
