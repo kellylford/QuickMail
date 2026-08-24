@@ -130,6 +130,31 @@ This applies everywhere these fields are used — the **Starts** and **Ends** da
 repeat interval and **until** date, and **Go to Date** (**Ctrl+G**) in the calendar.
 ([#570](https://github.com/kellylford/QuickMail/issues/570))
 
+## Fixed: the calendar did not ask the server when you opened it
+
+An appointment added somewhere other than QuickMail — in Gmail or Outlook on the web, or on a phone
+— was not in the agenda when you opened the calendar. It turned up on its own eventually, because
+QuickMail checks connected calendars every fifteen minutes, but until then **F5** was the only way
+to see it. The report was precise about it: *"I added an appointment to my Gmail calendar and it
+didn't show in the agenda view... Press F5 to refresh the list. Now it will show up."*
+
+Opening the calendar now asks your accounts as well. The list still appears immediately from what
+QuickMail already had — you are never left waiting on the network to see your own calendar — and
+anything new folds in when the answer arrives.
+
+Three details worth knowing:
+
+- **It stays quiet.** Opening the calendar already tells you which view you are in and how many
+  events it holds; repeating the number a moment later would be chatter. The fifteen-minute
+  background check still announces itself, exactly as before.
+- **You keep your place.** When a check lands while you are reading the list, the appointment you
+  were on stays selected. Until now a check arriving mid-read could drop you back at the top of the
+  list, because the events had been rebuilt underneath you.
+- **Opening it again does not ask again.** Going out to your mail and straight back reuses what was
+  just fetched; there is a half-minute gap before another check.
+
+([#519](https://github.com/kellylford/QuickMail/issues/519))
+
 ## Fixed: Microsoft 365 unread counts went stale until you refreshed
 
 On a Microsoft 365 account, the unread count beside a folder only changed when the whole folder list

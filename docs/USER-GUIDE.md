@@ -1409,7 +1409,7 @@ Calendars connect **per account**, the same way contact sync does. When you add 
 
 **Turning it on for an account you already have:** open **Manage Accounts**, select the account, and check **Sync calendar from this account**. It applies immediately — a **Calendar → [account]** node appears in the folder tree and the events sync in the background. Unchecking it removes them.
 
-Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup). Press **F5** to refresh on demand, or use **Sync Calendars Now** from the command palette. Syncing is a one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
+Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup), and again whenever you open the calendar, so an appointment you added somewhere else is there when you look. The list opens straight away from what QuickMail already has and folds in anything new when the account answers; opening the calendar again within half a minute reuses what it just fetched rather than asking again. Press **F5** to refresh on demand, or use **Sync Calendars Now** from the command palette. Syncing is a one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
 
 ### What the calendar does and does not do
 

@@ -814,8 +814,32 @@ public partial class CalendarViewModel : ObservableObject
         ApplyFilters();
     }
 
-    /// <summary>Reapplies filters without re-fetching from the service. Called after external status updates.</summary>
-    public void ApplyFiltersFromExternalUpdate() => ApplyFilters();
+    /// <summary>
+    /// Rebuilds the visible list after something outside the calendar changed the events under it —
+    /// a status update, or a server pull landing while the user is reading the list — and puts the
+    /// selection back on the appointment it was on.
+    ///
+    /// <para>
+    /// Restoring the selection is the whole reason this is not a bare <c>ApplyFilters</c>. A pull
+    /// reloads every row from the store as a fresh object, so the one the list was sitting on stops
+    /// existing and the selection has nothing to bind to: the list drops to the top and takes
+    /// keyboard focus with it, in the middle of someone reading. Matching on identity rather than
+    /// reference puts them back where they were. A selection that genuinely went away — the
+    /// appointment was deleted on the server — is left as it was, which is what happened before.
+    /// </para>
+    /// </summary>
+    public void ApplyFiltersFromExternalUpdate()
+    {
+        var previous = SelectedEvent;
+        ApplyFilters();
+        if (previous == null) return;
+
+        var again = _filteredEvents.FirstOrDefault(
+            e => e.Uid == previous.Uid
+                 && e.AccountId == previous.AccountId
+                 && e.StartTimeTicks == previous.StartTimeTicks);
+        if (again != null) SelectedEvent = again;
+    }
 
     /// <summary>
     /// Rebuilds the visible list for the current view: applies declined/cancelled filters, windows

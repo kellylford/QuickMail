@@ -12,11 +12,12 @@ namespace QuickMail.Tests;
 /// </summary>
 public class MainViewModelCalendarTests
 {
-    private static MainViewModel MakeVm(ICalendarService? calendarService = null) =>
+    private static MainViewModel MakeVm(ICalendarService? calendarService = null,
+                                       IGraphCalendarSyncService? graphCalendarSync = null) =>
         new(new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(), new StubConfigService(),
             new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService(),
-            calendarService: calendarService);
+            calendarService: calendarService, graphCalendarSyncService: graphCalendarSync);
 
     [Fact]
     public void OpenCalendarSourceMessage_ConstructsStubAndRoutesThroughSelectMessage()
@@ -222,5 +223,79 @@ public class MainViewModelCalendarTests
 
         Assert.Empty(smtp.SentReplies);
         Assert.Contains(announced, a => a.Contains("no longer available"));
+    }
+
+    // ── Opening the calendar pulls from the server (issue #519) ──────────────────
+
+    /// <summary>
+    /// Opening the calendar asks the server for its events, so an appointment added elsewhere — in
+    /// Gmail, in Outlook, on a phone — is there when you look.
+    ///
+    /// Without this the open read the local cache and nothing else, and the only ways to pull were
+    /// the 15-minute timer and F5. That is #519 verbatim: the appointment "will not be there. Press
+    /// F5 to refresh the list. Now it will show up." The pull is deliberately not awaited, so the
+    /// assertion has to let the fire-and-forget continuation run.
+    /// </summary>
+    [Fact]
+    public async Task SelectingTheCalendar_PullsFromTheServer()
+    {
+        var sync = new StubGraphCalendarSyncService();
+        var vm = MakeVm(new StubCalendarService(), sync);
+
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.CalendarFolder);
+        await Task.Yield();
+
+        Assert.Equal(1, sync.SyncCallCount);
+    }
+
+    /// <summary>
+    /// Going out to the mail list and straight back does not start a second pull. Opening the
+    /// calendar is something a user repeats freely, and each open would otherwise be a fresh round
+    /// of Graph and Google requests.
+    /// </summary>
+    [Fact]
+    public async Task ReopeningTheCalendarImmediately_DoesNotPullAgain()
+    {
+        var sync = new StubGraphCalendarSyncService();
+        var vm = MakeVm(new StubCalendarService(), sync);
+
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.CalendarFolder);
+        await Task.Yield();
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.CalendarFolder);
+        await Task.Yield();
+
+        Assert.Equal(1, sync.SyncCallCount);
+    }
+
+    /// <summary>
+    /// The pull landing must not throw the user out of their place in the list. A reload builds
+    /// every row afresh from the store, so the selected row stops existing as an object and the
+    /// list would drop its selection — and keyboard focus — back to the top, mid-read.
+    /// </summary>
+    [Fact]
+    public async Task AnExternalUpdate_KeepsTheSelectedAppointment()
+    {
+        var start = DateTime.UtcNow.AddDays(2).Ticks;
+        CalendarEvent Row() => new()
+        {
+            Uid = "evt-1", AccountId = CalendarEvent.LocalAccountId, Summary = "Standup",
+            StartTimeTicks = start, ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+        var store = new StubCalendarService { StoredEvents = [Row()] };
+        var calendarVm = new CalendarViewModel(store, onlineMode: false, showDeclinedEvents: false,
+                                               showFieldLabels: false);
+        await calendarVm.LoadAsync();
+        var before = calendarVm.SelectedEvent;
+        Assert.NotNull(before);
+
+        // What a server pull does: the same appointment, rebuilt as a different object.
+        store.StoredEvents = [Row()];
+        calendarVm.ApplyFiltersFromExternalUpdate();
+
+        Assert.NotNull(calendarVm.SelectedEvent);
+        Assert.Equal("evt-1", calendarVm.SelectedEvent!.Uid);
+        // The new object, not the stale one it was holding.
+        Assert.NotSame(before, calendarVm.SelectedEvent);
+        Assert.Contains(calendarVm.SelectedEvent, calendarVm.VisibleEvents);
     }
 }
