@@ -459,6 +459,61 @@ public class GraphCalendarSyncServiceTests : IDisposable
 
     // ── Create push (POST /me/events) ────────────────────────────────────────────
 
+    /// <summary>
+    /// A new appointment is tagged with the calendar it landed on (#569).
+    ///
+    /// POST /me/events files into the account's default calendar, and the read-down tags every row
+    /// with its calendar's real id — so an untagged created row fails the per-calendar folder-tree
+    /// node's filter and is invisible while the user is looking at that node, until the next
+    /// sync's replace-slice restamps it. That is the "press F5 and now it shows up" the issue
+    /// reports.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_TagsTheRowWithTheDefaultCalendar()
+    {
+        var handler = new RecordingHandler(
+            Json(EventJson("srv-1", "Board meeting", "2026-08-01T14:00:00.0000000",
+                           "2026-08-01T15:00:00.0000000")),
+            Json(@"{ ""value"": [ { ""id"": ""cal-other"", ""name"": ""Team"", ""isDefaultCalendar"": false }, { ""id"": ""cal-default"", ""name"": ""Calendar"", ""isDefaultCalendar"": true } ] }"));
+
+        await Service(handler).CreateEventAsync(GraphAccount(), new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Board meeting",
+            StartTimeTicks = new DateTime(2026, 8, 1, 14, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+        }, TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("cal-default", row.CalendarId);
+        Assert.Equal("Calendar", row.CalendarName);
+    }
+
+    /// <summary>
+    /// Editing a synced appointment keeps its calendar tag. The edit used to map the server's reply
+    /// with no calendar id at all, wiping the tag to empty — so an appointment the user had just
+    /// edited dropped out of its own calendar's node until the next sync put it back. The Google
+    /// update path has preserved the tag all along; this is the Microsoft counterpart.
+    /// </summary>
+    [Fact]
+    public async Task UpdateEvent_KeepsTheCalendarTag()
+    {
+        var handler = new RecordingHandler(
+            Json(EventJson("srv-1", "Board meeting (moved)", "2026-08-01T15:00:00.0000000",
+                           "2026-08-01T16:00:00.0000000")));
+
+        await Service(handler).UpdateEventAsync(GraphAccount(), new CalendarEvent
+        {
+            Uid = "srv-1", AccountId = _accountId, Summary = "Board meeting (moved)",
+            CalendarId = "cal-team", CalendarName = "Team",
+            StartTimeTicks = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 16, 0, 0, DateTimeKind.Utc).Ticks,
+        }, TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("cal-team", row.CalendarId);
+        Assert.Equal("Team", row.CalendarName);
+    }
+
     [Fact]
     public async Task CreateEvent_Timed_PostsExpectedShape_AndStoresServerCopy()
     {
@@ -476,8 +531,11 @@ public class GraphCalendarSyncServiceTests : IDisposable
 
         var created = await service.CreateEventAsync(GraphAccount(), evt, TestContext.Current.CancellationToken);
 
-        Assert.Equal("POST", Assert.Single(handler.Methods));
+        // Two requests: the create, then the calendar-list lookup that tags the stored row with
+        // the calendar POST /me/events filed into (#569).
+        Assert.Equal(["POST", "GET"], handler.Methods);
         Assert.EndsWith("/me/events", handler.Urls[0]);
+        Assert.Contains("isDefaultCalendar", handler.Urls[1]);
         // Prefer header carries the machine's Windows zone (see Sync test); the body below still
         // sends explicit UTC start/end, so the created event's times are unambiguous.
         Assert.Equal($"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"", handler.PreferHeaders[0]);

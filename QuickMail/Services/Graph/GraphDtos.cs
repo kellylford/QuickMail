@@ -176,6 +176,13 @@ internal sealed class GraphCalendar
 {
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
     [JsonPropertyName("name")] public string? Name { get; set; }
+
+    /// <summary>
+    /// True for the calendar <c>POST /me/events</c> files into. A created event has to be tagged
+    /// with that calendar's real id, or it will not match the per-calendar folder-tree node the
+    /// user may be looking at (#569).
+    /// </summary>
+    [JsonPropertyName("isDefaultCalendar")] public bool IsDefaultCalendar { get; set; }
 }
 
 /// <summary>

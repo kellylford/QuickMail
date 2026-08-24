@@ -387,6 +387,47 @@ public class GoogleCalendarSyncTests : IDisposable
         Assert.DoesNotContain("/calendars/primary/", handler.Urls[0]);
     }
 
+    /// <summary>
+    /// A new appointment is TAGGED with the primary calendar's real id, not with the "primary"
+    /// alias the write used (#569).
+    ///
+    /// The alias is fine to write through, but it is not what anything else calls that calendar:
+    /// the read-down tags its rows with the real id, and so does the folder tree's per-calendar
+    /// node. A row left tagged "primary" therefore fails that node's filter and is invisible while
+    /// the user is looking at it — until the next sync's replace-slice restamps it with the real id
+    /// and it appears, which is exactly the "press F5 and now it shows up" the issue describes.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_TagsTheRowWithThePrimaryCalendarsRealId()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"), Json(@"{ ""items"": [ { ""id"": ""fam123@group.calendar.google.com"", ""summary"": ""Family"" }, { ""id"": ""kelly@gmail.com"", ""summary"": ""Kelly"", ""primary"": true } ] }"));
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("kelly@gmail.com", row.CalendarId);
+        Assert.Equal("Kelly", row.CalendarName);   // so the Calendar column reads right at once
+    }
+
+    /// <summary>
+    /// The tag is a display concern, and the appointment is already on the server by the time it is
+    /// resolved, so a calendar list that cannot be fetched must not cost the user their save. The
+    /// row falls back to what it was tagged with before this existed.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_WhenTheCalendarListFails_StillStoresTheAppointment()
+    {
+        var handler = new RecordingHandler(
+            GoogleEventResponse("gid-new"), Json("nope", HttpStatusCode.InternalServerError));
+
+        var created = await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                              TestContext.Current.CancellationToken);
+
+        Assert.Equal("gid-new", created.Uid);
+        Assert.Equal("gid-new", Assert.Single(await _store.LoadCalendarEventsAsync()).Uid);
+    }
+
     [Fact]
     public async Task CreateEvent_BlankCalendarId_FallsBackToPrimary()
     {
