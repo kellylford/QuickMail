@@ -1618,7 +1618,11 @@ public class LocalStoreService : ILocalStoreService
         // tree show this order and are read down by ear, so it has to be the order a person would
         // put them in. Sorting the combined list also stops the recorded accounts from bunching
         // ahead of the un-enumerated ones.
+#pragma warning disable CA1309 // Ordinal is what this must NOT be: see the paragraph above — the
+        // order is read aloud, so it has to be the one the user's own language puts names in, not
+        // the one their code points fall in. This is display order, never a lookup key.
         list.Sort((a, b) => string.Compare(a.CalendarName, b.CalendarName, StringComparison.CurrentCultureIgnoreCase));
+#pragma warning restore CA1309
         return list;
     }
 
