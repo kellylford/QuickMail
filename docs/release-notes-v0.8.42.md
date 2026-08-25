@@ -228,6 +228,22 @@ was the only thing that put it right.
 The count now updates as the mail does, on Microsoft 365 accounts as it already did on IMAP ones.
 ([#491](https://github.com/kellylford/QuickMail/issues/491))
 
+## Fixed: the Applications key did not open a context menu on an attachment
+
+The **Applications** key — the one some keyboards still carry between the right Alt and Ctrl keys —
+did nothing on the attachment list. A menu was announced and then gone again before anything could be
+done with it, which left **Shift+F10** as the only way in.
+
+The two keys reach a program differently: Windows turns Shift+F10 into a request for a context menu
+as the key goes down, and the Applications key into one as the key comes back up. The attachment list
+was opening its own menu on the way down, so with the Applications key a second request arrived a
+moment later and closed what had just opened.
+
+The attachment list now leaves that key to Windows, the way every other list in QuickMail already
+did. Both keys open the same menu — **Save…**, **Save All…**, **Open** — in the reading pane and in
+an open message window alike.
+([#631](https://github.com/kellylford/QuickMail/issues/631))
+
 ## Changed: Sign in is now the last thing you tab to
 
 In both **Add Account** and **Manage Accounts**, the **Sign in with Microsoft…** / **Sign in with
