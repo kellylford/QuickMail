@@ -5,30 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QuickMail Privacy Policy</title>
   <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --text: #24292e;
+      --muted: #586069;
+      --rule: #e1e4e8;
+      --link: #0969da;
+      --code-bg: #f6f8fa;
+      --callout-bg: #f1f8ff;
+      --callout-edge: #0366d6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --text: #e6edf3;
+        --muted: #9198a1;
+        --rule: #30363d;
+        --link: #6cb6ff;
+        --code-bg: #161b22;
+        --callout-bg: #12233a;
+        --callout-edge: #4493f8;
+      }
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       font-size: 16px;
       line-height: 1.6;
-      color: #24292e;
+      background: var(--bg);
+      color: var(--text);
       max-width: 760px;
       margin: 0 auto;
       padding: 2rem 1.5rem 4rem;
     }
-    h1 { font-size: 2rem; border-bottom: 1px solid #e1e4e8; padding-bottom: 0.5rem; }
-    h2 { font-size: 1.25rem; margin-top: 2rem; }
+    a { color: var(--link); }
+    h1 { font-size: 2rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.5rem; }
+    h2 { font-size: 1.35rem; margin-top: 2.5rem; }
+    h3 { font-size: 1.1rem; margin-top: 1.75rem; }
     p, li { margin-top: 0.5rem; }
     ul { padding-left: 1.5rem; }
     code {
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 0.9em;
-      background: #f6f8fa;
+      background: var(--code-bg);
       padding: 0.1em 0.4em;
       border-radius: 3px;
     }
-    .effective { color: #586069; font-size: 0.9rem; margin-top: -0.5rem; }
+    table { border-collapse: collapse; width: 100%; margin: 1.25rem 0; }
+    th, td { border: 1px solid var(--rule); padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: var(--code-bg); font-weight: 600; }
+    .table-scroll { overflow-x: auto; }
+    .nav { margin-bottom: 2rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--rule); font-size: 0.9rem; }
+    .nav a { margin-right: 1em; }
+    .effective { color: var(--muted); font-size: 0.9rem; margin-top: -0.5rem; }
     .callout {
-      border-left: 4px solid #0366d6;
-      background: #f1f8ff;
+      border-left: 4px solid var(--callout-edge);
+      background: var(--callout-bg);
       padding: 0.75rem 1rem;
       margin: 1.5rem 0;
       border-radius: 0 4px 4px 0;
@@ -37,71 +69,140 @@
 </head>
 <body>
 
+<div class="nav">
+  <a href="index.html">User Guide</a>
+  <a href="https://github.com/kellylford/QuickMail">QuickMail on GitHub</a>
+</div>
+
 <h1>QuickMail Privacy Policy</h1>
-<p class="effective">Effective date: June 17, 2026</p>
+<p class="effective">Effective date: August 25, 2026. Replaces the version dated June 17, 2026.</p>
 
 <div class="callout">
-  <strong>Short version:</strong> QuickMail is a local desktop application with no servers. Your email stays on your device. Nothing you read, write, or receive through QuickMail is transmitted to the developer or any third party by the application.
+  <strong>Short version:</strong> QuickMail is a Windows desktop application with no servers of its own.
+  Your mail, contacts, and calendar travel between your computer and the accounts you already have.
+  Nothing you read, write, or receive is sent to the developer, and QuickMail collects no analytics or
+  telemetry. The only information that ever reaches the developer is a bug report you choose to send —
+  and you see its full text before it goes.
 </div>
 
 <h2>What QuickMail is</h2>
 <p>
-  QuickMail is a free, open-source Windows desktop email client. It runs entirely on your computer.
-  There are no QuickMail servers, no accounts to create with the developer, and no cloud sync.
+  QuickMail is a free, open-source Windows desktop email client, built to be used with a keyboard and
+  with screen readers. It runs entirely on your computer. There are no QuickMail servers that hold your
+  mail, there is no account to create with the developer, and there is no cloud sync. QuickMail's source
+  code is public at
+  <a href="https://github.com/kellylford/QuickMail">github.com/kellylford/QuickMail</a>, so every claim on
+  this page can be checked against the code that makes it.
 </p>
 
-<h2>Information QuickMail accesses</h2>
-
-<h3>Email account credentials</h3>
+<h2>What QuickMail stores, and where</h2>
 <p>
-  QuickMail connects to your email provider on your behalf. For standard IMAP/SMTP accounts,
-  your password is stored in <strong>Windows Credential Manager</strong> — a secure, encrypted
-  store built into Windows — and is never written to disk in plain text.
+  Everything QuickMail keeps is stored on your computer, in your profile directory — normally
+  <code>%APPDATA%\QuickMail</code>. Nothing in that folder is uploaded anywhere by QuickMail.
+</p>
+<div class="table-scroll">
+<table>
+  <caption class="effective">Files QuickMail writes to your profile directory</caption>
+  <thead>
+    <tr><th>File</th><th>What it holds</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>mail.db</code></td><td>The local SQLite cache of messages you have synced — headers and message bodies, so mail can be read and searched without waiting on the network.</td></tr>
+    <tr><td><code>accounts.json</code></td><td>Your account settings: email addresses, server names, ports, security settings, signatures, and display preferences. <strong>Never passwords.</strong></td></tr>
+    <tr><td><code>contacts.json</code>, <code>groups.json</code></td><td>Contacts you typed in yourself, contact groups, and the read-only copies of contacts synced from accounts you opted in.</td></tr>
+    <tr><td>Calendar data</td><td>Events copied from calendars you have connected, so the calendar works offline.</td></tr>
+    <tr><td><code>config.ini</code></td><td>Your settings: theme, fonts, announcement preferences, keyboard customizations, saved views, and message-list field choices.</td></tr>
+    <tr><td><code>rules.json</code>, templates, flags</td><td>Mail rules, message templates, and the named flags you create. Mail rules run inside QuickMail only; your provider never sees them.</td></tr>
+    <tr><td><code>quickmail.log</code>, <code>connection.log</code></td><td>Diagnostic logs. Both are off by default — see <a href="#logs">Logs, diagnostics, and screenshots</a>.</td></tr>
+    <tr><td><code>debug-screenshots\</code></td><td>Window screenshots, written only while the debug capture option is switched on. See <a href="#logs">Logs, diagnostics, and screenshots</a>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Passwords, app passwords, and sign-in tokens</h2>
+<p>
+  QuickMail never writes a password or a token to <code>accounts.json</code> or to any other file in your
+  profile directory. Passwords and app-specific passwords are stored in
+  <strong>Windows Credential Manager</strong> — the encrypted credential store built into Windows —
+  under your Windows account.
 </p>
 <p>
-  For Gmail accounts, QuickMail uses Google OAuth 2.0. You sign in through Google's own
-  sign-in page; QuickMail never sees your Google password. Google issues QuickMail a refresh
-  token, which is stored in Windows Credential Manager on your device. QuickMail uses this
-  token to request short-lived access tokens from Google in order to read and send your email.
+  Accounts that sign in with Microsoft or Google use OAuth 2.0 instead of a password. You sign in on the
+  provider's own page; QuickMail never sees your provider password. The provider issues QuickMail a
+  refresh token, which is also stored in Windows Credential Manager on your device and is used to request
+  the short-lived access tokens that each connection needs. Removing the account in QuickMail deletes the
+  stored token.
 </p>
 
-<h3>Email content</h3>
+<h2>Your mail, contacts, and calendar</h2>
 <p>
-  QuickMail reads your email so you can read it. Message content is processed locally and
-  cached in a SQLite database on your device at
-  <code>%APPDATA%\QuickMail</code>. This content is never transmitted to the developer
-  or any third party.
+  QuickMail connects directly to the mail, contact, and calendar services of the accounts you add — over
+  IMAP, POP3, and SMTP, over Microsoft Graph, or over CalDAV and CardDAV, depending on the account. There
+  is no intermediary. Message content is processed on your computer and cached in <code>mail.db</code>.
 </p>
-
-<h3>Log file</h3>
+<ul>
+  <li><strong>Mail</strong> is read, sent, moved, and deleted as you direct, against your own provider.</li>
+  <li><strong>Contacts</strong> synced from an account are <strong>read-only</strong>: QuickMail copies them down and never writes back.</li>
+  <li><strong>Calendar events</strong> can be read, created, edited, and deleted on calendars you have connected, as you direct.</li>
+  <li><strong>Contact sync and calendar sync are opt-in per account.</strong> If you do not turn them on, QuickMail does not request permission for them and does not read them.</li>
+</ul>
 <p>
-  When the <code>/debug</code> startup flag is used, QuickMail writes a log file
-  (<code>quickmail.log</code>) to your profile directory to help with troubleshooting.
-  This file records connection events and errors. It does not record email content,
-  passwords, or OAuth tokens.
+  <strong>Remote content in messages is blocked.</strong> The reading pane renders HTML mail under a strict
+  Content Security Policy that permits no images, scripts, frames, forms, media, or network connections of
+  any kind. A message cannot load a tracking pixel, phone home, or report that you opened it. Links you
+  activate deliberately open in your default browser, which is the only way remote content is ever fetched
+  on behalf of a message.
 </p>
 
 <h2>Google user data — specific disclosures</h2>
-<p>QuickMail requests the following Google OAuth scope when you add a Gmail account:</p>
-<ul>
-  <li>
-    <code>https://mail.google.com/</code> — full Gmail access (read, compose, send, delete),
-    required to function as an email client
-  </li>
-</ul>
+<p>
+  Signing in with Google is <strong>off by default</strong> and applies only to accounts that already had a
+  Google authorization; new Gmail accounts normally connect with an app password over IMAP and SMTP. Where
+  Google sign-in is used, QuickMail requests these Google OAuth scopes:
+</p>
+<div class="table-scroll">
+<table>
+  <thead>
+    <tr><th>Scope</th><th>When requested</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>https://mail.google.com/</code></td>
+      <td>Whenever a Gmail account signs in with Google</td>
+      <td>Full Gmail access (read, compose, send, organize, delete) — required to function as an email client</td>
+    </tr>
+    <tr>
+      <td><code>openid</code>, <code>email</code></td>
+      <td>Whenever a Gmail account signs in with Google</td>
+      <td>Confirms which address you signed in as, so the account is set up for the right mailbox</td>
+    </tr>
+    <tr>
+      <td><code>https://www.googleapis.com/auth/calendar</code></td>
+      <td>Interactive sign-in, for calendar features</td>
+      <td>Read your Google Calendar and create, edit, and delete events you act on in QuickMail</td>
+    </tr>
+    <tr>
+      <td><code>https://www.googleapis.com/auth/contacts.readonly</code><br>
+          <code>https://www.googleapis.com/auth/contacts.other.readonly</code></td>
+      <td>Only when you opt that account into contact sync</td>
+      <td>Read your saved contacts and previously used recipients, so addresses autocomplete and appear in the address book</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 <p>QuickMail uses this access <strong>only</strong> to:</p>
 <ul>
-  <li>Display your email messages</li>
+  <li>Display your email messages, contacts, and calendar events</li>
   <li>Send messages on your behalf when you choose to send them</li>
-  <li>Manage message state (read/unread, move, delete) as you direct</li>
+  <li>Manage message state (read/unread, move, delete) and calendar events as you direct</li>
 </ul>
 <p>QuickMail does <strong>not</strong>:</p>
 <ul>
-  <li>Share your Gmail data with any person or service</li>
-  <li>Use your Gmail data for advertising, profiling, or any purpose other than operating the email client</li>
+  <li>Share your Google data with any person or service</li>
+  <li>Use your Google data for advertising, profiling, or any purpose other than operating the email client</li>
   <li>Allow any human to read your email content</li>
-  <li>Store your Gmail data anywhere other than your local device</li>
-  <li>Transfer your Gmail data to AI tools or train machine learning models with it</li>
+  <li>Store your Google data anywhere other than your local device</li>
+  <li>Transfer your Google data to AI tools, or use it to develop, improve, or train generalized or non-personalized AI or machine learning models</li>
 </ul>
 <p>
   QuickMail's use and transfer of information received from Google APIs adheres to the
@@ -109,36 +210,229 @@
   including the Limited Use requirements.
 </p>
 
-<h3>Revoking access</h3>
+<h3>Revoking Google access</h3>
 <p>
-  To revoke QuickMail's access to your Gmail account at any time, visit
-  <a href="https://myaccount.google.com/permissions">Google Account Permissions</a>
-  and remove QuickMail. You can also sign out from within the application, which
-  immediately deletes the stored refresh token from Windows Credential Manager.
+  To revoke QuickMail's access to your Google account at any time, visit
+  <a href="https://myaccount.google.com/permissions">Google Account Permissions</a> and remove QuickMail.
+  Removing the account in QuickMail immediately deletes the stored refresh token from Windows Credential
+  Manager on your computer.
+</p>
+
+<h2>Microsoft user data — specific disclosures</h2>
+<p>
+  Outlook.com, Hotmail, Live, and Microsoft 365 work or school accounts sign in through the Microsoft
+  identity platform. Depending on how the account connects, QuickMail requests:
+</p>
+<div class="table-scroll">
+<table>
+  <thead>
+    <tr><th>Permission</th><th>When requested</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>IMAP.AccessAsUser.All</code>, <code>SMTP.Send</code> (Outlook)</td>
+      <td>Accounts connecting over IMAP and SMTP with a Microsoft sign-in</td>
+      <td>Read and send mail over the standard protocols</td>
+    </tr>
+    <tr>
+      <td><code>Mail.ReadWrite</code>, <code>Mail.Send</code>, <code>User.Read</code> (Graph)</td>
+      <td>Any account connecting over Graph, personal or work/school</td>
+      <td>Read, organize, and send mail; confirm which mailbox you signed in as</td>
+    </tr>
+    <tr>
+      <td><code>MailboxSettings.ReadWrite</code> (Graph)</td>
+      <td>Work or school accounts</td>
+      <td>Read and write the server-side mail rules QuickMail shows you</td>
+    </tr>
+    <tr>
+      <td><code>Mail.ReadWrite.Shared</code>, <code>Mail.Send.Shared</code> (Graph)</td>
+      <td>Only when you add a shared mailbox</td>
+      <td>Read and send from a shared mailbox your organization has given you access to</td>
+    </tr>
+    <tr>
+      <td><code>Contacts.Read</code>, <code>People.Read</code> (Graph)</td>
+      <td>Only when you opt that account into contact sync</td>
+      <td>Read your saved contacts and prior correspondents, read-only</td>
+    </tr>
+    <tr>
+      <td><code>Calendars.ReadWrite</code> (Graph)</td>
+      <td>Only when you connect that account's calendar</td>
+      <td>Read your calendars and create, edit, and delete events you act on in QuickMail</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p>
+  As with Google, this access is used only to operate the email, contacts, and calendar features you see.
+  Microsoft data is not shared with anyone, is not used for advertising or profiling, is not used to train
+  machine learning models, and is not stored anywhere but your computer. To revoke access, visit
+  <a href="https://myaccount.microsoft.com/settings">your Microsoft account settings</a> (work and school
+  accounts: your organization's administrator can also revoke consent), or remove the account in QuickMail,
+  which deletes the stored token.
+</p>
+
+<h2>iCloud accounts</h2>
+<p>
+  iCloud mail connects over IMAP and SMTP, and iCloud contacts and calendars over CardDAV and CalDAV, using
+  an app-specific password that you generate at Apple and that QuickMail stores in Windows Credential
+  Manager. QuickMail talks to Apple's servers directly; nothing passes through the developer.
+</p>
+
+<h2>What leaves your computer, and to whom</h2>
+<p>These are every network destination QuickMail contacts, and what is sent to each.</p>
+<div class="table-scroll">
+<table>
+  <thead>
+    <tr><th>Destination</th><th>When</th><th>What is sent</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Your own mail, contact, and calendar servers</td>
+      <td>Whenever QuickMail syncs, sends, or you act on an item</td>
+      <td>Your credentials or token, and the mail, contact, and calendar data of that account</td>
+    </tr>
+    <tr>
+      <td>Microsoft (<code>login.microsoftonline.com</code>) and Google (<code>accounts.google.com</code>) sign-in pages</td>
+      <td>When you sign in or a token is refreshed</td>
+      <td>Whatever you type on the provider's own sign-in page, and token refresh requests. QuickMail never sees your provider password.</td>
+    </tr>
+    <tr>
+      <td>Mozilla's public autoconfig database (<code>autoconfig.thunderbird.net</code>)</td>
+      <td>Adding an account whose provider QuickMail does not recognize</td>
+      <td>The <strong>domain</strong> of your address only — never the address itself</td>
+    </tr>
+    <tr>
+      <td>Your domain's own Autodiscover service</td>
+      <td>Same lookup, if the previous step found nothing</td>
+      <td>Your full email address, sent to your own mail provider's server</td>
+    </tr>
+    <tr>
+      <td>Cloudflare's public DNS resolver (<code>cloudflare-dns.com</code>)</td>
+      <td>Same lookup, if the previous steps found nothing</td>
+      <td>The <strong>domain</strong> of your address, in a DNS-over-HTTPS query for its MX and autodiscover records</td>
+    </tr>
+    <tr>
+      <td>GitHub (<code>api.github.com</code>, <code>github.com</code>)</td>
+      <td>Each time QuickMail starts, to check for a newer release; and to download an update</td>
+      <td>A request for the public release list, identified only by the QuickMail version in the user agent. No account, mail, or usage data.</td>
+    </tr>
+    <tr>
+      <td>QuickMail's bug-report relay (a Cloudflare Worker)</td>
+      <td><strong>Only</strong> when you choose <strong>Send</strong> in Report a Bug</td>
+      <td>The report you wrote and previewed — see <a href="#bug-reports">Bug reports</a></td>
+    </tr>
+    <tr>
+      <td>Your default browser</td>
+      <td>When you activate a link, open the user guide, or open a release page</td>
+      <td>Whatever the browser sends for the address you opened. Once a link is handed to the browser it is outside QuickMail.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p>
+  The three lookup steps that go to Mozilla, your domain's Autodiscover service, and Cloudflare's DNS
+  resolver can all be switched off: set <code>AutoDiscoverOnline = off</code> in <code>config.ini</code>.
+  QuickMail's built-in provider list keeps working offline either way. The update check can be reduced to
+  notification-only in <strong>Settings → Advanced → Updates</strong>.
+</p>
+
+<h2 id="bug-reports">Bug reports</h2>
+<p>
+  <strong>Report a Bug</strong> in the Help menu is the one feature that sends anything to the developer,
+  and it sends nothing unless you fill it in and choose to send it. The report window shows a
+  <strong>Preview</strong> of the complete text as you type, so you see exactly what will be sent before it
+  leaves your computer.
+</p>
+<p>A report contains:</p>
+<ul>
+  <li>What you typed: a summary and what happened, plus — if you fill them in — what you expected and steps to reproduce</li>
+  <li>An environment section: the QuickMail version, your Windows version, the .NET runtime version, the
+      active theme, the current view, the current sort order, and the message open mode</li>
+</ul>
+<p>A report never contains:</p>
+<ul>
+  <li>Message content, subjects, or email addresses</li>
+  <li>Your account settings, server names, passwords, or tokens</li>
+  <li>Any part of the log files or any screenshot</li>
+  <li>Your name or contact details — QuickMail does not ask for them, so a sent report is anonymous and
+      cannot be followed up</li>
+</ul>
+<p>
+  <strong>A sent report becomes a public GitHub issue</strong> on the QuickMail repository, filed by a bot
+  account, and is readable by anyone. Do not type anything into a report you would not publish. The report
+  travels through a small relay service (a Cloudflare Worker run for this purpose), which holds the
+  credential that files the issue and rate-limits requests by IP address; it stores no report content of its
+  own. If the relay is unavailable, QuickMail falls back to copying the report to your clipboard and opening
+  a pre-filled GitHub issue page, which you submit yourself.
+</p>
+<p>
+  The Help menu also offers <strong>Copy report and open GitHub</strong>, which files under your own GitHub
+  account, and you can email <a href="mailto:quickmailissues@theideaplace.net">quickmailissues@theideaplace.net</a>
+  instead. Both attach your identity by design, so a reply is possible; the in-app <strong>Send</strong> path
+  does not.
+</p>
+
+<h2 id="logs">Logs, diagnostics, and screenshots</h2>
+<p>
+  All of QuickMail's diagnostic outputs stay on your computer. None of them is uploaded, and none is
+  attached to a bug report.
+</p>
+<ul>
+  <li>
+    <strong>Application log</strong> (<code>quickmail.log</code>) — off by default. Turn it on in
+    <strong>Settings → Advanced → QuickMail Logging</strong>, or start QuickMail with the
+    <code>/debug</code> flag, which forces it on for that session. It records activity and errors, which
+    can include your own account labels, email addresses, folder names, and server names. It does not
+    record message content, passwords, or tokens.
+  </li>
+  <li>
+    <strong>Connection diagnostics</strong> (<code>connection.log</code>) — off by default. Records how
+    QuickMail connects to your mail servers, including server names and connection outcomes.
+  </li>
+  <li>
+    <strong>Debug window screenshots</strong> — off by default and a developer aid. While on, QuickMail
+    saves a picture of each window as it opens, and those pictures can contain whatever was on screen,
+    including message content. The setting lasts for one session and switches itself off when QuickMail
+    closes.
+  </li>
+</ul>
+<p>
+  <strong>Delete QuickMail logs</strong> in <strong>Settings → Advanced</strong> deletes all three
+  immediately: the application log, the connection log, and every saved screenshot.
 </p>
 
 <h2>Analytics and telemetry</h2>
-<p>QuickMail collects no analytics, usage statistics, or telemetry of any kind.</p>
+<p>
+  QuickMail collects no analytics, usage statistics, crash reporting, or telemetry of any kind. There is no
+  identifier assigned to you or to your installation, and nothing reports that QuickMail has been launched
+  or used. The update check asks GitHub for a public list of releases; that is the whole of QuickMail's
+  routine contact with anything the developer runs.
+</p>
 
 <h2>Data retention and deletion</h2>
 <p>
-  All data QuickMail stores — the local email cache, settings, and credential tokens —
-  is stored on your device under <code>%APPDATA%\QuickMail</code>. You can delete this
-  folder at any time to remove all locally stored data. Uninstalling QuickMail does not
-  automatically delete this folder.
+  The developer holds no data about you, so there is nothing to request or erase — except a bug report you
+  chose to send, which is a public GitHub issue you can ask to have deleted by emailing the address at the
+  bottom of this page.
+</p>
+<p>
+  Everything else is on your computer and under your control. To remove all of it, delete the
+  <code>%APPDATA%\QuickMail</code> folder, and remove QuickMail's saved credentials from Windows Credential
+  Manager. Uninstalling QuickMail does not delete either automatically. To cut a provider's connection at
+  the provider's end, revoke access as described in the Google and Microsoft sections above.
 </p>
 
 <h2>Children's privacy</h2>
 <p>
-  QuickMail is not directed at children under 13 and does not knowingly collect
-  information from children.
+  QuickMail is not directed at children under 13 and does not knowingly collect information from children.
 </p>
 
 <h2>Changes to this policy</h2>
 <p>
-  If this policy changes materially, the updated policy will be published at this URL
-  with a new effective date. The history of changes is visible in the
-  <a href="https://github.com/kellylford/QuickMail">QuickMail GitHub repository</a>.
+  If this policy changes materially, the updated policy will be published at this URL with a new effective
+  date. Every revision is visible in the
+  <a href="https://github.com/kellylford/QuickMail/commits/main/docs/privacy.html">file's history</a> in the
+  QuickMail GitHub repository.
 </p>
 
 <h2>Contact</h2>
