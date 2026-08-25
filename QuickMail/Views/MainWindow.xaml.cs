@@ -3659,15 +3659,18 @@ public partial class MainWindow : Window
             focusItem.Focus();
     }
 
-    // Shift+F10 / Apps: open the attachment ContextMenu directly so the window-level
+    // Shift+F10: open the attachment ContextMenu directly so the window-level
     // OnWindowContextMenuOpening fallback cannot intercept and open the message menu instead.
+    // The Applications key is deliberately NOT handled here — Windows raises WM_CONTEXTMENU for it
+    // on key up, so opening the menu on key down only gets it torn down again (issue #631). See
+    // ContextMenuKeys for the full account.
     // Enter opens the selected attachment; Alt+Enter shows its properties.
     private void ReadingPaneAttachmentList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         LogService.Debug($"[ATTLOG] RPAttachList_PreviewKeyDown: eKey={e.Key}, sysKey={e.SystemKey}, computed={key}, mod={e.KeyboardDevice.Modifiers}");
 
-        if ((key == Key.F10 && e.KeyboardDevice.Modifiers == ModifierKeys.Shift) || key == Key.Apps)
+        if (ContextMenuKeys.OpensMenuOnKeyDown(key, e.KeyboardDevice.Modifiers))
         {
             LogService.Debug($"[ATTLOG] RPAttachList_PreviewKeyDown: opening ContextMenu directly, IsNull={ReadingPaneAttachmentList.ContextMenu == null}");
             if (ReadingPaneAttachmentList.ContextMenu != null)
