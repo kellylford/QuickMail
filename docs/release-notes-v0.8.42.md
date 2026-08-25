@@ -130,6 +130,37 @@ This applies everywhere these fields are used — the **Starts** and **Ends** da
 repeat interval and **until** date, and **Go to Date** (**Ctrl+G**) in the calendar.
 ([#570](https://github.com/kellylford/QuickMail/issues/570))
 
+## New: choose which calendar an appointment goes on
+
+Until now an appointment saved to a Microsoft or Google account always landed on that account's
+default calendar. There was no way to file one on **Team**, or on **Family**, short of moving it
+afterwards in Outlook or Gmail. iCloud accounts have offered a choice for a while; the other two
+now do too.
+
+The **Calendar** picker in the appointment editor lists your **Local Calendar** first, then every
+calendar you can write to on each connected account, named account-first: **Work: Team**,
+**Apple: Family**. Microsoft and Google accounts also get an entry for the account itself —
+**Work (default calendar)** — for when you do not mind which calendar it lands on and would rather
+it follow whatever you have set on the provider's own site. iCloud has no such entry, because an
+iCloud appointment always names the calendar it goes on.
+
+The picker still starts on your default calendar if you have set one, whether you set that to a
+whole account or to a single calendar under it.
+
+Two things worth knowing:
+
+- **Calendars you only subscribe to are left out.** A holidays feed, or someone else's calendar
+  shared with you to read, cannot have appointments added to it, so offering it could only lead to a
+  save that was refused. They keep their place in the folder tree, which is where reading them
+  happens.
+- **A calendar you have not put anything in yet is offered like any other.** QuickMail now keeps
+  each account's real list of calendars rather than working out which calendars exist from the
+  appointments already in them — so an empty calendar is somewhere you can file the first one.
+  Those calendars also appear in the folder tree now, where before an empty one was missing
+  entirely.
+
+([#569](https://github.com/kellylford/QuickMail/issues/569))
+
 ## Fixed: a new appointment was missing from the calendar it was filed on
 
 If you had one of your calendars selected in the folder tree — not **Calendar** at the top, but a

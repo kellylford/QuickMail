@@ -388,6 +388,29 @@ public class GoogleCalendarSyncTests : IDisposable
     }
 
     /// <summary>
+    /// The sync records the account's calendar list, with writability. A subscribed feed comes back
+    /// with accessRole "reader" and must not be offered as somewhere to file an appointment; a
+    /// calendar with no events in the window is still offerable.
+    /// </summary>
+    [Fact]
+    public async Task Sync_RecordsTheCalendarList_WithWritability()
+    {
+        var handler = new RecordingHandler(
+            Json(@"{ ""items"": [
+                     { ""id"": ""kelly@gmail.com"", ""summary"": ""Kelly"", ""primary"": true, ""accessRole"": ""owner"" },
+                     { ""id"": ""fam123@group.calendar.google.com"", ""summary"": ""Family"", ""accessRole"": ""writer"" },
+                     { ""id"": ""holidays@group.v.calendar.google.com"", ""summary"": ""Holidays"", ""accessRole"": ""reader"" } ] }"));
+
+        await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        var sources = await _store.LoadCalendarSourcesAsync();
+        Assert.Equal(3, sources.Count);
+        Assert.Contains(sources, s => s.CalendarId == "kelly@gmail.com" && s.CanWrite);
+        Assert.Contains(sources, s => s.CalendarId == "fam123@group.calendar.google.com" && s.CanWrite);
+        Assert.Contains(sources, s => s.CalendarId == "holidays@group.v.calendar.google.com" && !s.CanWrite);
+    }
+
+    /// <summary>
     /// A new appointment is TAGGED with the primary calendar's real id, not with the "primary"
     /// alias the write used (#569).
     ///

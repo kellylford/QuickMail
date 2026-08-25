@@ -489,6 +489,61 @@ public class GraphCalendarSyncServiceTests : IDisposable
     }
 
     /// <summary>
+    /// An appointment filed to a chosen calendar is POSTed to that calendar. <c>POST /me/events</c>
+    /// only ever files into the account's default, so it cannot honour the editor's Calendar picker
+    /// — an appointment the user filed to Team would land on Calendar and quietly move.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_OnAChosenCalendar_PostsToThatCalendar_AndTagsItWithIt()
+    {
+        var handler = new RecordingHandler(
+            Json(EventJson("srv-1", "Standup", "2026-08-01T14:00:00.0000000",
+                           "2026-08-01T15:00:00.0000000")));
+
+        await Service(handler).CreateEventAsync(GraphAccount(), new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Standup",
+            CalendarId = "cal-team", CalendarName = "Team",
+            StartTimeTicks = new DateTime(2026, 8, 1, 14, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+        }, TestContext.Current.CancellationToken);
+
+        Assert.EndsWith("/me/calendars/cal-team/events", handler.Urls[0]);
+        // One request only: the calendar is known, so there is nothing to look up.
+        Assert.Equal("POST", Assert.Single(handler.Methods));
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("cal-team", row.CalendarId);
+        Assert.Equal("Team", row.CalendarName);
+    }
+
+    /// <summary>
+    /// The sync records the account's calendar LIST, not just the calendars that turn out to have
+    /// events. A calendar with nothing in it is still one the first appointment can be filed into,
+    /// and only the list says whether a calendar can be written to at all.
+    /// </summary>
+    [Fact]
+    public async Task Sync_RecordsTheCalendarList_IncludingEmptyAndReadOnlyCalendars()
+    {
+        var handler = new RecordingHandler(
+            Json(@"{ ""value"": [
+                     { ""id"": ""cal-default"", ""name"": ""Calendar"", ""canEdit"": true },
+                     { ""id"": ""cal-empty"", ""name"": ""Family"", ""canEdit"": true },
+                     { ""id"": ""cal-shared"", ""name"": ""Bosses diary"", ""canEdit"": false } ] }"),
+            Json(EventJson("srv-1", "Board meeting", "2026-08-01T14:00:00.0000000",
+                           "2026-08-01T15:00:00.0000000")));
+
+        await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        var sources = await _store.LoadCalendarSourcesAsync();
+        Assert.Equal(3, sources.Count);
+        // No events came back for this one, and it is offerable all the same.
+        Assert.Contains(sources, s => s.CalendarId == "cal-empty" && s.CanWrite);
+        Assert.Contains(sources, s => s.CalendarId == "cal-shared" && !s.CanWrite);
+        Assert.Contains("canEdit", handler.Urls[0]);
+    }
+
+    /// <summary>
     /// A default calendar that cannot be fetched leaves the row untagged rather than costing the
     /// user their appointment, which is already on the server by the time this runs.
     ///

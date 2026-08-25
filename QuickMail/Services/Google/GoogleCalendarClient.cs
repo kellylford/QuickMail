@@ -220,6 +220,18 @@ internal sealed class GoogleCalendarListEntry
     [JsonPropertyName("primary")] public bool Primary { get; set; }
     /// <summary>True when the user has removed this calendar from their list — skip it.</summary>
     [JsonPropertyName("deleted")] public bool Deleted { get; set; }
+
+    /// <summary>
+    /// What the user may do with this calendar: "owner" and "writer" can have events added,
+    /// "reader" and "freeBusyReader" cannot — a subscribed holidays feed is a reader. Offering a
+    /// reader as a save target could only produce a failure.
+    /// </summary>
+    [JsonPropertyName("accessRole")] public string? AccessRole { get; set; }
+
+    /// <summary>Whether an event can be created on this calendar.</summary>
+    internal bool CanWrite =>
+        string.Equals(AccessRole, "owner", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(AccessRole, "writer", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>One event occurrence from the Calendar API (<c>singleEvents=true</c>).</summary>

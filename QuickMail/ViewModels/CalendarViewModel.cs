@@ -211,14 +211,14 @@ public partial class CalendarViewModel : ObservableObject
 
     // Discovered calendar sources (AccountId, CalendarId, CalendarName) — used to offer one save
     // target per iCloud calendar (Home / Family). Null in tests and until sync has discovered any.
-    private readonly Func<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>>? _calendarSourcesProvider;
+    private readonly Func<IReadOnlyList<CalendarSourceInfo>>? _calendarSourcesProvider;
 
     public CalendarViewModel(ICalendarService calendarService, bool onlineMode, bool showDeclinedEvents,
                              bool showFieldLabels = false,
                              IGraphCalendarSyncService? graphSync = null,
                              Func<IReadOnlyList<AccountModel>>? graphAccountsProvider = null,
                              Func<IReadOnlyList<AccountModel>>? allAccountsProvider = null,
-                             Func<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>>? calendarSourcesProvider = null)
+                             Func<IReadOnlyList<CalendarSourceInfo>>? calendarSourcesProvider = null)
     {
         _calendarService = calendarService;
         _onlineMode = onlineMode;
@@ -231,9 +231,10 @@ public partial class CalendarViewModel : ObservableObject
     }
 
     /// <summary>
-    /// iCloud accounts save per-calendar: each discovered CalDAV collection is its own save target
-    /// (Home / Family), unlike Microsoft/Google which save to their default calendar. Detected by
-    /// IMAP host, matching the sync service's eligibility.
+    /// Every provider now saves per-calendar, but iCloud is the one that CANNOT fall back to an
+    /// account-level target: a CalDAV PUT needs a collection URL, where Microsoft and Google will
+    /// file into the account's default calendar when no calendar is named. Detected by IMAP host,
+    /// matching the sync service's eligibility.
     /// </summary>
     private static bool IsICloudAccount(AccountModel a)
         => ProviderCatalog.IsICloud(a);
@@ -449,25 +450,41 @@ public partial class CalendarViewModel : ObservableObject
     {
         if (_onlineMode) { Announce("Calendar is unavailable in online mode.", AnnouncementCategory.Result); return; }
 
-        // Save targets: the local calendar (always, default; added by the editor) plus each
-        // server-backed account. Microsoft/Google contribute one target (their default calendar);
-        // an iCloud account contributes one target PER discovered calendar so the user picks Home
-        // vs. Family.
+        // Save targets: the local calendar (always, default; added by the editor), then every
+        // calendar the user can write to, on every server-backed account — "Apple: Family",
+        // "Work: Team" — so an appointment can be filed where it belongs rather than always
+        // landing on the account's default calendar.
+        //
+        // Read-only calendars are left out. A holidays feed or a colleague's shared calendar is
+        // worth reading, and keeps its node in the folder tree, but offering it here could only
+        // produce a save that fails and falls back to the local calendar.
         var sources = _calendarSourcesProvider?.Invoke() ?? [];
         var accountTargets = new List<CalendarSaveTarget>();
         foreach (var a in _graphAccountsProvider?.Invoke() ?? [])
         {
-            if (IsICloudAccount(a))
-            {
-                foreach (var (_, calId, calName) in sources.Where(s => s.AccountId == a.Id))
-                    accountTargets.Add(new CalendarSaveTarget($"{a.AccountLabel}: {calName}", a.Id, calId, calName));
-                // No discovered calendars yet (never synced) → offer nothing rather than a target
-                // that can't resolve a collection to PUT to.
-            }
-            else
-            {
-                accountTargets.Add(new CalendarSaveTarget(a.AccountLabel, a.Id));
-            }
+            var calendars = sources.Where(s => s.AccountId == a.Id).ToList();
+
+            // "Wherever this account normally files things" comes first, and stays on offer even
+            // once the individual calendars are known. Three things need it:
+            //
+            //  - A default calendar set on the ACCOUNT node (#497) means exactly this, and it is
+            //    the only default a Microsoft account could have had while its calendars went
+            //    undiscovered. It has to keep resolving to something the user would recognise —
+            //    matching it against the first per-calendar target instead would silently open the
+            //    editor on whichever calendar happened to sort first.
+            //  - An account whose calendars are all read-only would otherwise contribute nothing,
+            //    and the picker would vanish with no explanation.
+            //  - An account that has never synced has no calendars to list at all.
+            //
+            // Only Microsoft and Google: they file into the account's default when the write names
+            // no calendar. A CalDAV PUT needs a collection URL, so iCloud cannot, and offers
+            // nothing until its collections are discovered — exactly as before.
+            if (!IsICloudAccount(a))
+                accountTargets.Add(new CalendarSaveTarget($"{a.AccountLabel} (default calendar)", a.Id));
+
+            foreach (var cal in calendars.Where(c => c.CanWrite))
+                accountTargets.Add(new CalendarSaveTarget(
+                    cal.LabelUnder(a.AccountLabel), a.Id, cal.CalendarId, cal.CalendarName));
         }
         var editor = new EventEditorViewModel(DateTime.Now, accountTargets);
         // Preselect the user's default calendar (#497). Left alone the picker opens on Local, which

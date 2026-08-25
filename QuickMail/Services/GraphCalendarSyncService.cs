@@ -187,6 +187,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     public async Task RemoveAccountCalendarAsync(Guid accountId, CancellationToken ct = default)
     {
         _calDavCalendarsByAccount.TryRemove(accountId, out _);
+        await _store.DeleteCalendarSourcesAsync(accountId);
         await _store.ReplaceGraphCalendarEventsAsync(accountId, []);
     }
 
@@ -209,13 +210,21 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         // Enumerate every calendar, then pull each one's calendarView, tagging rows with the
         // calendar they came from so Home / Work / Family show as separate selectable nodes.
         var calendars = await _graph.GetAllPagesAsync<GraphCalendar>(
-            account, "/me/calendars?$select=id,name", OAuthService.GraphCalendarScopes, silentOnly: true, headers: null, ct);
+            account, "/me/calendars?$select=id,name,canEdit", OAuthService.GraphCalendarScopes, silentOnly: true, headers: null, ct);
+
+        // Record the list itself, not just the calendars that turn out to have events. A calendar
+        // with nothing in it is still one the user can file their first appointment into, and only
+        // the list says whether a calendar can be written to at all.
+        await _store.ReplaceCalendarSourcesAsync(account.Id, calendars
+            .Where(c => !string.IsNullOrEmpty(c.Id))
+            .Select(c => new CalendarSourceInfo(account.Id, c.Id, CalendarNameOf(c.Name), c.CanEdit))
+            .ToList());
 
         var union = new List<CalendarEvent>();
         foreach (var cal in calendars)
         {
             if (string.IsNullOrEmpty(cal.Id)) continue;
-            var calName = string.IsNullOrWhiteSpace(cal.Name) ? "Calendar" : cal.Name.Trim();
+            var calName = CalendarNameOf(cal.Name);
             var path = $"/me/calendars/{Uri.EscapeDataString(cal.Id)}/calendarView?{window}";
             var items = await _graph.GetAllPagesAsync<GraphCalendarEvent>(
                 account, path, OAuthService.GraphCalendarScopes, silentOnly: true, UtcPreferHeader, ct);
@@ -240,11 +249,18 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         // calendar they came from so each shows as its own selectable node.
         var calendars = await _google!.GetCalendarListAsync(account.Username, ct);
 
+        // As on the Graph side: record the list, so an empty calendar is still offerable and a
+        // subscribed one (a holidays feed, accessRole "reader") is known to be unwritable.
+        await _store.ReplaceCalendarSourcesAsync(account.Id, calendars
+            .Where(c => !string.IsNullOrEmpty(c.Id) && !c.Deleted)
+            .Select(c => new CalendarSourceInfo(account.Id, c.Id, CalendarNameOf(c.Summary), c.CanWrite))
+            .ToList());
+
         var union = new List<CalendarEvent>();
         foreach (var cal in calendars)
         {
             if (string.IsNullOrEmpty(cal.Id) || cal.Deleted) continue;
-            var calName = string.IsNullOrWhiteSpace(cal.Summary) ? "Calendar" : cal.Summary.Trim();
+            var calName = CalendarNameOf(cal.Summary);
             var items = await _google!.GetEventsAsync(account.Username, timeMin, timeMax, cal.Id, ct);
             union.AddRange(items
                 .Where(e => !string.IsNullOrEmpty(e.Id))
@@ -364,6 +380,13 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             calendars = await _calDav!.DiscoverCalendarsAsync(ICloudCalDavUrl, account.AuthUsername, password, ct);
             _calDavCalendarsByAccount[account.Id] = calendars;
         }
+
+        // CalDAV discovery reports no privilege information, so every discovered collection is
+        // treated as writable — which is how iCloud calendars were already offered as save targets.
+        await _store.ReplaceCalendarSourcesAsync(account.Id, calendars
+            .Where(c => !string.IsNullOrEmpty(c.Url))
+            .Select(c => new CalendarSourceInfo(account.Id, c.Url, CalendarNameOf(c.DisplayName), CanWrite: true))
+            .ToList());
 
         var nowUtc = DateTime.UtcNow;
         var union = new List<CalendarEvent>();
@@ -583,21 +606,33 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
 
         var body = BuildCreateBody(evt);
 
+        // A chosen calendar is posted to directly. POST /me/events only ever files into the
+        // account's default calendar, so it cannot honour the editor's Calendar picker — an
+        // appointment the user filed to Team would land on Calendar and quietly move.
+        var chosen = evt.CalendarId;
+        var path = string.IsNullOrWhiteSpace(chosen)
+            ? "/me/events"
+            : $"/me/calendars/{Uri.EscapeDataString(chosen)}/events";
+
         // Same auth posture as SyncAccountAsync: calendar scopes, never interactive from here.
         // Prefer UTC so the response times come back ready to store as UTC ticks.
         var created = await _graph.PostReadAsync<GraphCalendarEvent>(
-            account, "/me/events", body, OAuthService.GraphCalendarScopes, silentOnly: true, UtcPreferHeader, ct)
+            account, path, body, OAuthService.GraphCalendarScopes, silentOnly: true, UtcPreferHeader, ct)
             ?? throw new InvalidOperationException("Graph returned no event body for the created event.");
 
         // Store the SERVER's copy (Uid = the Graph id), flagged is_graph — it shows up
         // immediately, and because it now exists on the server it survives (is re-fetched by)
         // the next replace-slice sync.
         //
-        // Tagged with the calendar it actually landed on. POST /me/events files into the account's
-        // default calendar, and the read-down tags every row with its calendar's real id — so a
-        // created row left untagged does not match the per-calendar tree node the user may be
-        // looking at, and stays invisible there until the next sync restamps it (#569).
-        var (tagId, tagName) = await DefaultGraphCalendarAsync(account, ct);
+        // Tagged with the calendar it actually landed on: the one the user picked, or — for an
+        // account whose calendars are not known yet, which is the only time the picker offers a
+        // bare account entry — whichever one the server filed it into. The read-down tags every row
+        // with its calendar's real id, so a created row left untagged does not match the
+        // per-calendar tree node the user may be looking at, and stays invisible there until the
+        // next sync restamps it (#569).
+        var (tagId, tagName) = string.IsNullOrWhiteSpace(chosen)
+            ? await DefaultGraphCalendarAsync(account, ct)
+            : (chosen, CalendarNameOf(evt.CalendarName));
         var mapped = MapEvent(created, account.Id, tagId, tagName);
         await _store.UpsertCalendarEventAsync(mapped);
         LogService.Log($"GraphCalendarSync: created event on {account.AccountLabel} ({mapped.Uid}).");
@@ -657,6 +692,14 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     // Target the calendar the event actually lives on. A blank CalendarId (e.g. a brand-new
     // event whose save target is the account's default) falls back to "primary". Using this for
     // update/delete is the fix for events on secondary Google calendars, which 404 against primary.
+    /// <summary>
+    /// A calendar's display name, or "Calendar" when the provider gives none. One place, because a
+    /// created row's tag has to match what the read-down stored for the same calendar exactly — a
+    /// second copy of this rule that drifted would silently relabel the row on the next sync.
+    /// </summary>
+    private static string CalendarNameOf(string? name)
+        => string.IsNullOrWhiteSpace(name) ? "Calendar" : name.Trim();
+
     /// <summary>Google's stand-in for "whichever calendar is this account's own" on a write.</summary>
     private const string PrimaryCalendarAlias = "primary";
 
@@ -688,8 +731,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             primary ??= calendars.FirstOrDefault(
                 c => !c.Deleted && string.Equals(c.Id, account.Username, StringComparison.OrdinalIgnoreCase));
             if (primary != null)
-                return (primary.Id, string.IsNullOrWhiteSpace(primary.Summary)
-                    ? "Calendar" : primary.Summary.Trim());
+                return (primary.Id, CalendarNameOf(primary.Summary));
         }
         catch (Exception ex)
         {
@@ -726,7 +768,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
                 account, "/me/calendar?$select=id,name",
                 OAuthService.GraphCalendarScopes, silentOnly: true, ct);
             if (calendar != null && !string.IsNullOrEmpty(calendar.Id))
-                return (calendar.Id, string.IsNullOrWhiteSpace(calendar.Name) ? "Calendar" : calendar.Name.Trim());
+                return (calendar.Id, CalendarNameOf(calendar.Name));
         }
         catch (Exception ex)
         {

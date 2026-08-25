@@ -94,9 +94,9 @@ public class DefaultCalendarTests
     }
 
     /// <summary>
-    /// A Microsoft or Google account shows a node per synced calendar in the tree but offers ONE
-    /// save target (its default calendar). Defaulting to one of those calendars must land on the
-    /// account rather than falling back to Local, which is a different mailbox entirely.
+    /// A default naming a calendar that is no longer offered — unsubscribed, or gone read-only —
+    /// must still land on its account rather than falling back to Local, which is a different
+    /// mailbox entirely.
     /// </summary>
     [Fact]
     public void SelectTarget_UnofferedCalendar_FallsBackToTheSameAccount()
@@ -143,10 +143,10 @@ public class DefaultCalendarTests
             showDeclinedEvents: false, showFieldLabels: false,
             graphSync: new StubGraphCalendarSyncService(),
             graphAccountsProvider: () => new[] { apple },
-            calendarSourcesProvider: () => new List<(Guid, string, string)>
+            calendarSourcesProvider: () => new List<CalendarSourceInfo>
             {
-                (apple.Id, home, "Home"),
-                (apple.Id, family, "Family"),
+                new(apple.Id, home, "Home", CanWrite: true),
+                new(apple.Id, family, "Family", CanWrite: true),
             });
         return (vm, apple, home, family);
     }

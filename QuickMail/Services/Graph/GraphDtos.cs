@@ -176,6 +176,13 @@ internal sealed class GraphCalendar
 {
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
     [JsonPropertyName("name")] public string? Name { get; set; }
+
+    /// <summary>
+    /// Whether the signed-in user may write to this calendar. False for one shared with them
+    /// read-only — offering it as a save target could only produce a failure. Graph defaults it to
+    /// false when unselected, so anything reading this must ask for it in <c>$select</c>.
+    /// </summary>
+    [JsonPropertyName("canEdit")] public bool CanEdit { get; set; }
 }
 
 /// <summary>

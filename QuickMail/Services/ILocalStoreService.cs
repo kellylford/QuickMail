@@ -204,11 +204,23 @@ public interface ILocalStoreService
     Task<List<CalendarEvent>> LoadCalendarEventsAsync();
 
     /// <summary>
-    /// Returns the distinct server calendars (one row per account + calendar) across all synced rows
-    /// (<c>is_graph = 1</c> with a non-empty <c>calendar_id</c>), for building the per-calendar
-    /// grandchild nodes under each account in the folder tree.
+    /// Returns every account's calendars, as the sync recorded them from the provider's own calendar
+    /// list — so a calendar with no events in it is still here, and each says whether it can be
+    /// written to. Feeds the per-calendar nodes in the folder tree and the editor's Calendar picker.
+    ///
+    /// <para>
+    /// An account the sync has not enumerated yet falls back to the distinct calendars its synced
+    /// rows are tagged with, all assumed writable — which is the whole list this used to return, and
+    /// keeps the folder tree populated on a profile upgraded between releases.
+    /// </para>
     /// </summary>
-    Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync();
+    Task<IReadOnlyList<CalendarSourceInfo>> LoadCalendarSourcesAsync();
+
+    /// <summary>Records one account's calendar list, as the provider reports it (replaces what was there).</summary>
+    Task ReplaceCalendarSourcesAsync(Guid accountId, IReadOnlyList<CalendarSourceInfo> sources);
+
+    /// <summary>Forgets an account's calendar list (calendar sync switched off, or the account removed).</summary>
+    Task DeleteCalendarSourcesAsync(Guid accountId);
 
     /// <summary>Updates only the response status for an event.</summary>
     Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status);

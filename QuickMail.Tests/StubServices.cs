@@ -362,8 +362,24 @@ class StubLocalStoreService : ILocalStoreService
     public virtual Task UpdateFlagIdBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, string? flagId) => Task.CompletedTask;
     public virtual Task UpsertCalendarEventAsync(CalendarEvent evt) => Task.CompletedTask;
     public virtual Task<List<CalendarEvent>> LoadCalendarEventsAsync() => Task.FromResult(new List<CalendarEvent>());
-    public virtual Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync()
-        => Task.FromResult<IReadOnlyList<(Guid, string, string)>>(new List<(Guid, string, string)>());
+    /// <summary>Each account's recorded calendar list, as ReplaceCalendarSourcesAsync left it.</summary>
+    public Dictionary<Guid, List<CalendarSourceInfo>> CalendarSources { get; } = [];
+
+    public virtual Task<IReadOnlyList<CalendarSourceInfo>> LoadCalendarSourcesAsync()
+        => Task.FromResult<IReadOnlyList<CalendarSourceInfo>>(
+            CalendarSources.Values.SelectMany(v => v).ToList());
+
+    public virtual Task ReplaceCalendarSourcesAsync(Guid accountId, IReadOnlyList<CalendarSourceInfo> sources)
+    {
+        CalendarSources[accountId] = [.. sources];
+        return Task.CompletedTask;
+    }
+
+    public virtual Task DeleteCalendarSourcesAsync(Guid accountId)
+    {
+        CalendarSources.Remove(accountId);
+        return Task.CompletedTask;
+    }
     public virtual Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status) => Task.CompletedTask;
     public virtual Task DeleteCalendarEventAsync(string uid, Guid accountId) => Task.CompletedTask;
     public virtual Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
