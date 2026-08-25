@@ -155,6 +155,55 @@ person’s name in the From and To trees.</p>
 <p>The same typing works in the <strong>Go to Folder</strong> picker, in
 the address book’s contact, group, and member lists, and in the <a
 href="#message-list-fields">Message List Fields</a> window.</p>
+<h3 id="expanding-and-collapsing-folders">Expanding and Collapsing
+Folders</h3>
+<p>Right and Left arrow still open and close one folder at a time, and
+that has not changed. What is new is four actions for doing it in bulk —
+useful when an account has folders nested several levels deep, or when
+several accounts have filled the tree.</p>
+<ul>
+<li><strong>Expand Folder</strong> opens the selected folder and
+everything inside it, all the way down, rather than one level.</li>
+<li><strong>Collapse Folder</strong> closes it and everything inside it,
+so the whole branch folds back to a single line.</li>
+<li><strong>Expand All Folders</strong> opens every folder in the
+tree.</li>
+<li><strong>Collapse All Folders</strong> closes everything, account
+headers included, leaving the tree as a short list of accounts.</li>
+</ul>
+<p>Each is reachable three ways:</p>
+<ul>
+<li>Choose <strong>Folder → Expand Folder</strong>, <strong>Collapse
+Folder</strong>, <strong>Expand All Folders</strong>, or
+<strong>Collapse All Folders</strong> from the menu bar.</li>
+<li>Press <strong>Shift+F10</strong> on the folder tree and choose it
+from the context menu. On a calendar the first two read <strong>Expand
+Calendar</strong> and <strong>Collapse Calendar</strong>; they do the
+same thing.</li>
+<li>Open the Command Palette (<strong>Ctrl+Shift+P</strong>) and choose
+it there. None of the four has a shortcut key to begin with, so if you
+use one often, assign it your own in <a
+href="#keyboard-customization">Keyboard Customization</a>.</li>
+</ul>
+<p>The two “all folders” actions say what they did — “All folders
+collapsed” — because you can start them from the menu bar with focus
+anywhere. The two single-folder actions say nothing extra when you use
+the context menu: the folder keeps focus and your screen reader reports
+its own expanded or collapsed state. Started from the Folder menu or the
+Command Palette with focus outside the tree, where nothing is there to
+report it, they say what they did instead.</p>
+<p>If collapsing hides the folder you were on, the selection moves up to
+the nearest folder still showing rather than disappearing into a closed
+branch. Choosing Expand or Collapse Folder on a folder with nothing
+inside it says so instead of doing nothing.</p>
+<p>How you leave the tree is how you find it: a folder you collapse
+stays collapsed while QuickMail refreshes its folder list, and coming
+back to the tree with <strong>F6</strong> or <strong>Ctrl+2</strong>
+leaves it collapsed rather than re-opening the branch holding the folder
+you are reading. Go to a different folder and the tree opens up to show
+it again, as it always has. Expansion is not remembered between runs —
+QuickMail starts each account open, and opens whatever it needs to reach
+the folder it lands in.</p>
 <h3 id="creating-folders">Creating Folders</h3>
 <p>Create a new folder in any of these ways:</p>
 <ul>
@@ -250,6 +299,41 @@ menu) to switch how messages are grouped:</p>
 <li><strong>From</strong> — messages grouped by sender</li>
 <li><strong>To</strong> — messages grouped by recipient</li>
 </ul>
+<h3 id="moving-to-the-next-unread-message">Moving to the Next Unread
+Message</h3>
+<p><code>Alt+Down</code> moves to the nearest unread message below where
+you are; <code>Alt+Up</code> moves to the nearest one above. They are
+also <strong>Next Unread Message</strong> and <strong>Previous Unread
+Message</strong> in the command palette, and you can give them different
+keys in <strong>File → Settings → Keyboard Shortcuts</strong>.</p>
+<p>In the <strong>Messages</strong> view they move down or up the list,
+skipping everything already read. In <strong>Conversations</strong>,
+<strong>From</strong>, and <strong>To</strong> they run through every
+message the tree holds, in group order — so they cross from one
+conversation or sender into the next rather than stopping at the end of
+the one you are in. Closed groups are searched too, and a closed group
+holding the unread message is opened so that message can take focus. It
+stays open afterwards, like any group you open yourself.</p>
+<p>Below and above mean what they say on screen: which of them is newer
+depends on how the folder is sorted.</p>
+<p>Both keys act while you are in the message list or a group tree —
+including when you are moving through the list with the reading pane
+open beside it. They do nothing while focus is inside the reading pane
+itself, and an open message window has its own keys:
+<strong>Alt+Left</strong> and <strong>Alt+Right</strong> already move to
+the previous and next message there.</p>
+<p>While a message tab is showing there is no list to move through, and
+the two actions are not offered in that window’s command palette. Start
+one from the main window’s palette while the calendar is open, or while
+a message tab covers the list, and QuickMail says why instead of going
+quiet.</p>
+<p>Neither wraps around. When there is no unread message left in the
+direction you are going, nothing moves and QuickMail says “No unread
+messages below” or “No unread messages above”, so that running out is
+never mistaken for a key that did not register. (That is a
+<strong>Result</strong> announcement — see <a
+href="#screen-reader-announcements">Screen Reader Announcements</a> if
+you have those switched off.)</p>
 <h3 id="each-folder-remembers-how-you-left-it">Each Folder Remembers How
 You Left It</h3>
 <p>Folders do not all want the same treatment. An inbox reads well

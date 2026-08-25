@@ -101,15 +101,26 @@ send.</li>
 <li><strong>Sync contacts from this account</strong> and <strong>Sync
 calendar from this account</strong> appear for iCloud accounts and for
 accounts that sign in — Microsoft, and Gmail when you choose Google
-sign-in. Check them <em>before</em> signing in, so the permission is
+sign-in. Check them <em>before</em> signing in, so the permission can be
 part of the same sign-in. (A Gmail account using an app password has no
 contact or calendar sync, so the boxes do not appear.)</li>
 <li>Press <strong>Add Account</strong>.</li>
 </ol>
+<p>Whether that permission really is part of the same sign-in depends on
+the account. Google sign-in folds it in, and so does a personal
+Outlook.com account set to connect over <strong>Microsoft 365
+(Graph)</strong> — one screen lists mail, contacts, and calendar
+together. A work or school Microsoft account asks separately once the
+account is added, on purpose: organizations that restrict what their
+users may approve would turn one over-asking screen into a failed
+sign-in, and no account at all.</p>
 <p>Server names, ports, and SSL settings are behind <strong>Advanced
 settings</strong>, an expander that stays closed unless you need it. Tab
 reaches its header before its contents, so one keystroke moves past the
-whole thing.</p>
+whole thing. <strong>Sign in with Microsoft</strong> and <strong>Sign in
+with Google</strong> come last of all, after Advanced settings and
+everything inside it — signing in is the last thing you do, so it is the
+last thing you tab to. The same is true in Manage Accounts.</p>
 <p>If something required is missing, <strong>Add Account</strong> does
 not close the dialog. It says what is missing and moves focus to the
 field that needs attention — the email address, the password, or, when
@@ -261,10 +272,10 @@ Live.com</strong> accounts alike.</p>
 <strong>Outlook.com / Microsoft 365</strong> — or just type your
 address, which selects it for you. The password box disappears;
 Microsoft accounts sign in instead.</li>
-<li>Activate <strong>Sign in with Microsoft</strong>. A Microsoft
-sign-in window opens inside QuickMail. Sign in and approve the
-permissions QuickMail requests; the window closes itself and returns you
-to the dialog.</li>
+<li>Activate <strong>Sign in with Microsoft</strong> — the last tab stop
+in the dialog, after Advanced settings. A Microsoft sign-in window opens
+inside QuickMail. Sign in and approve the permissions QuickMail
+requests; the window closes itself and returns you to the dialog.</li>
 <li>Activate <strong>Add Account</strong>.</li>
 </ol>
 <p>Sign in as <strong>the same address you typed</strong> into the
@@ -304,6 +315,15 @@ href="#for-microsoft-365-administrators-and-tenant-owners">For Microsoft
 365 Administrators and Tenant Owners</a>; once they approve QuickMail,
 sign-in works normally. Personal Outlook.com accounts are not affected
 and need no approval.</p>
+<p>If an administrator signs in at that approval screen, they can
+approve QuickMail for the whole organization there (there is a “consent
+on behalf of your organization” option). Because the administrator’s
+account is not the one you were adding, QuickMail leaves your account
+unchanged and <strong>offers to sign you in again as yourself</strong> —
+choose <strong>Yes</strong> to finish connecting. An administrator can
+also approve QuickMail ahead of time without this back-and-forth via
+<strong>Help → Grant Admin Consent for Your Organization</strong> or the
+administrators section above.</p>
 </blockquote>
 <p>To bring this account’s contacts into your address book, check
 <strong>Sync contacts from this account</strong> before signing in. See
@@ -535,16 +555,61 @@ people actually change. The <strong>Provider</strong> at the top is
 fixed when the account is created; to change it, remove the account and
 add it again.</p>
 <h3 id="removing-an-account">Removing an account</h3>
-<p>Select the account and press <strong>Delete</strong>. There is no
-confirmation step, and the removal happens at once: QuickMail forgets
-the account’s password from Windows Credential Manager, deletes the mail
-it had cached, removes any contacts synced from it, and for Microsoft
-and Google accounts signs out as well. You hear “Account deleted.
-Cleaning up…”, then “Account deleted.” when the tidying has
-finished.</p>
+<p>Select the account and press <strong>Delete</strong>. For an ordinary
+account there is no confirmation step, and the removal happens at once:
+QuickMail forgets the account’s password from Windows Credential
+Manager, deletes the mail it had cached, removes any contacts synced
+from it, and for Microsoft and Google accounts signs out as well. You
+hear “Account deleted. Cleaning up…”, then “Account deleted.” when the
+tidying has finished. (Deleting an account that a shared mailbox reads
+through does ask first, because it removes the shared mailbox too — see
+<a href="#shared-mailboxes">Shared mailboxes</a>.)</p>
 <p><strong>Nothing is deleted from the mail server.</strong> Removing an
 account removes it from QuickMail only — add it again and your mail is
 still there.</p>
+<h3 id="shared-mailboxes">Shared mailboxes</h3>
+<p>A shared mailbox is a mailbox several people read and send from — a
+<code>support@</code>, <code>info@</code>, or <code>sales@</code>
+address that belongs to a team rather than a person. If your
+organization has given you access to one, you can add it to QuickMail
+and it appears as its own mailbox in the folder tree, alongside your own
+accounts.</p>
+<p>Shared mailboxes are a <strong>Microsoft 365 work or school</strong>
+feature. You add one through an account you already have: QuickMail
+reads and sends the shared mailbox using your existing sign-in, so there
+is no separate password and no separate sign-in for it. Personal
+Outlook.com accounts and non-Microsoft (IMAP) accounts do not have
+shared mailboxes, so the option is offered only when you have a work or
+school Microsoft 365 account to read it through.</p>
+<p><strong>To add a shared mailbox:</strong> open <strong>Account
+Manager</strong> (Tools menu), activate <strong>Add shared
+mailbox</strong>, choose the work or school account that has access to
+it if you are asked, and type the shared mailbox’s email address. Press
+<strong>Add</strong>. The mailbox connects using that account and its
+folders load. You do not need access to a password — access comes from
+your own account’s permission to the mailbox, which your organization
+grants.</p>
+<p><strong>Reading and sending.</strong> A shared mailbox reads like any
+other: select it in the folder tree and open its folders. To send from
+it, choose the shared address in the <strong>From</strong> list when
+composing — the message goes out as the shared mailbox, not as you.</p>
+<p><strong>Freshness.</strong> A shared mailbox updates on a timer
+rather than the instant new mail arrives: <strong>shared mailboxes
+update every few minutes, not instantly.</strong> Your own mailboxes
+still update live; only the shared one waits for the next check.</p>
+<p><strong>New-mail notifications are off for a shared mailbox by
+default.</strong> A shared mailbox is often a busy team address, so
+QuickMail does not pop a notification for every message that lands in
+it. If you do want notifications for a particular shared mailbox, select
+it in Account Manager and turn on <strong>Notify me of new mail in this
+shared mailbox</strong>. The main <strong>Show a Notification When New
+Mail Arrives</strong> setting still has to be on for any notification to
+appear.</p>
+<p><strong>Removing.</strong> Removing the account that a shared mailbox
+reads through also removes the shared mailbox — you are told which
+shared mailboxes will go when you delete their parent account. Removing
+a shared mailbox on its own leaves the account it read through
+untouched.</p>
 <hr />
 
   <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="installing-and-updating-quickmail.html">Previous: Installing and Updating QuickMail</a> | <a href="for-microsoft-365-administrators-and-tenant-owners.html">Next: For Microsoft 365 Administrators and Tenant Owners</a></div>

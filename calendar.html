@@ -224,11 +224,21 @@ or set up a repeating appointment (see below).</li>
 <li><strong>Notes</strong> — free text.</li>
 <li><strong>Calendar</strong> — when you have a Microsoft, Google, or
 iCloud account connected, a picker lets you choose where the new
-appointment is saved: your <strong>Local Calendar</strong> or a
-connected account. For iCloud the picker lists each of your Apple
-calendars (Home, Family, …) so you can choose which one. With no
-connected calendar this picker does not appear and everything is saved
-locally. The picker starts on your <a
+appointment is saved. It lists your <strong>Local Calendar</strong>
+first, then every calendar you can write to on each connected account,
+named account-first: <strong>Work: Team</strong>, <strong>Apple:
+Family</strong>. Microsoft and Google accounts also get an entry for the
+account itself — <strong>Work (default calendar)</strong> — meaning
+whichever calendar that account normally files things into, which is
+useful when you do not mind and would rather it follow whatever you set
+on the provider’s own site. iCloud has no such entry: an iCloud
+appointment always names the calendar it goes on. Calendars you only
+subscribe to, such as a holidays feed or someone else’s calendar shared
+with you read-only, are left out: they are there to be read, and an
+appointment saved to one would only be refused. A calendar with nothing
+in it yet is offered like any other, so you can file the first
+appointment into it. With no connected calendar this picker does not
+appear and everything is saved locally. The picker starts on your <a
 href="#choosing-a-default-calendar-for-new-appointments">default
 calendar</a> if you have set one, and on <strong>Local Calendar</strong>
 if you have not.</li>
@@ -303,14 +313,18 @@ the arrow keys without typing anything.</p>
 </table>
 <p>Stepping a time past midnight moves the date with it, so 11:50 PM
 stepped up becomes 12:00 AM the next day.</p>
-<p>You can also just type. Dates accept “8/3”, “August 3”, “2026-08-03”,
-“today”, “tomorrow”, “friday”, “next tuesday”, a bare day number like
-“3” for that day of the month shown, and offsets like “+7”, “-3”, “+2w”,
-“+1m”, “+1y”. Times accept “9”, “930”, “9:30”, “9:30 AM”, “9p”, “14:30”,
-“noon”, “midnight”, and offsets like “+30” or “-15”. Press Enter or move
-to another field to apply what you typed; if it isn’t something
-QuickMail can read as a date or a time, the field puts its previous
-value back.</p>
+<p>You can also just type. Moving to one of these fields with the
+keyboard selects the value it is holding, so the first thing you type
+replaces it rather than being added on to the end of it. If you leave
+the field part-way through typing and come back to it, what you had
+typed is still there and still where you left it. Dates accept “8/3”,
+“August 3”, “2026-08-03”, “today”, “tomorrow”, “friday”, “next tuesday”,
+a bare day number like “3” for that day of the month shown, and offsets
+like “+7”, “-3”, “+2w”, “+1m”, “+1y”. Times accept “9”, “930”, “9:30”,
+“9:30 AM”, “9p”, “14:30”, “noon”, “midnight”, and offsets like “+30” or
+“-15”. Press Enter or move to another field to apply what you typed; if
+it isn’t something QuickMail can read as a date or a time, the field
+puts its previous value back.</p>
 <p><strong>The end follows the start.</strong> When you change the start
 date or start time, the end moves by the same amount, so a 30-minute
 appointment stays 30 minutes long and you are never sent back to fix an
@@ -486,11 +500,16 @@ was granted when you signed in for mail.</td>
 <td>Yes, for single (non-repeating) events</td>
 <td>Check <strong>Sync calendar from this account</strong>. QuickMail
 uses the app-specific password you already entered for the account — no
-separate setup. When you create an appointment you can choose which
-iCloud calendar (Home, Family, …) it goes on.</td>
+separate setup.</td>
 </tr>
 </tbody>
 </table>
+<p>When you create an appointment you can choose which of an account’s
+calendars it goes on — see the <strong>Calendar</strong> picker under <a
+href="#creating-an-appointment">Creating an appointment</a>. This works
+for Microsoft, Google and iCloud alike; Microsoft and Google
+additionally let you say “this account’s usual calendar” without naming
+one.</p>
 <p><strong>Turning it on for an account you already have:</strong> open
 <strong>Manage Accounts</strong>, select the account, and check
 <strong>Sync calendar from this account</strong>. It applies immediately
@@ -498,13 +517,17 @@ iCloud calendar (Home, Family, …) it goes on.</td>
 tree and the events sync in the background. Unchecking it removes
 them.</p>
 <p>Connected calendars refresh automatically in the background (roughly
-every 15 minutes, and once shortly after startup). Press
-<strong>F5</strong> to refresh on demand, or use <strong>Sync Calendars
-Now</strong> from the command palette. Syncing is a one-directional
-download plus, for Microsoft and Google, the single-event write-back
-described above; it never opens a sign-in prompt on its own — if an
-account needs you to sign in again for calendar access, QuickMail tells
-you.</p>
+every 15 minutes, and once shortly after startup), and again whenever
+you open the calendar, so an appointment you added somewhere else is
+there when you look. The list opens straight away from what QuickMail
+already has and folds in anything new when the account answers; opening
+the calendar again within half a minute reuses what it just fetched
+rather than asking again. Press <strong>F5</strong> to refresh on
+demand, or use <strong>Sync Calendars Now</strong> from the command
+palette. Syncing is a one-directional download plus, for Microsoft and
+Google, the single-event write-back described above; it never opens a
+sign-in prompt on its own — if an account needs you to sign in again for
+calendar access, QuickMail tells you.</p>
 <h3 id="what-the-calendar-does-and-does-not-do">What the calendar does
 and does not do</h3>
 <p>To set expectations clearly:</p>

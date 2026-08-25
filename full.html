@@ -248,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.40</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.42</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -540,15 +540,26 @@ send.</li>
 <li><strong>Sync contacts from this account</strong> and <strong>Sync
 calendar from this account</strong> appear for iCloud accounts and for
 accounts that sign in — Microsoft, and Gmail when you choose Google
-sign-in. Check them <em>before</em> signing in, so the permission is
+sign-in. Check them <em>before</em> signing in, so the permission can be
 part of the same sign-in. (A Gmail account using an app password has no
 contact or calendar sync, so the boxes do not appear.)</li>
 <li>Press <strong>Add Account</strong>.</li>
 </ol>
+<p>Whether that permission really is part of the same sign-in depends on
+the account. Google sign-in folds it in, and so does a personal
+Outlook.com account set to connect over <strong>Microsoft 365
+(Graph)</strong> — one screen lists mail, contacts, and calendar
+together. A work or school Microsoft account asks separately once the
+account is added, on purpose: organizations that restrict what their
+users may approve would turn one over-asking screen into a failed
+sign-in, and no account at all.</p>
 <p>Server names, ports, and SSL settings are behind <strong>Advanced
 settings</strong>, an expander that stays closed unless you need it. Tab
 reaches its header before its contents, so one keystroke moves past the
-whole thing.</p>
+whole thing. <strong>Sign in with Microsoft</strong> and <strong>Sign in
+with Google</strong> come last of all, after Advanced settings and
+everything inside it — signing in is the last thing you do, so it is the
+last thing you tab to. The same is true in Manage Accounts.</p>
 <p>If something required is missing, <strong>Add Account</strong> does
 not close the dialog. It says what is missing and moves focus to the
 field that needs attention — the email address, the password, or, when
@@ -700,10 +711,10 @@ Live.com</strong> accounts alike.</p>
 <strong>Outlook.com / Microsoft 365</strong> — or just type your
 address, which selects it for you. The password box disappears;
 Microsoft accounts sign in instead.</li>
-<li>Activate <strong>Sign in with Microsoft</strong>. A Microsoft
-sign-in window opens inside QuickMail. Sign in and approve the
-permissions QuickMail requests; the window closes itself and returns you
-to the dialog.</li>
+<li>Activate <strong>Sign in with Microsoft</strong> — the last tab stop
+in the dialog, after Advanced settings. A Microsoft sign-in window opens
+inside QuickMail. Sign in and approve the permissions QuickMail
+requests; the window closes itself and returns you to the dialog.</li>
 <li>Activate <strong>Add Account</strong>.</li>
 </ol>
 <p>Sign in as <strong>the same address you typed</strong> into the
@@ -743,6 +754,15 @@ href="#for-microsoft-365-administrators-and-tenant-owners">For Microsoft
 365 Administrators and Tenant Owners</a>; once they approve QuickMail,
 sign-in works normally. Personal Outlook.com accounts are not affected
 and need no approval.</p>
+<p>If an administrator signs in at that approval screen, they can
+approve QuickMail for the whole organization there (there is a “consent
+on behalf of your organization” option). Because the administrator’s
+account is not the one you were adding, QuickMail leaves your account
+unchanged and <strong>offers to sign you in again as yourself</strong> —
+choose <strong>Yes</strong> to finish connecting. An administrator can
+also approve QuickMail ahead of time without this back-and-forth via
+<strong>Help → Grant Admin Consent for Your Organization</strong> or the
+administrators section above.</p>
 </blockquote>
 <p>To bring this account’s contacts into your address book, check
 <strong>Sync contacts from this account</strong> before signing in. See
@@ -974,16 +994,61 @@ people actually change. The <strong>Provider</strong> at the top is
 fixed when the account is created; to change it, remove the account and
 add it again.</p>
 <h3 id="removing-an-account">Removing an account</h3>
-<p>Select the account and press <strong>Delete</strong>. There is no
-confirmation step, and the removal happens at once: QuickMail forgets
-the account’s password from Windows Credential Manager, deletes the mail
-it had cached, removes any contacts synced from it, and for Microsoft
-and Google accounts signs out as well. You hear “Account deleted.
-Cleaning up…”, then “Account deleted.” when the tidying has
-finished.</p>
+<p>Select the account and press <strong>Delete</strong>. For an ordinary
+account there is no confirmation step, and the removal happens at once:
+QuickMail forgets the account’s password from Windows Credential
+Manager, deletes the mail it had cached, removes any contacts synced
+from it, and for Microsoft and Google accounts signs out as well. You
+hear “Account deleted. Cleaning up…”, then “Account deleted.” when the
+tidying has finished. (Deleting an account that a shared mailbox reads
+through does ask first, because it removes the shared mailbox too — see
+<a href="#shared-mailboxes">Shared mailboxes</a>.)</p>
 <p><strong>Nothing is deleted from the mail server.</strong> Removing an
 account removes it from QuickMail only — add it again and your mail is
 still there.</p>
+<h3 id="shared-mailboxes">Shared mailboxes</h3>
+<p>A shared mailbox is a mailbox several people read and send from — a
+<code>support@</code>, <code>info@</code>, or <code>sales@</code>
+address that belongs to a team rather than a person. If your
+organization has given you access to one, you can add it to QuickMail
+and it appears as its own mailbox in the folder tree, alongside your own
+accounts.</p>
+<p>Shared mailboxes are a <strong>Microsoft 365 work or school</strong>
+feature. You add one through an account you already have: QuickMail
+reads and sends the shared mailbox using your existing sign-in, so there
+is no separate password and no separate sign-in for it. Personal
+Outlook.com accounts and non-Microsoft (IMAP) accounts do not have
+shared mailboxes, so the option is offered only when you have a work or
+school Microsoft 365 account to read it through.</p>
+<p><strong>To add a shared mailbox:</strong> open <strong>Account
+Manager</strong> (Tools menu), activate <strong>Add shared
+mailbox</strong>, choose the work or school account that has access to
+it if you are asked, and type the shared mailbox’s email address. Press
+<strong>Add</strong>. The mailbox connects using that account and its
+folders load. You do not need access to a password — access comes from
+your own account’s permission to the mailbox, which your organization
+grants.</p>
+<p><strong>Reading and sending.</strong> A shared mailbox reads like any
+other: select it in the folder tree and open its folders. To send from
+it, choose the shared address in the <strong>From</strong> list when
+composing — the message goes out as the shared mailbox, not as you.</p>
+<p><strong>Freshness.</strong> A shared mailbox updates on a timer
+rather than the instant new mail arrives: <strong>shared mailboxes
+update every few minutes, not instantly.</strong> Your own mailboxes
+still update live; only the shared one waits for the next check.</p>
+<p><strong>New-mail notifications are off for a shared mailbox by
+default.</strong> A shared mailbox is often a busy team address, so
+QuickMail does not pop a notification for every message that lands in
+it. If you do want notifications for a particular shared mailbox, select
+it in Account Manager and turn on <strong>Notify me of new mail in this
+shared mailbox</strong>. The main <strong>Show a Notification When New
+Mail Arrives</strong> setting still has to be on for any notification to
+appear.</p>
+<p><strong>Removing.</strong> Removing the account that a shared mailbox
+reads through also removes the shared mailbox — you are told which
+shared mailboxes will go when you delete their parent account. Removing
+a shared mailbox on its own leaves the account it read through
+untouched.</p>
 <hr />
 <h2 id="for-microsoft-365-administrators-and-tenant-owners">For
 Microsoft 365 Administrators and Tenant Owners</h2>
@@ -1109,6 +1174,15 @@ you straight to an error page (see Troubleshooting).</p>
 <p>Replace <code>organizations</code> with your tenant ID or a verified
 domain to target a specific tenant. Review the permission list Microsoft
 shows and approve. This grants consent tenant-wide in one step.</p>
+<p><strong>Option C — from inside QuickMail.</strong> If you have
+QuickMail installed, choose <strong>Help → Grant Admin Consent for Your
+Organization…</strong>. Sign in as one of the admin roles above in the
+window that opens, review the permission list, and approve. This grants
+QuickMail’s Microsoft Graph permissions tenant-wide in one step without
+building a URL by hand, and it works even before anyone in your
+organization has added an account — the consent itself registers
+QuickMail in your tenant. QuickMail tells you when consent has been
+granted.</p>
 <p>After approval, your users sign in normally with no further
 prompts.</p>
 <h3 id="if-you-would-rather-not-grant-blanket-approval">If you would
@@ -1284,6 +1358,55 @@ person’s name in the From and To trees.</p>
 <p>The same typing works in the <strong>Go to Folder</strong> picker, in
 the address book’s contact, group, and member lists, and in the <a
 href="#message-list-fields">Message List Fields</a> window.</p>
+<h3 id="expanding-and-collapsing-folders">Expanding and Collapsing
+Folders</h3>
+<p>Right and Left arrow still open and close one folder at a time, and
+that has not changed. What is new is four actions for doing it in bulk —
+useful when an account has folders nested several levels deep, or when
+several accounts have filled the tree.</p>
+<ul>
+<li><strong>Expand Folder</strong> opens the selected folder and
+everything inside it, all the way down, rather than one level.</li>
+<li><strong>Collapse Folder</strong> closes it and everything inside it,
+so the whole branch folds back to a single line.</li>
+<li><strong>Expand All Folders</strong> opens every folder in the
+tree.</li>
+<li><strong>Collapse All Folders</strong> closes everything, account
+headers included, leaving the tree as a short list of accounts.</li>
+</ul>
+<p>Each is reachable three ways:</p>
+<ul>
+<li>Choose <strong>Folder → Expand Folder</strong>, <strong>Collapse
+Folder</strong>, <strong>Expand All Folders</strong>, or
+<strong>Collapse All Folders</strong> from the menu bar.</li>
+<li>Press <strong>Shift+F10</strong> on the folder tree and choose it
+from the context menu. On a calendar the first two read <strong>Expand
+Calendar</strong> and <strong>Collapse Calendar</strong>; they do the
+same thing.</li>
+<li>Open the Command Palette (<strong>Ctrl+Shift+P</strong>) and choose
+it there. None of the four has a shortcut key to begin with, so if you
+use one often, assign it your own in <a
+href="#keyboard-customization">Keyboard Customization</a>.</li>
+</ul>
+<p>The two “all folders” actions say what they did — “All folders
+collapsed” — because you can start them from the menu bar with focus
+anywhere. The two single-folder actions say nothing extra when you use
+the context menu: the folder keeps focus and your screen reader reports
+its own expanded or collapsed state. Started from the Folder menu or the
+Command Palette with focus outside the tree, where nothing is there to
+report it, they say what they did instead.</p>
+<p>If collapsing hides the folder you were on, the selection moves up to
+the nearest folder still showing rather than disappearing into a closed
+branch. Choosing Expand or Collapse Folder on a folder with nothing
+inside it says so instead of doing nothing.</p>
+<p>How you leave the tree is how you find it: a folder you collapse
+stays collapsed while QuickMail refreshes its folder list, and coming
+back to the tree with <strong>F6</strong> or <strong>Ctrl+2</strong>
+leaves it collapsed rather than re-opening the branch holding the folder
+you are reading. Go to a different folder and the tree opens up to show
+it again, as it always has. Expansion is not remembered between runs —
+QuickMail starts each account open, and opens whatever it needs to reach
+the folder it lands in.</p>
 <h3 id="creating-folders">Creating Folders</h3>
 <p>Create a new folder in any of these ways:</p>
 <ul>
@@ -1379,6 +1502,41 @@ menu) to switch how messages are grouped:</p>
 <li><strong>From</strong> — messages grouped by sender</li>
 <li><strong>To</strong> — messages grouped by recipient</li>
 </ul>
+<h3 id="moving-to-the-next-unread-message">Moving to the Next Unread
+Message</h3>
+<p><code>Alt+Down</code> moves to the nearest unread message below where
+you are; <code>Alt+Up</code> moves to the nearest one above. They are
+also <strong>Next Unread Message</strong> and <strong>Previous Unread
+Message</strong> in the command palette, and you can give them different
+keys in <strong>File → Settings → Keyboard Shortcuts</strong>.</p>
+<p>In the <strong>Messages</strong> view they move down or up the list,
+skipping everything already read. In <strong>Conversations</strong>,
+<strong>From</strong>, and <strong>To</strong> they run through every
+message the tree holds, in group order — so they cross from one
+conversation or sender into the next rather than stopping at the end of
+the one you are in. Closed groups are searched too, and a closed group
+holding the unread message is opened so that message can take focus. It
+stays open afterwards, like any group you open yourself.</p>
+<p>Below and above mean what they say on screen: which of them is newer
+depends on how the folder is sorted.</p>
+<p>Both keys act while you are in the message list or a group tree —
+including when you are moving through the list with the reading pane
+open beside it. They do nothing while focus is inside the reading pane
+itself, and an open message window has its own keys:
+<strong>Alt+Left</strong> and <strong>Alt+Right</strong> already move to
+the previous and next message there.</p>
+<p>While a message tab is showing there is no list to move through, and
+the two actions are not offered in that window’s command palette. Start
+one from the main window’s palette while the calendar is open, or while
+a message tab covers the list, and QuickMail says why instead of going
+quiet.</p>
+<p>Neither wraps around. When there is no unread message left in the
+direction you are going, nothing moves and QuickMail says “No unread
+messages below” or “No unread messages above”, so that running out is
+never mistaken for a key that did not register. (That is a
+<strong>Result</strong> announcement — see <a
+href="#screen-reader-announcements">Screen Reader Announcements</a> if
+you have those switched off.)</p>
 <h3 id="each-folder-remembers-how-you-left-it">Each Folder Remembers How
 You Left It</h3>
 <p>Folders do not all want the same treatment. An inbox reads well
@@ -2425,12 +2583,18 @@ pre-filled with a condition matching the sender and, if present, the
 subject — a quick starting point you can adjust before saving.</p>
 <h3 id="microsoft-365-server-side-rules">Microsoft 365: server-side
 rules</h3>
-<p>If you have a Microsoft 365 (Exchange) account, the Rules Manager
-does a little more. Alongside the rules that run inside QuickMail, it
-shows the <strong>server-side rules</strong> on your Exchange mailbox —
-the same rules Outlook calls “Inbox rules.” A server rule runs on
-Microsoft’s servers, so it acts on your mail <strong>even when QuickMail
-is closed</strong>, and it applies wherever you read that mailbox.</p>
+<p>If you have a <strong>work or school</strong> Microsoft 365
+(Exchange) account, the Rules Manager does a little more. Alongside the
+rules that run inside QuickMail, it shows the <strong>server-side
+rules</strong> on your Exchange mailbox — the same rules Outlook calls
+“Inbox rules.” A server rule runs on Microsoft’s servers, so it acts on
+your mail <strong>even when QuickMail is closed</strong>, and it applies
+wherever you read that mailbox.</p>
+<p>Server-side rules are an organization feature, so <strong>personal
+Outlook.com, Hotmail, and Live.com accounts do not have them</strong> —
+even when connected through Microsoft 365 directly. For a personal
+account the Rules Manager shows only the rules that run inside
+QuickMail, the same as any other non-Exchange account.</p>
 <p><strong>One account at a time.</strong> With a Microsoft 365 account
 present, the Rules Manager opens on a single account chosen in an
 <strong>Account</strong> list at the top, rather than listing every
@@ -2444,7 +2608,12 @@ and QuickMail rules appear together in a single list. Each row says
 where the rule runs — <strong>on server</strong> or <strong>in
 QuickMail</strong> — along with its name and whether it is enabled.
 Creating, editing, enabling or disabling, reordering, and deleting all
-work the same way whichever kind a rule is.</p>
+work the same way whichever kind a rule is. When you open the Rules
+Manager, or switch to another account with the account picker, QuickMail
+announces that account’s rule mode — that its rules run in QuickMail
+while it is open, or that the account also supports server-side rules —
+so an empty list is never a mystery about which kind the account can
+have.</p>
 <p><strong>QuickMail chooses where a new rule lives.</strong> When you
 create a rule, QuickMail saves it as a server rule whenever it can, so
 it keeps working while QuickMail is closed. A rule that needs something
@@ -2746,11 +2915,21 @@ or set up a repeating appointment (see below).</li>
 <li><strong>Notes</strong> — free text.</li>
 <li><strong>Calendar</strong> — when you have a Microsoft, Google, or
 iCloud account connected, a picker lets you choose where the new
-appointment is saved: your <strong>Local Calendar</strong> or a
-connected account. For iCloud the picker lists each of your Apple
-calendars (Home, Family, …) so you can choose which one. With no
-connected calendar this picker does not appear and everything is saved
-locally. The picker starts on your <a
+appointment is saved. It lists your <strong>Local Calendar</strong>
+first, then every calendar you can write to on each connected account,
+named account-first: <strong>Work: Team</strong>, <strong>Apple:
+Family</strong>. Microsoft and Google accounts also get an entry for the
+account itself — <strong>Work (default calendar)</strong> — meaning
+whichever calendar that account normally files things into, which is
+useful when you do not mind and would rather it follow whatever you set
+on the provider’s own site. iCloud has no such entry: an iCloud
+appointment always names the calendar it goes on. Calendars you only
+subscribe to, such as a holidays feed or someone else’s calendar shared
+with you read-only, are left out: they are there to be read, and an
+appointment saved to one would only be refused. A calendar with nothing
+in it yet is offered like any other, so you can file the first
+appointment into it. With no connected calendar this picker does not
+appear and everything is saved locally. The picker starts on your <a
 href="#choosing-a-default-calendar-for-new-appointments">default
 calendar</a> if you have set one, and on <strong>Local Calendar</strong>
 if you have not.</li>
@@ -2825,14 +3004,18 @@ the arrow keys without typing anything.</p>
 </table>
 <p>Stepping a time past midnight moves the date with it, so 11:50 PM
 stepped up becomes 12:00 AM the next day.</p>
-<p>You can also just type. Dates accept “8/3”, “August 3”, “2026-08-03”,
-“today”, “tomorrow”, “friday”, “next tuesday”, a bare day number like
-“3” for that day of the month shown, and offsets like “+7”, “-3”, “+2w”,
-“+1m”, “+1y”. Times accept “9”, “930”, “9:30”, “9:30 AM”, “9p”, “14:30”,
-“noon”, “midnight”, and offsets like “+30” or “-15”. Press Enter or move
-to another field to apply what you typed; if it isn’t something
-QuickMail can read as a date or a time, the field puts its previous
-value back.</p>
+<p>You can also just type. Moving to one of these fields with the
+keyboard selects the value it is holding, so the first thing you type
+replaces it rather than being added on to the end of it. If you leave
+the field part-way through typing and come back to it, what you had
+typed is still there and still where you left it. Dates accept “8/3”,
+“August 3”, “2026-08-03”, “today”, “tomorrow”, “friday”, “next tuesday”,
+a bare day number like “3” for that day of the month shown, and offsets
+like “+7”, “-3”, “+2w”, “+1m”, “+1y”. Times accept “9”, “930”, “9:30”,
+“9:30 AM”, “9p”, “14:30”, “noon”, “midnight”, and offsets like “+30” or
+“-15”. Press Enter or move to another field to apply what you typed; if
+it isn’t something QuickMail can read as a date or a time, the field
+puts its previous value back.</p>
 <p><strong>The end follows the start.</strong> When you change the start
 date or start time, the end moves by the same amount, so a 30-minute
 appointment stays 30 minutes long and you are never sent back to fix an
@@ -3008,11 +3191,16 @@ was granted when you signed in for mail.</td>
 <td>Yes, for single (non-repeating) events</td>
 <td>Check <strong>Sync calendar from this account</strong>. QuickMail
 uses the app-specific password you already entered for the account — no
-separate setup. When you create an appointment you can choose which
-iCloud calendar (Home, Family, …) it goes on.</td>
+separate setup.</td>
 </tr>
 </tbody>
 </table>
+<p>When you create an appointment you can choose which of an account’s
+calendars it goes on — see the <strong>Calendar</strong> picker under <a
+href="#creating-an-appointment">Creating an appointment</a>. This works
+for Microsoft, Google and iCloud alike; Microsoft and Google
+additionally let you say “this account’s usual calendar” without naming
+one.</p>
 <p><strong>Turning it on for an account you already have:</strong> open
 <strong>Manage Accounts</strong>, select the account, and check
 <strong>Sync calendar from this account</strong>. It applies immediately
@@ -3020,13 +3208,17 @@ iCloud calendar (Home, Family, …) it goes on.</td>
 tree and the events sync in the background. Unchecking it removes
 them.</p>
 <p>Connected calendars refresh automatically in the background (roughly
-every 15 minutes, and once shortly after startup). Press
-<strong>F5</strong> to refresh on demand, or use <strong>Sync Calendars
-Now</strong> from the command palette. Syncing is a one-directional
-download plus, for Microsoft and Google, the single-event write-back
-described above; it never opens a sign-in prompt on its own — if an
-account needs you to sign in again for calendar access, QuickMail tells
-you.</p>
+every 15 minutes, and once shortly after startup), and again whenever
+you open the calendar, so an appointment you added somewhere else is
+there when you look. The list opens straight away from what QuickMail
+already has and folds in anything new when the account answers; opening
+the calendar again within half a minute reuses what it just fetched
+rather than asking again. Press <strong>F5</strong> to refresh on
+demand, or use <strong>Sync Calendars Now</strong> from the command
+palette. Syncing is a one-directional download plus, for Microsoft and
+Google, the single-event write-back described above; it never opens a
+sign-in prompt on its own — if an account needs you to sign in again for
+calendar access, QuickMail tells you.</p>
 <h3 id="what-the-calendar-does-and-does-not-do">What the calendar does
 and does not do</h3>
 <p>To set expectations clearly:</p>
@@ -3276,6 +3468,13 @@ QuickMail to the foreground and opens that message.</p>
 (“5 new messages”) and brings QuickMail to the foreground when
 activated. Single-message notifications show the sender’s name and
 subject and open that message.</p>
+<p><strong>Shared mailboxes are an exception:</strong> they do not
+notify by default, even with this setting on, because a shared mailbox
+is often a busy team address. To get notifications for a specific shared
+mailbox, turn on <strong>Notify me of new mail in this shared
+mailbox</strong> for it in Account Manager. This setting still has to be
+on for those notifications to appear. See <a
+href="#shared-mailboxes">Shared mailboxes</a>.</p>
 <p>Notifications require <strong>Windows 10 1809 or later</strong>.</p>
 <h3
 id="keep-running-in-the-notification-area-when-you-close-the-window">Keep
@@ -4171,6 +4370,14 @@ box with any screen reader.</p>
 <td>User Guide</td>
 </tr>
 <tr class="even">
+<td><code>Alt+Down</code></td>
+<td>Next unread message</td>
+</tr>
+<tr class="odd">
+<td><code>Alt+Up</code></td>
+<td>Previous unread message</td>
+</tr>
+<tr class="even">
 <td><code>Shift+,</code></td>
 <td>First message in group</td>
 </tr>
@@ -4190,7 +4397,9 @@ they have no default keyboard shortcut. <strong>Manage Themes</strong>,
 <strong>Next Theme</strong>, <strong>Previous Theme</strong>,
 <strong>Message List Fields…</strong>, <strong>Density:
 Comfortable</strong>, <strong>Density: Compact</strong>, <strong>Manage
-Flags…</strong>, and <strong>Report a Bug</strong> likewise have no
+Flags…</strong>, <strong>Expand Folder</strong>, <strong>Collapse
+Folder</strong>, <strong>Expand All Folders</strong>, <strong>Collapse
+All Folders</strong>, and <strong>Report a Bug</strong> likewise have no
 default key — reach them from the menus or the command palette, or
 assign a shortcut yourself in File → Settings → Keyboard Shortcuts.</p>
 <p><code>Ctrl+1</code>, <code>Ctrl+2</code>, and <code>Ctrl+3</code>
