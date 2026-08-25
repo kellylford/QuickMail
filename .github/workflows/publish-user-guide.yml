@@ -80,6 +80,19 @@ jobs:
             --metadata lang=en \
             --output build/docs/github-release-download-numbers.html
 
+      - name: Copy standalone pages
+        run: |
+          # The privacy policy is hand-written HTML, not generated from Markdown, so it is
+          # copied rather than converted. It must be copied here for the same reason the
+          # articles above are generated here: peaceiris/actions-gh-pages replaces the whole
+          # gh-pages branch each run, so anything not in build/docs is deleted on deploy.
+          # That is why https://kellylford.github.io/QuickMail/privacy.html 404'd (issue #556)
+          # while the file existed in the repository the whole time. The URL is cited by
+          # Google OAuth verification and by the winget manifest's PrivacyUrl, so it must
+          # keep resolving: fail the run loudly rather than deploy a Pages site without it.
+          test -f docs/privacy.html
+          cp docs/privacy.html build/docs/privacy.html
+
       - name: Generate sectioned HTML with navigation
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -170,6 +183,7 @@ jobs:
             </ul>
             <hr>
             <p><a href="full.html">View as single page</a></p>
+            <p><a href="privacy.html">Privacy Policy</a></p>
             <h2>Articles</h2>
             <ul>
               <li><a href="github-release-download-numbers.html">How to Get GitHub Release Download Numbers</a> — pulling release download counts out of GitHub, and how to read them without fooling yourself</li>

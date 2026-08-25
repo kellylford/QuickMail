@@ -6,8 +6,10 @@ PackageLocale: en-US
 Publisher: Kelly Ford
 PublisherUrl: https://github.com/kellylford
 PublisherSupportUrl: https://github.com/kellylford/QuickMail/issues
-# PrivacyUrl deliberately omitted: docs/privacy.html is not deployed to GitHub Pages yet
-# (the URL 404s). Add it once it is published.
+# Published by .github/workflows/publish-user-guide.yml, which copies docs/privacy.html into
+# the Pages output (issue #556). Run that workflow at least once before submitting a manifest
+# that cites this URL — winget validation checks that it resolves.
+PrivacyUrl: https://kellylford.github.io/QuickMail/privacy.html
 PackageName: QuickMail
 PackageUrl: https://github.com/kellylford/QuickMail
 License: MIT
