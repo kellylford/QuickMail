@@ -1608,7 +1608,7 @@ QuickMail improves because people report problems and suggest changes. There are
 |-----|-------|-----------|-----------|
 | **1. Report a Bug → Send** | Help menu, in QuickMail | No | You want to report a problem but don't want any follow-up. |
 | **2. Report a Bug → Copy report and open GitHub** | Help menu, in QuickMail | Yes (via GitHub) | You have a GitHub account and want automatic filing plus direct contact. |
-| **3. Email** | `quickmailissues@theideaplace.net` | Yes (by email) | You'd rather use email and want a personal reply. |
+| **3. Email** | `support@theideaplace.net` | Yes (by email) | You'd rather use email and want a personal reply. |
 
 ### 1. Report a Bug — Send it directly (no account needed, anonymous)
 
@@ -1626,7 +1626,7 @@ Choose this option when you **have a GitHub account** and want automatic bug rep
 
 ### 3. Email us (personal follow-up)
 
-If you'd rather not use the in-app tool at all, email **[quickmailissues@theideaplace.net](mailto:quickmailissues@theideaplace.net)**. Describe the problem in your own words — the more detail (what you did, what happened, what you expected), the better.
+If you'd rather not use the in-app tool at all, email **[support@theideaplace.net](mailto:support@theideaplace.net)**. Describe the problem in your own words — the more detail (what you did, what happened, what you expected), the better.
 
 Choose this option when you **don't mind sending an email** and want a **personal follow-up**.
 
