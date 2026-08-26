@@ -568,8 +568,15 @@ public partial class UnifiedRulesViewModel : ObservableObject
             try
             {
                 var client = _clientRules.LoadRules().Where(r => r.AccountId == accountId);
+                // Resolve a folder name only for a Graph account, whose TargetFolder is an opaque id.
+                // An IMAP TargetFolder is already the readable folder path, and resolving it would return
+                // the leaf DisplayName — collapsing "Work/Archive" and "Personal/Archive" to the same
+                // "Archive" — so leave IMAP rules to render their raw path (the ForClient fallback).
+                var isGraphAccount =
+                    _allAccounts.FirstOrDefault(a => a.Id == accountId)?.BackendKind == BackendKind.MicrosoftGraph;
                 rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels,
-                    r.Action == RuleAction.MoveToFolder ? ResolveFolderName(accountId, r.TargetFolder) : null)));
+                    isGraphAccount && r.Action == RuleAction.MoveToFolder
+                        ? ResolveFolderName(accountId, r.TargetFolder) : null)));
             }
             catch (Exception ex)
             {
@@ -626,7 +633,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// rule (<see cref="ServerRuleModel.MoveToFolderId"/>) and a Graph client rule
     /// (<see cref="MailRule.TargetFolder"/>) store an opaque id (e.g. "AQMkAD…"); looking it up here lets
     /// the rule prose read "move to Deleted Items" rather than the id. Null lets the caller keep whatever
-    /// fallback prose it has — the raw id still reads for IMAP, whose FullName is the folder path.
+    /// fallback prose it has. Callers pass only Graph folder ids: an IMAP TargetFolder is already the
+    /// readable path and the client-row builder deliberately does not resolve it (see there).
     /// </summary>
     private string? ResolveFolderName(Guid accountId, string? folderId)
     {

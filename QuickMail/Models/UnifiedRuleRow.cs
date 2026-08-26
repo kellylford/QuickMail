@@ -20,8 +20,9 @@ public sealed class UnifiedRuleRow
     // The move-to target's human name, resolved by the VM from the account's folder cache. A Graph
     // client rule stores an opaque folder id in MailRule.TargetFolder (e.g. "AQMkAD…"), so printing that
     // raw makes the summary unreadable; the VM looks the id up and passes the DisplayName ("Deleted
-    // Items") here. Null when there is nothing to resolve (no move action, or the folder is unknown), and
-    // the summary then falls back to the raw TargetFolder — still right for IMAP, whose FullName reads.
+    // Items") here. Null when the VM chose not to resolve — no move action, an IMAP account (its
+    // TargetFolder is already the readable path, deliberately left unresolved), or the folder isn't in
+    // the cache — and the summary then falls back to the raw TargetFolder.
     private readonly string? _targetFolderDisplay;
 
     private UnifiedRuleRow(RuleRunsWhere runsWhere, ServerRuleModel? server, MailRule? client, bool showFieldLabels, string? targetFolderDisplay)
