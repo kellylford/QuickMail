@@ -29,9 +29,6 @@ public class ConfigFeatureGate : IFeatureGate
         // option to everyone only produced sign-ins that could not succeed. Opt-in for the users
         // whose authorization predates the block (#369).
         [FeatureFlag.GoogleAuth]   = false,
-        // On by default: server-rule list/create/edit/delete/reorder and the unified per-account rules
-        // window are complete and tested (#333). Set ServerRules=false under [features] to hide it again.
-        [FeatureFlag.ServerRules]  = true,
         // On by default as of 0.8.42: shared mailboxes (#31) is complete across its PRs — the "Add
         // shared…" button, reading, send-as, per-account notification opt-in, and the parent-account
         // consent path are all shipped. Set SharedMailboxes=false under [features] to hide it again.
