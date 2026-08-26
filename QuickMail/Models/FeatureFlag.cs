@@ -74,10 +74,10 @@ public enum FeatureFlag
     /// exclusion, the connect-skip, cascade removal — is data-driven off a shared account that only the
     /// button can produce; with no shared account, every IsShared branch is a no-op.
     ///
-    /// Default: false while the feature is built across multiple PRs (PR 1 is the linked-account model
-    /// and manual add only — no backend access yet, so a shared node has no folders). Turn it on to
-    /// test with SharedMailboxes=true under [features] in config.ini, or --feature SharedMailboxes at
-    /// launch. Flips to true by default once the feature is complete.
+    /// Default: true as of 0.8.42 — the feature is complete across its PRs (linked-account model,
+    /// reading and send-as, per-account notification opt-in, and parent-account consent). Set
+    /// SharedMailboxes=false under [features] in config.ini, or --no-feature SharedMailboxes at launch,
+    /// to hide it again.
     /// </summary>
     SharedMailboxes,
 

@@ -122,7 +122,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         && _featureGate.IsEnabled(FeatureFlag.MicrosoftGraphMigration);
 
     /// <summary>#31: gates the "Add shared…" button — the sole path that can create a shared mailbox.
-    /// Off by default while the multi-PR feature is built (see <see cref="FeatureFlag.SharedMailboxes"/>).</summary>
+    /// On by default as of 0.8.42 (see <see cref="FeatureFlag.SharedMailboxes"/>).</summary>
     public bool IsSharedMailboxesEnabled => _featureGate.IsEnabled(FeatureFlag.SharedMailboxes);
 
     public AccountManagerViewModel(
