@@ -32,10 +32,10 @@ public class ConfigFeatureGate : IFeatureGate
         // On by default: server-rule list/create/edit/delete/reorder and the unified per-account rules
         // window are complete and tested (#333). Set ServerRules=false under [features] to hide it again.
         [FeatureFlag.ServerRules]  = true,
-        // Off while shared mailboxes (#31) is built across multiple PRs — the "Add shared…" button, the
-        // sole creation path, stays hidden until the feature is whole. Set SharedMailboxes=true under
-        // [features] to test.
-        [FeatureFlag.SharedMailboxes] = false,
+        // On by default as of 0.8.42: shared mailboxes (#31) is complete across its PRs — the "Add
+        // shared…" button, reading, send-as, per-account notification opt-in, and the parent-account
+        // consent path are all shipped. Set SharedMailboxes=false under [features] to hide it again.
+        [FeatureFlag.SharedMailboxes] = true,
         // Off until POP3 (#128) has run against real servers. The local store holds the only copy of
         // POP3 mail, so the cost of a wrong assumption is a user's mail, not a re-sync. Set
         // Pop3Backend=true under [features] to test.

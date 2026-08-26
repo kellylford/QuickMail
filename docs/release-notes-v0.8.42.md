@@ -1,5 +1,23 @@
 # QuickMail v0.8.42 Release Notes
 
+## New: shared mailboxes
+
+If your organization has given you access to a shared mailbox — a `support@`, `info@`, or `sales@` address a team reads together — you can now add it to QuickMail, and it appears as its own mailbox in the folder tree, alongside your own accounts.
+
+You add one through an account you already have: open **Account Manager**, choose **Add shared mailbox**, pick the Microsoft 365 work or school account that has access to it, and type the shared mailbox's address. There is no separate password and no separate sign-in — QuickMail reads and sends the shared mailbox using the permission your organization already granted your own account.
+
+- **Reading** works like any other mailbox — select it in the folder tree and open its folders.
+- **Sending as the shared mailbox** is a matter of choosing its address in the **From** list when you compose.
+- **New-mail notifications are off by default** for a shared mailbox, since it's often a busy team address. Turn on **Notify me of new mail in this shared mailbox** for a particular one in Account Manager if you want them (the main new-mail notification setting still has to be on).
+
+Two things worth knowing: a shared mailbox **updates every few minutes, not the instant mail arrives** (your own mailboxes still update live), and shared mailboxes are a **Microsoft 365 work or school** feature — personal Outlook.com accounts don't have them. Removing the account a shared mailbox reads through also removes the shared mailbox; QuickMail tells you first. ([#31](https://github.com/kellylford/QuickMail/issues/31))
+
+## New: an administrator can approve QuickMail for a whole organization
+
+Work or school organizations often require an administrator to approve a new app before anyone can sign in. QuickMail now has an in-app way to do it: **Help → Grant Admin Consent for Your Organization**. An administrator signs in there once, approves for the whole organization, and afterwards everyone signs in with no prompts — no hand-built URLs or portal digging.
+
+The approval also works from an ordinary sign-in now: everything QuickMail needs is requested together, so an administrator adding their own account (or approving at the "needs admin approval" screen) grants it all in one pass. And if you sign in as an administrator to approve and QuickMail notices it isn't the account you were adding, it no longer dead-ends — it tells you the approval is saved and offers to sign you back in as yourself. ([#607](https://github.com/kellylford/QuickMail/issues/607))
+
 ## New: a key that goes straight to the next unread message
 
 A user wrote in asking for one, mentioning that Space did this in the mail program they came from.
@@ -264,13 +282,20 @@ back on to recover.
 The contact and calendar permissions are now folded into the mail sign-in, so one screen lists all
 three together. This applies when the account is set to connect over **Microsoft 365 (Graph)** —
 which you choose under **Advanced settings → Connection method**; a personal account left on the
-standard IMAP connection is unaffected. Work and school accounts are deliberately left as they were:
-on a tenant that restricts consent, asking for everything at once would end the whole sign-in rather
-than just the extra part, and the account would never be added at all.
+standard IMAP connection is unaffected. A personal account folds in only what you asked for — mail,
+plus contacts or calendar if you checked those. Work and school accounts fold everything into their
+sign-in as well, but for a different purpose: so an administrator can approve the whole set for the
+organization in one pass (see *An administrator can approve QuickMail for a whole organization*,
+above). Someone without the authority to approve it all is simply signed in with mail only, rather
+than being turned away.
 
 A related bug went with it: an account with only **Sync calendar** checked used to fall through to a
 plain mail sign-in and a separate calendar prompt. Either box now triggers the fold.
 ([#544](https://github.com/kellylford/QuickMail/issues/544))
+
+## Personal accounts can connect over Microsoft 365 (Graph)
+
+A personal Outlook.com, Hotmail, or Live.com account can connect over **Microsoft 365 (Graph)** instead of IMAP — choose it under **Advanced settings → Connection method** when you add the account. Graph is the more capable connection, and a future version of QuickMail will make it the default for Microsoft accounts; for now personal accounts stay on the standard IMAP connection unless you choose Graph yourself.
 
 ## Changed: a new email address for reaching us
 
