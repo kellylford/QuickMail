@@ -59,15 +59,6 @@ public enum FeatureFlag
     GoogleAuth,
 
     /// <summary>
-    /// Shows server-side (Exchange/Graph) Inbox rules in the Rules Manager for Microsoft 365
-    /// accounts (#333). Default: true — server-rule list/create/edit/delete/reorder and the unified
-    /// per-account rules window are complete. Rules the API can't fully round-trip are surfaced
-    /// read-only (see GraphServerRuleService.ListAsync). Turn the surface off again with
-    /// ServerRules=false under [features] in config.ini, or --no-feature ServerRules at launch.
-    /// </summary>
-    ServerRules,
-
-    /// <summary>
     /// Enables shared mailboxes (#31): the "Add shared…" button in the Account Manager, which is the
     /// sole path that can create a shared <see cref="QuickMail.Models.AccountModel"/> (IsShared). This
     /// gates the whole feature, because everything downstream — the shared tree node, aggregate
