@@ -135,6 +135,44 @@ public class UnifiedRulesViewModelTests
         Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
     }
 
+    // ── Shared server-rules predicate (#550) ────────────────────────────────
+    // SupportsServerRules is the one named per-account capability test; AccountSupportsServerRules is it
+    // plus a live server-rule service. Pinning that they agree keeps the two from drifting apart again.
+
+    [Fact]
+    public void SupportsServerRules_WorkGraph_True()
+        => Assert.True(UnifiedRulesViewModel.SupportsServerRules(Graph(Guid.NewGuid())));
+
+    [Fact]
+    public void SupportsServerRules_PersonalGraph_False() // #541/#550: personal Graph has no MailboxSettings.ReadWrite
+        => Assert.False(UnifiedRulesViewModel.SupportsServerRules(PersonalGraph(Guid.NewGuid())));
+
+    [Fact]
+    public void SupportsServerRules_UndetectedPersonalGraph_CaughtByDomainGuess_False()
+        => Assert.False(UnifiedRulesViewModel.SupportsServerRules(
+            new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph, Username = "me@outlook.com", AccountName = "Undetected" }));
+
+    [Fact]
+    public void SupportsServerRules_Imap_False()
+        => Assert.False(UnifiedRulesViewModel.SupportsServerRules(Imap(Guid.NewGuid())));
+
+    [Theory]
+    [InlineData("work")]      // work/school Graph
+    [InlineData("personal")]  // personal Graph
+    [InlineData("imap")]      // IMAP
+    public async Task SupportsServerRules_AgreesWith_AccountSupportsServerRules(string kind)
+    {
+        // The whole point of #550: the standalone capability predicate and the VM's own gate must
+        // return the same answer for the same account, or which server-rule features the window offers
+        // disagrees with whether it should.
+        var a = Guid.NewGuid();
+        var acct = kind switch { "work" => Graph(a), "personal" => PersonalGraph(a), _ => Imap(a) };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [acct], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(vm.AccountSupportsServerRules, UnifiedRulesViewModel.SupportsServerRules(acct));
+    }
+
     // ── New-rule classification & routing (spec §20.3) ──────────────────────
 
     [Fact]
@@ -156,14 +194,17 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
-    public async Task NewRule_MarkAsUnread_OnGraph_RoutesToClient_AndNotifies()
+    public async Task NewRule_MarkAsUnread_OnGraph_RoutesToClient_AndAnnounces() // #550
     {
+        // On a server-capable (work/school Graph) account, a rule that uses a client-only action falls
+        // back to a client rule — a surprise the on-open hint (which said the account supports server
+        // rules) doesn't cover, so the user is told, via a non-blocking Result announcement (no modal).
         var a = Guid.NewGuid();
         var server = new FakeServerRules();
         var client = new StubRuleService();
         var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
-        string? notice = null;
-        vm.ClientRuleNoticeRequested += n => notice = n;
+        var announcements = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (t, c) => announcements.Add((t, c));
 
         var editor = await OpenNewEditorAsync(vm);
         editor.Name = "Keep unread"; editor.SubjectContains = "later"; editor.MarkAsUnread = true;
@@ -172,10 +213,31 @@ public class UnifiedRulesViewModelTests
         Assert.DoesNotContain("create", server.Calls);      // not a server rule
         Assert.Single(client.LoadedRules);                  // persisted as a client rule
         Assert.Equal(a, client.LoadedRules[0].AccountId);
-        Assert.NotNull(notice);
-        Assert.Contains("Mark as unread", notice);
+        var notice = announcements.LastOrDefault(x => x.Text.Contains("Saved as a QuickMail rule"));
+        Assert.Equal(AnnouncementCategory.Result, notice.Category);
+        Assert.Contains("Mark as unread", notice.Text);
         Assert.Single(vm.Rules);
         Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
+    }
+
+    [Fact]
+    public async Task NewRule_OnClientOnlyAccount_RoutesToClient_WithoutSavedNotice() // #550
+    {
+        // On an IMAP (client-only) account every rule is a QuickMail rule and the on-open hint already
+        // said so, so a per-save "saved as a QuickMail rule" notice would be chatter — it must not fire.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
+        var announcements = new List<string>();
+        vm.AnnouncementRequested += (t, _) => announcements.Add(t);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "File it"; editor.SubjectContains = "later"; editor.MarkAsUnread = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Single(client.LoadedRules);                  // persisted as a client rule
+        Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
+        Assert.DoesNotContain(announcements, t => t.Contains("Saved as a QuickMail rule"));
     }
 
     [Fact]

@@ -51,7 +51,6 @@ public partial class UnifiedRulesWindow : Window
 
         vm.EditorRequested += OnEditorRequested;
         vm.ConfirmDeleteRequested += OnConfirmDelete;
-        vm.ClientRuleNoticeRequested += OnClientRuleNotice;
         vm.AnnouncementRequested += OnAnnouncement;
         vm.WriteBlockedByPermission += OnPermissionMessage;
         vm.FocusSelectedRuleRequested += OnFocusSelectedRule;
@@ -146,9 +145,6 @@ public partial class UnifiedRulesWindow : Window
 
     private bool OnConfirmDelete(string message, string title)
         => MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
-
-    private void OnClientRuleNotice(string message)
-        => MessageBox.Show(this, message, "Saved as a QuickMail rule", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private void OnAnnouncement(string text, AnnouncementCategory category)
         // Results and status are action outcomes the user should hear promptly, so they interrupt. A Hint
@@ -277,7 +273,6 @@ public partial class UnifiedRulesWindow : Window
         _vm.CancelPendingLoad();
         _vm.EditorRequested -= OnEditorRequested;
         _vm.ConfirmDeleteRequested -= OnConfirmDelete;
-        _vm.ClientRuleNoticeRequested -= OnClientRuleNotice;
         _vm.AnnouncementRequested -= OnAnnouncement;
         _vm.WriteBlockedByPermission -= OnPermissionMessage;
         _vm.FocusSelectedRuleRequested -= OnFocusSelectedRule;
