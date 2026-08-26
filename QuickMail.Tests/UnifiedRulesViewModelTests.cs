@@ -122,12 +122,12 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
-    public async Task NewRule_NoServerService_SavesClient_NoNotice_NoNullRef() // #550: the flag-off / IMAP-only production path
+    public async Task NewRule_NoServerService_SavesClient_NoNotice_NoNullRef() // #550
     {
-        // Since #550, MainWindow always builds this VM but passes serverRules: null when the ServerRules
-        // flag is off (or there's no Graph account). That null path was never constructed before, so
-        // exercise a full new-rule save through it: it must persist a client rule, stay silent (client-only
-        // account → on-open hint covers it), and never touch the absent server service.
+        // The VM can be built with no server-rule service (serverRules: null) — a defensive path the
+        // _serverRules != null guards exist for. Exercise a full new-rule save through it: it must persist
+        // a client rule, treat the account as client-only (no server rules, no save announcement — the
+        // on-open hint covers it), and never touch the absent server service.
         var a = Guid.NewGuid();
         var client = new StubRuleService();
         var vm = new UnifiedRulesViewModel(client, serverRules: null, [Graph(a)], preferredAccountId: a);
@@ -141,7 +141,7 @@ public class UnifiedRulesViewModelTests
 
         Assert.Single(client.LoadedRules);
         Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
-        Assert.DoesNotContain(announcements, t => t.Contains("Saved as a QuickMail rule"));
+        Assert.DoesNotContain(announcements, t => t.Contains("Saving as a client-side rule"));
     }
 
     [Fact]
@@ -236,9 +236,9 @@ public class UnifiedRulesViewModelTests
         Assert.DoesNotContain("create", server.Calls);      // not a server rule
         Assert.Single(client.LoadedRules);                  // persisted as a client rule
         Assert.Equal(a, client.LoadedRules[0].AccountId);
-        var notice = announcements.LastOrDefault(x => x.Text.Contains("Saved as a QuickMail rule"));
+        var notice = announcements.LastOrDefault(x => x.Text.Contains("client-side rule"));
         Assert.Equal(AnnouncementCategory.Result, notice.Category);
-        Assert.Contains("Mark as unread", notice.Text);
+        Assert.Equal("Saving as a client-side rule.", notice.Text);
         Assert.Single(vm.Rules);
         Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
     }
@@ -260,7 +260,7 @@ public class UnifiedRulesViewModelTests
 
         Assert.Single(client.LoadedRules);                  // persisted as a client rule
         Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
-        Assert.DoesNotContain(announcements, t => t.Contains("Saved as a QuickMail rule"));
+        Assert.DoesNotContain(announcements, t => t.Contains("Saving as a client-side rule"));
     }
 
     [Fact]
@@ -381,7 +381,7 @@ public class UnifiedRulesViewModelTests
     public void RuleModeHint_DistinguishesServerCapableFromClientOnly()
     {
         Assert.Contains("server-side", UnifiedRulesViewModel.RuleModeHint(supportsServerRules: true));
-        Assert.Contains("run in QuickMail", UnifiedRulesViewModel.RuleModeHint(supportsServerRules: false));
+        Assert.Contains("client-side", UnifiedRulesViewModel.RuleModeHint(supportsServerRules: false));
     }
 
     [Fact]
@@ -597,6 +597,100 @@ public class UnifiedRulesViewModelTests
     // ── Field labels (#493 Gap 1: honor RuleListShowFieldLabels in the unified list) ──────────
 
     [Fact]
+    public async Task ClientRuleSummary_ResolvesGraphFolderIdToName() // #550: raw Graph folder id → "Deleted Items"
+    {
+        var a = Guid.NewGuid();
+        const string folderId = "AQMkAD-opaque-graph-folder-id";
+        var rule = new MailRule
+        {
+            Name = "Security", AccountId = a,
+            UseFromCondition = true, FromContains = "account-security-noreply@accountprotection.microsoft.com",
+            Action = RuleAction.MoveToFolder, TargetFolder = folderId,
+        };
+        var client = new StubRuleService { LoadedRules = [rule] };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] = [new MailFolderModel { FullName = folderId, DisplayName = "Deleted Items", Kind = SpecialFolderKind.Trash }],
+        };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Graph(a)], folders, preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var row = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        Assert.Contains("move to Deleted Items", row.RowText);
+        Assert.DoesNotContain(folderId, row.RowText);      // the opaque id never reaches the user
+    }
+
+    [Fact]
+    public async Task ClientRuleSummary_FallsBackToRawTarget_WhenFolderUnknown() // IMAP path reads fine as-is
+    {
+        var a = Guid.NewGuid();
+        var rule = new MailRule
+        {
+            Name = "File", AccountId = a, UseSubjectCondition = true, SubjectContains = "x",
+            Action = RuleAction.MoveToFolder, TargetFolder = "Archive",
+        };
+        var client = new StubRuleService { LoadedRules = [rule] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var row = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        Assert.Contains("move to Archive", row.RowText);
+    }
+
+    [Fact]
+    public async Task ServerRuleDetail_ResolvesMoveFolderIdToName_WhenNameMissing() // #550
+    {
+        // Graph returns a folder id but no name on a server rule's move action, so the prose fell back to
+        // "another folder". Resolve it from the folder cache, same as client rules.
+        var a = Guid.NewGuid();
+        const string folderId = "AQMkAD-server-target";
+        var serverRule = new ServerRuleModel { Id = "s1", DisplayName = "Rocket", SenderContains = "rocket@x.com", MoveToFolderId = folderId };
+        var server = new FakeServerRules { Stored = [serverRule] };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] = [new MailFolderModel { FullName = folderId, DisplayName = "Statements" }],
+        };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], folders, preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var detail = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Server).DetailText;
+        Assert.Contains("move to Statements", detail);
+        Assert.DoesNotContain("another folder", detail);
+        Assert.DoesNotContain(folderId, detail);
+    }
+
+    [Fact]
+    public async Task ClientRuleDetail_MirrorsServerStructure_NoRunsLine_WithFolderName() // #550
+    {
+        var a = Guid.NewGuid();
+        const string folderId = "AQMkAD-opaque";
+        var rule = new MailRule
+        {
+            Name = "Security", AccountId = a,
+            UseFromCondition = true, FromContains = "security@x.com",
+            UseSubjectCondition = true, SubjectContains = "alert",
+            Action = RuleAction.MoveToFolder, TargetFolder = folderId,
+        };
+        var client = new StubRuleService { LoadedRules = [rule] };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] = [new MailFolderModel { FullName = folderId, DisplayName = "Deleted Items", Kind = SpecialFolderKind.Trash }],
+        };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Graph(a)], folders, preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var detail = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client).DetailText;
+
+        Assert.StartsWith("Security (enabled)", detail);
+        Assert.Contains("Applies when:", detail);           // same section headers as a server rule
+        Assert.Contains("Does:", detail);
+        Assert.Contains("move to Deleted Items", detail);    // resolved, not the raw id
+        Assert.DoesNotContain(folderId, detail);
+        Assert.DoesNotContain("client-side", detail);        // no "runs client-side" line — spoken elsewhere already
+        Assert.DoesNotContain("only while QuickMail is open", detail);
+    }
+
+    [Fact]
     public async Task RowText_NoFieldLabels_ByDefault()
     {
         var a = Guid.NewGuid();
@@ -605,7 +699,7 @@ public class UnifiedRulesViewModelTests
         await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
 
         var row = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
-        Assert.StartsWith("Newsletters, in QuickMail, enabled", row.RowText);
+        Assert.StartsWith("Newsletters, on client, enabled", row.RowText);
         Assert.DoesNotContain("Rule Newsletters", row.RowText);
     }
 
@@ -621,7 +715,31 @@ public class UnifiedRulesViewModelTests
         await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
 
         var row = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
-        Assert.StartsWith("Rule Newsletters, runs in QuickMail, status enabled", row.RowText);
+        Assert.StartsWith("Rule Newsletters, runs on client, status enabled", row.RowText);
+    }
+
+    [Fact]
+    public async Task StatusText_ClientOnlyAccount_DropsServerBreakdown() // #550 wording
+    {
+        // A client-only account can't have server rules, so "0 on server" is noise — name them plainly.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("C1", a), Client("C2", a)] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("2 client-side rules.", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task StatusText_ServerCapableAccount_ShowsServerClientBreakdown() // #550 wording
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules { Stored = [Server("S1")] };
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
+        var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("2 rules: 1 on server, 1 on client.", vm.StatusText);
     }
 
     [Fact]
