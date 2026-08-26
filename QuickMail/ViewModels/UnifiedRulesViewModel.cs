@@ -104,9 +104,6 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// <summary>Ask the View to confirm a delete (message, title) → user's yes/no.</summary>
     public event Func<string, string, bool>? ConfirmDeleteRequested;
 
-    /// <summary>Ask the View to show the "saved as a QuickMail rule" dialog (spec §20.3).</summary>
-    public event Action<string>? ClientRuleNoticeRequested;
-
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
     public event Action<string>? WriteBlockedByPermission;
     public event Action? FocusSelectedRuleRequested;
@@ -312,15 +309,19 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 created => created.Id, reloadOnSuccess: true);
         }
 
-        // Client rule — persist and tell the user it runs in QuickMail (spec §20.3).
+        // Client rule — persist. Whether we say so depends on the account (#550):
+        //  • On an account that supports server rules, a rule landing client-side is a surprise — the
+        //    on-open hint said this account *also* runs rules in the cloud, yet this one won't (it uses a
+        //    client-only action like Mark as unread). So announce it, with the reason. A non-blocking
+        //    Announce (Result — honors AnnounceResults), not the old modal: the rules window is now the
+        //    one every account uses, and a focus-stealing dialog on each such save doesn't belong there.
+        //  • On a client-only account (IMAP / personal Graph) every rule is a QuickMail rule, and the
+        //    on-open hint already said so — a per-save notice would just be chatter, so stay silent.
         var rule = editor.ToClientRule(accountId);
         AddClientRule(rule);
-        // Show the notice BEFORE re-selecting: ReloadAndReselect posts a focus move to the new row,
-        // and if that's pending when the modal notice opens, focus jumps into the background window
-        // while the notice is up. Raising the (modal) notice first means the reselect + focus request
-        // run only once it's dismissed.
-        ClientRuleNoticeRequested?.Invoke(
-            $"Saved as a QuickMail rule (it runs while QuickMail is open) — {kind.ClientReason}.");
+        if (AccountSupportsServerRules)
+            Announce($"Saved as a QuickMail rule (it runs while QuickMail is open) — {kind.ClientReason}.",
+                AnnouncementCategory.Result);
         await ReloadAndReselectAsync(clientId: rule.Id);
         return null;
     }
@@ -473,8 +474,24 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// </summary>
     public bool AccountSupportsServerRules
         => _serverRules != null
-           && SelectedAccountModel is { BackendKind: BackendKind.MicrosoftGraph } acct
-           && !OAuthService.ResolveIsPersonalMicrosoftAccount(acct);
+           && SelectedAccountModel is { } acct
+           && SupportsServerRules(acct);
+
+    /// <summary>
+    /// Whether <paramref name="account"/> is the kind that can carry server-side rules: a
+    /// <em>work or school</em> Microsoft 365 (Graph) account. Personal Graph accounts are excluded
+    /// for the reason spelt out on <see cref="AccountSupportsServerRules"/>.
+    /// <para>
+    /// The pure per-account capability test, factored out so it reads the same everywhere and
+    /// <see cref="AccountSupportsServerRules"/> (which also requires a live server-rule service) is its
+    /// one caller today. Since #550 there is a single rules window for every account, so the old
+    /// window-chooser that this once had to agree with is gone — but keeping the capability question in
+    /// one named place is still the right shape.
+    /// </para>
+    /// </summary>
+    public static bool SupportsServerRules(AccountModel account)
+        => account.BackendKind == BackendKind.MicrosoftGraph
+           && !OAuthService.ResolveIsPersonalMicrosoftAccount(account);
 
     private AccountModel? SelectedAccountModel
         => _allAccounts.FirstOrDefault(a => a.Id == SelectedAccount?.Id);
