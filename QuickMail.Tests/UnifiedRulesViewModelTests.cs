@@ -638,6 +638,74 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task ClientRuleSummary_ImapAccount_KeepsFullPath_NotLeafName() // #550 review: no leaf collapse for IMAP
+    {
+        // Even with the folder in the cache, an IMAP target keeps its readable path. Resolving it to the
+        // leaf DisplayName would make "Work/Archive" and "Personal/Archive" both read "Archive".
+        var a = Guid.NewGuid();
+        var rule = new MailRule
+        {
+            Name = "File", AccountId = a, UseSubjectCondition = true, SubjectContains = "x",
+            Action = RuleAction.MoveToFolder, TargetFolder = "Work/Archive",
+        };
+        var client = new StubRuleService { LoadedRules = [rule] };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] = [new MailFolderModel { FullName = "Work/Archive", DisplayName = "Archive" }],
+        };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], folders, preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var row = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        Assert.Contains("move to Work/Archive", row.RowText);   // full path kept, not collapsed to "Archive"
+    }
+
+    [Fact]
+    public async Task ServerRuleDetail_ResolvesCopyFolderIdToName_WhenNameMissing() // #550 review: copy-to path
+    {
+        var a = Guid.NewGuid();
+        const string folderId = "AQMkAD-copy-target";
+        var serverRule = new ServerRuleModel { Id = "s1", DisplayName = "Archive copies", SenderContains = "x@y.com", CopyToFolderId = folderId };
+        var server = new FakeServerRules { Stored = [serverRule] };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] = [new MailFolderModel { FullName = folderId, DisplayName = "Backups" }],
+        };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], folders, preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var detail = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Server).DetailText;
+        Assert.Contains("copy to Backups", detail);
+        Assert.DoesNotContain("another folder", detail);
+        Assert.DoesNotContain(folderId, detail);
+    }
+
+    [Fact]
+    public async Task ServerRuleDetail_DoesNotOverwrite_AnExistingFolderName() // #550 review: only fill an empty name
+    {
+        // The rule already carries a resolved name (e.g. set by the editor); the cache holds a DIFFERENT
+        // name for the same id. The existing name must win — the resolve pass only fills an empty one.
+        var a = Guid.NewGuid();
+        const string folderId = "AQMkAD-target";
+        var serverRule = new ServerRuleModel
+        {
+            Id = "s1", DisplayName = "R", SenderContains = "x@y.com",
+            MoveToFolderId = folderId, MoveToFolderName = "Editor Name",
+        };
+        var server = new FakeServerRules { Stored = [serverRule] };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] = [new MailFolderModel { FullName = folderId, DisplayName = "Cache Name" }],
+        };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], folders, preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var detail = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Server).DetailText;
+        Assert.Contains("move to Editor Name", detail);
+        Assert.DoesNotContain("Cache Name", detail);
+    }
+
+    [Fact]
     public async Task ServerRuleDetail_ResolvesMoveFolderIdToName_WhenNameMissing() // #550
     {
         // Graph returns a folder id but no name on a server rule's move action, so the prose fell back to
@@ -684,6 +752,8 @@ public class UnifiedRulesViewModelTests
         Assert.StartsWith("Security (enabled)", detail);
         Assert.Contains("Applies when:", detail);           // same section headers as a server rule
         Assert.Contains("Does:", detail);
+        Assert.Contains("from contains 'security@x.com';", detail);   // items are ";"-separated, one per line
+        Assert.DoesNotContain("alert';", detail);                     // …with no trailing ";" on the last item
         Assert.Contains("move to Deleted Items", detail);    // resolved, not the raw id
         Assert.DoesNotContain(folderId, detail);
         Assert.DoesNotContain("client-side", detail);        // no "runs client-side" line — spoken elsewhere already
