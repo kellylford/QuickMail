@@ -122,6 +122,29 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task NewRule_NoServerService_SavesClient_NoNotice_NoNullRef() // #550: the flag-off / IMAP-only production path
+    {
+        // Since #550, MainWindow always builds this VM but passes serverRules: null when the ServerRules
+        // flag is off (or there's no Graph account). That null path was never constructed before, so
+        // exercise a full new-rule save through it: it must persist a client rule, stay silent (client-only
+        // account → on-open hint covers it), and never touch the absent server service.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, serverRules: null, [Graph(a)], preferredAccountId: a);
+        var announcements = new List<string>();
+        vm.AnnouncementRequested += (t, _) => announcements.Add(t);
+
+        Assert.False(vm.AccountSupportsServerRules);   // no service → client-only even for a Graph account
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "File it"; editor.SubjectContains = "later"; editor.MarkAsUnread = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Single(client.LoadedRules);
+        Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
+        Assert.DoesNotContain(announcements, t => t.Contains("Saved as a QuickMail rule"));
+    }
+
+    [Fact]
     public async Task Refresh_NoServerService_LoadsOnlyClientRules_EvenForGraphAccount()
     {
         var a = Guid.NewGuid();
