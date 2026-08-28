@@ -2,6 +2,21 @@
 
 <!-- Add "What is new" sections here (Changed/Fixed/New), then the Reporting Issues footer, then the Download footer last. -->
 
+## Changed: a bug report now says which kind of account you use
+
+A report sent with **Report a Bug** already describes the setting it happened in — your QuickMail
+version, your Windows version, the theme, the view, the sort order, and where messages open. It did
+not say how your accounts connect, and that turns out to be one of the first things worth knowing:
+an account connected over IMAP, over POP3, and through Microsoft 365 genuinely behave differently
+from one another, so a report that leaves it out can take a while to place.
+
+Reports now include one more line — how many accounts you have set up and the protocols they use,
+for example *"2 (IMAP, Microsoft 365)"*. Shared mailboxes are counted on their own, as in *"2
+(Microsoft 365), plus 1 shared mailbox"*, because a shared mailbox is not one of your own accounts.
+It is counts and protocol names, nothing else: no address, no server name, no account name. As always the **Preview** in the report window shows the
+complete text before you send it, so you can read exactly what is going.
+([#639](https://github.com/kellylford/QuickMail/issues/639))
+
 ---
 
 ## Reporting Issues

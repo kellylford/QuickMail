@@ -1240,7 +1240,49 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Models.MessageOpenMode.Window      => "Window",
             _                                  => MessageOpenMode.ToString(),
         },
+        Accounts = DescribeAccounts(this.Accounts),
     };
+
+    /// <summary>
+    /// The account line for a bug report's Environment section: how many accounts are configured
+    /// and which protocols they connect over — <c>"2 (IMAP, Microsoft 365)"</c>, or
+    /// <c>"1 (Microsoft 365), plus 2 shared mailboxes"</c>. Backend now changes behaviour in draft
+    /// handling, folder semantics, rules, and attachment fetch, so a report that omits it costs a
+    /// source read to triage (#639).
+    /// <para>Protocol kind only — no address, host name, or display name goes near this string: it
+    /// is published verbatim into a public issue. Kinds are listed in <see cref="BackendKind"/>
+    /// order rather than account order so the same setup always produces the same line; the
+    /// examples above are in that order (ImapSmtp precedes MicrosoftGraph), and
+    /// <c>DescribeAccounts_OrdersKindsIndependentlyOfAccountOrder</c> pins it.</para>
+    /// Pure/static so the redaction boundary is unit-testable without standing up the view model.
+    /// </summary>
+    internal static string DescribeAccounts(IEnumerable<AccountModel>? accounts)
+    {
+        var all = accounts?.ToList() ?? [];
+        if (all.Count == 0) return "0";
+
+        var distinct = all.Select(a => a.BackendKind).Distinct().OrderBy(k => k).Select(k => k switch
+        {
+            BackendKind.MicrosoftGraph => "Microsoft 365",
+            BackendKind.Pop3Smtp       => "POP3",
+            BackendKind.ImapSmtp       => "IMAP",
+            _                          => k.ToString(),
+        });
+
+        // Shared mailboxes are counted apart from the user's own accounts (#31). Folding them into
+        // one number is both misleading — three "accounts" can be one account and two mailboxes
+        // someone shared with it — and a wasted signal: a shared mailbox reads through its parent's
+        // token and diverges from an ordinary account in ways that are worth knowing up front.
+        var shared = all.Count(a => a.IsShared);
+        var line   = $"{all.Count - shared} ({string.Join(", ", distinct)})";
+
+        return shared switch
+        {
+            0 => line,
+            1 => line + ", plus 1 shared mailbox",
+            _ => line + $", plus {shared} shared mailboxes",
+        };
+    }
 
     private string ViewModeName => ViewMode switch
     {
