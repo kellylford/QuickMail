@@ -35,12 +35,18 @@ public sealed class BugReportContext
     public string MessageOpenMode { get; set; } = string.Empty;
 
     /// <summary>
-    /// The configured accounts as a count plus the distinct protocols they connect over, e.g.
-    /// "2 (Microsoft 365, IMAP)". Behaviour now diverges by backend in draft handling, folder
-    /// semantics, rules, and attachment fetch, so a report that does not say which one is in use
-    /// costs a source read to triage (issue #639, found triaging #637).
-    /// <para>Protocol kind only — never an address, host name, or display name. This text is
-    /// published verbatim into a public issue.</para>
+    /// The user's own accounts as a count plus the distinct protocols they connect over, with any
+    /// shared mailboxes counted after them: <c>"2 (IMAP, Microsoft 365)"</c>, or
+    /// <c>"1 (Microsoft 365), plus 2 shared mailboxes"</c>. Behaviour now diverges by backend in
+    /// draft handling, folder semantics, rules, and attachment fetch, so a report that does not say
+    /// which one is in use costs a source read to triage (issue #639, found triaging #637).
+    /// <para>Protocols are listed in <see cref="BackendKind"/> order, not account order, so one
+    /// setup always renders one line and two reports from the same user are comparable. A second
+    /// producer of this field must keep that, or the field stops being comparable across reports —
+    /// which is the whole of its value. <see cref="ViewModels.MainViewModel.DescribeAccounts"/> is
+    /// the reference implementation.</para>
+    /// <para>Counts and protocol kinds only — never an address, host name, or display name. This
+    /// text is published verbatim into a public issue.</para>
     /// </summary>
     public string Accounts { get; set; } = string.Empty;
 }

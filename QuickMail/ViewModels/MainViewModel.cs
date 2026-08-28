@@ -1245,12 +1245,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// The account line for a bug report's Environment section: how many accounts are configured
-    /// and which protocols they connect over, e.g. "2 (Microsoft 365, IMAP)". Backend now changes
-    /// behaviour in draft handling, folder semantics, rules, and attachment fetch, so a report that
-    /// omits it costs a source read to triage (#639).
+    /// and which protocols they connect over — <c>"2 (IMAP, Microsoft 365)"</c>, or
+    /// <c>"1 (Microsoft 365), plus 2 shared mailboxes"</c>. Backend now changes behaviour in draft
+    /// handling, folder semantics, rules, and attachment fetch, so a report that omits it costs a
+    /// source read to triage (#639).
     /// <para>Protocol kind only — no address, host name, or display name goes near this string: it
-    /// is published verbatim into a public issue. Kinds are listed in enum order rather than
-    /// account order so the same setup always produces the same line.</para>
+    /// is published verbatim into a public issue. Kinds are listed in <see cref="BackendKind"/>
+    /// order rather than account order so the same setup always produces the same line; the
+    /// examples above are in that order (ImapSmtp precedes MicrosoftGraph), and
+    /// <c>DescribeAccounts_OrdersKindsIndependentlyOfAccountOrder</c> pins it.</para>
     /// Pure/static so the redaction boundary is unit-testable without standing up the view model.
     /// </summary>
     internal static string DescribeAccounts(IEnumerable<AccountModel>? accounts)

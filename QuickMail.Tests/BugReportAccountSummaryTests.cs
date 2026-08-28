@@ -9,6 +9,7 @@
 using System;
 using System.Collections.Generic;
 using QuickMail.Models;
+using QuickMail.Services;
 using QuickMail.ViewModels;
 using Xunit;
 
@@ -16,6 +17,13 @@ namespace QuickMail.Tests;
 
 public class BugReportAccountSummaryTests
 {
+    private sealed class AccountsStub(params AccountModel[] accounts) : IAccountService
+    {
+        public List<AccountModel> LoadAccounts() => [.. accounts];
+        public void SaveAccounts(List<AccountModel> a) { }
+        public void SetDefaultAccount(Guid accountId) { }
+    }
+
     private static AccountModel Acct(BackendKind kind, bool shared = false) => new()
     {
         Id           = Guid.NewGuid(),
@@ -100,6 +108,53 @@ public class BugReportAccountSummaryTests
     [Fact]
     public void DescribeAccounts_SaysNothingAboutSharedMailboxes_WhenThereAreNone()
         => Assert.DoesNotContain("shared", MainViewModel.DescribeAccounts([Acct(BackendKind.ImapSmtp)]));
+
+    // ── The wiring ────────────────────────────────────────────────────────────
+    // Everything above tests DescribeAccounts, and BugReportServiceTests renders a hand-written
+    // BugReportContext. Neither observes the one line that joins them, so deleting
+    // "Accounts = DescribeAccounts(this.Accounts)" from CaptureBugReportContext left the whole
+    // suite green while the field went empty, BuildReportText dropped the line by its own
+    // empty-guard, and every report shipped without the account information again — #639 undone,
+    // silently. These two close that.
+
+    /// <summary>
+    /// The captured context actually carries the account line, for the real account list rather
+    /// than a literal a test wrote.
+    /// </summary>
+    [Fact]
+    public void CaptureBugReportContext_PopulatesTheAccountLine()
+    {
+        var vm = MakeViewModel(Acct(BackendKind.ImapSmtp), Acct(BackendKind.MicrosoftGraph));
+
+        Assert.Equal("2 (IMAP, Microsoft 365)", vm.CaptureBugReportContext().Accounts);
+    }
+
+    /// <summary>
+    /// And it reflects what is configured rather than a constant: a different account list has to
+    /// produce a different line, or an assignment of some fixed string would pass the test above.
+    /// </summary>
+    [Fact]
+    public void CaptureBugReportContext_ReflectsTheConfiguredAccounts()
+    {
+        var oneImap = MakeViewModel(Acct(BackendKind.ImapSmtp));
+        var withShared = MakeViewModel(
+            Acct(BackendKind.MicrosoftGraph), Acct(BackendKind.MicrosoftGraph, shared: true));
+
+        Assert.Equal("1 (IMAP)", oneImap.CaptureBugReportContext().Accounts);
+        Assert.Equal("1 (Microsoft 365), plus 1 shared mailbox",
+                     withShared.CaptureBugReportContext().Accounts);
+    }
+
+    private static MainViewModel MakeViewModel(params AccountModel[] accounts)
+    {
+        var vm = new MainViewModel(
+            new StubImapMailService(), new AccountsStub(accounts), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), new StubSmtpService());
+        vm.LoadAccountList();   // App does this before OnLoaded; Accounts is empty until it runs
+        return vm;
+    }
 
     /// <summary>
     /// The redaction boundary. This text goes into a public issue body, so nothing that identifies
