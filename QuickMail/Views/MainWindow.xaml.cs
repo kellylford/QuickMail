@@ -159,6 +159,7 @@ public partial class MainWindow : Window
     private readonly IGraphCalendarSyncService? _graphCalendarSyncService;
     private readonly IConfigService _configService;
     private readonly ILocalStoreService _localStore;
+    private readonly ILocalDraftService _localDrafts;
     private readonly IViewService _viewService;
     private readonly IRuleService _ruleService;
     private readonly IServerRuleService? _serverRuleService;
@@ -232,8 +233,12 @@ public partial class MainWindow : Window
         IAutoDiscoverService? autoDiscover = null,
         ConnectionTruthProbe? truthProbe = null,
         IRowLayoutService? rowLayoutService = null,
-        IWatchService? watchService = null)
+        IWatchService? watchService = null,
+        ILocalDraftService? localDrafts = null)
     {
+        // Defaulted for the same reason the catalog above is: a pure wrapper over the local store
+        // this constructor already takes, so the fallback is the object App would have passed.
+        _localDrafts = localDrafts ?? new LocalDraftService(localStore);
         _vm = vm;
         _watchService = watchService;
         _rowLayoutService = rowLayoutService;
@@ -5193,7 +5198,7 @@ public partial class MainWindow : Window
         // Compose windows are modeless, so the one-turn delay is imperceptible.
         Dispatcher.InvokeAsync(() =>
         {
-            var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
+            var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _localDrafts, _templateService);
             composeVm.Seed(composeModel);
             var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
             composeVm.CloseRequested += window.Close;
@@ -6171,7 +6176,7 @@ public partial class MainWindow : Window
         ComposeWindow GetOrOpenCompose()
         {
             if (pending?.IsLoaded == true) return pending;
-            var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
+            var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _localDrafts, _templateService);
             // Seed with an empty new-message model so the sender-account list is populated and the
             // default account + signature are applied — same as the normal "New message" path. Without
             // this the From picker is empty and the user can't choose who to send from (a pre-existing

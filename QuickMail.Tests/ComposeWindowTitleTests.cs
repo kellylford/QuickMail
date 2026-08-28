@@ -26,6 +26,7 @@ public class ComposeWindowTitleTests
         new StubAccountService(),
         new StubCredentialService(),
         new StubImapMailService(),
+        new FakeLocalDraftService(),
         new StubTemplateService());
 
     private static ComposeViewModel MakeVm(ComposeKind kind, string subject = "")

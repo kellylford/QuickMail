@@ -17,6 +17,7 @@ public class ComposeViewModelModeTests
         new StubAccountService(),
         new StubCredentialService(),
         new StubImapMailService(),
+        new FakeLocalDraftService(),
         new StubTemplateService());
 
     [Fact]

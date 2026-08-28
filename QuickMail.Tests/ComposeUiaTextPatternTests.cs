@@ -114,6 +114,7 @@ public class ComposeUiaTextPatternTests
             new StubAccountService(),
             new StubCredentialService(),
             new StubImapMailService(),
+            new FakeLocalDraftService(),
             new StubTemplateService());
 
         var window = new QuickMail.Views.ComposeWindow(

@@ -21,6 +21,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly IMailService _imap;
+    private readonly ILocalDraftService _drafts;
     private readonly ITemplateService _templateService;
     private readonly IMarkdownService _markdown;
 
@@ -143,6 +144,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private string? _inReplyToMessageId;
     private string? _draftMessageId;
     private string? _draftFolderName;
+
+    /// <summary>
+    /// The server-side id of this draft, when the server has a copy. Tracked separately from
+    /// <see cref="_draftMessageId"/> — which after an offline save is a local id — because it is
+    /// what the upload must pass as "replace this one" (#637). Null until a save reaches a server.
+    /// </summary>
+    private string? _draftServerMessageId;
     private bool _isDirty;
     private bool _isSent;
     private ComposeMode _seededMode = ComposeMode.PlainText;
@@ -170,12 +178,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public IAccountService AccountService => _accountService;
 
-    public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null)
+    public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ILocalDraftService drafts, ITemplateService templateService, IMarkdownService? markdown = null)
     {
         _smtp = smtp;
         _accountService = accountService;
         _credentials = credentials;
         _imap = imap;
+        _drafts = drafts;
         _templateService = templateService;
         _markdown = markdown ?? new MarkdownService();
         _attachments.CollectionChanged += (_, _) =>
@@ -197,6 +206,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         _inReplyToMessageId = model.InReplyToMessageId;
         _draftMessageId     = model.DraftMessageId;
         _draftFolderName    = model.DraftFolderName;
+        // A local id means the copy on this computer is the newer one and the server's id (if any)
+        // is recorded against the stored draft, not here; the next save reads it back from there.
+        _draftServerMessageId = LocalMessageId.IsLocal(model.DraftMessageId) ? null : model.DraftMessageId;
+        IsDraftPendingUpload  = LocalMessageId.IsLocal(model.DraftMessageId);
         ComposeKind         = model.Kind;
         OnPropertyChanged(nameof(WindowTitle));
 
@@ -259,7 +272,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         try
         {
             await SaveDraftCoreAsync(account);
-            SetStatusOutcome("Draft saved.");
+            SetStatusOutcome(IsDraftPendingUpload
+                ? "Draft saved on this computer. It will go to the server when you are back online."
+                : "Draft saved.");
         }
         catch (DraftFolderMissingException)
         {
@@ -267,6 +282,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            // Reached only when the local store itself failed, now that the server leg is
+            // best-effort. That is a real "your draft is not saved anywhere" and must say so.
             SetStatusOutcome($"Save draft failed: {ex.Message}");
         }
         finally
@@ -275,19 +292,106 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Uploads the current compose state as a draft, replacing any previous draft.</summary>
+    /// <summary>
+    /// True when this draft is stored on this computer but not yet on the server (#637). Drives the
+    /// wording of the save and auto-save outcomes, so that "saved" never overstates where it is.
+    /// </summary>
+    [ObservableProperty] private bool _isDraftPendingUpload;
+
+    /// <summary>
+    /// Saves the current compose state: to this computer first, then to the server's Drafts folder.
+    /// <para>The order is the fix for #637. The local write needs no network and is what the user is
+    /// promised when they press Save, so it happens first and unconditionally; the upload is a
+    /// best-effort second leg whose failure downgrades the wording rather than losing the message.
+    /// Only a local-store failure throws out of here.</para>
+    /// </summary>
     private async Task SaveDraftCoreAsync(AccountModel account, CancellationToken externalCt = default)
     {
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        using var combined = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, externalCt);
+        // The cached folder list first: asking the server where Drafts is, is itself a network call,
+        // and needing it before saving would put the network back in front of an offline save.
+        // Wrapped because --online mode creates no SQLite schema at all, so this throws there
+        // rather than answering — see the runtime-modes table in docs/ARCHITECTURE.md.
+        if (_draftFolderName == null)
+        {
+            try
+            {
+                _draftFolderName = await _drafts.ResolveDraftsFolderNameAsync(account.Id);
+            }
+            catch (Exception ex)
+            {
+                LogService.Log("SaveDraftCoreAsync: no local folder cache to resolve Drafts from", ex);
+            }
+        }
 
-        _draftFolderName ??= await _imap.FindDraftsFolderNameAsync(account.Id, combined.Token);
+        if (_draftFolderName == null)
+        {
+            using var findCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var findCombined = CancellationTokenSource.CreateLinkedTokenSource(findCts.Token, externalCt);
+            try
+            {
+                _draftFolderName = await _imap.FindDraftsFolderNameAsync(account.Id, findCombined.Token);
+            }
+            catch (Exception ex)
+            {
+                // Offline on an account whose folders have never synced. There is nowhere to file
+                // the draft even locally, so this is still the missing-folder outcome.
+                LogService.Log("SaveDraftCoreAsync: could not resolve the Drafts folder", ex);
+            }
+        }
+
         if (_draftFolderName == null)
             throw new DraftFolderMissingException();
 
         var compose = BuildComposeModel(account.Id);
-        _draftMessageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, combined.Token);
-        _isDirty = false;
+
+        // Leg 1 — this computer. Needs no network, so it is what makes the save survive a failing
+        // connection. It is NOT guaranteed to be available: --online mode runs with no local store,
+        // and there the server leg below is the only one there has ever been.
+        string? localId = null;
+        Exception? localFailure = null;
+        try
+        {
+            var saved = await _drafts.SaveAsync(account, compose, _draftFolderName, _draftMessageId, externalCt);
+            localId               = saved.MessageId;
+            _draftMessageId       = saved.MessageId;
+            _draftServerMessageId ??= saved.SupersededServerMessageId;
+            _isDirty              = false;
+            IsDraftPendingUpload  = true;
+        }
+        catch (Exception ex)
+        {
+            localFailure = ex;
+            LogService.Log("SaveDraftCoreAsync: local draft store unavailable; server-only this time", ex);
+        }
+
+        // Leg 2 — the server. Best-effort when leg 1 worked; the only hope when it did not.
+        try
+        {
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var combined = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, externalCt);
+
+            var serverId = await _imap.AppendDraftAsync(
+                account.Id, compose, _draftServerMessageId, combined.Token);
+
+            // The server holds it now, so the local copy is redundant — and leaving it would show
+            // the draft twice in Drafts once the folder syncs.
+            if (localId != null)
+                await _drafts.DiscardAsync(account.Id, _draftFolderName, localId);
+
+            _draftMessageId       = serverId;
+            _draftServerMessageId = serverId;
+            _isDirty              = false;
+            IsDraftPendingUpload  = false;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("SaveDraftCoreAsync: draft kept locally; server upload failed", ex);
+
+            // Both legs failed, so the draft genuinely is nowhere. Anything short of throwing here
+            // would report a save that did not happen.
+            if (localFailure != null)
+                throw;
+        }
     }
 
     private sealed class DraftFolderMissingException : Exception
@@ -341,17 +445,22 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         try
         {
             await SaveDraftCoreAsync(account, _autoSaveCts.Token);
-            AutoSaveText = $"Auto-saved {DateTime.Now:t}";
+            // Being offline is no longer a failure: the draft is on disk either way, and the only
+            // difference is where else it is. Saying "failed" for a saved draft was the wrong alarm.
+            AutoSaveText = IsDraftPendingUpload
+                ? $"Auto-saved on this computer {DateTime.Now:t}"
+                : $"Auto-saved {DateTime.Now:t}";
             _autoSaveFailureAnnounced = false;
         }
         catch (Exception ex)
         {
+            // Now means the local store refused the write — the draft really is nowhere.
             LogService.Log("AutoSaveAsync: draft auto-save failed", ex);
             AutoSaveText = "Auto-save failed";
             if (!_autoSaveFailureAnnounced)
             {
                 _autoSaveFailureAnnounced = true;
-                AutoSaveFailed?.Invoke("Auto-save failed. Your draft is not saved to the server.");
+                AutoSaveFailed?.Invoke("Auto-save failed. Your draft is not saved.");
             }
         }
         finally
@@ -439,13 +548,27 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 }
             });
 
-            // Delete the draft from the server (if one was saved)
-            if (!string.IsNullOrEmpty(_draftMessageId) && _draftFolderName != null)
+            // Drop the local copy first: it is the one that would otherwise sit in Drafts forever,
+            // since nothing on the server will ever reconcile it away (#637).
+            if (LocalMessageId.IsLocal(_draftMessageId) && _draftFolderName != null)
+            {
+                try
+                {
+                    await _drafts.DiscardAsync(account.Id, _draftFolderName, _draftMessageId!);
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log("SendAsync: failed to discard the local draft after send", ex);
+                }
+            }
+
+            // Delete the draft from the server (if one was saved there)
+            if (!string.IsNullOrEmpty(_draftServerMessageId) && _draftFolderName != null)
             {
                 try
                 {
                     using var delCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                    await _imap.MoveToTrashAsync(account.Id, _draftFolderName, _draftMessageId, delCts.Token);
+                    await _imap.MoveToTrashAsync(account.Id, _draftFolderName, _draftServerMessageId, delCts.Token);
                 }
                 catch (Exception ex)
                 {

@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -242,6 +243,16 @@ class StubLocalStoreService : ILocalStoreService
         => Task.FromResult(SeededSummaries.TryGetValue((accountId, folderName), out var rows)
             ? Newest(rows.Where(m => m.Date >= since)) : []);
     public virtual Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
+
+    /// <summary>Pending local drafts (#637). Reads the same seeded rows as everything else, so a
+    /// test seeds a pending draft by setting <see cref="MailMessageSummary.IsPendingUpload"/> on a
+    /// seeded summary rather than through a second mechanism.</summary>
+    public virtual Task<List<MailMessageSummary>> LoadPendingDraftsAsync(Guid accountId)
+        => Task.FromResult<List<MailMessageSummary>>(
+            [.. SeededSummaries.Where(kv => kv.Key.AccountId == accountId)
+                               .SelectMany(kv => kv.Value)
+                               .Where(m => m.IsPendingUpload)
+                               .OrderBy(m => m.Date)]);
     public virtual Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
     /// <summary>Account ids passed to <see cref="ClearCachedMailAsync"/>, so a test can assert the
     /// convert purged the right account (#529 step 4).</summary>
@@ -921,4 +932,69 @@ sealed class StubThemeService : IThemeService
     public string BuildMessageCss(bool forceOnContent) => string.Empty;
 
     public void Dispose() { }
+}
+
+/// <summary>
+/// In-memory <see cref="ILocalDraftService"/> (#637). Honest rather than inert: it mints local ids,
+/// replaces in place, remembers which server draft each local one supersedes, and can be told to
+/// fail — which is what makes "the draft survived even though the server did not take it" assertable
+/// without a SQLite file.
+/// </summary>
+sealed class FakeLocalDraftService : ILocalDraftService
+{
+    private readonly Dictionary<string, (ComposeModel Draft, string? Supersedes, string Folder)> _drafts = [];
+    private int _next;
+
+    /// <summary>Drafts folder handed back offline. Null models an account whose folders never synced.</summary>
+    public string? DraftsFolderName { get; set; } = "Drafts";
+
+    /// <summary>Simulates the local store refusing the write — the only remaining hard save failure.</summary>
+    public bool SaveThrows { get; set; }
+
+    public int SaveCalls { get; private set; }
+    public List<string> Discarded { get; } = [];
+    public IReadOnlyDictionary<string, (ComposeModel Draft, string? Supersedes, string Folder)> Stored => _drafts;
+
+    public Task<PendingDraftSave> SaveAsync(
+        AccountModel account, ComposeModel draft, string folderName,
+        string? previousMessageId, CancellationToken ct = default)
+    {
+        if (SaveThrows) throw new InvalidOperationException("simulated local store failure");
+        SaveCalls++;
+
+        var replacingLocal = LocalMessageId.IsLocal(previousMessageId);
+        var id = replacingLocal ? previousMessageId! : LocalMessageId.Prefix + (++_next);
+        var supersedes = replacingLocal
+            ? (_drafts.TryGetValue(id, out var existing) ? existing.Supersedes : null)
+            : previousMessageId;
+
+        _drafts[id] = (draft, supersedes, folderName);
+        return Task.FromResult(new PendingDraftSave(id, supersedes));
+    }
+
+    public Task<ComposeModel?> LoadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+        => Task.FromResult(_drafts.TryGetValue(messageId, out var d) ? d.Draft : null);
+
+    public Task<string?> GetSupersededServerIdAsync(Guid accountId, string folderName, string messageId)
+        => Task.FromResult(_drafts.TryGetValue(messageId, out var d) ? d.Supersedes : null);
+
+    public Task DiscardAsync(Guid accountId, string folderName, string messageId)
+    {
+        Discarded.Add(messageId);
+        _drafts.Remove(messageId);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<MailMessageSummary>> GetPendingAsync(Guid accountId)
+        => Task.FromResult<IReadOnlyList<MailMessageSummary>>(
+            [.. _drafts.Select(kv => new MailMessageSummary
+            {
+                MessageId       = kv.Key,
+                AccountId       = accountId,
+                FolderName      = kv.Value.Folder,
+                Subject         = kv.Value.Draft.Subject,
+                IsPendingUpload = true,
+            })]);
+
+    public Task<string?> ResolveDraftsFolderNameAsync(Guid accountId) => Task.FromResult(DraftsFolderName);
 }

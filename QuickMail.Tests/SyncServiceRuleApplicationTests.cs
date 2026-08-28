@@ -502,6 +502,31 @@ public class SyncServiceRuleApplicationTests : IDisposable
         Assert.Contains("B", stored);
     }
 
+    /// <summary>
+    /// A draft saved offline (#637) carries an id this app minted, which the server has never seen
+    /// and never will until the upload pass runs. Reconcile reads "absent from the server listing"
+    /// as "deleted on the server" — right for every id the server issued, and catastrophic here: it
+    /// would delete the user's offline draft at the exact moment the connection came back.
+    /// </summary>
+    [Fact]
+    public async Task Reconcile_NeverDeletes_ALocallyMintedId()
+    {
+        var pending = Message("local-abc123");
+        pending.IsPendingUpload = true;
+        await _store.UpsertSummariesAsync([Message("on-server"), pending]);
+
+        // The server lists only what it actually holds — the local draft is not among it.
+        var imap = new FetchStubMailService([]) { ServerIds = ["on-server"] };
+        var sync = Build(imap, new CapturingRuleService());
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        Assert.Equal(0, await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None));
+        Assert.Empty(removed);
+        Assert.Contains("local-abc123", await _store.GetAllMessageIdsAsync(_accountId, "INBOX"));
+    }
+
     [Fact]
     public async Task Reconcile_NeverDeletes_WhenTheBackendsListingIsNotAuthoritative()
     {

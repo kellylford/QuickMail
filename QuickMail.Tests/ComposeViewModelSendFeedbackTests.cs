@@ -30,6 +30,7 @@ public class ComposeViewModelSendFeedbackTests
             new StubAccountService(),
             new StubCredentialService(),
             new RecordingMailService(),
+            new FakeLocalDraftService(),
             new StubTemplateService());
         return (vm, smtp, StatusAnnouncementRecorder.Watch(vm));
     }
@@ -226,13 +227,42 @@ public class ComposeViewModelSendFeedbackTests
         Assert.Equal(("Draft saved.", AnnouncementCategory.Result), status.Announced[1]);
     }
 
+    /// <summary>
+    /// The server refusing the draft is no longer a save failure (#637): the draft is on this
+    /// computer, so the outcome says where it is rather than claiming it was lost. It is still
+    /// announced as a Result — the user pressed Save and is owed an answer.
+    /// </summary>
     [Fact]
-    public async Task DraftSaveFailure_IsAnnouncedAsAResult()
+    public async Task DraftSavedOnlyLocally_SaysSo_AndIsAnnouncedAsAResult()
     {
         var imap = new RecordingMailService { AppendDraftThrows = true };
         var vm = new ComposeViewModel(
             new StubSmtpService(), new StubAccountService(), new StubCredentialService(),
-            imap, new StubTemplateService());
+            imap, new FakeLocalDraftService(), new StubTemplateService());
+        var status = StatusAnnouncementRecorder.Watch(vm);
+        vm.SenderAccount = Account();
+        vm.Subject = "something to save";
+
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.Contains("saved on this computer", vm.StatusText);
+        Assert.DoesNotContain("failed", vm.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.True(vm.IsDraftPendingUpload);
+        Assert.Equal(AnnouncementCategory.Result, status.Last.Category);
+    }
+
+    /// <summary>
+    /// The one remaining hard failure: neither this computer nor the server took it, so the draft
+    /// really is nowhere and saying anything softer would be a lie.
+    /// </summary>
+    [Fact]
+    public async Task DraftSaveFailure_IsAnnouncedAsAResult()
+    {
+        var vm = new ComposeViewModel(
+            new StubSmtpService(), new StubAccountService(), new StubCredentialService(),
+            new RecordingMailService { AppendDraftThrows = true },
+            new FakeLocalDraftService { SaveThrows = true },
+            new StubTemplateService());
         var status = StatusAnnouncementRecorder.Watch(vm);
         vm.SenderAccount = Account();
         vm.Subject = "something to save";

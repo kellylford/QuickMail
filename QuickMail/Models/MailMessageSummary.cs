@@ -115,16 +115,36 @@ public partial class MailMessageSummary : ObservableObject
     [ObservableProperty]
     private bool _isWatched;
 
+    // ── Local-only state ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// True for a draft written to this computer that has not reached the server's Drafts folder
+    /// yet — composed offline, or saved while the connection was failing (#637).
+    /// <para>Observable so the row stops saying "Not on server" in place the moment the upload pass
+    /// succeeds, without rebuilding the list and moving the user's focus.</para>
+    /// <para>Persisted (<c>MessageSummary.is_pending_upload</c>), unlike <see cref="IsWatched"/>:
+    /// the whole point is that it survives quitting the app, and on the next launch it is the only
+    /// thing distinguishing a draft that still needs uploading from one already on the server.</para>
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDisplay))]
+    [NotifyPropertyChangedFor(nameof(ReadStatusLabel))]
+    private bool _isPendingUpload;
+
     // ── Computed display ──────────────────────────────────────────────────────
 
     /// <summary>
-    /// Single-word status shown in the status column.
-    /// Priority: Flag name > Replied > Fwd > New > (blank for read).
+    /// Short status shown in the status column.
+    /// Priority: Not on server > Flag name > Replied > Fwd > New > (blank for read).
     /// </summary>
     public string StatusDisplay
     {
         get
         {
+            // Outranks the rest deliberately: every other status describes a message that IS on the
+            // server, and this one says it is not. A draft that exists only on this computer is the
+            // most consequential thing the row can tell you about it.
+            if (IsPendingUpload) return "Not on server";
             if (IsFlagged)   return FlagLabel;
             if (IsReplied)   return "Replied";
             if (IsForwarded) return "Fwd";
@@ -142,6 +162,7 @@ public partial class MailMessageSummary : ObservableObject
     {
         get
         {
+            if (IsPendingUpload) return "saved on this computer, not yet on the server";
             if (IsReplied)   return "replied";
             if (IsForwarded) return "forwarded";
             if (!IsRead)     return "unread";

@@ -17,6 +17,7 @@ public class ComposeViewModelAttachmentTests
         new StubAccountService(),
         new StubCredentialService(),
         new StubImapMailService(),
+        new FakeLocalDraftService(),
         new TrackedTemplateService());
 
     [Fact]

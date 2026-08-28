@@ -29,6 +29,7 @@ public class ComposeViewModelTemplateTests
             new StubAccountService(),
             new StubCredentialService(),
             new StubImapMailService(),
+            new FakeLocalDraftService(),
             templates);
         return (vm, templates);
     }
