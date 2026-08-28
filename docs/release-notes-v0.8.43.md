@@ -17,6 +17,21 @@ It is counts and protocol names, nothing else: no address, no server name, no ac
 complete text before you send it, so you can read exactly what is going.
 ([#639](https://github.com/kellylford/QuickMail/issues/639))
 
+## Fixed: a sender's email address sometimes went missing
+
+Opening a message, or replying to one, sometimes showed the sender's full address — name and email
+address together, with Message Properties able to report it — and sometimes showed nothing but a
+name. Replying to one of the latter put a bare name in the **To** field, where it stayed as ordinary
+typed text instead of becoming an address you could act on.
+
+Which one you got depended on whether the message was being read from the server or from QuickMail's
+own copy on your PC, so the same message could behave either way at different times. QuickMail now
+keeps the sender's address with its copy of the message. Messages saved before this release get
+their address filled back in the next time they are opened.
+
+Message Properties also reports the sender's full address now, matching the **To** line right below
+it. ([#636](https://github.com/kellylford/QuickMail/issues/636))
+
 ---
 
 ## Reporting Issues

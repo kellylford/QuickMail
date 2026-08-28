@@ -310,6 +310,15 @@ public partial class MessageWindow : Window
                 detail = await _imap.GetMessageDetailAsync(
                     summary.AccountId, summary.FolderName, summary.MessageId, ct);
             }
+            else
+            {
+                // A detail cached before the from_addr column existed carries the summary's display
+                // name in place of the sender's address, so this window's From line — and a reply
+                // started from it — would show a bare name (issue #636). Re-fetching is the only
+                // repair: the address is stored nowhere else in the database.
+                detail = await DetailFromAddressRepair.RepairAsync(
+                    detail, _localStore, _imap, background: false, ct);
+            }
 
             ct.ThrowIfCancellationRequested();
             if (detail == null) return;
