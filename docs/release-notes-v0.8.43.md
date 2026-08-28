@@ -2,6 +2,39 @@
 
 <!-- Add "What is new" sections here (Changed/Fixed/New), then the Reporting Issues footer, then the Download footer last. -->
 
+## Fixed: a bad connection can no longer cost you a draft
+
+If you have written mail somewhere with unreliable connectivity — an airport was the case that
+brought this in — you may have met the old behaviour: **Save Draft** answered "Save draft failed",
+auto-save announced that your draft was not saved, and closing the compose window meant choosing
+between losing what you had written and not closing the window at all. Every draft went straight to
+your mail server, so when the server could not be reached there was nowhere for it to go.
+
+Drafts are now saved to your computer first and sent to the server afterwards. In practice:
+
+- **Save Draft** always works. Offline it answers *"Draft saved on this computer. It will go to the
+  server when you are back online."*
+- Auto-save works the same way, and says *"Auto-saved on this computer"* while a draft is waiting.
+- A draft that has not reached the server yet sits in your **Drafts** folder with the other drafts,
+  showing the status **Not on server** — a screen reader reads the row as "saved on this computer,
+  not yet on the server". You can open it, edit it, and save it again as often as you like without a
+  connection, and any attachments stay with it.
+- Closing a compose window is never blocked by being offline.
+- QuickMail sends these drafts up on its own the next time it reaches the account. The **Not on
+  server** status then goes away, and a draft that already existed on the server is replaced rather
+  than duplicated.
+
+Two things worth knowing. A waiting draft is on this computer only, so it will not show up on your
+phone or another PC until it has uploaded. And an account that has never finished syncing its folders
+has nowhere to file a draft even locally, so connect a brand-new account once before relying on this.
+
+Sending still needs a connection — a message sent while offline still reports that the send failed,
+and the compose window stays open so you can save it as a draft and send it later. An outbox that
+queues the send itself is the next piece of this work.
+([#637](https://github.com/kellylford/QuickMail/issues/637))
+
+---
+
 ## Changed: a bug report now says which kind of account you use
 
 A report sent with **Report a Bug** already describes the setting it happened in — your QuickMail

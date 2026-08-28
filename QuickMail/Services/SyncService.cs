@@ -13,6 +13,7 @@ public class SyncService : ISyncService
 {
     private readonly IMailService _imap;
     private readonly ILocalStoreService _store;
+    private readonly ILocalDraftService _localDrafts;
     private readonly IConfigService _config;
     private readonly IRuleService _rules;
     private readonly IUiDispatcher _ui;
@@ -24,10 +25,13 @@ public class SyncService : ISyncService
     private readonly bool _probeMode;
 
     public SyncService(IMailService imap, ILocalStoreService store, IConfigService config, IRuleService rules,
-        IUiDispatcher? ui = null, bool probeMode = false)
+        IUiDispatcher? ui = null, bool probeMode = false, ILocalDraftService? localDrafts = null)
     {
         _imap   = imap;
         _store  = store;
+        // Defaulted: a pure wrapper over the store this constructor already takes, so the fallback
+        // is the same object App hands in, and existing test constructions keep compiling.
+        _localDrafts = localDrafts ?? new LocalDraftService(store);
         _config = config;
         _rules  = rules;
         _probeMode = probeMode;
@@ -209,6 +213,20 @@ public class SyncService : ISyncService
             }
         }));
 
+        // Drafts written while an account was unreachable go up before any folder is read: the
+        // Drafts sync in pass 2 then sees the server copy on this sweep rather than the next, so the
+        // row stops saying "Not on server" without waiting for another one (#637).
+        await Task.WhenAll(accountsByHost.Select(async hostGroup =>
+        {
+            foreach (var account in hostGroup)
+            {
+                try { await UploadPendingDraftsAsync(account, ct); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { LogService.Log($"Draft upload {account.AccountLabel}", ex); }
+            }
+        }));
+        ct.ThrowIfCancellationRequested();
+
         // Pass 1: Inbox folders first, all accounts in parallel — fastest path to new-mail visibility.
         await SyncPassAsync(f => f.Kind == SpecialFolderKind.Inbox);
         ct.ThrowIfCancellationRequested();
@@ -225,6 +243,77 @@ public class SyncService : ISyncService
         if (!previewJobs.IsEmpty)
             FetchAllPreviewsAsync(previewJobs.ToList(), ct)
                 .LogFaults("sync: preview fetch batch");
+    }
+
+    /// <summary>
+    /// Sends drafts saved on this computer to the account's Drafts folder, oldest first, and drops
+    /// the local copy of each one that lands (#637).
+    /// <para>Internal so the replay order and the stop-on-failure rule are testable without a sync
+    /// sweep. Returns how many were uploaded.</para>
+    /// </summary>
+    internal async Task<int> UploadPendingDraftsAsync(AccountModel account, CancellationToken ct)
+    {
+        if (_probeMode) return 0;
+
+        IReadOnlyList<MailMessageSummary> pending;
+        try
+        {
+            pending = await _localDrafts.GetPendingAsync(account.Id);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Draft upload {account.AccountLabel}: could not read pending drafts", ex);
+            return 0;
+        }
+
+        if (pending.Count == 0) return 0;
+
+        var uploaded = new List<MailMessageSummary>();
+        foreach (var draft in pending)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var compose = await _localDrafts.LoadAsync(account.Id, draft.FolderName, draft.MessageId, ct);
+                if (compose == null)
+                {
+                    // A row with no stored bytes behind it. There is nothing to upload and nothing
+                    // worth keeping, and leaving it would mark the folder pending forever.
+                    LogService.Log($"Draft upload {account.AccountLabel}: no stored bytes for {draft.MessageId}; dropping the row");
+                    await _localDrafts.DiscardAsync(account.Id, draft.FolderName, draft.MessageId);
+                    uploaded.Add(draft);
+                    continue;
+                }
+
+                var supersedes = await _localDrafts.GetSupersededServerIdAsync(
+                    account.Id, draft.FolderName, draft.MessageId);
+
+                await _imap.AppendDraftAsync(account.Id, compose, supersedes, ct);
+                await _localDrafts.DiscardAsync(account.Id, draft.FolderName, draft.MessageId);
+                uploaded.Add(draft);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                // Stop rather than continue: the overwhelmingly likely cause is that the account is
+                // still unreachable, and trying the rest would spend one connection timeout each.
+                // Everything still pending is retried on the next sweep, and stays visible as a
+                // draft marked "Not on server" in the meantime — nothing is lost by waiting.
+                LogService.Log($"Draft upload {account.AccountLabel}: stopping after {draft.MessageId} failed", ex);
+                break;
+            }
+        }
+
+        if (uploaded.Count > 0)
+        {
+            LogService.Log($"Draft upload {account.AccountLabel}: {uploaded.Count} draft(s) uploaded");
+            // The local rows are gone; the folder sync below re-adds them as server drafts. Reusing
+            // MessagesRemoved means the list drops the pending rows through the path it already has
+            // for messages that stopped existing, rather than a second mechanism for one case.
+            _ui.Post(() => MessagesRemoved?.Invoke(uploaded));
+        }
+
+        return uploaded.Count;
     }
 
     private async Task FetchAllPreviewsAsync(
@@ -705,7 +794,13 @@ public class SyncService : ISyncService
         if (!_imap.ListingIsAuthoritativeForDeletions(account.Id)) return 0;
 
         var serverSet  = new HashSet<string>(serverIds);
-        var deletedIds = localIds.Where(id => !serverSet.Contains(id)).ToList();
+        // A local id is one this app minted — a pending draft, or POP3 mail the server has dropped.
+        // "Absent from the server listing" is the right reading of a deletion for every id the
+        // server issued, and exactly the wrong one for an id it has never seen: reconciling here
+        // would delete an offline draft the moment the connection came back (#637).
+        var deletedIds = localIds
+            .Where(id => !serverSet.Contains(id) && !LocalMessageId.IsLocal(id))
+            .ToList();
 
         if (deletedIds.Count == 0) return 0;
 

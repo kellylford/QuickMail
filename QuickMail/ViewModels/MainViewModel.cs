@@ -30,6 +30,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly ILocalStoreService _localStore;
+    private readonly ILocalDraftService _localDrafts;
     private readonly IOAuthService _oauthService;
     private readonly ISyncService _syncService;
     private readonly IContactSyncService? _contactSync;
@@ -1697,8 +1698,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IScreenshotCaptureService? screenshotCapture = null,
         IRowLayoutService? rowLayoutService = null,
         IWatchService? watchService = null,
-        IFolderViewStateService? folderViewState = null)
+        IFolderViewStateService? folderViewState = null,
+        ILocalDraftService? localDrafts = null)
     {
+        // Defaulted rather than required: it is a pure wrapper over the local store this constructor
+        // already takes, so building one here is the same object App would hand in, and the existing
+        // test constructions keep compiling (the ProviderCatalog precedent in MainWindow).
+        _localDrafts = localDrafts ?? new LocalDraftService(localStore);
         _folderViewState = folderViewState;
         _watchService = watchService;
         _rowLayoutService = rowLayoutService;
@@ -7733,8 +7739,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             ReplaceCts(ref _messageLoadCts, out var ct);
 
-            // Always fetch drafts from IMAP — skip the local cache so the compose-mode
-            // header and the latest autosaved body are read directly from the server.
+            // A draft that has not reached the server is only on this computer, so the server has
+            // nothing to answer with and asking would fail exactly when the user is offline — which
+            // is the case that produced the draft (#637). Its stored MIME is the whole message,
+            // attachments included, so this path needs no network at all.
+            if (summary.IsPendingUpload || LocalMessageId.IsLocal(summary.MessageId))
+            {
+                ComposeModel? pending = null;
+                try
+                {
+                    pending = await _localDrafts.LoadAsync(
+                        summary.AccountId, summary.FolderName, summary.MessageId, ct);
+                }
+                catch (Exception ex)
+                {
+                    // --online mode has no local store to read (docs/ARCHITECTURE.md runtime modes).
+                    LogService.Log("OpenDraftAsync: local draft store unavailable", ex);
+                }
+
+                if (pending != null)
+                {
+                    StatusText = string.Empty;
+                    ComposeRequested?.Invoke(pending);
+                    return;
+                }
+
+                // Fall through when the bytes are missing: better to try the server and report a
+                // real error than to leave the user pressing Enter on a row that does nothing.
+                LogService.Log($"OpenDraftAsync: no stored bytes for pending draft {summary.MessageId}");
+            }
+
+            // Otherwise fetch from the server — skip the local cache so the compose-mode
+            // header and the latest autosaved body are read directly from it.
             var detail = await _imap.GetMessageDetailAsync(
                 summary.AccountId, summary.FolderName, summary.MessageId, ct);
 

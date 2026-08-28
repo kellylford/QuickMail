@@ -42,7 +42,7 @@ public class ComposeWindowFromAccountAnnouncementTests
         var accounts = new TwoAccountService();
         var vm = new QuickMail.ViewModels.ComposeViewModel(
             new StubSmtpService(), accounts, new StubCredentialService(),
-            new StubImapMailService(), new StubTemplateService());
+            new StubImapMailService(), new FakeLocalDraftService(), new StubTemplateService());
 
         // The window reads SenderAccount on Loaded to set its announcement baseline, so
         // the list must be populated the way a real compose does before Show().

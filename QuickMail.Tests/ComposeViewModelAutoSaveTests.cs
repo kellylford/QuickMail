@@ -15,16 +15,18 @@ namespace QuickMail.Tests;
 /// </summary>
 public class ComposeViewModelAutoSaveTests
 {
-    private static (ComposeViewModel vm, RecordingMailService imap) MakeVm()
+    private static (ComposeViewModel vm, RecordingMailService imap, FakeLocalDraftService drafts) MakeVm()
     {
         var imap = new RecordingMailService();
+        var drafts = new FakeLocalDraftService();
         var vm = new ComposeViewModel(
             new StubSmtpService(),
             new StubAccountService(),
             new StubCredentialService(),
             imap,
+            drafts,
             new StubTemplateService());
-        return (vm, imap);
+        return (vm, imap, drafts);
     }
 
     private static AccountModel Account() => new() { Id = Guid.NewGuid() };
@@ -32,7 +34,7 @@ public class ComposeViewModelAutoSaveTests
     [Fact]
     public async Task AutoSave_DirtyWithContent_SavesDraftQuietly()
     {
-        var (vm, imap) = MakeVm();
+        var (vm, imap, _) = MakeVm();
         vm.SenderAccount = Account();
         vm.Subject = "important thought";   // marks dirty
 
@@ -47,7 +49,7 @@ public class ComposeViewModelAutoSaveTests
     [Fact]
     public async Task AutoSave_SecondSaveReplacesFirstDraft()
     {
-        var (vm, imap) = MakeVm();
+        var (vm, imap, _) = MakeVm();
         vm.SenderAccount = Account();
         vm.Subject = "v1";
         await vm.AutoSaveAsync();
@@ -64,7 +66,7 @@ public class ComposeViewModelAutoSaveTests
     [Fact]
     public async Task AutoSave_NotDirty_DoesNothing()
     {
-        var (vm, imap) = MakeVm();
+        var (vm, imap, _) = MakeVm();
         vm.Seed(new ComposeModel { Body = "seeded reply text" }); // seeding is not a user edit
         vm.SenderAccount = Account();
 
@@ -77,7 +79,7 @@ public class ComposeViewModelAutoSaveTests
     [Fact]
     public async Task AutoSave_EmptyCompose_DoesNothing()
     {
-        var (vm, imap) = MakeVm();
+        var (vm, imap, _) = MakeVm();
         vm.SenderAccount = Account();
         vm.Subject = "x";
         vm.Subject = "";   // dirty, but nothing worth keeping
@@ -90,7 +92,7 @@ public class ComposeViewModelAutoSaveTests
     [Fact]
     public async Task AutoSave_EditingTemplate_DoesNothing()
     {
-        var (vm, imap) = MakeVm();
+        var (vm, imap, _) = MakeVm();
         vm.Seed(new ComposeModel { Kind = ComposeKind.EditTemplate, Body = "template body" });
         vm.SenderAccount = Account();
         vm.Subject = "edited title"; // dirty
@@ -103,7 +105,7 @@ public class ComposeViewModelAutoSaveTests
     [Fact]
     public async Task AutoSave_NoSenderAccount_DoesNothing()
     {
-        var (vm, imap) = MakeVm();
+        var (vm, imap, _) = MakeVm();
         vm.Subject = "no account yet";
 
         await vm.AutoSaveAsync();
@@ -111,10 +113,90 @@ public class ComposeViewModelAutoSaveTests
         Assert.Equal(0, imap.AppendDraftCalls);
     }
 
+    /// <summary>
+    /// The server being unreachable is not an auto-save failure any more (#637). The draft is on
+    /// disk, so the visible text says where it is and nothing is announced — announcing "failed" for
+    /// a draft that was in fact saved is the wrong alarm, and it was the old behaviour.
+    /// </summary>
     [Fact]
-    public async Task AutoSave_Failure_AnnouncesOnceUntilNextSuccess()
+    public async Task AutoSave_ServerUnreachable_KeepsTheDraftAndStaysQuiet()
     {
-        var (vm, imap) = MakeVm();
+        var (vm, imap, drafts) = MakeVm();
+        imap.AppendDraftThrows = true;
+        vm.SenderAccount = Account();
+        vm.Subject = "airport draft";
+
+        var announcements = new List<string>();
+        vm.AutoSaveFailed += msg => announcements.Add(msg);
+
+        await vm.AutoSaveAsync();
+
+        Assert.Empty(announcements);
+        Assert.Equal(1, drafts.SaveCalls);
+        Assert.Single(drafts.Stored);
+        Assert.StartsWith("Auto-saved on this computer", vm.AutoSaveText);
+        Assert.True(vm.IsDraftPendingUpload);
+        Assert.False(vm.IsDirty);
+    }
+
+    /// <summary>
+    /// Once the server is reachable again the draft goes up, the local copy is dropped so the same
+    /// draft does not sit in Drafts twice, and the wording stops hedging.
+    /// </summary>
+    [Fact]
+    public async Task AutoSave_AfterReconnect_UploadsAndDropsTheLocalCopy()
+    {
+        var (vm, imap, drafts) = MakeVm();
+        imap.AppendDraftThrows = true;
+        vm.SenderAccount = Account();
+        vm.Subject = "airport draft";
+        await vm.AutoSaveAsync();
+
+        imap.AppendDraftThrows = false;
+        vm.Subject = "airport draft, revised";
+        await vm.AutoSaveAsync();
+
+        Assert.Empty(drafts.Stored);
+        Assert.Equal(1, imap.AppendDraftCalls);
+        Assert.StartsWith("Auto-saved", vm.AutoSaveText);
+        Assert.DoesNotContain("this computer", vm.AutoSaveText);
+        Assert.False(vm.IsDraftPendingUpload);
+    }
+
+    /// <summary>
+    /// --online mode runs with no SQLite schema at all, so the local leg is unavailable rather than
+    /// broken (see the runtime-modes table in docs/ARCHITECTURE.md). The server leg is then the only
+    /// one there has ever been, and the draft must still save exactly as it did before #637.
+    /// </summary>
+    [Fact]
+    public async Task AutoSave_WithNoLocalStore_FallsBackToTheServerAlone()
+    {
+        var (vm, imap, drafts) = MakeVm();
+        drafts.SaveThrows = true;          // stands in for --online, where the store throws
+        vm.SenderAccount = Account();
+        vm.Subject = "online mode";
+
+        var announcements = new List<string>();
+        vm.AutoSaveFailed += msg => announcements.Add(msg);
+
+        await vm.AutoSaveAsync();
+
+        Assert.Equal(1, imap.AppendDraftCalls);
+        Assert.Empty(announcements);
+        Assert.False(vm.IsDraftPendingUpload);
+        Assert.StartsWith("Auto-saved", vm.AutoSaveText);
+        Assert.DoesNotContain("this computer", vm.AutoSaveText);
+    }
+
+    /// <summary>
+    /// Both legs failing is the one remaining real failure — the draft is genuinely nowhere. Still
+    /// announced exactly once until the next success rather than at every interval.
+    /// </summary>
+    [Fact]
+    public async Task AutoSave_WhenNeitherLegSucceeds_AnnouncesOnceUntilNextSuccess()
+    {
+        var (vm, imap, drafts) = MakeVm();
+        drafts.SaveThrows = true;
         imap.AppendDraftThrows = true;
         vm.SenderAccount = Account();
         vm.Subject = "will fail";
@@ -129,10 +211,12 @@ public class ComposeViewModelAutoSaveTests
         Assert.Equal("Auto-save failed", vm.AutoSaveText);
 
         // After a success the failure announcement re-arms.
+        drafts.SaveThrows = false;
         imap.AppendDraftThrows = false;
         await vm.AutoSaveAsync();
         Assert.StartsWith("Auto-saved", vm.AutoSaveText);
 
+        drafts.SaveThrows = true;
         imap.AppendDraftThrows = true;
         vm.Subject = "fails again";
         await vm.AutoSaveAsync();

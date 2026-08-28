@@ -27,6 +27,7 @@ public class ComposeWindowEnterSendGuardTests
             new StubAccountService(),
             new StubCredentialService(),
             new StubImapMailService(),
+            new FakeLocalDraftService(),
             new StubTemplateService());
 
         return new QuickMail.Views.ComposeWindow(

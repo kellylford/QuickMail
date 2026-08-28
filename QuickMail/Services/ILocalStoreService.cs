@@ -22,6 +22,13 @@ public interface ILocalStoreService
     /// </summary>
     Task<List<MailMessageSummary>> LoadFolderSummariesSinceAsync(Guid accountId, string folderName, DateTimeOffset since);
     Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
+
+    /// <summary>
+    /// Drafts written on this computer that have not reached a server yet (#637), oldest first so
+    /// the upload pass replays them in the order they were written. Scoped to one account because
+    /// the pass runs per account, as each becomes reachable.
+    /// </summary>
+    Task<List<MailMessageSummary>> LoadPendingDraftsAsync(Guid accountId);
     Task DeleteAccountDataAsync(Guid accountId);
 
     /// <summary>Clears cached mail (summaries, bodies, delta cursors) for the given accounts only —

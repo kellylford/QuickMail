@@ -944,6 +944,27 @@ QuickMail saves your compose as a draft automatically every 2 minutes (on by def
 
 Control auto-save in **Settings → General → Composing**: turn it off, change the interval (30 seconds to 10 minutes), and set the default compose mode for new messages.
 
+### Writing Without a Connection
+
+Every draft is saved to your computer first and sent to the server afterwards, so a connection that is down, slow, or dropping in and out cannot cost you what you have written. This applies to **Save Draft**, to auto-save, and to the prompt you get when you close a compose window with unsent changes.
+
+When a draft is on your computer but has not reached the server yet:
+
+- It appears in the account's **Drafts** folder alongside your other drafts, with the status **Not on server**. A screen reader reads the row as "saved on this computer, not yet on the server".
+- **Save Draft** answers "Draft saved on this computer. It will go to the server when you are back online," rather than reporting a failure.
+- Auto-save shows "Auto-saved on this computer" instead of "Auto-saved".
+- You can open it, keep editing it, and save it again as many times as you like, all without a connection. Attachments you added are kept with it, so the draft is complete when it does go up.
+- Closing the compose window is never blocked by being offline.
+
+QuickMail uploads these drafts on its own the next time it reaches the account — you do not need to do anything. Once a draft is on the server the **Not on server** status goes away, and if you were editing a draft that already existed on the server, the copy up there is replaced rather than duplicated.
+
+Two things to know:
+
+- A draft is only on **this** computer until it uploads. It will not appear on your phone, in a web client, or on another PC until QuickMail has reached the server.
+- An account that has never finished syncing its folders has nowhere to file a draft, even locally — QuickMail needs to have seen your Drafts folder at least once. On a brand-new account, connect once before relying on offline drafts.
+
+Sending still needs a connection: a message you send while offline reports that the send failed, and the message stays open so you can save it as a draft and send it later.
+
 ### Forwarding with Attachments
 
 When forwarding a message that has attachments, QuickMail opens an **Include Attachments** dialog before downloading. All attachments are checked by default. Arrow between files and press Space to toggle individual ones. Press Tab to reach Forward (include checked files) or Cancel.

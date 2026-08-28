@@ -211,6 +211,16 @@ public class LocalStoreService : ILocalStoreService
         // MessageDetail by CREATE/INSERT/DROP/RENAME against a fixed column list, so a column added
         // before it would be dropped again and stay missing for the rest of the session.
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN mime_bytes BLOB DEFAULT NULL;");
+
+        // A draft written locally that has not reached the server's Drafts folder yet (#637). Set
+        // only by LocalDraftService; 0 for every message that came from a server. Two things read
+        // it: the row, which says the draft is not on the server yet, and the sync reconcile, which
+        // must not treat "absent from the server listing" as "deleted on the server" for a message
+        // the server has never been told about.
+        //
+        // AFTER RunDataMigrations for the same reason mime_bytes is: the 1→2 rebuild recreates
+        // MessageSummary against a fixed column list, so a column added before it is dropped again.
+        RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN is_pending_upload INTEGER NOT NULL DEFAULT 0;");
     }
 
     // SQLite's PRAGMA user_version stores a single integer per database. We use it as a
@@ -391,8 +401,8 @@ public class LocalStoreService : ILocalStoreService
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id)
-            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid)
+            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id, is_pending_upload)
+            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid, $pending)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
                 from_disp       = excluded.from_disp,
                 to_addr         = excluded.to_addr,
@@ -402,6 +412,7 @@ public class LocalStoreService : ILocalStoreService
                 is_replied      = excluded.is_replied,
                 is_forwarded    = excluded.is_forwarded,
                 is_mailing_list = excluded.is_mailing_list,
+                is_pending_upload = excluded.is_pending_upload,
                 internet_message_id = CASE WHEN excluded.internet_message_id = '' THEN internet_message_id ELSE excluded.internet_message_id END,
                 preview_text    = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END,
                 flag_id         = CASE
@@ -428,6 +439,7 @@ public class LocalStoreService : ILocalStoreService
         var pMl        = cmd.Parameters.Add("$ml",        SqliteType.Integer);
         var pFlagId    = cmd.Parameters.Add("$flag_id",   SqliteType.Text);
         var pImid      = cmd.Parameters.Add("$imid",      SqliteType.Text);
+        var pPending   = cmd.Parameters.Add("$pending",   SqliteType.Integer);
 
         foreach (var s in summaries)
         {
@@ -447,6 +459,7 @@ public class LocalStoreService : ILocalStoreService
                 ? (object)FlagDefinition.BuiltInFlagId.ToString()
                 : DBNull.Value;
             pImid.Value      = s.InternetMessageId ?? string.Empty;
+            pPending.Value   = s.IsPendingUpload   ? 1 : 0;
             await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();
@@ -457,7 +470,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, is_pending_upload " +
             "FROM MessageSummary ORDER BY date_ticks DESC;";
         return await ReadSummariesAsync(cmd);
     }
@@ -467,7 +480,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, is_pending_upload " +
             "FROM MessageSummary WHERE account_id=$aid ORDER BY date_ticks DESC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         return await ReadSummariesAsync(cmd);
@@ -478,7 +491,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, is_pending_upload " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn ORDER BY date_ticks DESC" +
             (limit.HasValue ? " LIMIT $limit;" : ";");
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
@@ -494,13 +507,26 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, is_pending_upload " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND date_ticks>=$since ORDER BY date_ticks DESC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
         // date_ticks is written as Date.UtcTicks, so the bound value has to be UtcTicks too — a
         // local-offset DateTimeOffset compared as raw Ticks is off by the offset.
         cmd.Parameters.AddWithValue("$since", since.UtcTicks);
+        return await ReadSummariesAsync(cmd);
+    }
+
+    public async Task<List<MailMessageSummary>> LoadPendingDraftsAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, is_pending_upload " +
+            // Ascending, unlike every other summary query: this feeds the upload pass, and replaying
+            // the oldest first is what makes a chain of supersedes land in the order it was written.
+            "FROM MessageSummary WHERE account_id=$aid AND is_pending_upload=1 ORDER BY date_ticks ASC;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         return await ReadSummariesAsync(cmd);
     }
 
@@ -1196,6 +1222,7 @@ public class LocalStoreService : ILocalStoreService
                 IsMailingList  = r.GetInt64(12) != 0,
                 FlagId         = r.IsDBNull(13) ? null : r.GetString(13),
                 InternetMessageId = r.IsDBNull(14) ? string.Empty : r.GetString(14),
+                IsPendingUpload   = r.GetInt64(15) != 0,
             });
         }
         return list;

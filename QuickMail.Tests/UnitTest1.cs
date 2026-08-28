@@ -62,7 +62,7 @@ public class ViewModelConstructionTests
     public void ComposeViewModel_ConstructsWithoutException()
     {
         var (imap, accounts, creds, _, _, _, _, _, templates) = MakeServices();
-        var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap, templates);
+        var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap, new FakeLocalDraftService(), templates);
         Assert.NotNull(vm);
     }
 
@@ -271,7 +271,7 @@ public class XamlParseTests
     {
         EnsureApplication();
         var (imap, accounts, creds, _, _, config, _, contacts, templates) = MakeServices();
-        var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap, templates);
+        var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap, new FakeLocalDraftService(), templates);
         var window = new ComposeWindow(vm, contacts, templates, config);
         Assert.NotNull(window);
         window.Close();

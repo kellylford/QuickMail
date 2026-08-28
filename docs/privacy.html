@@ -107,7 +107,7 @@
     <tr><th>File</th><th>What it holds</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>mail.db</code></td><td>The local SQLite cache of messages you have synced — headers and message bodies, so mail can be read and searched without waiting on the network.</td></tr>
+    <tr><td><code>mail.db</code></td><td>The local SQLite cache of messages you have synced — headers and message bodies, so mail can be read and searched without waiting on the network. It also holds drafts you have written that have not reached your mail server yet, including their attachments, so that a lost connection cannot lose what you wrote; each one is removed from here once it has been uploaded.</td></tr>
     <tr><td><code>accounts.json</code></td><td>Your account settings: email addresses, server names, ports, security settings, signatures, and display preferences. <strong>Never passwords.</strong></td></tr>
     <tr><td><code>contacts.json</code>, <code>groups.json</code></td><td>Contacts you typed in yourself, contact groups, and the read-only copies of contacts synced from accounts you opted in.</td></tr>
     <tr><td>Calendar data</td><td>Events copied from calendars you have connected, so the calendar works offline.</td></tr>
