@@ -33,4 +33,14 @@ public sealed class BugReportContext
     /// (e.g. attachment behaviour differs by mode; see issue #350).
     /// </summary>
     public string MessageOpenMode { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The configured accounts as a count plus the distinct protocols they connect over, e.g.
+    /// "2 (Microsoft 365, IMAP)". Behaviour now diverges by backend in draft handling, folder
+    /// semantics, rules, and attachment fetch, so a report that does not say which one is in use
+    /// costs a source read to triage (issue #639, found triaging #637).
+    /// <para>Protocol kind only — never an address, host name, or display name. This text is
+    /// published verbatim into a public issue.</para>
+    /// </summary>
+    public string Accounts { get; set; } = string.Empty;
 }

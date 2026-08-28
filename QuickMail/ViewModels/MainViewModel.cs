@@ -1240,7 +1240,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Models.MessageOpenMode.Window      => "Window",
             _                                  => MessageOpenMode.ToString(),
         },
+        Accounts = DescribeAccounts(this.Accounts),
     };
+
+    /// <summary>
+    /// The account line for a bug report's Environment section: how many accounts are configured
+    /// and which protocols they connect over, e.g. "2 (Microsoft 365, IMAP)". Backend now changes
+    /// behaviour in draft handling, folder semantics, rules, and attachment fetch, so a report that
+    /// omits it costs a source read to triage (#639).
+    /// <para>Protocol kind only — no address, host name, or display name goes near this string: it
+    /// is published verbatim into a public issue. Kinds are listed in enum order rather than
+    /// account order so the same setup always produces the same line.</para>
+    /// Pure/static so the redaction boundary is unit-testable without standing up the view model.
+    /// </summary>
+    internal static string DescribeAccounts(IEnumerable<AccountModel>? accounts)
+    {
+        var kinds = accounts?.Select(a => a.BackendKind).ToList() ?? [];
+        if (kinds.Count == 0) return "0";
+
+        var distinct = kinds.Distinct().OrderBy(k => k).Select(k => k switch
+        {
+            BackendKind.MicrosoftGraph => "Microsoft 365",
+            BackendKind.Pop3Smtp       => "POP3",
+            BackendKind.ImapSmtp       => "IMAP",
+            _                          => k.ToString(),
+        });
+
+        return $"{kinds.Count} ({string.Join(", ", distinct)})";
+    }
 
     private string ViewModeName => ViewMode switch
     {

@@ -173,6 +173,8 @@ public partial class BugReportService : IBugReportService, IDisposable
             sb.AppendLine($"- Sort: {ctx.Sort}");
             if (!string.IsNullOrWhiteSpace(ctx.MessageOpenMode))
                 sb.AppendLine($"- Message open mode: {ctx.MessageOpenMode}");
+            if (!string.IsNullOrWhiteSpace(ctx.Accounts))
+                sb.AppendLine($"- Accounts: {ctx.Accounts}");
         }
 
         return sb.ToString();
