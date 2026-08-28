@@ -113,9 +113,12 @@ public sealed class LocalDraftService(ILocalStoreService store) : ILocalDraftSer
         foreach (var part in msg.Attachments)
         {
             using var partStream = new MemoryStream();
-            if (part is MimePart mimePart)
+            // Both are genuinely nullable in MimeKit — a part declared with no content, and a
+            // message/rfc822 wrapper with nothing parsed into it. Either yields an empty
+            // attachment rather than an exception, which is the same answer the reader gives.
+            if (part is MimePart { Content: not null } mimePart)
                 await mimePart.Content.DecodeToAsync(partStream, ct);
-            else if (part is MessagePart messagePart)
+            else if (part is MessagePart { Message: not null } messagePart)
                 await messagePart.Message.WriteToAsync(partStream, ct);
 
             var bytes = partStream.ToArray();
