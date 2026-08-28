@@ -1255,10 +1255,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     internal static string DescribeAccounts(IEnumerable<AccountModel>? accounts)
     {
-        var kinds = accounts?.Select(a => a.BackendKind).ToList() ?? [];
-        if (kinds.Count == 0) return "0";
+        var all = accounts?.ToList() ?? [];
+        if (all.Count == 0) return "0";
 
-        var distinct = kinds.Distinct().OrderBy(k => k).Select(k => k switch
+        var distinct = all.Select(a => a.BackendKind).Distinct().OrderBy(k => k).Select(k => k switch
         {
             BackendKind.MicrosoftGraph => "Microsoft 365",
             BackendKind.Pop3Smtp       => "POP3",
@@ -1266,7 +1266,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _                          => k.ToString(),
         });
 
-        return $"{kinds.Count} ({string.Join(", ", distinct)})";
+        // Shared mailboxes are counted apart from the user's own accounts (#31). Folding them into
+        // one number is both misleading — three "accounts" can be one account and two mailboxes
+        // someone shared with it — and a wasted signal: a shared mailbox reads through its parent's
+        // token and diverges from an ordinary account in ways that are worth knowing up front.
+        var shared = all.Count(a => a.IsShared);
+        var line   = $"{all.Count - shared} ({string.Join(", ", distinct)})";
+
+        return shared switch
+        {
+            0 => line,
+            1 => line + ", plus 1 shared mailbox",
+            _ => line + $", plus {shared} shared mailboxes",
+        };
     }
 
     private string ViewModeName => ViewMode switch

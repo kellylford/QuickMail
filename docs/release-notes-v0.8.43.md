@@ -11,8 +11,9 @@ an account connected over IMAP, over POP3, and through Microsoft 365 genuinely b
 from one another, so a report that leaves it out can take a while to place.
 
 Reports now include one more line — how many accounts you have set up and the protocols they use,
-for example *"2 (IMAP, Microsoft 365)"*. It is the protocol names and a count, nothing else: no
-address, no server name, no account name. As always the **Preview** in the report window shows the
+for example *"2 (IMAP, Microsoft 365)"*. Shared mailboxes are counted on their own, as in *"2
+(Microsoft 365), plus 1 shared mailbox"*, because a shared mailbox is not one of your own accounts.
+It is counts and protocol names, nothing else: no address, no server name, no account name. As always the **Preview** in the report window shows the
 complete text before you send it, so you can read exactly what is going.
 ([#639](https://github.com/kellylford/QuickMail/issues/639))
 

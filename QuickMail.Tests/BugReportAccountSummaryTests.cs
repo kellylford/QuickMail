@@ -16,10 +16,11 @@ namespace QuickMail.Tests;
 
 public class BugReportAccountSummaryTests
 {
-    private static AccountModel Acct(BackendKind kind) => new()
+    private static AccountModel Acct(BackendKind kind, bool shared = false) => new()
     {
         Id           = Guid.NewGuid(),
         BackendKind  = kind,
+        IsShared     = shared,
         Username     = "someone@example.com",
         DisplayName  = "Someone Private",
         ImapHost     = "mail.private-host.example",
@@ -67,6 +68,38 @@ public class BugReportAccountSummaryTests
         Assert.Equal("0", MainViewModel.DescribeAccounts([]));
         Assert.Equal("0", MainViewModel.DescribeAccounts(null));
     }
+
+    /// <summary>
+    /// A shared mailbox is not one of the user's own accounts (#31) — it is a mailbox someone else
+    /// shared with one of them, read through that account's token. Folding them into a single count
+    /// reported three "accounts" for one account and two shared mailboxes, which is both misleading
+    /// and a wasted triage signal, since a shared mailbox diverges from an ordinary account.
+    /// </summary>
+    [Fact]
+    public void DescribeAccounts_CountsSharedMailboxesSeparately()
+    {
+        var result = MainViewModel.DescribeAccounts(
+        [
+            Acct(BackendKind.MicrosoftGraph),
+            Acct(BackendKind.MicrosoftGraph, shared: true),
+            Acct(BackendKind.MicrosoftGraph, shared: true),
+        ]);
+
+        Assert.Equal("1 (Microsoft 365), plus 2 shared mailboxes", result);
+    }
+
+    [Fact]
+    public void DescribeAccounts_SaysOneSharedMailboxInTheSingular()
+    {
+        var result = MainViewModel.DescribeAccounts(
+            [Acct(BackendKind.ImapSmtp), Acct(BackendKind.ImapSmtp, shared: true)]);
+
+        Assert.Equal("1 (IMAP), plus 1 shared mailbox", result);
+    }
+
+    [Fact]
+    public void DescribeAccounts_SaysNothingAboutSharedMailboxes_WhenThereAreNone()
+        => Assert.DoesNotContain("shared", MainViewModel.DescribeAccounts([Acct(BackendKind.ImapSmtp)]));
 
     /// <summary>
     /// The redaction boundary. This text goes into a public issue body, so nothing that identifies

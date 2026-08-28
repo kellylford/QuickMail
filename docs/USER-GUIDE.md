@@ -1632,7 +1632,7 @@ Choose this option when you **don't mind sending an email** and want a **persona
 
 ### What's included in a report — and what's never included
 
-Alongside what you type, an in-app report (options 1 and 2) adds a short **Environment** section so a problem can be reproduced in the right context: the QuickMail version, your Windows version, the .NET runtime version, the active color theme, the current view, the current sort order, the message open mode (reading pane, tab, or window), and how many accounts you have set up together with the mail protocols they connect over — for example `2 (IMAP, Microsoft 365)`. That last line is the protocol names only: no address, server name, or account name is included.
+Alongside what you type, an in-app report (options 1 and 2) adds a short **Environment** section so a problem can be reproduced in the right context: the QuickMail version, your Windows version, the .NET runtime version, the active color theme, the current view, the current sort order, the message open mode (reading pane, tab, or window), and how many accounts you have set up together with the mail protocols they connect over — for example `2 (IMAP, Microsoft 365)`. Any shared mailboxes are counted separately, as in `2 (Microsoft 365), plus 1 shared mailbox`, since a shared mailbox is not one of your own accounts. That last line is counts and protocol names only: no address, server name, or account name is included.
 
 **No message content, email addresses, account settings, passwords, or log file content is ever collected or sent.** The Preview shows the full report verbatim, so you always see exactly what is included before it leaves your computer.
 
