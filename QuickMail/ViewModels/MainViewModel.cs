@@ -5391,6 +5391,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// True when this message's id was minted on this computer AND its account's backend cannot
+    /// resolve such an id (#637).
+    /// <para>Not the same question as <see cref="LocalMessageId.IsLocal"/>, and the difference is
+    /// load-bearing. IMAP and Graph parse ids as server UIDs, so handing them a <c>local-</c> id
+    /// throws. POP3 MINTS these ids itself — every POP3 message has one, including its drafts and
+    /// its sent mail — and reads them back perfectly well. Testing only for a local id therefore
+    /// broke POP3 outright: its plain drafts stopped opening, and deleting its sent mail destroyed
+    /// the only copy that has ever existed instead of moving it to the local Trash.</para>
+    /// </summary>
+    private bool IsLocalOnlyId(MailMessageSummary summary)
+        => LocalMessageId.IsLocal(summary.MessageId) &&
+           Accounts.FirstOrDefault(a => a.Id == summary.AccountId)?.BackendKind != BackendKind.Pop3Smtp;
+
+    /// <summary>
     /// Adds back the messages held only on this computer that a server listing cannot mention
     /// (#637) — drafts saved offline and not yet uploaded.
     /// </summary>
@@ -5440,7 +5454,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // A locally-stored draft exists here and nowhere else, so it is never fetched: the
             // backend would be handed an id no server ever issued and throw, and the user would be
             // told their own draft could not be opened (#637).
-            if (LocalMessageId.IsLocal(summary.MessageId))
+            if (IsLocalOnlyId(summary))
             {
                 // --online has no store at all, so there is nothing to read and nothing to fetch.
                 var stored = OnlineMode
@@ -7032,9 +7046,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
         await DeleteMessagesAsync([SelectedMessage]);
     }
 
+    /// <summary>
+    /// Set by the View to confirm deleting drafts that exist nowhere else (#637): message → the
+    /// user's yes/no. Fails closed, like the account-removal confirmation it mirrors — with no way
+    /// to obtain a yes, nothing irreversible happens.
+    /// </summary>
+    public Func<string, bool>? ConfirmLocalDraftDelete { get; set; }
+
     public async Task DeleteMessagesAsync(IReadOnlyList<MailMessageSummary> toDelete)
     {
         if (toDelete.Count == 0) return;
+
+        // Deleting a draft held only on this computer is the one Delete in the app that cannot be
+        // undone: there is no server copy and nothing goes to Trash. Everywhere else Delete means
+        // "moved, still there if you want it back", so the same keystroke quietly means something
+        // much stronger here — and until now it was reported identically. Chosen by the user (#637).
+        var localOnlyCount = toDelete.Count(IsLocalOnlyId);
+        if (localOnlyCount > 0)
+        {
+            var one = localOnlyCount == 1;
+            var confirmed = ConfirmLocalDraftDelete?.Invoke(
+                localOnlyCount == toDelete.Count
+                    ? (one
+                        ? "This draft has not reached the server, so this computer holds the only copy. Deleting it cannot be undone, and it does not go to Trash. Delete it?"
+                        : $"These {localOnlyCount} drafts have not reached the server, so this computer holds the only copies. Deleting them cannot be undone, and they do not go to Trash. Delete them?")
+                    : $"{localOnlyCount} of these messages {(one ? "is a draft that has" : "are drafts that have")} not reached the server, so this computer holds the only {(one ? "copy" : "copies")}. Deleting {(one ? "it" : "them")} cannot be undone. Delete anyway?") ?? false;
+            if (!confirmed) return;
+        }
 
         var minIdx = toDelete.Min(m => Messages.IndexOf(m));
         var label  = toDelete.Count == 1 ? "message" : $"{toDelete.Count} messages";
@@ -7110,15 +7148,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // from the view. The user was told the delete "may not have completed" and
                 // everything came back on the next sync (#637).
                 //
-                // Move, copy and archive refuse a mixed selection outright. Delete cannot: it is
-                // what the user presses to be rid of either kind.
-                var localIds = uids.Where(LocalMessageId.IsLocal).ToList();
-                if (localIds.Count > 0)
+                // Move, copy and archive refuse such a selection outright (see their guards).
+                // Delete cannot: it is what the user presses to be rid of either kind.
+                var localOnly = group.Where(IsLocalOnlyId).Select(m => m.MessageId).ToHashSet(StringComparer.Ordinal);
+                if (localOnly.Count > 0)
                 {
                     if (!OnlineMode)
-                        await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, localIds);
-                    uids = uids.Where(id => !LocalMessageId.IsLocal(id)).ToList();
-                    if (uids.Count == 0) continue;
+                        await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, localOnly);
+                    uids = uids.Where(id => !localOnly.Contains(id)).ToList();
+                    if (uids.Count == 0)
+                    {
+                        // Still schedule the folder reconcile the mixed case gets, or an all-local
+                        // delete leaves the folder's counts stale until something else refreshes.
+                        var localSource = _cachedFolders.TryGetValue(group.Key.AccountId, out var localFolders)
+                            ? localFolders.FirstOrDefault(f =>
+                                  f.FullName.Equals(group.Key.FolderName, StringComparison.OrdinalIgnoreCase))
+                            : null;
+                        if (localSource != null) affectedFolders.Add((group.Key.AccountId, localSource));
+                        continue;
+                    }
                 }
 
                 // Messages already in Trash must be permanently deleted (expunge);
@@ -7274,6 +7322,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task ArchiveMessagesAsync(IReadOnlyList<MailMessageSummary> toArchive)
     {
         if (toArchive.Count == 0) return;
+
+        // Refused up front, BEFORE any row leaves the list. A draft held only on this computer has
+        // no id any server issued, and the backend parses ids as UIDs — so handing one over throws
+        // and, because rows are removed optimistically, the user watched a message that exists
+        // nowhere else vanish and then got a raw parse error. Delete is the one command that
+        // cannot refuse (it is how the user gets rid of either kind), and it splits instead (#637).
+        if (toArchive.Any(IsLocalOnlyId))
+        {
+            SetStatus(toArchive.Count == 1
+                    ? "That draft has not reached the server yet, so there is nothing there to archive. It can be archived once it has been uploaded."
+                    : "Some of those messages have not reached the server yet, so there is nothing there to archive. They can be archived once they have been uploaded.",
+                AnnouncementCategory.Result);
+            return;
+        }
+
 
         // Build the per-group plan up front so we only touch messages we can actually archive.
         var plan = new List<(IGrouping<(Guid AccountId, string FolderName), MailMessageSummary> Group, MailFolderModel Dest)>();
@@ -7747,7 +7810,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             // Never fall through to the server for a locally-stored draft: its id came from this
             // computer, and the backend parses ids as UIDs (#637).
-            if (detail == null && !LocalMessageId.IsLocal(summary.MessageId))
+            if (detail == null && !IsLocalOnlyId(summary))
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 detail = await _imap.GetMessageDetailAsync(
@@ -7847,7 +7910,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // the "real error" the user gets is a format exception about their own draft. Say
                 // what actually happened instead (#637).
                 LogService.Log($"OpenDraftAsync: no stored bytes for pending draft {summary.MessageId}");
-                if (LocalMessageId.IsLocal(summary.MessageId))
+                if (IsLocalOnlyId(summary))
                 {
                     SetStatus("That draft could not be opened: its saved copy is missing.",
                         AnnouncementCategory.Result);
@@ -8660,6 +8723,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (messages.Count == 0) return;
 
+        // Refused up front, BEFORE any row leaves the list. A draft held only on this computer has
+        // no id any server issued, and the backend parses ids as UIDs — so handing one over throws
+        // and, because rows are removed optimistically, the user watched a message that exists
+        // nowhere else vanish and then got a raw parse error. Delete is the one command that
+        // cannot refuse (it is how the user gets rid of either kind), and it splits instead (#637).
+        if (messages.Any(IsLocalOnlyId))
+        {
+            SetStatus(messages.Count == 1
+                    ? "That draft has not reached the server yet, so there is nothing there to move. It can be moved once it has been uploaded."
+                    : "Some of those messages have not reached the server yet, so there is nothing there to move. They can be moved once they have been uploaded.",
+                AnnouncementCategory.Result);
+            return;
+        }
+
+
         if (AlreadyIn(messages, destination))
         {
             StatusText = messages.Count == 1
@@ -8723,6 +8801,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task CopySelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
         if (messages.Count == 0) return;
+
+        // Refused up front, BEFORE any row leaves the list. A draft held only on this computer has
+        // no id any server issued, and the backend parses ids as UIDs — so handing one over throws
+        // and, because rows are removed optimistically, the user watched a message that exists
+        // nowhere else vanish and then got a raw parse error. Delete is the one command that
+        // cannot refuse (it is how the user gets rid of either kind), and it splits instead (#637).
+        if (messages.Any(IsLocalOnlyId))
+        {
+            SetStatus(messages.Count == 1
+                    ? "That draft has not reached the server yet, so there is nothing there to copy. It can be copied once it has been uploaded."
+                    : "Some of those messages have not reached the server yet, so there is nothing there to copy. They can be copied once they have been uploaded.",
+                AnnouncementCategory.Result);
+            return;
+        }
+
 
         if (AlreadyIn(messages, destination))
         {

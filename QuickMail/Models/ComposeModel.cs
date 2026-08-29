@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace QuickMail.Models;
@@ -17,6 +17,12 @@ public enum ComposeKind
 
 public class ComposeModel
 {
+    /// <summary>
+    /// Why this draft has not reached the server, or empty (#637). Read from the stored row when a
+    /// draft is opened for editing, so the compose window can say what the server objected to.
+    /// </summary>
+    public string DeliveryNotice { get; set; } = string.Empty;
+
     /// <summary>What kind of composition this is; used to determine the window title prefix.</summary>
     public ComposeKind Kind { get; set; } = ComposeKind.NewMessage;
 

@@ -10,18 +10,15 @@ using MailKit.Security;
 namespace QuickMail.Services;
 
 /// <summary>
-/// Whether a failed send is worth trying again later (#637).
-/// <para>This is the decision that separates the outbox from a way to lose mail. A message queued
-/// because the network was down goes out by itself and the user need never think about it; a
-/// message queued because the server refused it sits in the queue being refused forever, and the
-/// user was told it would be sent. So the transient set is deliberately narrow and closed: it is
-/// the failures that mean "this computer could not reach the server", nothing else. Anything the
-/// server actually answered — a rejected recipient, a refused login, a message over the size limit
-/// — is reported to the user the way it was before there was a queue.</para>
-/// <para><see cref="OperationCanceledException"/> is deliberately absent. It carries no information
-/// on its own: from a send's own timeout it means the server never answered, and from a caller's
-/// token it means the user quit or the sweep was cancelled. Only the call site knows which token
-/// fired, so each one decides for itself.</para>
+/// Whether a failure will pass on its own, or is a verdict that will repeat (#637).
+/// <para>The draft upload pass asks this and nothing else. "Will pass" means STOP: the account is
+/// almost certainly still unreachable, and trying the remaining drafts would spend a connection
+/// timeout each, so they wait for the next sweep and stay visible marked "not on server". A
+/// verdict means the opposite — that draft is marked with what the server said and the pass
+/// carries on, because it replays oldest-first and a permanently-refused draft would otherwise be
+/// first every time, silently blocking every draft behind it.</para>
+/// <para>Deliberately narrow and closed: anything unrecognised is NOT transient, so it is reported
+/// rather than retried forever.</para>
 /// </summary>
 public static class SendFailure
 {
@@ -62,6 +59,12 @@ public static class SendFailure
         // answers here is narrower: telling "the account is still unreachable, try again next sweep"
         // apart from "the server looked at this draft and refused it" — which has to stop
         // being retried, or it blocks every draft behind it forever (#637).
+        // The backend refusing to hand out a client for an account it has not connected. It is
+        // a local state, not a verdict on the draft, and it clears the moment the account
+        // connects — so treating it as permanent took the draft out of the queue and told the
+        // user their server had refused it, naming an account GUID (#637).
+        InvalidOperationException { Message: var m } when m.Contains("is not connected", StringComparison.Ordinal) => true,
+
         SocketException or IOException or TimeoutException => true,
         SmtpProtocolException or ProtocolException or ServiceNotConnectedException => true,
 

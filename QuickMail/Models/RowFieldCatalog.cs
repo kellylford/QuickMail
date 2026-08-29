@@ -41,6 +41,13 @@ public enum RowFieldFormat
 
     /// <summary>An int message count, spoken as "1 message" / "3 messages".</summary>
     Count,
+
+    /// <summary>
+    /// A string that already says what it is, so it is never labelled — the rule
+    /// <see cref="State"/> and <see cref="Count"/> follow, for a field whose wording depends
+    /// on more than a bool. Skipped when empty.
+    /// </summary>
+    Phrase,
 }
 
 /// <summary>
@@ -119,7 +126,9 @@ public static class RowFieldCatalog
         // Bound to IsAwaitingUpload, not IsPendingUpload: a draft the server has REFUSED keeps the
         // stored flag while nothing will ever upload it, and "not on server" carries the promise
         // that it will go up when you are back online.
-        new("notonserver", "Not on server",   "Not on server", "IsAwaitingUpload", RowFieldFormat.State, "not on server"),
+        // A Phrase, not a State: one bool cannot tell "on its way" from "stuck until you act",
+        // and binding to IsAwaitingUpload alone made a refused draft silent (#637).
+        new("notonserver", "Not on server",   "Not on server", "LocationLabel",    RowFieldFormat.Phrase),
     ];
 
     // ── Conversation group headers ───────────────────────────────────────────

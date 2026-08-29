@@ -1179,18 +1179,6 @@
                         Visibility="{Binding IsMessageOpen, Converter={StaticResource BoolToVisibilityConverter}}">
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Top" Margin="8,6,8,0">
-                            <!-- Why a draft did not reach the server (#637). Above the subject
-                                 because it is the reason the user opened it, and collapsed
-                                 entirely for everything else so it costs nothing to arrow past. -->
-                            <TextBox x:Name="DeliveryNoticeField"
-                                     Text="{Binding SelectedMessage.DeliveryNotice, FallbackValue='', Mode=OneWay}"
-                                     IsReadOnly="True" IsReadOnlyCaretVisible="True"
-                                     BorderThickness="0" Background="Transparent"
-                                     TextWrapping="Wrap" Margin="0,0,0,4"
-                                     Visibility="{Binding SelectedMessage.DeliveryNotice,
-                                                  Converter={StaticResource StringToVisibilityConverter},
-                                                  FallbackValue=Collapsed}"
-                                     AutomationProperties.Name="Delivery status"/>
                             <TextBox x:Name="SubjectField"
                                      Text="{Binding MessageDetail.Subject, FallbackValue='', Mode=OneWay}"
                                      IsReadOnly="True" IsReadOnlyCaretVisible="True"

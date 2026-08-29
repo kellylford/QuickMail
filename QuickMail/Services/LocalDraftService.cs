@@ -121,6 +121,9 @@ public sealed class LocalDraftService(ILocalStoreService store) : ILocalDraftSer
             Mode            = ImapMailService.ParseComposeMode(msg.Headers["X-QuickMail-Compose-Mode"]),
             DraftMessageId  = messageId,
             DraftFolderName = folderName,
+            // From the summary row, not the stored bytes: the reason is written after the
+            // MIME was stored, so the bytes have never heard of it (#637).
+            DeliveryNotice  = await ReadDeliveryNoticeAsync(accountId, folderName, messageId),
         };
 
         if (compose.Mode == ComposeMode.Html)
@@ -154,6 +157,23 @@ public sealed class LocalDraftService(ILocalStoreService store) : ILocalDraftSer
 
     public Task<string?> GetSupersededServerIdAsync(Guid accountId, string folderName, string messageId)
         => ReadSupersededIdAsync(accountId, folderName, messageId);
+
+    /// <summary>Why the server would not take this draft, as a sentence, or empty (#637).</summary>
+    private async Task<string> ReadDeliveryNoticeAsync(Guid accountId, string folderName, string messageId)
+    {
+        try
+        {
+            var rows = await _store.LoadFolderSummariesAsync(accountId, folderName);
+            return rows.FirstOrDefault(r => r.MessageId == messageId)?.DeliveryNotice ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            // A store that will not answer must not stop the draft opening; the user loses the
+            // explanation, not the message.
+            LogService.Log("LocalDraftService: could not read the delivery notice", ex);
+            return string.Empty;
+        }
+    }
 
     public Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason)
         => _store.MarkSendFailedAsync(accountId, folderName, messageId, reason);

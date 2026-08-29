@@ -159,6 +159,20 @@ public partial class MailMessageSummary : ObservableObject
     public bool IsAwaitingUpload => IsPendingUpload && string.IsNullOrEmpty(SendFailedReason);
 
     /// <summary>
+    /// What this draft's row says about where it is, or empty for a message that is on the server
+    /// (#637).
+    /// <para>Two states, two words, because they mean different things to the person listening:
+    /// "not on server" is on its way, and "not uploaded" is stuck until you do something. Binding
+    /// the row field to <see cref="IsAwaitingUpload"/> alone made a refused draft say NOTHING —
+    /// indistinguishable from one that uploaded fine, on the one channel that reaches a user with
+    /// custom announcements off. Chosen by the user over a single shared word.</para>
+    /// </summary>
+    public string LocationLabel =>
+        !string.IsNullOrEmpty(SendFailedReason) ? "not uploaded"
+        : IsPendingUpload                       ? "not on server"
+        :                                         string.Empty;
+
+    /// <summary>
     /// What went wrong with this message, for the reading pane — empty for ordinary mail AND for a
     /// draft that is simply waiting its turn (#637).
     /// <para>Shown only when something is WRONG, by the user's own choice: a draft still queued to
@@ -172,8 +186,12 @@ public partial class MailMessageSummary : ObservableObject
     public string DeliveryNotice =>
         string.IsNullOrEmpty(SendFailedReason)
             ? string.Empty
-            : $"Your mail server refused to save this draft: {SendFailedReason}. " +
-               "It will not be tried again until you edit it and save it.";
+            // The reason is already a complete statement, and it is NOT always about the server:
+            // a draft whose stored copy could not be read never reached one. Prefixing every
+            // reason with "your mail server refused to save this draft" attributed a local
+            // failure to the server and prescribed a remedy — edit and save it again — that is
+            // impossible for a draft that cannot be opened (#637).
+            : $"This draft was not uploaded. {SendFailedReason}";
 
     // ── Computed display ──────────────────────────────────────────────────────
 

@@ -16,9 +16,9 @@ Drafts are now saved to your computer first and sent to the server afterwards. I
   server when you are back online."*
 - Auto-save works the same way, and says *"Auto-saved on this computer"* while a draft is waiting.
 - A draft that has not reached the server yet sits in your **Drafts** folder with the other drafts,
-  showing the status **Not on server** — a screen reader reads the row as "saved on this computer,
-  not yet on the server". You can open it, edit it, and save it again as often as you like without a
-  connection, and any attachments stay with it.
+  showing the status **Not on server**, which the row reads out as "not on server" before
+  anything else about the message. You can open it, edit it, and save it again as often as you
+  like without a connection, and any attachments stay with it.
 - Closing a compose window is never blocked by being offline.
 - QuickMail sends these drafts up on its own the next time it reaches the account. The **Not on
   server** status then goes away, and a draft that already existed on the server is replaced rather
@@ -37,7 +37,10 @@ Also fixed in this release, all of them ways an offline draft could go wrong qui
   no longer blocks every draft behind it — it reads **Not uploaded** and the rest go up normally.
 - Offline drafts no longer disappear from the Drafts list when a connection returns.
 - Deleting a selection that mixes offline drafts with ordinary messages now deletes both, rather
-  than neither.
+  than neither — and deleting a draft that exists only on this computer asks first, because
+  there is no copy on the server and none in Trash.
+- Moving, copying or archiving a draft that has not reached the server is refused with a
+  reason, instead of removing it from the list and then failing.
 - A draft you have open in a compose window is left alone by the upload until you close it.
 - Removing an account asks first when it still holds drafts that exist nowhere else.
 

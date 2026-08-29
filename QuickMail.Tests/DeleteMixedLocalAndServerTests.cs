@@ -67,6 +67,9 @@ public class DeleteMixedLocalAndServerTests
             store, new StubOAuthService(), new StubSyncService(),
             new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
             new StubRuleService(), new StubSmtpService());
+        // Deleting a draft held only here cannot be undone, so the VM asks first and fails
+        // closed. Tests that are not about the prompt answer yes.
+        vm.ConfirmLocalDraftDelete = _ => true;
         vm.SelectedFolder = new MailFolderModel
         {
             AccountId = AccountId, FullName = "Drafts", DisplayName = "Drafts",
@@ -112,5 +115,55 @@ public class DeleteMixedLocalAndServerTests
         Assert.Empty(mail.Trashed);
         Assert.Empty(await store.LoadFolderSummariesAsync(AccountId, "Drafts"));
         Assert.DoesNotContain("Delete may not have completed", vm.StatusText, StringComparison.Ordinal);
+    }
+    [Fact]
+    public async Task DeletingADraftHeldOnlyHere_AsksFirst()
+    {
+        var (vm, store, _) = MakeVm();
+        var local = Row("local-abc");
+        store.SeededSummaries[(AccountId, "Drafts")] = [local];
+        vm.Messages = new Helpers.BatchObservableCollection<MailMessageSummary>([local]);
+        string? asked = null;
+        vm.ConfirmLocalDraftDelete = m => { asked = m; return false; };
+
+        await vm.DeleteMessagesAsync([local]);
+
+        // Every other Delete in the app means "moved to Trash, still there if you want it back".
+        // This one destroys the only copy that has ever existed, and used to say the same words.
+        Assert.NotNull(asked);
+        Assert.Contains("cannot be undone", asked, StringComparison.Ordinal);
+        Assert.Single(await store.LoadFolderSummariesAsync(AccountId, "Drafts"));
+    }
+
+    [Fact]
+    public async Task DeletingOnlyServerMessages_DoesNotAsk()
+    {
+        var (vm, store, _) = MakeVm();
+        var server = Row("41");
+        store.SeededSummaries[(AccountId, "Drafts")] = [server];
+        vm.Messages = new Helpers.BatchObservableCollection<MailMessageSummary>([server]);
+        var asked = false;
+        vm.ConfirmLocalDraftDelete = _ => { asked = true; return true; };
+
+        await vm.DeleteMessagesAsync([server]);
+
+        // Those go to Trash and can be got back; a prompt there would be noise on the common path.
+        Assert.False(asked);
+    }
+
+    [Fact]
+    public async Task WithNoConfirmationWired_ADraftHeldOnlyHereIsNotDeleted()
+    {
+        var (vm, store, _) = MakeVm();
+        var local = Row("local-abc");
+        store.SeededSummaries[(AccountId, "Drafts")] = [local];
+        vm.Messages = new Helpers.BatchObservableCollection<MailMessageSummary>([local]);
+        vm.ConfirmLocalDraftDelete = null;
+
+        await vm.DeleteMessagesAsync([local]);
+
+        // Fails closed, like the account-removal confirmation it mirrors: with no way to get a
+        // yes, nothing irreversible happens.
+        Assert.Single(await store.LoadFolderSummariesAsync(AccountId, "Drafts"));
     }
 }

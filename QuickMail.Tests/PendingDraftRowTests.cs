@@ -96,20 +96,6 @@ public class PendingDraftRowTests
         Assert.Equal("Not on server", row.StatusDisplay);
     }
 
-    [Fact]
-    public void TheRowUpdatesWhenTheRefusalArrives()
-    {
-        // Bound by the "not on server" field, so a row refused under an open list has to raise it
-        // rather than wait for a rebuild that would move the user's focus.
-        var row = Draft(pending: true);
-        var raised = new List<string>();
-        row.PropertyChanged += (_, e) => raised.Add(e.PropertyName!);
-
-        row.SendFailedReason = "mailbox does not exist";
-
-        Assert.Contains(nameof(MailMessageSummary.IsAwaitingUpload), raised);
-        Assert.Contains(nameof(MailMessageSummary.StatusDisplay), raised);
-    }
     // ── The reason, on a channel that survives ───────────────────────────────
 
     [Fact]
@@ -126,26 +112,41 @@ public class PendingDraftRowTests
     public void ARefusedDraft_CarriesTheServersOwnWords()
     {
         var row = Draft(pending: true);
-        row.SendFailedReason = "mailbox does not exist";
+        row.SendFailedReason = "Your mail server refused it: mailbox does not exist Edit the draft and save it again to try once more.";
 
-        // The whole point: readable later, from the message itself, without having been watching
-        // the status bar at the moment the sweep produced it.
+        // Readable later, from the draft itself, without having been watching the status bar at
+        // the moment the sweep produced it.
         Assert.Contains("mailbox does not exist", row.DeliveryNotice, StringComparison.Ordinal);
-        // And what to do about it, which is the thing the guide tells the user to do.
-        Assert.Contains("edit it and save it", row.DeliveryNotice, StringComparison.Ordinal);
+        Assert.Contains("save it again", row.DeliveryNotice, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void TheNoticeAppearsWhenTheRefusalDoes()
+    public void ALocalFailure_IsNotBlamedOnTheServer()
     {
-        // Bound in the reading pane, so a row refused under an open message has to raise it —
-        // otherwise the pane goes on showing nothing for a draft that has just stopped uploading.
+        // The same column carries both, and prefixing every reason with "your mail server refused
+        // to save this draft" attributed a LOCAL failure to the server — then told the user to fix
+        // and re-save a draft that cannot be opened at all (#637).
         var row = Draft(pending: true);
-        var raised = new List<string>();
-        row.PropertyChanged += (_, e) => raised.Add(e.PropertyName!);
+        row.SendFailedReason = "Its saved copy on this computer could not be read, so there was nothing to upload.";
 
-        row.SendFailedReason = "mailbox does not exist";
-
-        Assert.Contains(nameof(MailMessageSummary.DeliveryNotice), raised);
+        Assert.DoesNotContain("mail server", row.DeliveryNotice, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("could not be read", row.DeliveryNotice, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ARefusedDraft_KeepsAWordInTheRow()
+    {
+        // Binding the row field to IsAwaitingUpload alone made a refused draft say NOTHING —
+        // indistinguishable from one that uploaded fine, on the one channel that reaches a user
+        // running with custom announcements off. Two states, two words (#637).
+        var waiting = Draft(pending: true);
+        Assert.Equal("not on server", waiting.LocationLabel);
+
+        var refused = Draft(pending: true);
+        refused.SendFailedReason = "Your mail server refused it: over quota.";
+        Assert.Equal("not uploaded", refused.LocationLabel);
+
+        Assert.Equal(string.Empty, new MailMessageSummary { FolderName = "INBOX" }.LocationLabel);
+    }
+
 }

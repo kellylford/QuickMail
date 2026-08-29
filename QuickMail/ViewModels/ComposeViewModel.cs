@@ -250,6 +250,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // is recorded against the stored draft, not here; the next save reads it back from there.
         _draftServerMessageId = LocalMessageId.IsLocal(model.DraftMessageId) ? null : model.DraftMessageId;
         IsDraftPendingUpload  = LocalMessageId.IsLocal(model.DraftMessageId);
+        // Why the server would not take this draft, if it said (#637). Shown in this window
+        // because this is where Enter on a draft lands — and the guide's instruction, "fix what
+        // the server objected to and save again", is unactionable without it.
+        DeliveryNotice        = model.DeliveryNotice;
         ComposeKind         = model.Kind;
         OnPropertyChanged(nameof(WindowTitle));
 
@@ -300,6 +304,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// on this account." closed the window and destroyed the message.</para>
     /// </summary>
     public bool LastSaveKeptTheMessage { get; private set; }
+
+    /// <summary>
+    /// Why this draft has not reached the server, or empty (#637). Set from the stored row when the
+    /// window opens, and cleared by a save that succeeds — at which point the sentence would be
+    /// describing a refusal that no longer applies.
+    /// </summary>
+    [ObservableProperty] private string _deliveryNotice = string.Empty;
 
     [RelayCommand]
     private async Task SaveDraftAsync()
@@ -424,6 +435,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             if (!_seededExistingDraft && !hadStoredRow && LocalMessageId.IsLocal(saved.MessageId))
                 _draftCreatedByThisWindow = true;
             localId               = saved.MessageId;
+            // The save re-arms the upload (the store clears the reason), so the notice must go
+            // with it rather than sit there describing a refusal that is no longer true.
+            DeliveryNotice        = string.Empty;
             // Re-claim on the id this save just minted. Seed can only claim a draft that was
             // ALREADY local, which leaves out every new compose, reply and forward — precisely the
             // rows the upload pass skips claimed drafts to protect. Without this the pass uploads
@@ -455,15 +469,31 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             var serverId = await _imap.AppendDraftAsync(
                 account.Id, compose, _draftServerMessageId, combined.Token);
 
-            // The server holds it now, so the local copy is redundant — and leaving it would show
-            // the draft twice in Drafts once the folder syncs.
-            if (localId != null)
-                await _drafts.DiscardAsync(account.Id, _draftFolderName, localId);
-
+            // Recorded BEFORE the discard, and the discard given its own catch. The upload has
+            // happened by this point; letting a failed local delete jump to the outer catch left
+            // the id unrecorded and the row still marked pending, so the window reported "it will
+            // go to the server when you are back online" about a draft already ON the server — and
+            // the next sweep uploaded it again, against a stale id, duplicating it in Drafts.
             _draftMessageId       = serverId;
             _draftServerMessageId = serverId;
             _isDirty              = false;
             IsDraftPendingUpload  = false;
+
+            // The server holds it now, so the local copy is redundant — and leaving it would show
+            // the draft twice in Drafts once the folder syncs.
+            if (localId != null)
+            {
+                try
+                {
+                    await _drafts.DiscardAsync(account.Id, _draftFolderName, localId);
+                }
+                catch (Exception ex)
+                {
+                    // A leftover row is visible and recoverable; reporting a save that plainly
+                    // happened as a failure is not.
+                    LogService.Log("SaveDraftCoreAsync: uploaded, but the local copy could not be dropped", ex);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -640,7 +670,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             {
                 try
                 {
-                    await _drafts.DiscardAsync(account.Id, _draftFolderName, _draftMessageId!);
+                    // The row's OWNER, not whoever is selected as sender now. Changing the From
+                    // account and pressing Send before an auto-save re-keys the row meant this
+                    // matched nothing, the row survived, and the next sweep uploaded a draft of an
+                    // already-sent message into the old account's mailbox (#637).
+                    var owner = _draftAccountId != Guid.Empty ? _draftAccountId : account.Id;
+                    await _drafts.DiscardAsync(owner, _draftFolderName, _draftMessageId!);
                 }
                 catch (Exception ex)
                 {

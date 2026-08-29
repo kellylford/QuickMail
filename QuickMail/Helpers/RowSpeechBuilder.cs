@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -80,6 +80,12 @@ public static class RowSpeechBuilder
                 // never labelled — "Unread: unread" is noise, not information.
                 if (on) return def.TrueWord ?? string.Empty;
                 return setting.SpeakMode == SpeakMode.Always ? def.FalseWord ?? string.Empty : string.Empty;
+            }
+
+            case RowFieldFormat.Phrase:
+            {
+                // Self-describing, so unlabelled like the state and count fields.
+                return (raw as string ?? string.Empty).Trim();
             }
 
             case RowFieldFormat.Count:

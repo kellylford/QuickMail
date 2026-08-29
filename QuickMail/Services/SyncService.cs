@@ -293,7 +293,7 @@ public class SyncService : ISyncService
                     // had reached the server when it had in fact just been deleted, unread. Mark
                     // it instead: the row stays, says the draft could not be read, and stops being
                     // retried (#637).
-                    const string unreadable = "its saved copy could not be read, so it was not uploaded";
+                    const string unreadable = "Its saved copy on this computer could not be read, so there was nothing to upload.";
                     LogService.Log($"Draft upload {account.AccountLabel}: no stored bytes for {draft.MessageId}");
                     try
                     {
@@ -347,7 +347,8 @@ public class SyncService : ISyncService
                 try
                 {
                     await _localDrafts.MarkSendFailedAsync(
-                        account.Id, draft.FolderName, draft.MessageId, ex.Message);
+                        account.Id, draft.FolderName, draft.MessageId,
+                        $"Your mail server refused it: {ex.Message} Edit the draft and save it again to try once more.");
                 }
                 catch (Exception markEx)
                 {

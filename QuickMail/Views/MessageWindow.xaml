@@ -5,7 +5,6 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:vm="clr-namespace:QuickMail.ViewModels"
-        xmlns:views="clr-namespace:QuickMail.Views"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
         AutomationProperties.Name="{Binding WindowTitle}"
@@ -22,7 +21,6 @@
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <views:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
     </Window.Resources>
 
     <DockPanel>
@@ -138,16 +136,6 @@
                 BorderBrush="{DynamicResource Theme.Border}"
                 Padding="8,6,8,6">
             <StackPanel>
-                <!-- Why a draft did not reach the server (#637); collapsed for everything else. -->
-                <TextBox x:Name="DeliveryNoticeField"
-                         Text="{Binding MessageDetail.DeliveryNotice, FallbackValue='', Mode=OneWay}"
-                         IsReadOnly="True" IsReadOnlyCaretVisible="True"
-                         BorderThickness="0" Background="Transparent"
-                         TextWrapping="Wrap" Margin="0,0,0,4"
-                         Visibility="{Binding MessageDetail.DeliveryNotice,
-                                      Converter={StaticResource StringToVisibilityConverter},
-                                      FallbackValue=Collapsed}"
-                         AutomationProperties.Name="Delivery status"/>
                 <TextBox x:Name="SubjectField"
                          Text="{Binding MessageDetail.Subject, FallbackValue='', Mode=OneWay}"
                          IsReadOnly="True" IsReadOnlyCaretVisible="True"

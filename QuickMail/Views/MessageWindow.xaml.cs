@@ -316,12 +316,6 @@ public partial class MessageWindow : Window
             ct.ThrowIfCancellationRequested();
             if (detail == null) return;
 
-            // The detail row carries the message; the summary row carries what has happened to it.
-            // LoadDetailAsync reads no such column, so without this the notice is permanently
-            // blank in Window mode (#637).
-            detail.IsPendingUpload  = summary.IsPendingUpload;
-            detail.SendFailedReason = summary.SendFailedReason;
-
             _vm.MessageDetail = detail;
             await ShowMessageBodyAsync(detail);
 
@@ -595,22 +589,15 @@ public partial class MessageWindow : Window
 
     private void CycleFocus(bool forward)
     {
-        // A fourth stop joins the ring only when there is something to say about why a draft did
-        // not reach the server, and it sits BEFORE the body — the same position as in the reading
-        // pane, so the field is found the same way whichever way the message was opened (#637).
-        var hasNotice = DeliveryNoticeField.Visibility == Visibility.Visible;
-        var stops = hasNotice ? 4 : 3;
-
         _f6FocusStop = forward
-            ? (_f6FocusStop + 1) % stops
-            : (_f6FocusStop - 1 + stops) % stops;
+            ? (_f6FocusStop + 1) % 3
+            : (_f6FocusStop - 1 + 3) % 3;
 
         switch (_f6FocusStop)
         {
             case 0: ToolbarFirstFocus(); break;
             case 1: SubjectField.Focus(); break;
-            case 2: if (hasNotice) DeliveryNoticeField.Focus(); else FocusMessageBodyHost(); break;
-            case 3: FocusMessageBodyHost(); break;
+            case 2: FocusMessageBodyHost(); break;
         }
     }
 

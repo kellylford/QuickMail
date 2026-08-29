@@ -272,6 +272,13 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = vm;
 
+        // #637: deleting a draft that exists only on this computer cannot be undone and
+        // leaves nothing in Trash, unlike every other Delete. A plain Yes/No MessageBox,
+        // the same shape as the account-removal confirmation; the VM fails closed if unset.
+        vm.ConfirmLocalDraftDelete = message =>
+            MessageBox.Show(this, message, "Delete draft?",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+
         if (_themeService != null)
         {
             _lastAnnouncedHighContrast = _themeService.IsHighContrastActive;
@@ -4089,7 +4096,6 @@ public partial class MainWindow : Window
         if (SearchBox.IsKeyboardFocusWithin)    return 6;
         if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin || CalendarList.IsKeyboardFocusWithin || MonthGrid.IsKeyboardFocusWithin || CalendarDetails.IsKeyboardFocusWithin || CalendarSearchBox.IsKeyboardFocusWithin) return 3;
         if (TabStrip.IsKeyboardFocusWithin)     return 7; // between message list and reading pane
-        if (DeliveryNoticeField.IsKeyboardFocusWithin) return 8; // just before the body
         if (MessageBody.IsKeyboardFocusWithin)  return 4;
         if (MainStatusBar.IsKeyboardFocusWithin) return 5;
         return 0;
@@ -4106,7 +4112,6 @@ public partial class MainWindow : Window
             case 6: SearchBox.Focus(); break;
             case 3: FocusActiveMessagePanel(); break;
             case 7: TabStrip.Focus(); break;
-            case 8: DeliveryNoticeField.Focus(); break;
             case 4:
                 if (_vm.IsMessageOpen && _webViewReady)
                 {
@@ -4132,10 +4137,6 @@ public partial class MainWindow : Window
         if (_vm.IsSearchActive) panes.Add(6); // search box between folder tree and message list
         if (_vm.IsMessageListAreaVisible) panes.Add(3); // skipped when a message tab fills the pane
         if (_vm.ShowTabStrip) panes.Add(7);   // tab strip between message list and reading pane
-        // Why a draft did not go up (#637). In the ring only when there is something to say — the
-        // field is collapsed otherwise, and an F6 stop that lands on nothing is worse than no stop.
-        // Immediately before the body, so it is reached on the way IN to the message.
-        if (_vm.IsMessageOpen && DeliveryNoticeField.Visibility == Visibility.Visible) panes.Add(8);
         if (_vm.IsMessageOpen && _webViewReady) panes.Add(4);
         panes.Add(5); // StatusBar always included
 
