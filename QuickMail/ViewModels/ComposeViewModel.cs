@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -143,6 +143,26 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
     private string? _inReplyToMessageId;
     private string? _draftMessageId;
+
+    /// <summary>
+    /// True when the locally-stored row this window owns was created BY this window, rather than
+    /// opened from Drafts (#637). Only such a row may be discarded when the user declines to save
+    /// on the way out — declining your own edits never means deleting the draft you opened.
+    /// </summary>
+    private bool _draftCreatedByThisWindow;
+
+    /// <summary>
+    /// True when Seed handed this window a draft that already existed (#637). Sticky: nothing this
+    /// window does afterwards can make it the author of that message.
+    /// </summary>
+    private bool _seededExistingDraft;
+
+    /// <summary>
+    /// The account whose Drafts folder holds this window's stored row (#637). Not the same thing
+    /// as <see cref="SenderAccount"/>: the user can change the From account at any time, and the
+    /// store keys rows on (id, account, folder), so the row does not move on its own.
+    /// </summary>
+    private Guid _draftAccountId;
     private string? _draftFolderName;
 
     /// <summary>
@@ -206,6 +226,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         _inReplyToMessageId = model.InReplyToMessageId;
         _draftMessageId     = model.DraftMessageId;
         _draftFolderName    = model.DraftFolderName;
+        // Anything Seed arrives with already existed; this window is a visitor to it. ANY id —
+        // local or server — counts: saving a server draft offline writes a local row and drops the
+        // cached server row, so discarding on "no" would leave the Drafts list showing neither
+        // until the next sync brought the server copy back.
+        _seededExistingDraft      = model.DraftMessageId != null;
+        _draftCreatedByThisWindow = false;
+        _draftAccountId           = model.AccountId;
         // A local id means the copy on this computer is the newer one and the server's id (if any)
         // is recorded against the stored draft, not here; the next save reads it back from there.
         _draftServerMessageId = LocalMessageId.IsLocal(model.DraftMessageId) ? null : model.DraftMessageId;
@@ -251,9 +278,24 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Whether the last save left the message somewhere it can be got back from — this computer,
+    /// the server, or both (#637).
+    /// <para>The window uses this to decide whether closing is safe. It used to decide by looking
+    /// for the word "failed" in the status text, which silently stopped working the moment
+    /// local-first saving introduced a failure that does not contain it: "No Drafts folder found
+    /// on this account." closed the window and destroyed the message.</para>
+    /// </summary>
+    public bool LastSaveKeptTheMessage { get; private set; }
+
     [RelayCommand]
     private async Task SaveDraftAsync()
     {
+        // FIRST, before any early return. The window consults this to decide whether closing is
+        // safe, so a stale `true` from an earlier successful save would let a REFUSED save close
+        // the window and lose the message.
+        LastSaveKeptTheMessage = false;
+
         var account = SenderAccount;
         if (account == null)
         {
@@ -272,6 +314,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         try
         {
             await SaveDraftCoreAsync(account);
+            LastSaveKeptTheMessage = true;
             SetStatusOutcome(IsDraftPendingUpload
                 ? "Draft saved on this computer. It will go to the server when you are back online."
                 : "Draft saved.");
@@ -351,8 +394,28 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         Exception? localFailure = null;
         try
         {
+            // Whether a row already existed under this window's key BEFORE the save. Read from
+            // the field, not from a local that is null on entry to every call — using a local
+            // marked the second save of an OPENED draft as this window's own creation.
+            var hadStoredRow = LocalMessageId.IsLocal(_draftMessageId);
+
+            // Move the row first if the user changed the sender. The store keys rows on
+            // (id, account, folder), so saving under the new account while the old row still
+            // exists left TWO — and the old one was still uploaded, into the mailbox of the
+            // account the user had just moved away from (#637).
+            await RekeyStoredRowIfSenderChangedAsync(account);
+
             var saved = await _drafts.SaveAsync(account, compose, _draftFolderName, _draftMessageId, externalCt);
+            // Minted here rather than opened, so this window may drop it again if the user
+            // declines to save on the way out.
+            if (!_seededExistingDraft && !hadStoredRow && LocalMessageId.IsLocal(saved.MessageId))
+                _draftCreatedByThisWindow = true;
             localId               = saved.MessageId;
+            // Record the owner. Seed knows it only for a message that was already stored, so a new
+            // compose had none at all — and the re-key above, which is what stops a sender change
+            // leaving a second row behind, never fired for exactly the messages most likely to
+            // have their sender changed.
+            _draftAccountId       = account.Id;
             _draftMessageId       = saved.MessageId;
             _draftServerMessageId ??= saved.SupersededServerMessageId;
             _isDirty              = false;
@@ -585,6 +648,73 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Moves this window's stored row to the newly chosen sender account, if it changed (#637).
+    /// <para>The row is deleted under the old account and re-created under the new one by the save
+    /// that follows. Leaving it behind meant the old row stayed put and was still uploaded — to
+    /// the mailbox of the account the user had explicitly moved away from.</para>
+    /// </summary>
+    private async Task RekeyStoredRowIfSenderChangedAsync(AccountModel account)
+    {
+        if (_draftAccountId == Guid.Empty || _draftAccountId == account.Id) return;
+        if (!LocalMessageId.IsLocal(_draftMessageId) || _draftFolderName == null) return;
+
+        var oldAccountId = _draftAccountId;
+        var oldFolder    = _draftFolderName;
+        var oldId        = _draftMessageId!;
+
+        // The new account's own Drafts folder.
+        _draftFolderName = await _drafts.ResolveDraftsFolderNameAsync(account.Id) ?? oldFolder;
+
+        // A fresh id under the new key; the save that follows writes it.
+        _draftMessageId  = null;
+        _draftAccountId  = account.Id;
+        // The draft the old account holds on its server belongs to that account. Keeping the id
+        // would make the next save replace a draft in a mailbox this message has left.
+        _draftServerMessageId = null;
+
+        try
+        {
+            await _drafts.DiscardAsync(oldAccountId, oldFolder, oldId);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("RekeyStoredRowIfSenderChangedAsync: could not drop the old row", ex);
+        }
+    }
+
+    /// <summary>
+    /// Drops what THIS WINDOW wrote locally, for the user who answers "no" to the save-on-close
+    /// prompt (#637).
+    /// <para>Needed because the local leg now always succeeds: auto-save has very likely already
+    /// persisted the message, and without this the sweep would upload to the user's mailbox a
+    /// message they explicitly declined to keep. Before local-first saving, an offline auto-save
+    /// simply failed and nothing persisted, so "no" needed no help to mean no.</para>
+    /// </summary>
+    public async Task DiscardLocalCopyAsync()
+    {
+        // ONLY a row this window created. A window that merely opened an existing offline draft
+        // must leave it exactly as it found it: "no, do not save these changes" is not "delete the
+        // draft I opened". Discarding regardless destroyed the draft, its attachments and its
+        // stored bytes, with no prompt and no copy in Trash — for a user who answered a question
+        // about their edits (#637).
+        if (!_draftCreatedByThisWindow) return;
+        if (!LocalMessageId.IsLocal(_draftMessageId) || _draftFolderName == null) return;
+
+        var owner = _draftAccountId != Guid.Empty ? _draftAccountId : SenderAccount?.Id ?? Guid.Empty;
+        if (owner == Guid.Empty) return;
+
+        try
+        {
+            await _drafts.DiscardAsync(owner, _draftFolderName, _draftMessageId!);
+            _draftMessageId = null;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("DiscardLocalCopyAsync", ex);
         }
     }
 

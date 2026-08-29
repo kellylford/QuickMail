@@ -689,6 +689,11 @@ public partial class ComposeWindow : Window
 
         if (decision == false)
         {
+            // Auto-save has very likely already written this message to disk, so "no" has to go
+            // and remove that copy — otherwise the upload pass files a message on the server that
+            // the user explicitly declined to keep. Only what THIS window wrote: a draft it merely
+            // opened is not its to delete (#637).
+            await _vm.DiscardLocalCopyAsync();
             Closing -= OnWindowClosing;
             e.Cancel = false;
             return;
@@ -696,7 +701,11 @@ public partial class ComposeWindow : Window
 
         // decision == true: save the draft first
         await _vm.SaveDraftCommand.ExecuteAsync(null);
-        if (_vm.StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase))
+        // Ask the VM whether the message was kept, rather than reading the status text for the
+        // word "failed". That string match silently stopped working the moment local-first saving
+        // introduced a failure without it — "No Drafts folder found on this account." closed the
+        // window and destroyed the message (#637).
+        if (!_vm.LastSaveKeptTheMessage)
             return;
 
         Closing -= OnWindowClosing;
