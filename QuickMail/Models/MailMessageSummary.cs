@@ -146,6 +146,7 @@ public partial class MailMessageSummary : ObservableObject
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
     [NotifyPropertyChangedFor(nameof(ReadStatusLabel))]
     [NotifyPropertyChangedFor(nameof(IsAwaitingUpload))]
+    [NotifyPropertyChangedFor(nameof(DeliveryNotice))]
     private string? _sendFailedReason;
 
     /// <summary>
@@ -156,6 +157,23 @@ public partial class MailMessageSummary : ObservableObject
     /// about it is a promise the store query rules out.</para>
     /// </summary>
     public bool IsAwaitingUpload => IsPendingUpload && string.IsNullOrEmpty(SendFailedReason);
+
+    /// <summary>
+    /// What went wrong with this message, for the reading pane — empty for ordinary mail AND for a
+    /// draft that is simply waiting its turn (#637).
+    /// <para>Shown only when something is WRONG, by the user's own choice: a draft still queued to
+    /// upload already says "not on server" in its row, and repeating it here would add a focus
+    /// stop on the common case to say what the user has just been told.</para>
+    /// <para>The reason a server gave for refusing a draft is persisted, and without this it was
+    /// rendered nowhere: the status bar quoted it once and the next sweep overwrote the sentence,
+    /// so the row said the draft had not gone up and nothing said why — while the app and the
+    /// guide both tell the user to fix it and save again.</para>
+    /// </summary>
+    public string DeliveryNotice =>
+        string.IsNullOrEmpty(SendFailedReason)
+            ? string.Empty
+            : $"Your mail server refused to save this draft: {SendFailedReason}. " +
+               "It will not be tried again until you edit it and save it.";
 
     // ── Computed display ──────────────────────────────────────────────────────
 

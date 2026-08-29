@@ -1,4 +1,4 @@
-# QuickMail User Guide
+﻿# QuickMail User Guide
 
 QuickMail is a keyboard and screen reader friendly email program for Windows. Gmail, iCloud, Outlook.com, Microsoft 365, and IMAP/SMTP providers in general are all supported.
 
@@ -950,18 +950,22 @@ Every draft is saved to your computer first and sent to the server afterwards, s
 
 When a draft is on your computer but has not reached the server yet:
 
-- It appears in the account's **Drafts** folder alongside your other drafts, with the status **Not on server**. A screen reader reads the row as "saved on this computer, not yet on the server".
+- It appears in the account's **Drafts** folder alongside your other drafts, with the status **Not on server** — and the row says **not on server** when you arrow onto it, before anything else about the message. (That is a message field; you can turn it off, or move it, in **Message List Fields**. If you use the combined **Status (combined)** field, that already says the same thing in its own words, so this one is left off and you do not hear both.)
 - **Save Draft** answers "Draft saved on this computer. It will go to the server when you are back online," rather than reporting a failure.
 - Auto-save shows "Auto-saved on this computer" instead of "Auto-saved".
 - You can open it, keep editing it, and save it again as many times as you like, all without a connection. Attachments you added are kept with it, so the draft is complete when it does go up.
-- Closing the compose window is never blocked by being offline.
+- Closing the compose window is never blocked by being offline. Answering **No** to the save prompt removes the copy auto-save had already written for a message you started in that window — declining to keep a message means it is not kept, and not quietly uploaded later. Answering **No** to a draft you *opened* discards your changes and leaves the draft itself alone.
+- It cannot be moved, copied or archived until it has been uploaded: there is nothing on the server to move. Deleting it works normally, including in a selection that mixes it with ordinary messages.
 
-QuickMail uploads these drafts on its own the next time it reaches the account — you do not need to do anything. Once a draft is on the server the **Not on server** status goes away, and if you were editing a draft that already existed on the server, the copy up there is replaced rather than duplicated.
+QuickMail uploads these drafts on its own the next time it reaches the account — you do not need to do anything. Once a draft is on the server the **Not on server** status goes away, and if you were editing a draft that already existed on the server, the copy up there is replaced rather than duplicated. A draft you have open in a compose window is left alone until you close it, so an upload can never land on top of what you are still typing.
+
+If your server refuses one — a renamed Drafts folder, a message it will not accept — that draft stops being retried and its row reads **Not uploaded**, spoken as "could not be uploaded, still on this computer". It does not block the drafts behind it, which upload normally. **Select the message and QuickMail shows you what the server said**, above the subject; F6 stops there whenever there is something to say. Edit the draft and save again to try once more.
 
 Two things to know:
 
 - A draft is only on **this** computer until it uploads. It will not appear on your phone, in a web client, or on another PC until QuickMail has reached the server.
 - An account that has never finished syncing its folders has nowhere to file a draft, even locally — QuickMail needs to have seen your Drafts folder at least once. On a brand-new account, connect once before relying on offline drafts.
+- Removing an account deletes the drafts it is still holding, because they exist nowhere else. QuickMail says how many there are and asks first.
 
 Sending still needs a connection: a message you send while offline reports that the send failed, and the message stays open so you can save it as a draft and send it later.
 
@@ -1859,10 +1863,13 @@ The **Row type** list at the top chooses which kind of row you are editing. Each
 
 ### Fields for messages
 
+The first says where a message is rather than anything about it, so it comes first in the row — a draft that has not left this computer says so before it says who it is from.
+
 | Field | Speaks |
 |-------|--------|
+| Not on server | "not on server", for a draft saved here that has not been uploaded yet |
 | Flag | The flag's name, when the message is flagged |
-| Status (combined) | One word: "replied", "forwarded", "unread", or "read" |
+| Status (combined) | One phrase covering read state AND where the message is — including "saved on this computer, not yet on the server". Switching it on leaves **Not on server** off, so you do not hear both |
 | Attachments | "attachments" |
 | From, Subject, Preview, Date, To | The field's text |
 | Source folder | Where the message lives — only in aggregate views such as All Archive, where it is account-qualified when the view spans accounts |

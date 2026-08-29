@@ -1,4 +1,4 @@
-# QuickMail v0.8.43 Release Notes
+﻿# QuickMail v0.8.43 Release Notes
 
 <!-- Add "What is new" sections here (Changed/Fixed/New), then the Reporting Issues footer, then the Download footer last. -->
 
@@ -23,6 +23,23 @@ Drafts are now saved to your computer first and sent to the server afterwards. I
 - QuickMail sends these drafts up on its own the next time it reaches the account. The **Not on
   server** status then goes away, and a draft that already existed on the server is replaced rather
   than duplicated.
+
+Also fixed in this release, all of them ways an offline draft could go wrong quietly:
+
+- Answering **No** to the save prompt now removes the copy auto-save had already written for a
+  message you started — before, it stayed and was uploaded later anyway. Answering **No** to a draft
+  you merely *opened* leaves that draft alone.
+- A save that fails no longer closes the window. It used to decide by looking for the word "failed"
+  in the status line, which missed "No Drafts folder found on this account."
+- Changing the **From** account moves the draft to that account instead of leaving a copy to be
+  uploaded to the mailbox you moved away from.
+- A draft whose saved copy has gone is no longer reported as uploaded, and one your server refuses
+  no longer blocks every draft behind it — it reads **Not uploaded** and the rest go up normally.
+- Offline drafts no longer disappear from the Drafts list when a connection returns.
+- Deleting a selection that mixes offline drafts with ordinary messages now deletes both, rather
+  than neither.
+- A draft you have open in a compose window is left alone by the upload until you close it.
+- Removing an account asks first when it still holds drafts that exist nowhere else.
 
 Two things worth knowing. A waiting draft is on this computer only, so it will not show up on your
 phone or another PC until it has uploaded. And an account that has never finished syncing its folders
