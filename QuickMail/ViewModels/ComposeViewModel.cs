@@ -163,6 +163,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// store keys rows on (id, account, folder), so the row does not move on its own.
     /// </summary>
     private Guid _draftAccountId;
+
+    /// <summary>
+    /// Keeps the upload pass off this window's stored draft while it is open (#637). Released in
+    /// <see cref="Dispose"/>, and re-taken whenever the row this window owns changes.
+    /// </summary>
+    private IDisposable? _draftClaim;
     private string? _draftFolderName;
 
     /// <summary>
@@ -233,6 +239,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         _seededExistingDraft      = model.DraftMessageId != null;
         _draftCreatedByThisWindow = false;
         _draftAccountId           = model.AccountId;
+
+        // Take the row out of the sweep's reach for as long as this window is open. A window that
+        // mints its id later re-claims in SaveDraftCoreAsync.
+        _draftClaim?.Dispose();
+        _draftClaim = null;
+        if (LocalMessageId.IsLocal(_draftMessageId))
+            ClaimStoredRow(_draftAccountId, _draftFolderName, _draftMessageId!);
         // A local id means the copy on this computer is the newer one and the server's id (if any)
         // is recorded against the stored draft, not here; the next save reads it back from there.
         _draftServerMessageId = LocalMessageId.IsLocal(model.DraftMessageId) ? null : model.DraftMessageId;
@@ -411,6 +424,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             if (!_seededExistingDraft && !hadStoredRow && LocalMessageId.IsLocal(saved.MessageId))
                 _draftCreatedByThisWindow = true;
             localId               = saved.MessageId;
+            // Re-claim on the id this save just minted. Seed can only claim a draft that was
+            // ALREADY local, which leaves out every new compose, reply and forward — precisely the
+            // rows the upload pass skips claimed drafts to protect. Without this the pass uploads
+            // the draft mid-edit, deletes the row and its bytes, and the next auto-save re-creates
+            // it having lost the supersedes header, filling Drafts with copies (#637).
+            ClaimStoredRow(account.Id, _draftFolderName, saved.MessageId);
             // Record the owner. Seed knows it only for a message that was already stored, so a new
             // compose had none at all — and the re-key above, which is what stops a sender change
             // leaving a second row behind, never fired for exactly the messages most likely to
@@ -473,6 +492,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        // Before the token: releasing the claim makes the draft uploadable again, and the window
+        // is going away, so there is nothing left to protect (#637).
+        _draftClaim?.Dispose();
+        _draftClaim = null;
         _autoSaveCts.Cancel();
         _autoSaveCts.Dispose();
         GC.SuppressFinalize(this);
@@ -649,6 +672,23 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Takes (or moves) this window's claim to the row it now owns, so the upload pass leaves it
+    /// alone while it is open. Idempotent, and safe to call with an incomplete key.
+    /// </summary>
+    private void ClaimStoredRow(Guid accountId, string? folderName, string messageId)
+    {
+        if (accountId == Guid.Empty || folderName == null) return;
+
+        // Take the new claim BEFORE releasing the old one. Releasing first leaves the row
+        // unclaimed for the width of one call — on every auto-save — and a sweep landing in that
+        // gap uploads the draft and discards the bytes this window is still editing. Claims are
+        // reference-counted precisely so the two can overlap.
+        var previous = _draftClaim;
+        _draftClaim = DraftClaims.Claim(accountId, folderName, messageId);
+        previous?.Dispose();
     }
 
     /// <summary>

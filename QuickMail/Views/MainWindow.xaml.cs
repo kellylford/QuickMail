@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -5199,8 +5199,20 @@ public partial class MainWindow : Window
         Dispatcher.InvokeAsync(() =>
         {
             var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _localDrafts, _templateService);
-            composeVm.Seed(composeModel);
-            var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
+            ComposeWindow window;
+            try
+            {
+                // Seed takes the draft claim; the window is what will eventually release it, in
+                // OnClosed. If construction throws in between, nothing ever does — and that draft
+                // is skipped by the upload pass for the rest of the session, silently (#637).
+                composeVm.Seed(composeModel);
+                window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
+            }
+            catch
+            {
+                composeVm.Dispose();
+                throw;
+            }
             composeVm.CloseRequested += window.Close;
             _openComposeWindows.Add(window);
             window.Closed += (_, _) => _openComposeWindows.Remove(window);

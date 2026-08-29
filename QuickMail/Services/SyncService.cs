@@ -272,6 +272,17 @@ public class SyncService : ISyncService
         foreach (var draft in pending)
         {
             ct.ThrowIfCancellationRequested();
+
+            // Skip anything a compose window has open (#637). Uploading it deletes the local row
+            // and its stored bytes, and the window's next auto-save then re-saves without the
+            // supersedes header it can no longer read — leaving two or three copies of one draft
+            // on the server, and an orphan in Drafts after the user sends.
+            if (DraftClaims.IsClaimed(account.Id, draft.FolderName, draft.MessageId))
+            {
+                LogService.Debug($"Draft upload: skipping {draft.MessageId}, open in a compose window");
+                continue;
+            }
+
             try
             {
                 var compose = await _localDrafts.LoadAsync(account.Id, draft.FolderName, draft.MessageId, ct);
@@ -298,6 +309,19 @@ public class SyncService : ISyncService
 
                 var supersedes = await _localDrafts.GetSupersededServerIdAsync(
                     account.Id, draft.FolderName, draft.MessageId);
+
+                // Re-checked immediately before the upload, because the check at the top of the
+                // loop is a read and the two loads above it are awaits: a compose window opened in
+                // between passes the first check and is not protected by it. This narrows the gap
+                // to the append-and-discard pair, which have no await between them that a window
+                // can open in. It does not eliminate it — a claim taken in that last instant still
+                // loses its bytes — and closing it properly needs the store write and the claim to
+                // share a lock, which they do not (#637).
+                if (DraftClaims.IsClaimed(account.Id, draft.FolderName, draft.MessageId))
+                {
+                    LogService.Debug($"Draft upload: skipping {draft.MessageId}, opened while this pass was reading it");
+                    continue;
+                }
 
                 await _imap.AppendDraftAsync(account.Id, compose, supersedes, ct);
                 await _localDrafts.DiscardAsync(account.Id, draft.FolderName, draft.MessageId);
