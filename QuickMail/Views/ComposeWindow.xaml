@@ -300,8 +300,18 @@
         <!-- Why this draft has not reached the server (#637). HERE rather than in the reading
              pane: pressing Enter on a draft opens THIS window, never the pane, so a notice there
              could never be reached for the only messages that can populate it. Collapsed unless
-             there is something to say, so an ordinary draft gains no extra stop. -->
+             there is something to say, so an ordinary draft gains no extra stop.
+
+             Dock="Top" is required, not decorative: a DockPanel child with no Dock takes the
+             default, Left, and this one wraps — so it would have eaten the width of the whole
+             form. TabIndex 0 puts it first, ahead of From; without it the default is int.MaxValue
+             and the reason sorted AFTER Send and Cancel, at the very end of the window. It
+             shares the number with the From combo harmlessly: they are not siblings, and
+             this one is an earlier child of the DockPanel than the Grid that holds From.
+             Chosen by the user: the reason is the first thing you meet on the way in. -->
         <TextBox x:Name="DeliveryNoticeField"
+                 DockPanel.Dock="Top"
+                 TabIndex="0"
                  Text="{Binding DeliveryNotice, Mode=OneWay}"
                  IsReadOnly="True" IsReadOnlyCaretVisible="True"
                  BorderThickness="0" Background="Transparent"

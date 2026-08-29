@@ -43,6 +43,7 @@ public class SyncService : ISyncService
 
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
     public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+    public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
     public event Action<int>? RulesApplied;
     public event Action<int, int>? SyncProgressChanged;
@@ -269,6 +270,7 @@ public class SyncService : ISyncService
         if (pending.Count == 0) return 0;
 
         var uploaded = new List<MailMessageSummary>();
+        var refused  = new List<(MailMessageSummary Draft, string Reason)>();
         foreach (var draft in pending)
         {
             ct.ThrowIfCancellationRequested();
@@ -299,6 +301,7 @@ public class SyncService : ISyncService
                     {
                         await _localDrafts.MarkSendFailedAsync(
                             account.Id, draft.FolderName, draft.MessageId, unreadable);
+                        refused.Add((draft, unreadable));
                     }
                     catch (Exception markEx)
                     {
@@ -324,7 +327,19 @@ public class SyncService : ISyncService
                 }
 
                 await _imap.AppendDraftAsync(account.Id, compose, supersedes, ct);
-                await _localDrafts.DiscardAsync(account.Id, draft.FolderName, draft.MessageId);
+
+                // Its own catch, like the two other places that do this same tidy-up delete. The
+                // draft is ON THE SERVER by now, so letting a locked database reach the handler
+                // below reported "your mail server refused it: database is locked" — and the
+                // remedy that message gives, edit and save again, files a SECOND copy (#637).
+                try
+                {
+                    await _localDrafts.DiscardAsync(account.Id, draft.FolderName, draft.MessageId);
+                }
+                catch (Exception discardEx)
+                {
+                    LogService.Log($"Draft upload {account.AccountLabel}: uploaded {draft.MessageId}, but the local copy could not be dropped", discardEx);
+                }
                 uploaded.Add(draft);
             }
             catch (OperationCanceledException) { throw; }
@@ -344,11 +359,12 @@ public class SyncService : ISyncService
                 // behind it FOREVER, silently, because this pass replays oldest-first and this one
                 // is always first. Mark it so the row says so, and carry on with the rest (#637).
                 LogService.Log($"Draft upload {account.AccountLabel}: {draft.MessageId} refused; marking and continuing", ex);
+                var reason = $"Your mail server refused it: {Sentence(ex.Message)} Edit the draft and save it again to try once more.";
                 try
                 {
                     await _localDrafts.MarkSendFailedAsync(
-                        account.Id, draft.FolderName, draft.MessageId,
-                        $"Your mail server refused it: {ex.Message} Edit the draft and save it again to try once more.");
+                        account.Id, draft.FolderName, draft.MessageId, reason);
+                    refused.Add((draft, reason));
                 }
                 catch (Exception markEx)
                 {
@@ -356,6 +372,18 @@ public class SyncService : ISyncService
                 }
                 continue;
             }
+        }
+
+        if (refused.Count > 0)
+        {
+            // The row stays, so nothing else would ever tell the open list. Applied to the live
+            // summaries by the VM; the store already has it.
+            var marked = refused.Select(r =>
+            {
+                r.Draft.SendFailedReason = r.Reason;
+                return r.Draft;
+            }).ToList();
+            _ui.Post(() => DraftUploadsRefused?.Invoke(marked));
         }
 
         if (uploaded.Count > 0)
@@ -368,6 +396,17 @@ public class SyncService : ISyncService
         }
 
         return uploaded.Count;
+    }
+
+    /// <summary>
+    /// Ends a server's own words with a full stop, so the sentence that follows does not run into
+    /// them when spoken (#637).
+    /// </summary>
+    private static string Sentence(string text)
+    {
+        var t = (text ?? string.Empty).Trim();
+        if (t.Length == 0) return t;
+        return t[^1] is '.' or '!' or '?' ? t : t + ".";
     }
 
     private async Task FetchAllPreviewsAsync(

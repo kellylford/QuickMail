@@ -1774,6 +1774,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
+        _syncService.DraftUploadsRefused += OnDraftUploadsRefused;
         _syncService.FolderReadStatesReconciled += OnFolderReadStatesReconciled;
         _syncService.RulesApplied    += OnRulesApplied;
         if (_changeNotifier != null)
@@ -5400,6 +5401,42 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// broke POP3 outright: its plain drafts stopped opening, and deleting its sent mail destroyed
     /// the only copy that has ever existed instead of moving it to the local Trash.</para>
     /// </summary>
+    /// <summary>
+    /// Adds locally-held rows to an AGGREGATE listing, across every account and folder the
+    /// aggregate covers (#637).
+    /// <para>The single-folder merge cannot serve this: an aggregate is built from live per-account
+    /// fetches of connected accounts only, so offline it produced "No messages in All Drafts" —
+    /// the one view whose whole purpose is to show the user their drafts, telling them there are
+    /// none while the drafts sit in the store.</para>
+    /// </summary>
+    private async Task<List<MailMessageSummary>> MergeLocalOnlyIntoAggregateAsync(
+        IEnumerable<(Guid AccountId, string FolderName)> sources, List<MailMessageSummary> serverList)
+    {
+        if (OnlineMode) return serverList;
+
+        var known = new HashSet<(string, Guid, string)>(
+            serverList.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
+        var extra = new List<MailMessageSummary>();
+
+        foreach (var (accountId, folderName) in sources.Distinct())
+        {
+            try
+            {
+                foreach (var row in await _localStore.LoadFolderSummariesAsync(accountId, folderName))
+                    if (LocalMessageId.IsLocal(row.MessageId) &&
+                        known.Add((row.MessageId, row.AccountId, row.FolderName)))
+                        extra.Add(row);
+            }
+            catch (Exception ex)
+            {
+                LogService.Log($"MergeLocalOnlyIntoAggregateAsync: {folderName}", ex);
+            }
+        }
+
+        if (extra.Count == 0) return serverList;
+        return [.. serverList.Concat(extra).OrderByDescending(m => m.Date)];
+    }
+
     private bool IsLocalOnlyId(MailMessageSummary summary)
         => LocalMessageId.IsLocal(summary.MessageId) &&
            Accounts.FirstOrDefault(a => a.Id == summary.AccountId)?.BackendKind != BackendKind.Pop3Smtp;
@@ -5408,6 +5445,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// Adds back the messages held only on this computer that a server listing cannot mention
     /// (#637) — drafts saved offline and not yet uploaded.
     /// </summary>
+    /// <summary>
+    /// A draft will not be uploaded, and its row stays where it is (#637). Copies the reason onto
+    /// the summary the list is actually showing.
+    /// <para>Without this the refusal reached only the store, so the row went on saying "not on
+    /// server" — which the row's own wording defines as ON ITS WAY — about a draft that nothing
+    /// will ever retry, until the folder was re-opened or the app restarted. The rows the sweep
+    /// hands over are freshly read from the store and are NOT the instances the list holds, which
+    /// is why this matches them up rather than assigning them in.</para>
+    /// </summary>
+    private void OnDraftUploadsRefused(IReadOnlyList<MailMessageSummary> refused)
+    {
+        foreach (var marked in refused)
+        {
+            foreach (var live in Messages.Concat(_rawMessages))
+            {
+                if (live.AccountId == marked.AccountId &&
+                    string.Equals(live.FolderName, marked.FolderName, StringComparison.Ordinal) &&
+                    string.Equals(live.MessageId, marked.MessageId, StringComparison.Ordinal))
+                {
+                    live.SendFailedReason = marked.SendFailedReason;
+                }
+            }
+        }
+    }
+
     private async Task<List<MailMessageSummary>> MergeLocalOnlyMessagesAsync(
         Guid accountId, string folderName, List<MailMessageSummary> serverList)
     {
@@ -6944,13 +7006,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return;
 
             await ResolveFlagNamesAsync(all);
-            var sorted = all.OrderByDescending(m => m.Date).ToList();
+
+            // Add back what no server listing can mention. This fetch covers CONNECTED accounts
+            // only, so offline it returns nothing at all — and All Drafts, the one view whose whole
+            // purpose is to show the user their drafts, reported that they had none (#637). The
+            // sources are enumerated without the connected filter for exactly that reason.
+            var merged = await MergeLocalOnlyIntoAggregateAsync(
+                FolderScopedAggregateSources(fullName, connectedOnly: false)
+                    .Select(s => (s.Account.Id, s.Folder.FullName)),
+                all);
+
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            var sorted = merged.OrderByDescending(m => m.Date).ToList();
             SetMessages(sorted);
             StatusText = sorted.Count == 0
                 ? $"No messages in {displayName}."
                 : $"{sorted.Count} {(sorted.Count == 1 ? "message" : "messages")} in {displayName}.";
             if (!OnlineMode)
-                _localStore.UpsertSummariesAsync(sorted).LogFaults("local store: upsert summaries");
+                // Only what the server actually returned: re-upserting the local rows would be a
+                // no-op at best and could stamp aggregate-view state onto them.
+                _localStore.UpsertSummariesAsync(all).LogFaults("local store: upsert summaries");
         }
         catch (OperationCanceledException)
         {
@@ -8161,6 +8237,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ? $"Remove the account '{account.AccountLabel}'? This only removes it from QuickMail — your mail on the server is not affected."
             : $"Removing '{account.AccountLabel}' will also remove its shared mailbox{(sharedChildren.Count == 1 ? "" : "es")}: "
               + $"{string.Join(", ", sharedChildren.Select(c => c.AccountLabel))}. This only removes them from QuickMail — your mail on the server is not affected.";
+        // Removing an account purges its store, which destroys any draft held only on this
+        // computer — and the prompt above promises the exact opposite ("your mail on the server is
+        // not affected"), which is true and completely misleading for a message the server has
+        // never seen. Say how many, first. The Account Manager's Remove got this in an earlier
+        // commit; this path is the other way to the same purge (#637).
+        var unsent = 0;
+        var counted = true;
+        foreach (var a in new[] { account }.Concat(sharedChildren))
+        {
+            try { unsent += await _localStore.CountUnsentMailAsync(a.Id); }
+            catch (Exception ex)
+            {
+                counted = false;
+                LogService.Log("DeleteAccountAsync: counting unsent drafts", ex);
+            }
+        }
+
+        if (unsent > 0 || !counted)
+        {
+            var one = unsent == 1;
+            prompt = !counted
+                ? prompt + " QuickMail could not check whether it is holding drafts that have not " +
+                  "reached the server; any it has would be deleted permanently."
+                : prompt + $" It is also holding {unsent} draft{(one ? "" : "s")} that " +
+                  $"{(one ? "has" : "have")} not reached the server. {(one ? "That draft" : "Those drafts")} " +
+                  $"would be deleted permanently, and cannot be downloaded again.";
+        }
+
         // Fail closed: an unwired or declined confirmation removes nothing.
         if (ConfirmationRequested?.Invoke(prompt, "Remove Account") != true) return;
 

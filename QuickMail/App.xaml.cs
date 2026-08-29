@@ -1,4 +1,4 @@
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using System.Windows;
 using QuickMail.Helpers;
@@ -349,10 +349,29 @@ public partial class App : Application
                         // successful clear marks it done and announces the one-time re-sync.
                         try
                         {
-                            localStore.ClearCachedMailAsync(graphIds).GetAwaiter().GetResult();
-                            immutableIdRebuilt = true;
-                            rebuiltGraphAccountIds = graphIds;
-                            System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o"));
+                            // Never while an account is holding a draft that exists nowhere
+                            // else. This clear runs unattended at launch and deletes those
+                            // rows with their attachments; nobody is asked, and the user has
+                            // no way to know it happened. The marker stays unwritten, so the
+                            // rebuild simply waits for the next launch — by which time the
+                            // upload pass has very likely taken the drafts to the server
+                            // (#637). Chosen by the user over confirming at startup.
+                            var holding = graphIds.Any(id =>
+                                localStore.CountUnsentMailAsync(id).GetAwaiter().GetResult() > 0);
+                            if (holding)
+                            {
+                                // Deferred, not failed: the marker stays unwritten so the next
+                                // launch retries, by which time the upload pass has very likely
+                                // taken the drafts to the server.
+                                LogService.Log("Immutable-id cache rebuild deferred: an account is holding drafts that have not reached the server.");
+                            }
+                            else
+                            {
+                                localStore.ClearCachedMailAsync(graphIds).GetAwaiter().GetResult();
+                                immutableIdRebuilt = true;
+                                rebuiltGraphAccountIds = graphIds;
+                                System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o"));
+                            }
                         }
                         catch (Exception rebuildEx)
                         {

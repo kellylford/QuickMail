@@ -613,6 +613,7 @@ sealed class StubSyncService : ISyncService
 #pragma warning disable CS0067 // events required by interface but never raised in stubs
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
     public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+    public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
     public event Action<int>? RulesApplied;
     public event Action<int, int>? SyncProgressChanged;

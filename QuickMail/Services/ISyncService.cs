@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +19,15 @@ public interface ISyncService
     /// present on the server (deleted by another client).
     /// </summary>
     event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+
+    /// <summary>
+    /// Fired on the UI thread when the upload pass records that a draft will not go up (#637),
+    /// with the rows as the store now has them.
+    /// <para>Distinct from <see cref="MessagesRemoved"/>: the row STAYS. Without this the refusal
+    /// only reached the store, so a user sitting in Drafts went on being told the draft was "not
+    /// on server" — which the row defines as ON ITS WAY — about one nothing will ever retry.</para>
+    /// </summary>
+    event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
 
     /// <summary>
     /// Fired on the UI thread when the periodic sweep finds that a cached message's read/unread state

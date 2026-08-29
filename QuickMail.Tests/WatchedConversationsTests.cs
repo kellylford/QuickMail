@@ -40,6 +40,7 @@ public class WatchedConversationsTests
     {
 #pragma warning disable CS0067 // not raised by this fake
         public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+        public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
         public event Action<int>? RulesApplied;
         public event Action<int, int>? SyncProgressChanged;

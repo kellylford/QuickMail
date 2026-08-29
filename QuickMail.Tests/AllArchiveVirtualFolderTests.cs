@@ -1,4 +1,4 @@
-// Tests for the "All Archive" virtual folder — issue #452.
+﻿// Tests for the "All Archive" virtual folder — issue #452.
 //
 // All Archive is the fifth folder-scoped aggregate, alongside All Inboxes / Drafts / Sent / Trash.
 // It differs from those four in one important way: the four match folders on SpecialFolderKind,
@@ -26,6 +26,7 @@ public class AllArchiveVirtualFolderTests
     {
 #pragma warning disable CS0067 // not raised by this fake
         public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+        public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
         public event Action<int>? RulesApplied;
         public event Action<int, int>? SyncProgressChanged;

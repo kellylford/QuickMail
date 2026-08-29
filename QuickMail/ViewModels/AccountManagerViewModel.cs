@@ -539,6 +539,29 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             _accountService.SaveAccounts([.. Accounts]);
             flipped = true;
 
+            // Refuses while the account holds drafts that exist nowhere else. The purge below
+            // deletes them with their attachments, and this conversion's own confirmation talks
+            // about re-downloading the mailbox — true of server mail, false of a draft the server
+            // has never seen. Chosen by the user over confirming or uploading-then-purging: a
+            // conversion can wait, and a destroyed draft cannot be got back (#637).
+            var held = 0;
+            try { held = await _localStore.CountUnsentMailAsync(account.Id); }
+            catch (Exception ex)
+            {
+                // Cannot prove it is safe, so do not proceed — the same direction the removal
+                // confirmation fails in.
+                LogService.Log("ConvertToGraph: counting unsent drafts", ex);
+                held = -1;
+            }
+
+            if (held != 0)
+            {
+                StatusText = held < 0
+                    ? $"{account.AccountLabel} was not converted: QuickMail could not check whether it is holding drafts that have not reached the server."
+                    : $"{account.AccountLabel} was not converted: it is holding {held} draft{(held == 1 ? "" : "s")} that {(held == 1 ? "has" : "have")} not reached the server. Connect and let {(held == 1 ? "it" : "them")} upload first, or delete {(held == 1 ? "it" : "them")}.";
+                return;
+            }
+
             await _localStore.ClearCachedMailAsync([account.Id]);
             await _localStore.SaveFoldersAsync(account.Id, []);
 

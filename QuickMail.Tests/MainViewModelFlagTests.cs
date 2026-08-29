@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using QuickMail.Models;
@@ -92,6 +92,7 @@ public class MainViewModelFlagTests
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
 #pragma warning disable CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+        public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
         public event Action<int>? RulesApplied;
         public event Action<int, int>? SyncProgressChanged;

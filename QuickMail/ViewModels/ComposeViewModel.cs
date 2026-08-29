@@ -689,7 +689,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 try
                 {
                     using var delCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                    await _imap.MoveToTrashAsync(account.Id, _draftFolderName, _draftServerMessageId, delCts.Token);
+                    // The account that HOLDS that server draft, not whoever is selected as
+                    // sender now. Using the sender asked the NEW account's mailbox to trash a
+                    // UID the OLD account issued, destroying whatever held that number there.
+                    var draftOwner = _draftAccountId != Guid.Empty ? _draftAccountId : account.Id;
+                    await _imap.MoveToTrashAsync(draftOwner, _draftFolderName, _draftServerMessageId, delCts.Token);
                 }
                 catch (Exception ex)
                 {

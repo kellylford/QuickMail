@@ -130,6 +130,7 @@ public partial class MailMessageSummary : ObservableObject
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
     [NotifyPropertyChangedFor(nameof(ReadStatusLabel))]
     [NotifyPropertyChangedFor(nameof(IsAwaitingUpload))]
+    [NotifyPropertyChangedFor(nameof(LocationLabel))]
     private bool _isPendingUpload;
 
     /// <summary>
@@ -147,6 +148,7 @@ public partial class MailMessageSummary : ObservableObject
     [NotifyPropertyChangedFor(nameof(ReadStatusLabel))]
     [NotifyPropertyChangedFor(nameof(IsAwaitingUpload))]
     [NotifyPropertyChangedFor(nameof(DeliveryNotice))]
+    [NotifyPropertyChangedFor(nameof(LocationLabel))]
     private string? _sendFailedReason;
 
     /// <summary>
