@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -39,6 +39,11 @@ public partial class AccountManagerDialog : Window
         // #31: removing a parent takes its shared mailboxes with it — confirm, naming them, first.
         vm.ConfirmCascadeRemoval = message =>
             MessageBox.Show(this, message, "Remove shared mailboxes",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        // #637: removing an account destroys drafts that exist nowhere else — confirm, saying how
+        // many, first. A plain Yes/No MessageBox like the one above; the VM fails closed if unset.
+        vm.ConfirmUnsentMailLoss = message =>
+            MessageBox.Show(this, message, "Unsent drafts will be deleted",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
         // #529 step 4: the convert re-downloads the mailbox and can leave older mail off this PC — confirm
         // first. A plain Yes/No MessageBox (no editable field) is safe here, the same as the cascade

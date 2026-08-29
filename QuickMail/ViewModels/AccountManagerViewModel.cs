@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -578,6 +578,11 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// declined and nothing is removed, never removed unconfirmed. The shipped View always wires it.</summary>
     public Func<string, bool>? ConfirmCascadeRemoval { get; set; }
 
+    /// <summary>Set by the View to confirm removing an account that holds drafts existing nowhere
+    /// else (#637): message → user's yes/no. Fails closed for the same reason as the cascade above
+    /// — with no way to get a yes, nothing is destroyed unconfirmed.</summary>
+    public Func<string, bool>? ConfirmUnsentMailLoss { get; set; }
+
     [RelayCommand]
     private async Task DeleteAccountAsync()
     {
@@ -597,6 +602,45 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             var confirmed = ConfirmCascadeRemoval?.Invoke(
                 $"Removing {account.AccountLabel} will also remove its shared mailbox{(one ? "" : "es")}: {names}. Continue?") ?? false;
             if (!confirmed) return;
+        }
+
+        // Mail that exists only on this computer is destroyed by the purge below and cannot be
+        // downloaded again, so it is the one thing worth stopping for. Fails closed like the
+        // cascade above: with no confirmation mechanism wired we cannot get a yes, so we do not
+        // remove (#637).
+        var unsent = 0;
+        var counted = true;
+        foreach (var a in new[] { account }.Concat(sharedChildren))
+        {
+            try { unsent += await _localStore.CountUnsentMailAsync(a.Id); }
+            catch (Exception ex)
+            {
+                // A store that will not answer is not an answer of zero. Skipping the prompt on a
+                // read failure fails OPEN on the one step that exists to stop unrecoverable loss,
+                // so ask anyway — and say that the number is what could not be established.
+                counted = false;
+                LogService.Log("AccountManager.DeleteAccount: counting unsent mail", ex);
+            }
+        }
+
+        if (unsent > 0 || !counted)
+        {
+            // Named for what the purge actually covers: the count spans the account AND its shared
+            // mailboxes, so naming only the parent understates what is about to be deleted.
+            var scope = sharedChildren.Count == 0
+                ? account.AccountLabel
+                : $"{account.AccountLabel} and its shared mailbox{(sharedChildren.Count == 1 ? "" : "es")}";
+            var oneUnsent = unsent == 1;
+            var keepGoing = ConfirmUnsentMailLoss?.Invoke(
+                !counted
+                    ? $"QuickMail could not check whether {scope} has drafts that have not reached " +
+                       "the server. Removing the account deletes any of those permanently, and they " +
+                       "cannot be downloaded again. Continue?"
+                    : $"{scope} still has {unsent} draft{(oneUnsent ? "" : "s")} that " +
+                      $"{(oneUnsent ? "has" : "have")} not reached the server. Removing the account " +
+                       "deletes " + (oneUnsent ? "it" : "them") + " permanently, and " +
+                      $"{(oneUnsent ? "it" : "they")} cannot be downloaded again. Continue?") ?? false;
+            if (!keepGoing) return;
         }
 
         _credentials.DeletePassword(account.Id);

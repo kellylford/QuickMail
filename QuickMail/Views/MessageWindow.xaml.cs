@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -305,7 +305,9 @@ public partial class MessageWindow : Window
             }
             catch { /* local store unavailable — fetch from IMAP below */ }
 
-            if (detail == null)
+            // A locally-stored draft exists here and nowhere else, so it is never fetched: the
+            // backend would be handed an id it never issued, in a folder it may not have (#637).
+            if (detail == null && !LocalMessageId.IsLocal(summary.MessageId))
             {
                 detail = await _imap.GetMessageDetailAsync(
                     summary.AccountId, summary.FolderName, summary.MessageId, ct);

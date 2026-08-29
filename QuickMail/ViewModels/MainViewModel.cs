@@ -5437,7 +5437,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ReplaceCts(ref _messageLoadCts, out var token);
 
             MailMessageDetail detail;
-            if (OnlineMode)
+            // A locally-stored draft exists here and nowhere else, so it is never fetched: the
+            // backend would be handed an id no server ever issued and throw, and the user would be
+            // told their own draft could not be opened (#637).
+            if (LocalMessageId.IsLocal(summary.MessageId))
+            {
+                // --online has no store at all, so there is nothing to read and nothing to fetch.
+                var stored = OnlineMode
+                    ? null
+                    : await _localStore.LoadDetailAsync(
+                        summary.AccountId, summary.FolderName, summary.MessageId);
+
+                if (stored == null)
+                {
+                    SetStatus("That draft could not be opened: its saved copy is missing.",
+                        AnnouncementCategory.Result);
+                    return;
+                }
+
+                detail = stored;
+            }
+            else if (OnlineMode)
             {
                 detail = await _imap.GetMessageDetailAsync(
                     summary.AccountId, summary.FolderName, summary.MessageId, token);
@@ -7725,7 +7745,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var detail = await _localStore.LoadDetailAsync(
                 summary.AccountId, summary.FolderName, summary.MessageId);
 
-            if (detail == null)
+            // Never fall through to the server for a locally-stored draft: its id came from this
+            // computer, and the backend parses ids as UIDs (#637).
+            if (detail == null && !LocalMessageId.IsLocal(summary.MessageId))
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 detail = await _imap.GetMessageDetailAsync(
@@ -7820,9 +7842,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     return;
                 }
 
-                // Fall through when the bytes are missing: better to try the server and report a
-                // real error than to leave the user pressing Enter on a row that does nothing.
+                // Falling through to the server is only sensible for a draft the server HAS. For a
+                // local id it hands the backend something it never issued — uint.Parse throws, and
+                // the "real error" the user gets is a format exception about their own draft. Say
+                // what actually happened instead (#637).
                 LogService.Log($"OpenDraftAsync: no stored bytes for pending draft {summary.MessageId}");
+                if (LocalMessageId.IsLocal(summary.MessageId))
+                {
+                    SetStatus("That draft could not be opened: its saved copy is missing.",
+                        AnnouncementCategory.Result);
+                    return;
+                }
             }
 
             // Otherwise fetch from the server — skip the local cache so the compose-mode

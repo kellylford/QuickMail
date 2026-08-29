@@ -609,6 +609,22 @@ public class LocalStoreService : ILocalStoreService
         await tx.CommitAsync();
     }
 
+    /// <summary>
+    /// Drafts held only on this computer for an account: not yet uploaded, or refused (#637).
+    /// <para>Removing an account purges its store, and these cannot be downloaded again — they
+    /// exist nowhere else. This is what the confirmation counts.</para>
+    /// </summary>
+    public async Task<int> CountUnsentMailAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT COUNT(*) FROM MessageSummary WHERE account_id=$aid AND " +
+            "(is_pending_upload <> 0 OR send_failed_reason IS NOT NULL);";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync() ?? 0);
+    }
+
     public async Task DeleteAccountDataAsync(Guid accountId)
     {
         await using var conn = await OpenAsync();

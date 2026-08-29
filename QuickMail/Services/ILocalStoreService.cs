@@ -32,6 +32,9 @@ public interface ILocalStoreService
 
     /// <summary>Records why the server refused a draft, taking it out of the upload queue (#637).</summary>
     Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason);
+
+    /// <summary>Drafts held only on this computer for an account — what removing it destroys (#637).</summary>
+    Task<int> CountUnsentMailAsync(Guid accountId);
     Task DeleteAccountDataAsync(Guid accountId);
 
     /// <summary>Clears cached mail (summaries, bodies, delta cursors) for the given accounts only —
