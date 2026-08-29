@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using QuickMail.Helpers;
@@ -26,9 +26,10 @@ public class RowSpeechBuilderTests
         string from = "Chris Lee", string subject = "Budget review",
         string preview = "Lunch tomorrow?", string date = "2:14P",
         bool isUnread = true, bool replied = false, bool forwarded = false,
-        string to = "", string folder = "", bool mailingList = false, bool watched = false)
+        string to = "", string folder = "", bool mailingList = false, bool watched = false,
+        bool notOnServer = false)
         => [flag, status, attachments, from, subject, preview, date,
-            isUnread, replied, forwarded, to, folder, mailingList, watched];
+            isUnread, replied, forwarded, to, folder, mailingList, watched, notOnServer];
 
     private static object?[] ConversationValues(
         string subject = "Budget review", int count = 3, string sender = "Chris Lee",

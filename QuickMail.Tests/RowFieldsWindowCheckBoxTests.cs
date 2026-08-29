@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
@@ -150,7 +150,11 @@ public class RowFieldsWindowCheckBoxTests
             window.UpdateLayout();
             DrainDispatcher();
 
-            var flag = RowCheckBoxes(FieldList(window)).First();
+            // By name, not by position: "not on server" now leads the list (#637), so First() is
+            // no longer the flag — and a test that silently checked a different row would still
+            // pass while asserting nothing about the one it names.
+            var flag = RowCheckBoxes(FieldList(window)).First(b =>
+                UIElementAutomationPeer.CreatePeerForElement(b).GetName() == "Flag");
             var peer = UIElementAutomationPeer.CreatePeerForElement(flag);
 
             Assert.Equal(AutomationControlType.CheckBox, peer.GetAutomationControlType());

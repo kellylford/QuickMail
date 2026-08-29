@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace QuickMail.Models;
@@ -39,6 +39,14 @@ public sealed record RowSpeechSettings(RowLayouts Layouts, bool ShowLabels)
 public sealed class RowLayouts
 {
     public List<RowFieldSetting> Message      { get; set; } = [];
+
+    /// <summary>
+    /// Ids that have been switched on once for an existing layout (#637). Persisted, and
+    /// that is the whole point: it is what makes the one-time enable exactly once, so a user
+    /// who hears "not on server" and decides they would rather not does not have it switched
+    /// back on at every launch.
+    /// </summary>
+    public List<string> IntroducedFields { get; set; } = [];
     public List<RowFieldSetting> Conversation { get; set; } = [];
     public List<RowFieldSetting> SenderGroup  { get; set; } = [];
 
@@ -81,6 +89,40 @@ public sealed class RowLayouts
     {
         foreach (var kind in new[] { RowKind.Message, RowKind.Conversation, RowKind.SenderGroup })
             Set(kind, Reconcile(kind, For(kind)));
+
+        IntroduceOnce();
+    }
+
+    /// <summary>
+    /// Switches on fields added after this file was written, once each (#637).
+    /// <para>New catalog fields normally arrive disabled, which is right for optional extras: the
+    /// file represents the user's choices and should not be overridden. It is wrong for a field
+    /// that reports a message is not where the user thinks it is — off by default there means the
+    /// signal never reaches anyone who already has a layout, which is everyone who has opened the
+    /// fields chooser. A field the user has never seen carries no preference to override.</para>
+    /// <para>Once introduced the id is recorded and never touched again, so turning it off
+    /// afterwards sticks.</para>
+    /// </summary>
+    private void IntroduceOnce()
+    {
+        var already = new HashSet<string>(IntroducedFields, StringComparer.Ordinal);
+
+        // Not for a layout still using the combined "status" field. That one speaks the same state
+        // through ReadStatusLabel — "saved on this computer, not yet on the server" — so switching
+        // this on as well makes every such row say the same thing twice. Still recorded as
+        // introduced, so turning "status" off later does not switch a field on by surprise.
+        var combined = Message.Find(f => string.Equals(f.Id, "status", StringComparison.Ordinal));
+        var haveCombined = combined?.Enabled == true;
+
+        foreach (var id in RowFieldCatalog.MessageForceEnabledOnUpgrade)
+        {
+            if (!already.Add(id)) continue;
+            IntroducedFields.Add(id);
+            if (haveCombined) continue;
+
+            var field = Message.Find(f => string.Equals(f.Id, id, StringComparison.Ordinal));
+            if (field != null) field.Enabled = true;
+        }
     }
 
     private static List<RowFieldSetting> Reconcile(RowKind kind, List<RowFieldSetting>? loaded)
@@ -96,6 +138,24 @@ public sealed class RowLayouts
             result.Add(setting);
         }
 
+        // The introduced fields go to the FRONT of an existing layout, not the end. They are
+        // switched on from the moment the file is read, so where they land is where they are
+        // HEARD — and appending put "not on server" after the preview, the date and the source
+        // folder for exactly the users who never chose it, while a fresh layout says it first.
+        // This does reorder a row the user arranged, which is why it is limited to these and
+        // happens once. Chosen by the user over the appended alternative (#637).
+        var lead = kind == RowKind.Message ? RowFieldCatalog.MessageForceEnabledOnUpgrade : [];
+        var at = 0;
+        foreach (var id in lead)
+        {
+            if (seen.Contains(id) || RowFieldCatalog.Find(kind, id) is null) continue;
+            seen.Add(id);
+            result.Insert(at++, new RowFieldSetting { Id = id, Enabled = false, SpeakMode = SpeakMode.WhenTrue });
+        }
+
+        // Everything else the file did not mention is appended disabled, which is right for an
+        // optional extra the user has expressed no view about: it costs them nothing and moves
+        // nothing they arranged.
         foreach (var def in RowFieldCatalog.For(kind))
         {
             if (seen.Contains(def.Id)) continue;

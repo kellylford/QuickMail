@@ -1,4 +1,4 @@
-// Tests for the Watched Conversations virtual folder and the Ctrl+Shift+W toggle.
+﻿// Tests for the Watched Conversations virtual folder and the Ctrl+Shift+W toggle.
 //
 // The folder is a predicate aggregate over IWatchService, in the same family as All Flagged and the
 // contact-mail results view. The two behaviours worth pinning hardest are the ones that would fail
@@ -405,8 +405,18 @@ public class WatchedConversationsTests
         // The MessageFields array order is the positional binding order used by Views.RowSpeech —
         // inserting anywhere but the end would misalign every field after it, silently corrupting
         // spoken row text while looking perfectly correct on screen.
+        //
+        // Asserted as "watched comes after everything that predates it" rather than "watched is
+        // last": the rule is that a NEW field is appended, so the last entry is whichever field
+        // was added most recently, and pinning watched to that position made this test fail for
+        // the one change that obeys the rule (#637).
         var fields = RowFieldCatalog.For(RowKind.Message);
-        Assert.Equal("watched", fields[^1].Id);
+        var ids = fields.Select(f => f.Id).ToList();
+        foreach (var predecessor in new[] { "flag", "status", "attachments", "from", "subject",
+                                            "preview", "date", "unread", "replied", "forwarded",
+                                            "to", "folder", "mailinglist" })
+            Assert.True(ids.IndexOf("watched") > ids.IndexOf(predecessor),
+                $"watched must be appended after {predecessor}, not inserted before it");
 
         var watched = RowFieldCatalog.Find(RowKind.Message, "watched");
         Assert.NotNull(watched);

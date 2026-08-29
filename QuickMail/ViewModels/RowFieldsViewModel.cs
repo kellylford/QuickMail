@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -439,6 +439,7 @@ public sealed partial class RowFieldsViewModel : ObservableObject
             "Work — Archive",   // folder
             false,              // mailing list
             false,              // watched
+            true,               // not on server
         ],
         RowKind.Conversation =>
         [

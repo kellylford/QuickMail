@@ -1,4 +1,4 @@
-// How a draft that has not reached the server yet reads in the message list — issue #637.
+﻿// How a draft that has not reached the server yet reads in the message list — issue #637.
 //
 // The user chose to have local drafts appear in Drafts alongside server drafts rather than in a
 // folder of their own, which makes the row's wording the only thing distinguishing them. So the
@@ -70,5 +70,44 @@ public class PendingDraftRowTests
 
         Assert.Contains(nameof(MailMessageSummary.StatusDisplay), changed);
         Assert.Contains(nameof(MailMessageSummary.ReadStatusLabel), changed);
+    }
+    // ── A draft the server refused ───────────────────────────────────────────
+
+    [Fact]
+    public void ARefusedDraft_DoesNotPromiseAnUploadThatWillNeverHappen()
+    {
+        // LoadPendingDraftsAsync excludes a row with a failure reason, so nothing will take this
+        // draft to the server until the user edits and saves it again. "Not on server" carries
+        // exactly that promise, which is why the row must stop saying it (#637).
+        var row = Draft(pending: true);
+        row.SendFailedReason = "mailbox does not exist";
+
+        Assert.False(row.IsAwaitingUpload);
+        Assert.Equal("Not uploaded", row.StatusDisplay);
+        Assert.Equal("could not be uploaded, still on this computer", row.ReadStatusLabel);
+    }
+
+    [Fact]
+    public void ADraftStillWaiting_SaysSo()
+    {
+        var row = Draft(pending: true);
+
+        Assert.True(row.IsAwaitingUpload);
+        Assert.Equal("Not on server", row.StatusDisplay);
+    }
+
+    [Fact]
+    public void TheRowUpdatesWhenTheRefusalArrives()
+    {
+        // Bound by the "not on server" field, so a row refused under an open list has to raise it
+        // rather than wait for a rebuild that would move the user's focus.
+        var row = Draft(pending: true);
+        var raised = new List<string>();
+        row.PropertyChanged += (_, e) => raised.Add(e.PropertyName!);
+
+        row.SendFailedReason = "mailbox does not exist";
+
+        Assert.Contains(nameof(MailMessageSummary.IsAwaitingUpload), raised);
+        Assert.Contains(nameof(MailMessageSummary.StatusDisplay), raised);
     }
 }

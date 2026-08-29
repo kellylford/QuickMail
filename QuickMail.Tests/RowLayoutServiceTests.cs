@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using QuickMail.Models;
@@ -110,7 +110,10 @@ public class RowLayoutServiceTests : IDisposable
         var layouts = _service.Load();
 
         Assert.DoesNotContain(layouts.Message, f => f.Id == "a-field-from-the-future");
-        Assert.Equal("from", layouts.Message[0].Id);
+        // "from" is the first field the FILE named, and keeps that standing relative to every
+        // other field the file named. "not on server" leads the row ahead of it by design (#637).
+        var lead = RowFieldCatalog.MessageForceEnabledOnUpgrade;
+        Assert.Equal("from", layouts.Message.First(f => !lead.Contains(f.Id)).Id);
     }
 
     [Fact]
@@ -132,10 +135,82 @@ public class RowLayoutServiceTests : IDisposable
 
         var layouts = _service.Load();
 
-        Assert.Equal(["subject", "from", "date"], layouts.Message.Take(3).Select(f => f.Id));
+        var introduced = RowFieldCatalog.MessageForceEnabledOnUpgrade;
+        Assert.Equal(["subject", "from", "date"],
+            layouts.Message.Where(f => !introduced.Contains(f.Id)).Take(3).Select(f => f.Id));
         Assert.Equal(RowFieldCatalog.For(RowKind.Message).Count, layouts.Message.Count);
-        foreach (var appended in layouts.Message.Skip(3))
+        // Everything the file did not name is appended disabled — except the location field,
+        // which leads the row switched on (the test below).
+        var known = new[] { "subject", "from", "date" };
+        foreach (var appended in layouts.Message.Where(f => !introduced.Contains(f.Id) && !known.Contains(f.Id)))
             Assert.False(appended.Enabled, $"{appended.Id} should have been appended disabled");
+    }
+
+    [Fact]
+    public void TheLocationField_LeadsTheRow_AndIsSwitchedOnForAnExistingLayout()
+    {
+        // New catalog fields normally arrive disabled, which is right for optional extras: the
+        // file represents choices the user made. It is wrong for a field whose whole job is to say
+        // a draft has not left this computer — off by default there means the signal never reaches
+        // anyone who already has a layout, which is everyone who has opened the chooser. And where
+        // it lands is where it is HEARD: appended, it came after the preview and the date for
+        // exactly those users, while a fresh layout says it first (#637).
+        File.WriteAllText(_file, """
+        {
+          "Message": [
+            { "Id": "unread", "Enabled": true },
+            { "Id": "from", "Enabled": true },
+            { "Id": "subject", "Enabled": true }
+          ],
+          "Conversation": [],
+          "SenderGroup": []
+        }
+        """);
+
+        var layouts = _service.Load();
+        var order = layouts.Message.Select(f => f.Id).ToList();
+
+        Assert.True(layouts.Message.Single(f => f.Id == "notonserver").Enabled);
+        Assert.Equal("notonserver", order[0]);
+        Assert.True(order.IndexOf("notonserver") < order.IndexOf("from"));
+    }
+
+    [Fact]
+    public void ALayoutUsingTheCombinedStatusField_IsNotMadeToSayItTwice()
+    {
+        // The legacy "status" field speaks the same state through ReadStatusLabel — "saved on this
+        // computer, not yet on the server" — so switching this on as well makes every such row say
+        // the same thing twice in a row, and having the information is the whole reason to force
+        // it on. That user already has it.
+        File.WriteAllText(_file, """
+        {
+          "Message": [
+            { "Id": "status", "Enabled": true },
+            { "Id": "from", "Enabled": true }
+          ],
+          "Conversation": [],
+          "SenderGroup": []
+        }
+        """);
+
+        var layouts = _service.Load();
+
+        Assert.False(layouts.Message.Single(f => f.Id == "notonserver").Enabled);
+    }
+
+    [Fact]
+    public void OnceIntroduced_TurningTheFieldOffAgainSticks()
+    {
+        // The one-time enable must be exactly that. A user who hears "not on server" and decides
+        // they would rather not must not have it switched back on at every launch.
+        var first = _service.Load();
+        Assert.True(first.Message.Single(f => f.Id == "notonserver").Enabled);
+
+        first.Message.Single(f => f.Id == "notonserver").Enabled = false;
+        _service.Save(first);
+
+        var second = _service.Load();
+        Assert.False(second.Message.Single(f => f.Id == "notonserver").Enabled);
     }
 
     [Fact]
@@ -166,7 +241,12 @@ public class RowLayoutServiceTests : IDisposable
         var layouts = _service.Load();
 
         Assert.Equal(RowFieldCatalog.For(RowKind.Message).Count, layouts.Message.Count);
-        Assert.All(layouts.Message, f => Assert.False(f.Enabled));
+
+        // Everything disabled, except the location field switched on (#637) — a draft that has not
+        // left this computer has to say so even in a layout that mentions nothing at all.
+        var introduced = RowFieldCatalog.MessageForceEnabledOnUpgrade;
+        Assert.All(layouts.Message.Where(f => !introduced.Contains(f.Id)), f => Assert.False(f.Enabled));
+        Assert.All(layouts.Message.Where(f => introduced.Contains(f.Id)), f => Assert.True(f.Enabled));
     }
 
     // ── corruption ────────────────────────────────────────────────────────────
@@ -197,7 +277,10 @@ public class RowLayoutServiceTests : IDisposable
         Assert.False(layouts.Message.First(f => f.Id == "flag").Enabled);
         // Only the flag is affected; everything else keeps the historical order.
         Assert.True(layouts.Message.First(f => f.Id == "from").Enabled);
-        Assert.Equal("flag", layouts.Message[0].Id);
+        // Flag leads the fields that describe the MESSAGE. The one that says where the message
+        // is comes before it, because where it is outranks anything about it (#637).
+        var lead = RowFieldCatalog.MessageForceEnabledOnUpgrade;
+        Assert.Equal("flag", layouts.Message.First(f => !lead.Contains(f.Id)).Id);
     }
 
     [Fact]

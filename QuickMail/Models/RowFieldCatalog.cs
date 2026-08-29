@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -110,6 +110,16 @@ public static class RowFieldCatalog
         // Watched-conversation membership. Ships disabled (absent from MessageDefaultOrder), so an
         // existing user's spoken row text is unchanged until they enable it in the fields chooser.
         new("watched",     "Watched",         "Watched",     "IsWatched",       RowFieldFormat.State, "watched"),
+        // Where the message IS, rather than anything about it (#637). Ships ENABLED and is
+        // force-enabled once for existing layouts — see MessageForceEnabledOnUpgrade. Off by
+        // default would mean the only durable signal that a draft has not left this computer never
+        // reaches anyone who already has a saved layout, which is everyone who has ever opened the
+        // fields chooser.
+        //
+        // Bound to IsAwaitingUpload, not IsPendingUpload: a draft the server has REFUSED keeps the
+        // stored flag while nothing will ever upload it, and "not on server" carries the promise
+        // that it will go up when you are back online.
+        new("notonserver", "Not on server",   "Not on server", "IsAwaitingUpload", RowFieldFormat.State, "not on server"),
     ];
 
     // ── Conversation group headers ───────────────────────────────────────────
@@ -153,9 +163,22 @@ public static class RowFieldCatalog
     // Only users with no rowlayout.json see this change; Reconcile never re-enables a field a
     // saved layout already covers.
 
+    // "not on server" leads the row, ahead of even flag and unread. Where a message is outranks
+    // everything else the row can say about it, and the field is empty — costing nothing to arrow
+    // past — for every message that IS on the server. Chosen by the user (#637).
     private static readonly string[] MessageDefaultOrder =
-        ["flag", "unread", "replied", "forwarded", "attachments",
+        ["notonserver",
+         "flag", "unread", "replied", "forwarded", "attachments",
          "from", "subject", "preview", "date", "folder"];
+
+    /// <summary>
+    /// Fields added after users already had saved layouts, which must be switched on for them
+    /// anyway (#637). A field the user has never seen carries no preference of theirs to override,
+    /// and this one is the only signal that a message is not where they think it is.
+    /// <para>Applied exactly once per id: <see cref="RowFieldLayout.Reconcile"/> records the ids it
+    /// has introduced, so a field the user later turns OFF stays off.</para>
+    /// </summary>
+    internal static readonly string[] MessageForceEnabledOnUpgrade = ["notonserver"];
 
     private static readonly string[] ConversationDefaultOrder =
         ["subject", "count", "sender", "flag", "hasunread", "preview", "date"];
@@ -239,5 +262,10 @@ public static class RowFieldCatalog
         Message      = DefaultLayout(RowKind.Message, announceFlagStatus),
         Conversation = DefaultLayout(RowKind.Conversation),
         SenderGroup  = DefaultLayout(RowKind.SenderGroup),
+        // Already on here, by virtue of being in MessageDefaultOrder — so record it as
+        // introduced straight away. Without this, a user who starts from defaults, turns the
+        // field OFF and saves gets it switched back on at the next launch, because the
+        // one-time enable had never been recorded as having happened (#637).
+        IntroducedFields = [.. MessageForceEnabledOnUpgrade],
     };
 }
