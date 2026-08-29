@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -54,16 +54,34 @@ public sealed class LocalDraftService(ILocalStoreService store) : ILocalDraftSer
         var summary = BuildSummary(account, draft, messageId, folderName);
         var detail  = BuildDetail(summary, draft);
 
-        await _store.UpsertSummariesAsync([summary]);
+        // Bytes before the row that advertises them. These are three writes on three connections,
+        // not one transaction, so a crash or a forced shutdown can land between any two — and the
+        // order decides what that leaves behind. Summary first leaves a row the reader cannot open
+        // and the upload pass discards, which is the draft silently disappearing. This way the
+        // worst case is stored bytes no row points at: invisible, harmless, and reclaimed the next
+        // time the same draft is saved (#637).
         await _store.UpsertDetailAsync(detail);
         await _store.StoreMimeBytesAsync(account.Id, folderName, messageId, mime);
+        await _store.UpsertSummariesAsync([summary]);
 
         // The superseded server draft still exists on the server — the upload replaces it — but
         // showing both rows would offer a stale copy alongside the fresh one with nothing to tell
         // them apart. Drop the row; a sync before the upload lands brings it back, which is
         // recoverable, where silently preferring the stale copy would not be.
-        if (!replacingLocal && !string.IsNullOrEmpty(supersedes))
-            await _store.DeleteSummariesAsync(account.Id, folderName, [supersedes]);
+        //
+        // Inside a catch, and that is the point: the message is already committed by the time this
+        // runs, so throwing here would report a save that plainly did happen. The caller would
+        // tell the user the draft was not saved while the row sat on disk waiting to be uploaded.
+        // A leftover row is visible and recoverable; that is not (#637).
+        try
+        {
+            if (!replacingLocal && !string.IsNullOrEmpty(supersedes))
+                await _store.DeleteSummariesAsync(account.Id, folderName, [supersedes]);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("LocalDraftService.SaveAsync: the draft is saved; tidying the old row failed", ex);
+        }
 
         return new PendingDraftSave(messageId, supersedes);
     }
@@ -136,6 +154,9 @@ public sealed class LocalDraftService(ILocalStoreService store) : ILocalDraftSer
 
     public Task<string?> GetSupersededServerIdAsync(Guid accountId, string folderName, string messageId)
         => ReadSupersededIdAsync(accountId, folderName, messageId);
+
+    public Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason)
+        => _store.MarkSendFailedAsync(accountId, folderName, messageId, reason);
 
     public Task DiscardAsync(Guid accountId, string folderName, string messageId)
         => _store.DeleteSummariesAsync(accountId, folderName, [messageId]);

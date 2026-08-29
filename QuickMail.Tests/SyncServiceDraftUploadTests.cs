@@ -1,10 +1,14 @@
-// The upload pass that carries offline drafts to the server once it is reachable — issue #637.
+﻿// The upload pass that carries offline drafts to the server once it is reachable — issue #637.
 //
-// Two rules are what this file exists to pin. Oldest first, so a chain of supersedes replays in the
-// order it was written. And stop on the first failure, because the overwhelmingly likely reason a
-// draft will not upload is that the account is still unreachable, and trying the rest would spend a
-// connection timeout each — everything still pending is retried on the next sweep, so nothing is
-// lost by waiting.
+// Two rules are what this file exists to pin.
+//
+// Oldest first, so a chain of supersedes replays in the order it was written.
+//
+// And stop only when the account is UNREACHABLE, because then the rest would each spend a
+// connection timeout and everything is retried on the next sweep anyway. A draft the server
+// answered and refused is different: stopping there blocked every draft behind it forever, since
+// this pass replays oldest-first and the refused one is first every time. That draft is marked so
+// its row says so, and the pass carries on.
 
 using System;
 using System.Collections.Generic;
@@ -56,6 +60,15 @@ public class SyncServiceDraftUploadTests
 
         public Task<string?> GetSupersededServerIdAsync(Guid accountId, string folderName, string messageId)
             => Task.FromResult(Supersedes.TryGetValue(messageId, out var s) ? s : null);
+
+        /// <summary>Drafts the pass marked refused, and why (#637).</summary>
+        public Dictionary<string, string> Failed { get; } = [];
+
+        public Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason)
+        {
+            Failed[messageId] = reason;
+            return Task.CompletedTask;
+        }
 
         public Task DiscardAsync(Guid accountId, string folderName, string messageId)
         {
@@ -119,37 +132,76 @@ public class SyncServiceDraftUploadTests
         Assert.Equal("server-uid-77", imap.LastReplaceMessageId);
     }
 
-    [Fact]
-    public async Task StopsAtTheFirstFailure_AndLeavesTheRestPending()
-    {
-        var imap = new RecordingMailService { AppendDraftThrows = true };
-        var drafts = new ScriptedDraftService();
-        drafts.AddPending("local-1", DateTimeOffset.UtcNow.AddMinutes(-10));
-        drafts.AddPending("local-2", DateTimeOffset.UtcNow.AddMinutes(-5));
-
-        var uploaded = await MakeSync(imap, drafts).UploadPendingDraftsAsync(Account(), CancellationToken.None);
-
-        Assert.Equal(0, uploaded);
-        Assert.Empty(drafts.Discarded);
-        Assert.Equal(2, (await drafts.GetPendingAsync(AccountId)).Count);
-    }
-
     /// <summary>
-    /// A pending row whose bytes are gone can never upload. Leaving it would mark Drafts as having
-    /// something to send forever, so the row goes rather than the pass jamming on it.
+    /// A pending row whose bytes are gone can never upload, and must not be reported as though it
+    /// had. Deleting it and counting it among the uploaded told the user their draft had reached
+    /// the server when it had in fact just been destroyed, unread — the row is marked instead, so
+    /// it stays, says what happened, and stops jamming the pass (#637).
     /// </summary>
     [Fact]
-    public async Task DropsAPendingRowWhoseStoredBytesAreMissing()
+    public async Task MarksAPendingRowWhoseStoredBytesAreMissing_RatherThanCallingItUploaded()
     {
         var imap = new RecordingMailService();
         var drafts = new ScriptedDraftService();
         drafts.AddPending("local-orphan", DateTimeOffset.UtcNow);
         drafts.MissingBytes.Add("local-orphan");
 
-        await MakeSync(imap, drafts).UploadPendingDraftsAsync(Account(), CancellationToken.None);
+        var uploaded = await MakeSync(imap, drafts)
+            .UploadPendingDraftsAsync(Account(), CancellationToken.None);
 
         Assert.Equal(0, imap.AppendDraftCalls);
-        Assert.Equal(["local-orphan"], drafts.Discarded);
+        Assert.Equal(0, uploaded);
+        Assert.Empty(drafts.Discarded);
+        Assert.Contains("could not be read", drafts.Failed["local-orphan"], StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A draft the server REFUSES must not stop the ones behind it. The pass replays oldest-first,
+    /// so a permanently-refused draft is first every time — stopping there meant every later draft
+    /// silently never uploaded, for as long as that one stayed (#637).
+    /// </summary>
+    [Fact]
+    public async Task ARefusedDraft_IsMarkedAndTheRestStillUpload()
+    {
+        var imap = new RecordingMailService
+        {
+            AppendDraftFailure = id => id == "local-bad"
+                ? new InvalidOperationException("mailbox does not exist")
+                : null,
+        };
+        var drafts = new ScriptedDraftService();
+        drafts.AddPending("local-bad",  DateTimeOffset.UtcNow.AddHours(-2));
+        drafts.AddPending("local-good", DateTimeOffset.UtcNow.AddHours(-1));
+
+        var uploaded = await MakeSync(imap, drafts)
+            .UploadPendingDraftsAsync(Account(), CancellationToken.None);
+
+        Assert.Equal(1, uploaded);
+        Assert.Equal(["local-good"], drafts.Discarded);
+        Assert.Contains("mailbox does not exist", drafts.Failed["local-bad"], StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An account that is merely unreachable still stops the pass, and nothing is marked: every
+    /// draft is retried on the next sweep rather than each one spending a connection timeout.
+    /// </summary>
+    [Fact]
+    public async Task AnUnreachableAccount_StopsThePass_WithoutMarkingAnything()
+    {
+        var imap = new RecordingMailService
+        {
+            AppendDraftFailure = _ => new System.Net.Sockets.SocketException(10060),
+        };
+        var drafts = new ScriptedDraftService();
+        drafts.AddPending("local-a", DateTimeOffset.UtcNow.AddHours(-2));
+        drafts.AddPending("local-b", DateTimeOffset.UtcNow.AddHours(-1));
+
+        var uploaded = await MakeSync(imap, drafts)
+            .UploadPendingDraftsAsync(Account(), CancellationToken.None);
+
+        Assert.Equal(0, uploaded);
+        Assert.Empty(drafts.Failed);
+        Assert.Equal(2, (await drafts.GetPendingAsync(AccountId)).Count);
     }
 
     [Fact]

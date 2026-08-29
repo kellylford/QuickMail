@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace QuickMail.Models;
@@ -129,7 +129,33 @@ public partial class MailMessageSummary : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
     [NotifyPropertyChangedFor(nameof(ReadStatusLabel))]
+    [NotifyPropertyChangedFor(nameof(IsAwaitingUpload))]
     private bool _isPendingUpload;
+
+    /// <summary>
+    /// Why the server refused to store this draft, or null (#637).
+    /// <para>The draft stays where it is with this set — it is not queued for upload any more, and
+    /// nothing will retry it, but it is where the user left it. The alternative was explaining in
+    /// the status bar, which the next sync sweep overwrites within seconds; anyone running with
+    /// custom announcements off would then have had a draft silently stop uploading with no trace
+    /// of why. The row is the durable record.</para>
+    /// <para>Persisted (<c>MessageSummary.send_failed_reason</c>): a refusal the user has not seen
+    /// yet must survive a restart, and the server said it once and will not say it again.</para>
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDisplay))]
+    [NotifyPropertyChangedFor(nameof(ReadStatusLabel))]
+    [NotifyPropertyChangedFor(nameof(IsAwaitingUpload))]
+    private string? _sendFailedReason;
+
+    /// <summary>
+    /// True for a draft on this computer that something will actually upload (#637).
+    /// <para>Not the same as <see cref="IsPendingUpload"/>: a draft the server has REFUSED keeps
+    /// that flag set while <c>LoadPendingDraftsAsync</c> excludes it until the user edits and
+    /// saves it again. Saying "not on server — it will go to the server when you are back online"
+    /// about it is a promise the store query rules out.</para>
+    /// </summary>
+    public bool IsAwaitingUpload => IsPendingUpload && string.IsNullOrEmpty(SendFailedReason);
 
     // ── Computed display ──────────────────────────────────────────────────────
 
@@ -141,9 +167,13 @@ public partial class MailMessageSummary : ObservableObject
     {
         get
         {
-            // Outranks the rest deliberately: every other status describes a message that IS on the
-            // server, and this one says it is not. A draft that exists only on this computer is the
-            // most consequential thing the row can tell you about it.
+            // These outrank the rest deliberately: every other status describes a message that
+            // IS on the server, and these say it is not. A draft that exists only on this
+            // computer is the most consequential thing the row can tell you about it.
+            //
+            // "Not uploaded" rather than "Not on server" once the server has refused it:
+            // the second promises a trip to the server that nothing will now make (#637).
+            if (!string.IsNullOrEmpty(SendFailedReason)) return "Not uploaded";
             if (IsPendingUpload) return "Not on server";
             if (IsFlagged)   return FlagLabel;
             if (IsReplied)   return "Replied";
@@ -162,6 +192,8 @@ public partial class MailMessageSummary : ObservableObject
     {
         get
         {
+            if (!string.IsNullOrEmpty(SendFailedReason))
+                return "could not be uploaded, still on this computer";
             if (IsPendingUpload) return "saved on this computer, not yet on the server";
             if (IsReplied)   return "replied";
             if (IsForwarded) return "forwarded";

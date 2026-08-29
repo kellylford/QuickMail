@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -277,11 +277,22 @@ public class SyncService : ISyncService
                 var compose = await _localDrafts.LoadAsync(account.Id, draft.FolderName, draft.MessageId, ct);
                 if (compose == null)
                 {
-                    // A row with no stored bytes behind it. There is nothing to upload and nothing
-                    // worth keeping, and leaving it would mark the folder pending forever.
-                    LogService.Log($"Draft upload {account.AccountLabel}: no stored bytes for {draft.MessageId}; dropping the row");
-                    await _localDrafts.DiscardAsync(account.Id, draft.FolderName, draft.MessageId);
-                    uploaded.Add(draft);
+                    // A row with no stored bytes behind it. There is nothing to upload — but
+                    // discarding it and counting it among the UPLOADED told the user their draft
+                    // had reached the server when it had in fact just been deleted, unread. Mark
+                    // it instead: the row stays, says the draft could not be read, and stops being
+                    // retried (#637).
+                    const string unreadable = "its saved copy could not be read, so it was not uploaded";
+                    LogService.Log($"Draft upload {account.AccountLabel}: no stored bytes for {draft.MessageId}");
+                    try
+                    {
+                        await _localDrafts.MarkSendFailedAsync(
+                            account.Id, draft.FolderName, draft.MessageId, unreadable);
+                    }
+                    catch (Exception markEx)
+                    {
+                        LogService.Log($"Draft upload {account.AccountLabel}: could not mark {draft.MessageId}", markEx);
+                    }
                     continue;
                 }
 
@@ -295,12 +306,30 @@ public class SyncService : ISyncService
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                // Stop rather than continue: the overwhelmingly likely cause is that the account is
-                // still unreachable, and trying the rest would spend one connection timeout each.
-                // Everything still pending is retried on the next sweep, and stays visible as a
-                // draft marked "Not on server" in the meantime — nothing is lost by waiting.
-                LogService.Log($"Draft upload {account.AccountLabel}: stopping after {draft.MessageId} failed", ex);
-                break;
+                if (SendFailure.IsTransient(ex))
+                {
+                    // Still unreachable, almost certainly. Stop rather than spend a connection
+                    // timeout on each remaining draft; they are retried on the next sweep and stay
+                    // visible marked "Not on server" meanwhile, so nothing is lost by waiting.
+                    LogService.Log($"Draft upload {account.AccountLabel}: still unreachable, stopping at {draft.MessageId}", ex);
+                    break;
+                }
+
+                // The server answered and refused this draft — a renamed Drafts folder, a message
+                // it will not accept, a rejected login. Stopping here would block every draft
+                // behind it FOREVER, silently, because this pass replays oldest-first and this one
+                // is always first. Mark it so the row says so, and carry on with the rest (#637).
+                LogService.Log($"Draft upload {account.AccountLabel}: {draft.MessageId} refused; marking and continuing", ex);
+                try
+                {
+                    await _localDrafts.MarkSendFailedAsync(
+                        account.Id, draft.FolderName, draft.MessageId, ex.Message);
+                }
+                catch (Exception markEx)
+                {
+                    LogService.Log($"Draft upload {account.AccountLabel}: could not mark {draft.MessageId}", markEx);
+                }
+                continue;
             }
         }
 

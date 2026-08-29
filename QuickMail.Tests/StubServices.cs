@@ -28,8 +28,19 @@ sealed class StubImapMailService : IMailService
     public Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
     public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default) => Task.CompletedTask;
     public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => Task.CompletedTask;
-    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
-    public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>Ids handed to the backend for deletion, so a test can assert what the server saw.</summary>
+    public List<(string Folder, string Id)> TrashedIds { get; } = [];
+
+    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        foreach (var id in messageIds) TrashedIds.Add((folderName, id));
+        return Task.CompletedTask;
+    }
+    public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        foreach (var id in messageIds) TrashedIds.Add((folderName, id));
+        return Task.CompletedTask;
+    }
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
     public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
     public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
@@ -74,7 +85,10 @@ class StubImapMailServiceBase : IMailService
     public Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.MarkReadBatchAsync(accountId, folderName, messageIds, ct);
     public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default) => _inner.SetMessageFlaggedAsync(accountId, folderName, messageId, flagged, ct);
     public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.MoveToTrashAsync(accountId, folderName, messageId, ct);
-    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.MoveToTrashBatchAsync(accountId, folderName, messageIds, ct);
+    // Virtual: a double that models the real backend's id parsing overrides this. The backend
+    // rejects a local id, and a test that cannot express that cannot pin the mixed-selection
+    // delete (#637).
+    public virtual Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.MoveToTrashBatchAsync(accountId, folderName, messageIds, ct);
     public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.PermanentlyDeleteBatchAsync(accountId, folderName, messageIds, ct);
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => _inner.NoOpAsync(accountId, ct);
     public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => _inner.CountTrashMessagesAsync(accountId, ct);
@@ -242,7 +256,32 @@ class StubLocalStoreService : ILocalStoreService
     public virtual Task<List<MailMessageSummary>> LoadFolderSummariesSinceAsync(Guid accountId, string folderName, DateTimeOffset since)
         => Task.FromResult(SeededSummaries.TryGetValue((accountId, folderName), out var rows)
             ? Newest(rows.Where(m => m.Date >= since)) : []);
-    public virtual Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
+    /// <summary>
+    /// Actually removes the rows, like the real store. A no-op here made a delete that never ran
+    /// indistinguishable from one that did (#637).
+    /// </summary>
+    /// <summary>Marks a seeded row failed, mirroring the real folder-scoped UPDATE (#637).</summary>
+    public virtual Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason)
+    {
+        foreach (var row in SeededSummaries.Where(kv => kv.Key.AccountId == accountId)
+                                           .SelectMany(kv => kv.Value)
+                                           .Where(m => m.MessageId == messageId &&
+                                                       string.Equals(m.FolderName, folderName, StringComparison.Ordinal)))
+        {
+            row.SendFailedReason = reason;
+        }
+        return Task.CompletedTask;
+    }
+
+    public virtual Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds)
+    {
+        if (SeededSummaries.TryGetValue((accountId, folderName), out var rows))
+        {
+            var ids = new HashSet<string>(messageIds, StringComparer.Ordinal);
+            rows.RemoveAll(m => ids.Contains(m.MessageId));
+        }
+        return Task.CompletedTask;
+    }
 
     /// <summary>Pending local drafts (#637). Reads the same seeded rows as everything else, so a
     /// test seeds a pending draft by setting <see cref="MailMessageSummary.IsPendingUpload"/> on a
@@ -251,7 +290,7 @@ class StubLocalStoreService : ILocalStoreService
         => Task.FromResult<List<MailMessageSummary>>(
             [.. SeededSummaries.Where(kv => kv.Key.AccountId == accountId)
                                .SelectMany(kv => kv.Value)
-                               .Where(m => m.IsPendingUpload)
+                               .Where(m => m.IsPendingUpload && string.IsNullOrEmpty(m.SendFailedReason))
                                .OrderBy(m => m.Date)]);
     public virtual Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
     /// <summary>Account ids passed to <see cref="ClearCachedMailAsync"/>, so a test can assert the
@@ -977,6 +1016,15 @@ sealed class FakeLocalDraftService : ILocalDraftService
 
     public Task<string?> GetSupersededServerIdAsync(Guid accountId, string folderName, string messageId)
         => Task.FromResult(_drafts.TryGetValue(messageId, out var d) ? d.Supersedes : null);
+
+    /// <summary>Why each draft was refused, for tests that assert the row carries it (#637).</summary>
+    public Dictionary<string, string> FailedReasons { get; } = [];
+
+    public Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason)
+    {
+        FailedReasons[messageId] = reason;
+        return Task.CompletedTask;
+    }
 
     public Task DiscardAsync(Guid accountId, string folderName, string messageId)
     {

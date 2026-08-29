@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -43,6 +43,12 @@ public interface ILocalDraftService
     Task<string?> GetSupersededServerIdAsync(Guid accountId, string folderName, string messageId);
 
     /// <summary>Drops a pending draft: uploaded, sent, or discarded by the user.</summary>
+    /// <summary>
+    /// Records why the server refused to store this draft, which also stops it being retried
+    /// (#637). Editing and saving the draft clears the reason and re-arms the upload.
+    /// </summary>
+    Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason);
+
     Task DiscardAsync(Guid accountId, string folderName, string messageId);
 
     /// <summary>Pending drafts for one account, oldest first.</summary>

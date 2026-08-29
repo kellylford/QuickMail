@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using QuickMail.Models;
@@ -29,6 +29,9 @@ public interface ILocalStoreService
     /// the pass runs per account, as each becomes reachable.
     /// </summary>
     Task<List<MailMessageSummary>> LoadPendingDraftsAsync(Guid accountId);
+
+    /// <summary>Records why the server refused a draft, taking it out of the upload queue (#637).</summary>
+    Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason);
     Task DeleteAccountDataAsync(Guid accountId);
 
     /// <summary>Clears cached mail (summaries, bodies, delta cursors) for the given accounts only —

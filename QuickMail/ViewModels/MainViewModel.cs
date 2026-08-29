@@ -5355,8 +5355,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (!IsCurrentFolderLoad(version, folder))
                 return;
 
-            SetMessages(list);
-            StatusText = list.Count == 0 ? "No messages" : $"{list.Count} messages loaded.";
+            // Merge, do not replace. The server listing cannot contain a message it has never
+            // been told about, so assigning it wholesale dropped every locally-held draft from the
+            // view the moment a listing succeeded — the row was still in the store and still due
+            // to upload, but the user could no longer see it, which is precisely the reassurance
+            // this feature exists to give (#637).
+            var merged = await MergeLocalOnlyMessagesAsync(accountId, folder.FullName, list);
+            if (!IsCurrentFolderLoad(version, folder)) return;
+
+            SetMessages(merged);
+            StatusText = merged.Count == 0 ? "No messages" : $"{merged.Count} messages loaded.";
             if (!OnlineMode)
                 _localStore.UpsertSummariesAsync(list).LogFaults("local store: upsert summaries");
 
@@ -5379,6 +5387,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (version == _folderLoadVersion)
                 IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Adds back the messages held only on this computer that a server listing cannot mention
+    /// (#637) — drafts saved offline and not yet uploaded.
+    /// </summary>
+    private async Task<List<MailMessageSummary>> MergeLocalOnlyMessagesAsync(
+        Guid accountId, string folderName, List<MailMessageSummary> serverList)
+    {
+        if (OnlineMode) return serverList;
+
+        try
+        {
+            var cached = await _localStore.LoadFolderSummariesAsync(accountId, folderName);
+            var localOnly = cached.Where(m => LocalMessageId.IsLocal(m.MessageId)).ToList();
+            if (localOnly.Count == 0) return serverList;
+
+            var known = new HashSet<string>(serverList.Select(m => m.MessageId), StringComparer.Ordinal);
+            return [.. serverList.Concat(localOnly.Where(m => !known.Contains(m.MessageId)))
+                                 .OrderByDescending(m => m.Date)];
+        }
+        catch (Exception ex)
+        {
+            // A store that will not answer is not a reason to show nothing; the server listing is
+            // still the bulk of the folder.
+            LogService.Log("MergeLocalOnlyMessagesAsync", ex);
+            return serverList;
         }
     }
 
@@ -7044,6 +7080,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var group in groups)
             {
                 var uids = group.Select(m => m.MessageId).ToList();
+
+                // A locally-stored message has no id any server issued, and the backend parses ids
+                // as UIDs — so uint.Parse throws on the "local-" prefix. SPLIT rather than refuse
+                // the batch: Drafts routinely holds both kinds at once now that local rows are
+                // merged into the server listing, and testing All() meant one offline draft sent
+                // the WHOLE selection to the server, threw, and left nothing deleted — not the
+                // server messages, not the local one — while the rows had already been removed
+                // from the view. The user was told the delete "may not have completed" and
+                // everything came back on the next sync (#637).
+                //
+                // Move, copy and archive refuse a mixed selection outright. Delete cannot: it is
+                // what the user presses to be rid of either kind.
+                var localIds = uids.Where(LocalMessageId.IsLocal).ToList();
+                if (localIds.Count > 0)
+                {
+                    if (!OnlineMode)
+                        await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, localIds);
+                    uids = uids.Where(id => !LocalMessageId.IsLocal(id)).ToList();
+                    if (uids.Count == 0) continue;
+                }
 
                 // Messages already in Trash must be permanently deleted (expunge);
                 // moving them to trash again is a no-op on most servers.

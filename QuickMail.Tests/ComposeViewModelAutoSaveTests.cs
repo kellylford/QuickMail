@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -231,12 +231,20 @@ sealed class RecordingMailService : IMailService
     public string? LastReplaceMessageId { get; private set; }
     public bool AppendDraftThrows { get; set; }
 
+    /// <summary>
+    /// Per-draft failure, for tests that need the pass to see DIFFERENT failures for
+    /// different drafts — telling a server refusal apart from an unreachable account is the
+    /// difference between marking one draft and stopping the whole pass (#637).
+    /// </summary>
+    public Func<string, Exception?>? AppendDraftFailure { get; set; }
+
     public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) =>
         Task.FromResult<string?>("Drafts");
 
     public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default)
     {
         if (AppendDraftThrows) throw new InvalidOperationException("simulated append failure");
+        if (AppendDraftFailure?.Invoke(draft.Subject ?? string.Empty) is { } scripted) throw scripted;
         AppendDraftCalls++;
         LastReplaceMessageId = replaceMessageId;
         return Task.FromResult($"draft-{AppendDraftCalls}");
