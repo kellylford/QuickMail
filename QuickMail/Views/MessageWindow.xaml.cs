@@ -298,12 +298,22 @@ public partial class MessageWindow : Window
         try
         {
             MailMessageDetail? detail = null;
+            Exception? storeFailure = null;
             try
             {
                 detail = await _localStore.LoadDetailAsync(
                     summary.AccountId, summary.FolderName, summary.MessageId);
             }
-            catch { /* local store unavailable — fetch from IMAP below */ }
+            catch (Exception storeEx)
+            {
+                // Kept, not swallowed. A locked database lands here too, and reporting that as a
+                // message which "cannot be recovered" -- with an instruction to delete it -- is
+                // how a transient failure becomes real data loss. POP3 makes it worse: every POP3
+                // message has a local- id and lives only in this store, so the sentence below
+                // would be describing ordinary received mail.
+                storeFailure = storeEx;
+                LogService.Log("MessageWindow: the local store could not be read", storeEx);
+            }
 
             // A locally-stored draft exists here and nowhere else, so it is never fetched: the
             // backend would be handed an id it never issued, in a folder it may not have (#637).
@@ -327,8 +337,11 @@ public partial class MessageWindow : Window
                 // announce-only path IS the blank window with nothing said that this guard exists
                 // to prevent -- it just looks fine to anyone who has them on. The sentence goes
                 // where focus is about to land, and stays there to be re-read (#637).
-                const string missing = "That message could not be opened: its saved copy on this computer is missing. "
-                                     + "The message itself cannot be recovered; deleting the row is all there is to do.";
+                var missing = storeFailure != null
+                    ? "That message could not be opened: this computer's mail store could not be read. "
+                    + "Nothing has been lost — close this window and try again in a moment."
+                    : "That message could not be opened: its saved copy on this computer is missing. "
+                    + "The message cannot be recovered, so deleting the row is all there is to do.";
                 var placeholder = new MailMessageDetail
                 {
                     MessageId  = summary.MessageId,

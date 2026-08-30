@@ -135,6 +135,36 @@ public class DraftRefusalReachesTheRowTests
     }
 
     [Fact]
+    public void OnceTheUploadTakesIt_TheRowGoes()
+    {
+        // OnDraftStored marks the row pending; the save's server leg then uploads and deletes the
+        // local copy. With nothing telling the list, the row went on saying "not on server" about a
+        // draft that was ON the server -- Enter on it answered that its saved copy was missing, and
+        // Delete offered to destroy the only copy of something that no longer existed.
+        var live = Row();
+        var (vm, _) = MakeVm(live);
+        vm.OnDraftStored(AccountId, "Drafts", "local-1", "Airport thoughts");
+        Assert.Contains(live, vm.Messages);
+
+        vm.OnDraftRowDropped(AccountId, "Drafts", "local-1");
+
+        Assert.DoesNotContain(live, vm.Messages);
+    }
+
+    [Fact]
+    public void ARowDroppedElsewhere_LeavesThisOneAlone()
+    {
+        var live = Row();
+        var (vm, _) = MakeVm(live);
+
+        vm.OnDraftRowDropped(Guid.NewGuid(), "Drafts", "local-1");
+        vm.OnDraftRowDropped(AccountId, "Sent", "local-1");
+        vm.OnDraftRowDropped(AccountId, "Drafts", "local-2");
+
+        Assert.Contains(live, vm.Messages);
+    }
+
+    [Fact]
     public void ADraftStoredElsewhere_LeavesThisRowAlone()
     {
         var live = Row();

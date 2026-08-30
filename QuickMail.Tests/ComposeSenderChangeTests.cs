@@ -1,4 +1,4 @@
-// Changing the From account on a draft — issue #637.
+﻿// Changing the From account on a draft — issue #637.
 //
 // The store keys draft rows on (id, account, folder), so a sender change has to re-key the row. The
 // half that kept regressing is the SERVER id, and it is the half that destroys data.
@@ -89,5 +89,66 @@ public class ComposeSenderChangeTests
         // into the mailbox the user had just moved the message away from.
         Assert.Empty(await store.Store.LoadFolderSummariesAsync(AccountA, "Drafts"));
         Assert.Single(await store.Store.LoadFolderSummariesAsync(AccountB, "Drafts"));
+    }
+}
+
+/// <summary>
+/// The compose window has to TELL the message list what it did. Both events were previously
+/// reachable only by calling the view-model handler directly, so deleting the raise -- or the
+/// subscription -- left the whole suite green. Given that this branch's history is a fix being
+/// claimed and not actually being present, the wiring is exactly what wants pinning.
+/// </summary>
+public class ComposeNotifiesTheListTests
+{
+    private static readonly Guid AccountId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+
+    private static AccountModel Account() =>
+        new() { Id = AccountId, Username = "samuel@interfree.ca", AuthType = AuthType.OAuth2Google };
+
+    private static ComposeViewModel Vm(RealDraftStore store, IMailService mail) => new(
+        new StubSmtpService(), new StubAccountService(), new StubCredentialService(),
+        mail, store.Drafts, new StubTemplateService())
+    {
+        SenderAccount = Account(),
+        To = "someone@example.com",
+        Subject = "Airport thoughts",
+        Body = "Boarding soon.",
+    };
+
+    [Fact]
+    public async Task AnOfflineSave_TellsTheListTheDraftIsStored()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var vm = Vm(store, new RecordingMailService { AppendDraftThrows = true });
+
+        (Guid Account, string Folder, string Id, string Subject)? stored = null;
+        vm.DraftStored += (a, f, i, s) => stored = (a, f, i, s);
+
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.NotNull(stored);
+        Assert.Equal(AccountId, stored!.Value.Account);
+        Assert.Equal("Drafts", stored.Value.Folder);
+        Assert.Equal("Airport thoughts", stored.Value.Subject);
+    }
+
+    [Fact]
+    public async Task AnOnlineSave_TellsTheListTheLocalRowHasGone()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var vm = Vm(store, new RecordingMailService());   // server leg succeeds
+
+        (Guid Account, string Folder, string Id)? dropped = null;
+        vm.DraftRowDropped += (a, f, i) => dropped = (a, f, i);
+
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+
+        // The upload deleted the local copy, so the row has to go with it.
+        Assert.NotNull(dropped);
+        Assert.Equal(AccountId, dropped!.Value.Account);
+        Assert.StartsWith("local-", dropped.Value.Id, StringComparison.Ordinal);
+        Assert.Empty(await store.Store.LoadFolderSummariesAsync(AccountId, "Drafts"));
     }
 }

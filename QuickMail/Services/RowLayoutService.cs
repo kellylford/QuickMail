@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -42,8 +42,9 @@ public class RowLayoutService : IRowLayoutService
             var layouts = JsonSerializer.Deserialize<RowLayouts>(json, JsonOptions);
             if (layouts is null) return Defaults();
 
-            // Drop ids this build does not know, append ones the file predates. Never
-            // reorders what the user already arranged.
+            // Drop ids this build does not know, append ones the file predates. It leaves the
+            // user's arrangement alone with one deliberate exception: IntroduceOnce front-inserts
+            // a field a release needs them to meet, once, and records that it has (#637).
             layouts.Reconcile();
             return layouts;
         }

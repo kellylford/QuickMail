@@ -60,7 +60,13 @@ public sealed class LocalDraftService(ILocalStoreService store) : ILocalDraftSer
         // and the upload pass discards, which is the draft silently disappearing. This way the
         // worst case is stored bytes no row points at: invisible and harmless, but NOT reclaimed --
         // the id lived only in this method, so no later save refers to it again and the orphan sits
-        // there until the account is removed. Wasted space beats a row whose message has gone (#637).
+        // there until the account is removed. Wasted space beats a row whose message has gone.
+        //
+        // Re-saving an existing local draft has a second window worth naming: a crash between the
+        // detail write and the bytes write leaves the detail row holding the NEW text while the
+        // MIME still holds the old message, because UpsertDetailAsync does not touch mime_bytes.
+        // The reading pane would then show the newer body while opening the draft, and uploading
+        // it, used the older one (#637).
         await _store.UpsertDetailAsync(detail);
         await _store.StoreMimeBytesAsync(account.Id, folderName, messageId, mime);
         await _store.UpsertSummariesAsync([summary]);

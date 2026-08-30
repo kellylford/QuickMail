@@ -301,9 +301,30 @@ public class SyncService : ISyncService
                     : await _localDrafts.GetSupersededServerIdAsync(account.Id, draft.FolderName, draft.MessageId);
             }
             catch (OperationCanceledException) { throw; }
+            catch (Exception readEx) when (readEx is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException)
+            {
+                // Busy or briefly unavailable: leave the row queued and let the next sweep have it.
+                LogService.Log($"Draft upload {account.AccountLabel}: could not read {draft.MessageId} from the local store; leaving it queued", readEx);
+                continue;
+            }
             catch (Exception readEx)
             {
-                LogService.Log($"Draft upload {account.AccountLabel}: could not read {draft.MessageId} from the local store; leaving it queued", readEx);
+                // Anything else -- a FormatException from truncated MIME, most likely -- will throw
+                // again on every sweep for ever. Retrying it silently left the row reading "not on
+                // server", which this feature defines as ON ITS WAY, about a draft that was never
+                // going anywhere. Mark it so the row says so and stops being retried (#637).
+                const string unreadable = "Its saved copy on this computer could not be read, so there was nothing to upload.";
+                LogService.Log($"Draft upload {account.AccountLabel}: {draft.MessageId} cannot be read at all", readEx);
+                try
+                {
+                    await _localDrafts.MarkSendFailedAsync(
+                        account.Id, draft.FolderName, draft.MessageId, unreadable);
+                    refused.Add((draft, unreadable));
+                }
+                catch (Exception markEx)
+                {
+                    LogService.Log($"Draft upload {account.AccountLabel}: could not mark {draft.MessageId}", markEx);
+                }
                 continue;
             }
 

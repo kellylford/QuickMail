@@ -204,6 +204,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public event Action<Guid, string, string, string>? DraftStored;
 
     /// <summary>
+    /// Raised when the local copy behind a draft's row has gone: (accountId, folderName, messageId).
+    /// The upload happened, or the row moved to another account. The list has to drop the row, or
+    /// it keeps saying "not on server" about a draft that is on the server (#637).
+    /// </summary>
+    public event Action<Guid, string, string>? DraftRowDropped;
+
+    /// <summary>
     /// Set by the View to show a Yes/No confirmation dialog.
     /// Parameters: message, title. Returns true when the user confirms.
     /// Mirrors the pattern on MainViewModel — see CLAUDE.md MVVM Rules.
@@ -501,14 +508,18 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // than assert it.
             if (localId != null && _draftFolderName != null)
             {
+                var droppedFolder = _draftFolderName;
                 try
                 {
                     await _drafts.DiscardAsync(account.Id, _draftFolderName, localId);
+                    DraftRowDropped?.Invoke(account.Id, droppedFolder, localId);
                 }
                 catch (Exception ex)
                 {
                     // A leftover row is visible and recoverable; reporting a save that plainly
-                    // happened as a failure is not.
+                    // happened as a failure is not. The event is deliberately inside the try: if
+                    // the discard failed the row really is still there, and telling the list it
+                    // has gone would hide a draft that still needs uploading.
                     LogService.Log("SaveDraftCoreAsync: uploaded, but the local copy could not be dropped", ex);
                 }
             }
@@ -558,6 +569,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Raised when an auto-save fails for the first time since the last success,
     /// so the View can announce it once instead of nagging every interval.
+    /// </summary>
+    /// <summary>
+    /// The local store refused the write, so on this branch the message exists NOWHERE -- a far
+    /// more severe thing than the "could not reach the server" this event used to mean. The
+    /// compose window announces it, but an announcement is gated by a user setting, so the text is
+    /// also put in the delivery-notice field, which is durable and focusable (#637).
     /// </summary>
     public event Action<string>? AutoSaveFailed;
 
@@ -779,8 +796,23 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // Cleared unconditionally, above the local-row guard (#637).
         _draftServerMessageId = null;
         _draftMessageId       = null;
-        _draftFolderName      = await _drafts.ResolveDraftsFolderNameAsync(account.Id) ?? _draftFolderName;
+        // The owner moves FIRST. Resolving the folder reads the local store, which throws outright
+        // in --online mode (no schema) and can throw on a locked database. Leaving that between the
+        // id reset and the owner update stranded _draftAccountId on the OLD account while the next
+        // save advanced the ids to the new one -- and Send then trashed that UID in the old
+        // account's Drafts, which is another account's message.
         _draftAccountId       = account.Id;
+        try
+        {
+            _draftFolderName = await _drafts.ResolveDraftsFolderNameAsync(account.Id) ?? _draftFolderName;
+        }
+        catch (Exception ex)
+        {
+            // Keep the old name rather than none. The draft still uploads -- the sweep queries by
+            // account and the backend resolves the real Drafts itself -- but it may not appear in
+            // the new account's Drafts list until a sync.
+            LogService.Log("RekeyStoredRowIfSenderChangedAsync: could not resolve the new account's Drafts folder", ex);
+        }
 
         // Only a row minted on this computer can be re-keyed. A server draft has no local row to
         // move, and the copy it has on the old account's server is that account's to keep.
@@ -789,6 +821,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         try
         {
             await _drafts.DiscardAsync(oldAccountId, oldFolder, oldId!);
+            DraftRowDropped?.Invoke(oldAccountId, oldFolder, oldId!);
         }
         catch (Exception ex)
         {

@@ -530,9 +530,12 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             // Deliberately does not say "let them upload": a draft the server has already refused is
             // excluded from the upload pass until the user edits and saves it, so waiting would never
             // clear it. Both remedies are named instead.
-            StatusText = held < 0
+            // SetStatusOutcome, not a bare StatusText assignment: the latter leaves the category
+            // at Status and, being an ObservableProperty with an equality check, says nothing at
+            // all the second time the same refusal is produced (#396).
+            SetStatusOutcome(held < 0
                 ? $"{account.AccountLabel} was not converted: QuickMail could not check whether it is holding drafts that have not reached the server."
-                : $"{account.AccountLabel} was not converted: it is holding {held} draft{(held == 1 ? "" : "s")} that {(held == 1 ? "has" : "have")} not reached the server. Open Drafts and send or delete {(held == 1 ? "it" : "them")}, then convert again.";
+                : $"{account.AccountLabel} was not converted: it is holding {held} draft{(held == 1 ? "" : "s")} that {(held == 1 ? "has" : "have")} not reached the server. Open Drafts and send or delete {(held == 1 ? "it" : "them")}, then convert again.");
             return;
         }
 

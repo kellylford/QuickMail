@@ -5225,6 +5225,7 @@ public partial class MainWindow : Window
             }
             // Lets the open message list drop a refusal the moment the draft is saved again (#637).
             composeVm.DraftStored += _vm.OnDraftStored;
+            composeVm.DraftRowDropped += _vm.OnDraftRowDropped;
             composeVm.CloseRequested += window.Close;
             _openComposeWindows.Add(window);
             window.Closed += (_, _) => _openComposeWindows.Remove(window);

@@ -42,9 +42,12 @@ public partial class AccountManagerDialog : Window
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
         // #637: removing an account destroys drafts that exist nowhere else — confirm, saying how
         // many, first. A plain Yes/No MessageBox like the one above; the VM fails closed if unset.
+        // Defaults to No: unlike the cascade prompt above, what this destroys cannot be got back
+        // from anywhere, so Enter or Space on it must not be the destructive answer.
         vm.ConfirmUnsentMailLoss = message =>
             MessageBox.Show(this, message, "Unsent drafts will be deleted",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+                MessageBoxButton.YesNo, MessageBoxImage.Warning,
+                MessageBoxResult.No) == MessageBoxResult.Yes;
         // #529 step 4: the convert re-downloads the mailbox and can leave older mail off this PC — confirm
         // first. A plain Yes/No MessageBox (no editable field) is safe here, the same as the cascade
         // confirmation above; an unset callback fails closed in the VM, so nothing converts unconfirmed.
