@@ -1093,7 +1093,7 @@ public class LocalStoreService : ILocalStoreService
 
     /// <summary>
     /// Stores (or clears, when <paramref name="mimeBytes"/> is null) the raw message bytes on an
-    /// existing MessageDetail row. Only <c>Pop3MailService</c> calls this, and only after
+    /// existing MessageDetail row. Called by <c>Pop3MailService</c> and, since #637, by <c>LocalDraftService</c> for a draft held only on this computer, and only after
     /// <see cref="UpsertDetailAsync"/> has created the row — an UPDATE against a missing row is a
     /// silent no-op, which is the right outcome for a message that is no longer cached.
     /// </summary>

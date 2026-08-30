@@ -86,7 +86,12 @@ public class DraftOutcomesReachTheUserTests
 
         await vm.AutoSaveAsync();
 
-        Assert.Contains("not saved anywhere", vm.DeliveryNotice, StringComparison.Ordinal);
+        // Durable and focusable, and it names the LOCAL write rather than claiming the message
+        // exists nowhere -- an earlier save may well have put an older copy on disk, and
+        // overstating that is the same fault as calling a busy database a lost message.
+        Assert.Contains("could not write this message to your computer", vm.DeliveryNotice,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("nowhere", vm.DeliveryNotice, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class ThrowingDraftService : ILocalDraftService
@@ -103,5 +108,111 @@ public class DraftOutcomesReachTheUserTests
         public Task<IReadOnlyList<MailMessageSummary>> GetPendingAsync(Guid a)
             => Task.FromResult<IReadOnlyList<MailMessageSummary>>([]);
         public Task<string> ReadDeliveryNoticeAsync(Guid a, string f, string id) => Task.FromResult(string.Empty);
+    }
+}
+
+/// <summary>
+/// The compose-to-list wiring itself, driven through real saves.
+/// <para>A deletion probe showed that removing <c>composeVm.DraftRowDropped += …</c> from
+/// MainWindow left every test green: the raise side and the handler side were each pinned, and
+/// nothing joined them. The subscription lived in a Window, so only a window test could reach it --
+/// and those cannot run here. <see cref="MainViewModel.AttachComposeViewModel"/> makes it reachable
+/// without one, and these drive it by saving actual drafts rather than by raising the events.</para>
+/// </summary>
+public class ComposeToListWiringTests
+{
+    private static readonly Guid AccountId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+
+    private static AccountModel Account() =>
+        new() { Id = AccountId, Username = "samuel@interfree.ca", AuthType = AuthType.OAuth2Google };
+
+    private static MainViewModel MainVm() => new(
+        new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+        new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+        new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+        new StubRuleService(), new StubSmtpService())
+    {
+        Messages = new BatchObservableCollection<MailMessageSummary>(),
+    };
+
+    private static MailMessageSummary RowFor(string id, string? reason = null) => new()
+    {
+        MessageId = id, AccountId = AccountId, FolderName = "Drafts",
+        Subject = "Airport thoughts", IsPendingUpload = true, IsRead = true,
+        SendFailedReason = reason,
+    };
+
+    [Fact]
+    public async Task SavingADraftAgain_ClearsTheRefusalOnTheRowThroughTheWiring()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var main = MainVm();
+        // Offline, so every save keeps the draft local and the row survives to be asserted on.
+        var compose = new ComposeViewModel(
+            new StubSmtpService(), new StubAccountService(), new StubCredentialService(),
+            new RecordingMailService { AppendDraftThrows = true }, store.Drafts, new StubTemplateService())
+        {
+            SenderAccount = Account(),
+            To = "someone@example.com",
+            Subject = "Airport thoughts",
+            Body = "Boarding soon.",
+        };
+
+        string? mintedId = null;
+        compose.DraftStored += (_, _, id, _) => mintedId = id;
+        main.AttachComposeViewModel(compose);
+
+        await compose.SaveDraftCommand.ExecuteAsync(null);
+        Assert.NotNull(mintedId);
+
+        // The row the user is looking at, marked refused by an earlier sweep.
+        main.Messages.Add(RowFor(mintedId!, "Your mail server refused it: over quota."));
+        Assert.Equal("not uploaded", main.Messages[0].LocationLabel);
+
+        compose.Body = "Boarding now.";
+        await compose.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.Null(main.Messages[0].SendFailedReason);
+        Assert.Equal("not on server", main.Messages[0].LocationLabel);
+    }
+
+    [Fact]
+    public async Task OnceTheUploadTakesIt_TheRowLeavesTheListThroughTheWiring()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var main = MainVm();
+
+        // Fails the server leg for the first subject and accepts the second, so one compose window
+        // produces a local row and then uploads it -- the sequence that left a ghost row behind.
+        var mail = new RecordingMailService
+        {
+            AppendDraftFailure = subject =>
+                subject == "Airport thoughts" ? new InvalidOperationException("offline") : null,
+        };
+        var compose = new ComposeViewModel(
+            new StubSmtpService(), new StubAccountService(), new StubCredentialService(),
+            mail, store.Drafts, new StubTemplateService())
+        {
+            SenderAccount = Account(),
+            To = "someone@example.com",
+            Subject = "Airport thoughts",
+            Body = "Boarding soon.",
+        };
+
+        string? mintedId = null;
+        compose.DraftStored += (_, _, id, _) => mintedId = id;
+        main.AttachComposeViewModel(compose);
+
+        await compose.SaveDraftCommand.ExecuteAsync(null);
+        Assert.NotNull(mintedId);
+        main.Messages.Add(RowFor(mintedId!));
+
+        // Now the connection is back.
+        compose.Subject = "Airport thoughts, sent";
+        await compose.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.Empty(main.Messages);
     }
 }

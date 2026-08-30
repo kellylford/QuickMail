@@ -302,7 +302,8 @@ public class SyncService : ISyncService
                     : await _localDrafts.GetSupersededServerIdAsync(account.Id, draft.FolderName, draft.MessageId);
             }
             catch (OperationCanceledException) { throw; }
-            catch (Exception readEx) when (readEx is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException)
+            catch (Exception readEx) when (readEx is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException
+                                              or ObjectDisposedException)
             {
                 // Busy or briefly unavailable: leave the row queued and let the next sweep have it.
                 LogService.Log($"Draft upload {account.AccountLabel}: could not read {draft.MessageId} from the local store; leaving it queued", readEx);
@@ -375,12 +376,16 @@ public class SyncService : ISyncService
                 try
                 {
                     await _localDrafts.DiscardAsync(account.Id, draft.FolderName, draft.MessageId);
+                    // Inside the try, like the compose window's equivalent event. Counting a draft
+                    // as uploaded drops its row and says "1 draft uploaded" -- but the row is still
+                    // is_pending_upload, so the next sweep uploads it again, with a stale supersedes
+                    // or none at all, leaving a second copy in the server's Drafts (#637).
+                    uploaded.Add(draft);
                 }
                 catch (Exception discardEx)
                 {
                     LogService.Log($"Draft upload {account.AccountLabel}: uploaded {draft.MessageId}, but the local copy could not be dropped", discardEx);
                 }
-                uploaded.Add(draft);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)

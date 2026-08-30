@@ -5231,9 +5231,8 @@ public partial class MainWindow : Window
                 composeVm.Dispose();
                 throw;
             }
-            // Lets the open message list drop a refusal the moment the draft is saved again (#637).
-            composeVm.DraftStored += _vm.OnDraftStored;
-            composeVm.DraftRowDropped += _vm.OnDraftRowDropped;
+            // Lets the open message list follow what this window does to the draft (#637).
+            _vm.AttachComposeViewModel(composeVm);
             composeVm.CloseRequested += window.Close;
             _openComposeWindows.Add(window);
             window.Closed += (_, _) => _openComposeWindows.Remove(window);
@@ -5288,6 +5287,13 @@ public partial class MainWindow : Window
         if (_vm.IsSelectedFolderDrafts)
         {
             await _vm.OpenDraftCommand.ExecuteAsync(null);
+            // A draft normally opens a compose window and leaves MessageDetail alone. When its
+            // saved copy has gone there is no compose window to open, and OpenDraftAsync puts the
+            // explanation in MessageDetail instead -- which nothing on THIS path renders, because
+            // it returns before the reading-pane call below. Enter then produced no window, no
+            // pane change, no sound and no focus movement at all (#637).
+            if (_vm.IsMessageOpen && _vm.MessageDetail != null)
+                await ShowMessageBodyAsync(_vm.MessageDetail);
             return;
         }
 
@@ -6210,6 +6216,10 @@ public partial class MainWindow : Window
         {
             if (pending?.IsLoaded == true) return pending;
             var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _localDrafts, _templateService);
+            // The other compose entry point. It starts a new message rather than opening a stored
+            // one, so there is usually no row to update -- but a save here can still upload and
+            // drop a row, and "exercise every entry point" is the rule (#637).
+            _vm.AttachComposeViewModel(cvm);
             // Seed with an empty new-message model so the sender-account list is populated and the
             // default account + signature are applied — same as the normal "New message" path. Without
             // this the From picker is empty and the user can't choose who to send from (a pre-existing
@@ -6796,12 +6806,12 @@ public partial class MainWindow : Window
     /// because it selects which remembered destination the picker opens on, and reading that off
     /// display text would break the moment a title was reworded.
     /// </param>
-    /// <summary>
+    /// <returns>
     /// Null when the selection cannot be moved or copied at all -- see
     /// <see cref="MainViewModel.RefuseIfAnyHeldOnlyHere"/>. Returned before the window is
     /// constructed, not after: a Window joins Application.Current.Windows at construction, so
     /// building one and dropping it keeps the app alive with no window shown (CLAUDE.md).
-    /// </summary>
+    /// </returns>
     private FolderPickerWindow? BuildMessageFolderPicker(
         IEnumerable<MailMessageSummary> messages, string title, bool copy)
     {

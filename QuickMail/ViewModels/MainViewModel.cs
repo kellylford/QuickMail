@@ -1337,6 +1337,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void SetStatus(string text, AnnouncementCategory category)
     {
         StatusAnnouncementCategory = category;
+        // Clear-then-set, like the other two view models (#396). StatusText is an
+        // [ObservableProperty] with an equality check, so producing the SAME outcome twice -- two
+        // sweeps each uploading one draft, or pressing Move twice on the same refused draft --
+        // raised no PropertyChanged at all: no announcement, and no UIA value change on the status
+        // bar either, so the second attempt looked exactly like nothing having happened (#637).
+        if (StatusText == text) StatusText = string.Empty;
         StatusText = text;
         StatusAnnouncementCategory = AnnouncementCategory.Status;
     }
@@ -4065,8 +4071,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // The neighbour, not the top of the folder. This fires for a draft the upload pass has
             // just taken to the server, so a user sitting on that row was moved to an unrelated
             // message at position 0, indistinguishable from the list having been reordered
-            // underneath him. Nothing announces the upload itself; whether it should is an open
-            // question, not something this handles (#637).
+            // underneath him. The upload itself is announced by OnDraftsUploaded, which the sync
+            // service raises immediately after this handler for exactly that reason (#637).
             SelectedMessage = openIndex >= 0 && Messages.Count > 0
                 ? Messages[Math.Min(openIndex, Messages.Count - 1)]
                 : null;
@@ -4409,17 +4415,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // reappear when ApplyFiltersAndSearch rebuilds Messages), decrement account unread counts,
         // and clear the reading pane if the open message was one of the removed ones. Messages in the
         // visible list are always present in _rawMessages, so they are safe to count for removal.
+        // A draft held only on this computer cannot appear in any server listing, so "the server
+        // did not mention it" is not evidence it has gone. Without this it was retired from All Mail
+        // and from saved views the moment a live fetch returned anything from that Drafts folder.
+        //
+        // FIRST, above the _rawMessages removal: filtering after it spared the visible row and
+        // deleted the backing one, and ApplyFiltersAndSearch rebuilds Messages wholesale from
+        // _rawMessages -- so the draft survived until the next keystroke in the search box and then
+        // disappeared anyway, with nothing to account for it (#637).
+        vanished = [.. vanished.Where(m => !IsLocalOnlyId(m))];
+        if (vanished.Count == 0) return;
+
         var vanishedKeys = new HashSet<(string, Guid, string)>(
             vanished.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
         _rawMessages.RemoveAll(m => vanishedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
-
-        // A draft held only on this computer cannot appear in any server listing, so "the server
-        // did not mention it" is not evidence it has gone. Without this it was retired from All
-        // Mail and from saved views the moment a live fetch returned anything from that Drafts
-        // folder -- the release note's "offline drafts no longer disappear" was true of the Drafts
-        // folder only (#637).
-        vanished = [.. vanished.Where(m => !IsLocalOnlyId(m))];
-        if (vanished.Count == 0) return;
 
         bool removedOpen = vanished.Any(m => m == SelectedMessage);
         var openIndex = removedOpen && SelectedMessage != null ? Messages.IndexOf(SelectedMessage) : -1;
@@ -5451,16 +5460,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// True when this message's id was minted on this computer AND its account's backend cannot
-    /// resolve such an id (#637).
-    /// <para>Not the same question as <see cref="LocalMessageId.IsLocal"/>, and the difference is
-    /// load-bearing. IMAP and Graph parse ids as server UIDs, so handing them a <c>local-</c> id
-    /// throws. POP3 MINTS these ids itself — every POP3 message has one, including its drafts and
-    /// its sent mail — and reads them back perfectly well. Testing only for a local id therefore
-    /// broke POP3 outright: its plain drafts stopped opening, and deleting its sent mail destroyed
-    /// the only copy that has ever existed instead of moving it to the local Trash.</para>
-    /// </summary>
-    /// <summary>
     /// The sentence a user meets when a draft's saved copy has gone, rendered as a message body so
     /// it survives having announcements turned off (#637).
     /// <para>Announcing it was not enough: AnnouncementCategory.Result is gated by AnnounceResults,
@@ -5468,17 +5467,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// reading pane -- pressing Enter produced no window, no sound and no change at all. This is
     /// the same fix MessageWindow got, on the paths a draft can actually take.</para>
     /// </summary>
+    internal const string StoreUnreadable =
+        "That draft could not be opened: this computer's mail store could not be read just now. "
+        + "Nothing has been lost — try again in a moment.";
+
     internal const string MissingSavedCopy =
         "That draft could not be opened: its saved copy on this computer is missing. The message cannot be recovered, so deleting the row is all there is to do.";
 
-    private static MailMessageDetail MissingSavedCopyPlaceholder(MailMessageSummary summary) => new()
+    private static MailMessageDetail MissingSavedCopyPlaceholder(
+        MailMessageSummary summary, Exception? storeFailure = null) => new()
     {
         MessageId  = summary.MessageId,
         AccountId  = summary.AccountId,
         FolderName = summary.FolderName,
         Subject    = summary.Subject,
         From       = summary.From,
-        PlainTextBody = MissingSavedCopy,
+        PlainTextBody = storeFailure != null ? StoreUnreadable : MissingSavedCopy,
     };
 
     /// <summary>
@@ -5492,19 +5496,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool RefuseIfAnyHeldOnlyHere(IEnumerable<MailMessageSummary> messages, string verb)
     {
+        // "move" -> "moved", "copy" -> "copied", "archive" -> "archived".
+        var past = verb == "copy" ? "copied" : verb.EndsWith('e') ? verb + "d" : verb + "ed";
         var list = messages as IList<MailMessageSummary> ?? [.. messages];
         if (!list.Any(IsLocalOnlyId)) return false;
 
         var only = list.Count == 1 ? list[0] : null;
         SetStatus(only != null
                 ? (only.SendFailedReason is null
-                    ? $"That draft has not reached the server yet, so there is nothing there to {verb}. It can be once it has been uploaded."
+                    ? $"That draft has not reached the server yet, so there is nothing there to {verb}. It can be {past} once it has been uploaded."
                     : $"That draft was not uploaded, so it is not on the server to {verb}. Open it to see why, put that right and save it again first.")
                 : $"Some of those messages have not reached the server yet, so there is nothing there to {verb}.",
             AnnouncementCategory.Result);
         return true;
     }
 
+    /// <summary>
+    /// True when this message's id was minted on this computer AND its account's backend cannot
+    /// resolve such an id (#637).
+    /// <para>Not the same question as <see cref="LocalMessageId.IsLocal"/>, and the difference is
+    /// load-bearing. IMAP and Graph parse ids as server UIDs, so handing them a <c>local-</c> id
+    /// throws. POP3 MINTS these ids itself — every POP3 message has one, including its drafts and
+    /// its sent mail — and reads them back perfectly well. Testing only for a local id therefore
+    /// broke POP3 outright: its plain drafts stopped opening, and deleting its sent mail destroyed
+    /// the only copy that has ever existed instead of moving it to the local Trash.</para>
+    /// </summary>
     private bool IsLocalOnlyId(MailMessageSummary summary)
         => LocalMessageId.IsLocal(summary.MessageId) &&
            Accounts.FirstOrDefault(a => a.Id == summary.AccountId)?.BackendKind != BackendKind.Pop3Smtp;
@@ -5516,6 +5532,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// what the app told him to do and the row says he did not. Offline it never self-corrects, and
     /// the row is the one channel that reaches a user running with announcements off (#637).
     /// </summary>
+    /// <summary>
+    /// Connects a compose window to the message list, so what it does to a draft reaches the row
+    /// the user is looking at (#637).
+    /// <para>One method rather than two subscriptions at the call site, because the call site is a
+    /// Window and therefore only reachable from a test that shows one. Deleting either line there
+    /// left the whole suite green, which is how the ghost-row fix could have been removed without
+    /// anything noticing -- on a branch whose recurring defect is exactly a fix that is not
+    /// actually present. Both compose entry points go through here.</para>
+    /// </summary>
+    public void AttachComposeViewModel(ComposeViewModel compose)
+    {
+        ArgumentNullException.ThrowIfNull(compose);
+        compose.DraftStored     += OnDraftStored;
+        compose.DraftRowDropped += OnDraftRowDropped;
+    }
+
     public void OnDraftStored(Guid accountId, string folderName, string messageId, string subject)
     {
         // Messages AND _rawMessages, because that is the pair OnDraftUploadsRefused writes to.
@@ -5537,15 +5569,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// A draft will not be uploaded, and its row stays where it is (#637). Copies the reason onto
-    /// the summary the list is actually showing.
-    /// <para>Without this the refusal reached only the store, so the row went on saying "not on
-    /// server" — which the row's own wording defines as ON ITS WAY — about a draft that nothing
-    /// will ever retry, until the folder was re-opened or the app restarted. The rows the sweep
-    /// hands over are freshly read from the store and are NOT the instances the list holds, which
-    /// is why this matches them up rather than assigning them in.</para>
-    /// </summary>
-    /// <summary>
     /// Drops a draft's row once the local copy behind it has gone -- uploaded by the compose
     /// window's own save, or re-keyed to another account (#637).
     /// <para>Without it, <see cref="OnDraftStored"/> left a ghost: it marks the row pending, and
@@ -5563,8 +5586,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
             .ToList();
         if (gone.Count == 0) return;
 
+        // Where the user is standing, before the row goes. The other two removal paths both do
+        // this; without it the reading pane went on rendering a draft that had left the list, and
+        // the landing spot was whatever WPF does with a removed selection -- which for a
+        // keyboard-only user means losing their place (#637).
+        var removedOpen = SelectedMessage != null && gone.Contains(SelectedMessage);
+        var openIndex   = removedOpen ? Messages.IndexOf(SelectedMessage!) : -1;
+
         _rawMessages.RemoveAll(m => gone.Contains(m));
         foreach (var m in gone) Messages.Remove(m);
+
+        if (removedOpen)
+        {
+            SelectedMessage = openIndex >= 0 && Messages.Count > 0
+                ? Messages[Math.Min(openIndex, Messages.Count - 1)]
+                : null;
+            MessageDetail = null;
+            IsMessageOpen = false;
+        }
+
+        // Same reasoning as the sweep's "N drafts uploaded": a row leaving Drafts has to be
+        // accounted for, and this path -- the compose window's own save reaching the server -- is
+        // the one the user is most likely to be looking at when it happens (#637).
+        SetStatus("Draft uploaded.", AnnouncementCategory.Status);
         RebuildActiveGroupView();
     }
 
@@ -5581,6 +5625,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : $"{count} drafts uploaded.", AnnouncementCategory.Status);
     }
 
+    /// <summary>
+    /// A draft will not be uploaded, and its row stays where it is (#637). Copies the reason onto
+    /// the summary the list is actually showing.
+    /// <para>Without this the refusal reached only the store, so the row went on saying "not on
+    /// server" — which the row's own wording defines as ON ITS WAY — about a draft that nothing
+    /// will ever retry, until the folder was re-opened or the app restarted. The rows the sweep
+    /// hands over are freshly read from the store and are NOT the instances the list holds, which
+    /// is why this matches them up rather than assigning them in.</para>
+    /// </summary>
     private void OnDraftUploadsRefused(IReadOnlyList<MailMessageSummary> refused)
     {
         foreach (var marked in refused)
@@ -5649,18 +5702,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (IsLocalOnlyId(summary))
             {
                 // --online has no store at all, so there is nothing to read and nothing to fetch.
-                var stored = OnlineMode
-                    ? null
-                    : await _localStore.LoadDetailAsync(
-                        summary.AccountId, summary.FolderName, summary.MessageId);
+                // The read has its own catch for the same reason OpenDraftAsync does: a locked
+                // database is not a missing message, and calling it one tells the user an intact
+                // draft cannot be recovered and that deleting it is all there is to do (#637).
+                MailMessageDetail? stored = null;
+                Exception? storeFailure = null;
+                if (!OnlineMode)
+                {
+                    try
+                    {
+                        stored = await _localStore.LoadDetailAsync(
+                            summary.AccountId, summary.FolderName, summary.MessageId);
+                    }
+                    catch (Exception ex)
+                    {
+                        storeFailure = ex;
+                        LogService.Log("SelectMessageAsync: local draft store unavailable", ex);
+                    }
+                }
 
                 if (stored == null)
                 {
                     // Into the pane, not only the status bar: MessageDetail was nulled above, so
                     // announce-only left this user with a blank pane and nothing said.
-                    MessageDetail = MissingSavedCopyPlaceholder(summary);
+                    MessageDetail = MissingSavedCopyPlaceholder(summary, storeFailure);
                     IsMessageOpen = true;
-                    SetStatus(MissingSavedCopy, AnnouncementCategory.Result);
+                    SetStatus(storeFailure != null ? StoreUnreadable : MissingSavedCopy,
+                        AnnouncementCategory.Result);
                     return;
                 }
 
@@ -7537,20 +7605,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // and, because rows are removed optimistically, the user watched a message that exists
         // nowhere else vanish and then got a raw parse error. Delete is the one command that
         // cannot refuse (it is how the user gets rid of either kind), and it splits instead (#637).
-        if (toArchive.Any(IsLocalOnlyId))
-        {
-            // A refused draft will NEVER upload — the store query excludes it until the
-            // user edits and saves it again — so "once it has been uploaded" is untrue of
-            // it and points at an event that will not happen (#637).
-            var only = toArchive.Count == 1 ? toArchive[0] : null;
-            SetStatus(only != null
-                    ? (only!.SendFailedReason is null
-                        ? "That draft has not reached the server yet, so there is nothing there to archive. It can be archived once it has been uploaded."
-                        : "That draft was not uploaded, so it is not on the server to archive. Open it to see why, put that right and save it again first.")
-                    : "Some of those messages have not reached the server yet, so there is nothing there to archive.",
-                AnnouncementCategory.Result);
-            return;
-        }
+        if (RefuseIfAnyHeldOnlyHere(toArchive, "archive")) return;
 
 
         // Build the per-group plan up front so we only touch messages we can actually archive.
@@ -8102,6 +8157,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (summary.IsPendingUpload || LocalMessageId.IsLocal(summary.MessageId))
             {
                 ComposeModel? pending = null;
+                Exception? storeFailure = null;
                 try
                 {
                     pending = await _localDrafts.LoadAsync(
@@ -8110,6 +8166,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 catch (Exception ex)
                 {
                     // --online mode has no local store to read (docs/ARCHITECTURE.md runtime modes).
+                    // Kept, not merely logged: a locked database lands here too, and that is NOT the
+                    // same thing as there being no saved copy. Reporting it as one told the user
+                    // their intact draft could not be recovered and that deleting it was all there
+                    // was to do -- and the user guide repeats that instruction (#637).
+                    storeFailure = ex;
                     LogService.Log("OpenDraftAsync: local draft store unavailable", ex);
                 }
 
@@ -8130,9 +8191,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     // Enter has to leave something behind. No compose window can open -- there is
                     // no message to put in one -- so the explanation goes to the reading pane,
                     // which is durable, rather than to an announcement this user does not hear.
-                    MessageDetail = MissingSavedCopyPlaceholder(summary);
-                    IsMessageOpen = true;
-                    SetStatus(MissingSavedCopy, AnnouncementCategory.Result);
+                    MessageDetail = MissingSavedCopyPlaceholder(summary, storeFailure);
+                    // Mirrors the normal path rather than asserting true: in Window mode this
+                    // retitles the main window after the draft and arms every command gated on
+                    // IsMessageOpen against a synthetic detail.
+                    IsMessageOpen = MessageOpenMode != MessageOpenMode.Window;
+                    SetStatus(storeFailure != null ? StoreUnreadable : MissingSavedCopy,
+                        AnnouncementCategory.Result);
                     return;
                 }
             }
@@ -8975,20 +9040,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // and, because rows are removed optimistically, the user watched a message that exists
         // nowhere else vanish and then got a raw parse error. Delete is the one command that
         // cannot refuse (it is how the user gets rid of either kind), and it splits instead (#637).
-        if (messages.Any(IsLocalOnlyId))
-        {
-            // A refused draft will NEVER upload — the store query excludes it until the
-            // user edits and saves it again — so "once it has been uploaded" is untrue of
-            // it and points at an event that will not happen (#637).
-            var only = messages.Count == 1 ? messages[0] : null;
-            SetStatus(only != null
-                    ? (only!.SendFailedReason is null
-                        ? "That draft has not reached the server yet, so there is nothing there to move. It can be moved once it has been uploaded."
-                        : "That draft was not uploaded, so it is not on the server to move. Open it to see why, put that right and save it again first.")
-                    : "Some of those messages have not reached the server yet, so there is nothing there to move.",
-                AnnouncementCategory.Result);
-            return;
-        }
+        if (RefuseIfAnyHeldOnlyHere(messages, "move")) return;
 
 
         if (AlreadyIn(messages, destination))
@@ -9060,20 +9112,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // and, because rows are removed optimistically, the user watched a message that exists
         // nowhere else vanish and then got a raw parse error. Delete is the one command that
         // cannot refuse (it is how the user gets rid of either kind), and it splits instead (#637).
-        if (messages.Any(IsLocalOnlyId))
-        {
-            // A refused draft will NEVER upload — the store query excludes it until the
-            // user edits and saves it again — so "once it has been uploaded" is untrue of
-            // it and points at an event that will not happen (#637).
-            var only = messages.Count == 1 ? messages[0] : null;
-            SetStatus(only != null
-                    ? (only!.SendFailedReason is null
-                        ? "That draft has not reached the server yet, so there is nothing there to copy. It can be copied once it has been uploaded."
-                        : "That draft was not uploaded, so it is not on the server to copy. Open it to see why, put that right and save it again first.")
-                    : "Some of those messages have not reached the server yet, so there is nothing there to copy.",
-                AnnouncementCategory.Result);
-            return;
-        }
+        if (RefuseIfAnyHeldOnlyHere(messages, "copy")) return;
 
 
         if (AlreadyIn(messages, destination))

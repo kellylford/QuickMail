@@ -365,6 +365,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
         catch (DraftFolderMissingException)
         {
+            // Durable, like the auto-save arm: the window then refuses to close, and until now the
+            // only account of why was an announcement and an unfocusable line of text (#637).
+            DeliveryNotice = "This account has no Drafts folder yet, so this message cannot be saved. "
+                           + "Connect the account once so QuickMail can find it.";
             SetStatusOutcome("No Drafts folder found on this account.");
         }
         catch (Exception ex)
@@ -500,6 +504,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             _draftServerMessageId = serverId;
             _isDirty              = false;
             IsDraftPendingUpload  = false;
+            // Cleared here too, not only in leg 1. A local write that keeps failing while the
+            // server leg succeeds left the notice saying the message was saved nowhere -- and
+            // telling the user to keep trying Save Draft -- about a message that had just reached
+            // the server. The durable channel is the one that must not be stale (#637).
+            DeliveryNotice        = string.Empty;
 
             // The server holds it now, so the local copy is redundant — and leaving it would show
             // the draft twice in Drafts once the folder syncs.
@@ -569,12 +578,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Raised when an auto-save fails for the first time since the last success,
     /// so the View can announce it once instead of nagging every interval.
-    /// </summary>
-    /// <summary>
-    /// The local store refused the write, so on this branch the message exists NOWHERE -- a far
-    /// more severe thing than the "could not reach the server" this event used to mean. The
-    /// compose window announces it, but an announcement is gated by a user setting, so the text is
-    /// also put in the delivery-notice field, which is durable and focusable (#637).
+    /// <para>On this branch it means the message exists NOWHERE -- a far more severe thing than
+    /// the "could not reach the server" it used to mean. The compose window announces it, but an
+    /// announcement is gated by a user setting, so the text is also put in the delivery-notice
+    /// field, which is durable and focusable (#637).</para>
     /// </summary>
     public event Action<string>? AutoSaveFailed;
 
@@ -603,6 +610,21 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 : $"Auto-saved {DateTime.Now:t}";
             _autoSaveFailureAnnounced = false;
         }
+        catch (DraftFolderMissingException ex)
+        {
+            // Its own arm: this one never reached the store at all, so "could not save this to your
+            // computer" would name the wrong cause and the remedy it gives -- try Save Draft -- is
+            // one the user has already been told cannot work on this account (#637).
+            LogService.Log("AutoSaveAsync: no Drafts folder for this account", ex);
+            AutoSaveText   = "Auto-save failed";
+            DeliveryNotice = "This account has no Drafts folder yet, so this message cannot be saved. "
+                           + "Connect the account once so QuickMail can find it.";
+            if (!_autoSaveFailureAnnounced)
+            {
+                _autoSaveFailureAnnounced = true;
+                AutoSaveFailed?.Invoke("Auto-save failed. This account has no Drafts folder.");
+            }
+        }
         catch (Exception ex)
         {
             // Now means the local store refused the write — the draft really is nowhere.
@@ -613,8 +635,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // all -- and an announcement is gated by a user setting, while AutoSaveText sits in a
             // plain TextBlock with no focus stop. The notice field is durable and reachable, and
             // the next successful save clears it (#637).
-            DeliveryNotice = "Auto-save could not save this message to your computer, so it is not "
-                           + "saved anywhere. Keep this window open and try Save Draft.";
+            // Deliberately does not say "saved nowhere": an earlier save may well have put an
+            // older copy on disk, and overstating that was the same fault as telling the user a
+            // draft could not be recovered when the store was merely busy.
+            DeliveryNotice = "Auto-save could not write this message to your computer, so your "
+                           + "latest changes are not saved. Keep this window open and try Save Draft.";
             if (!_autoSaveFailureAnnounced)
             {
                 _autoSaveFailureAnnounced = true;

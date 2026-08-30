@@ -1,4 +1,4 @@
-﻿# QuickMail v0.8.43 Release Notes
+# QuickMail v0.8.43 Release Notes
 
 <!-- Add "What is new" sections here (Changed/Fixed/New), then the Reporting Issues footer, then the Download footer last. -->
 
