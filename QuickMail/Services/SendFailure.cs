@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -53,18 +53,18 @@ public static class SendFailure
             or HttpStatusCode.InternalServerError or HttpStatusCode.BadGateway
             or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout,
 
-        // The transport failed outright, or dropped mid-conversation. This says only "the failure
-        // will pass"; it does NOT say the message was never handed over, and it cannot — a
-        // dropped connection looks identical either side of the server's acceptance. What it
-        // answers here is narrower: telling "the account is still unreachable, try again next sweep"
-        // apart from "the server looked at this draft and refused it" — which has to stop
-        // being retried, or it blocks every draft behind it forever (#637).
         // The backend refusing to hand out a client for an account it has not connected. It is
         // a local state, not a verdict on the draft, and it clears the moment the account
         // connects — so treating it as permanent took the draft out of the queue and told the
         // user their server had refused it, naming an account GUID (#637).
         InvalidOperationException { Message: var m } when m.Contains("is not connected", StringComparison.Ordinal) => true,
 
+        // The transport failed outright, or dropped mid-conversation. This says only "the failure
+        // will pass"; it does NOT say the message was never handed over, and it cannot — a
+        // dropped connection looks identical either side of the server's acceptance. What it
+        // answers here is narrower: telling "the account is still unreachable, try again next sweep"
+        // apart from "the server looked at this draft and refused it" — which has to stop
+        // being retried, or it blocks every draft behind it forever (#637).
         SocketException or IOException or TimeoutException => true,
         SmtpProtocolException or ProtocolException or ServiceNotConnectedException => true,
 

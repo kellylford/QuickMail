@@ -1,4 +1,4 @@
-﻿// Tests for the Watched Conversations virtual folder and the Ctrl+Shift+W toggle.
+// Tests for the Watched Conversations virtual folder and the Ctrl+Shift+W toggle.
 //
 // The folder is a predicate aggregate over IWatchService, in the same family as All Flagged and the
 // contact-mail results view. The two behaviours worth pinning hardest are the ones that would fail

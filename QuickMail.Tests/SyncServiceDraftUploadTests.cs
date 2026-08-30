@@ -1,4 +1,4 @@
-﻿// The upload pass that carries offline drafts to the server once it is reachable — issue #637.
+// The upload pass that carries offline drafts to the server once it is reachable — issue #637.
 //
 // Two rules are what this file exists to pin.
 //

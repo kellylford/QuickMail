@@ -1,4 +1,4 @@
-﻿// Removing an account that still holds drafts of its own — issue #637.
+// Removing an account that still holds drafts of its own — issue #637.
 //
 // Removing an account purges its local store. Before drafts were saved locally first, everything in
 // there was a cached copy of something the server still had, so the purge cost nothing and asking

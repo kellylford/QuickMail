@@ -1,4 +1,4 @@
-﻿// Changing the From account on a draft — issue #637.
+// Changing the From account on a draft — issue #637.
 //
 // The store keys draft rows on (id, account, folder), so a sender change has to re-key the row. The
 // half that kept regressing is the SERVER id, and it is the half that destroys data.
@@ -141,7 +141,7 @@ public class ComposeNotifiesTheListTests
         var vm = Vm(store, new RecordingMailService());   // server leg succeeds
 
         (Guid Account, string Folder, string Id)? dropped = null;
-        vm.DraftRowDropped += (a, f, i) => dropped = (a, f, i);
+        vm.DraftRowDropped += (a, f, i, _) => dropped = (a, f, i);
 
         await vm.SaveDraftCommand.ExecuteAsync(null);
 

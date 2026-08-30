@@ -5526,13 +5526,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
            Accounts.FirstOrDefault(a => a.Id == summary.AccountId)?.BackendKind != BackendKind.Pop3Smtp;
 
     /// <summary>
-    /// Takes a refusal back off the open row once the draft has been saved again. The mirror of
-    /// <see cref="OnDraftUploadsRefused"/>, and without it the row keeps saying "not uploaded" about
-    /// a draft that is queued again -- worse than the bug it mirrors, because the user did exactly
-    /// what the app told him to do and the row says he did not. Offline it never self-corrects, and
-    /// the row is the one channel that reaches a user running with announcements off (#637).
-    /// </summary>
-    /// <summary>
     /// Connects a compose window to the message list, so what it does to a draft reaches the row
     /// the user is looking at (#637).
     /// <para>One method rather than two subscriptions at the call site, because the call site is a
@@ -5548,6 +5541,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         compose.DraftRowDropped += OnDraftRowDropped;
     }
 
+    /// <summary>
+    /// Takes a refusal back off the open row once the draft has been saved again. The mirror of
+    /// <see cref="OnDraftUploadsRefused"/>, and without it the row keeps saying "not uploaded" about
+    /// a draft that is queued again -- worse than the bug it mirrors, because the user did exactly
+    /// what the app told him to do and the row says he did not. Offline it never self-corrects, and
+    /// the row is the one channel that reaches a user running with announcements off (#637).
+    /// </summary>
     public void OnDraftStored(Guid accountId, string folderName, string messageId, string subject)
     {
         // Messages AND _rawMessages, because that is the pair OnDraftUploadsRefused writes to.
@@ -5577,7 +5577,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// answered that its saved copy was missing, and Delete offered to destroy the only copy of
     /// something that no longer existed.</para>
     /// </summary>
-    public void OnDraftRowDropped(Guid accountId, string folderName, string messageId)
+    public void OnDraftRowDropped(Guid accountId, string folderName, string messageId, DraftRowDropReason reason)
     {
         var gone = Messages.Concat(_rawMessages)
             .Where(m => m.MessageId == messageId && m.AccountId == accountId &&
@@ -5606,9 +5606,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Same reasoning as the sweep's "N drafts uploaded": a row leaving Drafts has to be
-        // accounted for, and this path -- the compose window's own save reaching the server -- is
-        // the one the user is most likely to be looking at when it happens (#637).
-        SetStatus("Draft uploaded.", AnnouncementCategory.Result);
+        // accounted for, and this path -- the compose window's own save -- is the one the user is
+        // most likely to be looking at when it happens. It says what actually happened: the other
+        // raiser is a sender change, where the draft is still on this computer and has been re-keyed
+        // to the other account, and calling that an upload was a plain untruth offline (#637).
+        // Says what actually happened. A discard needs no line at all: the user has just chosen
+        // not to keep the message, so the row going IS the outcome they asked for.
+        if (reason != DraftRowDropReason.Discarded)
+            SetStatus(reason == DraftRowDropReason.Uploaded
+                    ? "Draft uploaded."
+                    : "Draft moved to the other account.",
+                AnnouncementCategory.Result);
         RebuildActiveGroupView();
     }
 
@@ -8180,6 +8188,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (pending != null)
                 {
                     StatusText = string.Empty;
+                    // Cleared, because the caller renders whatever is left here. A placeholder from
+                    // an EARLIER failed open otherwise got re-rendered behind the compose window
+                    // that just opened -- and the reading pane then fought it for focus and told the
+                    // user to press Escape to return to a list he was not in. MessageDetail being
+                    // null is how MainWindow knows a compose window took the draft (#637).
+                    MessageDetail = null;
+                    IsMessageOpen = false;
                     ComposeRequested?.Invoke(pending);
                     return;
                 }
@@ -8293,7 +8308,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             if (!ConfirmationRequested(
                     countText + "\n\nYou can turn off this confirmation in Settings.",
-                    "Empty Trash"))
+                    "Empty Trash", false))
                 return;
         }
 
@@ -8416,10 +8431,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event Action<AccountModel>? OpenAccountSettingsRequested;
 
     /// <summary>
-    /// Set by the View to show a Yes/No confirmation dialog.
-    /// Parameters: message, title. Returns true when the user confirms.
+    /// Set by the View to show a Yes/No confirmation dialog: (message, title, startOnNo).
+    /// Returns true when the user confirms.
+    /// <para>The third argument exists because the account-removal prompt destroys drafts that
+    /// exist nowhere else, and a dialog that starts on Yes destroys them on Enter -- while the
+    /// release note claimed it no longer did. Only that prompt passes true; the others keep the
+    /// default they had, rather than changing behaviour beyond #637 (#637).</para>
     /// </summary>
-    public Func<string, string, bool>? ConfirmationRequested { get; set; }
+    public Func<string, string, bool, bool>? ConfirmationRequested { get; set; }
 
     /// <summary>
     /// Set by the View to show a Save File dialog (CLAUDE.md MVVM rules: Win32 dialogs
@@ -8477,7 +8496,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Fail closed: an unwired or declined confirmation removes nothing.
-        if (ConfirmationRequested?.Invoke(prompt, "Remove Account") != true) return;
+        if (ConfirmationRequested?.Invoke(prompt, "Remove Account", true) != true) return;
 
         var removed = new List<AccountModel> { account };
         removed.AddRange(sharedChildren);
@@ -8904,7 +8923,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (ConfirmationRequested?.Invoke(
             $"Delete the folder '{node.Label}' and move all its messages to Trash?",
-            "Delete Folder") != true) return false;
+            "Delete Folder", false) != true) return false;
 
         StatusText = $"Deleting folder '{node.Label}'…";
         IsBusy     = true;
@@ -9574,7 +9593,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (ConfirmationRequested?.Invoke(
                 $"'{safeFileName}' is an executable file type. Opening it could be dangerous. Continue?",
-                "Security Warning") != true) return;
+                "Security Warning", false) != true) return;
         }
 
         // Per-attachment subfolder so two messages with the same attachment name

@@ -1,4 +1,4 @@
-﻿// How a draft that has not reached the server yet reads in the message list — issue #637.
+// How a draft that has not reached the server yet reads in the message list — issue #637.
 //
 // The user chose to have local drafts appear in Drafts alongside server drafts rather than in a
 // folder of their own, which makes the row's wording the only thing distinguishing them. So the

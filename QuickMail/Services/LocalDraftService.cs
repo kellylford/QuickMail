@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -66,7 +66,15 @@ public sealed class LocalDraftService(ILocalStoreService store) : ILocalDraftSer
         // detail write and the bytes write leaves the detail row holding the NEW text while the
         // MIME still holds the old message, because UpsertDetailAsync does not touch mime_bytes.
         // The reading pane would then show the newer body while opening the draft, and uploading
-        // it, used the older one (#637).
+        // it, used the older one.
+        //
+        // And a THIRD window, which needs no crash at all: the summary write is the only thing that
+        // clears send_failed_reason (BuildSummary leaves it null and the upsert copies that over).
+        // So if it alone fails -- a locked database is enough -- a re-saved REFUSED draft keeps the
+        // old reason over its new content, and LoadPendingDraftsAsync's "send_failed_reason IS NULL"
+        // filter goes on excluding it, so it never uploads by itself. SaveAsync propagates, so the
+        // window does tell the user the local save failed, and any later successful save clears it;
+        // it is named here because the ordering above reads as an exhaustive account and is not (#637).
         await _store.UpsertDetailAsync(detail);
         await _store.StoreMimeBytesAsync(account.Id, folderName, messageId, mime);
         await _store.UpsertSummariesAsync([summary]);

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -376,10 +376,12 @@ public class SyncService : ISyncService
                 try
                 {
                     await _localDrafts.DiscardAsync(account.Id, draft.FolderName, draft.MessageId);
-                    // Inside the try, like the compose window's equivalent event. Counting a draft
-                    // as uploaded drops its row and says "1 draft uploaded" -- but the row is still
-                    // is_pending_upload, so the next sweep uploads it again, with a stale supersedes
-                    // or none at all, leaving a second copy in the server's Drafts (#637).
+                    // Inside the try, like the compose window's equivalent event. If the discard
+                    // failed the row is still is_pending_upload and the next sweep WILL upload it
+                    // again -- this does not prevent that duplicate and cannot. What it prevents is
+                    // reporting the draft as gone while it is still sitting there: the row stays in
+                    // the list and the count under-reports by one, which is the honest direction to
+                    // be wrong in (#637).
                     uploaded.Add(draft);
                 }
                 catch (Exception discardEx)

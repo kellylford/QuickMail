@@ -1,4 +1,4 @@
-﻿// Deleting a selection that mixes local and server messages — issue #637.
+// Deleting a selection that mixes local and server messages — issue #637.
 //
 // Local-first drafts made this ordinary. A draft written offline lives only in SQLite under a
 // "local-…" id no server ever issued, and MergeLocalOnlyMessagesAsync deliberately merges those

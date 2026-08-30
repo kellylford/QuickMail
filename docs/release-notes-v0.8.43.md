@@ -52,7 +52,12 @@ Also fixed in this release, all of them ways an offline draft could go wrong qui
   away from it.
 - Moving, copying or archiving is refused when you give the command, before a folder picker opens.
 - If auto-save cannot write to your computer, the compose window now says so where you can find it
-  again, instead of only announcing it.
+  again, instead of only announcing it. A **Save Draft** you asked for that fails says so in the
+  same place, rather than leaving a window that quietly refuses to close.
+- Changing the **From** account no longer reports the draft as uploaded. It says it moved to the
+  other account, which is what happened — the draft is still on this computer.
+- Declining to keep a draft, and sending one, now remove its row from an open Drafts list instead of
+  leaving a row behind that cannot be opened.
 - Converting an account to Microsoft 365 now stops while that account is still holding drafts that
   have not reached the server, rather than proceeding. The conversion clears the local mailbox and
   re-downloads it, and those drafts exist nowhere to be downloaded from. Open **Drafts** and send or

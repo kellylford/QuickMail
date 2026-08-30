@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -333,8 +333,12 @@ public partial class MainWindow : Window
         ((ContextMenu)FindResource("ConversationGroupContextMenu")).Opened += (_, _) => RebuildConversationContextFlagsSubmenu();
         ((ContextMenu)FindResource("SenderGroupContextMenu")).Opened       += (_, _) => RebuildSenderContextFlagsSubmenu();
         ((ContextMenu)FindResource("ToGroupContextMenu")).Opened           += (_, _) => RebuildToContextFlagsSubmenu();
-        vm.ConfirmationRequested = (message, title) =>
-            MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
+        // startOnNo is passed only by the account-removal prompt, which destroys drafts that exist
+        // nowhere else -- Enter on a dialog that starts on Yes destroyed them, while the release
+        // note claimed it no longer did (#637).
+        vm.ConfirmationRequested = (message, title, startOnNo) =>
+            MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning,
+                startOnNo ? MessageBoxResult.No : MessageBoxResult.Yes)
             == MessageBoxResult.Yes;
         // Win32 file dialogs are View-layer (CLAUDE.md MVVM rules); the VM requests a
         // path and the View owns the dialog.
@@ -5287,13 +5291,24 @@ public partial class MainWindow : Window
         if (_vm.IsSelectedFolderDrafts)
         {
             await _vm.OpenDraftCommand.ExecuteAsync(null);
-            // A draft normally opens a compose window and leaves MessageDetail alone. When its
-            // saved copy has gone there is no compose window to open, and OpenDraftAsync puts the
-            // explanation in MessageDetail instead -- which nothing on THIS path renders, because
-            // it returns before the reading-pane call below. Enter then produced no window, no
-            // pane change, no sound and no focus movement at all (#637).
-            if (_vm.IsMessageOpen && _vm.MessageDetail != null)
-                await ShowMessageBodyAsync(_vm.MessageDetail);
+
+            // A draft normally opens a compose window, and OpenDraftAsync clears MessageDetail when
+            // it does -- so anything left here means the draft could NOT be opened and the
+            // explanation needs rendering. Nothing on this path used to render it, because the
+            // method returns before the reading-pane call below: Enter produced no window, no pane
+            // change, no sound and no focus movement at all (#637).
+            if (_vm.MessageDetail == null) return;
+
+            // Window mode has no reading pane to put it in -- gating on IsMessageOpen (false there,
+            // deliberately) silently re-created the same silence. Send it to a MessageWindow, which
+            // renders its own copy of this explanation and is what All Mail already does.
+            if (_vm.MessageOpenMode == MessageOpenMode.Window)
+            {
+                OpenMessageInNewWindow(summary);
+                return;
+            }
+
+            await ShowMessageBodyAsync(_vm.MessageDetail);
             return;
         }
 

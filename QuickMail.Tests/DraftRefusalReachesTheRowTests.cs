@@ -1,4 +1,4 @@
-﻿// A refused draft has to change the row the user is looking at — issue #637.
+// A refused draft has to change the row the user is looking at — issue #637.
 //
 // When the upload pass succeeds it raises MessagesRemoved and the row disappears, which is signal
 // enough. When it FAILS the row stays, so nothing else would ever tell the open list: the refusal
@@ -163,9 +163,37 @@ public class DraftRefusalReachesTheRowTests
         vm.OnDraftStored(AccountId, "Drafts", "local-1", "Airport thoughts");
         Assert.Contains(live, vm.Messages);
 
-        vm.OnDraftRowDropped(AccountId, "Drafts", "local-1");
+        vm.OnDraftRowDropped(AccountId, "Drafts", "local-1", DraftRowDropReason.Uploaded);
 
         Assert.DoesNotContain(live, vm.Messages);
+    }
+
+    [Fact]
+    public void ASenderChangeIsNotReportedAsAnUpload()
+    {
+        // DraftRowDropped has three raisers and only one of them is an upload. Announcing all of
+        // them as one told the user, offline, that a draft had reached a server it had not been
+        // anywhere near -- on the one channel that reaches him (#637).
+        var (vm, _) = MakeVm(Row());
+
+        vm.OnDraftRowDropped(AccountId, "Drafts", "local-1", DraftRowDropReason.MovedToAnotherAccount);
+
+        Assert.Equal("Draft moved to the other account.", vm.StatusText);
+    }
+
+    [Fact]
+    public void DecliningToKeepADraft_SaysNothingAndStillDropsTheRow()
+    {
+        // The row going IS the outcome the user asked for, so there is nothing to report -- but the
+        // row must still go, or it points at a message that no longer exists.
+        var live = Row();
+        var (vm, _) = MakeVm(live);
+        vm.StatusText = "Ready";
+
+        vm.OnDraftRowDropped(AccountId, "Drafts", "local-1", DraftRowDropReason.Discarded);
+
+        Assert.DoesNotContain(live, vm.Messages);
+        Assert.Equal("Ready", vm.StatusText);
     }
 
     [Fact]
@@ -174,9 +202,9 @@ public class DraftRefusalReachesTheRowTests
         var live = Row();
         var (vm, _) = MakeVm(live);
 
-        vm.OnDraftRowDropped(Guid.NewGuid(), "Drafts", "local-1");
-        vm.OnDraftRowDropped(AccountId, "Sent", "local-1");
-        vm.OnDraftRowDropped(AccountId, "Drafts", "local-2");
+        vm.OnDraftRowDropped(Guid.NewGuid(), "Drafts", "local-1", DraftRowDropReason.Uploaded);
+        vm.OnDraftRowDropped(AccountId, "Sent", "local-1", DraftRowDropReason.Uploaded);
+        vm.OnDraftRowDropped(AccountId, "Drafts", "local-2", DraftRowDropReason.Uploaded);
 
         Assert.Contains(live, vm.Messages);
     }

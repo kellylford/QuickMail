@@ -107,7 +107,7 @@ public class SharedMailboxAggregateTests
         var vm = await MakeVmAsync(
             [Normal(NormalId, "Work"), Shared(SharedId, NormalId, "Support")],
             new() { [NormalId] = [Inbox(NormalId)] });
-        vm.ConfirmationRequested = (_, _) => true;
+        vm.ConfirmationRequested = (_, _, _) => true;
 
         await vm.DeleteAccountCommand.ExecuteAsync(vm.Accounts.First(a => a.Id == NormalId));
 
@@ -116,12 +116,29 @@ public class SharedMailboxAggregateTests
     }
 
     [Fact]
+    public async Task MainWindowDelete_AsksTheViewToStartOnNo()
+    {
+        // This prompt destroys drafts that exist nowhere else, and it started on Yes -- so Enter on
+        // it destroyed them, while the release note claimed it no longer did. The Account Manager's
+        // twin was fixed and this one, the other route to the same purge, was not (#637).
+        var vm = await MakeVmAsync(
+            [Normal(NormalId, "Work")],
+            new() { [NormalId] = [Inbox(NormalId)] });
+        bool? startOnNo = null;
+        vm.ConfirmationRequested = (_, _, onNo) => { startOnNo = onNo; return false; };
+
+        await vm.DeleteAccountCommand.ExecuteAsync(vm.Accounts.First(a => a.Id == NormalId));
+
+        Assert.True(startOnNo);
+    }
+
+    [Fact]
     public async Task MainWindowDelete_FailsClosed_WhenConfirmationDeclined()
     {
         var vm = await MakeVmAsync(
             [Normal(NormalId, "Work"), Shared(SharedId, NormalId, "Support")],
             new() { [NormalId] = [Inbox(NormalId)] });
-        vm.ConfirmationRequested = (_, _) => false;   // user declines
+        vm.ConfirmationRequested = (_, _, _) => false;   // user declines
 
         await vm.DeleteAccountCommand.ExecuteAsync(vm.Accounts.First(a => a.Id == NormalId));
 

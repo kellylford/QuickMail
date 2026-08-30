@@ -58,9 +58,8 @@ public class Pop3MailService : IMailService
 
     /// <summary>Prefix for the synthetic ids of locally-authored messages (sent mail, drafts).
     /// A real UIDL never collides with it, and <see cref="PermanentlyDeleteBatchAsync"/> uses it to
-    /// know an id was never on the server.</summary>
-    /// <summary>Was defined here; now the shared <see cref="LocalMessageId.Prefix"/>, which local
-    /// drafts use too (#637). Kept as an alias so this file reads the same as before.</summary>
+    /// know an id was never on the server. Was defined here; now an alias for the shared
+    /// <see cref="LocalMessageId.Prefix"/>, which local drafts use too (#637).</summary>
     internal const string LocalIdPrefix = LocalMessageId.Prefix;
 
     /// <summary>The complete folder namespace of a POP3 account. Anything else does not exist.</summary>

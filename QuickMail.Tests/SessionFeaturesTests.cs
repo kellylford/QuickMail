@@ -1,4 +1,4 @@
-﻿// Tests for features added in the 0.6.x and 0.7.x sessions:
+// Tests for features added in the 0.6.x and 0.7.x sessions:
 //   • DateDisplay format (12-hour clock, M/d/yyyy for older dates)
 //   • Preview suppression when PreviewLines = 0
 //   • OnlineMode flag on MainViewModel

@@ -1,4 +1,4 @@
-﻿// Answering "No" to the save-on-close prompt — issue #637.
+// Answering "No" to the save-on-close prompt — issue #637.
 //
 // Local-first saving changed what "No" has to mean. Auto-save has very likely already written the
 // message to disk by the time the window closes, so "no, do not save this" now needs QuickMail to

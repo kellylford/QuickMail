@@ -1,4 +1,4 @@
-﻿// Local draft persistence — issue #637.
+// Local draft persistence — issue #637.
 //
 // Runs against a real LocalStoreService on a temp SQLite file rather than a stub, because half of
 // what is being asserted IS the storage: the is_pending_upload column, the MIME bytes a draft is

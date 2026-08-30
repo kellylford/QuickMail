@@ -118,6 +118,16 @@ public partial class ComposeWindow : Window
         _customDictionary = customDictionary;
         _themeService = themeService;
         InitializeComponent();
+
+        // BEFORE DataContext, deliberately. A refused draft opens focused on its delivery notice,
+        // and saving clears the notice -- which collapses the field focus is sitting in, so WPF
+        // drops focus to the window and the user has lost his place at the exact moment the fix
+        // worked. To rescue it this handler must see IsKeyboardFocusWithin while it is still true,
+        // and PropertyChanged handlers run in subscription order: assigning DataContext first
+        // registers the Visibility binding's listener ahead of this one, the field is Collapsed
+        // before this runs, and the guard below then finds nothing to rescue (#637).
+        vm.PropertyChanged += OnComposeViewModelPropertyChanged;
+
         DataContext = vm;
 
         // Spell-check is turned on in code (not via SpellCheck.IsEnabled in XAML) and
@@ -231,20 +241,6 @@ public partial class ComposeWindow : Window
                     BodyBox.CaretIndex = 0;
             }
         };
-        // A refused draft opens focused on its reason, and saving clears the reason -- which
-        // collapses the field focus is sitting in, so WPF drops focus to the window and the user
-        // has lost his place at the exact moment the fix worked. Move to the body, which is where
-        // he would be typing next (#637).
-        _vm.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName != nameof(ComposeViewModel.DeliveryNotice)) return;
-            if (!string.IsNullOrWhiteSpace(_vm.DeliveryNotice)) return;
-            // Checked BEFORE the binding collapses the field: once it is Collapsed, focus has
-            // already gone and there is nothing left to ask.
-            if (!DeliveryNoticeField.IsKeyboardFocusWithin) return;
-            Dispatcher.BeginInvoke(new Action(FocusActiveEditor), DispatcherPriority.Input);
-        };
-
         BodyBox.SelectionChanged += BodyBox_SelectionChanged;
         RichBodyBox.SelectionChanged += RichBodyBox_SelectionChanged;
         RichBodyBox.PreviewKeyDown += RichBodyBox_PreviewKeyDown;
@@ -924,6 +920,23 @@ public partial class ComposeWindow : Window
             _suppressNextMenuActivation = false;
             e.Handled = true;
         }
+    }
+
+    /// <summary>
+    /// Moves focus to the body when the delivery notice clears out from under it. See the
+    /// subscription in the constructor for why it is registered before DataContext.
+    /// </summary>
+    private void OnComposeViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ComposeViewModel.DeliveryNotice)) return;
+        if (!string.IsNullOrWhiteSpace(_vm.DeliveryNotice)) return;
+        if (!DeliveryNoticeField.IsKeyboardFocusWithin) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            // Close-with-save clears the notice and then closes synchronously, so this can arrive
+            // after the window has gone -- and after MainWindow has put focus back on the row.
+            if (IsLoaded) FocusActiveEditor();
+        }), DispatcherPriority.Input);
     }
 
     /// <summary>

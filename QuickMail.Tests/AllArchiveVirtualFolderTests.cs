@@ -1,4 +1,4 @@
-﻿// Tests for the "All Archive" virtual folder — issue #452.
+// Tests for the "All Archive" virtual folder — issue #452.
 //
 // All Archive is the fifth folder-scoped aggregate, alongside All Inboxes / Drafts / Sent / Trash.
 // It differs from those four in one important way: the four match folders on SpecialFolderKind,

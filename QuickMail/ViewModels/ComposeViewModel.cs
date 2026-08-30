@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -204,11 +204,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public event Action<Guid, string, string, string>? DraftStored;
 
     /// <summary>
-    /// Raised when the local copy behind a draft's row has gone: (accountId, folderName, messageId).
-    /// The upload happened, or the row moved to another account. The list has to drop the row, or
-    /// it keeps saying "not on server" about a draft that is on the server (#637).
+    /// Raised when the local copy behind a draft's row has gone:
+    /// (accountId, folderName, messageId, reason).
+    /// <para>See <see cref="DraftRowDropReason"/>: three different things end a row's life here and
+    /// the list has to tell them apart. Announcing all of them as an upload told the user, offline,
+    /// that a draft had reached a server it had not been anywhere near (#637).</para>
     /// </summary>
-    public event Action<Guid, string, string>? DraftRowDropped;
+    public event Action<Guid, string, string, DraftRowDropReason>? DraftRowDropped;
 
     /// <summary>
     /// Set by the View to show a Yes/No confirmation dialog.
@@ -326,11 +328,6 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public bool LastSaveKeptTheMessage { get; private set; }
 
     /// <summary>
-    /// Why this draft has not reached the server, or empty (#637). Set from the stored row when the
-    /// window opens, and cleared by a save that succeeds — at which point the sentence would be
-    /// describing a refusal that no longer applies.
-    /// </summary>
-    /// <summary>
     /// The one durable, focusable place this window explains why a draft is not where the user
     /// expects: what the server said when it refused an upload, or that a save could not be
     /// written to this computer.
@@ -386,6 +383,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // Reached only when the local store itself failed, now that the server leg is
             // best-effort. That is a real "your draft is not saved anywhere" and must say so.
             SetStatusOutcome($"Save draft failed: {ex.Message}");
+            // Durable too. This is the MORE severe half of the case auto-save was given a field
+            // for: the user asked for this save, it did not happen, and the window then refuses to
+            // close -- with the only account of why in an announcement and an unfocusable line of
+            // text (#637).
+            DeliveryNotice = $"This message could not be saved: {ex.Message}";
         }
         finally
         {
@@ -531,7 +533,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 try
                 {
                     await _drafts.DiscardAsync(account.Id, _draftFolderName, localId);
-                    DraftRowDropped?.Invoke(account.Id, droppedFolder, localId);
+                    DraftRowDropped?.Invoke(account.Id, droppedFolder, localId, DraftRowDropReason.Uploaded);
                 }
                 catch (Exception ex)
                 {
@@ -752,7 +754,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                     // matched nothing, the row survived, and the next sweep uploaded a draft of an
                     // already-sent message into the old account's mailbox (#637).
                     var owner = _draftAccountId != Guid.Empty ? _draftAccountId : account.Id;
-                    await _drafts.DiscardAsync(owner, _draftFolderName, _draftMessageId!);
+                    var sentId = _draftMessageId!;
+                    await _drafts.DiscardAsync(owner, _draftFolderName, sentId);
+                    // Same reason as the discard path: the message has been sent, so a Drafts row
+                    // still pointing at its local copy is a ghost.
+                    DraftRowDropped?.Invoke(owner, _draftFolderName, sentId, DraftRowDropReason.Discarded);
                 }
                 catch (Exception ex)
                 {
@@ -863,7 +869,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         try
         {
             await _drafts.DiscardAsync(oldAccountId, oldFolder, oldId!);
-            DraftRowDropped?.Invoke(oldAccountId, oldFolder, oldId!);
+            DraftRowDropped?.Invoke(oldAccountId, oldFolder, oldId!, DraftRowDropReason.MovedToAnotherAccount);
         }
         catch (Exception ex)
         {
@@ -894,7 +900,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
         try
         {
-            await _drafts.DiscardAsync(owner, _draftFolderName, _draftMessageId!);
+            var droppedId = _draftMessageId!;
+            await _drafts.DiscardAsync(owner, _draftFolderName, droppedId);
+            // The row goes with it. Without this, a Drafts list left open while auto-save ran kept
+            // a row pointing at a message that no longer exists, and opening it answered that its
+            // saved copy was missing -- the ghost row in another costume (#637).
+            DraftRowDropped?.Invoke(owner, _draftFolderName, droppedId, DraftRowDropReason.Discarded);
             _draftMessageId = null;
         }
         catch (Exception ex)

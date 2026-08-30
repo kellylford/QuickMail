@@ -1,4 +1,4 @@
-﻿// The four signals the user asked for, on channels that reach him — issue #637.
+// The four signals the user asked for, on channels that reach him — issue #637.
 //
 // He runs QuickMail with most custom announcements off, so a signal delivered only through
 // AccessibilityHelper.Announce is, for him, silence. Each of these therefore has to land somewhere
