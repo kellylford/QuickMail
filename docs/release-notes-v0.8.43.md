@@ -12,7 +12,7 @@ your mail server, so when the server could not be reached there was nowhere for 
 
 Drafts are now saved to your computer first and sent to the server afterwards. In practice:
 
-- **Save Draft** always works. Offline it answers *"Draft saved on this computer. It will go to the
+- **Save Draft** no longer fails because the server is unreachable. Offline it answers *"Draft saved on this computer. It will go to the
   server when you are back online."*
 - Auto-save works the same way, and says *"Auto-saved on this computer"* while a draft is waiting.
 - A draft that has not reached the server yet sits in your **Drafts** folder with the other drafts,
@@ -27,7 +27,7 @@ Drafts are now saved to your computer first and sent to the server afterwards. I
 Also fixed in this release, all of them ways an offline draft could go wrong quietly:
 
 - Answering **No** to the save prompt now removes the copy auto-save had already written for a
-  message you started — before, it stayed and was uploaded later anyway. Answering **No** to a draft
+  message you started — before, an auto-saved copy stayed on the server. Answering **No** to a draft
   you merely *opened* leaves that draft alone.
 - A save that fails no longer closes the window. It used to decide by looking for the word "failed"
   in the status line, which missed "No Drafts folder found on this account."

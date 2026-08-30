@@ -410,8 +410,8 @@ public class LocalStoreService : ILocalStoreService
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id, is_pending_upload, send_failed_reason)
-            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid, $pending, $failed)
+            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id, is_pending_upload, send_failed_reason, has_attachments)
+            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid, $pending, $failed, $hasatt)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
                 from_disp       = excluded.from_disp,
                 to_addr         = excluded.to_addr,
@@ -451,6 +451,11 @@ public class LocalStoreService : ILocalStoreService
         var pImid      = cmd.Parameters.Add("$imid",      SqliteType.Text);
         var pPending   = cmd.Parameters.Add("$pending",   SqliteType.Integer);
         var pFailed    = cmd.Parameters.Add("$failed",    SqliteType.Text);
+        // Written here as well as by UpsertDetailAsync's follow-up UPDATE, which cannot help a
+        // draft's FIRST save: SaveAsync writes the detail before the summary row exists, so that
+        // UPDATE matched nothing and a draft saved once with an attachment read back as having
+        // none — it only corrected itself on a second save (#637).
+        var pHasAtt    = cmd.Parameters.Add("$hasatt",    SqliteType.Integer);
 
         foreach (var s in summaries)
         {
@@ -472,6 +477,7 @@ public class LocalStoreService : ILocalStoreService
             pImid.Value      = s.InternetMessageId ?? string.Empty;
             pPending.Value   = s.IsPendingUpload   ? 1 : 0;
             pFailed.Value    = (object?)s.SendFailedReason ?? DBNull.Value;
+            pHasAtt.Value    = s.HasAttachments    ? 1 : 0;
             await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();
@@ -545,6 +551,20 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$uid",    messageId);
         cmd.Parameters.AddWithValue("$reason", reason);
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Why the server refused this one draft, or null (#637).</summary>
+    public async Task<string?> GetSendFailedReasonAsync(Guid accountId, string folderName, string messageId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT send_failed_reason FROM MessageSummary " +
+            "WHERE account_id=$aid AND folder_name=$fn AND unique_id=$uid;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        cmd.Parameters.AddWithValue("$uid", messageId);
+        return await cmd.ExecuteScalarAsync() as string;
     }
 
     public async Task<List<MailMessageSummary>> LoadPendingDraftsAsync(Guid accountId)

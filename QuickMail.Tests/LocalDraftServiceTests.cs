@@ -1,4 +1,4 @@
-// Local draft persistence — issue #637.
+﻿// Local draft persistence — issue #637.
 //
 // Runs against a real LocalStoreService on a temp SQLite file rather than a stub, because half of
 // what is being asserted IS the storage: the is_pending_upload column, the MIME bytes a draft is
@@ -7,6 +7,7 @@
 // wrong.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -16,16 +17,33 @@ using Xunit;
 
 namespace QuickMail.Tests;
 
-public class LocalDraftServiceTests
+public class LocalDraftServiceTests : IDisposable
 {
     private const string Drafts = "Drafts";
 
-    private static (LocalDraftService drafts, LocalStoreService store) MakeService()
+    /// <summary>
+    /// Temp profiles this class created. xUnit builds a fresh instance per test and disposes
+    /// it, so they go at the end of each one — without this every run left a SQLite profile
+    /// behind in the machine's temp directory, permanently (#637).
+    /// </summary>
+    private readonly List<string> _dirs = [];
+
+    private (LocalDraftService drafts, LocalStoreService store) MakeService()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        _dirs.Add(tempDir);
         var store = new LocalStoreService(new ProfileContext(tempDir));
         store.Initialize();
         return (new LocalDraftService(store), store);
+    }
+
+    public void Dispose()
+    {
+        foreach (var dir in _dirs)
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* a temp dir; best effort */ }
+        }
+        GC.SuppressFinalize(this);
     }
 
     private static AccountModel Account() => new()

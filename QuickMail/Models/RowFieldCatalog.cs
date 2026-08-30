@@ -123,11 +123,9 @@ public static class RowFieldCatalog
         // reaches anyone who already has a saved layout, which is everyone who has ever opened the
         // fields chooser.
         //
-        // Bound to IsAwaitingUpload, not IsPendingUpload: a draft the server has REFUSED keeps the
-        // stored flag while nothing will ever upload it, and "not on server" carries the promise
-        // that it will go up when you are back online.
-        // A Phrase, not a State: one bool cannot tell "on its way" from "stuck until you act",
-        // and binding to IsAwaitingUpload alone made a refused draft silent (#637).
+        // A Phrase over LocationLabel, not a State over a bool: one bool cannot tell "on its way"
+        // from "stuck until you act", and a field that went silent the moment the server refused
+        // the draft was indistinguishable from one that had uploaded fine.
         new("notonserver", "Not on server",   "Not on server", "LocationLabel",    RowFieldFormat.Phrase),
     ];
 

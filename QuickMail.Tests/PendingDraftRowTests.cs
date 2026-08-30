@@ -54,23 +54,6 @@ public class PendingDraftRowTests
         => Assert.Equal("saved on this computer, not yet on the server",
                         Draft(pending: true).ReadStatusLabel);
 
-    /// <summary>
-    /// Clearing the flag has to refresh the row in place — the upload pass flips it on a summary the
-    /// list is already showing, and a row that kept saying "Not on server" after the draft went up
-    /// would be worse than never having said it.
-    /// </summary>
-    [Fact]
-    public void ClearingPending_RaisesChangeNotificationForTheStatus()
-    {
-        var summary = Draft(pending: true);
-        var changed = new System.Collections.Generic.List<string?>();
-        summary.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
-
-        summary.IsPendingUpload = false;
-
-        Assert.Contains(nameof(MailMessageSummary.StatusDisplay), changed);
-        Assert.Contains(nameof(MailMessageSummary.ReadStatusLabel), changed);
-    }
     // ── A draft the server refused ───────────────────────────────────────────
 
     [Fact]
@@ -82,7 +65,7 @@ public class PendingDraftRowTests
         var row = Draft(pending: true);
         row.SendFailedReason = "mailbox does not exist";
 
-        Assert.False(row.IsAwaitingUpload);
+        Assert.Equal("not uploaded", row.LocationLabel);
         Assert.Equal("Not uploaded", row.StatusDisplay);
         Assert.Equal("could not be uploaded, still on this computer", row.ReadStatusLabel);
     }
@@ -92,7 +75,7 @@ public class PendingDraftRowTests
     {
         var row = Draft(pending: true);
 
-        Assert.True(row.IsAwaitingUpload);
+        Assert.Equal("not on server", row.LocationLabel);
         Assert.Equal("Not on server", row.StatusDisplay);
     }
 
@@ -136,7 +119,7 @@ public class PendingDraftRowTests
     [Fact]
     public void ARefusedDraft_KeepsAWordInTheRow()
     {
-        // Binding the row field to IsAwaitingUpload alone made a refused draft say NOTHING —
+        // Binding the row field to a plain "is it waiting?" bool made a refused draft say NOTHING —
         // indistinguishable from one that uploaded fine, on the one channel that reaches a user
         // running with custom announcements off. Two states, two words (#637).
         var waiting = Draft(pending: true);

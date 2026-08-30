@@ -260,6 +260,11 @@ class StubLocalStoreService : ILocalStoreService
     /// Actually removes the rows, like the real store. A no-op here made a delete that never ran
     /// indistinguishable from one that did (#637).
     /// </summary>
+    public virtual Task<string?> GetSendFailedReasonAsync(Guid accountId, string folderName, string messageId)
+        => Task.FromResult(SeededSummaries.TryGetValue((accountId, folderName), out var rows)
+            ? rows.FirstOrDefault(m => m.MessageId == messageId)?.SendFailedReason
+            : null);
+
     /// <summary>Set to make the unsent count fail, the way --online mode's absent store does.</summary>
     public Exception? CountUnsentMailFailure { get; set; }
 

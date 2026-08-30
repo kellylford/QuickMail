@@ -5423,7 +5423,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             try
             {
                 foreach (var row in await _localStore.LoadFolderSummariesAsync(accountId, folderName))
-                    if (LocalMessageId.IsLocal(row.MessageId) &&
+                    if (IsLocalOnlyId(row) &&
                         known.Add((row.MessageId, row.AccountId, row.FolderName)))
                         extra.Add(row);
             }
@@ -5478,7 +5478,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             var cached = await _localStore.LoadFolderSummariesAsync(accountId, folderName);
-            var localOnly = cached.Where(m => LocalMessageId.IsLocal(m.MessageId)).ToList();
+            // IsLocalOnlyId, not IsLocal: POP3 mints local ids for EVERY message it holds, so
+            // testing the id alone re-injected an entire cached POP3 Sent folder into a listing
+            // the backend had deliberately limited to the sync window.
+            var localOnly = cached.Where(IsLocalOnlyId).ToList();
             if (localOnly.Count == 0) return serverList;
 
             var known = new HashSet<string>(serverList.Select(m => m.MessageId), StringComparer.Ordinal);
@@ -7406,9 +7409,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // cannot refuse (it is how the user gets rid of either kind), and it splits instead (#637).
         if (toArchive.Any(IsLocalOnlyId))
         {
-            SetStatus(toArchive.Count == 1
-                    ? "That draft has not reached the server yet, so there is nothing there to archive. It can be archived once it has been uploaded."
-                    : "Some of those messages have not reached the server yet, so there is nothing there to archive. They can be archived once they have been uploaded.",
+            // A refused draft will NEVER upload — the store query excludes it until the
+            // user edits and saves it again — so "once it has been uploaded" is untrue of
+            // it and points at an event that will not happen (#637).
+            var only = toArchive.Count == 1 ? toArchive[0] : null;
+            SetStatus(only != null
+                    ? (only!.SendFailedReason is null
+                        ? "That draft has not reached the server yet, so there is nothing there to archive. It can be archived once it has been uploaded."
+                        : "That draft was refused by your server, so it is not on there to archive. Open it, fix what the server objected to and save it again first.")
+                    : "Some of those messages have not reached the server yet, so there is nothing there to archive.",
                 AnnouncementCategory.Result);
             return;
         }
@@ -8834,9 +8843,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // cannot refuse (it is how the user gets rid of either kind), and it splits instead (#637).
         if (messages.Any(IsLocalOnlyId))
         {
-            SetStatus(messages.Count == 1
-                    ? "That draft has not reached the server yet, so there is nothing there to move. It can be moved once it has been uploaded."
-                    : "Some of those messages have not reached the server yet, so there is nothing there to move. They can be moved once they have been uploaded.",
+            // A refused draft will NEVER upload — the store query excludes it until the
+            // user edits and saves it again — so "once it has been uploaded" is untrue of
+            // it and points at an event that will not happen (#637).
+            var only = messages.Count == 1 ? messages[0] : null;
+            SetStatus(only != null
+                    ? (only!.SendFailedReason is null
+                        ? "That draft has not reached the server yet, so there is nothing there to move. It can be moved once it has been uploaded."
+                        : "That draft was refused by your server, so it is not on there to move. Open it, fix what the server objected to and save it again first.")
+                    : "Some of those messages have not reached the server yet, so there is nothing there to move.",
                 AnnouncementCategory.Result);
             return;
         }
@@ -8913,9 +8928,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // cannot refuse (it is how the user gets rid of either kind), and it splits instead (#637).
         if (messages.Any(IsLocalOnlyId))
         {
-            SetStatus(messages.Count == 1
-                    ? "That draft has not reached the server yet, so there is nothing there to copy. It can be copied once it has been uploaded."
-                    : "Some of those messages have not reached the server yet, so there is nothing there to copy. They can be copied once they have been uploaded.",
+            // A refused draft will NEVER upload — the store query excludes it until the
+            // user edits and saves it again — so "once it has been uploaded" is untrue of
+            // it and points at an event that will not happen (#637).
+            var only = messages.Count == 1 ? messages[0] : null;
+            SetStatus(only != null
+                    ? (only!.SendFailedReason is null
+                        ? "That draft has not reached the server yet, so there is nothing there to copy. It can be copied once it has been uploaded."
+                        : "That draft was refused by your server, so it is not on there to copy. Open it, fix what the server objected to and save it again first.")
+                    : "Some of those messages have not reached the server yet, so there is nothing there to copy.",
                 AnnouncementCategory.Result);
             return;
         }

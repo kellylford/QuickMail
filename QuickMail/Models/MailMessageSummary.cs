@@ -129,7 +129,6 @@ public partial class MailMessageSummary : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
     [NotifyPropertyChangedFor(nameof(ReadStatusLabel))]
-    [NotifyPropertyChangedFor(nameof(IsAwaitingUpload))]
     [NotifyPropertyChangedFor(nameof(LocationLabel))]
     private bool _isPendingUpload;
 
@@ -146,26 +145,16 @@ public partial class MailMessageSummary : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
     [NotifyPropertyChangedFor(nameof(ReadStatusLabel))]
-    [NotifyPropertyChangedFor(nameof(IsAwaitingUpload))]
     [NotifyPropertyChangedFor(nameof(DeliveryNotice))]
     [NotifyPropertyChangedFor(nameof(LocationLabel))]
     private string? _sendFailedReason;
-
-    /// <summary>
-    /// True for a draft on this computer that something will actually upload (#637).
-    /// <para>Not the same as <see cref="IsPendingUpload"/>: a draft the server has REFUSED keeps
-    /// that flag set while <c>LoadPendingDraftsAsync</c> excludes it until the user edits and
-    /// saves it again. Saying "not on server — it will go to the server when you are back online"
-    /// about it is a promise the store query rules out.</para>
-    /// </summary>
-    public bool IsAwaitingUpload => IsPendingUpload && string.IsNullOrEmpty(SendFailedReason);
 
     /// <summary>
     /// What this draft's row says about where it is, or empty for a message that is on the server
     /// (#637).
     /// <para>Two states, two words, because they mean different things to the person listening:
     /// "not on server" is on its way, and "not uploaded" is stuck until you do something. Binding
-    /// the row field to <see cref="IsAwaitingUpload"/> alone made a refused draft say NOTHING —
+    /// the row field to a plain "is it waiting?" bool made a refused draft say NOTHING —
     /// indistinguishable from one that uploaded fine, on the one channel that reaches a user with
     /// custom announcements off. Chosen by the user over a single shared word.</para>
     /// </summary>

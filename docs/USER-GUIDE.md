@@ -960,7 +960,7 @@ When a draft is on your computer but has not reached the server yet:
 
 QuickMail uploads these drafts on its own the next time it reaches the account — you do not need to do anything. Once a draft is on the server the **Not on server** status goes away, and if you were editing a draft that already existed on the server, the copy up there is replaced rather than duplicated. A draft you have open in a compose window is left alone while it is open, so an upload does not land on top of what you are still typing.
 
-If your server refuses one — a renamed Drafts folder, a message it will not accept — that draft stops being retried and its row says **not uploaded** instead of "not on server". It does not block the drafts behind it, which upload normally. **Open it and QuickMail shows you what the server said**, at the top of the compose window — so you can fix what it objected to and save again, which puts the draft back in the queue.
+If your server refuses one — a renamed Drafts folder, a message it will not accept — that draft stops being retried and its row says **not uploaded** instead of "not on server". It does not block the drafts behind it, which upload normally. **Open it and QuickMail shows you what the server said**, at the top of the compose window — so you can fix what it objected to and save again, which puts the draft back in the queue. If instead the row says the draft's saved copy could not be read, the message itself is gone: the row is all that is left, and deleting it is all there is to do.
 
 A few things to know:
 
@@ -1868,7 +1868,7 @@ The first says where a message is rather than anything about it, so it comes fir
 
 | Field | Speaks |
 |-------|--------|
-| Not on server | "not on server", for a draft saved here that has not been uploaded yet |
+| Not on server | "not on server" for a draft waiting to upload, "not uploaded" for one your server refused |
 | Flag | The flag's name, when the message is flagged |
 | Read status (combined) | One phrase covering read state and where the message is — including "saved on this computer, not yet on the server" |
 | Attachments | "attachments" |
@@ -1888,9 +1888,9 @@ Fields such as **Unread**, **Replied**, and **Attachments** are states rather th
 - **Speak only when true** — say "unread" on unread messages and nothing at all on read ones.
 - **Always speak** — say "unread" or "read", whichever applies.
 
-This is how you get "tell me about unread but never say read": turn **Status (combined)** off, turn **Unread** on, and leave it on *Speak only when true*. Fields with no meaningful opposite — Attachments, for example — stay silent when false in either mode.
+This is how you get "tell me about unread but never say read": turn **Read status (combined)** off, turn **Unread** on, and leave it on *Speak only when true*. Fields with no meaningful opposite — Attachments, for example — stay silent when false in either mode.
 
-**Status (combined) and the separate states overlap.** Both say the word "unread", so turning on Unread while Status (combined) is still on says it twice. Whenever that would happen, the **About this field** note in the options pane says so and tells you which one to turn off. The note is a focusable box, so it is reachable from the keyboard rather than being text only a sighted user would notice.
+**Read status (combined) and the separate states overlap.** Both say the word "unread", so turning on Unread while Read status (combined) is still on says it twice. Whenever that would happen, the **About this field** note in the options pane says so and tells you which one to turn off. The note is a focusable box, so it is reachable from the keyboard rather than being text only a sighted user would notice.
 
 ### Field labels
 

@@ -163,8 +163,17 @@ public sealed class LocalDraftService(ILocalStoreService store) : ILocalDraftSer
     {
         try
         {
-            var rows = await _store.LoadFolderSummariesAsync(accountId, folderName);
-            return rows.FirstOrDefault(r => r.MessageId == messageId)?.DeliveryNotice ?? string.Empty;
+            // One row, one column. Reading the WHOLE folder to pluck one field ran on every
+            // draft open - and the upload pass calls LoadAsync for every pending draft, where
+            // the notice is never looked at (#637).
+            var reason = await _store.GetSendFailedReasonAsync(accountId, folderName, messageId);
+            if (string.IsNullOrEmpty(reason)) return string.Empty;
+
+            return new MailMessageSummary
+            {
+                MessageId = messageId, FolderName = folderName, AccountId = accountId,
+                IsPendingUpload = true, SendFailedReason = reason,
+            }.DeliveryNotice;
         }
         catch (Exception ex)
         {

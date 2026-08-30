@@ -307,6 +307,12 @@ public partial class MessageWindow : Window
 
             // A locally-stored draft exists here and nowhere else, so it is never fetched: the
             // backend would be handed an id it never issued, in a folder it may not have (#637).
+            //
+            // Tests the id alone rather than the account's backend, unlike the guards in
+            // MainViewModel. This window has no account service to ask, and it costs nothing:
+            // POP3 is the one backend that mints these ids, and its GetMessageDetailAsync reads
+            // the same store row that has already come back null here — so the fetch this skips
+            // could not have succeeded either.
             if (detail == null && !LocalMessageId.IsLocal(summary.MessageId))
             {
                 detail = await _imap.GetMessageDetailAsync(
@@ -314,7 +320,15 @@ public partial class MessageWindow : Window
             }
 
             ct.ThrowIfCancellationRequested();
-            if (detail == null) return;
+            if (detail == null)
+            {
+                // Never a blank window with nothing said: a path that leaves the UI empty
+                // turns a storage failure into a mystery (CLAUDE.md feature checklist).
+                AccessibilityHelper.Announce(this,
+                    "That message could not be opened: its saved copy is missing.",
+                    interrupt: true, category: AnnouncementCategory.Result);
+                return;
+            }
 
             _vm.MessageDetail = detail;
             await ShowMessageBodyAsync(detail);
