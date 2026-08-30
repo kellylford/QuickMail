@@ -5608,7 +5608,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Same reasoning as the sweep's "N drafts uploaded": a row leaving Drafts has to be
         // accounted for, and this path -- the compose window's own save reaching the server -- is
         // the one the user is most likely to be looking at when it happens (#637).
-        SetStatus("Draft uploaded.", AnnouncementCategory.Status);
+        SetStatus("Draft uploaded.", AnnouncementCategory.Result);
         RebuildActiveGroupView();
     }
 
@@ -5620,9 +5620,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void OnDraftsUploaded(int count)
     {
         if (count <= 0) return;
+        // Result, not Status: this is the outcome of something that happened to the user's mail,
+        // not sync progress. Status is the category a user who turns announcements off turns off
+        // first, and it is the wrong one for "a message of yours left this computer" (#637).
         SetStatus(count == 1
             ? "1 draft uploaded."
-            : $"{count} drafts uploaded.", AnnouncementCategory.Status);
+            : $"{count} drafts uploaded.", AnnouncementCategory.Result);
     }
 
     /// <summary>

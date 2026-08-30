@@ -45,8 +45,9 @@ Also fixed in this release, all of them ways an offline draft could go wrong qui
 - A draft you have open in a compose window is left alone by the upload until you close it.
 - Removing an account asks first when it still holds drafts that exist nowhere else, and that
   prompt no longer starts on **Yes**.
-- The status bar says how many drafts went up when the upload runs, so a row leaving Drafts is
-  accounted for.
+- The status bar says how many drafts went up when the upload runs. It is replaced by the folder
+  counts from the same sync shortly afterwards; the lasting record is the row no longer saying
+  **Not on server**.
 - A draft that was not uploaded opens with the cursor on the reason, rather than several fields
   away from it.
 - Moving, copying or archiving is refused when you give the command, before a folder picker opens.

@@ -330,6 +330,16 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// window opens, and cleared by a save that succeeds — at which point the sentence would be
     /// describing a refusal that no longer applies.
     /// </summary>
+    /// <summary>
+    /// The one durable, focusable place this window explains why a draft is not where the user
+    /// expects: what the server said when it refused an upload, or that a save could not be
+    /// written to this computer.
+    /// <para>Deliberately ONE field carrying both. When a local write fails while a server reason
+    /// is on screen, the local failure wins: it is the more urgent of the two -- the user's latest
+    /// changes are not saved anywhere -- and the server's reason is not lost, since it lives in
+    /// MessageSummary.send_failed_reason and comes back when the draft is reopened. Cleared by any
+    /// save that succeeds, on either leg, so it can never outlive what it describes (#637).</para>
+    /// </summary>
     [ObservableProperty] private string _deliveryNotice = string.Empty;
 
     [RelayCommand]

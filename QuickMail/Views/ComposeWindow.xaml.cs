@@ -231,6 +231,20 @@ public partial class ComposeWindow : Window
                     BodyBox.CaretIndex = 0;
             }
         };
+        // A refused draft opens focused on its reason, and saving clears the reason -- which
+        // collapses the field focus is sitting in, so WPF drops focus to the window and the user
+        // has lost his place at the exact moment the fix worked. Move to the body, which is where
+        // he would be typing next (#637).
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(ComposeViewModel.DeliveryNotice)) return;
+            if (!string.IsNullOrWhiteSpace(_vm.DeliveryNotice)) return;
+            // Checked BEFORE the binding collapses the field: once it is Collapsed, focus has
+            // already gone and there is nothing left to ask.
+            if (!DeliveryNoticeField.IsKeyboardFocusWithin) return;
+            Dispatcher.BeginInvoke(new Action(FocusActiveEditor), DispatcherPriority.Input);
+        };
+
         BodyBox.SelectionChanged += BodyBox_SelectionChanged;
         RichBodyBox.SelectionChanged += RichBodyBox_SelectionChanged;
         RichBodyBox.PreviewKeyDown += RichBodyBox_PreviewKeyDown;
