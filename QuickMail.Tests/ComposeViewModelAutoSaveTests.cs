@@ -229,6 +229,14 @@ sealed class RecordingMailService : IMailService
 {
     public int AppendDraftCalls { get; private set; }
     public string? LastReplaceMessageId { get; private set; }
+
+    /// <summary>
+    /// Which account each append went to, and which server draft it was told to replace. Recorded
+    /// because the destructive bug here is invisible without the account: AppendDraftAsync resolves
+    /// the DESTINATION account's Drafts and expunges the UID it is handed, so a stale replace id
+    /// carried across a sender change destroys an unrelated message (#637).
+    /// </summary>
+    public List<(Guid AccountId, string? ReplaceId)> Appends { get; } = [];
     public bool AppendDraftThrows { get; set; }
 
     /// <summary>
@@ -247,6 +255,7 @@ sealed class RecordingMailService : IMailService
         if (AppendDraftFailure?.Invoke(draft.Subject ?? string.Empty) is { } scripted) throw scripted;
         AppendDraftCalls++;
         LastReplaceMessageId = replaceMessageId;
+        Appends.Add((accountId, replaceMessageId));
         return Task.FromResult($"draft-{AppendDraftCalls}");
     }
 

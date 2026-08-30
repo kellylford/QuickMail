@@ -26,9 +26,10 @@ Drafts are now saved to your computer first and sent to the server afterwards. I
 
 Also fixed in this release, all of them ways an offline draft could go wrong quietly:
 
-- Answering **No** to the save prompt now removes the copy auto-save had already written for a
-  message you started — before, an auto-saved copy stayed on the server. Answering **No** to a draft
-  you merely *opened* leaves that draft alone.
+- Answering **No** to the save prompt now removes the copy auto-save had written to your computer
+  for a message you started, so a draft you declined to keep is not uploaded later. Answering **No**
+  to a draft you merely *opened* leaves that draft alone. (A copy auto-save had already put on the
+  server is still left there.)
 - A save that fails no longer closes the window. It used to decide by looking for the word "failed"
   in the status line, which missed "No Drafts folder found on this account."
 - Changing the **From** account moves the draft to that account instead of leaving a copy to be
@@ -43,6 +44,10 @@ Also fixed in this release, all of them ways an offline draft could go wrong qui
   reason, instead of removing it from the list and then failing.
 - A draft you have open in a compose window is left alone by the upload until you close it.
 - Removing an account asks first when it still holds drafts that exist nowhere else.
+- Converting an account to Microsoft 365 now stops while that account is still holding drafts that
+  have not reached the server, rather than proceeding. The conversion clears the local mailbox and
+  re-downloads it, and those drafts exist nowhere to be downloaded from. Open **Drafts** and send or
+  delete them, then convert again.
 
 Two things worth knowing. A waiting draft is on this computer only, so it will not show up on your
 phone or another PC until it has uploaded. And an account that has never finished syncing its folders

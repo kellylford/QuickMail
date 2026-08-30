@@ -58,8 +58,9 @@ public sealed class LocalDraftService(ILocalStoreService store) : ILocalDraftSer
         // not one transaction, so a crash or a forced shutdown can land between any two — and the
         // order decides what that leaves behind. Summary first leaves a row the reader cannot open
         // and the upload pass discards, which is the draft silently disappearing. This way the
-        // worst case is stored bytes no row points at: invisible, harmless, and reclaimed the next
-        // time the same draft is saved (#637).
+        // worst case is stored bytes no row points at: invisible and harmless, but NOT reclaimed --
+        // the id lived only in this method, so no later save refers to it again and the orphan sits
+        // there until the account is removed. Wasted space beats a row whose message has gone (#637).
         await _store.UpsertDetailAsync(detail);
         await _store.StoreMimeBytesAsync(account.Id, folderName, messageId, mime);
         await _store.UpsertSummariesAsync([summary]);

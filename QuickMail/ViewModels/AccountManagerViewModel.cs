@@ -504,6 +504,38 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             return;
         if (!CanConvertToGraph) return;
 
+        // Step 1.5 — refuse while the account holds drafts that exist nowhere else. The purge in
+        // step 5 deletes them with their attachments, and this conversion's own confirmation talks
+        // about re-downloading the mailbox — true of server mail, false of a draft the server has
+        // never seen. Chosen by the user over confirming or uploading-then-purging: a conversion can
+        // wait, and a destroyed draft cannot be got back (#637).
+        //
+        // It runs HERE, before the confirmation and before the token, because everything below the
+        // flip has already happened by the time a later check could speak: BackendKind and
+        // GraphConversionPending are persisted together, so a refusal after that point says "was not
+        // converted" about an account that is converted on disk and that finishes converting,
+        // unattended, on the next launch.
+        var held = 0;
+        try { held = await _localStore.CountUnsentMailAsync(account.Id); }
+        catch (Exception ex)
+        {
+            // Cannot prove it is safe, so do not proceed — the same direction the removal
+            // confirmation fails in.
+            LogService.Log("ConvertToGraph: counting unsent drafts", ex);
+            held = -1;
+        }
+
+        if (held != 0)
+        {
+            // Deliberately does not say "let them upload": a draft the server has already refused is
+            // excluded from the upload pass until the user edits and saves it, so waiting would never
+            // clear it. Both remedies are named instead.
+            StatusText = held < 0
+                ? $"{account.AccountLabel} was not converted: QuickMail could not check whether it is holding drafts that have not reached the server."
+                : $"{account.AccountLabel} was not converted: it is holding {held} draft{(held == 1 ? "" : "s")} that {(held == 1 ? "has" : "have")} not reached the server. Open Drafts and send or delete {(held == 1 ? "it" : "them")}, then convert again.";
+            return;
+        }
+
         // Step 2 — confirm. No side effect until yes; fail closed if the View didn't wire the callback.
         var confirmed = ConfirmConvertToGraph?.Invoke(
             $"Convert {account.AccountLabel} to Microsoft 365? This re-downloads the mailbox once. Mail older " +
@@ -538,29 +570,6 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             account.BackendKind = BackendKind.MicrosoftGraph;
             _accountService.SaveAccounts([.. Accounts]);
             flipped = true;
-
-            // Refuses while the account holds drafts that exist nowhere else. The purge below
-            // deletes them with their attachments, and this conversion's own confirmation talks
-            // about re-downloading the mailbox — true of server mail, false of a draft the server
-            // has never seen. Chosen by the user over confirming or uploading-then-purging: a
-            // conversion can wait, and a destroyed draft cannot be got back (#637).
-            var held = 0;
-            try { held = await _localStore.CountUnsentMailAsync(account.Id); }
-            catch (Exception ex)
-            {
-                // Cannot prove it is safe, so do not proceed — the same direction the removal
-                // confirmation fails in.
-                LogService.Log("ConvertToGraph: counting unsent drafts", ex);
-                held = -1;
-            }
-
-            if (held != 0)
-            {
-                StatusText = held < 0
-                    ? $"{account.AccountLabel} was not converted: QuickMail could not check whether it is holding drafts that have not reached the server."
-                    : $"{account.AccountLabel} was not converted: it is holding {held} draft{(held == 1 ? "" : "s")} that {(held == 1 ? "has" : "have")} not reached the server. Connect and let {(held == 1 ? "it" : "them")} upload first, or delete {(held == 1 ? "it" : "them")}.";
-                return;
-            }
 
             await _localStore.ClearCachedMailAsync([account.Id]);
             await _localStore.SaveFoldersAsync(account.Id, []);

@@ -30,10 +30,13 @@ public interface ILocalStoreService
     /// </summary>
     Task<List<MailMessageSummary>> LoadPendingDraftsAsync(Guid accountId);
 
-    /// <summary>Records why the server refused a draft, taking it out of the upload queue (#637).</summary>
+    /// <summary>
+    /// Records why a draft was not uploaded, which stops the upload pass retrying it (#637). It
+    /// stays counted as unsent mail: see the implementation for why the two differ.
+    /// </summary>
     Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason);
 
-    /// <summary>Why the server refused one draft, or null (#637).</summary>
+    /// <summary>Why one draft was not uploaded, or null (#637).</summary>
     Task<string?> GetSendFailedReasonAsync(Guid accountId, string folderName, string messageId);
 
     /// <summary>Drafts held only on this computer for an account — what removing it destroys (#637).</summary>

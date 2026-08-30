@@ -275,9 +275,12 @@ public partial class MainWindow : Window
         // #637: deleting a draft that exists only on this computer cannot be undone and
         // leaves nothing in Trash, unlike every other Delete. A plain Yes/No MessageBox,
         // the same shape as the account-removal confirmation; the VM fails closed if unset.
+        // Defaults to No: Enter or Space on this prompt would otherwise destroy the only copy.
+        // The account-removal prompt it is modelled on can afford Yes -- that one is recoverable.
         vm.ConfirmLocalDraftDelete = message =>
             MessageBox.Show(this, message, "Delete draft?",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+                MessageBoxButton.YesNo, MessageBoxImage.Warning,
+                MessageBoxResult.No) == MessageBoxResult.Yes;
 
         if (_themeService != null)
         {
@@ -5220,6 +5223,8 @@ public partial class MainWindow : Window
                 composeVm.Dispose();
                 throw;
             }
+            // Lets the open message list drop a refusal the moment the draft is saved again (#637).
+            composeVm.DraftStored += _vm.OnDraftStored;
             composeVm.CloseRequested += window.Close;
             _openComposeWindows.Add(window);
             window.Closed += (_, _) => _openComposeWindows.Remove(window);

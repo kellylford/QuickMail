@@ -285,9 +285,30 @@ public class SyncService : ISyncService
                 continue;
             }
 
+            // Read the draft in its OWN try. Both reads below touch SQLite, and a SqliteException
+            // ("database is locked") or a FormatException from corrupt bytes reaching the handler at
+            // the bottom was reported to the user as "Your mail server refused it: database is
+            // locked" -- about a server that was never contacted -- and then de-queued the draft
+            // until the user edited and re-saved it. A store that is busy is transient: leave the
+            // row queued and let the next sweep have it (#637).
+            ComposeModel? compose;
+            string? supersedes;
             try
             {
-                var compose = await _localDrafts.LoadAsync(account.Id, draft.FolderName, draft.MessageId, ct);
+                compose = await _localDrafts.LoadAsync(account.Id, draft.FolderName, draft.MessageId, ct);
+                supersedes = compose == null
+                    ? null
+                    : await _localDrafts.GetSupersededServerIdAsync(account.Id, draft.FolderName, draft.MessageId);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception readEx)
+            {
+                LogService.Log($"Draft upload {account.AccountLabel}: could not read {draft.MessageId} from the local store; leaving it queued", readEx);
+                continue;
+            }
+
+            try
+            {
                 if (compose == null)
                 {
                     // A row with no stored bytes behind it. There is nothing to upload — but
@@ -309,9 +330,6 @@ public class SyncService : ISyncService
                     }
                     continue;
                 }
-
-                var supersedes = await _localDrafts.GetSupersededServerIdAsync(
-                    account.Id, draft.FolderName, draft.MessageId);
 
                 // Re-checked immediately before the upload, because the check at the top of the
                 // loop is a read and the two loads above it are awaits: a compose window opened in

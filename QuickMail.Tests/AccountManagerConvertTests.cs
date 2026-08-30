@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using QuickMail.Models;
@@ -43,6 +43,68 @@ public class AccountManagerConvertTests
         vm.SelectedAccount = selected;
         vm.ConfirmConvertToGraph = _ => true;   // default: user says yes; overridden per test
         return vm;
+    }
+
+    // ── Unsent drafts block the conversion ───────────────────────────────────────
+
+    private static StubLocalStoreService HoldingADraft(Guid accountId)
+    {
+        var store = new StubLocalStoreService();
+        store.SeededSummaries[(accountId, "Drafts")] =
+        [
+            new MailMessageSummary
+            {
+                MessageId = "local-1", AccountId = accountId, FolderName = "Drafts",
+                Subject = "Airport thoughts", IsPendingUpload = true,
+            },
+        ];
+        return store;
+    }
+
+    [Fact]
+    public async Task Convert_RefusedWhileAnUnsentDraftIsHeld_LeavesTheAccountAlone()
+    {
+        // The refusal used to run AFTER the backend flip had been persisted, so it announced "was
+        // not converted" about an account that was converted on disk -- and that finished
+        // converting, unattended, on the next launch, destroying the very drafts it had just
+        // promised to protect (#637).
+        var account = MsImap();
+        var vm = Vm(account, store: HoldingADraft(account.Id));
+
+        await vm.ConvertToGraphCommand.ExecuteAsync(null);
+
+        Assert.Equal(BackendKind.ImapSmtp, account.BackendKind);
+        Assert.False(account.GraphConversionPending);
+        Assert.Contains("was not converted", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Convert_RefusedWhileAnUnsentDraftIsHeld_DoesNotEvenAsk()
+    {
+        // Nothing below the confirmation can refuse safely, so the check runs above it -- which
+        // also spares the user a question whose answer cannot be acted on.
+        var account = MsImap();
+        var vm = Vm(account, store: HoldingADraft(account.Id));
+        var asked = false;
+        vm.ConfirmConvertToGraph = _ => { asked = true; return true; };
+
+        await vm.ConvertToGraphCommand.ExecuteAsync(null);
+
+        Assert.False(asked);
+    }
+
+    [Fact]
+    public async Task Convert_RefusedWhenTheStoreCannotBeAsked()
+    {
+        // Fails closed, like the removal confirmation it mirrors.
+        var account = MsImap();
+        var store = new StubLocalStoreService { CountUnsentMailFailure = new InvalidOperationException("database is locked") };
+        var vm = Vm(account, store: store);
+
+        await vm.ConvertToGraphCommand.ExecuteAsync(null);
+
+        Assert.Equal(BackendKind.ImapSmtp, account.BackendKind);
+        Assert.Contains("could not check", vm.StatusText, StringComparison.Ordinal);
     }
 
     // ── Gating ────────────────────────────────────────────────────────────────────

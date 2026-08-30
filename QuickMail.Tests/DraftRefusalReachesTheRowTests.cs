@@ -1,4 +1,4 @@
-// A refused draft has to change the row the user is looking at — issue #637.
+﻿// A refused draft has to change the row the user is looking at — issue #637.
 //
 // When the upload pass succeeds it raises MessagesRemoved and the row disappears, which is signal
 // enough. When it FAILS the row stays, so nothing else would ever tell the open list: the refusal
@@ -108,6 +108,45 @@ public class DraftRefusalReachesTheRowTests
 
         Assert.Contains(nameof(MailMessageSummary.LocationLabel), raised);
         Assert.Contains(nameof(MailMessageSummary.DeliveryNotice), raised);
+    }
+
+    [Fact]
+    public void SavingTheDraftAgain_TakesTheRefusalBackOffTheRow()
+    {
+        // The user is told to open the draft, fix it and save. He does -- and the row went on
+        // saying "not uploaded", the wording this feature defines as stuck until you act. Offline
+        // that never corrects itself, so the one durable channel lied in the opposite direction
+        // from the bug the refusal event was added to fix.
+        var live = Row();
+        var (vm, sync) = MakeVm(live);
+
+        var fromStore = Row();
+        fromStore.SendFailedReason = "Your mail server refused it: over quota.";
+        sync.RaiseRefused(fromStore);
+        Assert.Equal("not uploaded", live.LocationLabel);
+
+        vm.OnDraftStored(AccountId, "Drafts", "local-1", "Airport thoughts, again");
+
+        Assert.Null(live.SendFailedReason);
+        Assert.Equal("not on server", live.LocationLabel);
+        // An offline edit that changed the subject has to reach the list too: the subject is what
+        // the row is announced by.
+        Assert.Equal("Airport thoughts, again", live.Subject);
+    }
+
+    [Fact]
+    public void ADraftStoredElsewhere_LeavesThisRowAlone()
+    {
+        var live = Row();
+        var (vm, sync) = MakeVm(live);
+        var fromStore = Row();
+        fromStore.SendFailedReason = "Your mail server refused it: over quota.";
+        sync.RaiseRefused(fromStore);
+
+        vm.OnDraftStored(Guid.NewGuid(), "Drafts", "local-1", "Somewhere else");
+
+        Assert.Equal("not uploaded", live.LocationLabel);
+        Assert.Equal("Airport thoughts", live.Subject);
     }
 
     [Fact]

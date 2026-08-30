@@ -693,9 +693,14 @@ public partial class ComposeWindow : Window
             // and remove that copy — otherwise the upload pass files a message on the server that
             // the user explicitly declined to keep. Only what THIS window wrote: a draft it merely
             // opened is not its to delete (#637).
+            // Cancel the close we are inside, then close again cleanly. Letting e.Cancel = false
+            // carry the original close through relies on that flag surviving the await above, which
+            // holds today only because Microsoft.Data.Sqlite completes its *Async methods inline.
+            // A genuinely async store would leave this window open with no way out.
+            e.Cancel = true;
             await _vm.DiscardLocalCopyAsync();
             Closing -= OnWindowClosing;
-            e.Cancel = false;
+            Close();
             return;
         }
 

@@ -42,13 +42,14 @@ public interface ILocalDraftService
     /// </summary>
     Task<string?> GetSupersededServerIdAsync(Guid accountId, string folderName, string messageId);
 
-    /// <summary>Drops a pending draft: uploaded, sent, or discarded by the user.</summary>
     /// <summary>
-    /// Records why the server refused to store this draft, which also stops it being retried
-    /// (#637). Editing and saving the draft clears the reason and re-arms the upload.
+    /// Records why this draft was not uploaded, which also stops it being retried (#637). Editing
+    /// and saving the draft clears the reason and re-arms the upload. The reason is not always the
+    /// server's: it also carries QuickMail's own, when the draft's saved copy cannot be read.
     /// </summary>
     Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason);
 
+    /// <summary>Drops a pending draft: uploaded, sent, or discarded by the user.</summary>
     Task DiscardAsync(Guid accountId, string folderName, string messageId);
 
     /// <summary>Pending drafts for one account, oldest first.</summary>

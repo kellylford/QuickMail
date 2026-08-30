@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using QuickMail.Helpers;
@@ -357,16 +357,16 @@ public class RowFieldsViewModelTests
     public void Reset_AnnouncesWhichRowTypeWasReset()
     {
         var (vm, _, _) = Make();
-        string? announced = null;
-        vm.AnnouncementRequested += (text, cat) =>
-        {
-            announced = text;
-            Assert.Equal(AnnouncementCategory.Result, cat);
-        };
+        var announced = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (text, cat) => announced.Add((text, cat));
 
         vm.ResetDefaultsCommand.Execute(null);
 
-        Assert.Equal("Messages fields reset to defaults.", announced);
+        // Collected rather than asserted one-at-a-time: resetting re-selects the first field, and
+        // when that field has an "About this field" note its Hint is announced first. That is the
+        // ordinary landed-on-a-field behaviour and it respects the user's hint preference; the
+        // outcome of the command itself is what this test is about (#637).
+        Assert.Contains(("Messages fields reset to defaults.", AnnouncementCategory.Result), announced);
     }
 
     // ── accessibility of the list itself ──────────────────────────────────────

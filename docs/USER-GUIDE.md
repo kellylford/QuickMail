@@ -954,13 +954,13 @@ When a draft is on your computer but has not reached the server yet:
 - **Save Draft** answers "Draft saved on this computer. It will go to the server when you are back online," rather than reporting a failure.
 - Auto-save shows "Auto-saved on this computer" instead of "Auto-saved".
 - You can open it, keep editing it, and save it again as many times as you like, all without a connection. Attachments you added are kept with it, so the draft is complete when it does go up.
-- Closing the compose window is never blocked by being offline. Answering **No** to the save prompt removes the copy auto-save had already written for a message you started in that window — declining to keep a message means it is not kept, and not quietly uploaded later. Answering **No** to a draft you *opened* leaves that draft where it is. Any changes auto-save had already written to your computer are kept — declining the prompt does not undo them.
-- Moving, copying and archiving are refused until it has been uploaded: there is nothing on the server to act on, and QuickMail says so rather than half-doing it.
+- Closing the compose window is never blocked by being offline. Answering **No** to the save prompt removes the copy auto-save had already written for a message you started in that window — declining to keep a message means it is not kept, and not quietly uploaded later. For a draft you merely *opened*, **No** leaves that draft where it is: any changes auto-save had already written to your computer are kept, declining the prompt does not undo them, and they will upload with the draft.
+- Moving, copying and archiving are refused while it is waiting to upload: there is nothing on the server to act on, and QuickMail says so rather than half-doing it. The refusal covers the whole selection — if you had ordinary messages selected too, none of them move either, so take the draft out of the selection first. (A draft your server has refused is turned down for a different reason: it will not upload at all until you edit and save it.)
 - **Deleting it cannot be undone.** There is no copy on the server and none in Trash, so QuickMail asks first — including when the draft is part of a larger selection.
 
 QuickMail uploads these drafts on its own the next time it reaches the account — you do not need to do anything. Once a draft is on the server the **Not on server** status goes away, and if you were editing a draft that already existed on the server, the copy up there is replaced rather than duplicated. A draft you have open in a compose window is left alone while it is open, so an upload does not land on top of what you are still typing.
 
-If your server refuses one — a renamed Drafts folder, a message it will not accept — that draft stops being retried and its row says **not uploaded** instead of "not on server". It does not block the drafts behind it, which upload normally. **Open it and QuickMail shows you what the server said**, at the top of the compose window — so you can fix what it objected to and save again, which puts the draft back in the queue. If instead the row says the draft's saved copy could not be read, the message itself is gone: the row is all that is left, and deleting it is all there is to do.
+If your server refuses one — a renamed Drafts folder, a message it will not accept — that draft stops being retried and its row says **not uploaded** instead of "not on server". It does not block the drafts behind it, which upload normally. **Open it and QuickMail shows you what the server said**, at the top of the compose window — so you can fix what it objected to and save again, which puts the draft back in the queue. A draft can also fail because its saved copy on your computer has gone. Its row reads **not uploaded** just like a refused one, but opening it answers "That message could not be opened: its saved copy on this computer is missing." The message itself cannot be recovered — the row is all that is left, and deleting it is all there is to do.
 
 A few things to know:
 
@@ -1868,7 +1868,7 @@ The first says where a message is rather than anything about it, so it comes fir
 
 | Field | Speaks |
 |-------|--------|
-| Not on server | "not on server" for a draft waiting to upload, "not uploaded" for one your server refused |
+| Not on server | "not on server" for a draft waiting to upload, "not uploaded" for one that will not go up — refused by your server, or with its saved copy missing |
 | Flag | The flag's name, when the message is flagged |
 | Read status (combined) | One phrase covering read state and where the message is — including "saved on this computer, not yet on the server" |
 | Attachments | "attachments" |
@@ -1888,7 +1888,7 @@ Fields such as **Unread**, **Replied**, and **Attachments** are states rather th
 - **Speak only when true** — say "unread" on unread messages and nothing at all on read ones.
 - **Always speak** — say "unread" or "read", whichever applies.
 
-This is how you get "tell me about unread but never say read": turn **Read status (combined)** off, turn **Unread** on, and leave it on *Speak only when true*. Fields with no meaningful opposite — Attachments, for example — stay silent when false in either mode.
+This is how you get "tell me about unread but never say read": turn **Read status (combined)** off, turn **Unread** on, and leave it on *Speak only when true*. If you do turn the combined field off, turn **Not on server** on as well — it is the only other field that tells you a draft has not reached the server, and it was left off for you while the combined field was on. Fields with no meaningful opposite — Attachments, for example — stay silent when false in either mode.
 
 **Read status (combined) and the separate states overlap.** Both say the word "unread", so turning on Unread while Read status (combined) is still on says it twice. Whenever that would happen, the **About this field** note in the options pane says so and tells you which one to turn off. The note is a focusable box, so it is reachable from the keyboard rather than being text only a sighted user would notice.
 

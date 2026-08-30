@@ -536,8 +536,13 @@ public class LocalStoreService : ILocalStoreService
     }
 
     /// <summary>
-    /// Records why the server refused to store a draft, and takes it out of the upload queue in
-    /// the same statement — the two must never disagree (#637).
+    /// Records why a draft was not uploaded (#637). The UPDATE writes the reason only —
+    /// is_pending_upload stays set, and what takes the draft out of the queue is
+    /// LoadPendingDraftsAsync's "send_failed_reason IS NULL" filter. That split is deliberate: the
+    /// row still counts as unsent mail everywhere it is counted, which is what the account-removal
+    /// and convert-to-Graph confirmations need, since either would destroy it just as permanently.
+    /// The reason is not always the server's — it also carries QuickMail's own, when the draft's
+    /// saved copy cannot be read.
     /// </summary>
     public async Task MarkSendFailedAsync(Guid accountId, string folderName, string messageId, string reason)
     {

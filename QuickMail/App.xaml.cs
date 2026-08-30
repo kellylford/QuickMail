@@ -353,9 +353,16 @@ public partial class App : Application
                             // else. This clear runs unattended at launch and deletes those
                             // rows with their attachments; nobody is asked, and the user has
                             // no way to know it happened. The marker stays unwritten, so the
-                            // rebuild simply waits for the next launch — by which time the
-                            // upload pass has very likely taken the drafts to the server
-                            // (#637). Chosen by the user over confirming at startup.
+                            // rebuild waits for a later launch (#637). Chosen by the user over
+                            // confirming at startup.
+                            //
+                            // CountUnsentMailAsync counts REFUSED drafts too, and deliberately:
+                            // the clear would destroy one just as permanently. But a refused
+                            // draft is excluded from the upload pass until the user edits and
+                            // saves it, so it does NOT resolve itself on the next launch the way
+                            // a waiting draft does -- one can defer this rebuild indefinitely,
+                            // and with it the #366 immutable-id fix for that account. Logged
+                            // rather than surfaced; where to surface it is an open question.
                             var holding = graphIds.Any(id =>
                                 localStore.CountUnsentMailAsync(id).GetAwaiter().GetResult() > 0);
                             if (holding)

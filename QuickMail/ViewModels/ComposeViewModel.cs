@@ -191,6 +191,19 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public event Action? CloseRequested;
 
     /// <summary>
+    /// Raised after the local store has taken this draft: (accountId, folderName, messageId, subject).
+    /// <para>
+    /// A refusal is pushed onto the live row by DraftUploadsRefused and there was nothing to take it
+    /// off again. Saving clears send_failed_reason in SQLite and re-arms the upload, but the summary
+    /// the open Drafts list holds went on saying "not uploaded" -- the wording this feature defines
+    /// as stuck until you act -- about a draft the user had just acted on. Offline that never
+    /// corrects itself, and the row is the one channel that reaches a user running with custom
+    /// announcements off (#637).
+    /// </para>
+    /// </summary>
+    public event Action<Guid, string, string, string>? DraftStored;
+
+    /// <summary>
     /// Set by the View to show a Yes/No confirmation dialog.
     /// Parameters: message, title. Returns true when the user confirms.
     /// Mirrors the pattern on MainViewModel — see CLAUDE.md MVVM Rules.
@@ -444,6 +457,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // the draft mid-edit, deletes the row and its bytes, and the next auto-save re-creates
             // it having lost the supersedes header, filling Drafts with copies (#637).
             ClaimStoredRow(account.Id, _draftFolderName, saved.MessageId);
+            if (_draftFolderName != null)
+                DraftStored?.Invoke(account.Id, _draftFolderName, saved.MessageId, compose.Subject ?? string.Empty);
             // Record the owner. Seed knows it only for a message that was already stored, so a new
             // compose had none at all — and the re-key above, which is what stops a sender change
             // leaving a second row behind, never fired for exactly the messages most likely to
@@ -481,7 +496,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
             // The server holds it now, so the local copy is redundant — and leaving it would show
             // the draft twice in Drafts once the folder syncs.
-            if (localId != null)
+            // Folder checked as well as the id: leg 1 cannot have produced a localId without one,
+            // but the re-key now assigns _draftFolderName from a nullable source, so say it rather
+            // than assert it.
+            if (localId != null && _draftFolderName != null)
             {
                 try
                 {
@@ -739,25 +757,38 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private async Task RekeyStoredRowIfSenderChangedAsync(AccountModel account)
     {
         if (_draftAccountId == Guid.Empty || _draftAccountId == account.Id) return;
-        if (!LocalMessageId.IsLocal(_draftMessageId) || _draftFolderName == null) return;
 
         var oldAccountId = _draftAccountId;
         var oldFolder    = _draftFolderName;
-        var oldId        = _draftMessageId!;
+        var oldId        = _draftMessageId;
 
-        // The new account's own Drafts folder.
-        _draftFolderName = await _drafts.ResolveDraftsFolderNameAsync(account.Id) ?? oldFolder;
-
-        // A fresh id under the new key; the save that follows writes it.
-        _draftMessageId  = null;
-        _draftAccountId  = account.Id;
-        // The draft the old account holds on its server belongs to that account. Keeping the id
-        // would make the next save replace a draft in a mailbox this message has left.
+        // Every one of these is wrong the moment the sender changes, whether or not there is a local
+        // row to re-key. Gating them on there being one is what left the ONLINE case broken:
+        //
+        //   The server id belongs to the OLD account's Drafts. Carried across, the next save hands it
+        //   to AppendDraftAsync, which resolves the NEW account's Drafts and does AddFlags(Deleted) +
+        //   Expunge on that UID -- destroying whatever message happens to hold it there. UIDs are
+        //   small per-folder integers, so the collision is ordinary, and an expunge is not a Trash.
+        //
+        //   The message id is the old account's UID, so leg 1 would pass it as previousMessageId and
+        //   drop the NEW account's cached row of that number.
+        //
+        //   The folder name is the old account's Drafts name, so on any pair that names them
+        //   differently ("[Gmail]/Drafts" vs "Drafts") the draft is filed where it cannot be seen.
+        //
+        // Cleared unconditionally, above the local-row guard (#637).
         _draftServerMessageId = null;
+        _draftMessageId       = null;
+        _draftFolderName      = await _drafts.ResolveDraftsFolderNameAsync(account.Id) ?? _draftFolderName;
+        _draftAccountId       = account.Id;
+
+        // Only a row minted on this computer can be re-keyed. A server draft has no local row to
+        // move, and the copy it has on the old account's server is that account's to keep.
+        if (!LocalMessageId.IsLocal(oldId) || oldFolder == null) return;
 
         try
         {
-            await _drafts.DiscardAsync(oldAccountId, oldFolder, oldId);
+            await _drafts.DiscardAsync(oldAccountId, oldFolder, oldId!);
         }
         catch (Exception ex)
         {

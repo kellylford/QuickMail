@@ -322,10 +322,25 @@ public partial class MessageWindow : Window
             ct.ThrowIfCancellationRequested();
             if (detail == null)
             {
-                // Never a blank window with nothing said: a path that leaves the UI empty
-                // turns a storage failure into a mystery (CLAUDE.md feature checklist).
-                AccessibilityHelper.Announce(this,
-                    "That message could not be opened: its saved copy is missing.",
+                // Rendered into the body, not merely announced. AnnouncementCategory.Result is
+                // gated by AnnounceResults, so for a user running with custom announcements off an
+                // announce-only path IS the blank window with nothing said that this guard exists
+                // to prevent -- it just looks fine to anyone who has them on. The sentence goes
+                // where focus is about to land, and stays there to be re-read (#637).
+                const string missing = "That message could not be opened: its saved copy on this computer is missing. "
+                                     + "The message itself cannot be recovered; deleting the row is all there is to do.";
+                var placeholder = new MailMessageDetail
+                {
+                    MessageId  = summary.MessageId,
+                    AccountId  = summary.AccountId,
+                    FolderName = summary.FolderName,
+                    Subject    = summary.Subject,
+                    From       = summary.From,
+                    PlainTextBody = missing,
+                };
+                _vm.MessageDetail = placeholder;
+                await ShowMessageBodyAsync(placeholder);
+                AccessibilityHelper.Announce(this, missing,
                     interrupt: true, category: AnnouncementCategory.Result);
                 return;
             }

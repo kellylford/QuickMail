@@ -4046,19 +4046,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UpdateAccountCountsAfterRemoval(actuallyRemovedFromRaw);
 
         bool removedOpen = false;
+        var openIndex = -1;
         foreach (var msg in removed)
         {
             var key = (msg.MessageId, msg.AccountId, msg.FolderName);
             if (!byKey.TryGetValue(key, out var existing)) continue;
 
-            if (SelectedMessage == existing) removedOpen = true;
+            if (SelectedMessage == existing)
+            {
+                removedOpen = true;
+                openIndex   = Messages.IndexOf(existing);
+            }
             Messages.Remove(existing);
             byKey.Remove(key);
         }
 
         if (removedOpen)
         {
-            SelectedMessage = Messages.Count > 0 ? Messages[0] : null;
+            // The neighbour, not the top of the folder. This fires for a draft the upload pass has
+            // just taken to the server, so a user sitting on that row was moved to an unrelated
+            // message at position 0 -- indistinguishable from the list having been reordered
+            // underneath him, and with nothing said about the upload that caused it (#637).
+            SelectedMessage = openIndex >= 0 && Messages.Count > 0
+                ? Messages[Math.Min(openIndex, Messages.Count - 1)]
+                : null;
             MessageDetail   = null;
             IsMessageOpen   = false;
         }
@@ -4403,6 +4414,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _rawMessages.RemoveAll(m => vanishedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
 
         bool removedOpen = vanished.Any(m => m == SelectedMessage);
+        var openIndex = removedOpen && SelectedMessage != null ? Messages.IndexOf(SelectedMessage) : -1;
         foreach (var m in vanished)
             Messages.Remove(m);
 
@@ -4410,7 +4422,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (removedOpen)
         {
-            SelectedMessage = Messages.Count > 0 ? Messages[0] : null;
+            // Same reasoning as OnMessagesRemoved: land on the neighbour rather than the top.
+            SelectedMessage = openIndex >= 0 && Messages.Count > 0
+                ? Messages[Math.Min(openIndex, Messages.Count - 1)]
+                : null;
             MessageDetail   = null;
             IsMessageOpen   = false;
         }
@@ -5437,14 +5452,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return [.. serverList.Concat(extra).OrderByDescending(m => m.Date)];
     }
 
+    /// <summary>
+    /// True when this message's id was minted on this computer AND its account's backend cannot
+    /// resolve such an id. The account test is what separates it from LocalMessageId.IsLocal:
+    /// POP3 mints "local-" ids for EVERY message it holds and reads them back happily, so treating
+    /// the prefix alone as "not on the server" hid POP3 mail from the server-backed paths (#637).
+    /// </summary>
     private bool IsLocalOnlyId(MailMessageSummary summary)
         => LocalMessageId.IsLocal(summary.MessageId) &&
            Accounts.FirstOrDefault(a => a.Id == summary.AccountId)?.BackendKind != BackendKind.Pop3Smtp;
 
-    /// <summary>
-    /// Adds back the messages held only on this computer that a server listing cannot mention
-    /// (#637) — drafts saved offline and not yet uploaded.
-    /// </summary>
     /// <summary>
     /// A draft will not be uploaded, and its row stays where it is (#637). Copies the reason onto
     /// the summary the list is actually showing.
@@ -5454,6 +5471,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// hands over are freshly read from the store and are NOT the instances the list holds, which
     /// is why this matches them up rather than assigning them in.</para>
     /// </summary>
+    /// <summary>
+    /// Takes a refusal back off the open row once the draft has been saved again. The mirror of
+    /// <see cref="OnDraftUploadsRefused"/>, and without it the row keeps saying "not uploaded" about
+    /// a draft that is queued again -- worse than the bug it mirrors, because the user did exactly
+    /// what the app told him to do and the row says he did not. Offline it never self-corrects, and
+    /// the row is the one channel that reaches a user running with announcements off (#637).
+    /// </summary>
+    public void OnDraftStored(Guid accountId, string folderName, string messageId, string subject)
+    {
+        foreach (var live in Messages)
+        {
+            if (live.MessageId != messageId || live.AccountId != accountId ||
+                live.FolderName != folderName) continue;
+
+            live.SendFailedReason = null;
+            live.IsPendingUpload  = true;
+            // The row is announced by its subject, so an offline edit that changed it has to reach
+            // the list too. Preview is left alone: it is built by the store's summary reader, and
+            // the row picks it up on the next folder load.
+            if (!string.IsNullOrEmpty(subject)) live.Subject = subject;
+        }
+    }
+
     private void OnDraftUploadsRefused(IReadOnlyList<MailMessageSummary> refused)
     {
         foreach (var marked in refused)

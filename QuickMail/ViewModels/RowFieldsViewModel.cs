@@ -254,8 +254,11 @@ public sealed partial class RowFieldsViewModel : ObservableObject
             Announce(SelectedFieldNote, AnnouncementCategory.Hint);
     }
 
-    // Fields that say the same thing as "status", and therefore double up with it.
-    private static readonly string[] StatusParts = ["unread", "replied", "forwarded"];
+    // Fields that say the same thing as "status", and therefore double up with it. "notonserver"
+    // belongs here for the same reason the other three do: the combined field says where a draft is
+    // as well, so having both on says it twice. IntroduceOnce exists precisely to avoid pairing
+    // them, and a user who turns this one on by hand deserves the same warning (#637).
+    private static readonly string[] StatusParts = ["unread", "replied", "forwarded", "notonserver"];
 
     private const string StatusName = "Read status (combined)";
 
@@ -271,8 +274,9 @@ public sealed partial class RowFieldsViewModel : ObservableObject
             // Both halves on. Only worth saying when this field is itself spoken — an off field
             // cannot double anything, and its own note (below) is the more useful one.
             "status" when field.Enabled && AnyPartOn() =>
-                "Says one word: replied, forwarded, unread, or read. Unread, Replied or Forwarded "
-                + "is also on, so that word is said twice — turn this off to use those instead.",
+                "Says one word about the message: replied, forwarded, unread, or read, or where a "
+                + "draft is. Another field is also on saying the same thing, so it is said twice — "
+                + "turn this off to use that field instead.",
 
             _ when StatusParts.Contains(field.Id) && field.Enabled && StatusOn() =>
                 $"{StatusName} is also on and already says this, so it is said twice. "
@@ -283,10 +287,16 @@ public sealed partial class RowFieldsViewModel : ObservableObject
                 "Turn this field on to choose when it is spoken.",
 
             "status" =>
-                "Says one word: replied, forwarded, unread, or read — whichever applies first, so "
-                + "a replied message never says unread. Off by default: Unread, Replied and "
-                + "Forwarded say the same things separately and can each be set to speak only "
-                + "when true.",
+                "Says one word: replied, forwarded, unread, or read — whichever applies first, so a "
+                + "replied message never says unread. For a draft that has not reached the server "
+                + "it says that instead. Off by default: Unread, Replied, Forwarded and Not on "
+                + "server say the same things separately and can each be set to speak only when "
+                + "true.",
+
+            "notonserver" =>
+                "Says where a draft is when it is not yet on the server: not on server while it "
+                + "waits to upload, not uploaded if the server refused it or its saved copy has "
+                + "gone. Says nothing at all about ordinary mail.",
 
             _ => string.Empty,
         };
@@ -439,7 +449,7 @@ public sealed partial class RowFieldsViewModel : ObservableObject
             "Work — Archive",   // folder
             false,              // mailing list
             false,              // watched
-            true,               // not on server
+            "not on server",    // Phrase renders a string; a bool rendered nothing at all
         ],
         RowKind.Conversation =>
         [
