@@ -44,6 +44,7 @@ public class SyncService : ISyncService
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
     public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
     public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
+    public event Action<int>? DraftsUploaded;
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
     public event Action<int>? RulesApplied;
     public event Action<int, int>? SyncProgressChanged;
@@ -431,7 +432,14 @@ public class SyncService : ISyncService
             // The local rows are gone; the folder sync below re-adds them as server drafts. Reusing
             // MessagesRemoved means the list drops the pending rows through the path it already has
             // for messages that stopped existing, rather than a second mechanism for one case.
-            _ui.Post(() => MessagesRemoved?.Invoke(uploaded));
+            // After MessagesRemoved, deliberately: that handler ends by setting the status line to
+            // the folder's message count, so raising this first would be overwritten immediately.
+            var count = uploaded.Count;
+            _ui.Post(() =>
+            {
+                MessagesRemoved?.Invoke(uploaded);
+                DraftsUploaded?.Invoke(count);
+            });
         }
 
         return uploaded.Count;

@@ -4992,6 +4992,8 @@ public partial class MainWindow : Window
 
         var targetIdx = _vm.SenderGroups.IndexOf(group);
         var picker = BuildMessageFolderPicker(group.Messages, "Move to Folder", copy: false);
+        // Refused before the picker was built: nothing to show, and the reason is already said.
+        if (picker == null) return;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
@@ -5006,6 +5008,8 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(group.Messages, "Copy to Folder", copy: true);
+        // Refused before the picker was built: nothing to show, and the reason is already said.
+        if (picker == null) return;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
@@ -5166,6 +5170,8 @@ public partial class MainWindow : Window
 
         var targetIdx = _vm.ToGroups.IndexOf(group);
         var picker = BuildMessageFolderPicker(group.Messages, "Move to Folder", copy: false);
+        // Refused before the picker was built: nothing to show, and the reason is already said.
+        if (picker == null) return;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
@@ -5180,6 +5186,8 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(group.Messages, "Copy to Folder", copy: true);
+        // Refused before the picker was built: nothing to show, and the reason is already said.
+        if (picker == null) return;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
@@ -6438,6 +6446,8 @@ public partial class MainWindow : Window
             messages,
             group != null && _vm.IsConversationsView ? "Move Conversation to Folder" : "Move to Folder",
             copy: false);
+        // Refused before the picker was built: nothing to show, and the reason is already said.
+        if (picker == null) return;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
@@ -6481,6 +6491,8 @@ public partial class MainWindow : Window
             messages,
             group != null && _vm.IsConversationsView ? "Copy Conversation to Folder" : "Copy to Folder",
             copy: true);
+        // Refused before the picker was built: nothing to show, and the reason is already said.
+        if (picker == null) return;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
@@ -6545,6 +6557,8 @@ public partial class MainWindow : Window
 
         var targetIdx = _vm.Conversations.IndexOf(group);
         var picker = BuildMessageFolderPicker(group.Messages, "Move Conversation to Folder", copy: false);
+        // Refused before the picker was built: nothing to show, and the reason is already said.
+        if (picker == null) return;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
@@ -6559,6 +6573,8 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(group.Messages, "Copy Conversation to Folder", copy: true);
+        // Refused before the picker was built: nothing to show, and the reason is already said.
+        if (picker == null) return;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
@@ -6780,10 +6796,17 @@ public partial class MainWindow : Window
     /// because it selects which remembered destination the picker opens on, and reading that off
     /// display text would break the moment a title was reworded.
     /// </param>
-    private FolderPickerWindow BuildMessageFolderPicker(
+    /// <summary>
+    /// Null when the selection cannot be moved or copied at all -- see
+    /// <see cref="MainViewModel.RefuseIfAnyHeldOnlyHere"/>. Returned before the window is
+    /// constructed, not after: a Window joins Application.Current.Windows at construction, so
+    /// building one and dropping it keeps the app alive with no window shown (CLAUDE.md).
+    /// </summary>
+    private FolderPickerWindow? BuildMessageFolderPicker(
         IEnumerable<MailMessageSummary> messages, string title, bool copy)
     {
         var list     = messages.ToList();
+        if (_vm.RefuseIfAnyHeldOnlyHere(list, copy ? "copy" : "move")) return null;
         var ids      = list.Select(m => m.AccountId).ToHashSet();
         var accounts = _vm.Accounts.Where(a => ids.Contains(a.Id));
         var folders  = _vm.CachedFolders

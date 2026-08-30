@@ -30,6 +30,13 @@ public interface ISyncService
     event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
 
     /// <summary>
+    /// Drafts held only on this computer have just reached the server (the count). Their rows are
+    /// dropped through <see cref="MessagesRemoved"/>; this exists so the user can be told the
+    /// disappearance was an upload rather than the list reordering itself (#637).
+    /// </summary>
+    event Action<int>? DraftsUploaded;
+
+    /// <summary>
     /// Fired on the UI thread when the periodic sweep finds that a cached message's read/unread state
     /// was changed by another client (#462). Carries the affected messages with their new
     /// <see cref="MailMessageSummary.IsRead"/>; the store has already been updated. The view updates the

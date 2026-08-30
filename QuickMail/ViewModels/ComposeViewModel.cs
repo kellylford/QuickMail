@@ -608,6 +608,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // Now means the local store refused the write — the draft really is nowhere.
             LogService.Log("AutoSaveAsync: draft auto-save failed", ex);
             AutoSaveText = "Auto-save failed";
+            // Into the delivery-notice field as well as the announcement. On this branch this
+            // catch means the LOCAL store refused the write, so the message exists nowhere at
+            // all -- and an announcement is gated by a user setting, while AutoSaveText sits in a
+            // plain TextBlock with no focus stop. The notice field is durable and reachable, and
+            // the next successful save clears it (#637).
+            DeliveryNotice = "Auto-save could not save this message to your computer, so it is not "
+                           + "saved anywhere. Keep this window open and try Save Draft.";
             if (!_autoSaveFailureAnnounced)
             {
                 _autoSaveFailureAnnounced = true;

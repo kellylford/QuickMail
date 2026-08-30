@@ -207,7 +207,15 @@ public partial class ComposeWindow : Window
             // the From combo without changing anything stays silent.
             _announcedSenderAccountId = _vm.SenderAccount?.Id;
             ApplyDefaultComposeMode();
-            if (string.IsNullOrWhiteSpace(_vm.To))
+            // A draft that was not uploaded opens ON its reason. It is the first tab stop, but
+            // landing in the body left it five Shift+Tabs away with nothing saying it was there,
+            // so opening a refused draft was indistinguishable from opening an ordinary one. Only
+            // when there IS a reason: every other compose still starts where it always did (#637).
+            if (!string.IsNullOrWhiteSpace(_vm.DeliveryNotice))
+            {
+                DeliveryNoticeField.Focus();
+            }
+            else if (string.IsNullOrWhiteSpace(_vm.To))
             {
                 // Forward: body caret goes to 0 so tabbing to body lands at the top,
                 // not the end of the seeded content. HTML caret is already at ContentStart

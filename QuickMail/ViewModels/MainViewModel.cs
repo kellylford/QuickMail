@@ -1775,6 +1775,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.DraftUploadsRefused += OnDraftUploadsRefused;
+        _syncService.DraftsUploaded += OnDraftsUploaded;
         _syncService.FolderReadStatesReconciled += OnFolderReadStatesReconciled;
         _syncService.RulesApplied    += OnRulesApplied;
         if (_changeNotifier != null)
@@ -5480,6 +5481,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
         PlainTextBody = MissingSavedCopy,
     };
 
+    /// <summary>
+    /// Refuses a move or copy while the selection holds a draft that has not reached the server,
+    /// and says why. Called BEFORE the folder picker opens: the guards inside the move and copy
+    /// methods are the real protection and stay, but on their own they let the user pick a
+    /// destination first and only then told them nothing would happen (#637).
+    /// <para>All-or-nothing by the user's choice: with ordinary messages in the selection too,
+    /// none of them move either. Delete is the one that splits the batch, because Delete is what
+    /// you press to be rid of either kind.</para>
+    /// </summary>
+    public bool RefuseIfAnyHeldOnlyHere(IEnumerable<MailMessageSummary> messages, string verb)
+    {
+        var list = messages as IList<MailMessageSummary> ?? [.. messages];
+        if (!list.Any(IsLocalOnlyId)) return false;
+
+        var only = list.Count == 1 ? list[0] : null;
+        SetStatus(only != null
+                ? (only.SendFailedReason is null
+                    ? $"That draft has not reached the server yet, so there is nothing there to {verb}. It can be once it has been uploaded."
+                    : $"That draft was not uploaded, so it is not on the server to {verb}. Open it to see why, put that right and save it again first.")
+                : $"Some of those messages have not reached the server yet, so there is nothing there to {verb}.",
+            AnnouncementCategory.Result);
+        return true;
+    }
+
     private bool IsLocalOnlyId(MailMessageSummary summary)
         => LocalMessageId.IsLocal(summary.MessageId) &&
            Accounts.FirstOrDefault(a => a.Id == summary.AccountId)?.BackendKind != BackendKind.Pop3Smtp;
@@ -5541,6 +5566,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _rawMessages.RemoveAll(m => gone.Contains(m));
         foreach (var m in gone) Messages.Remove(m);
         RebuildActiveGroupView();
+    }
+
+    /// <summary>
+    /// Says that a disappearance was an upload. The rows go through MessagesRemoved, which on its
+    /// own is indistinguishable from the list reordering itself -- the draft the user was sitting
+    /// on is simply not there any more, and nothing accounts for it (#637).
+    /// </summary>
+    private void OnDraftsUploaded(int count)
+    {
+        if (count <= 0) return;
+        SetStatus(count == 1
+            ? "1 draft uploaded."
+            : $"{count} drafts uploaded.", AnnouncementCategory.Status);
     }
 
     private void OnDraftUploadsRefused(IReadOnlyList<MailMessageSummary> refused)

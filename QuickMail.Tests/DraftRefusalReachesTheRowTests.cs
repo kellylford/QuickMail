@@ -38,8 +38,10 @@ public class DraftRefusalReachesTheRowTests
         public event Action<int, int>? SyncProgressChanged;
 #pragma warning restore CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
+        public event Action<int>? DraftsUploaded;
 
         public void RaiseRefused(params MailMessageSummary[] rows) => DraftUploadsRefused?.Invoke(rows);
+        public void RaiseUploaded(int count) => DraftsUploaded?.Invoke(count);
 
         public Task SyncAllAccountsAsync(IEnumerable<AccountModel> a,
             IReadOnlyDictionary<Guid, List<MailFolderModel>> f, CancellationToken ct) => Task.CompletedTask;
@@ -132,6 +134,21 @@ public class DraftRefusalReachesTheRowTests
         // An offline edit that changed the subject has to reach the list too: the subject is what
         // the row is announced by.
         Assert.Equal("Airport thoughts, again", live.Subject);
+    }
+
+    [Fact]
+    public void AnUploadSaysSoOnTheStatusLine()
+    {
+        // The rows go through MessagesRemoved, whose handler ends by setting the status line to the
+        // folder's message count -- so on its own an upload is indistinguishable from the list
+        // reordering itself: the draft the user was sitting on is simply not there any more.
+        var (vm, sync) = MakeVm(Row());
+
+        sync.RaiseUploaded(1);
+        Assert.Equal("1 draft uploaded.", vm.StatusText);
+
+        sync.RaiseUploaded(3);
+        Assert.Equal("3 drafts uploaded.", vm.StatusText);
     }
 
     [Fact]

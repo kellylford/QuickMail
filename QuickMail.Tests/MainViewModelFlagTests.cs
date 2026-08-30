@@ -93,6 +93,7 @@ public class MainViewModelFlagTests
 #pragma warning disable CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
         public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
+        public event Action<int>? DraftsUploaded;
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
         public event Action<int>? RulesApplied;
         public event Action<int, int>? SyncProgressChanged;

@@ -43,7 +43,15 @@ Also fixed in this release, all of them ways an offline draft could go wrong qui
 - Moving, copying or archiving a draft that has not reached the server is refused with a
   reason, instead of removing it from the list and then failing.
 - A draft you have open in a compose window is left alone by the upload until you close it.
-- Removing an account asks first when it still holds drafts that exist nowhere else.
+- Removing an account asks first when it still holds drafts that exist nowhere else, and that
+  prompt no longer starts on **Yes**.
+- The status bar says how many drafts went up when the upload runs, so a row leaving Drafts is
+  accounted for.
+- A draft that was not uploaded opens with the cursor on the reason, rather than several fields
+  away from it.
+- Moving, copying or archiving is refused when you give the command, before a folder picker opens.
+- If auto-save cannot write to your computer, the compose window now says so where you can find it
+  again, instead of only announcing it.
 - Converting an account to Microsoft 365 now stops while that account is still holding drafts that
   have not reached the server, rather than proceeding. The conversion clears the local mailbox and
   re-downloads it, and those drafts exist nowhere to be downloaded from. Open **Drafts** and send or
