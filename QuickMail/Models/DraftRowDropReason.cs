@@ -15,4 +15,8 @@ public enum DraftRowDropReason
 
     /// <summary>The user declined to keep a message this window had started. Nothing to report.</summary>
     Discarded,
+
+    /// <summary>The message was sent, so its draft row is stale. Nothing to report either: the
+    /// compose window closing is the durable signal, and the send has its own.</summary>
+    Sent,
 }

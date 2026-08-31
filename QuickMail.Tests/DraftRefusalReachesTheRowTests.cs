@@ -178,7 +178,7 @@ public class DraftRefusalReachesTheRowTests
 
         vm.OnDraftRowDropped(AccountId, "Drafts", "local-1", DraftRowDropReason.MovedToAnotherAccount);
 
-        Assert.Equal("Draft moved to the other account.", vm.StatusText);
+        Assert.Equal("Draft moved to another account.", vm.StatusText);
     }
 
     [Fact]

@@ -212,7 +212,10 @@ public partial class MailMessageSummary : ObservableObject
 
     /// <summary>
     /// Human-readable read/status label for accessibility announcements.
-    /// Returns "replied", "forwarded", "unread", or "read".
+    /// Returns "replied", "forwarded", "unread", or "read" -- or, for a draft that is not on the
+    /// server, "saved on this computer, not yet on the server" or "could not be uploaded, still on
+    /// this computer", which outrank the rest because they say the message is not where the others
+    /// all assume it is (#637).
     /// Flag status is announced separately via FlagLabel.
     /// </summary>
     public string ReadStatusLabel

@@ -5612,10 +5612,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // to the other account, and calling that an upload was a plain untruth offline (#637).
         // Says what actually happened. A discard needs no line at all: the user has just chosen
         // not to keep the message, so the row going IS the outcome they asked for.
-        if (reason != DraftRowDropReason.Discarded)
+        // A discard and a send both say nothing: in each case the row going IS the outcome the
+        // user asked for, and the compose window closing already reports it.
+        if (reason is DraftRowDropReason.Uploaded or DraftRowDropReason.MovedToAnotherAccount)
             SetStatus(reason == DraftRowDropReason.Uploaded
                     ? "Draft uploaded."
-                    : "Draft moved to the other account.",
+                    : "Draft moved to another account.",
                 AnnouncementCategory.Result);
         RebuildActiveGroupView();
     }
@@ -7358,7 +7360,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ? (one
                         ? "This draft has not reached the server, so this computer holds the only copy. Deleting it cannot be undone, and it does not go to Trash. Delete it?"
                         : $"These {localOnlyCount} drafts have not reached the server, so this computer holds the only copies. Deleting them cannot be undone, and they do not go to Trash. Delete them?")
-                    : $"{localOnlyCount} of these messages {(one ? "is a draft that has" : "are drafts that have")} not reached the server, so this computer holds the only {(one ? "copy" : "copies")}. Deleting {(one ? "it" : "them")} cannot be undone. Delete anyway?") ?? false;
+                    : $"{localOnlyCount} of these messages {(one ? "is a draft that has" : "are drafts that have")} not reached the server, so this computer holds the only {(one ? "copy" : "copies")}. Deleting {(one ? "it" : "them")} cannot be undone, and {(one ? "it does" : "they do")} not go to Trash — the rest of the selection does. Delete anyway?") ?? false;
             if (!confirmed) return;
         }
 
@@ -8155,6 +8157,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var summary = SelectedMessage;
         if (summary == null || SelectedAccount == null) return;
 
+        // Cleared HERE, once, because the caller reads "MessageDetail is still set when this
+        // returns" as "the draft could not be opened, render the explanation". Clearing it on the
+        // one exit that produced it left the other three -- an ordinary server draft, a throw, and
+        // a cancellation -- carrying the PREVIOUS failure's placeholder out to the caller, which
+        // then re-rendered someone else's error and, in Window mode, opened a second window on top
+        // of the compose window that had just opened. Four exits, four things to remember; one
+        // clear at the top is a contract instead (#637).
+        MessageDetail = null;
+        IsMessageOpen = false;
+
         IsBusy = true;
         StatusText = "Opening draft…";
         try
@@ -8188,13 +8200,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (pending != null)
                 {
                     StatusText = string.Empty;
-                    // Cleared, because the caller renders whatever is left here. A placeholder from
-                    // an EARLIER failed open otherwise got re-rendered behind the compose window
-                    // that just opened -- and the reading pane then fought it for focus and told the
-                    // user to press Escape to return to a list he was not in. MessageDetail being
-                    // null is how MainWindow knows a compose window took the draft (#637).
-                    MessageDetail = null;
-                    IsMessageOpen = false;
                     ComposeRequested?.Invoke(pending);
                     return;
                 }
@@ -8214,6 +8219,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     // retitles the main window after the draft and arms every command gated on
                     // IsMessageOpen against a synthetic detail.
                     IsMessageOpen = MessageOpenMode != MessageOpenMode.Window;
+                    // Said here in EVERY mode, Window included. MessageWindow looks like it
+                    // announces this itself, but only on the branch that loads the message:
+                    // MainWindow pre-populates its MessageDetail with this placeholder, so it takes
+                    // the render branch and never reaches its announce. Suppressing here on that
+                    // assumption removed the announcement altogether (#637).
                     SetStatus(storeFailure != null ? StoreUnreadable : MissingSavedCopy,
                         AnnouncementCategory.Result);
                     return;

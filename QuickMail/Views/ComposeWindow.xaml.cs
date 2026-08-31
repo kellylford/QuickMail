@@ -729,7 +729,20 @@ public partial class ComposeWindow : Window
         // introduced a failure without it — "No Drafts folder found on this account." closed the
         // window and destroyed the message (#637).
         if (!_vm.LastSaveKeptTheMessage)
+        {
+            // The window is staying open and the user has not been told why. The reason is in the
+            // notice field; put focus on it rather than leaving it several Shift+Tabs away, which
+            // for a user with announcements off is indistinguishable from the close key doing
+            // nothing at all (#637).
+            // Discarded deliberately: this is a focus move, not work the close path waits on, and
+            // this method is async so the compiler would otherwise warn.
+            if (!string.IsNullOrWhiteSpace(_vm.DeliveryNotice))
+                _ = Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (IsLoaded) DeliveryNoticeField.Focus();
+                }), DispatcherPriority.Input);
             return;
+        }
 
         Closing -= OnWindowClosing;
         Close();

@@ -463,9 +463,26 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // (id, account, folder), so saving under the new account while the old row still
             // exists left TWO — and the old one was still uploaded, into the mailbox of the
             // account the user had just moved away from (#637).
-            await RekeyStoredRowIfSenderChangedAsync(account);
+            var orphaned = await RekeyStoredRowIfSenderChangedAsync(account);
 
             var saved = await _drafts.SaveAsync(account, compose, _draftFolderName, _draftMessageId, externalCt);
+
+            // Write-then-delete: the replacement row exists by the time the old one goes.
+            if (orphaned is { } old)
+            {
+                try
+                {
+                    await _drafts.DiscardAsync(old.Account, old.Folder, old.Id);
+                    DraftRowDropped?.Invoke(old.Account, old.Folder, old.Id,
+                        DraftRowDropReason.MovedToAnotherAccount);
+                }
+                catch (Exception ex)
+                {
+                    // A leftover row in the old account is visible and recoverable; losing the
+                    // draft is not.
+                    LogService.Log("SaveDraftCoreAsync: could not drop the re-keyed row", ex);
+                }
+            }
             // Minted here rather than opened, so this window may drop it again if the user
             // declines to save on the way out.
             if (!_seededExistingDraft && !hadStoredRow && LocalMessageId.IsLocal(saved.MessageId))
@@ -551,8 +568,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
             // Both legs failed, so the draft genuinely is nowhere. Anything short of throwing here
             // would report a save that did not happen.
+            //
+            // The LOCAL failure is thrown, not this one. Rethrowing the server exception put an
+            // SMTP or IMAP message into a sentence the user now reads off a durable field -- naming
+            // a cause that is not why the message was lost, and pointing at a remedy that would not
+            // help. What went wrong here is that this computer would not take the draft (#637).
             if (localFailure != null)
-                throw;
+                throw localFailure;
         }
     }
 
@@ -756,9 +778,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                     var owner = _draftAccountId != Guid.Empty ? _draftAccountId : account.Id;
                     var sentId = _draftMessageId!;
                     await _drafts.DiscardAsync(owner, _draftFolderName, sentId);
-                    // Same reason as the discard path: the message has been sent, so a Drafts row
-                    // still pointing at its local copy is a ghost.
-                    DraftRowDropped?.Invoke(owner, _draftFolderName, sentId, DraftRowDropReason.Discarded);
+                    // Same shape as the discard path -- the message has been sent, so a Drafts row
+                    // still pointing at its local copy is a ghost -- but its OWN reason: one enum
+                    // value covering two situations is how "three raisers, one meaning" became a
+                    // bug in the first place.
+                    DraftRowDropped?.Invoke(owner, _draftFolderName, sentId, DraftRowDropReason.Sent);
                 }
                 catch (Exception ex)
                 {
@@ -819,9 +843,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// that follows. Leaving it behind meant the old row stayed put and was still uploaded — to
     /// the mailbox of the account the user had explicitly moved away from.</para>
     /// </summary>
-    private async Task RekeyStoredRowIfSenderChangedAsync(AccountModel account)
+    /// <returns>
+    /// The row the sender change has orphaned, for the caller to drop AFTER the replacement is
+    /// written; null when there is nothing to drop.
+    /// </returns>
+    private async Task<(Guid Account, string Folder, string Id)?> RekeyStoredRowIfSenderChangedAsync(AccountModel account)
     {
-        if (_draftAccountId == Guid.Empty || _draftAccountId == account.Id) return;
+        if (_draftAccountId == Guid.Empty || _draftAccountId == account.Id) return null;
 
         var oldAccountId = _draftAccountId;
         var oldFolder    = _draftFolderName;
@@ -864,17 +892,14 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
         // Only a row minted on this computer can be re-keyed. A server draft has no local row to
         // move, and the copy it has on the old account's server is that account's to keep.
-        if (!LocalMessageId.IsLocal(oldId) || oldFolder == null) return;
+        if (!LocalMessageId.IsLocal(oldId) || oldFolder == null) return null;
 
-        try
-        {
-            await _drafts.DiscardAsync(oldAccountId, oldFolder, oldId!);
-            DraftRowDropped?.Invoke(oldAccountId, oldFolder, oldId!, DraftRowDropReason.MovedToAnotherAccount);
-        }
-        catch (Exception ex)
-        {
-            LogService.Log("RekeyStoredRowIfSenderChangedAsync: could not drop the old row", ex);
-        }
+        // Handed back rather than dropped here. Deleting the old row before the replacement is
+        // written is delete-then-write: if the save that follows fails -- a locked database is the
+        // case this branch keeps meeting -- the only stored copy is gone, the row has already been
+        // taken out of the list, and the user has been told the draft moved to another account.
+        // The caller drops it once the new row exists (#637).
+        return (oldAccountId, oldFolder, oldId!);
     }
 
     /// <summary>

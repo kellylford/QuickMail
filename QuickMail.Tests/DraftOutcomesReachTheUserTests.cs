@@ -216,3 +216,99 @@ public class ComposeToListWiringTests
         Assert.Empty(main.Messages);
     }
 }
+
+/// <summary>
+/// Which REASON each raiser reports. A deletion probe showed the whole compose-side half of this
+/// mechanism was unpinned: the sender re-key could report Uploaded, and both silent raisers could be
+/// deleted outright, with 112 tests across 14 draft classes still green. The handler side was
+/// pinned; the situation-to-reason mapping was not, and getting that wrong is what told a user
+/// offline that a draft had reached a server (#637).
+/// </summary>
+public class DraftRowDropReasonTests
+{
+    private static readonly Guid AccountA = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid AccountB = Guid.Parse("22222222-2222-2222-2222-222222222222");
+
+    private static AccountModel Account(Guid id) =>
+        new() { Id = id, Username = $"user-{id:N}@example.com", AuthType = AuthType.OAuth2Google };
+
+    private static ComposeViewModel Vm(RealDraftStore store, IMailService mail, Guid sender) => new(
+        new StubSmtpService(), new StubAccountService(), new StubCredentialService(),
+        mail, store.Drafts, new StubTemplateService())
+    {
+        SenderAccount = Account(sender),
+        To = "someone@example.com",
+        Subject = "Airport thoughts",
+        Body = "Boarding soon.",
+    };
+
+    [Fact]
+    public async Task AnUploadReportsUploaded()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountA);
+        var vm = Vm(store, new RecordingMailService(), AccountA);   // server leg succeeds
+
+        var reasons = new List<DraftRowDropReason>();
+        vm.DraftRowDropped += (_, _, _, r) => reasons.Add(r);
+
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.Equal([DraftRowDropReason.Uploaded], reasons);
+    }
+
+    [Fact]
+    public async Task ASenderChangeReportsAMove_NotAnUpload()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountA);
+        await store.SeedDraftsFolderAsync(AccountB);
+        // Offline throughout, so nothing can possibly have been uploaded.
+        var vm = Vm(store, new RecordingMailService { AppendDraftThrows = true }, AccountA);
+
+        var reasons = new List<DraftRowDropReason>();
+        vm.DraftRowDropped += (_, _, _, r) => reasons.Add(r);
+
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+        Assert.Empty(reasons);
+
+        vm.SenderAccount = Account(AccountB);
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.Equal([DraftRowDropReason.MovedToAnotherAccount], reasons);
+    }
+
+    [Fact]
+    public async Task TheOldRowIsDroppedOnlyAfterTheReplacementExists()
+    {
+        // Delete-then-write meant a save that failed after the re-key left the draft in neither
+        // account, with the row already gone from the list and the user told it had moved.
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountA);
+        await store.SeedDraftsFolderAsync(AccountB);
+        var vm = Vm(store, new RecordingMailService { AppendDraftThrows = true }, AccountA);
+
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+        vm.SenderAccount = Account(AccountB);
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.Empty(await store.Store.LoadFolderSummariesAsync(AccountA, "Drafts"));
+        Assert.Single(await store.Store.LoadFolderSummariesAsync(AccountB, "Drafts"));
+    }
+
+    [Fact]
+    public async Task DecliningToKeepADraftReportsADiscard()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountA);
+        var vm = Vm(store, new RecordingMailService { AppendDraftThrows = true }, AccountA);
+
+        var reasons = new List<DraftRowDropReason>();
+        vm.DraftRowDropped += (_, _, _, r) => reasons.Add(r);
+
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+        await vm.DiscardLocalCopyAsync();
+
+        Assert.Equal([DraftRowDropReason.Discarded], reasons);
+    }
+}
