@@ -608,10 +608,26 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
     // ── Auto-save ──────────────────────────────────────────────────────────────
 
-    private readonly CancellationTokenSource _autoSaveCts = new();
+    private CancellationTokenSource _autoSaveCts = new();
 
     /// <summary>Cancels any in-flight autosave. Called by the window on closing.</summary>
     public void CancelAutoSave() => _autoSaveCts.Cancel();
+
+    /// <summary>
+    /// Re-arms auto-save after a close that did not happen (#637).
+    /// <para>The window cancels auto-save on the way into its Closing handler, before the user has
+    /// answered the save prompt. Answering Cancel leaves the window open with a dead token, so every
+    /// later tick failed the local leg and the delivery-notice field -- the durable, focusable one
+    /// this feature added precisely because it has to be trustworthy -- told the user their changes
+    /// could not be written to this computer. The store was fine; the window had cancelled its own
+    /// token.</para>
+    /// </summary>
+    public void ResumeAutoSave()
+    {
+        if (!_autoSaveCts.IsCancellationRequested) return;
+        _autoSaveCts.Dispose();
+        _autoSaveCts = new CancellationTokenSource();
+    }
 
     public void Dispose()
     {

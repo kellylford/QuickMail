@@ -4298,7 +4298,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _                           => result.OrderByDescending(m => m.Date),
         };
         Messages = new BatchObservableCollection<MailMessageSummary>(result);
-        _messagesDateOrderSuspect = false;   // rebuilt from scratch, so sorted again
 
         // Keep the status bar count in sync with whatever is currently visible.
         // Folder-load methods set a more descriptive status text immediately after
@@ -5587,6 +5586,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(keys);
 
+        // No folder-load version stamp here, deliberately. A reviewer asked for one, reasoning
+        // that a folder change landing inside the store read could drop a Drafts row into the
+        // newly-opened folder. It cannot: the only path that ADDS a row asks IsViewingDraftFolder,
+        // and that check is itself evaluated after the read returns, so it sees the new folder and
+        // declines. Removing a row and updating one in place are both correct whatever folder is on
+        // screen. A guard whose necessity cannot be demonstrated is mechanism, and mechanism added
+        // to this path is what the last four rounds of findings have mostly been (#637).
         var touched = false;
         foreach (var key in keys)
         {
@@ -5675,16 +5681,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var preview = _showPreview ? TruncatePreview(fresh.Preview, _previewLines) : string.Empty;
             foreach (var row in live)
             {
-                // A re-saved draft gets a new date, and updating it in place leaves Messages no
-                // longer strictly newest-first. The row is deliberately NOT moved -- taking the
-                // user's place away on every auto-save is the defect this whole path exists to
-                // avoid -- so instead the ordering is marked suspect, and the next arriving row
-                // waits for a natural rebuild rather than being binary-searched into a list that
-                // is no longer sorted (#637).
-                if (row.Date != fresh.Date) _messagesDateOrderSuspect = true;
+                // A re-saved draft gets a new date and the row is deliberately NOT moved --
+                // taking the user's place away on every auto-save is the defect this whole path
+                // exists to avoid. That leaves Messages no longer strictly newest-first, which is
+                // why the insert below scans rather than binary-searches (#637).
                 row.TakeContentFrom(fresh, preview);
             }
-            return true;
+
+            // Whether the row the USER can see changed. Returning true unconditionally meant the
+            // second and every later save of a row the gate had kept out of the visible list spoke
+            // an outcome about something not on screen -- the same defect the add path below had,
+            // fixed there and left here.
+            return live.Any(Messages.Contains);
         }
 
         // Not in the list at all. Add it only where it belongs: the folder it is in, or All Drafts.
@@ -5714,7 +5722,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // interval, with nothing said (#637).
         if (!ShouldShowNewRowNow(fresh)) return false;   // in the store, not yet on screen
 
-        InsertMessageSorted(fresh);
+        InsertDraftRowByDate(fresh);
         return true;
     }
 
@@ -5730,7 +5738,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool ShouldShowNewRowNow(MailMessageSummary msg)
     {
         if (ActiveSort != MessageSort.DateDescending) return false;
-        if (_messagesDateOrderSuspect) return false;
         if (ActiveFilter != MessageFilter.All && !MatchesFilter(msg)) return false;
         if (ActiveFilter == MessageFilter.Flagged && _activeFlagFilterId != null &&
             msg.FlagId != _activeFlagFilterId) return false;
@@ -5740,10 +5747,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Set when a row's date is changed in place, which leaves <c>Messages</c> no longer strictly
-    /// newest-first. Cleared whenever the list is rebuilt from scratch.
+    /// Places a draft row by date without assuming the list is already sorted.
+    /// <para>Re-saving a draft updates its date in place and deliberately does not move the row, so
+    /// <c>Messages</c> can be slightly out of newest-first order. A binary search over that lands a
+    /// new row anywhere. The previous attempt at this refused to insert at all once any date had
+    /// been touched, which latched for the rest of the folder visit and meant no draft appeared
+    /// live again -- the exact defect this path exists to fix, made silent as well. A linear scan
+    /// needs no invariant to hold, and the list is one folder's window (#637).</para>
     /// </summary>
-    private bool _messagesDateOrderSuspect;
+    private void InsertDraftRowByDate(MailMessageSummary msg)
+    {
+        var at = 0;
+        while (at < Messages.Count && Messages[at].Date >= msg.Date) at++;
+        Messages.Insert(at, msg);
+    }
 
     /// <summary>True when the folder on screen is one that should be showing this key's row.</summary>
     private bool IsViewingDraftFolder(DraftRowKey key) =>

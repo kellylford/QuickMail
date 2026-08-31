@@ -703,7 +703,14 @@ public partial class ComposeWindow : Window
         var decision = confirm != null ? await confirm() : false;
 
         if (decision == null)
-            return; // cancelled — keep window open
+        {
+            // Cancelled -- the window stays open, so auto-save has to come back. It was cancelled
+            // at the top of this handler, before the user had answered, and leaving it dead meant
+            // every later tick failed the local leg and told the user through the durable notice
+            // field that their changes could not be written to this computer (#637).
+            _vm.ResumeAutoSave();
+            return;
+        }
 
         if (decision == false)
         {
@@ -730,6 +737,8 @@ public partial class ComposeWindow : Window
         // window and destroyed the message (#637).
         if (!_vm.LastSaveKeptTheMessage)
         {
+            // Same reason as the Cancel branch above: this window is staying open.
+            _vm.ResumeAutoSave();
             // The window is staying open and the user has not been told why. The reason is in the
             // notice field; put focus on it rather than leaving it several Shift+Tabs away, which
             // for a user with announcements off is indistinguishable from the close key doing
