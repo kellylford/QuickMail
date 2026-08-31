@@ -33,6 +33,37 @@ public partial class MailMessageSummary : ObservableObject
     public string Subject { get; set; } = string.Empty;
     public DateTimeOffset Date { get; set; }
 
+    /// <summary>
+    /// Takes this row's changeable content from a freshly read copy of the same row, and tells the
+    /// UI (#637).
+    /// <para>It lives here because <see cref="Subject"/>, <see cref="Date"/> and <see cref="To"/>
+    /// are plain properties: assigning them raises nothing, and the row's spoken name is a
+    /// MultiBinding that only re-evaluates when one of its paths notifies. A caller that simply
+    /// copied the fields left the list showing and speaking the previous subject while the model
+    /// said otherwise -- which looks correct in every debugger and is wrong to the one person who
+    /// can only hear it. Making them observable instead would mean a notification per field on
+    /// every bulk folder load, for a value nothing was watching.</para>
+    /// </summary>
+    public void TakeContentFrom(MailMessageSummary fresh, string preview)
+    {
+        ArgumentNullException.ThrowIfNull(fresh);
+
+        Subject = fresh.Subject;
+        Date    = fresh.Date;
+        To      = fresh.To;
+        From    = fresh.From;
+        OnPropertyChanged(nameof(Subject));
+        OnPropertyChanged(nameof(Date));
+        OnPropertyChanged(nameof(To));
+        OnPropertyChanged(nameof(From));
+
+        // These three do notify on their own.
+        Preview          = preview;
+        HasAttachments   = fresh.HasAttachments;
+        IsPendingUpload  = fresh.IsPendingUpload;
+        SendFailedReason = fresh.SendFailedReason;
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
     [NotifyPropertyChangedFor(nameof(ReadStatusLabel))]

@@ -269,7 +269,14 @@ public class ComposeViewModelSendFeedbackTests
 
         await vm.SaveDraftCommand.ExecuteAsync(null);
 
-        Assert.Contains("Save draft failed", vm.StatusText);
+        // In QuickMail's own words, not the exception's: this catch throws the LOCAL failure by
+        // preference, and in --online mode that leg always fails, so the sentence the user reads
+        // became a raw "SQLite Error 1: no such table" for what was an unreachable server.
+        Assert.Contains("could not be saved", vm.StatusText, StringComparison.Ordinal);
+        Assert.DoesNotContain("SQLite", vm.StatusText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(AnnouncementCategory.Result, status.Last.Category);
+        // And durably, on the focusable field: an announcement alone does not reach a user running
+        // with custom announcements off.
+        Assert.Contains("could not be saved", vm.DeliveryNotice, StringComparison.Ordinal);
     }
 }

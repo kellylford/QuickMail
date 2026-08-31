@@ -376,14 +376,22 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            // Reached only when the local store itself failed, now that the server leg is
-            // best-effort. That is a real "your draft is not saved anywhere" and must say so.
-            SetStatusOutcome($"Save draft failed: {ex.Message}");
+            // Both legs failed, so the message is nowhere. Said in QuickMail's own words rather
+            // than the exception's: this one is thrown from the LOCAL leg by preference, and in
+            // --online mode -- where App deliberately never creates the schema -- that leg always
+            // fails, so the durable sentence the user reads and acts on became "SQLite Error 1:
+            // no such table: MessageSummary" for what was really an unreachable server. Naming both
+            // halves is true whichever of them is the cause; the detail goes to the log (#637).
+            LogService.Log("SaveDraftAsync: the draft could not be saved locally or on the server", ex);
+            const string nowhere = "This message could not be saved. QuickMail could not write it "
+                                 + "to this computer and could not reach the server. Keep this "
+                                 + "window open and try again.";
+            SetStatusOutcome(nowhere);
             // Durable too. This is the MORE severe half of the case auto-save was given a field
             // for: the user asked for this save, it did not happen, and the window then refuses to
             // close -- with the only account of why in an announcement and an unfocusable line of
             // text (#637).
-            DeliveryNotice = $"This message could not be saved: {ex.Message}";
+            DeliveryNotice = nowhere;
         }
         finally
         {
@@ -460,6 +468,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // exists left TWO — and the old one was still uploaded, into the mailbox of the
             // account the user had just moved away from (#637).
             var orphaned = await RekeyStoredRowIfSenderChangedAsync(account);
+            var announcedRekey = false;
 
             var saved = await _drafts.SaveAsync(account, compose, _draftFolderName, _draftMessageId, externalCt);
 
@@ -476,6 +485,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                         [new DraftRowKey(old.Account, old.Folder, old.Id),
                          new DraftRowKey(account.Id, _draftFolderName!, saved.MessageId)],
                         "Draft moved to another account.");
+                    announcedRekey = true;
                 }
                 catch (Exception ex)
                 {
@@ -498,7 +508,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // the draft mid-edit, deletes the row and its bytes, and the next auto-save re-creates
             // it having lost the supersedes header, filling Drafts with copies (#637).
             ClaimStoredRow(account.Id, _draftFolderName, saved.MessageId);
-            if (_draftFolderName != null)
+            // Skipped when the re-key above has already raised BOTH keys for this same save --
+            // raising the new key twice is harmless (the second refresh is an idempotent in-place
+            // copy) but it doubles the work and makes the event sequence hard to read.
+            // Gated on whether the re-key branch actually raised, not on whether there WAS one:
+            // its raise sits inside a try whose catch swallows a failed discard, and gating on
+            // "there was an orphan" meant a locked database there left the new row unreported.
+            if (_draftFolderName != null && !announcedRekey)
                 DraftRowsChanged?.Invoke(
                     [new DraftRowKey(account.Id, _draftFolderName, saved.MessageId)], null);
             // Record the owner. Seed knows it only for a message that was already stored, so a new

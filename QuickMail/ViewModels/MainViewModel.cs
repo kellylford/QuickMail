@@ -1262,7 +1262,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var all = accounts?.ToList() ?? [];
         if (all.Count == 0) return "0";
 
-        var distinct = all.Select(a => a.BackendKind).Distinct().OrderBy(k => k).Select(k => k switch
+        // Scoped to the accounts the count is about. Taken over ALL of them, one IMAP account plus
+        // one shared Microsoft 365 mailbox read as "1 (IMAP, Microsoft 365)" -- two protocols
+        // attributed to a set of one, and the guide says the protocols are the ones those accounts
+        // connect over.
+        var distinct = all.Where(a => !a.IsShared).Select(a => a.BackendKind).Distinct().OrderBy(k => k).Select(k => k switch
         {
             BackendKind.MicrosoftGraph => "Microsoft 365",
             BackendKind.Pop3Smtp       => "POP3",
@@ -5538,10 +5542,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(compose);
         compose.DraftRowsChanged += (keys, outcome) =>
-            // Kept so a test can await it. Microsoft.Data.Sqlite completes its *Async members
+        {
+            // Held so a test can await it. Microsoft.Data.Sqlite completes its *Async members
             // inline, so in practice this has already finished when the raiser returns -- but that
             // is an implementation detail of the provider, not something to build a test on.
             LastDraftRefresh = RefreshDraftRowsAsync(keys, outcome);
+            // The house pattern, used 20-odd times in this file. Nothing awaits this task in
+            // production, and .NET drops an unobserved fault silently: a row left in the wrong
+            // state with no log line to find it by.
+            LastDraftRefresh.LogFaults("RefreshDraftRowsAsync");
+        };
     }
 
     /// <summary>
@@ -5570,9 +5580,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(keys);
 
+        var touched = false;
         foreach (var key in keys)
         {
-            MailMessageSummary? fresh = null;
+            MailMessageSummary? fresh;
             try
             {
                 fresh = await _localStore.LoadSummaryAsync(key.AccountId, key.FolderName, key.MessageId);
@@ -5585,23 +5596,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 continue;
             }
 
-            if (fresh == null) RemoveDraftRow(key);
-            else               UpsertDraftRow(key, fresh);
+            try
+            {
+                touched |= fresh == null ? RemoveDraftRow(key) : UpsertDraftRow(key, fresh);
+            }
+            catch (Exception ex)
+            {
+                // This runs fire-and-forget, so an escape here would be an unobserved task
+                // exception: no log, no status, no trace of a row left in the wrong state.
+                LogService.Log("RefreshDraftRowsAsync: could not apply the re-read row", ex);
+            }
         }
 
-        // Said once, after the rows are right. The store cannot say whether a draft left this list
-        // because it uploaded or because its sender changed, and a row vanishing with nothing said
-        // is a defect this feature has already had twice.
-        if (!string.IsNullOrEmpty(outcome)) SetStatus(outcome, AnnouncementCategory.Result);
+        // Only when a row actually moved. Announcing regardless meant a compose window auto-saving
+        // in the background overwrote the status bar with "Draft uploaded." every interval, while
+        // the user was reading a different folder that had no such row in it at all.
+        if (touched && !string.IsNullOrEmpty(outcome))
+            SetStatus(outcome, AnnouncementCategory.Result);
 
-        RebuildActiveGroupView();
+        if (touched) RebuildActiveGroupView();
     }
 
     /// <summary>The store no longer holds this row, so neither should the list.</summary>
-    private void RemoveDraftRow(DraftRowKey key)
+    /// <returns>True when the list actually changed.</returns>
+    private bool RemoveDraftRow(DraftRowKey key)
     {
         var gone = Messages.Concat(_rawMessages).Where(key.Matches).Distinct().ToList();
-        if (gone.Count == 0) return;
+        if (gone.Count == 0) return false;
 
         // Where the user is standing, captured before the row goes: without it the reading pane
         // went on rendering a draft that had left the list, and the landing spot was whatever WPF
@@ -5620,13 +5641,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             MessageDetail = null;
             IsMessageOpen = false;
         }
+
+        return true;
     }
 
     /// <summary>
     /// Copies the stored row onto the instance the list is showing, or adds it when this view
     /// should be showing it and is not.
     /// </summary>
-    private void UpsertDraftRow(DraftRowKey key, MailMessageSummary fresh)
+    /// <returns>True when the list actually changed.</returns>
+    private bool UpsertDraftRow(DraftRowKey key, MailMessageSummary fresh)
     {
         var live = Messages.Concat(_rawMessages).Where(key.Matches).Distinct().ToList();
         if (live.Count > 0)
@@ -5634,26 +5658,52 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Copied onto the EXISTING instances rather than swapped in: the list, the selection
             // and the reading pane all hold references to them, and replacing the object would
             // leave every one of those pointing at the previous version.
-            foreach (var row in live)
-            {
-                row.Subject          = fresh.Subject;
-                row.Preview          = fresh.Preview;
-                row.Date             = fresh.Date;
-                row.To               = fresh.To;
-                row.HasAttachments   = fresh.HasAttachments;
-                row.IsPendingUpload  = fresh.IsPendingUpload;
-                row.SendFailedReason = fresh.SendFailedReason;
-            }
-            return;
+            // Preview goes through the same normalisation every other path applies: assigning the
+            // stored text raw made a refreshed draft the one row in the folder that read its body
+            // aloud for a user who has previews turned off.
+            var preview = _showPreview ? TruncatePreview(fresh.Preview, _previewLines) : string.Empty;
+            foreach (var row in live) row.TakeContentFrom(fresh, preview);
+            return true;
         }
 
         // Not in the list at all. Add it only where it belongs: the folder it is in, or All Drafts.
         // A draft saved while its own folder is open never appeared until the folder was re-entered,
         // and a re-keyed draft disappeared from one account without appearing under the other.
-        if (!IsViewingDraftFolder(key)) return;
+        if (!IsViewingDraftFolder(key)) return false;
+
+        // Stamped like any other freshly materialized row: the source-folder name an aggregate
+        // speaks, and the derived watched flag, are applied by the load paths and would otherwise
+        // be missing on this one row only -- correct-looking in Drafts, wrong in All Drafts.
+        ApplyFolderDisplayNames([fresh]);
+        StampWatchedFlags([fresh]);
 
         _rawMessages.Add(fresh);
-        ApplyFiltersAndSearch();
+        // Inserted, not rebuilt. ApplyFiltersAndSearch REPLACES the Messages collection, which
+        // nulls SelectedMessage and sends focus back to the first row -- so with a compose window
+        // auto-saving in the background, a user reading down Drafts was thrown to the top on every
+        // interval, with nothing said (#637).
+        if (ShouldShowNewRowNow(fresh)) InsertMessageSorted(fresh);
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a row just added to <c>_rawMessages</c> can be placed in the visible list without
+    /// rebuilding it.
+    /// <para>Mirrors <see cref="ApplyFiltersAndSearch"/>'s filter clauses, and additionally requires
+    /// the default newest-first sort, because <see cref="InsertMessageSorted"/> binary-searches on
+    /// date. Under any other sort, or when a filter or search excludes it, the row stays in
+    /// <c>_rawMessages</c> and appears at the next natural rebuild -- late, but in the right place,
+    /// and without throwing the user's selection away to achieve it.</para>
+    /// </summary>
+    private bool ShouldShowNewRowNow(MailMessageSummary msg)
+    {
+        if (ActiveSort != MessageSort.DateDescending) return false;
+        if (ActiveFilter != MessageFilter.All && !MatchesFilter(msg)) return false;
+        if (ActiveFilter == MessageFilter.Flagged && _activeFlagFilterId != null &&
+            msg.FlagId != _activeFlagFilterId) return false;
+        if (ActiveDayLimit.HasValue && !MatchesDayLimit(msg)) return false;
+        if (!string.IsNullOrWhiteSpace(SearchText) && !MatchesSearch(msg)) return false;
+        return true;
     }
 
     /// <summary>True when the folder on screen is one that should be showing this key's row.</summary>
