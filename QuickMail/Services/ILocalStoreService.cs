@@ -39,6 +39,9 @@ public interface ILocalStoreService
     /// <summary>Why one draft was not uploaded, or null (#637).</summary>
     Task<string?> GetSendFailedReasonAsync(Guid accountId, string folderName, string messageId);
 
+    /// <summary>One summary row, or null when the store does not hold it (#637).</summary>
+    Task<MailMessageSummary?> LoadSummaryAsync(Guid accountId, string folderName, string messageId);
+
     /// <summary>Drafts held only on this computer for an account — what removing it destroys (#637).</summary>
     Task<int> CountUnsentMailAsync(Guid accountId);
     Task DeleteAccountDataAsync(Guid accountId);

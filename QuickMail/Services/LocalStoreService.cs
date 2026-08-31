@@ -483,6 +483,25 @@ public class LocalStoreService : ILocalStoreService
         await tx.CommitAsync();
     }
 
+    /// <summary>
+    /// One row, or null when it is not there (#637). The primitive the message list re-reads a
+    /// changed draft through: reading the whole folder to find one row was what the refusal lookup
+    /// used to do, and it is the wrong shape for something that runs on every save.
+    /// </summary>
+    public async Task<MailMessageSummary?> LoadSummaryAsync(Guid accountId, string folderName, string messageId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, is_pending_upload, send_failed_reason " +
+            "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND unique_id=$uid;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        cmd.Parameters.AddWithValue("$uid", messageId);
+        var rows = await ReadSummariesAsync(cmd);
+        return rows.Count > 0 ? rows[0] : null;
+    }
+
     public async Task<List<MailMessageSummary>> LoadAllSummariesAsync()
     {
         await using var conn = await OpenAsync();

@@ -14,6 +14,7 @@
 // is why it went unnoticed — hence this file.
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using QuickMail.Models;
 using QuickMail.Services;
@@ -122,15 +123,19 @@ public class ComposeNotifiesTheListTests
         await store.SeedDraftsFolderAsync(AccountId);
         var vm = Vm(store, new RecordingMailService { AppendDraftThrows = true });
 
-        (Guid Account, string Folder, string Id, string Subject)? stored = null;
-        vm.DraftStored += (a, f, i, s) => stored = (a, f, i, s);
+        (IReadOnlyList<DraftRowKey> Keys, string? Outcome)? changed = null;
+        vm.DraftRowsChanged += (k, o) => changed = (k, o);
 
         await vm.SaveDraftCommand.ExecuteAsync(null);
 
-        Assert.NotNull(stored);
-        Assert.Equal(AccountId, stored!.Value.Account);
-        Assert.Equal("Drafts", stored.Value.Folder);
-        Assert.Equal("Airport thoughts", stored.Value.Subject);
+        // Keys, not a description: the list re-reads them from the store, which is the only thing
+        // that knows what the row now says.
+        Assert.NotNull(changed);
+        var key = Assert.Single(changed!.Value.Keys);
+        Assert.Equal(AccountId, key.AccountId);
+        Assert.Equal("Drafts", key.FolderName);
+        // Nothing to report -- the draft is saved and its row stays put.
+        Assert.Null(changed.Value.Outcome);
     }
 
     [Fact]
@@ -140,15 +145,18 @@ public class ComposeNotifiesTheListTests
         await store.SeedDraftsFolderAsync(AccountId);
         var vm = Vm(store, new RecordingMailService());   // server leg succeeds
 
-        (Guid Account, string Folder, string Id)? dropped = null;
-        vm.DraftRowDropped += (a, f, i, _) => dropped = (a, f, i);
+        (IReadOnlyList<DraftRowKey> Keys, string? Outcome)? changed = null;
+        vm.DraftRowsChanged += (k, o) => { if (o != null) changed = (k, o); };
 
         await vm.SaveDraftCommand.ExecuteAsync(null);
 
-        // The upload deleted the local copy, so the row has to go with it.
-        Assert.NotNull(dropped);
-        Assert.Equal(AccountId, dropped!.Value.Account);
-        Assert.StartsWith("local-", dropped.Value.Id, StringComparison.Ordinal);
+        // The upload deleted the local copy, so the row has to go with it -- and a row leaving the
+        // list has to be accounted for, which is the one thing the store cannot say.
+        Assert.NotNull(changed);
+        var key = Assert.Single(changed!.Value.Keys);
+        Assert.Equal(AccountId, key.AccountId);
+        Assert.StartsWith("local-", key.MessageId, StringComparison.Ordinal);
+        Assert.Equal("Draft uploaded.", changed.Value.Outcome);
         Assert.Empty(await store.Store.LoadFolderSummariesAsync(AccountId, "Drafts"));
     }
 }

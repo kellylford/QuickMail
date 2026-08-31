@@ -113,30 +113,6 @@ public class DraftRefusalReachesTheRowTests
     }
 
     [Fact]
-    public void SavingTheDraftAgain_TakesTheRefusalBackOffTheRow()
-    {
-        // The user is told to open the draft, fix it and save. He does -- and the row went on
-        // saying "not uploaded", the wording this feature defines as stuck until you act. Offline
-        // that never corrects itself, so the one durable channel lied in the opposite direction
-        // from the bug the refusal event was added to fix.
-        var live = Row();
-        var (vm, sync) = MakeVm(live);
-
-        var fromStore = Row();
-        fromStore.SendFailedReason = "Your mail server refused it: over quota.";
-        sync.RaiseRefused(fromStore);
-        Assert.Equal("not uploaded", live.LocationLabel);
-
-        vm.OnDraftStored(AccountId, "Drafts", "local-1", "Airport thoughts, again");
-
-        Assert.Null(live.SendFailedReason);
-        Assert.Equal("not on server", live.LocationLabel);
-        // An offline edit that changed the subject has to reach the list too: the subject is what
-        // the row is announced by.
-        Assert.Equal("Airport thoughts, again", live.Subject);
-    }
-
-    [Fact]
     public void AnUploadSaysSoOnTheStatusLine()
     {
         // The rows go through MessagesRemoved, whose handler ends by setting the status line to the
@@ -152,65 +128,22 @@ public class DraftRefusalReachesTheRowTests
     }
 
     [Fact]
-    public void OnceTheUploadTakesIt_TheRowGoes()
+    public async Task ARefreshOfAnotherRow_LeavesThisOneAlone()
     {
-        // OnDraftStored marks the row pending; the save's server leg then uploads and deletes the
-        // local copy. With nothing telling the list, the row went on saying "not on server" about a
-        // draft that was ON the server -- Enter on it answered that its saved copy was missing, and
-        // Delete offered to destroy the only copy of something that no longer existed.
-        var live = Row();
-        var (vm, _) = MakeVm(live);
-        vm.OnDraftStored(AccountId, "Drafts", "local-1", "Airport thoughts");
-        Assert.Contains(live, vm.Messages);
-
-        vm.OnDraftRowDropped(AccountId, "Drafts", "local-1", DraftRowDropReason.Uploaded);
-
-        Assert.DoesNotContain(live, vm.Messages);
-    }
-
-    [Fact]
-    public void ASenderChangeIsNotReportedAsAnUpload()
-    {
-        // DraftRowDropped has three raisers and only one of them is an upload. Announcing all of
-        // them as one told the user, offline, that a draft had reached a server it had not been
-        // anywhere near -- on the one channel that reaches him (#637).
-        var (vm, _) = MakeVm(Row());
-
-        vm.OnDraftRowDropped(AccountId, "Drafts", "local-1", DraftRowDropReason.MovedToAnotherAccount);
-
-        Assert.Equal("Draft moved to another account.", vm.StatusText);
-    }
-
-    [Fact]
-    public void DecliningToKeepADraft_SaysNothingAndStillDropsTheRow()
-    {
-        // The row going IS the outcome the user asked for, so there is nothing to report -- but the
-        // row must still go, or it points at a message that no longer exists.
-        var live = Row();
-        var (vm, _) = MakeVm(live);
-        vm.StatusText = "Ready";
-
-        vm.OnDraftRowDropped(AccountId, "Drafts", "local-1", DraftRowDropReason.Discarded);
-
-        Assert.DoesNotContain(live, vm.Messages);
-        Assert.Equal("Ready", vm.StatusText);
-    }
-
-    [Fact]
-    public void ARowDroppedElsewhere_LeavesThisOneAlone()
-    {
+        // Rows key on account, folder AND id. Matching on fewer has been the recurring source of
+        // defects here, and a refresh that matched loosely would drop the wrong draft.
         var live = Row();
         var (vm, _) = MakeVm(live);
 
-        vm.OnDraftRowDropped(Guid.NewGuid(), "Drafts", "local-1", DraftRowDropReason.Uploaded);
-        vm.OnDraftRowDropped(AccountId, "Sent", "local-1", DraftRowDropReason.Uploaded);
-        vm.OnDraftRowDropped(AccountId, "Drafts", "local-2", DraftRowDropReason.Uploaded);
+        await vm.RefreshDraftRowsAsync([new DraftRowKey(Guid.NewGuid(), "Drafts", "local-1")], null);
+        await vm.RefreshDraftRowsAsync([new DraftRowKey(AccountId, "Sent", "local-1")], null);
+        await vm.RefreshDraftRowsAsync([new DraftRowKey(AccountId, "Drafts", "local-2")], null);
 
         Assert.Contains(live, vm.Messages);
     }
 
     [Fact]
-    public void ADraftStoredElsewhere_LeavesThisRowAlone()
+    public async Task ARefreshForAnotherAccount_LeavesThisRowsRefusalAlone()
     {
         var live = Row();
         var (vm, sync) = MakeVm(live);
@@ -218,7 +151,7 @@ public class DraftRefusalReachesTheRowTests
         fromStore.SendFailedReason = "Your mail server refused it: over quota.";
         sync.RaiseRefused(fromStore);
 
-        vm.OnDraftStored(Guid.NewGuid(), "Drafts", "local-1", "Somewhere else");
+        await vm.RefreshDraftRowsAsync([new DraftRowKey(Guid.NewGuid(), "Drafts", "local-1")], null);
 
         Assert.Equal("not uploaded", live.LocationLabel);
         Assert.Equal("Airport thoughts", live.Subject);

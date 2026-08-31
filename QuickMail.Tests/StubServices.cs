@@ -265,6 +265,12 @@ class StubLocalStoreService : ILocalStoreService
             ? rows.FirstOrDefault(m => m.MessageId == messageId)?.SendFailedReason
             : null);
 
+    /// <summary>Mirrors the real store: the seeded row for that key, or null.</summary>
+    public virtual Task<MailMessageSummary?> LoadSummaryAsync(Guid accountId, string folderName, string messageId)
+        => Task.FromResult(SeededSummaries.TryGetValue((accountId, folderName), out var rows)
+            ? rows.FirstOrDefault(r => r.MessageId == messageId)
+            : null);
+
     /// <summary>Set to make the unsent count fail, the way --online mode's absent store does.</summary>
     public Exception? CountUnsentMailFailure { get; set; }
 

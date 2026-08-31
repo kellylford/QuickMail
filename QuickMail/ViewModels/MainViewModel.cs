@@ -5537,63 +5537,79 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public void AttachComposeViewModel(ComposeViewModel compose)
     {
         ArgumentNullException.ThrowIfNull(compose);
-        compose.DraftStored     += OnDraftStored;
-        compose.DraftRowDropped += OnDraftRowDropped;
+        compose.DraftRowsChanged += (keys, outcome) =>
+            // Kept so a test can await it. Microsoft.Data.Sqlite completes its *Async members
+            // inline, so in practice this has already finished when the raiser returns -- but that
+            // is an implementation detail of the provider, not something to build a test on.
+            LastDraftRefresh = RefreshDraftRowsAsync(keys, outcome);
     }
 
     /// <summary>
-    /// Takes a refusal back off the open row once the draft has been saved again. The mirror of
-    /// <see cref="OnDraftUploadsRefused"/>, and without it the row keeps saying "not uploaded" about
-    /// a draft that is queued again -- worse than the bug it mirrors, because the user did exactly
-    /// what the app told him to do and the row says he did not. Offline it never self-corrects, and
-    /// the row is the one channel that reaches a user running with announcements off (#637).
+    /// The most recent row refresh started by an attached compose window. Exposed so tests can
+    /// await the work rather than depend on the SQLite provider completing synchronously.
     /// </summary>
-    public void OnDraftStored(Guid accountId, string folderName, string messageId, string subject)
+    internal Task LastDraftRefresh { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// Re-reads the rows a compose window has changed, and shows the one thing the store cannot
+    /// answer: why (#637).
+    /// <para>
+    /// This replaced two handlers that were told WHAT had happened -- one "stored", one "the row is
+    /// gone, for this reason". Every defect they produced was the same shape: the description and
+    /// the store disagreed. A row was marked pending that had just been uploaded; a sender change
+    /// was announced as an upload; a refusal was put on a row and never taken off; declining to
+    /// keep a draft left a row pointing at nothing. The store already knows all of it, so the list
+    /// asks the store instead of being told.
+    /// </para>
+    /// <para>
+    /// Rows are re-read one key at a time rather than by reloading the folder, because a folder
+    /// reload would discard the user's scroll position and selection on every auto-save.
+    /// </para>
+    /// </summary>
+    public async Task RefreshDraftRowsAsync(IReadOnlyList<DraftRowKey> keys, string? outcome)
     {
-        // Messages AND _rawMessages, because that is the pair OnDraftUploadsRefused writes to.
-        // Messages is a filtered projection over the same instances, so a refused draft that a
-        // search or a status filter has hidden would be marked by the refusal path and never
-        // cleared by this one -- and would come back reading "not uploaded" when the filter lifted.
-        foreach (var live in Messages.Concat(_rawMessages))
+        ArgumentNullException.ThrowIfNull(keys);
+
+        foreach (var key in keys)
         {
-            if (live.MessageId != messageId || live.AccountId != accountId ||
-                live.FolderName != folderName) continue;
+            MailMessageSummary? fresh = null;
+            try
+            {
+                fresh = await _localStore.LoadSummaryAsync(key.AccountId, key.FolderName, key.MessageId);
+            }
+            catch (Exception ex)
+            {
+                // A store that will not answer is not evidence the row has gone, and removing it on
+                // that basis would hide a draft that still exists. Leave the list alone.
+                LogService.Log("RefreshDraftRowsAsync: could not re-read the row", ex);
+                continue;
+            }
 
-            live.SendFailedReason = null;
-            live.IsPendingUpload  = true;
-            // The row is announced by its subject, so an offline edit that changed it has to reach
-            // the list too. Preview is left alone: it is built by the store's summary reader, and
-            // the row picks it up on the next folder load.
-            if (!string.IsNullOrEmpty(subject)) live.Subject = subject;
+            if (fresh == null) RemoveDraftRow(key);
+            else               UpsertDraftRow(key, fresh);
         }
+
+        // Said once, after the rows are right. The store cannot say whether a draft left this list
+        // because it uploaded or because its sender changed, and a row vanishing with nothing said
+        // is a defect this feature has already had twice.
+        if (!string.IsNullOrEmpty(outcome)) SetStatus(outcome, AnnouncementCategory.Result);
+
+        RebuildActiveGroupView();
     }
 
-    /// <summary>
-    /// Drops a draft's row once the local copy behind it has gone -- uploaded by the compose
-    /// window's own save, or re-keyed to another account (#637).
-    /// <para>Without it, <see cref="OnDraftStored"/> left a ghost: it marks the row pending, and
-    /// when the save's server leg then succeeds and deletes the local copy, nothing told the list.
-    /// The row went on saying "not on server" about a draft that was on the server, Enter on it
-    /// answered that its saved copy was missing, and Delete offered to destroy the only copy of
-    /// something that no longer existed.</para>
-    /// </summary>
-    public void OnDraftRowDropped(Guid accountId, string folderName, string messageId, DraftRowDropReason reason)
+    /// <summary>The store no longer holds this row, so neither should the list.</summary>
+    private void RemoveDraftRow(DraftRowKey key)
     {
-        var gone = Messages.Concat(_rawMessages)
-            .Where(m => m.MessageId == messageId && m.AccountId == accountId &&
-                        m.FolderName == folderName)
-            .Distinct()
-            .ToList();
+        var gone = Messages.Concat(_rawMessages).Where(key.Matches).Distinct().ToList();
         if (gone.Count == 0) return;
 
-        // Where the user is standing, before the row goes. The other two removal paths both do
-        // this; without it the reading pane went on rendering a draft that had left the list, and
-        // the landing spot was whatever WPF does with a removed selection -- which for a
-        // keyboard-only user means losing their place (#637).
+        // Where the user is standing, captured before the row goes: without it the reading pane
+        // went on rendering a draft that had left the list, and the landing spot was whatever WPF
+        // does with a removed selection -- for a keyboard-only user, losing their place.
         var removedOpen = SelectedMessage != null && gone.Contains(SelectedMessage);
         var openIndex   = removedOpen ? Messages.IndexOf(SelectedMessage!) : -1;
 
-        _rawMessages.RemoveAll(m => gone.Contains(m));
+        _rawMessages.RemoveAll(gone.Contains);
         foreach (var m in gone) Messages.Remove(m);
 
         if (removedOpen)
@@ -5604,23 +5620,49 @@ public partial class MainViewModel : ObservableObject, IDisposable
             MessageDetail = null;
             IsMessageOpen = false;
         }
-
-        // Same reasoning as the sweep's "N drafts uploaded": a row leaving Drafts has to be
-        // accounted for, and this path -- the compose window's own save -- is the one the user is
-        // most likely to be looking at when it happens. It says what actually happened: the other
-        // raiser is a sender change, where the draft is still on this computer and has been re-keyed
-        // to the other account, and calling that an upload was a plain untruth offline (#637).
-        // Says what actually happened. A discard needs no line at all: the user has just chosen
-        // not to keep the message, so the row going IS the outcome they asked for.
-        // A discard and a send both say nothing: in each case the row going IS the outcome the
-        // user asked for, and the compose window closing already reports it.
-        if (reason is DraftRowDropReason.Uploaded or DraftRowDropReason.MovedToAnotherAccount)
-            SetStatus(reason == DraftRowDropReason.Uploaded
-                    ? "Draft uploaded."
-                    : "Draft moved to another account.",
-                AnnouncementCategory.Result);
-        RebuildActiveGroupView();
     }
+
+    /// <summary>
+    /// Copies the stored row onto the instance the list is showing, or adds it when this view
+    /// should be showing it and is not.
+    /// </summary>
+    private void UpsertDraftRow(DraftRowKey key, MailMessageSummary fresh)
+    {
+        var live = Messages.Concat(_rawMessages).Where(key.Matches).Distinct().ToList();
+        if (live.Count > 0)
+        {
+            // Copied onto the EXISTING instances rather than swapped in: the list, the selection
+            // and the reading pane all hold references to them, and replacing the object would
+            // leave every one of those pointing at the previous version.
+            foreach (var row in live)
+            {
+                row.Subject          = fresh.Subject;
+                row.Preview          = fresh.Preview;
+                row.Date             = fresh.Date;
+                row.To               = fresh.To;
+                row.HasAttachments   = fresh.HasAttachments;
+                row.IsPendingUpload  = fresh.IsPendingUpload;
+                row.SendFailedReason = fresh.SendFailedReason;
+            }
+            return;
+        }
+
+        // Not in the list at all. Add it only where it belongs: the folder it is in, or All Drafts.
+        // A draft saved while its own folder is open never appeared until the folder was re-entered,
+        // and a re-keyed draft disappeared from one account without appearing under the other.
+        if (!IsViewingDraftFolder(key)) return;
+
+        _rawMessages.Add(fresh);
+        ApplyFiltersAndSearch();
+    }
+
+    /// <summary>True when the folder on screen is one that should be showing this key's row.</summary>
+    private bool IsViewingDraftFolder(DraftRowKey key) =>
+        SelectedFolder != null &&
+        (string.Equals(SelectedFolder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal) ||
+         (SelectedFolder.AccountId == key.AccountId &&
+          string.Equals(SelectedFolder.FullName, key.FolderName, StringComparison.Ordinal)));
+
 
     /// <summary>
     /// Says that a disappearance was an upload. The rows go through MessagesRemoved, which on its

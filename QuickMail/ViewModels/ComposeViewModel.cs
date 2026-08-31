@@ -191,26 +191,22 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public event Action? CloseRequested;
 
     /// <summary>
-    /// Raised after the local store has taken this draft: (accountId, folderName, messageId, subject).
+    /// Rows this window has changed in the store, for the message list to re-read (#637).
     /// <para>
-    /// A refusal is pushed onto the live row by DraftUploadsRefused and there was nothing to take it
-    /// off again. Saving clears send_failed_reason in SQLite and re-arms the upload, but the summary
-    /// the open Drafts list holds went on saying "not uploaded" -- the wording this feature defines
-    /// as stuck until you act -- about a draft the user had just acted on. Offline that never
-    /// corrects itself, and the row is the one channel that reaches a user running with custom
-    /// announcements off (#637).
+    /// It carries KEYS, not a description of what happened. Two earlier events described the change
+    /// instead -- one said "stored", one said "the row is gone" with a reason -- and every defect
+    /// they produced was the same shape: the description and the store disagreed. A row was marked
+    /// pending that had just been uploaded; a re-key was announced as an upload; a refusal was put
+    /// on a row and never taken off; a discard left a row pointing at nothing. The store is the only
+    /// thing that actually knows, so the list asks it.
+    /// </para>
+    /// <para>
+    /// The optional message is the one thing the store cannot answer: WHY a row went. Only this
+    /// window knows whether a draft left the list because it uploaded or because its sender changed,
+    /// and a row vanishing with nothing said is a defect this branch has already fixed twice.
     /// </para>
     /// </summary>
-    public event Action<Guid, string, string, string>? DraftStored;
-
-    /// <summary>
-    /// Raised when the local copy behind a draft's row has gone:
-    /// (accountId, folderName, messageId, reason).
-    /// <para>See <see cref="DraftRowDropReason"/>: three different things end a row's life here and
-    /// the list has to tell them apart. Announcing all of them as an upload told the user, offline,
-    /// that a draft had reached a server it had not been anywhere near (#637).</para>
-    /// </summary>
-    public event Action<Guid, string, string, DraftRowDropReason>? DraftRowDropped;
+    public event Action<IReadOnlyList<DraftRowKey>, string?>? DraftRowsChanged;
 
     /// <summary>
     /// Set by the View to show a Yes/No confirmation dialog.
@@ -473,8 +469,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 try
                 {
                     await _drafts.DiscardAsync(old.Account, old.Folder, old.Id);
-                    DraftRowDropped?.Invoke(old.Account, old.Folder, old.Id,
-                        DraftRowDropReason.MovedToAnotherAccount);
+                    // BOTH keys: the old row has gone and the new one now exists. Raising only
+                    // the old one is why a re-keyed draft vanished from the list and did not
+                    // reappear under the account it had moved to until a folder reload.
+                    DraftRowsChanged?.Invoke(
+                        [new DraftRowKey(old.Account, old.Folder, old.Id),
+                         new DraftRowKey(account.Id, _draftFolderName!, saved.MessageId)],
+                        "Draft moved to another account.");
                 }
                 catch (Exception ex)
                 {
@@ -498,7 +499,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // it having lost the supersedes header, filling Drafts with copies (#637).
             ClaimStoredRow(account.Id, _draftFolderName, saved.MessageId);
             if (_draftFolderName != null)
-                DraftStored?.Invoke(account.Id, _draftFolderName, saved.MessageId, compose.Subject ?? string.Empty);
+                DraftRowsChanged?.Invoke(
+                    [new DraftRowKey(account.Id, _draftFolderName, saved.MessageId)], null);
             // Record the owner. Seed knows it only for a message that was already stored, so a new
             // compose had none at all — and the re-key above, which is what stops a sender change
             // leaving a second row behind, never fired for exactly the messages most likely to
@@ -550,7 +552,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 try
                 {
                     await _drafts.DiscardAsync(account.Id, _draftFolderName, localId);
-                    DraftRowDropped?.Invoke(account.Id, droppedFolder, localId, DraftRowDropReason.Uploaded);
+                    DraftRowsChanged?.Invoke(
+                        [new DraftRowKey(account.Id, droppedFolder, localId)], "Draft uploaded.");
                 }
                 catch (Exception ex)
                 {
@@ -778,11 +781,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                     var owner = _draftAccountId != Guid.Empty ? _draftAccountId : account.Id;
                     var sentId = _draftMessageId!;
                     await _drafts.DiscardAsync(owner, _draftFolderName, sentId);
-                    // Same shape as the discard path -- the message has been sent, so a Drafts row
-                    // still pointing at its local copy is a ghost -- but its OWN reason: one enum
-                    // value covering two situations is how "three raisers, one meaning" became a
-                    // bug in the first place.
-                    DraftRowDropped?.Invoke(owner, _draftFolderName, sentId, DraftRowDropReason.Sent);
+                    // No message: the compose window closing on a successful send is the outcome,
+                    // and the send reports itself.
+                    DraftRowsChanged?.Invoke([new DraftRowKey(owner, _draftFolderName, sentId)], null);
                 }
                 catch (Exception ex)
                 {
@@ -930,7 +931,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // The row goes with it. Without this, a Drafts list left open while auto-save ran kept
             // a row pointing at a message that no longer exists, and opening it answered that its
             // saved copy was missing -- the ghost row in another costume (#637).
-            DraftRowDropped?.Invoke(owner, _draftFolderName, droppedId, DraftRowDropReason.Discarded);
+            // No message: the row going IS what the user has just asked for.
+            DraftRowsChanged?.Invoke([new DraftRowKey(owner, _draftFolderName, droppedId)], null);
             _draftMessageId = null;
         }
         catch (Exception ex)
