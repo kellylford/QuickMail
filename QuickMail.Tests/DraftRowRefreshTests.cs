@@ -102,12 +102,21 @@ public class DraftRowRefreshTests
         // folder the user is reading. Saying "Draft uploaded." there describes nothing he can see.
         var store = new StubLocalStoreService();
         var vm = Vm(store, null, Row("41"));
-        vm.StatusText = "Ready";
 
+        // Watched during the refresh only. Asserting the final value of StatusText made this test
+        // able to fail on its own: the view model does background work at construction that can
+        // set the status line, which has nothing to do with what is being pinned here.
+        var wrote = new System.Collections.Generic.List<string>();
+        void Watch(object? _, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(MainViewModel.StatusText)) wrote.Add(vm.StatusText);
+        }
+        vm.PropertyChanged += Watch;
         await vm.RefreshDraftRowsAsync(
             [new DraftRowKey(Guid.NewGuid(), "Drafts", "local-99")], "Draft uploaded.");
+        vm.PropertyChanged -= Watch;
 
-        Assert.Equal("Ready", vm.StatusText);
+        Assert.DoesNotContain("Draft uploaded.", wrote);
     }
 
     [Fact]
@@ -160,5 +169,56 @@ public class DraftRowRefreshTests
         await vm.RefreshDraftRowsAsync([new DraftRowKey(AccountId, "Drafts", "local-1")], null);
 
         Assert.DoesNotContain(vm.Messages, m => m.MessageId == "local-1");
+    }
+
+    [Fact]
+    public async Task ARowAddedToAnOpenFolder_AlsoRespectsThePreviewSetting()
+    {
+        // The preview fix landed on the update path only. The add path stored the raw body and
+        // relied on the insert to blank it -- so the search gate matched text the row would not
+        // keep, and whenever the gate said no the full body stayed on the row.
+        var config = new StubConfigService();
+        var cfg = config.Load();
+        cfg.PreviewLines = 0;
+        config.Save(cfg);
+
+        var store = new StubLocalStoreService();
+        store.SeededSummaries[(AccountId, "Drafts")] = [Row("local-1")];
+        var vm = Vm(store, config);
+        // A sort the incremental insert cannot serve, so the row stays in the backing list only.
+        // That is the path the defect lives on: when the insert DOES run it blanks the preview on
+        // the way past, which hid the missing normalisation entirely.
+        vm.ActiveSort = MessageSort.AlphaAscending;
+
+        await vm.RefreshDraftRowsAsync([new DraftRowKey(AccountId, "Drafts", "local-1")], null);
+
+        // Asserted on the BACKING list, not the visible one: InsertMessageSorted blanks the preview
+        // on the way in, so a row that reached Messages looks right either way. The defect lives in
+        // what was stored -- the row the next rebuild will show, and the text the search gate was
+        // matched against.
+        var stored = Assert.Single(vm.LoadedMessages, m => m.MessageId == "local-1");
+        Assert.Equal(string.Empty, stored.Preview);
+    }
+
+    [Fact]
+    public async Task AReSavedDraft_SpeaksItsNewTimeNotTheOldOne()
+    {
+        // The row binds DateDisplay, a computed property with no notification of its own. Raising
+        // only Date left the row showing and speaking the FIRST save's time -- across midnight,
+        // wrong by a day.
+        var live = Row("local-1");
+        var store = new StubLocalStoreService();
+        var later = Row("local-1");
+        later.Date = live.Date.AddHours(3);
+        store.SeededSummaries[(AccountId, "Drafts")] = [later];
+        var vm = Vm(store, null, live);
+
+        var raised = new System.Collections.Generic.List<string?>();
+        live.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        await vm.RefreshDraftRowsAsync([new DraftRowKey(AccountId, "Drafts", "local-1")], null);
+
+        Assert.Equal(later.Date, live.Date);
+        Assert.Contains(nameof(MailMessageSummary.DateDisplay), raised);
     }
 }

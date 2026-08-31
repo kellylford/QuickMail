@@ -1278,8 +1278,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // one number is both misleading — three "accounts" can be one account and two mailboxes
         // someone shared with it — and a wasted signal: a shared mailbox reads through its parent's
         // token and diverges from an ordinary account in ways that are worth knowing up front.
-        var shared = all.Count(a => a.IsShared);
-        var line   = $"{all.Count - shared} ({string.Join(", ", distinct)})";
+        var shared    = all.Count(a => a.IsShared);
+        var protocols = string.Join(", ", distinct);
+        // An install whose accounts are ALL shared mailboxes has no protocols to list, and
+        // "0 (), plus 1 shared mailbox" is both malformed and self-contradictory -- in a bug report
+        // that is published verbatim.
+        var line      = protocols.Length == 0
+            ? $"{all.Count - shared}"
+            : $"{all.Count - shared} ({protocols})";
 
         return shared switch
         {
@@ -4292,6 +4298,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _                           => result.OrderByDescending(m => m.Date),
         };
         Messages = new BatchObservableCollection<MailMessageSummary>(result);
+        _messagesDateOrderSuspect = false;   // rebuilt from scratch, so sorted again
 
         // Keep the status bar count in sync with whatever is currently visible.
         // Folder-load methods set a more descriptive status text immediately after
@@ -5640,6 +5647,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 : null;
             MessageDetail = null;
             IsMessageOpen = false;
+            // Focus, not just selection. The delete and move paths both raise this; leaving it out
+            // meant a draft removed under the user restored the SELECTION to the neighbour while
+            // keyboard focus went wherever WPF puts it when a focused container disappears.
+            MessageListFocusRequested?.Invoke();
         }
 
         return true;
@@ -5662,7 +5673,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // stored text raw made a refreshed draft the one row in the folder that read its body
             // aloud for a user who has previews turned off.
             var preview = _showPreview ? TruncatePreview(fresh.Preview, _previewLines) : string.Empty;
-            foreach (var row in live) row.TakeContentFrom(fresh, preview);
+            foreach (var row in live)
+            {
+                // A re-saved draft gets a new date, and updating it in place leaves Messages no
+                // longer strictly newest-first. The row is deliberately NOT moved -- taking the
+                // user's place away on every auto-save is the defect this whole path exists to
+                // avoid -- so instead the ordering is marked suspect, and the next arriving row
+                // waits for a natural rebuild rather than being binary-searched into a list that
+                // is no longer sorted (#637).
+                if (row.Date != fresh.Date) _messagesDateOrderSuspect = true;
+                row.TakeContentFrom(fresh, preview);
+            }
             return true;
         }
 
@@ -5671,10 +5692,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // and a re-keyed draft disappeared from one account without appearing under the other.
         if (!IsViewingDraftFolder(key)) return false;
 
-        // Stamped like any other freshly materialized row: the source-folder name an aggregate
-        // speaks, and the derived watched flag, are applied by the load paths and would otherwise
-        // be missing on this one row only -- correct-looking in Drafts, wrong in All Drafts.
-        ApplyFolderDisplayNames([fresh]);
+        // Normalised BEFORE it is stored, not on the way into the visible list. Adding the raw
+        // stored preview and letting InsertMessageSorted blank it meant the gate below matched the
+        // search against body text the row would not keep: the draft joined a filtered list and
+        // then vanished at the next rebuild. It also left the full body on the row whenever the
+        // gate said no -- which is the preview defect this was supposed to have fixed (#637).
+        fresh.Preview = _showPreview ? TruncatePreview(fresh.Preview, _previewLines) : string.Empty;
+
+        // Folder names ONLY where the load paths stamp them: SetMessages and the live-arrival path
+        // both guard on IsVirtualFolder, and the catalog relies on the field being empty in a
+        // single-folder view. Unconditionally made this the one row in a real Drafts folder that
+        // spoke its own account and folder name at the end of its accessible name. The watched
+        // flag below is different -- that one IS stamped in every folder.
+        if (IsVirtualFolder(SelectedFolder)) ApplyFolderDisplayNames([fresh]);
         StampWatchedFlags([fresh]);
 
         _rawMessages.Add(fresh);
@@ -5682,7 +5712,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // nulls SelectedMessage and sends focus back to the first row -- so with a compose window
         // auto-saving in the background, a user reading down Drafts was thrown to the top on every
         // interval, with nothing said (#637).
-        if (ShouldShowNewRowNow(fresh)) InsertMessageSorted(fresh);
+        if (!ShouldShowNewRowNow(fresh)) return false;   // in the store, not yet on screen
+
+        InsertMessageSorted(fresh);
         return true;
     }
 
@@ -5698,6 +5730,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool ShouldShowNewRowNow(MailMessageSummary msg)
     {
         if (ActiveSort != MessageSort.DateDescending) return false;
+        if (_messagesDateOrderSuspect) return false;
         if (ActiveFilter != MessageFilter.All && !MatchesFilter(msg)) return false;
         if (ActiveFilter == MessageFilter.Flagged && _activeFlagFilterId != null &&
             msg.FlagId != _activeFlagFilterId) return false;
@@ -5705,6 +5738,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!string.IsNullOrWhiteSpace(SearchText) && !MatchesSearch(msg)) return false;
         return true;
     }
+
+    /// <summary>
+    /// Set when a row's date is changed in place, which leaves <c>Messages</c> no longer strictly
+    /// newest-first. Cleared whenever the list is rebuilt from scratch.
+    /// </summary>
+    private bool _messagesDateOrderSuspect;
 
     /// <summary>True when the folder on screen is one that should be showing this key's row.</summary>
     private bool IsViewingDraftFolder(DraftRowKey key) =>

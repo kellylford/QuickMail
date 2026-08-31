@@ -491,7 +491,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 {
                     // A leftover row in the old account is visible and recoverable; losing the
                     // draft is not.
-                    LogService.Log("SaveDraftCoreAsync: could not drop the re-keyed row", ex);
+                    // Names both: the Invoke above is inside this try, so a handler that throws
+                    // lands here too, after the discard has already succeeded.
+                    LogService.Log("SaveDraftCoreAsync: could not drop the re-keyed row, or the list refused it", ex);
                 }
             }
             // Minted here rather than opened, so this window may drop it again if the user

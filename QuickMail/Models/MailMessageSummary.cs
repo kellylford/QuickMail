@@ -56,8 +56,16 @@ public partial class MailMessageSummary : ObservableObject
         OnPropertyChanged(nameof(Date));
         OnPropertyChanged(nameof(To));
         OnPropertyChanged(nameof(From));
+        // DateDisplay, not just Date: RowFieldCatalog binds the "date" field to DateDisplay and so
+        // does every list column, and it is computed with no notification of its own. Raising only
+        // Date left the row showing and speaking the time of the FIRST save while the model moved
+        // on -- across midnight, wrong by a day. Any bound path computed from a field above needs
+        // naming here; the catalog is the list of what is bound.
+        OnPropertyChanged(nameof(DateDisplay));
 
-        // These three do notify on their own.
+        // These four notify on their own; the four above do not, which is why they are raised
+        // by hand. From is as plain as Subject, Date and To -- easy to overlook because a draft
+        // rarely changes sender, and it does exactly that when the user re-keys one.
         Preview          = preview;
         HasAttachments   = fresh.HasAttachments;
         IsPendingUpload  = fresh.IsPendingUpload;

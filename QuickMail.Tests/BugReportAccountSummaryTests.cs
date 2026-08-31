@@ -171,4 +171,24 @@ public class BugReportAccountSummaryTests
         Assert.DoesNotContain("Someone", result, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("@", result, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AnInstallWhoseAccountsAreAllShared_DoesNotSayZeroOpenParenClose()
+    {
+        // Scoping the protocol list to non-shared accounts left nothing to list when every account
+        // IS a shared mailbox: "0 (), plus 1 shared mailbox" -- malformed and self-contradictory,
+        // in text that is published verbatim to a public issue. Reachable after a partial cascade
+        // removal of a parent account, which is exactly the broken install that files a report.
+        var summary = MainViewModel.DescribeAccounts(
+        [
+            new AccountModel
+            {
+                Id = Guid.NewGuid(), AccountName = "Support", Username = "support@example.com",
+                BackendKind = BackendKind.MicrosoftGraph, IsShared = true,
+            },
+        ]);
+
+        Assert.DoesNotContain("()", summary, StringComparison.Ordinal);
+        Assert.Contains("shared mailbox", summary, StringComparison.Ordinal);
+    }
 }
