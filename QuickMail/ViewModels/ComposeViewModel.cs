@@ -343,16 +343,28 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // the window and lose the message.
         LastSaveKeptTheMessage = false;
 
+        // Both of these refuse the save, which means the window will refuse to close -- so both
+        // need the durable field, not only the status line. Without it the user pressed the close
+        // key, nothing happened, nothing was said, and pressing it again did the same thing for
+        // ever. The 25 MB case is an ordinary mistake, not a corner (#637).
         var account = SenderAccount;
         if (account == null)
         {
-            SetStatusOutcome("Please select a sender account.");
+            const string noSender = "This message has no sender account selected, so it cannot be "
+                                  + "saved. Choose an account in the From field.";
+            DeliveryNotice = noSender;
+            SetStatusOutcome(noSender);
+            SaveRefused?.Invoke();
             return;
         }
 
         if (Attachments.Sum(a => a.FileSize) > 25_000_000)
         {
-            SetStatusOutcome("Total attachment size exceeds 25 MB. Please remove some attachments.");
+            const string tooBig = "This message cannot be saved: its attachments add up to more "
+                                + "than 25 MB. Remove some and try again.";
+            DeliveryNotice = tooBig;
+            SetStatusOutcome(tooBig);
+            SaveRefused?.Invoke();
             return;
         }
 
@@ -373,6 +385,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             DeliveryNotice = "This account has no Drafts folder yet, so this message cannot be saved. "
                            + "Connect the account once so QuickMail can find it.";
             SetStatusOutcome("No Drafts folder found on this account.");
+            SaveRefused?.Invoke();
         }
         catch (Exception ex)
         {
@@ -392,6 +405,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // close -- with the only account of why in an announcement and an unfocusable line of
             // text (#637).
             DeliveryNotice = nowhere;
+            SaveRefused?.Invoke();
         }
         finally
         {
@@ -627,6 +641,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (!_autoSaveCts.IsCancellationRequested) return;
         _autoSaveCts.Dispose();
         _autoSaveCts = new CancellationTokenSource();
+        // Any notice the cancelled ticks left behind goes with it: the window is staying open and
+        // that sentence described a save that was never really attempted.
+        if (DeliveryNotice.StartsWith("Auto-save could not", StringComparison.Ordinal))
+            DeliveryNotice = string.Empty;
     }
 
     public void Dispose()
@@ -657,6 +675,14 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public event Action<string>? AutoSaveFailed;
 
     /// <summary>
+    /// A save the user asked for did not keep the message, and the reason is in
+    /// <see cref="DeliveryNotice"/> (#637). The window puts focus on that field: closing with a
+    /// failed save already did, a plain Ctrl+S did not, so a failed save was indistinguishable
+    /// from one that worked for anyone who does not hear the announcement.
+    /// </summary>
+    public event Action? SaveRefused;
+
+    /// <summary>
     /// Periodic background draft save. Quiet by design: success only updates
     /// <see cref="AutoSaveText"/> (visual status), and failures are announced once.
     /// Skips templates (saving a template edit as a mail draft would be wrong),
@@ -680,6 +706,14 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 ? $"Auto-saved on this computer {DateTime.Now:t}"
                 : $"Auto-saved {DateTime.Now:t}";
             _autoSaveFailureAnnounced = false;
+        }
+        catch (OperationCanceledException)
+        {
+            // Not a failure. The window cancels the auto-save token on its way into the close
+            // handler, before the user has answered the prompt, so a tick landing inside that
+            // window arrives here -- and reporting it as the local store refusing the write put
+            // "your latest changes are not saved" into the durable field while the prompt was
+            // still on screen and the store was perfectly healthy (#637).
         }
         catch (DraftFolderMissingException ex)
         {

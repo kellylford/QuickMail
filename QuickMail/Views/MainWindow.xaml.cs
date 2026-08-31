@@ -336,6 +336,12 @@ public partial class MainWindow : Window
         // startOnNo is passed only by the account-removal prompt, which destroys drafts that exist
         // nowhere else -- Enter on a dialog that starts on Yes destroyed them, while the release
         // note claimed it no longer did (#637).
+        // A refused command has to be met, not merely logged to a status line the user may never
+        // read. Chosen by the user (#637).
+        vm.ShowRefusalRequested = message =>
+            MessageBox.Show(this, message, "Cannot do that yet",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+
         vm.ConfirmationRequested = (message, title, startOnNo) =>
             MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning,
                 startOnNo ? MessageBoxResult.No : MessageBoxResult.Yes)
@@ -3741,17 +3747,6 @@ public partial class MainWindow : Window
     {
         LogService.Debug($"[FOCUS] ReturnFocusToMessageList viewMode={_vm.ViewMode} {FocusInfo()}");
 
-        // Never into a window the user is not in. Every other raiser of this event is a command the
-        // user gave from THIS window, where taking focus back to the list is the point. The draft
-        // row refresh is not: it runs because a compose window saved, and Focus() on an element of
-        // a background window calls Win32 SetFocus, which activates that window -- so an upload
-        // landing mid-sentence pulled the keyboard out of the message being typed. The same
-        // re-check exists in OnActivated for this class of bug (#333, #637).
-        if (!IsActive)
-        {
-            LogService.Debug("[FOCUS] ReturnFocusToMessageList skipped: this window is not active");
-            return;
-        }
 
         // When the calendar view is active, return focus to the calendar list,
         // not the (collapsed) message list.

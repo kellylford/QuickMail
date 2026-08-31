@@ -213,10 +213,12 @@ public class LocalStoreService : ILocalStoreService
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN mime_bytes BLOB DEFAULT NULL;");
 
         // A draft written locally that has not reached the server's Drafts folder yet (#637). Set
-        // only by LocalDraftService; 0 for every message that came from a server. Two things read
-        // it: the row, which says the draft is not on the server yet, and the sync reconcile, which
-        // must not treat "absent from the server listing" as "deleted on the server" for a message
-        // the server has never been told about.
+        // only by LocalDraftService; 0 for every message that came from a server. The row reads it,
+        // to say the draft is not on the server yet. The sync reconcile does NOT: what stops it
+        // treating "absent from the server listing" as "deleted on the server" is the id test in
+        // SyncService, not this column. The two conditions coincide on every row today, which is
+        // why the mistake was invisible -- but someone hardening deletion safety would go looking
+        // for a column read that does not exist.
         //
         // AFTER RunDataMigrations for the same reason mime_bytes is: the 1→2 rebuild recreates
         // MessageSummary against a fixed column list, so a column added before it is dropped again.

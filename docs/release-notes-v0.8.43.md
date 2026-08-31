@@ -17,7 +17,8 @@ Drafts are now saved to your computer first and sent to the server afterwards. I
 - Auto-save works the same way, and says *"Auto-saved on this computer"* while a draft is waiting.
 - A draft that has not reached the server yet sits in your **Drafts** folder with the other drafts,
   showing the status **Not on server**, which the row reads out as "not on server" before
-  anything else about the message. You can open it, edit it, and save it again as often as you
+  anything else about the message. If you already use the combined **Read status** field, that new
+  field is left switched off for you and the combined one says the same thing in its own words. You can open it, edit it, and save it again as often as you
   like without a connection, and any attachments stay with it.
 - Closing a compose window is never blocked by being offline.
 - QuickMail sends these drafts up on its own the next time it reaches the account. The **Not on

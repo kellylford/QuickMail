@@ -477,6 +477,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// View wires it.</summary>
     public Func<string, bool>? ConfirmConvertToGraph { get; set; }
 
+    /// <summary>Set by the View to show a refusal the user must dismiss (#637).</summary>
+    public Action<string>? ShowRefusalRequested { get; set; }
+
     /// <summary>
     /// Set by the View to hand a just-converted account (by id) to the main window's sync loop, which
     /// owns the live account list, the backend router, and the SyncService. Without this, the main loop
@@ -533,9 +536,14 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             // SetStatusOutcome, not a bare StatusText assignment: the latter leaves the category
             // at Status and, being an ObservableProperty with an equality check, says nothing at
             // all the second time the same refusal is produced (#396).
-            SetStatusOutcome(held < 0
+            var why = held < 0
                 ? $"{account.AccountLabel} was not converted: QuickMail could not check whether it is holding drafts that have not reached the server."
-                : $"{account.AccountLabel} was not converted: it is holding {held} draft{(held == 1 ? "" : "s")} that {(held == 1 ? "has" : "have")} not reached the server. Open Drafts and send or delete {(held == 1 ? "it" : "them")}, then convert again.");
+                : $"{account.AccountLabel} was not converted: it is holding {held} draft{(held == 1 ? "" : "s")} that {(held == 1 ? "has" : "have")} not reached the server. Open Drafts and send or delete {(held == 1 ? "it" : "them")}, then convert again.";
+            SetStatusOutcome(why);
+            // And in a dialog. This dialog's status line reaches the user only as an announcement,
+            // so with custom announcements off, activating Convert did nothing observable at all --
+            // twice over, since pressing it again produced the same nothing (#637).
+            ShowRefusalRequested?.Invoke(why);
             return;
         }
 

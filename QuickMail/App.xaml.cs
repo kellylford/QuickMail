@@ -322,6 +322,9 @@ public partial class App : Application
             // them — survive; a marker file gates it to run exactly once. The VM announces the
             // resulting one-time re-sync. Skipped in --online mode (no local store).
             bool immutableIdRebuilt = false;
+            // Which accounts, if any, held the rebuild off -- surfaced at startup rather than only
+            // logged, because a refused draft never clears on its own (#637).
+            string deferredRebuildFor = string.Empty;
             var rebuiltGraphAccountIds = new List<Guid>(); // seeded to SyncService below so the first
                                                            // post-wipe sync doesn't re-run rules (#366/N5)
             if (!onlineMode && !probeMode) // never touch a --ui-probe fixture profile (review nit)
@@ -363,14 +366,24 @@ public partial class App : Application
                             // a waiting draft does -- one can defer this rebuild indefinitely,
                             // and with it the #366 immutable-id fix for that account. Logged
                             // rather than surfaced; where to surface it is an open question.
-                            var holding = graphIds.Any(id =>
-                                localStore.CountUnsentMailAsync(id).GetAwaiter().GetResult() > 0);
-                            if (holding)
+                            var blocking = graphIds
+                                .Where(id => localStore.CountUnsentMailAsync(id).GetAwaiter().GetResult() > 0)
+                                .ToList();
+                            if (blocking.Count > 0)
                             {
-                                // Deferred, not failed: the marker stays unwritten so the next
-                                // launch retries, by which time the upload pass has very likely
-                                // taken the drafts to the server.
-                                LogService.Log("Immutable-id cache rebuild deferred: an account is holding drafts that have not reached the server.");
+                                // Deferred, not failed: the marker stays unwritten so a later launch
+                                // retries. Named, not merely logged -- a refused draft is never
+                                // retried by the upload pass, so this can hold the #366 fix off for
+                                // ever and the user would have no way to know (#637).
+                                // The list already loaded above, not a second read.
+                                var labels = accounts
+                                    .Where(a => blocking.Contains(a.Id))
+                                    .Select(a => a.AccountLabel)
+                                    .ToList();
+                                deferredRebuildFor = labels.Count > 0
+                                    ? string.Join(", ", labels)
+                                    : $"{blocking.Count} account{(blocking.Count == 1 ? "" : "s")}";
+                                LogService.Log($"Immutable-id cache rebuild deferred: {deferredRebuildFor} still holds drafts that have not reached the server.");
                             }
                             else
                             {
@@ -531,6 +544,7 @@ public partial class App : Application
             // of the account list — never the UI-thread-owned Accounts collection directly.
             msOAuthService.ResolveAccount = mainVm.ResolveAccountById;
             mainVm.ImmutableIdRebuildAnnouncePending = immutableIdRebuilt;   // #366 one-time re-sync notice
+            mainVm.ImmutableIdRebuildDeferredFor     = deferredRebuildFor;   // ...or why it did not run
             // Registers/unregisters the Help command and shows or hides the menu item, and sets
             // ConnectionJournal.Enabled — so nothing records until the user opts in.
             mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);

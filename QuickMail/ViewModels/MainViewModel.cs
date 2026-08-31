@@ -2804,6 +2804,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// cached mail; InitialLoadAsync announces the resulting re-sync so the empty inbox isn't a mystery.</summary>
     public bool ImmutableIdRebuildAnnouncePending { get; set; }
 
+    /// <summary>
+    /// Set by App startup when the one-time Graph rebuild (#366) was DEFERRED because an account is
+    /// holding drafts that exist nowhere else. Names those accounts.
+    /// <para>Unlike a waiting draft, a REFUSED one is never retried by the upload pass, so this
+    /// deferral does not resolve itself on the next launch: it can hold the #366 fix off
+    /// indefinitely, and until now said so only in the log. Chosen by the user over leaving it
+    /// silent (#637).</para>
+    /// </summary>
+    public string ImmutableIdRebuildDeferredFor { get; set; } = string.Empty;
+
     // The one-time re-sync notice, shared between the immediate announce and the visible status.
     private const string ImmutableIdRebuildNotice =
         "Microsoft 365 mail is doing a one-time re-sync — this may take a few minutes.";
@@ -2980,6 +2990,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var d in defs.OrderBy(d => d.SortOrder))
                 FlagDefinitions.Add(d);
         }
+        if (!string.IsNullOrEmpty(ImmutableIdRebuildDeferredFor))
+        {
+            // Same immediate channel as the notice below, and for the same reason: the debounced
+            // status write is overwritten by "Connecting and syncing..." within half a second.
+            var deferred = $"A one-time Microsoft 365 mail refresh is waiting on {ImmutableIdRebuildDeferredFor}, "
+                         + "which still holds drafts that have not reached the server. Send or delete "
+                         + "them and restart to let it run.";
+            ImmutableIdRebuildDeferredFor = string.Empty;
+            Announce(deferred, AnnouncementCategory.Status);
+            SetStatus(deferred, AnnouncementCategory.Status);
+        }
+
         var rebuildNotice = ImmutableIdRebuildAnnouncePending;
         if (rebuildNotice)
         {
@@ -4362,19 +4384,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Binary-insert into the descending-by-date Messages collection.
+    // Insert into the newest-first Messages collection, normalising the preview on the way.
+    //
+    // Scans rather than binary-searches, for the reason InsertDraftRowByDate does: a draft re-saved
+    // in place gets a new date and its row deliberately does not move, so Messages is no longer
+    // strictly sorted, and a binary search over that can land a live-arriving message anywhere --
+    // in All Mail, which unions Drafts, that means new mail buried mid-list with nothing said. The
+    // draft path was given the scan and these callers were not (#637).
     private void InsertMessageSorted(MailMessageSummary msg)
     {
-        if (!_showPreview) msg.Preview = string.Empty;
-        else msg.Preview = TruncatePreview(msg.Preview, _previewLines);
-        int lo = 0, hi = Messages.Count;
-        while (lo < hi)
-        {
-            int mid = (lo + hi) / 2;
-            if (Messages[mid].Date >= msg.Date) lo = mid + 1;
-            else hi = mid;
-        }
-        Messages.Insert(lo, msg);
+        msg.Preview = _showPreview ? TruncatePreview(msg.Preview, _previewLines) : string.Empty;
+        InsertDraftRowByDate(msg);
     }
 
     // Copies server-fresh mutable state onto an existing message already in the list.
@@ -5512,12 +5532,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!list.Any(IsLocalOnlyId)) return false;
 
         var only = list.Count == 1 ? list[0] : null;
-        SetStatus(only != null
-                ? (only.SendFailedReason is null
-                    ? $"That draft has not reached the server yet, so there is nothing there to {verb}. It can be {past} once it has been uploaded."
-                    : $"That draft was not uploaded, so it is not on the server to {verb}. Open it to see why, put that right and save it again first.")
-                : $"Some of those messages have not reached the server yet, so there is nothing there to {verb}.",
-            AnnouncementCategory.Result);
+        var why  = only != null
+            ? (only.SendFailedReason is null
+                ? $"That draft has not reached the server yet, so there is nothing there to {verb}. It can be {past} once it has been uploaded."
+                : $"That draft was not uploaded, so it is not on the server to {verb}. Open it to see why, put that right and save it again first.")
+            : $"Some of those messages have not reached the server yet, so there is nothing there to {verb}.";
+
+        SetStatus(why, AnnouncementCategory.Result);
+        ShowRefusalRequested?.Invoke(why);
         return true;
     }
 
@@ -5637,6 +5659,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var gone = Messages.Concat(_rawMessages).Where(key.Matches).Distinct().ToList();
         if (gone.Count == 0) return false;
 
+        // Whether the row the USER can see is going. A row matched only in _rawMessages -- filtered
+        // or searched out of the visible list -- was reported as an outcome about something never
+        // on screen. Both upsert paths already follow this rule; this one did not.
+        var visible = gone.Any(Messages.Contains);
+
         // Where the user is standing, captured before the row goes: without it the reading pane
         // went on rendering a draft that had left the list, and the landing spot was whatever WPF
         // does with a removed selection -- for a keyboard-only user, losing their place.
@@ -5653,13 +5680,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 : null;
             MessageDetail = null;
             IsMessageOpen = false;
-            // Focus, not just selection. The delete and move paths both raise this; leaving it out
-            // meant a draft removed under the user restored the SELECTION to the neighbour while
-            // keyboard focus went wherever WPF puts it when a focused container disappears.
-            MessageListFocusRequested?.Invoke();
+            // Selection only, deliberately -- no focus request. This runs because a COMPOSE window
+            // saved, not because the user gave a command here, and asking for focus pulled the
+            // keyboard out of the message they were typing. A guard on the main window being
+            // active fixed the cross-window case and still moved focus out of the folder tree or
+            // the search box when the compose window was merely in the background. OnMessagesRemoved
+            // -- the sweep's version of this same removal -- has never raised it either (#637).
         }
 
-        return true;
+        return visible;
     }
 
     /// <summary>
@@ -5730,10 +5759,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// Whether a row just added to <c>_rawMessages</c> can be placed in the visible list without
     /// rebuilding it.
     /// <para>Mirrors <see cref="ApplyFiltersAndSearch"/>'s filter clauses, and additionally requires
-    /// the default newest-first sort, because <see cref="InsertMessageSorted"/> binary-searches on
-    /// date. Under any other sort, or when a filter or search excludes it, the row stays in
-    /// <c>_rawMessages</c> and appears at the next natural rebuild -- late, but in the right place,
-    /// and without throwing the user's selection away to achieve it.</para>
+    /// the default newest-first sort -- not because the insert needs the list sorted (it scans), but
+    /// because placing a row by DATE is only meaningful when date is what orders the list. Under any
+    /// other sort, or when a filter or search excludes it, the row stays in <c>_rawMessages</c> and
+    /// appears at the next natural rebuild -- late, but in the right place, and without throwing the
+    /// user's selection away to achieve it.</para>
     /// </summary>
     private bool ShouldShowNewRowNow(MailMessageSummary msg)
     {
@@ -7490,6 +7520,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// to obtain a yes, nothing irreversible happens.
     /// </summary>
     public Func<string, bool>? ConfirmLocalDraftDelete { get; set; }
+
+    /// <summary>
+    /// Set by the View to show a message the user must dismiss. Used where a command REFUSES: a
+    /// status line is silence for a user running with custom announcements off, and a Move that
+    /// opens no picker and says nothing is indistinguishable from a key that does not work. Chosen
+    /// by the user over leaving these on the status bar (#637).
+    /// </summary>
+    public Action<string>? ShowRefusalRequested { get; set; }
 
     public async Task DeleteMessagesAsync(IReadOnlyList<MailMessageSummary> toDelete)
     {

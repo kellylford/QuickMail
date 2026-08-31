@@ -127,6 +127,13 @@ public partial class ComposeWindow : Window
         // registers the Visibility binding's listener ahead of this one, the field is Collapsed
         // before this runs, and the guard below then finds nothing to rescue (#637).
         vm.PropertyChanged += OnComposeViewModelPropertyChanged;
+        // A save the user asked for that did not keep the message: land on the reason, the same
+        // way closing with a failed save already does (#637).
+        vm.SaveRefused += () => _ = Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (IsLoaded && !string.IsNullOrWhiteSpace(_vm.DeliveryNotice))
+                DeliveryNoticeField.Focus();
+        }), DispatcherPriority.Input);
 
         DataContext = vm;
 
