@@ -6794,6 +6794,17 @@ public partial class MainWindow : Window
         // Messages the Test Rule action runs against — the same set for either window type.
         var selectedMessages = _vm.Messages.ToList();
 
+        // Lets the rule editors' target-folder picker create a folder on the spot (#645). The two
+        // halves are separated because the picker is modal: creation only refreshes the cache, and
+        // the main-window folder tree rebuild waits until the picker has closed (CLAUDE.md, "Modal
+        // Dialog Rules"). Not gated on folder support here — ForRuleTarget withholds the button for
+        // an account that cannot manage folders, and which account that is only settles once the
+        // rule the user is editing is known.
+        var folderCreation = new FolderCreationSupport(
+            (accountId, parentFullName, name) =>
+                _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name),
+            _vm.CommitPendingFolderTreeRebuild);
+
         Window dialog;
         UnifiedRulesWindow? unifiedWindow = null;
         if (_serverRuleService != null
@@ -6807,7 +6818,7 @@ public partial class MainWindow : Window
                 selectedMessagesForTest: selectedMessages, configService: _configService);
             unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
             // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.
-            unifiedWindow = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders, template);
+            unifiedWindow = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders, template, folderCreation);
             dialog = unifiedWindow;
         }
         else
@@ -6818,7 +6829,7 @@ public partial class MainWindow : Window
                 selectedMessagesForTest: selectedMessages,
                 configService: _configService);
             rulesVm.RunOnExistingRequested += RunClientRulesOnExisting;
-            dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders);
+            dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders, folderCreation);
         }
 
         _rulesWindow = dialog;

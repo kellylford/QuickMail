@@ -328,6 +328,19 @@ public partial class MessageWindow : Window
                 detail = await _imap.GetMessageDetailAsync(
                     summary.AccountId, summary.FolderName, summary.MessageId, ct);
             }
+            else if (detail != null)
+            {
+                // A detail cached before the from_addr column existed carries the summary's display
+                // name in place of the sender's address, so this window's From line — and a reply
+                // started from it — would show a bare name (issue #636). Re-fetching is the only
+                // repair: the address is stored nowhere else in the database.
+                //
+                // Guarded on there BEING a detail: a message whose stored copy will not load now
+                // reaches this branch with null, because #637 stops it falling through to the
+                // server fetch above. The two changes merged cleanly and compiled anyway.
+                detail = await DetailFromAddressRepair.RepairAsync(
+                    detail, _localStore, _imap, background: false, ct);
+            }
 
             ct.ThrowIfCancellationRequested();
             if (detail == null)

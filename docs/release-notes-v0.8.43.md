@@ -105,6 +105,45 @@ It is counts and protocol names, nothing else: no address, no server name, no ac
 complete text before you send it, so you can read exactly what is going.
 ([#639](https://github.com/kellylford/QuickMail/issues/639))
 
+## Fixed: a sender's email address sometimes went missing
+
+Opening a message, or replying to one, sometimes showed the sender's full address — name and email
+address together, with Message Properties able to report it — and sometimes showed nothing but a
+name. Replying to one of the latter put a bare name in the **To** field, where it stayed as ordinary
+typed text instead of becoming an address you could act on.
+
+Which one you got depended on whether the message was being read from the server or from QuickMail's
+own copy on your PC, so the same message could behave either way at different times. QuickMail now
+keeps the sender's address with its copy of the message. Messages saved before this release get
+their address filled back in the next time they are opened.
+
+Message Properties also reports the sender's full address now, matching the **To** line right below
+it. ([#636](https://github.com/kellylford/QuickMail/issues/636))
+
+---
+
+## New: create a folder while you are writing a rule
+
+Writing a rule is often where you decide a folder ought to exist — "everything from the school
+goes in a folder called School", and there is no School folder yet. Until now that meant leaving
+the rule half-written, going back to the main window to make the folder, and starting the rule
+again.
+
+The folder picker a rule opens for **Move to folder** now has the same **New Folder** button the
+message move and copy pickers have had for a while. Activate it (or press **Alt+N**) with a folder
+selected, type a name, and the new folder is created under that one, appears in the tree, and is
+selected ready for you to choose as the rule's target — without leaving the rule you were writing.
+It works in both the Rules Manager and, where Microsoft 365 server rules are available, the rule
+editor there.
+
+Two places the button does not appear, both on purpose. A POP3 account has no folders on the
+server to create, so there is nothing the button could do. And a rule the picker cannot tie to one
+particular account — a rule that has no account of its own, or an account whose folders QuickMail
+has not read yet — falls back to showing every account's folders, where a new folder would land in
+one mailbox while the rule files mail in another; picking an existing folder is still offered
+there, creating one is not.
+([#645](https://github.com/kellylford/QuickMail/issues/645))
+
 ---
 
 ## Reporting Issues

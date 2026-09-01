@@ -5962,6 +5962,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     summary.AccountId, summary.FolderName, summary.MessageId)
                     ?? await _imap.GetMessageDetailAsync(
                         summary.AccountId, summary.FolderName, summary.MessageId, token);
+                // A pre-from_addr cache row carries a bare display name where the sender's address
+                // belongs (issue #636); re-fetch it so the header and any reply get a real address.
+                detail = await RepairMissingFromAddressAsync(detail, background: false, token);
                 // Await (not fire-and-forget) so the detail is definitely in the cache
                 // before the user acts on the message (e.g. accepts a calendar invite).
                 // The calendar harvest reads calendar_ics from this row; if the store
@@ -6092,7 +6095,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             var cached = await _localStore.LoadDetailAsync(
                 summary.AccountId, summary.FolderName, summary.MessageId);
-            if (cached != null || ct.IsCancellationRequested) return;
+            if (ct.IsCancellationRequested) return;
+            if (cached != null)
+            {
+                // Cached, but possibly a pre-from_addr row whose From is a bare display name
+                // (issue #636). Repairing it here means the reading pane and a reply get a real
+                // address without the user waiting for a fetch at open time.
+                await RepairMissingFromAddressAsync(cached, background: true, ct);
+                return;
+            }
 
             var detail = await _imap.PrefetchMessageDetailAsync(
                 summary.AccountId, summary.FolderName, summary.MessageId, ct);
@@ -8115,7 +8126,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                           && MessageDetail?.AccountId == msg.AccountId
                           && MessageDetail?.FolderName == msg.FolderName)
                 ? MessageDetail
-                : await _localStore.LoadDetailAsync(msg.AccountId, msg.FolderName, msg.MessageId);
+                : await LoadDetailForPropertiesAsync(msg);
 
             var accountName = Accounts.FirstOrDefault(a => a.Id == msg.AccountId)?.AccountLabel
                               ?? "Unknown";
@@ -8275,6 +8286,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ComposeRequested?.Invoke(model);
     }
 
+    /// <summary>Cached detail for the Properties dialog, repaired first so the From row shows a real
+    /// address rather than the display name the summary carries (issue #636).</summary>
+    private async Task<MailMessageDetail?> LoadDetailForPropertiesAsync(MailMessageSummary msg)
+    {
+        var detail = await _localStore.LoadDetailAsync(msg.AccountId, msg.FolderName, msg.MessageId);
+        if (detail == null) return null;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        return await RepairMissingFromAddressAsync(detail, background: false, cts.Token);
+    }
+
+    /// <summary>Fills the sender's address back into a cache-served detail that has only a display
+    /// name (issue #636). See <see cref="DetailFromAddressRepair"/>.</summary>
+    private Task<MailMessageDetail> RepairMissingFromAddressAsync(
+        MailMessageDetail detail, bool background, CancellationToken ct) =>
+        DetailFromAddressRepair.RepairAsync(detail, _localStore, _imap, background, ct);
+
     // Returns MessageDetail if already loaded for the selected message,
     // otherwise fetches it (cache then IMAP) so compose can always proceed.
     // Deliberately bypasses SelectMessageCommand to avoid concurrent-execution
@@ -8310,6 +8337,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 detail = await _imap.GetMessageDetailAsync(
                     summary.AccountId, summary.FolderName, summary.MessageId, cts.Token);
                 _localStore.UpsertDetailAsync(detail).LogFaults("local store: upsert detail");
+            }
+            else if (detail != null)
+            {
+                // Only when there IS a detail to repair. Before #637 this else could not be reached
+                // with a null one -- the condition above was the only way to get here -- but a local
+                // draft whose stored bytes have gone now arrives null and skips the server fetch by
+                // design. The merge of the two changes compiled and was wrong.
+                using var repairCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                detail = await RepairMissingFromAddressAsync(detail, background: false, repairCts.Token);
             }
 
             return detail;

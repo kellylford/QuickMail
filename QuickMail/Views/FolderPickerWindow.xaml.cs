@@ -438,15 +438,26 @@ public partial class FolderPickerWindow : Window
     /// picker opens on the folder the rule already files into. A rule that has no target yet passes
     /// null, and <see cref="SelectOpeningNode"/> stands in the first real folder: this picker, like
     /// every other, must not open with nothing selected.</para>
+    ///
+    /// <para><paramref name="folderCreator"/> turns on the "New Folder…" button (issue #645). Writing
+    /// a rule is where a user decides a folder should exist — "file this newsletter under News" — so
+    /// having to abandon the rule, create the folder in the main window, and start again is the
+    /// wrong order of work. Same creator contract as the move/copy-message picker: create it,
+    /// refresh the owning account, hand back that account's folders so the tree can rebuild in
+    /// place. Null (the default) leaves the button hidden, and so do the two cases at the call to
+    /// the constructor below — the unscoped fallback, and an account that cannot manage folders.</para>
     /// </summary>
     public static FolderPickerWindow ForRuleTarget(
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
         Guid? accountId,
         string? currentFolderKey,
-        string title)
+        string title,
+        Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null)
     {
-        var scopedAccounts = accountId is Guid id ? accounts.Where(a => a.Id == id).ToList() : [];
+        // Materialized once: read twice below, for the scoping and again for the fallback.
+        var allAccounts    = accounts.ToList();
+        var scopedAccounts = accountId is Guid id ? allAccounts.Where(a => a.Id == id).ToList() : [];
         var scopedFolders  = accountId is Guid fid && cachedFolders.TryGetValue(fid, out var owned) && owned.Count > 0
             ? new Dictionary<Guid, List<MailFolderModel>> { [fid] = owned }
             : null;
@@ -455,6 +466,7 @@ public partial class FolderPickerWindow : Window
         // empty tree the user cannot get a folder out of.
         var useScoped = scopedAccounts.Count > 0 && scopedFolders != null;
 
+        var pickerAccounts = useScoped ? scopedAccounts : allAccounts;
         var folders = useScoped ? scopedFolders! : cachedFolders;
         var initial = string.IsNullOrEmpty(currentFolderKey)
             ? null
@@ -462,11 +474,21 @@ public partial class FolderPickerWindow : Window
                      .FirstOrDefault(f => string.Equals(f.FullName, currentFolderKey, StringComparison.Ordinal));
 
         return new FolderPickerWindow(
-            useScoped ? scopedAccounts : accounts,
+            pickerAccounts,
             folders,
             title: title,
             initialFolder: initial,
-            useTreeView: true);
+            useTreeView: true,
+            // No creator, no New Folder button — and only on the tree scoped to the rule's own
+            // account. The button creates under whichever node is selected, so on the unscoped
+            // fallback above it would make the folder in one mailbox while the rule files into
+            // another: worse than the wrong-folder pick that fallback already allows, because the
+            // user watches the folder appear and reasonably concludes the target is real. Withheld
+            // too for an account that cannot manage folders (POP3, #128) — offering an action that
+            // can only fail is worse than not offering it.
+            folderCreator: useScoped && scopedAccounts.All(a => a.SupportsFolderCrud)
+                ? folderCreator
+                : null);
     }
 
     /// <summary>
@@ -693,14 +715,32 @@ public partial class FolderPickerWindow : Window
     {
         if (_folderCreator == null || !_useTreeView || _treeFolders == null) return;
         if (!TryResolveTreeCreateTarget(out var accountId, out var parentFullName, out var parentLabel))
+        {
+            // Nothing selected that says which account and which parent — a path-only node in a
+            // multi-account tree, say. An enabled button that does nothing at all is a dead end, and
+            // silence is how it reads to a screen reader, so name the missing input. "Where" rather
+            // than "which folder": an account header is a legal parent too.
+            AccessibilityHelper.Announce(
+                this, "Choose where to create the folder.",
+                category: AnnouncementCategory.Result);
             return;
+        }
 
         var dlg = new NewFolderDialog { Owner = this, ParentFolderName = parentLabel };
         if (dlg.ShowDialog() != true) return;
 
         var name = dlg.FolderName;
         var updated = await _folderCreator(accountId, parentFullName, name);
-        if (updated == null) return; // failure is surfaced by the caller (main-window status text)
+        if (updated == null)
+        {
+            // The caller writes the reason to the main window's status text, which is behind this
+            // modal picker and, from the rule editors, behind a rules window as well. Nothing else
+            // changes on failure, so without this the user is left believing the folder was made.
+            AccessibilityHelper.Announce(
+                this, $"Could not create the folder '{name}'.",
+                category: AnnouncementCategory.Result);
+            return;
+        }
 
         _treeFolders[accountId] = updated.ToList();
         RebuildTreeView();
@@ -730,10 +770,13 @@ public partial class FolderPickerWindow : Window
             return true;
         }
 
-        // A header (account) node is selected → create at that account's root.
-        if (node is { IsHeader: true } && _treeAccounts != null)
+        // A header (account) node is selected → create at that account's root. Matched on the id the
+        // tree builder stamps on the header (FolderTreeBuilder, #31) rather than on its text:
+        // AccountLabel is AccountName ?? Username, nothing makes it unique, and two accounts both
+        // called "Work" would silently put the folder in the first one's mailbox.
+        if (node is { IsHeader: true, AccountId: Guid headerAccountId } && _treeAccounts != null)
         {
-            var acct = _treeAccounts.FirstOrDefault(a => a.AccountLabel == node.Label);
+            var acct = _treeAccounts.FirstOrDefault(a => a.Id == headerAccountId);
             if (acct != null)
             {
                 accountId = acct.Id;
