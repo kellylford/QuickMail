@@ -632,6 +632,7 @@ sealed class StubSyncService : ISyncService
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
     public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
     public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
+    public event Action<AccountModel, string>? DraftUploadsBlocked;
     public event Action<int>? DraftsUploaded;
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
     public event Action<int>? RulesApplied;

@@ -44,6 +44,7 @@ public class SyncService : ISyncService
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
     public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
     public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
+    public event Action<AccountModel, string>? DraftUploadsBlocked;
     public event Action<int>? DraftsUploaded;
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
     public event Action<int>? RulesApplied;
@@ -272,6 +273,9 @@ public class SyncService : ISyncService
 
         var uploaded = new List<MailMessageSummary>();
         var refused  = new List<(MailMessageSummary Draft, string Reason)>();
+        // Set when the whole account is blocked. The drafts stay queued and unmarked, so no row
+        // carries the reason and something else has to say it.
+        string? blocked = null;
         foreach (var draft in pending)
         {
             ct.ThrowIfCancellationRequested();
@@ -392,7 +396,9 @@ public class SyncService : ISyncService
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                if (SendFailure.IsTransient(ex))
+                var (scope, reason) = SendFailure.ClassifyUpload(ex, Sentence);
+
+                if (scope == SendFailure.UploadScope.Unreachable)
                 {
                     // Still unreachable, almost certainly. Stop rather than spend a connection
                     // timeout on each remaining draft; they are retried on the next sweep and stay
@@ -401,21 +407,23 @@ public class SyncService : ISyncService
                     break;
                 }
 
-                // The server answered and refused this draft — a renamed Drafts folder, a message
-                // it will not accept, a rejected login. Stopping here would block every draft
-                // behind it FOREVER, silently, because this pass replays oldest-first and this one
-                // is always first. Mark it so the row says so, and carry on with the rest (#637).
+                if (scope == SendFailure.UploadScope.Account)
+                {
+                    // Nothing about THIS draft is wrong, and nothing the user does to it will help.
+                    // Marking each draft in turn -- which is what this did before -- set
+                    // send_failed_reason on every one of them, and LoadPendingDraftsAsync excludes
+                    // any row that has one: a single expired token de-queued the whole backlog
+                    // permanently, and signing in again brought none of it back. Stop with the
+                    // queue intact, and say it once for the account (#637).
+                    LogService.Log($"Draft upload {account.AccountLabel}: blocked for the whole account, stopping at {draft.MessageId}", ex);
+                    blocked = reason;
+                    break;
+                }
+
+                // This draft is the problem. Stopping here would block every draft behind it
+                // FOREVER, silently, because this pass replays oldest-first and this one is always
+                // first. Mark it so the row says so, and carry on with the rest (#637).
                 LogService.Log($"Draft upload {account.AccountLabel}: {draft.MessageId} refused; marking and continuing", ex);
-                // Only the server's verdict is reported as the server's. IsTransient is closed and
-                // narrow by design, so everything it declines used to be attributed to the mail
-                // server -- including exceptions thrown by QuickMail before the server was ever
-                // contacted, which reached the user as "Your mail server refused it: Object
-                // reference not set to an instance of an object", with a remedy that could not
-                // work (#637).
-                var reason = SendFailure.IsServerVerdict(ex)
-                    ? $"Your mail server refused it: {Sentence(ex.Message)} Edit the draft and save it again to try once more."
-                    : $"QuickMail could not upload it: {Sentence(ex.Message)} The draft is still on this "
-                      + "computer, and saving it again is what tries once more.";
                 try
                 {
                     await _localDrafts.MarkSendFailedAsync(
@@ -428,6 +436,12 @@ public class SyncService : ISyncService
                 }
                 continue;
             }
+        }
+
+        if (blocked != null)
+        {
+            var say = blocked;
+            _ui.Post(() => DraftUploadsBlocked?.Invoke(account, say));
         }
 
         if (refused.Count > 0)

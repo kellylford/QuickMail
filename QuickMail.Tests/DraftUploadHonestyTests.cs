@@ -35,7 +35,15 @@ public class DraftUploadHonestyTests
             new MailKit.Net.Smtp.SmtpCommandException(
                 MailKit.Net.Smtp.SmtpErrorCode.MessageNotAccepted,
                 MailKit.Net.Smtp.SmtpStatusCode.MailboxUnavailable, "over quota")));
-        Assert.True(SendFailure.IsServerVerdict(new MailKit.Security.AuthenticationException("no")));
+    }
+
+    [Fact]
+    public void ARefusedSignIn_IsNotAVerdictOnThisMessage()
+    {
+        // It was, until the failure taxonomy grew an account scope. Nothing about the draft is
+        // wrong, so calling it a verdict on the draft sent the user to edit drafts for ever while
+        // the actual fix -- signing in again -- went unsaid. Handled before this is asked now.
+        Assert.False(SendFailure.IsServerVerdict(new MailKit.Security.AuthenticationException("no")));
     }
 
     [Fact]

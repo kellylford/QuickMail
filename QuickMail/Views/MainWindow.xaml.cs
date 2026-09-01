@@ -276,7 +276,7 @@ public partial class MainWindow : Window
         // leaves nothing in Trash, unlike every other Delete. A plain Yes/No MessageBox,
         // the same shape as the account-removal confirmation; the VM fails closed if unset.
         // Defaults to No: Enter or Space on this prompt would otherwise destroy the only copy.
-        // The account-removal prompt it is modelled on can afford Yes -- that one is recoverable.
+        // The cascade-removal prompt can afford Yes -- that one is recoverable.
         vm.ConfirmLocalDraftDelete = message =>
             MessageBox.Show(this, message, "Delete draft?",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning,
@@ -5381,13 +5381,16 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task OpenMessageFromListAsync(MailMessageSummary summary)
     {
-        // The ROW as well as the folder. Local-only drafts appear in All Mail -- which is where the
-        // app starts -- and asking only the folder there sent a refused draft to the reading pane,
-        // read-only, with no notice field: the row said "not uploaded", the guide said open it and
-        // fix what the server objected to, and Enter gave the user no way to do either. The folder
-        // is kept as the second half of the question because it answers for a server draft whose
-        // account has no folder cache yet, which the row alone cannot (#637).
-        if (_vm.IsDraftRow(summary) || _vm.IsSelectedFolderDrafts)
+        // The ROW as well as the folder, and the row question is the NARROW one. Drafts this
+        // computer is still holding appear in All Mail -- which is where the app starts -- and
+        // asking only the folder there sent a refused draft to the reading pane, read-only, with no
+        // notice field: the row said "not uploaded", the guide said open it and fix what the server
+        // objected to, and Enter gave the user no way to do either. Asking the WIDE question
+        // instead was worse in the other direction: it sent an already-uploaded server draft down
+        // the compose path, which skips the local cache, so offline it opened nothing at all. The
+        // folder stays as the second half because in Drafts every row is a draft, including a
+        // server one whose account has no folder cache yet (#637).
+        if (_vm.IsLocalDraftRow(summary) || _vm.IsSelectedFolderDrafts)
         {
             await _vm.OpenDraftCommand.ExecuteAsync(null);
 

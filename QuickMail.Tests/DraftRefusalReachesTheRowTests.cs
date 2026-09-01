@@ -38,6 +38,7 @@ public class DraftRefusalReachesTheRowTests
         public event Action<int, int>? SyncProgressChanged;
 #pragma warning restore CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
+        public event Action<AccountModel, string>? DraftUploadsBlocked;
         public event Action<int>? DraftsUploaded;
 
         public void RaiseRefused(params MailMessageSummary[] rows) => DraftUploadsRefused?.Invoke(rows);

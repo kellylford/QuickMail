@@ -1792,6 +1792,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.DraftUploadsRefused += OnDraftUploadsRefused;
+        _syncService.DraftUploadsBlocked += OnDraftUploadsBlocked;
         _syncService.DraftsUploaded += OnDraftsUploaded;
         _syncService.FolderReadStatesReconciled += OnFolderReadStatesReconciled;
         _syncService.RulesApplied    += OnRulesApplied;
@@ -5930,6 +5931,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// hands over are freshly read from the store and are NOT the instances the list holds, which
     /// is why this matches them up rather than assigning them in.</para>
     /// </summary>
+    /// <summary>
+    /// Nothing will upload for this account until the user acts (#637). No row is marked, so the
+    /// status bar is the only durable record there is — and an announcement alone would be silence
+    /// for a user who has them turned off.
+    /// </summary>
+    private void OnDraftUploadsBlocked(AccountModel account, string reason)
+    {
+        if (account == null || string.IsNullOrWhiteSpace(reason)) return;
+        SetStatus($"{account.AccountLabel}: {reason}", AnnouncementCategory.Result);
+    }
+
     private void OnDraftUploadsRefused(IReadOnlyList<MailMessageSummary> refused)
     {
         foreach (var marked in refused)
@@ -5949,9 +5961,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // got nothing but a row label -- which a screen reader does not re-speak for a row the user
         // is not sitting on. The good news was reported and the bad news was silent (#637).
         if (refused.Count == 0) return;
+        // Not "open it in Drafts": the row is very often already in front of the user, since
+        // All Mail lists these and is where the app starts.
         SetStatus(refused.Count == 1
-            ? "A draft could not be uploaded. Open it in Drafts to see why."
-            : $"{refused.Count} drafts could not be uploaded. Open them in Drafts to see why.",
+            ? "A draft could not be uploaded. Open it to see why."
+            : $"{refused.Count} drafts could not be uploaded. Open them to see why.",
             AnnouncementCategory.Result);
     }
 
@@ -8498,6 +8512,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <para>Says nothing on its own about a server draft in an account whose folder cache has not
     /// loaded; a caller that needs an answer there asks the selected folder as well.</para>
     /// </summary>
+    /// <summary>
+    /// Whether a row is a draft THIS COMPUTER is still holding — the ones that must open in a
+    /// compose window, because the server has no copy to answer with (#637).
+    /// </summary>
+    /// <remarks>
+    /// Narrower than <see cref="IsDraftRow"/>, and the difference matters. Routing on the wider
+    /// question sent an ALREADY-UPLOADED server draft down the compose path, which deliberately
+    /// skips the local cache to read the server — so offline it produced no window, no reading
+    /// pane and no focus move, in All Mail, which is where the app starts. Reading that same draft
+    /// from the cache is exactly what worked before.
+    /// </remarks>
+    public bool IsLocalDraftRow(MailMessageSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        return summary.IsPendingUpload || IsLocalOnlyId(summary);
+    }
+
     public bool IsDraftRow(MailMessageSummary summary)
     {
         // Only ever set on a draft this computer is still holding.
@@ -8631,18 +8662,36 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Draft load cancelled.";
+            // Through SetStatus, like every other outcome: assigning StatusText directly carries no
+            // category and is never announced, so pressing Enter produced no window, no sound and
+            // no change at all -- the silence this feature exists to remove, left behind on the one
+            // path that was never converted (#637).
+            SetStatus("Opening that draft was cancelled.", AnnouncementCategory.Result);
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to open draft: {ex.Message}";
             LogService.Log("OpenDraft", ex);
+            // Rendered as well as said. The caller reads "MessageDetail is still set" as "show the
+            // explanation", so this leaves one behind rather than returning with the pane untouched
+            // -- which is what happened when the server could not be reached (#637).
+            SetStatus(DraftCouldNotBeOpened, AnnouncementCategory.Result);
+            MessageDetail = MissingSavedCopyPlaceholder(summary, ex);
+            IsMessageOpen = true;
         }
         finally
         {
             IsBusy = false;
         }
     }
+
+    /// <summary>
+    /// The draft is neither on this computer nor reachable on the server right now. Says which,
+    /// rather than repeating the exception, which named a socket timeout at a user who wanted to
+    /// read their own mail (#637).
+    /// </summary>
+    internal const string DraftCouldNotBeOpened =
+        "That draft could not be opened: there is no copy on this computer and the server could "
+        + "not be reached. It is still there — try again once you are back online.";
 
     [RelayCommand]
     private async Task EmptyTrashAsync()

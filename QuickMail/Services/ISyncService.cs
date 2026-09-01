@@ -30,6 +30,17 @@ public interface ISyncService
     event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
 
     /// <summary>
+    /// Fired on the UI thread when nothing will upload for an account until the user does something
+    /// — the sign-in was refused, the secure connection failed, there is no Drafts folder (#637).
+    /// Carries the account and the sentence that names the fix.
+    /// <para>Distinct from <see cref="DraftUploadsRefused"/> because no row is marked: the drafts
+    /// stay queued, so there is nothing on screen carrying the reason. Marking them instead is what
+    /// this replaced, and it de-queued a whole backlog on one expired token — every row excluded by
+    /// LoadPendingDraftsAsync, and signing in again brought none of them back.</para>
+    /// </summary>
+    event Action<AccountModel, string>? DraftUploadsBlocked;
+
+    /// <summary>
     /// Drafts held only on this computer have just reached the server (the count). Their rows are
     /// dropped through <see cref="MessagesRemoved"/>; this exists so the user can be told the
     /// disappearance was an upload rather than the list reordering itself (#637).

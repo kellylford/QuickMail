@@ -178,6 +178,30 @@ public class GroupRebuildLandingTests
     }
 
     [Fact]
+    public void AnUploadedServerDraft_IsADraftButNotOneThisComputerIsHolding()
+    {
+        // The two questions, and why routing needs the narrow one. Sending an already-uploaded
+        // server draft down the compose path -- which skips the local cache to read the server --
+        // meant that offline, in All Mail, Enter opened nothing at all.
+        var vm = Vm();
+        vm.SelectedFolder = MainViewModel.AllMailFolder;
+        var uploaded = Row("41", MainViewModel.AllDraftsFolder.FullName);
+
+        Assert.True(vm.IsDraftRow(uploaded));
+        Assert.False(vm.IsLocalDraftRow(uploaded));
+    }
+
+    [Fact]
+    public void ADraftStillHeldHere_IsBothKindsOfDraft()
+    {
+        var vm = Vm();
+        var held = Row("local-1", "Drafts", pending: true);
+
+        Assert.True(vm.IsDraftRow(held));
+        Assert.True(vm.IsLocalDraftRow(held));
+    }
+
+    [Fact]
     public void TheUnreadableStoreSentence_DoesNotPromiseTheDraftIsSafe()
     {
         // It used to end "Nothing has been lost — try again in a moment." The catch that produces

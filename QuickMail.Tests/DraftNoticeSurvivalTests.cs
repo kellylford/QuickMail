@@ -220,6 +220,71 @@ public class DraftNoticeSurvivalTests
         Assert.True(creds.Reads > before);
     }
 
+    [Fact]
+    public async Task AStoreThatThrowsOnce_DoesNotPinTheRefusalForEver()
+    {
+        // The cache was written to hold the CATCH as well as a real answer, so one credential-store
+        // hiccup made "no stored password" permanent for the life of the window, on the durable
+        // field, with no way back.
+        var creds = new ThrowsOnceThenAnswers();
+        var vm = Compose(credentials: creds);
+        vm.To = "a@b.c";
+        vm.SenderAccount = Account(AuthType.Password);
+        await vm.SendCommand.ExecuteAsync(null);
+        Assert.Contains("no stored password", vm.DeliveryNotice, StringComparison.Ordinal);
+
+        creds.Throw = true;
+        vm.To = "someone@example.com";          // asks, throws, refusal stands, nothing cached
+        Assert.Contains("no stored password", vm.DeliveryNotice, StringComparison.Ordinal);
+
+        creds.Throw = false;
+        creds.Password = "hunter2";             // the user has signed in again
+        vm.To = "someone.else@example.com";
+
+        Assert.Equal(string.Empty, vm.DeliveryNotice);
+    }
+
+    [Fact]
+    public async Task ASuccessfulSave_AsksTheCredentialStoreAgain()
+    {
+        // Signing in again in Manage Accounts changes nothing this window can observe, so the
+        // cached answer kept the refusal standing through an edit AND through a successful save --
+        // the user having done exactly what the sentence asked.
+        var creds = new ThrowsOnceThenAnswers();
+        var vm = Compose(credentials: creds);
+        vm.To = "someone@example.com";
+        vm.Subject = "Airport thoughts";
+        vm.SenderAccount = Account(AuthType.Password);
+        await vm.SendCommand.ExecuteAsync(null);
+        Assert.Contains("no stored password", vm.DeliveryNotice, StringComparison.Ordinal);
+
+        // An edit is what puts the answer in the cache: Send reads the store directly, so without
+        // this the save would find an empty cache and read afresh whatever the rule was.
+        vm.To = "someone.else@example.com";
+        Assert.Contains("no stored password", vm.DeliveryNotice, StringComparison.Ordinal);
+
+        creds.Password = "hunter2";             // the user has signed in again in Manage Accounts
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.Equal(string.Empty, vm.DeliveryNotice);
+    }
+
+    private sealed class ThrowsOnceThenAnswers : ICredentialService
+    {
+        public bool Throw { get; set; }
+        public string? Password { get; set; }
+        public string? GetPassword(Guid accountId)
+        {
+            if (Throw) throw new System.ComponentModel.Win32Exception("credential store unavailable");
+            return Password;
+        }
+        public void SavePassword(Guid accountId, string password) { }
+        public void DeletePassword(Guid accountId) { }
+        public void SaveSecret(string key, string value) { }
+        public string? GetSecret(string key) => null;
+        public void DeleteSecret(string key) { }
+    }
+
     private sealed class CountingCredentials : ICredentialService
     {
         public int Reads { get; private set; }

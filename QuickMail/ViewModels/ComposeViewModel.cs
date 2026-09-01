@@ -510,12 +510,19 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // exists left TWO — and the old one was still uploaded, into the mailbox of the
             // account the user had just moved away from (#637).
             var orphaned = await RekeyStoredRowIfSenderChangedAsync(account);
+            // Recorded BEFORE the save, not after it. The re-key has already taken the old id off
+            // this window, so a save that throws on the next line used to lose the key altogether
+            // -- and the old account's row stayed queued and went up into the mailbox the user had
+            // just moved the draft out of (#637).
+            _orphanedRow ??= orphaned;
             var announcedRekey = false;
 
             var saved = await _drafts.SaveAsync(account, compose, _draftFolderName, _draftMessageId, externalCt);
 
-            // Write-then-delete: the replacement row exists by the time the old one goes.
-            if (orphaned is { } old)
+            // Write-then-delete: the replacement row exists by the time the old one goes. Cleared
+            // only once the row is really gone, so a discard that throws is retried by the next
+            // save rather than leaving a queued row under an account the user has moved away from.
+            if (_orphanedRow is { } old)
             {
                 try
                 {
@@ -523,11 +530,15 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                     // BOTH keys: the old row has gone and the new one now exists. Raising only
                     // the old one is why a re-keyed draft vanished from the list and did not
                     // reappear under the account it had moved to until a folder reload.
+                    // Only when the sender changed on THIS save. Retrying a discard that failed
+                    // earlier moves nothing, and saying so would report a move on an ordinary save
+                    // some time later.
                     DraftRowsChanged?.Invoke(
                         [new DraftRowKey(old.Account, old.Folder, old.Id),
                          new DraftRowKey(account.Id, _draftFolderName!, saved.MessageId)],
-                        "Draft moved to another account.");
+                        orphaned != null ? "Draft moved to another account." : null);
                     announcedRekey = true;
+                    _orphanedRow   = null;
                 }
                 catch (Exception ex)
                 {
@@ -546,6 +557,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // The save re-arms the upload (the store clears the reason), so the notice must go
             // with it rather than sit there describing a refusal that is no longer true. A SEND
             // refusal is left alone: storing the draft does not give it a recipient.
+            ForgetPasswordCheck();
             ClearNoticeIfResolved();
             // Re-claim on the id this save just minted. Seed can only claim a draft that was
             // ALREADY local, which leaves out every new compose, reply and forward — precisely the
@@ -628,6 +640,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // server leg succeeds left the notice saying the message was saved nowhere -- and
             // telling the user to keep trying Save Draft -- about a message that had just reached
             // the server. The durable channel is the one that must not be stale (#637).
+            ForgetPasswordCheck();
             ClearNoticeIfResolved();
 
             // The server holds it now, so the local copy is redundant — and leaving it would show
@@ -900,19 +913,40 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (_passwordCheckedFor == account.Id) return _passwordMissing;
         try
         {
-            _passwordMissing = string.IsNullOrEmpty(_credentials.GetPassword(account.Id));
+            _passwordMissing    = string.IsNullOrEmpty(_credentials.GetPassword(account.Id));
+            _passwordCheckedFor = account.Id;   // ONLY a real answer is worth keeping
+            return _passwordMissing;
         }
         catch (Exception ex)
         {
+            // Deliberately not cached. Caching the catch meant one credential-store hiccup pinned
+            // "no stored password" for the life of the window, on the durable field, with no way
+            // back. The refusal still stands for this call -- an unreadable store is not evidence
+            // the password is there -- but the next ask reads again (#637).
             LogService.Log("ComposeViewModel: could not read the stored password while re-testing a refusal", ex);
-            _passwordMissing = true;
+            return true;
         }
-        _passwordCheckedFor = account.Id;
-        return _passwordMissing;
     }
+
+    /// <summary>
+    /// Forgets the cached password answer, so the next ask reads the store again.
+    /// </summary>
+    /// <remarks>
+    /// Called when a save succeeds. Signing in again in Manage Accounts changes nothing this window
+    /// can observe, so without this the user did exactly what the refusal asked and the sentence
+    /// stayed on the field through an edit AND through a successful save -- the failure the
+    /// re-evaluated condition was written to remove, re-entering through the cache put in front of
+    /// it (#637).
+    /// </remarks>
+    private void ForgetPasswordCheck() => _passwordCheckedFor = Guid.Empty;
 
     private Guid _passwordCheckedFor;
     private bool _passwordMissing;
+
+    /// <summary>
+    /// A stored row left behind by a sender change, still waiting to be dropped. Null once it is.
+    /// </summary>
+    private (Guid Account, string Folder, string Id)? _orphanedRow;
 
     /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>
     private bool HasAutoSavableContent()

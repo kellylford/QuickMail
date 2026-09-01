@@ -88,6 +88,22 @@ public class DraftRefusalIsSaidOutLoudTests
         Assert.Equal("Ready", vm.StatusText);
     }
 
+    [Fact]
+    public void AnAccountBlockedFromUploading_IsSaidInTheStatusBar()
+    {
+        // No row is marked for this one -- the drafts stay queued, which is the point -- so there
+        // is nothing on screen carrying the reason and the status bar is the only durable record.
+        var (vm, sync) = Vm(Row("local-1"));
+
+        sync.RaiseBlocked(
+            new AccountModel { Id = AccountId, AccountName = "Work", Username = "me@example.com" },
+            "Your mail server would not accept the sign-in for this account, so the drafts waiting "
+            + "on this computer could not be uploaded. Open Manage Accounts and sign in again.");
+
+        Assert.Contains("sign in again", vm.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Work", vm.StatusText, StringComparison.Ordinal);
+    }
+
     private sealed class RaisingSyncService : ISyncService
     {
 #pragma warning disable CS0067 // the rest of the interface is not what this file is about
@@ -99,6 +115,10 @@ public class DraftRefusalIsSaidOutLoudTests
         public event Action<int, int>? SyncProgressChanged;
 #pragma warning restore CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
+        public event Action<AccountModel, string>? DraftUploadsBlocked;
+
+        public void RaiseBlocked(AccountModel account, string reason)
+            => DraftUploadsBlocked?.Invoke(account, reason);
 
         public void RaiseRefused(IReadOnlyList<MailMessageSummary> refused)
             => DraftUploadsRefused?.Invoke(refused);
