@@ -235,19 +235,25 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             _isDirty = true;
             OnPropertyChanged(nameof(AttachmentSummaryText));
+            // Removing the oversized attachment is what the 25 MB refusal asked for.
+            RetireNoticeIfConditionResolved();
         };
     }
 
     // Dirty-marking partial methods — fired by the [ObservableProperty] source generator
-    // Editing any of these can be what fixes a refused send, so the reason is retired here rather
-    // than left sitting on screen after the user has acted on it (#637).
     // Editing any of these can be what resolves a refusal, so the notice is re-tested rather than
     // assumed stale -- typing in To used to clear a reason about a missing password (#637).
-    partial void OnToChanged(string value)      { _isDirty = true; ClearNoticeIfResolved(); }
+    partial void OnToChanged(string value)      { _isDirty = true; RetireNoticeIfConditionResolved(); }
     partial void OnCcChanged(string value)      => _isDirty = true;
     partial void OnBccChanged(string value)     => _isDirty = true;
     partial void OnSubjectChanged(string value) => _isDirty = true;
     partial void OnBodyChanged(string value)    => _isDirty = true;
+
+    // Not a dirty-marking hook: choosing a different account is what resolves four of the five
+    // send refusals (no sender, an invalid address, a missing password), and leaving the sentence
+    // standing after the user has done exactly what it asked is the same defect as clearing one
+    // that is still true (#637).
+    partial void OnSenderAccountChanged(AccountModel? value) => RetireNoticeIfConditionResolved();
 
     public void Seed(ComposeModel model)
     {
@@ -275,7 +281,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // Why the server would not take this draft, if it said (#637). Shown in this window
         // because this is where Enter on a draft lands — and the guide's instruction, "fix what
         // the server objected to and save again", is unactionable without it.
-        DeliveryNotice        = model.DeliveryNotice;
+        // Through SetNotice, not straight at the field: a notice with no condition attached is one
+        // only a successful save may clear, and assigning the field directly left this one looking
+        // like a stale sentence nobody owned -- so the To assignment a few lines below erased what
+        // the server said before the window was ever shown (#637).
+        SetNotice(model.DeliveryNotice);
         ComposeKind         = model.Kind;
         OnPropertyChanged(nameof(WindowTitle));
 
@@ -785,8 +795,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </param>
     private void SetNotice(string why, Func<bool>? stillHolds = null)
     {
-        DeliveryNotice   = why;
+        // Recorded before the field is published: assigning DeliveryNotice raises PropertyChanged,
+        // and anything reading the condition from that notification would have seen the PREVIOUS
+        // one still attached.
         _noticeStillHolds = stillHolds;
+        DeliveryNotice    = why;
     }
 
     /// <summary>
@@ -807,6 +820,21 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Retires the notice if — and only if — the condition it describes has been resolved.
+    /// <para>Called when the user edits something that could BE the fix. It differs from
+    /// <see cref="ClearNoticeIfResolved"/> in what it does with a notice that carries no condition:
+    /// a save that succeeds disproves such a sentence, but an edit disproves nothing, so an edit
+    /// must leave it alone. Treating "no condition" as "resolved" here is what made one character
+    /// typed into To erase what the server said about a refused draft — the very sentence the user
+    /// opened the draft to read, and the one the guide tells him to act on (#637).</para>
+    /// </summary>
+    private void RetireNoticeIfConditionResolved()
+    {
+        if (_noticeStillHolds is null) return;
+        ClearNoticeIfResolved();
+    }
+
+    /// <summary>
     /// A send the user asked for that cannot proceed: says why on the durable, focusable field as
     /// well as the status line, and asks the window to put focus there (#637).
     /// </summary>
@@ -819,14 +847,30 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         SaveRefused?.Invoke();
     }
 
-    /// <summary>Clears the notice a save wrote, leaving a send refusal in place.</summary>
-
-
     /// <summary>
     /// The condition behind the current <see cref="DeliveryNotice"/>, or null when the sentence
     /// describes a one-off failure rather than a state.
     /// </summary>
     private Func<bool>? _noticeStillHolds;
+
+    /// <summary>
+    /// Whether the account has no password stored. Asked from a property setter as well as from
+    /// Send — re-testing the refusal reads the Windows credential store, which can throw — so a
+    /// store that will not answer must not take the compose window down. It is also not evidence
+    /// the password is there, so on failure the refusal stands (#637).
+    /// </summary>
+    private bool StoredPasswordMissing(AccountModel account)
+    {
+        try
+        {
+            return string.IsNullOrEmpty(_credentials.GetPassword(account.Id));
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("ComposeViewModel: could not read the stored password while re-testing a refusal", ex);
+            return true;
+        }
+    }
 
     /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>
     private bool HasAutoSavableContent()
@@ -889,7 +933,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                      + "Open Manage Accounts and sign in again.",
                        () => SenderAccount is { } a &&
                              a.AuthType == Models.AuthType.Password &&
-                             string.IsNullOrEmpty(_credentials.GetPassword(a.Id)));
+                             StoredPasswordMissing(a));
             return;
         }
 

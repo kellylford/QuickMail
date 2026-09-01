@@ -42,11 +42,12 @@ public partial class MessageWindow : Window
     private readonly IConfigService?     _configService;
 
     /// <summary>
-    /// Whether this window was opened on a draft. A stored copy that will not load is then
-    /// described as a draft, which is the word the user guide quotes, rather than as a message
-    /// (#637).
+    /// Whether a given message is a draft. A stored copy that will not load is then described as a
+    /// draft, which is the word the user guide quotes, rather than as a message (#637).
+    /// <para>Asked per message rather than fixed at construction: this window navigates Prev/Next
+    /// through the whole list, so what it is showing changes under it.</para>
     /// </summary>
-    private readonly bool _showingDraft;
+    private readonly Func<MailMessageSummary, bool> _isDraft;
 
     // Local command registry for the command palette (issue 53).
     private readonly CommandRegistry _localRegistry = new();
@@ -61,7 +62,7 @@ public partial class MessageWindow : Window
         CoreWebView2Environment? sharedEnv = null,
         IThemeService? themeService = null,
         IConfigService? configService = null,
-        bool showingDraft = false)
+        Func<MailMessageSummary, bool>? isDraft = null)
     {
         _vm            = vm;
         _imap          = imap;
@@ -69,7 +70,7 @@ public partial class MessageWindow : Window
         _sharedEnv     = sharedEnv;
         _themeService  = themeService;
         _configService = configService;
-        _showingDraft  = showingDraft;
+        _isDraft       = isDraft ?? (_ => false);
 
         InitializeComponent();
         DataContext = vm;
@@ -365,7 +366,7 @@ public partial class MessageWindow : Window
                 // their DRAFT could not be recovered. But a draft opened in Window mode really is
                 // a draft, and the user guide quotes the draft wording, so answering "message" for
                 // everything moved the same mismatch one case over. The caller knows which it is.
-                var missing = _showingDraft
+                var missing = _isDraft(summary)
                     ? (storeFailure != null
                         ? ViewModels.MainViewModel.StoreUnreadable
                         : ViewModels.MainViewModel.MissingSavedCopy)

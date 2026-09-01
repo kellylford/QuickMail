@@ -206,6 +206,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // Version stamps; latest wins, stale results discarded
     private int _folderLoadVersion;
+    private Task _lastGroupRebuild = Task.CompletedTask;
     private int _conversationRebuildVersion;
     private int _senderGroupRebuildVersion;
     private int _toGroupRebuildVersion;
@@ -5080,10 +5081,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void ScheduleConversationRebuild()
     {
+        var settled  = BeginGroupRebuild();
         var version  = Interlocked.Increment(ref _conversationRebuildVersion);
         var snapshot = Messages.ToList();
         var sort     = ActiveSort;
-        Task.Run(() =>
+        var work = Task.Run(() =>
         {
             var built = ConversationBuilder.Build(snapshot);
             IEnumerable<ConversationGroup> ordered = sort switch
@@ -5099,8 +5101,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _conversationRebuildVersion)
+                try
                 {
+                    if (version != _conversationRebuildVersion) return;
                     var expanded = Conversations
                         .Where(g => g.IsExpanded).Select(g => g.NormalizedSubject)
                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -5109,16 +5112,44 @@ public partial class MainViewModel : ObservableObject, IDisposable
                             g.IsExpanded = true;
                     Conversations = new ObservableCollection<ConversationGroup>(groups);
                 }
+                finally { settled.TrySetResult(); }
             });
-        }).LogFaults("conversation rebuild");
+        });
+        // A build that throws never reaches the post, so without this nothing would ever complete
+        // the wait and the caller would hang on it.
+        work.ContinueWith(_ => settled.TrySetResult(), CancellationToken.None,
+                          TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        work.LogFaults("conversation rebuild");
+    }
+
+    /// <summary>
+    /// Completes once every grouped-view rebuild scheduled up to now has been applied to the UI.
+    /// <para>Callers that put keyboard focus back after a command need this because a rebuild is
+    /// NOT part of the command they awaited: it is built on the thread pool and posted back, so
+    /// awaiting the command tells you nothing about whether the rebuild has landed. For an
+    /// all-local delete — no network leg at all, and SQLite completing synchronously — the command
+    /// returns without ever yielding, and a listener torn off at that point never fires: the row
+    /// goes and focus is left on nothing (#637).</para>
+    /// <para>Already-completed when nothing is pending, so a command that refused, or that
+    /// rebuilt nothing, costs one finished await.</para>
+    /// </summary>
+    public Task GroupRebuildSettledAsync() => _lastGroupRebuild;
+
+    /// <summary>Starts tracking a rebuild, superseding whatever the last one was.</summary>
+    private TaskCompletionSource BeginGroupRebuild()
+    {
+        var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _lastGroupRebuild = settled.Task;
+        return settled;
     }
 
     private void ScheduleSenderGroupRebuild()
     {
+        var settled  = BeginGroupRebuild();
         var version  = Interlocked.Increment(ref _senderGroupRebuildVersion);
         var snapshot = Messages.ToList();
         var sort     = ActiveSort;
-        Task.Run(() =>
+        var work = Task.Run(() =>
         {
             var built = SenderGroupBuilder.Build(snapshot);
             IEnumerable<SenderGroup> ordered = sort switch
@@ -5133,8 +5164,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _senderGroupRebuildVersion)
+                try
                 {
+                    if (version != _senderGroupRebuildVersion) return;
                     var expanded = SenderGroups
                         .Where(g => g.IsExpanded).Select(g => g.SenderKey)
                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -5143,16 +5175,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
                             g.IsExpanded = true;
                     SenderGroups = new ObservableCollection<SenderGroup>(groups);
                 }
+                finally { settled.TrySetResult(); }
             });
-        }).LogFaults("sender group rebuild");
+        });
+        // A build that throws never reaches the post, so without this nothing would ever complete
+        // the wait and the caller would hang on it.
+        work.ContinueWith(_ => settled.TrySetResult(), CancellationToken.None,
+                          TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        work.LogFaults("sender group rebuild");
     }
 
     private void ScheduleToGroupRebuild()
     {
+        var settled  = BeginGroupRebuild();
         var version  = Interlocked.Increment(ref _toGroupRebuildVersion);
         var snapshot = Messages.ToList();
         var sort     = ActiveSort;
-        Task.Run(() =>
+        var work = Task.Run(() =>
         {
             var built = SenderGroupBuilder.BuildByTo(snapshot);
             IEnumerable<SenderGroup> ordered = sort switch
@@ -5167,8 +5206,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _toGroupRebuildVersion)
+                try
                 {
+                    if (version != _toGroupRebuildVersion) return;
                     var expanded = ToGroups
                         .Where(g => g.IsExpanded).Select(g => g.SenderKey)
                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -5177,8 +5217,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                             g.IsExpanded = true;
                     ToGroups = new ObservableCollection<SenderGroup>(groups);
                 }
+                finally { settled.TrySetResult(); }
             });
-        }).LogFaults("to-recipient group rebuild");
+        });
+        // A build that throws never reaches the post, so without this nothing would ever complete
+        // the wait and the caller would hang on it.
+        work.ContinueWith(_ => settled.TrySetResult(), CancellationToken.None,
+                          TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        work.LogFaults("to-recipient group rebuild");
     }
 
     [RelayCommand]
@@ -8397,6 +8443,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SelectedFolder != null &&
         (SelectedFolder.Kind == SpecialFolderKind.Drafts ||
          string.Equals(SelectedFolder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Whether a row is a draft. Asked of the ROW, not of the folder on screen: a message window
+    /// navigates Prev/Next through a whole list, a notification opens mail from another folder
+    /// entirely, and the All Mail and All Inboxes views merge local-only drafts in beside ordinary
+    /// mail -- so "the Drafts folder is selected" answered for the wrong message on four routes,
+    /// and answered "no" for a real draft opened out of an aggregate view (#637).
+    /// </summary>
+    public bool IsDraftRow(MailMessageSummary summary)
+    {
+        // Only ever set on a draft this computer is still holding.
+        if (summary.IsPendingUpload) return true;
+        if (string.Equals(summary.FolderName, AllDraftsFolder.FullName, StringComparison.Ordinal))
+            return true;
+        return CachedFolders.TryGetValue(summary.AccountId, out var folders) &&
+               folders.Any(f => f.Kind == SpecialFolderKind.Drafts &&
+                                string.Equals(f.FullName, summary.FolderName, StringComparison.Ordinal));
+    }
 
     [RelayCommand]
     private async Task OpenDraftAsync()

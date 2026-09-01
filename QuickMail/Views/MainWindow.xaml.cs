@@ -348,8 +348,10 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, message, "QuickMail",
                 MessageBoxButton.OK, MessageBoxImage.Information);
-            // Same unreliable return-to-owner focus as the dialogs beside it: put the user back on
-            // the message list rather than wherever WPF leaves them (#637).
+            // This one arrives at startup, unasked for, so there is no originating control to
+            // return to -- WPF's return-to-owner leaves the user wherever the window happened to
+            // start. The dialogs beside it are answers to a gesture the user just made, and keep
+            // that focus; this one has to name a destination (#637).
             FocusActiveMessagePanel();
         };
 
@@ -4321,29 +4323,25 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.Conversations.FirstOrDefault(g => g.Messages.Contains(toDelete));
                 var groupIdx    = parentGroup != null ? _vm.Conversations.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toDelete;
-                Action disarm;
+                Func<Action> arm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toDelete) { msgIdx = i; break; }
-                    disarm = LandOnConversationMessageAfterRebuild(parentGroup.NormalizedSubject, msgIdx, groupIdx);
+                    arm = () => LandOnConversationMessageAfterRebuild(parentGroup.NormalizedSubject, msgIdx, groupIdx);
                 }
                 else
                 {
-                    disarm = LandOnConversationAfterRebuild(groupIdx);
+                    arm = () => LandOnConversationAfterRebuild(groupIdx);
                 }
-                await _vm.DeleteMessageCommand.ExecuteAsync(null);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(arm, () => _vm.DeleteMessageCommand.ExecuteAsync(null));
             }
             else if (ConversationTree.SelectedItem is ConversationGroup group)
             {
                 var targetIdx = _vm.Conversations.IndexOf(group);
-                var disarm = LandOnConversationAfterRebuild(targetIdx);   // register before the rebuild fires
-                await _vm.DeleteMessagesAsync(group.Messages);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(() => LandOnConversationAfterRebuild(targetIdx),
+                                      () => _vm.DeleteMessagesAsync(group.Messages));
             }
         }
         else if (IsArchiveGesture(e))
@@ -4357,29 +4355,25 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.Conversations.FirstOrDefault(g => g.Messages.Contains(toArchive));
                 var groupIdx    = parentGroup != null ? _vm.Conversations.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toArchive;
-                Action disarm;
+                Func<Action> arm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toArchive) { msgIdx = i; break; }
-                    disarm = LandOnConversationMessageAfterRebuild(parentGroup.NormalizedSubject, msgIdx, groupIdx);
+                    arm = () => LandOnConversationMessageAfterRebuild(parentGroup.NormalizedSubject, msgIdx, groupIdx);
                 }
                 else
                 {
-                    disarm = LandOnConversationAfterRebuild(groupIdx);
+                    arm = () => LandOnConversationAfterRebuild(groupIdx);
                 }
-                await _vm.ArchiveMessageCommand.ExecuteAsync(null);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(arm, () => _vm.ArchiveMessageCommand.ExecuteAsync(null));
             }
             else if (ConversationTree.SelectedItem is ConversationGroup group)
             {
                 var targetIdx = _vm.Conversations.IndexOf(group);
-                var disarm = LandOnConversationAfterRebuild(targetIdx);   // self-disarms if nothing rebuilds
-                await _vm.ArchiveMessagesAsync(group.Messages);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(() => LandOnConversationAfterRebuild(targetIdx),
+                                      () => _vm.ArchiveMessagesAsync(group.Messages));
             }
         }
         else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
@@ -4417,13 +4411,54 @@ public partial class MainWindow : Window
     /// without firing" after every SUCCESSFUL landing, because the rebuild arrives in
     /// milliseconds; and a confirmation dialog pumps the dispatcher, so ten seconds spent reading
     /// "this computer holds the only copy" disarmed the listener before the delete it was waiting
-    /// for. The caller knows the answer without a clock: when the awaited command returns, either
-    /// the rebuild happened or it never will (#637).</para>
+    /// for. <see cref="RunAndLandAsync"/> answers the same question without a clock (#637).</para>
     /// </remarks>
     private Action ArmOneShotRebuildListener(PropertyChangedEventHandler handler)
     {
         _vm.PropertyChanged += handler;
         return () => _vm.PropertyChanged -= handler;   // no-op once it has fired and unsubscribed
+    }
+
+    /// <summary>
+    /// Runs a command that may rebuild the grouped view, with a one-shot landing listener armed
+    /// across it, and takes the listener back off once the rebuild has either landed or been ruled
+    /// out.
+    /// </summary>
+    /// <remarks>
+    /// Arming BEFORE the command and disarming after is what keeps a refused command -- or one the
+    /// user answers No to -- from leaving a listener that fires on an unrelated rebuild minutes
+    /// later. But the command completing is not the same event as the rebuild landing: the rebuild
+    /// is built on the thread pool and posted back to the UI thread, so nothing orders it against
+    /// the command's own continuation. An all-local draft delete has no network leg at all and
+    /// SQLite completes synchronously, so the command returns without ever yielding -- disarming
+    /// there tore the listener off BEFORE the rebuild, and focus was left on nothing. Waiting for
+    /// the rebuild to settle asks the question directly (#637).
+    /// </remarks>
+    private async Task RunAndLandAsync(Func<Action> arm, Func<Task> command)
+    {
+        var disarm = arm();
+        try
+        {
+            await command();
+            await _vm.GroupRebuildSettledAsync();
+        }
+        finally
+        {
+            // A no-op once the listener has fired; the point is every path where it never does.
+            disarm();
+        }
+    }
+
+    /// <summary>
+    /// How focus lands in whichever grouped view is showing, or null in the flat message list,
+    /// where the view model asks for focus itself.
+    /// </summary>
+    private Func<Action>? GroupLanding(int targetIdx)
+    {
+        if (_vm.IsConversationsView) return () => LandOnConversationAfterRebuild(targetIdx);
+        if (_vm.IsFromView)          return () => LandOnSenderGroupAfterRebuild(targetIdx);
+        if (_vm.IsToView)            return () => LandOnToGroupAfterRebuild(targetIdx);
+        return null;
     }
 
     // After an async conversation rebuild, selects and focuses the conversation
@@ -4967,29 +5002,25 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.SenderGroups.FirstOrDefault(g => g.Messages.Contains(toDelete));
                 var groupIdx    = parentGroup != null ? _vm.SenderGroups.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toDelete;
-                Action disarm;
+                Func<Action> arm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toDelete) { msgIdx = i; break; }
-                    disarm = LandOnSenderMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                    arm = () => LandOnSenderMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
                 }
                 else
                 {
-                    disarm = LandOnSenderGroupAfterRebuild(groupIdx);
+                    arm = () => LandOnSenderGroupAfterRebuild(groupIdx);
                 }
-                await _vm.DeleteMessageCommand.ExecuteAsync(null);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(arm, () => _vm.DeleteMessageCommand.ExecuteAsync(null));
             }
             else if (SenderGroupTree.SelectedItem is SenderGroup group)
             {
                 var targetIdx = _vm.SenderGroups.IndexOf(group);
-                var disarm = LandOnSenderGroupAfterRebuild(targetIdx);   // register before the rebuild fires
-                await _vm.DeleteSenderGroupCommand.ExecuteAsync(group);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(() => LandOnSenderGroupAfterRebuild(targetIdx),
+                                      () => _vm.DeleteSenderGroupCommand.ExecuteAsync(group));
             }
         }
         else if (IsArchiveGesture(e))
@@ -5001,29 +5032,25 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.SenderGroups.FirstOrDefault(g => g.Messages.Contains(toArchive));
                 var groupIdx    = parentGroup != null ? _vm.SenderGroups.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toArchive;
-                Action disarm;
+                Func<Action> arm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toArchive) { msgIdx = i; break; }
-                    disarm = LandOnSenderMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                    arm = () => LandOnSenderMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
                 }
                 else
                 {
-                    disarm = LandOnSenderGroupAfterRebuild(groupIdx);
+                    arm = () => LandOnSenderGroupAfterRebuild(groupIdx);
                 }
-                await _vm.ArchiveMessageCommand.ExecuteAsync(null);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(arm, () => _vm.ArchiveMessageCommand.ExecuteAsync(null));
             }
             else if (SenderGroupTree.SelectedItem is SenderGroup group)
             {
                 var targetIdx = _vm.SenderGroups.IndexOf(group);
-                var disarm = LandOnSenderGroupAfterRebuild(targetIdx);   // register before the rebuild fires
-                await _vm.ArchiveSenderGroupCommand.ExecuteAsync(group);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(() => LandOnSenderGroupAfterRebuild(targetIdx),
+                                      () => _vm.ArchiveSenderGroupCommand.ExecuteAsync(group));
             }
         }
         else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
@@ -5074,8 +5101,8 @@ public partial class MainWindow : Window
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
 
-        await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
-        LandOnSenderGroupAfterRebuild(targetIdx);
+        await RunAndLandAsync(() => LandOnSenderGroupAfterRebuild(targetIdx),
+                              () => _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder));
     }
 
     private async void SenderGroupContextMenu_CopyToFolder_Click(object sender, RoutedEventArgs e)
@@ -5162,29 +5189,25 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.ToGroups.FirstOrDefault(g => g.Messages.Contains(toDelete));
                 var groupIdx    = parentGroup != null ? _vm.ToGroups.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toDelete;
-                Action disarm;
+                Func<Action> arm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toDelete) { msgIdx = i; break; }
-                    disarm = LandOnToMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                    arm = () => LandOnToMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
                 }
                 else
                 {
-                    disarm = LandOnToGroupAfterRebuild(groupIdx);
+                    arm = () => LandOnToGroupAfterRebuild(groupIdx);
                 }
-                await _vm.DeleteMessageCommand.ExecuteAsync(null);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(arm, () => _vm.DeleteMessageCommand.ExecuteAsync(null));
             }
             else if (ToGroupTree.SelectedItem is SenderGroup group)
             {
                 var targetIdx = _vm.ToGroups.IndexOf(group);
-                var disarm = LandOnToGroupAfterRebuild(targetIdx);
-                await _vm.DeleteToGroupCommand.ExecuteAsync(group);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(() => LandOnToGroupAfterRebuild(targetIdx),
+                                      () => _vm.DeleteToGroupCommand.ExecuteAsync(group));
             }
         }
         else if (IsArchiveGesture(e))
@@ -5196,29 +5219,25 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.ToGroups.FirstOrDefault(g => g.Messages.Contains(toArchive));
                 var groupIdx    = parentGroup != null ? _vm.ToGroups.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toArchive;
-                Action disarm;
+                Func<Action> arm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toArchive) { msgIdx = i; break; }
-                    disarm = LandOnToMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                    arm = () => LandOnToMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
                 }
                 else
                 {
-                    disarm = LandOnToGroupAfterRebuild(groupIdx);
+                    arm = () => LandOnToGroupAfterRebuild(groupIdx);
                 }
-                await _vm.ArchiveMessageCommand.ExecuteAsync(null);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(arm, () => _vm.ArchiveMessageCommand.ExecuteAsync(null));
             }
             else if (ToGroupTree.SelectedItem is SenderGroup group)
             {
                 var targetIdx = _vm.ToGroups.IndexOf(group);
-                var disarm = LandOnToGroupAfterRebuild(targetIdx);
-                await _vm.ArchiveToGroupCommand.ExecuteAsync(group);
-                // Either the rebuild happened during that await or it never will.
-                disarm();
+                await RunAndLandAsync(() => LandOnToGroupAfterRebuild(targetIdx),
+                                      () => _vm.ArchiveToGroupCommand.ExecuteAsync(group));
             }
         }
         else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
@@ -5266,8 +5285,8 @@ public partial class MainWindow : Window
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
 
-        await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
-        LandOnToGroupAfterRebuild(targetIdx);
+        await RunAndLandAsync(() => LandOnToGroupAfterRebuild(targetIdx),
+                              () => _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder));
     }
 
     private async void ToGroupContextMenu_CopyToFolder_Click(object sender, RoutedEventArgs e)
@@ -5537,11 +5556,12 @@ public partial class MainWindow : Window
         // which causes screen readers to keep browse mode active for the message window's
         // WebView2 even after the user alt-tabs back to the main window. As an independent
         // window, the AT cleanly exits browse mode when focus leaves the message window.
-        // The Drafts folder -- real or the All Drafts view -- is the only place a draft is opened
-        // from, and this window needs to know so a copy that will not load is called a draft rather
-        // than a message (#637).
+        // Asked of the message being opened, not of the folder on screen: this window navigates
+        // Prev/Next through the whole list, and a notification can open mail from a folder the user
+        // is not in. Needed so a copy that will not load is called a draft rather than a message
+        // (#637).
         var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment, _themeService,
-                                    _configService, showingDraft: _vm.IsSelectedFolderDrafts);
+                                    _configService, isDraft: _vm.IsDraftRow);
         // Ctrl+Shift+W in the message window routes here so the watch list keeps one writer and the
         // main window's rows (and the watched folder, if it is open) update with it.
         win.WatchToggleRequested += subject =>
@@ -6567,18 +6587,15 @@ public partial class MainWindow : Window
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
 
-        await _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
-
         // Conversations/From: LandOnX waits for the async rebuild before focusing.
         // Messages view: MessageListFocusRequested in MoveSelectedMessagesToFolderAsync handles it.
         // Filing a whole group empties its row, so land where it was — the row that takes its place,
         // as the group context menus do — rather than jumping the user back to the top of the list.
-        if (_vm.IsConversationsView)
-            LandOnConversationAfterRebuild(targetIdx);
-        else if (_vm.IsFromView)
-            LandOnSenderGroupAfterRebuild(targetIdx);
-        else if (_vm.IsToView)
-            LandOnToGroupAfterRebuild(targetIdx);
+        var arm = GroupLanding(targetIdx);
+        if (arm != null)
+            await RunAndLandAsync(arm, () => _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder));
+        else
+            await _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
     }
 
     /// <summary>
@@ -6631,17 +6648,17 @@ public partial class MainWindow : Window
         var messages = GetSelectedMessages();
         if (messages.Count == 0) return;
 
-        await _vm.DeleteMessagesAsync(messages);
-
         // Land focus the same way the Move context-menu handler does.
-        if (_vm.IsConversationsView)
-            LandOnConversationAfterRebuild(0);
-        else if (_vm.IsFromView)
-            LandOnSenderGroupAfterRebuild(0);
-        else if (_vm.IsToView)
-            LandOnToGroupAfterRebuild(0);
+        var arm = GroupLanding(0);
+        if (arm != null)
+        {
+            await RunAndLandAsync(arm, () => _vm.DeleteMessagesAsync(messages));
+        }
         else
+        {
+            await _vm.DeleteMessagesAsync(messages);
             FocusMessageListFirstItem();
+        }
     }
 
     // Context-menu Archive — acts on the whole selection, mirroring the Delete context-menu handler
@@ -6651,16 +6668,17 @@ public partial class MainWindow : Window
         var messages = GetSelectedMessages();
         if (messages.Count == 0) return;
 
-        await _vm.ArchiveMessagesAsync(messages);
-
-        if (_vm.IsConversationsView)
-            LandOnConversationAfterRebuild(0);
-        else if (_vm.IsFromView)
-            LandOnSenderGroupAfterRebuild(0);
-        else if (_vm.IsToView)
-            LandOnToGroupAfterRebuild(0);
+        // Land focus the same way the Move context-menu handler does.
+        var arm = GroupLanding(0);
+        if (arm != null)
+        {
+            await RunAndLandAsync(arm, () => _vm.ArchiveMessagesAsync(messages));
+        }
         else
+        {
+            await _vm.ArchiveMessagesAsync(messages);
             FocusMessageListFirstItem();
+        }
     }
 
     // ── Conversation context menu handlers ───────────────────────────────────
@@ -6678,8 +6696,8 @@ public partial class MainWindow : Window
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
 
-        await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
-        LandOnConversationAfterRebuild(targetIdx);
+        await RunAndLandAsync(() => LandOnConversationAfterRebuild(targetIdx),
+                              () => _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder));
     }
 
     private async void ConversationContextMenu_CopyToFolder_Click(object sender, RoutedEventArgs e)
