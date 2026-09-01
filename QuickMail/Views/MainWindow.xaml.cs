@@ -345,8 +345,13 @@ public partial class MainWindow : Window
         // Its own title: nothing was refused, so "Cannot do that" -- the first thing spoken -- was
         // wrong for a notice the user did not trigger.
         vm.ShowNoticeRequested = message =>
+        {
             MessageBox.Show(this, message, "QuickMail",
                 MessageBoxButton.OK, MessageBoxImage.Information);
+            // Same unreliable return-to-owner focus as the dialogs beside it: put the user back on
+            // the message list rather than wherever WPF leaves them (#637).
+            FocusActiveMessagePanel();
+        };
 
         vm.ConfirmationRequested = (message, title, startOnNo) =>
             MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning,
@@ -4316,22 +4321,29 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.Conversations.FirstOrDefault(g => g.Messages.Contains(toDelete));
                 var groupIdx    = parentGroup != null ? _vm.Conversations.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toDelete;
+                Action disarm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toDelete) { msgIdx = i; break; }
-                    LandOnConversationMessageAfterRebuild(parentGroup.NormalizedSubject, msgIdx, groupIdx);
+                    disarm = LandOnConversationMessageAfterRebuild(parentGroup.NormalizedSubject, msgIdx, groupIdx);
                 }
                 else
-                    LandOnConversationAfterRebuild(groupIdx);
+                {
+                    disarm = LandOnConversationAfterRebuild(groupIdx);
+                }
                 await _vm.DeleteMessageCommand.ExecuteAsync(null);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
             else if (ConversationTree.SelectedItem is ConversationGroup group)
             {
                 var targetIdx = _vm.Conversations.IndexOf(group);
-                LandOnConversationAfterRebuild(targetIdx);   // register before the rebuild fires
+                var disarm = LandOnConversationAfterRebuild(targetIdx);   // register before the rebuild fires
                 await _vm.DeleteMessagesAsync(group.Messages);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
         }
         else if (IsArchiveGesture(e))
@@ -4345,22 +4357,29 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.Conversations.FirstOrDefault(g => g.Messages.Contains(toArchive));
                 var groupIdx    = parentGroup != null ? _vm.Conversations.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toArchive;
+                Action disarm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toArchive) { msgIdx = i; break; }
-                    LandOnConversationMessageAfterRebuild(parentGroup.NormalizedSubject, msgIdx, groupIdx);
+                    disarm = LandOnConversationMessageAfterRebuild(parentGroup.NormalizedSubject, msgIdx, groupIdx);
                 }
                 else
-                    LandOnConversationAfterRebuild(groupIdx);
+                {
+                    disarm = LandOnConversationAfterRebuild(groupIdx);
+                }
                 await _vm.ArchiveMessageCommand.ExecuteAsync(null);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
             else if (ConversationTree.SelectedItem is ConversationGroup group)
             {
                 var targetIdx = _vm.Conversations.IndexOf(group);
-                LandOnConversationAfterRebuild(targetIdx);   // self-disarms if nothing rebuilds
+                var disarm = LandOnConversationAfterRebuild(targetIdx);   // self-disarms if nothing rebuilds
                 await _vm.ArchiveMessagesAsync(group.Messages);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
         }
         else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
@@ -4386,36 +4405,30 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Registers a one-shot rebuild listener that disarms itself if the rebuild never comes.
+    /// Registers a one-shot rebuild listener and returns the action that takes it back off.
     /// </summary>
     /// <remarks>
-    /// These listeners unsubscribe only when they fire, and a command can now finish without
-    /// rebuilding anything -- an archive or a move refused because the selection holds a draft that
-    /// is not on the server, an archive with no Archive folder, or a delete the user answers No to.
-    /// The listener then stays armed and fires on the NEXT rebuild, a background sync minutes
-    /// later, dragging keyboard focus into the tree from wherever the user has since gone. Guarding
-    /// each call site against each way a command can decline was tried and reached two sites out of
-    /// seven; this bounds every one of them instead. The window is generous because a slow archive
-    /// legitimately takes seconds, and landing focus late is a far smaller harm than stealing it
-    /// minutes later (#637).
+    /// These listeners unsubscribe only when they fire, and a command can finish without rebuilding
+    /// anything -- an archive or a move refused because the selection holds a draft that is not on
+    /// the server, an archive with no Archive folder, a delete the user answers No to. The listener
+    /// then stays armed and fires on the NEXT rebuild, a background sync minutes later, dragging
+    /// keyboard focus into the tree from wherever the user has since gone.
+    /// <para>A ten-second self-disarm was tried and was wrong twice over: it logged "disarmed
+    /// without firing" after every SUCCESSFUL landing, because the rebuild arrives in
+    /// milliseconds; and a confirmation dialog pumps the dispatcher, so ten seconds spent reading
+    /// "this computer holds the only copy" disarmed the listener before the delete it was waiting
+    /// for. The caller knows the answer without a clock: when the awaited command returns, either
+    /// the rebuild happened or it never will (#637).</para>
     /// </remarks>
-    private void ArmOneShotRebuildListener(PropertyChangedEventHandler handler)
+    private Action ArmOneShotRebuildListener(PropertyChangedEventHandler handler)
     {
         _vm.PropertyChanged += handler;
-
-        var disarm = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
-        disarm.Tick += (_, _) =>
-        {
-            disarm.Stop();
-            _vm.PropertyChanged -= handler;   // no-op if it already fired and unsubscribed
-            LogService.Debug("[FOCUS] one-shot rebuild listener disarmed without firing");
-        };
-        disarm.Start();
+        return () => _vm.PropertyChanged -= handler;   // no-op once it has fired and unsubscribed
     }
 
     // After an async conversation rebuild, selects and focuses the conversation
     // at the given index (clamped to the new list size).
-    private void LandOnConversationAfterRebuild(int targetIdx)
+    private Action LandOnConversationAfterRebuild(int targetIdx)
     {
         LogService.Debug($"[FOCUS] LandOnConv: registered listener targetIdx={targetIdx} {FocusInfo()}");
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -4458,7 +4471,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        ArmOneShotRebuildListener(OnPropertyChanged);
+        return ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
     // ── SenderGroup tree focus helpers ───────────────────────────────────────
@@ -4471,7 +4484,7 @@ public partial class MainWindow : Window
 
     // After an async sender-group rebuild, selects and focuses the sender group
     // at the given index (clamped to the new list size).
-    private void LandOnSenderGroupAfterRebuild(int targetGroupIdx)
+    private Action LandOnSenderGroupAfterRebuild(int targetGroupIdx)
     {
         LogService.Debug($"[FOCUS] LandOnSender: registered listener targetIdx={targetGroupIdx} {FocusInfo()}");
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -4514,12 +4527,12 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        ArmOneShotRebuildListener(OnPropertyChanged);
+        return ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
     // After an async to-group rebuild, selects and focuses the recipient group
     // at the given index (clamped to the new list size).
-    private void LandOnToGroupAfterRebuild(int targetGroupIdx)
+    private Action LandOnToGroupAfterRebuild(int targetGroupIdx)
     {
         LogService.Debug($"[FOCUS] LandOnToGroup: registered listener targetIdx={targetGroupIdx} {FocusInfo()}");
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -4561,7 +4574,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        ArmOneShotRebuildListener(OnPropertyChanged);
+        return ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
     // ── Group-boundary navigation (< / >) ────────────────────────────────────
@@ -4784,7 +4797,7 @@ public partial class MainWindow : Window
             ConversationTree, _vm.Conversations.IndexOf(group), group, group.Messages[msgIdx], msgIdx);
     }
 
-    private void LandOnSenderMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
+    private Action LandOnSenderMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
     {
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
@@ -4814,11 +4827,11 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        ArmOneShotRebuildListener(OnPropertyChanged);
+        return ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
 
-    private void LandOnToMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
+    private Action LandOnToMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
     {
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
@@ -4848,11 +4861,11 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        ArmOneShotRebuildListener(OnPropertyChanged);
+        return ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
 
-    private void LandOnConversationMessageAfterRebuild(string normalizedSubject, int msgIdx, int fallbackGroupIdx)
+    private Action LandOnConversationMessageAfterRebuild(string normalizedSubject, int msgIdx, int fallbackGroupIdx)
     {
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
@@ -4882,7 +4895,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        ArmOneShotRebuildListener(OnPropertyChanged);
+        return ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
     // ── SenderGroup tree event handlers ─────────────────────────────────────
@@ -4954,22 +4967,29 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.SenderGroups.FirstOrDefault(g => g.Messages.Contains(toDelete));
                 var groupIdx    = parentGroup != null ? _vm.SenderGroups.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toDelete;
+                Action disarm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toDelete) { msgIdx = i; break; }
-                    LandOnSenderMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                    disarm = LandOnSenderMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
                 }
                 else
-                    LandOnSenderGroupAfterRebuild(groupIdx);
+                {
+                    disarm = LandOnSenderGroupAfterRebuild(groupIdx);
+                }
                 await _vm.DeleteMessageCommand.ExecuteAsync(null);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
             else if (SenderGroupTree.SelectedItem is SenderGroup group)
             {
                 var targetIdx = _vm.SenderGroups.IndexOf(group);
-                LandOnSenderGroupAfterRebuild(targetIdx);   // register before the rebuild fires
+                var disarm = LandOnSenderGroupAfterRebuild(targetIdx);   // register before the rebuild fires
                 await _vm.DeleteSenderGroupCommand.ExecuteAsync(group);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
         }
         else if (IsArchiveGesture(e))
@@ -4981,22 +5001,29 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.SenderGroups.FirstOrDefault(g => g.Messages.Contains(toArchive));
                 var groupIdx    = parentGroup != null ? _vm.SenderGroups.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toArchive;
+                Action disarm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toArchive) { msgIdx = i; break; }
-                    LandOnSenderMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                    disarm = LandOnSenderMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
                 }
                 else
-                    LandOnSenderGroupAfterRebuild(groupIdx);
+                {
+                    disarm = LandOnSenderGroupAfterRebuild(groupIdx);
+                }
                 await _vm.ArchiveMessageCommand.ExecuteAsync(null);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
             else if (SenderGroupTree.SelectedItem is SenderGroup group)
             {
                 var targetIdx = _vm.SenderGroups.IndexOf(group);
-                LandOnSenderGroupAfterRebuild(targetIdx);   // register before the rebuild fires
+                var disarm = LandOnSenderGroupAfterRebuild(targetIdx);   // register before the rebuild fires
                 await _vm.ArchiveSenderGroupCommand.ExecuteAsync(group);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
         }
         else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
@@ -5135,22 +5162,29 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.ToGroups.FirstOrDefault(g => g.Messages.Contains(toDelete));
                 var groupIdx    = parentGroup != null ? _vm.ToGroups.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toDelete;
+                Action disarm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toDelete) { msgIdx = i; break; }
-                    LandOnToMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                    disarm = LandOnToMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
                 }
                 else
-                    LandOnToGroupAfterRebuild(groupIdx);
+                {
+                    disarm = LandOnToGroupAfterRebuild(groupIdx);
+                }
                 await _vm.DeleteMessageCommand.ExecuteAsync(null);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
             else if (ToGroupTree.SelectedItem is SenderGroup group)
             {
                 var targetIdx = _vm.ToGroups.IndexOf(group);
-                LandOnToGroupAfterRebuild(targetIdx);
+                var disarm = LandOnToGroupAfterRebuild(targetIdx);
                 await _vm.DeleteToGroupCommand.ExecuteAsync(group);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
         }
         else if (IsArchiveGesture(e))
@@ -5162,22 +5196,29 @@ public partial class MainWindow : Window
                 var parentGroup = _vm.ToGroups.FirstOrDefault(g => g.Messages.Contains(toArchive));
                 var groupIdx    = parentGroup != null ? _vm.ToGroups.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toArchive;
+                Action disarm;
                 if (parentGroup != null && parentGroup.Messages.Count > 1)
                 {
                     int msgIdx = 0;
                     for (int i = 0; i < parentGroup.Messages.Count; i++)
                         if (parentGroup.Messages[i] == toArchive) { msgIdx = i; break; }
-                    LandOnToMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                    disarm = LandOnToMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
                 }
                 else
-                    LandOnToGroupAfterRebuild(groupIdx);
+                {
+                    disarm = LandOnToGroupAfterRebuild(groupIdx);
+                }
                 await _vm.ArchiveMessageCommand.ExecuteAsync(null);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
             else if (ToGroupTree.SelectedItem is SenderGroup group)
             {
                 var targetIdx = _vm.ToGroups.IndexOf(group);
-                LandOnToGroupAfterRebuild(targetIdx);
+                var disarm = LandOnToGroupAfterRebuild(targetIdx);
                 await _vm.ArchiveToGroupCommand.ExecuteAsync(group);
+                // Either the rebuild happened during that await or it never will.
+                disarm();
             }
         }
         else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
@@ -5496,7 +5537,11 @@ public partial class MainWindow : Window
         // which causes screen readers to keep browse mode active for the message window's
         // WebView2 even after the user alt-tabs back to the main window. As an independent
         // window, the AT cleanly exits browse mode when focus leaves the message window.
-        var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment, _themeService, _configService);
+        // The Drafts folder -- real or the All Drafts view -- is the only place a draft is opened
+        // from, and this window needs to know so a copy that will not load is called a draft rather
+        // than a message (#637).
+        var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment, _themeService,
+                                    _configService, showingDraft: _vm.IsSelectedFolderDrafts);
         // Ctrl+Shift+W in the message window routes here so the watch list keeps one writer and the
         // main window's rows (and the watched folder, if it is open) update with it.
         win.WatchToggleRequested += subject =>

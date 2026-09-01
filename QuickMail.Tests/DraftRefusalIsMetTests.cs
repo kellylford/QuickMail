@@ -293,4 +293,115 @@ public class DraftRefusalIsMetTests
 
         Assert.Equal(string.Empty, vm.DeliveryNotice);
     }
+
+    // ── The refusal notice tracks the CONDITION, not "a send was once refused" ──
+    //
+    // A sticky bool cannot say WHICH condition was refused, so it protected the wrong sentences and
+    // erased the right ones: fixing the sender account or removing the oversized attachment left
+    // the reason standing, typing in To wiped a refusal about a missing password, and once set it
+    // was never cleared -- so a later save FAILURE inherited the protection and outlived the
+    // successful save that disproved it. Every case below was demonstrated by a reviewer against
+    // the bool, and each is a different one of the five refusals.
+
+    [Fact]
+    public async Task ChoosingASenderAccount_ResolvesThatRefusal()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var vm = Compose(store.Drafts);
+        vm.To = "someone@example.com";
+
+        await vm.SendCommand.ExecuteAsync(null);
+        Assert.Contains("no sender account", vm.DeliveryNotice, StringComparison.OrdinalIgnoreCase);
+
+        vm.SenderAccount = new AccountModel
+        {
+            Id = AccountId, Username = "samuel@interfree.ca", AuthType = AuthType.OAuth2Google,
+        };
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.Equal(string.Empty, vm.DeliveryNotice);
+    }
+
+    [Fact]
+    public async Task RemovingTheOversizedAttachment_ResolvesThatRefusal()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var vm = Sendable(store.Drafts);
+        vm.To = "someone@example.com";
+        var big = new AttachmentModel { FileName = "big.bin", FileSize = 26_000_000 };
+        vm.Attachments.Add(big);
+
+        await vm.SendCommand.ExecuteAsync(null);
+        Assert.Contains("25 MB", vm.DeliveryNotice, StringComparison.Ordinal);
+
+        vm.Attachments.Remove(big);
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.Equal(string.Empty, vm.DeliveryNotice);
+    }
+
+    [Fact]
+    public async Task TypingInTo_DoesNotEraseARefusalAboutSomethingElse()
+    {
+        // The bool retired all five refusals on any keystroke in To. Adding a recipient does
+        // nothing about attachments being too large.
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var vm = Sendable(store.Drafts);
+        vm.To = "someone@example.com";
+        vm.Attachments.Add(new AttachmentModel { FileName = "big.bin", FileSize = 26_000_000 });
+
+        await vm.SendCommand.ExecuteAsync(null);
+        Assert.Contains("25 MB", vm.DeliveryNotice, StringComparison.Ordinal);
+
+        vm.To = "someone@example.com, another@example.com";
+
+        Assert.Contains("25 MB", vm.DeliveryNotice, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ASaveFailureAfterASendRefusal_DoesNotOutliveASuccessfulSave()
+    {
+        // The worst of the four: once the flag latched, a save-failure sentence inherited its
+        // protection and stayed on the durable field for the rest of the session, about a draft
+        // that was saving fine.
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var drafts = new FailOnDemandDraftService(store.Drafts);
+        var vm = Sendable(drafts);
+
+        await vm.SendCommand.ExecuteAsync(null);            // refused: no recipient
+        vm.To = "someone@example.com";                      // cause resolved
+
+        drafts.Fail = true;
+        await vm.AutoSaveAsync();                           // a real store failure
+        Assert.Contains("could not write", vm.DeliveryNotice, StringComparison.Ordinal);
+
+        drafts.Fail = false;
+        await vm.AutoSaveAsync();                           // and now it works
+
+        Assert.Equal(string.Empty, vm.DeliveryNotice);
+    }
+
+    /// <summary>A real store that can be made to fail and recover on demand.</summary>
+    private sealed class FailOnDemandDraftService(ILocalDraftService inner) : ILocalDraftService
+    {
+        public bool Fail { get; set; }
+
+        public Task<PendingDraftSave> SaveAsync(AccountModel a, ComposeModel d, string f,
+            string? prev, System.Threading.CancellationToken ct = default)
+            => Fail ? throw new InvalidOperationException("database is locked")
+                    : inner.SaveAsync(a, d, f, prev, ct);
+
+        public Task<string?> ResolveDraftsFolderNameAsync(Guid a) => inner.ResolveDraftsFolderNameAsync(a);
+        public Task<ComposeModel?> LoadAsync(Guid a, string f, string id, System.Threading.CancellationToken ct = default)
+            => inner.LoadAsync(a, f, id, ct);
+        public Task<string?> GetSupersededServerIdAsync(Guid a, string f, string id)
+            => inner.GetSupersededServerIdAsync(a, f, id);
+        public Task MarkSendFailedAsync(Guid a, string f, string id, string r) => inner.MarkSendFailedAsync(a, f, id, r);
+        public Task DiscardAsync(Guid a, string f, string id) => inner.DiscardAsync(a, f, id);
+        public Task<IReadOnlyList<MailMessageSummary>> GetPendingAsync(Guid a) => inner.GetPendingAsync(a);
+    }
 }

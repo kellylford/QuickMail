@@ -274,11 +274,11 @@ class StubLocalStoreService : ILocalStoreService
             ? rows.FirstOrDefault(r => r.MessageId == messageId)
             : null);
 
-    /// <summary>Set to make the unsent count fail, the way --online mode's absent store does.</summary>
     public virtual Task<int> CountRefusedDraftsAsync(Guid accountId)
         => Task.FromResult(SeededSummaries.Where(kv => kv.Key.AccountId == accountId)
             .SelectMany(kv => kv.Value).Count(m => m.SendFailedReason != null));
 
+    /// <summary>Set to make the unsent count fail, the way --online mode's absent store does.</summary>
     public Exception? CountUnsentMailFailure { get; set; }
 
     public virtual Task<int> CountUnsentMailAsync(Guid accountId)

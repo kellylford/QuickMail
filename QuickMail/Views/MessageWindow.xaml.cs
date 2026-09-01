@@ -41,6 +41,13 @@ public partial class MessageWindow : Window
     private readonly IThemeService?      _themeService;
     private readonly IConfigService?     _configService;
 
+    /// <summary>
+    /// Whether this window was opened on a draft. A stored copy that will not load is then
+    /// described as a draft, which is the word the user guide quotes, rather than as a message
+    /// (#637).
+    /// </summary>
+    private readonly bool _showingDraft;
+
     // Local command registry for the command palette (issue 53).
     private readonly CommandRegistry _localRegistry = new();
 
@@ -53,7 +60,8 @@ public partial class MessageWindow : Window
         ILocalStoreService localStore,
         CoreWebView2Environment? sharedEnv = null,
         IThemeService? themeService = null,
-        IConfigService? configService = null)
+        IConfigService? configService = null,
+        bool showingDraft = false)
     {
         _vm            = vm;
         _imap          = imap;
@@ -61,6 +69,7 @@ public partial class MessageWindow : Window
         _sharedEnv     = sharedEnv;
         _themeService  = themeService;
         _configService = configService;
+        _showingDraft  = showingDraft;
 
         InitializeComponent();
         DataContext = vm;
@@ -350,15 +359,19 @@ public partial class MessageWindow : Window
                 // announce-only path IS the blank window with nothing said that this guard exists
                 // to prevent -- it just looks fine to anyone who has them on. The sentence goes
                 // where focus is about to land, and stays there to be re-read (#637).
-                // The SAME sentences the reading pane uses, not a second wording of the same
-                // thing: the user guide can only quote one, and a user in Window mode was meeting
-                // the other and could not find it (#637).
-                // The MESSAGE-worded pair. This branch is not restricted to drafts -- POP3 gives
-                // every message a local id, so the fetch above is skipped for all of them -- and
-                // the draft-worded constants told those users their draft could not be recovered.
-                var missing = storeFailure != null
-                    ? ViewModels.MainViewModel.StoreUnreadableMessage
-                    : ViewModels.MainViewModel.MissingSavedCopyMessage;
+                // Which pair depends on what this window is actually showing. The branch is not
+                // restricted to drafts -- POP3 gives every message a local id, so the fetch above
+                // is skipped for all of them -- so the draft-worded constants told those users
+                // their DRAFT could not be recovered. But a draft opened in Window mode really is
+                // a draft, and the user guide quotes the draft wording, so answering "message" for
+                // everything moved the same mismatch one case over. The caller knows which it is.
+                var missing = _showingDraft
+                    ? (storeFailure != null
+                        ? ViewModels.MainViewModel.StoreUnreadable
+                        : ViewModels.MainViewModel.MissingSavedCopy)
+                    : (storeFailure != null
+                        ? ViewModels.MainViewModel.StoreUnreadableMessage
+                        : ViewModels.MainViewModel.MissingSavedCopyMessage);
                 var placeholder = new MailMessageDetail
                 {
                     MessageId  = summary.MessageId,

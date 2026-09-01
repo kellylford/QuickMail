@@ -241,7 +241,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     // Dirty-marking partial methods — fired by the [ObservableProperty] source generator
     // Editing any of these can be what fixes a refused send, so the reason is retired here rather
     // than left sitting on screen after the user has acted on it (#637).
-    partial void OnToChanged(string value)      { _isDirty = true; ClearSendRefusalNotice(); }
+    // Editing any of these can be what resolves a refusal, so the notice is re-tested rather than
+    // assumed stale -- typing in To used to clear a reason about a missing password (#637).
+    partial void OnToChanged(string value)      { _isDirty = true; ClearNoticeIfResolved(); }
     partial void OnCcChanged(string value)      => _isDirty = true;
     partial void OnBccChanged(string value)     => _isDirty = true;
     partial void OnSubjectChanged(string value) => _isDirty = true;
@@ -354,7 +356,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             const string noSender = "This message has no sender account selected, so it cannot be "
                                   + "saved. Choose an account in the From field.";
-            DeliveryNotice = noSender;
+            SetNotice(noSender, () => SenderAccount == null);
             SetStatusOutcome(noSender);
             SaveRefused?.Invoke();
             return;
@@ -364,7 +366,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             const string tooBig = "This message cannot be saved: its attachments add up to more "
                                 + "than 25 MB. Remove some and try again.";
-            DeliveryNotice = tooBig;
+            SetNotice(tooBig, () => Attachments.Sum(a => a.FileSize) > 25_000_000);
             SetStatusOutcome(tooBig);
             SaveRefused?.Invoke();
             return;
@@ -384,8 +386,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             // Durable, like the auto-save arm: the window then refuses to close, and until now the
             // only account of why was an announcement and an unfocusable line of text (#637).
-            DeliveryNotice = "This account has no Drafts folder yet, so this message cannot be saved. "
-                           + "Connect the account once so QuickMail can find it.";
+            SetNotice("This account has no Drafts folder yet, so this message cannot be saved. "
+                    + "Connect the account once so QuickMail can find it.");
             SetStatusOutcome("No Drafts folder found on this account.");
             SaveRefused?.Invoke();
         }
@@ -406,7 +408,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // for: the user asked for this save, it did not happen, and the window then refuses to
             // close -- with the only account of why in an announcement and an unfocusable line of
             // text (#637).
-            DeliveryNotice = nowhere;
+            SetNotice(nowhere);
             SaveRefused?.Invoke();
         }
         finally
@@ -530,7 +532,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // The save re-arms the upload (the store clears the reason), so the notice must go
             // with it rather than sit there describing a refusal that is no longer true. A SEND
             // refusal is left alone: storing the draft does not give it a recipient.
-            ClearNoticeUnlessSendRefusal();
+            ClearNoticeIfResolved();
             // Re-claim on the id this save just minted. Seed can only claim a draft that was
             // ALREADY local, which leaves out every new compose, reply and forward — precisely the
             // rows the upload pass skips claimed drafts to protect. Without this the pass uploads
@@ -584,7 +586,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // server leg succeeds left the notice saying the message was saved nowhere -- and
             // telling the user to keep trying Save Draft -- about a message that had just reached
             // the server. The durable channel is the one that must not be stale (#637).
-            ClearNoticeUnlessSendRefusal();
+            ClearNoticeIfResolved();
 
             // The server holds it now, so the local copy is redundant — and leaving it would show
             // the draft twice in Drafts once the folder syncs.
@@ -738,8 +740,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // one the user has already been told cannot work on this account (#637).
             LogService.Log("AutoSaveAsync: no Drafts folder for this account", ex);
             AutoSaveText   = "Auto-save failed";
-            DeliveryNotice = "This account has no Drafts folder yet, so this message cannot be saved. "
-                           + "Connect the account once so QuickMail can find it.";
+            SetNotice("This account has no Drafts folder yet, so this message cannot be saved. "
+                    + "Connect the account once so QuickMail can find it.");
             if (!_autoSaveFailureAnnounced)
             {
                 _autoSaveFailureAnnounced = true;
@@ -759,8 +761,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // Deliberately does not say "saved nowhere": an earlier save may well have put an
             // older copy on disk, and overstating that was the same fault as telling the user a
             // draft could not be recovered when the store was merely busy.
-            DeliveryNotice = "Auto-save could not write this message to your computer, so your "
-                           + "latest changes are not saved. Keep this window open and try Save Draft.";
+            SetNotice("Auto-save could not write this message to your computer, so your "
+                    + "latest changes are not saved. Keep this window open and try Save Draft.");
             if (!_autoSaveFailureAnnounced)
             {
                 _autoSaveFailureAnnounced = true;
@@ -773,43 +775,58 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Retires a send refusal once the user changes something that could resolve it.</summary>
-    private void ClearSendRefusalNotice()
+    /// <summary>
+    /// Puts a sentence on the durable notice field, remembering the CONDITION that produced it.
+    /// </summary>
+    /// <param name="why">What the user is told.</param>
+    /// <param name="stillHolds">
+    /// Re-evaluated before the notice is cleared. Null for a sentence that describes a moment
+    /// rather than a state -- a save that failed once -- which any later success may clear.
+    /// </param>
+    private void SetNotice(string why, Func<bool>? stillHolds = null)
     {
-        if (!_noticeIsSendRefusal) return;
-        _noticeIsSendRefusal = false;
-        DeliveryNotice = string.Empty;
+        DeliveryNotice   = why;
+        _noticeStillHolds = stillHolds;
+    }
+
+    /// <summary>
+    /// Clears the notice unless the condition it describes is still true.
+    /// <para>This replaced a sticky bool that said only "a send was once refused". A bool cannot
+    /// say WHICH condition, so it protected the wrong things and erased the right ones: fixing the
+    /// sender account or removing the oversized attachment left the sentence standing, typing in
+    /// the To field wiped a refusal that had nothing to do with To, and once set it was never
+    /// cleared -- so a later save FAILURE inherited the protection and its sentence outlived the
+    /// successful save that disproved it. Asking the condition costs nothing and cannot be one
+    /// path behind the code (#637).</para>
+    /// </summary>
+    private void ClearNoticeIfResolved()
+    {
+        if (_noticeStillHolds is { } holds && holds()) return;
+        DeliveryNotice    = string.Empty;
+        _noticeStillHolds = null;
     }
 
     /// <summary>
     /// A send the user asked for that cannot proceed: says why on the durable, focusable field as
     /// well as the status line, and asks the window to put focus there (#637).
     /// </summary>
-    private void RefuseSend(string why)
+    private void RefuseSend(string why, Func<bool> stillHolds)
     {
-        DeliveryNotice   = why;
-        // Marked so a save cannot clear it. A refused SEND is still true after a draft saves --
-        // saving says nothing about whether the message can go out -- and the auto-save timer was
-        // erasing the reason within a couple of minutes, collapsing the field the user had been
-        // put on and moving focus out from under them (#637).
-        _noticeIsSendRefusal = true;
+        // The condition travels with the sentence, so a save cannot clear a refusal that is still
+        // true and nothing has to remember to clear one that is not.
+        SetNotice(why, stillHolds);
         SetStatusOutcome(why);
         SaveRefused?.Invoke();
     }
 
     /// <summary>Clears the notice a save wrote, leaving a send refusal in place.</summary>
-    private void ClearNoticeUnlessSendRefusal()
-    {
-        if (_noticeIsSendRefusal) return;
-        DeliveryNotice = string.Empty;
-    }
+
 
     /// <summary>
-    /// True while <see cref="DeliveryNotice"/> holds a reason a SEND was refused. A save clears the
-    /// notice it wrote itself, never this one: the condition it describes -- no recipient, no
-    /// sender, attachments too large -- is unaffected by the draft being stored.
+    /// The condition behind the current <see cref="DeliveryNotice"/>, or null when the sentence
+    /// describes a one-off failure rather than a state.
     /// </summary>
-    private bool _noticeIsSendRefusal;
+    private Func<bool>? _noticeStillHolds;
 
     /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>
     private bool HasAutoSavableContent()
@@ -832,7 +849,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // window, same conditions -- they were fixed on the Save path and left here (#637).
         if (string.IsNullOrWhiteSpace(To))
         {
-            RefuseSend("This message has no recipient, so it cannot be sent. Add an address in the To field.");
+            RefuseSend("This message has no recipient, so it cannot be sent. Add an address in the To field.",
+                       () => string.IsNullOrWhiteSpace(To));
             return;
         }
 
@@ -840,14 +858,15 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (account == null)
         {
             RefuseSend("This message has no sender account selected, so it cannot be sent. "
-                     + "Choose an account in the From field.");
+                     + "Choose an account in the From field.", () => SenderAccount == null);
             return;
         }
 
         if (Attachments.Sum(a => a.FileSize) > 25_000_000)
         {
             RefuseSend("This message cannot be sent: its attachments add up to more than 25 MB. "
-                     + "Remove some and try again.");
+                     + "Remove some and try again.",
+                       () => Attachments.Sum(a => a.FileSize) > 25_000_000);
             return;
         }
 
@@ -858,7 +877,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (!EmailAddressValidator.IsValid(account.Username))
         {
             RefuseSend($"\"{account.Username}\" is not a valid email address, so this message has no "
-                     + "valid sender. Fix the email address for this account in Manage Accounts.");
+                     + "valid sender. Fix the email address for this account in Manage Accounts.",
+                       () => SenderAccount is { } a && !EmailAddressValidator.IsValid(a.Username));
             return;
         }
 
@@ -866,7 +886,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (string.IsNullOrEmpty(password) && account.AuthType == Models.AuthType.Password)
         {
             RefuseSend("This account has no stored password, so this message cannot be sent. "
-                     + "Open Manage Accounts and sign in again.");
+                     + "Open Manage Accounts and sign in again.",
+                       () => SenderAccount is { } a &&
+                             a.AuthType == Models.AuthType.Password &&
+                             string.IsNullOrEmpty(_credentials.GetPassword(a.Id)));
             return;
         }
 

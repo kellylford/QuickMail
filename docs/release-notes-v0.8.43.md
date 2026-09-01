@@ -17,7 +17,7 @@ Drafts are now saved to your computer first and sent to the server afterwards. I
 - Auto-save works the same way, and says *"Auto-saved on this computer"* while a draft is waiting.
 - A draft that has not reached the server yet sits in your **Drafts** folder with the other drafts,
   showing the status **Not on server**, which the row reads out as "not on server" before
-  anything else about the message. If you already use the combined **Read status** field, that new
+  anything else about the message. If you already use the combined **Read status (combined)** field, that new
   field is left switched off for you and the combined one says the same thing in its own words. You can open it, edit it, and save it again as often as you
   like without a connection, and any attachments stay with it.
 - Closing a compose window is never blocked by being offline.
@@ -36,7 +36,7 @@ Also fixed in this release, all of them ways an offline draft could go wrong qui
 - Changing the **From** account moves the draft to that account instead of leaving a copy to be
   uploaded to the mailbox you moved away from.
 - A draft whose saved copy has gone is no longer reported as uploaded, and one your server refuses
-  no longer blocks every draft behind it — it reads **Not uploaded** and the rest go up normally.
+  no longer blocks every draft behind it — its status becomes **Not uploaded** and the rest go up normally.
 - Offline drafts no longer disappear from the Drafts list when a connection returns.
 - Deleting a selection that mixes offline drafts with ordinary messages now deletes both, rather
   than neither — and deleting a draft that exists only on this computer asks first, because
