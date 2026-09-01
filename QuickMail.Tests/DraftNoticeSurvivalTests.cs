@@ -181,6 +181,56 @@ public class DraftNoticeSurvivalTests
         Assert.Contains("no stored password", vm.DeliveryNotice, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task RetestingThePasswordRefusal_DoesNotReadTheCredentialStorePerKeystroke()
+    {
+        // Measured at 24 reads for 24 characters before this: synchronous Windows credential-store
+        // calls on the UI thread, from a binding's source update, for every character typed.
+        var creds = new CountingCredentials();
+        var vm = Compose(credentials: creds);
+        vm.To = "a@b.c";
+        vm.SenderAccount = Account(AuthType.Password);
+        await vm.SendCommand.ExecuteAsync(null);
+        Assert.Contains("no stored password", vm.DeliveryNotice, StringComparison.Ordinal);
+
+        var before = creds.Reads;
+        foreach (var ch in "someone.else@example.com")
+            vm.To += ch;
+
+        // One read for the first keystroke -- Send reads the store directly, so the cache starts
+        // empty -- and none for the twenty-three after it.
+        Assert.Equal(before + 1, creds.Reads);
+        Assert.Contains("no stored password", vm.DeliveryNotice, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ChangingAccount_AsksTheCredentialStoreAgain()
+    {
+        // The cached answer is about one account, so it must not survive the account changing --
+        // otherwise the refusal would stand for an account that does have a password stored.
+        var creds = new CountingCredentials();
+        var vm = Compose(credentials: creds);
+        vm.To = "a@b.c";
+        vm.SenderAccount = Account(AuthType.Password);
+        await vm.SendCommand.ExecuteAsync(null);
+
+        var before = creds.Reads;
+        vm.SenderAccount = Account(AuthType.Password);
+
+        Assert.True(creds.Reads > before);
+    }
+
+    private sealed class CountingCredentials : ICredentialService
+    {
+        public int Reads { get; private set; }
+        public string? GetPassword(Guid accountId) { Reads++; return null; }
+        public void SavePassword(Guid accountId, string password) { }
+        public void DeletePassword(Guid accountId) { }
+        public void SaveSecret(string key, string value) { }
+        public string? GetSecret(string key) => null;
+        public void DeleteSecret(string key) { }
+    }
+
     // ── stubs ────────────────────────────────────────────────────────────────
 
     private class PlainDraftService : ILocalDraftService

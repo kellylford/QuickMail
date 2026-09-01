@@ -297,6 +297,22 @@ public class RowLayoutServiceTests : IDisposable
         Assert.True(service.Load().Message.First(f => f.Id == "flag").Enabled);
     }
 
+    [Fact]
+    public void ACopyKeepsTheRecordOfWhatHasAlreadyBeenIntroduced()
+    {
+        // IntroducedFields is the one property whose entire purpose is that it survives: it is what
+        // stops a field being offered -- and force-enabled -- a second time. A copy that drops it
+        // turns "off" back into "on" for a user who deliberately turned it off.
+        var layouts = _service.Load();          // reconciling on load is what records them
+        Assert.NotEmpty(layouts.IntroducedFields);
+
+        var copy = layouts.Clone();
+
+        Assert.Equal(layouts.IntroducedFields, copy.IntroducedFields);
+        // A copy, not the same list: mutating one must not reach back into the other.
+        Assert.NotSame(layouts.IntroducedFields, copy.IntroducedFields);
+    }
+
     private sealed class StubConfigService : IConfigService
     {
         public bool AnnounceFlagStatus { get; init; } = true;

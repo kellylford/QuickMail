@@ -77,6 +77,10 @@ public sealed class RowLayouts
         Message      = Message.ConvertAll(f => f.Clone()),
         Conversation = Conversation.ConvertAll(f => f.Clone()),
         SenderGroup  = SenderGroup.ConvertAll(f => f.Clone()),
+        // Carried too. This is the one property whose whole purpose is that it survives, so a copy
+        // that drops it says a field has never been introduced and offers it again -- turning "off"
+        // back into "on" for a user who turned it off.
+        IntroducedFields = [.. IntroducedFields],
     };
 
     /// <summary>

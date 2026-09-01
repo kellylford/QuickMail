@@ -249,11 +249,15 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     partial void OnSubjectChanged(string value) => _isDirty = true;
     partial void OnBodyChanged(string value)    => _isDirty = true;
 
-    // Not a dirty-marking hook: choosing a different account is what resolves four of the five
-    // send refusals (no sender, an invalid address, a missing password), and leaving the sentence
-    // standing after the user has done exactly what it asked is the same defect as clearing one
-    // that is still true (#637).
-    partial void OnSenderAccountChanged(AccountModel? value) => RetireNoticeIfConditionResolved();
+    // Not a dirty-marking hook: choosing a different account is what resolves three of the five
+    // send refusals -- no sender, an invalid address, a missing password -- and leaving the
+    // sentence standing after the user has done exactly what it asked is the same defect as
+    // clearing one that is still true (#637).
+    partial void OnSenderAccountChanged(AccountModel? value)
+    {
+        _passwordCheckedFor = Guid.Empty;   // a different account is a different answer
+        RetireNoticeIfConditionResolved();
+    }
 
     public void Seed(ComposeModel model)
     {
@@ -574,6 +578,34 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             LogService.Log("SaveDraftCoreAsync: local draft store unavailable; server-only this time", ex);
         }
 
+        // What leg 1 would have told us, when leg 1 did not run to the end. Both of these read
+        // from the store rather than from what THIS call happened to write, because a save that
+        // follows a successful one already has a stored row and leg 1 is not what put it there.
+        if (localId == null && _draftMessageId is { } storedId && LocalMessageId.IsLocal(storedId))
+        {
+            // Discarding by a local assigned only inside leg 1 skipped the tidy-up whenever leg 1
+            // threw on a later save: the row stayed marked pending while this window reported the
+            // draft fully saved, and the next sweep uploaded it a second time. Leg 1 reads
+            // _draftMessageId for exactly this reason; leg 2 did not (#637).
+            localId = storedId;
+            if (_draftFolderName != null)
+            {
+                try
+                {
+                    // The supersedes id lives on the stored row, and the only place it was read
+                    // back is inside leg 1. Appending with a null replace id leaves the server
+                    // holding the old draft AND the new one -- the duplication the replaces header
+                    // exists to prevent.
+                    _draftServerMessageId ??= await _drafts.GetSupersededServerIdAsync(
+                        account.Id, _draftFolderName, storedId);
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log("SaveDraftCoreAsync: could not read back the superseded server id", ex);
+                }
+            }
+        }
+
         // Leg 2 — the server. Best-effort when leg 1 worked; the only hope when it did not.
         try
         {
@@ -600,9 +632,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
             // The server holds it now, so the local copy is redundant — and leaving it would show
             // the draft twice in Drafts once the folder syncs.
-            // Folder checked as well as the id: leg 1 cannot have produced a localId without one,
-            // but the re-key now assigns _draftFolderName from a nullable source, so say it rather
-            // than assert it.
+            // Folder checked as well as the id: the id may now come from a stored row rather than
+            // from leg 1, and the re-key assigns _draftFolderName from a nullable source.
             if (localId != null && _draftFolderName != null)
             {
                 var droppedFolder = _draftFolderName;
@@ -861,16 +892,27 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     private bool StoredPasswordMissing(AccountModel account)
     {
+        // Answered from the last read for the same account. This runs from a property setter, so
+        // without it every character typed into To was one synchronous Windows credential-store
+        // call on the UI thread -- measured at 24 reads for 24 keystrokes. The account is the only
+        // thing the answer depends on, and Send reads the store directly rather than through here,
+        // so a password stored while the window is open is still picked up the moment it matters.
+        if (_passwordCheckedFor == account.Id) return _passwordMissing;
         try
         {
-            return string.IsNullOrEmpty(_credentials.GetPassword(account.Id));
+            _passwordMissing = string.IsNullOrEmpty(_credentials.GetPassword(account.Id));
         }
         catch (Exception ex)
         {
             LogService.Log("ComposeViewModel: could not read the stored password while re-testing a refusal", ex);
-            return true;
+            _passwordMissing = true;
         }
+        _passwordCheckedFor = account.Id;
+        return _passwordMissing;
     }
+
+    private Guid _passwordCheckedFor;
+    private bool _passwordMissing;
 
     /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>
     private bool HasAutoSavableContent()

@@ -406,7 +406,16 @@ public class SyncService : ISyncService
                 // behind it FOREVER, silently, because this pass replays oldest-first and this one
                 // is always first. Mark it so the row says so, and carry on with the rest (#637).
                 LogService.Log($"Draft upload {account.AccountLabel}: {draft.MessageId} refused; marking and continuing", ex);
-                var reason = $"Your mail server refused it: {Sentence(ex.Message)} Edit the draft and save it again to try once more.";
+                // Only the server's verdict is reported as the server's. IsTransient is closed and
+                // narrow by design, so everything it declines used to be attributed to the mail
+                // server -- including exceptions thrown by QuickMail before the server was ever
+                // contacted, which reached the user as "Your mail server refused it: Object
+                // reference not set to an instance of an object", with a remedy that could not
+                // work (#637).
+                var reason = SendFailure.IsServerVerdict(ex)
+                    ? $"Your mail server refused it: {Sentence(ex.Message)} Edit the draft and save it again to try once more."
+                    : $"QuickMail could not upload it: {Sentence(ex.Message)} The draft is still on this "
+                      + "computer, and saving it again is what tries once more.";
                 try
                 {
                     await _localDrafts.MarkSendFailedAsync(

@@ -5101,9 +5101,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
+                // Superseded: a newer rebuild is on its way, and THAT is the one anybody waiting
+                // on this is really waiting for. Completing here instead let a landing listener be
+                // disarmed on a post that changed nothing, leaving the real rebuild to land with
+                // nobody listening -- the focus-on-nothing this wait exists to prevent (#637).
+                if (version != _conversationRebuildVersion) { ChainToNewestRebuild(settled); return; }
                 try
                 {
-                    if (version != _conversationRebuildVersion) return;
                     var expanded = Conversations
                         .Where(g => g.IsExpanded).Select(g => g.NormalizedSubject)
                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -5121,6 +5125,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                           TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
         work.LogFaults("conversation rebuild");
     }
+
+    /// <summary>Schedules a grouped-view rebuild. For tests that need a second, superseding one.</summary>
+    internal void RebuildActiveGroupViewForTests() => RebuildActiveGroupView();
 
     /// <summary>
     /// Completes once every grouped-view rebuild scheduled up to now has been applied to the UI.
@@ -5141,6 +5148,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _lastGroupRebuild = settled.Task;
         return settled;
+    }
+
+    /// <summary>
+    /// Hands a superseded rebuild's waiters over to the rebuild that replaced it, so that "the
+    /// grouped view has settled" stays a statement about the view rather than about one abandoned
+    /// attempt at it.
+    /// </summary>
+    private void ChainToNewestRebuild(TaskCompletionSource settled)
+    {
+        var newest = _lastGroupRebuild;
+        if (ReferenceEquals(newest, settled.Task)) { settled.TrySetResult(); return; }
+        newest.ContinueWith(_ => settled.TrySetResult(), CancellationToken.None,
+                            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
     private void ScheduleSenderGroupRebuild()
@@ -5164,9 +5184,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
+                // Superseded: a newer rebuild is on its way, and THAT is the one anybody waiting
+                // on this is really waiting for. Completing here instead let a landing listener be
+                // disarmed on a post that changed nothing, leaving the real rebuild to land with
+                // nobody listening -- the focus-on-nothing this wait exists to prevent (#637).
+                if (version != _senderGroupRebuildVersion) { ChainToNewestRebuild(settled); return; }
                 try
                 {
-                    if (version != _senderGroupRebuildVersion) return;
                     var expanded = SenderGroups
                         .Where(g => g.IsExpanded).Select(g => g.SenderKey)
                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -5206,9 +5230,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
+                // Superseded: a newer rebuild is on its way, and THAT is the one anybody waiting
+                // on this is really waiting for. Completing here instead let a landing listener be
+                // disarmed on a post that changed nothing, leaving the real rebuild to land with
+                // nobody listening -- the focus-on-nothing this wait exists to prevent (#637).
+                if (version != _toGroupRebuildVersion) { ChainToNewestRebuild(settled); return; }
                 try
                 {
-                    if (version != _toGroupRebuildVersion) return;
                     var expanded = ToGroups
                         .Where(g => g.IsExpanded).Select(g => g.SenderKey)
                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -5554,9 +5582,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// reading pane -- pressing Enter produced no window, no sound and no change at all. This is
     /// the same fix MessageWindow got, on the paths a draft can actually take.</para>
     /// </summary>
+    // Says "try again" without promising the try will work. The catch that produces this is broad
+    // -- LoadAsync parses the stored MIME, so truncated bytes land here too -- and a busy database
+    // and a damaged saved copy are indistinguishable at the point the sentence is written. The
+    // upload sweep already calls that second case permanent, in those words, and told the user so
+    // on the row; telling him here that nothing has been lost, every time, for ever, is the silent
+    // loss this feature exists to remove (#637).
     internal const string StoreUnreadable =
-        "That draft could not be opened: this computer's mail store could not be read just now. "
-        + "Nothing has been lost — try again in a moment.";
+        "That draft could not be opened: its saved copy on this computer could not be read. "
+        + "Try once more — if it fails again, the saved copy is damaged and the draft cannot be recovered.";
 
     internal const string MissingSavedCopy =
         "That draft could not be opened: its saved copy on this computer is missing. The message cannot be recovered, so deleting the row is all there is to do.";
@@ -5569,8 +5603,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// recovered and to delete it. One sentence per condition per audience, not one for all.</para>
     /// </summary>
     internal const string StoreUnreadableMessage =
-        "That message could not be opened: this computer's mail store could not be read just now. "
-        + "Nothing has been lost — close this window and try again in a moment.";
+        "That message could not be opened: its saved copy on this computer could not be read. "
+        + "Close this window and try once more — if it fails again, the saved copy is damaged.";
 
     internal const string MissingSavedCopyMessage =
         "That message could not be opened: its saved copy on this computer is missing. The message cannot be recovered, so deleting the row is all there is to do.";
@@ -5910,6 +5944,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
             }
         }
+
+        // Said, not only written onto the row. A successful upload got a status line and a refusal
+        // got nothing but a row label -- which a screen reader does not re-speak for a row the user
+        // is not sitting on. The good news was reported and the bad news was silent (#637).
+        if (refused.Count == 0) return;
+        SetStatus(refused.Count == 1
+            ? "A draft could not be uploaded. Open it in Drafts to see why."
+            : $"{refused.Count} drafts could not be uploaded. Open them in Drafts to see why.",
+            AnnouncementCategory.Result);
     }
 
     private async Task<List<MailMessageSummary>> MergeLocalOnlyMessagesAsync(
@@ -8447,9 +8490,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Whether a row is a draft. Asked of the ROW, not of the folder on screen: a message window
     /// navigates Prev/Next through a whole list, a notification opens mail from another folder
-    /// entirely, and the All Mail and All Inboxes views merge local-only drafts in beside ordinary
-    /// mail -- so "the Drafts folder is selected" answered for the wrong message on four routes,
-    /// and answered "no" for a real draft opened out of an aggregate view (#637).
+    /// entirely, and All Mail lists local-only drafts beside ordinary mail -- it reads the whole
+    /// cache through LoadAllSummariesAsync rather than merging folder by folder, so nothing filters
+    /// them out. "The Drafts folder is selected" therefore answered for the wrong message on four
+    /// routes, and answered "no" for a real draft opened out of All Mail, which is where the app
+    /// starts (#637).
+    /// <para>Says nothing on its own about a server draft in an account whose folder cache has not
+    /// loaded; a caller that needs an answer there asks the selected folder as well.</para>
     /// </summary>
     public bool IsDraftRow(MailMessageSummary summary)
     {

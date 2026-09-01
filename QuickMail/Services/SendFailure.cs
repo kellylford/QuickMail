@@ -71,4 +71,34 @@ public static class SendFailure
         // A wrapper around one of the above — MailKit and HttpClient both nest the real cause.
         _ => ex.InnerException != null && IsTransient(ex.InnerException),
     };
+
+    /// <summary>
+    /// True when the server actually answered and its answer is what failed, as opposed to the
+    /// attempt never getting that far.
+    /// </summary>
+    /// <remarks>
+    /// Asked only so that what the user reads does not claim more than is known. The upload pass
+    /// used to write "Your mail server refused it: …" for everything <see cref="IsTransient"/>
+    /// declined, and that set is closed and narrow by design -- so a KeyNotFoundException from an
+    /// account lookup, a FormatException from parsing an id, or any plain bug in the append path
+    /// reached the user, on the durable field, as a verdict from their mail server, with an
+    /// instruction to save again that could not work. A handshake that fails is deliberately NOT
+    /// here: a certificate or protocol mismatch is not the server refusing the message (#637).
+    /// </remarks>
+    public static bool IsServerVerdict(Exception? ex) => ex switch
+    {
+        null => false,
+
+        // The server read the credentials and said no.
+        AuthenticationException or ServiceNotAuthenticatedException => true,
+
+        // A command the server answered with a failure: SMTP status codes, and everything MailKit
+        // derives from CommandException for IMAP -- a renamed folder, a message it will not accept.
+        SmtpCommandException or CommandException => true,
+
+        // Graph. A null status code means nothing answered, which is the offline case.
+        HttpRequestException { StatusCode: not null } => true,
+
+        _ => ex.InnerException != null && IsServerVerdict(ex.InnerException),
+    };
 }

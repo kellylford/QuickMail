@@ -4434,20 +4434,8 @@ public partial class MainWindow : Window
     /// there tore the listener off BEFORE the rebuild, and focus was left on nothing. Waiting for
     /// the rebuild to settle asks the question directly (#637).
     /// </remarks>
-    private async Task RunAndLandAsync(Func<Action> arm, Func<Task> command)
-    {
-        var disarm = arm();
-        try
-        {
-            await command();
-            await _vm.GroupRebuildSettledAsync();
-        }
-        finally
-        {
-            // A no-op once the listener has fired; the point is every path where it never does.
-            disarm();
-        }
-    }
+    private Task RunAndLandAsync(Func<Action> arm, Func<Task> command)
+        => RebuildLanding.RunAsync(arm, command, _vm.GroupRebuildSettledAsync);
 
     /// <summary>
     /// How focus lands in whichever grouped view is showing, or null in the flat message list,
@@ -5393,7 +5381,13 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task OpenMessageFromListAsync(MailMessageSummary summary)
     {
-        if (_vm.IsSelectedFolderDrafts)
+        // The ROW as well as the folder. Local-only drafts appear in All Mail -- which is where the
+        // app starts -- and asking only the folder there sent a refused draft to the reading pane,
+        // read-only, with no notice field: the row said "not uploaded", the guide said open it and
+        // fix what the server objected to, and Enter gave the user no way to do either. The folder
+        // is kept as the second half of the question because it answers for a server draft whose
+        // account has no folder cache yet, which the row alone cannot (#637).
+        if (_vm.IsDraftRow(summary) || _vm.IsSelectedFolderDrafts)
         {
             await _vm.OpenDraftCommand.ExecuteAsync(null);
 

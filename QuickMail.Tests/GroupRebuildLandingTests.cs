@@ -83,10 +83,52 @@ public class GroupRebuildLandingTests
         Assert.NotEmpty(vm.Conversations);
     }
 
+    [Fact]
+    public async Task ARebuildSupersededByAnother_HandsItsWaitersOverRatherThanEndingTheWait()
+    {
+        // A background sweep scheduling its own rebuild between the command's and the command's
+        // post. The superseded post changes nothing, so completing the wait there disarmed the
+        // landing listener and left the REAL rebuild to land with nobody listening -- the same
+        // focus-on-nothing this wait exists to prevent.
+        var ui = new HoldsThePost();
+        var vm = Vm(ui);
+        vm.Messages.Add(Row("1", "INBOX"));
+
+        vm.ViewMode = ViewMode.Conversations;                 // rebuild A
+        var settled = vm.GroupRebuildSettledAsync();
+        while (!ui.HasPending)
+            await Task.Delay(5, TestContext.Current.CancellationToken);
+
+        vm.Messages.Add(Row("2", "INBOX"));
+        vm.RebuildActiveGroupViewForTests();                  // rebuild B supersedes A
+        while (ui.PendingCount < 2)
+            await Task.Delay(5, TestContext.Current.CancellationToken);
+
+        ui.RunOldestPending();                                // A lands as a no-op
+        await Task.Delay(20, TestContext.Current.CancellationToken);
+        Assert.False(settled.IsCompleted);
+
+        ui.RunPending();                                      // B lands for real
+        await settled;
+        Assert.Equal(2, vm.Conversations.Count);
+    }
+
     private sealed class HoldsThePost : IUiDispatcher
     {
         private readonly List<Action> _pending = [];
         public bool HasPending { get { lock (_pending) return _pending.Count > 0; } }
+        public int PendingCount { get { lock (_pending) return _pending.Count; } }
+        public void RunOldestPending()
+        {
+            Action? due;
+            lock (_pending)
+            {
+                if (_pending.Count == 0) return;
+                due = _pending[0];
+                _pending.RemoveAt(0);
+            }
+            due();
+        }
         public void Invoke(Action action) => action();
         public void Post(Action action) { lock (_pending) _pending.Add(action); }
         public void RunPending()
@@ -117,6 +159,36 @@ public class GroupRebuildLandingTests
         vm.SelectedFolder = MainViewModel.AllDraftsFolder;
 
         Assert.False(vm.IsDraftRow(Row("41", "INBOX")));
+    }
+
+    [Fact]
+    public void ARefusedDraftSittingInAllMail_IsStillADraft()
+    {
+        // All Mail is where the app starts, and it lists local-only drafts beside ordinary mail --
+        // it reads the whole cache rather than merging folder by folder, so nothing filters them
+        // out. This is the answer the open routing depends on: the row says "not uploaded" and the
+        // guide says open it and fix what the server objected to, which needs a compose window.
+        var vm = Vm();
+        vm.SelectedFolder = MainViewModel.AllMailFolder;
+        var refused = Row("local-1", "Drafts", pending: true);
+        refused.SendFailedReason = "Your mail server refused it: over quota.";
+
+        Assert.True(vm.IsDraftRow(refused));
+        Assert.False(vm.IsSelectedFolderDrafts);      // which is why asking the folder was wrong
+    }
+
+    [Fact]
+    public void TheUnreadableStoreSentence_DoesNotPromiseTheDraftIsSafe()
+    {
+        // It used to end "Nothing has been lost — try again in a moment." The catch that produces
+        // it is broad: a saved copy with truncated MIME throws here too, and the upload sweep calls
+        // that permanent in as many words. Promising recovery every time, for ever, is the silent
+        // loss this feature exists to remove.
+        Assert.DoesNotContain("Nothing has been lost", MainViewModel.StoreUnreadable,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Nothing has been lost", MainViewModel.StoreUnreadableMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cannot be recovered", MainViewModel.StoreUnreadable, StringComparison.Ordinal);
     }
 
     [Fact]
