@@ -151,8 +151,13 @@ public class DraftRefusalIsMetTests
     }
 
     [Fact]
-    public async Task ResumingAutoSave_ClearsANoticeTheCancelledTicksLeft()
+    public async Task ResumingAutoSave_LeavesAGenuineStoreFailureOnScreen()
     {
+        // This once cleared any notice starting "Auto-save could not", on the reasoning that a
+        // cancelled tick had written it. Adding the cancellation arm removed that writer -- so the
+        // only thing left that can write that sentence is a store failure REALLY happening, and
+        // clearing it on Cancel wiped a live warning that the user's changes are unsaved, and
+        // collapsed the field with it. Two fixes in one commit cancelling each other out (#637).
         using var store = new RealDraftStore();
         await store.SeedDraftsFolderAsync(AccountId);
         var vm = Compose(store.Drafts);
@@ -167,7 +172,7 @@ public class DraftRefusalIsMetTests
         vm.CancelAutoSave();
         vm.ResumeAutoSave();
 
-        Assert.Equal(string.Empty, vm.DeliveryNotice);
+        Assert.Contains("not saved", vm.DeliveryNotice, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -182,5 +187,33 @@ public class DraftRefusalIsMetTests
         vm.ResumeAutoSave();
 
         Assert.Contains("over quota", vm.DeliveryNotice, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ACancelledAutoSave_IsNotReportedAsAMissingDraftsFolderEither()
+    {
+        // The cancellation arm was added one level too high. A cancelled token thrown by the
+        // Drafts-folder lookup was swallowed by a broad catch below it and re-thrown as
+        // DraftFolderMissingException, so the durable field told the user their account has no
+        // Drafts folder -- about an account that is perfectly fine (#637).
+        using var store = new RealDraftStore();        // folder cache deliberately NOT seeded
+        var vm = new ComposeViewModel(
+            new StubSmtpService(), new StubAccountService(), new StubCredentialService(),
+            new RecordingMailService(), store.Drafts, new StubTemplateService())
+        {
+            SenderAccount = new AccountModel
+            {
+                Id = AccountId, Username = "samuel@interfree.ca", AuthType = AuthType.OAuth2Google,
+            },
+            To = "someone@example.com",
+            Subject = "Airport thoughts",
+            Body = "Boarding soon.",
+        };
+
+        vm.CancelAutoSave();
+        await vm.AutoSaveAsync();
+
+        Assert.DoesNotContain("Drafts folder", vm.DeliveryNotice, StringComparison.Ordinal);
+        Assert.Equal(string.Empty, vm.DeliveryNotice);
     }
 }

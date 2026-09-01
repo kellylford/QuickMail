@@ -115,7 +115,9 @@ public class ComposeViewModelSendFeedbackTests
         await vm.SendCommand.ExecuteAsync(null);
         await vm.SendCommand.ExecuteAsync(null);
 
-        var refusals = status.Announced.Where(a => a.Text == "Please enter at least one recipient.").ToList();
+        var refusals = status.Announced
+            .Where(a => a.Text.StartsWith("This message has no recipient", StringComparison.Ordinal))
+            .ToList();
         Assert.Equal(2, refusals.Count);
         Assert.All(refusals, r => Assert.Equal(AnnouncementCategory.Result, r.Category));
     }
@@ -162,7 +164,13 @@ public class ComposeViewModelSendFeedbackTests
 
         await vm.SendCommand.ExecuteAsync(null);
 
-        Assert.Equal(("Please enter at least one recipient.", AnnouncementCategory.Result), status.Last);
+        // Wording changed when Send's refusals were given the durable field: the sentence now
+        // says what is wrong and where to fix it, rather than issuing an instruction.
+        Assert.Equal("This message has no recipient, so it cannot be sent. Add an address in the To field.",
+            status.Last.Text);
+        Assert.Equal(AnnouncementCategory.Result, status.Last.Category);
+        // And durably, because an announcement alone does not reach a user with them switched off.
+        Assert.Contains("no recipient", vm.DeliveryNotice, StringComparison.Ordinal);
         Assert.Empty(smtp.Sent);
     }
 

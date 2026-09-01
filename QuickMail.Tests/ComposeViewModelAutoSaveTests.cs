@@ -246,7 +246,17 @@ sealed class RecordingMailService : IMailService
     /// </summary>
     public Func<string, Exception?>? AppendDraftFailure { get; set; }
 
-    public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) =>
+    /// <summary>
+    /// Honours the token, as every real backend does. Ignoring it hid a defect where a cancelled
+    /// auto-save was re-thrown as "this account has no Drafts folder" (#637).
+    /// </summary>
+    public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return FindDraftsFolderNameCore();
+    }
+
+    private Task<string?> FindDraftsFolderNameCore() =>
         Task.FromResult<string?>("Drafts");
 
     public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default)

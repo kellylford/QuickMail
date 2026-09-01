@@ -339,7 +339,7 @@ public partial class MainWindow : Window
         // A refused command has to be met, not merely logged to a status line the user may never
         // read. Chosen by the user (#637).
         vm.ShowRefusalRequested = message =>
-            MessageBox.Show(this, message, "Cannot do that yet",
+            MessageBox.Show(this, message, "Cannot do that",
                 MessageBoxButton.OK, MessageBoxImage.Information);
 
         vm.ConfirmationRequested = (message, title, startOnNo) =>
@@ -4348,8 +4348,16 @@ public partial class MainWindow : Window
             }
             else if (ConversationTree.SelectedItem is ConversationGroup group)
             {
-                var targetIdx = _vm.Conversations.IndexOf(group);
-                LandOnConversationAfterRebuild(targetIdx);   // register before the rebuild fires
+                // Asked before registering, not after: the listener has to go on before the
+                // rebuild it waits for, but a refused archive produces no rebuild at all and would
+                // leave it armed to fire on the next unrelated one -- a sync sweep minutes later --
+                // pulling focus into the tree from wherever the user then is. This asks without
+                // showing the refusal, which ArchiveMessagesAsync does for itself (#637).
+                if (!_vm.AnyHeldOnlyHere(group.Messages))
+                {
+                    var targetIdx = _vm.Conversations.IndexOf(group);
+                    LandOnConversationAfterRebuild(targetIdx);   // register before the rebuild fires
+                }
                 await _vm.ArchiveMessagesAsync(group.Messages);
             }
         }
@@ -6567,6 +6575,14 @@ public partial class MainWindow : Window
     {
         var messages = GetSelectedMessages();
         if (messages.Count == 0) return;
+
+        // Same reason as the conversation-tree path: a refused archive rebuilds nothing, and
+        // these listeners are one-shot and would fire on an unrelated rebuild later (#637).
+        if (_vm.AnyHeldOnlyHere(messages))
+        {
+            await _vm.ArchiveMessagesAsync(messages);
+            return;
+        }
 
         await _vm.ArchiveMessagesAsync(messages);
 

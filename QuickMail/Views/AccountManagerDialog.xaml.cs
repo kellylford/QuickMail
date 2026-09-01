@@ -52,7 +52,7 @@ public partial class AccountManagerDialog : Window
         // first. A plain Yes/No MessageBox (no editable field) is safe here, the same as the cascade
         // confirmation above; an unset callback fails closed in the VM, so nothing converts unconfirmed.
         vm.ShowRefusalRequested = message =>
-            MessageBox.Show(this, message, "Cannot convert yet",
+            MessageBox.Show(this, message, "Cannot convert",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         vm.ConfirmConvertToGraph = message =>
             MessageBox.Show(this, message, "Convert to Microsoft 365",

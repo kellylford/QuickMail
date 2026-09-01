@@ -2992,14 +2992,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         if (!string.IsNullOrEmpty(ImmutableIdRebuildDeferredFor))
         {
-            // Same immediate channel as the notice below, and for the same reason: the debounced
-            // status write is overwritten by "Connecting and syncing..." within half a second.
+            // Through the dialog, not the status bar. The first attempt used Announce(Status) plus
+            // SetStatus, and both were dead ends: Status is the category a user who turns
+            // announcements off turns off first, and the status write is overwritten by
+            // "Connecting and syncing..." further down THIS method. So the one thing this notice
+            // exists to report stayed in the log, which is exactly what it was meant to stop.
+            // It repeats each launch until the drafts are cleared, which is the point -- a refused
+            // draft is never retried, so nothing else will ever raise it (#637).
             var deferred = $"A one-time Microsoft 365 mail refresh is waiting on {ImmutableIdRebuildDeferredFor}, "
                          + "which still holds drafts that have not reached the server. Send or delete "
-                         + "them and restart to let it run.";
+                         + "them, then restart QuickMail to let it run.";
             ImmutableIdRebuildDeferredFor = string.Empty;
-            Announce(deferred, AnnouncementCategory.Status);
-            SetStatus(deferred, AnnouncementCategory.Status);
+            ShowRefusalRequested?.Invoke(deferred);
         }
 
         var rebuildNotice = ImmutableIdRebuildAnnouncePending;
@@ -5514,6 +5518,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         From       = summary.From,
         PlainTextBody = storeFailure != null ? StoreUnreadable : MissingSavedCopy,
     };
+
+    /// <summary>
+    /// Whether this selection holds a draft that exists only on this computer, WITHOUT refusing or
+    /// telling the user anything. The View asks before arming a one-shot focus listener that a
+    /// refused command would leave dangling (#637).
+    /// </summary>
+    public bool AnyHeldOnlyHere(IEnumerable<MailMessageSummary> messages) =>
+        messages is not null && messages.Any(IsLocalOnlyId);
 
     /// <summary>
     /// Refuses a move or copy while the selection holds a draft that has not reached the server,

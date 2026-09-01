@@ -337,11 +337,12 @@ public partial class MessageWindow : Window
                 // announce-only path IS the blank window with nothing said that this guard exists
                 // to prevent -- it just looks fine to anyone who has them on. The sentence goes
                 // where focus is about to land, and stays there to be re-read (#637).
+                // The SAME sentences the reading pane uses, not a second wording of the same
+                // thing: the user guide can only quote one, and a user in Window mode was meeting
+                // the other and could not find it (#637).
                 var missing = storeFailure != null
-                    ? "That message could not be opened: this computer's mail store could not be read. "
-                    + "Nothing has been lost — close this window and try again in a moment."
-                    : "That message could not be opened: its saved copy on this computer is missing. "
-                    + "The message cannot be recovered, so deleting the row is all there is to do.";
+                    ? ViewModels.MainViewModel.StoreUnreadable
+                    : ViewModels.MainViewModel.MissingSavedCopy;
                 var placeholder = new MailMessageDetail
                 {
                     MessageId  = summary.MessageId,

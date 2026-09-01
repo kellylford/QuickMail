@@ -746,17 +746,9 @@ public partial class ComposeWindow : Window
         {
             // Same reason as the Cancel branch above: this window is staying open.
             _vm.ResumeAutoSave();
-            // The window is staying open and the user has not been told why. The reason is in the
-            // notice field; put focus on it rather than leaving it several Shift+Tabs away, which
-            // for a user with announcements off is indistinguishable from the close key doing
-            // nothing at all (#637).
-            // Discarded deliberately: this is a focus move, not work the close path waits on, and
-            // this method is async so the compiler would otherwise warn.
-            if (!string.IsNullOrWhiteSpace(_vm.DeliveryNotice))
-                _ = Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    if (IsLoaded) DeliveryNoticeField.Focus();
-                }), DispatcherPriority.Input);
+            // No focus move here: SaveRefused now fires from every path that refuses a save the
+            // user asked for, including this one, and the handler wired in the constructor does it.
+            // Two dispatcher hops onto the same element is one more than is meant (#637).
             return;
         }
 

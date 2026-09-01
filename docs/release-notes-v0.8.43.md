@@ -46,6 +46,14 @@ Also fixed in this release, all of them ways an offline draft could go wrong qui
 - A draft you have open in a compose window is left alone by the upload until you close it.
 - Removing an account asks first when it still holds drafts that exist nowhere else, and that
   prompt no longer starts on **Yes**.
+- Moving, copying or archiving a draft that has not reached the server, and converting an account
+  that still holds one, now show a message you dismiss instead of only writing to the status bar,
+  where the command looked as though it had done nothing.
+- A save or a send that is refused — no sender account, or attachments over 25 MB — now says why at
+  the top of the compose window and puts the cursor there, rather than leaving a window that
+  quietly will not close.
+- If a draft your server refused is holding back the one-time Microsoft 365 mail refresh, QuickMail
+  now says so at startup and names the account, instead of only recording it in the log.
 - The status bar says how many drafts went up when the upload runs. It is replaced by the folder
   counts from the same sync shortly afterwards; the lasting record is the row no longer saying
   **Not on server**.

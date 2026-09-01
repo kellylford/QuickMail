@@ -364,8 +364,9 @@ public partial class App : Application
                             // draft is excluded from the upload pass until the user edits and
                             // saves it, so it does NOT resolve itself on the next launch the way
                             // a waiting draft does -- one can defer this rebuild indefinitely,
-                            // and with it the #366 immutable-id fix for that account. Logged
-                            // rather than surfaced; where to surface it is an open question.
+                            // and with it the #366 immutable-id fix for that account. Surfaced
+                            // at startup by MainViewModel, naming the accounts, so it can be
+                            // acted on rather than only appearing in the log.
                             var blocking = graphIds
                                 .Where(id => localStore.CountUnsentMailAsync(id).GetAwaiter().GetResult() > 0)
                                 .ToList();

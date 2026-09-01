@@ -452,6 +452,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             {
                 _draftFolderName = await _imap.FindDraftsFolderNameAsync(account.Id, findCombined.Token);
             }
+            catch (OperationCanceledException)
+            {
+                // Ahead of the broad catch, or a cancelled auto-save arrives at the caller dressed
+                // as DraftFolderMissingException and tells the user their account has no Drafts
+                // folder -- about an account that is fine. Same pattern as the upload pass (#637).
+                throw;
+            }
             catch (Exception ex)
             {
                 // Offline on an account whose folders have never synced. There is nowhere to file
@@ -641,10 +648,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (!_autoSaveCts.IsCancellationRequested) return;
         _autoSaveCts.Dispose();
         _autoSaveCts = new CancellationTokenSource();
-        // Any notice the cancelled ticks left behind goes with it: the window is staying open and
-        // that sentence described a save that was never really attempted.
-        if (DeliveryNotice.StartsWith("Auto-save could not", StringComparison.Ordinal))
-            DeliveryNotice = string.Empty;
+
+        // The notice is deliberately NOT cleared here any more. It was added alongside the
+        // cancellation arm below, and the two cancel out: once a cancelled tick stops writing that
+        // sentence, the only thing that can still write it is a store failure that is REALLY
+        // happening -- so wiping it on Cancel took away a live warning that the user's changes are
+        // unsaved, and collapsed the field with it. Silent loss, which is the one outcome this
+        // whole feature exists to prevent (#637).
     }
 
     public void Dispose()
@@ -757,6 +767,17 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// A send the user asked for that cannot proceed: says why on the durable, focusable field as
+    /// well as the status line, and asks the window to put focus there (#637).
+    /// </summary>
+    private void RefuseSend(string why)
+    {
+        DeliveryNotice = why;
+        SetStatusOutcome(why);
+        SaveRefused?.Invoke();
+    }
+
     /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>
     private bool HasAutoSavableContent()
     {
@@ -772,22 +793,28 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task SendAsync()
     {
+        // These refusals get the durable field for the same reason the Save ones do: an
+        // unfocusable status line is silence for a user running with custom announcements off, and
+        // Send appearing to do nothing is indistinguishable from a key that does not work. Same
+        // window, same conditions -- they were fixed on the Save path and left here (#637).
         if (string.IsNullOrWhiteSpace(To))
         {
-            SetStatusOutcome("Please enter at least one recipient.");
+            RefuseSend("This message has no recipient, so it cannot be sent. Add an address in the To field.");
             return;
         }
 
         var account = SenderAccount;
         if (account == null)
         {
-            SetStatusOutcome("Please select a sender account.");
+            RefuseSend("This message has no sender account selected, so it cannot be sent. "
+                     + "Choose an account in the From field.");
             return;
         }
 
         if (Attachments.Sum(a => a.FileSize) > 25_000_000)
         {
-            SetStatusOutcome("Total attachment size exceeds 25 MB. Please remove some attachments.");
+            RefuseSend("This message cannot be sent: its attachments add up to more than 25 MB. "
+                     + "Remove some and try again.");
             return;
         }
 
@@ -797,8 +824,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // sender that explains nothing. Say what is actually wrong, and where to fix it. (#396)
         if (!EmailAddressValidator.IsValid(account.Username))
         {
-            SetStatusOutcome($"\"{account.Username}\" is not a valid email address, so this message has no " +
-                       "valid sender. Fix the email address for this account in Manage Accounts.");
+            RefuseSend($"\"{account.Username}\" is not a valid email address, so this message has no "
+                     + "valid sender. Fix the email address for this account in Manage Accounts.");
             return;
         }
 
