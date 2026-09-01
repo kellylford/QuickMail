@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -58,10 +59,15 @@ public class RuleTargetPickerTests
         Guid? accountId = null,
         string? currentFolderKey = null,
         IEnumerable<AccountModel>? accounts = null,
-        Dictionary<Guid, List<MailFolderModel>>? folders = null)
+        Dictionary<Guid, List<MailFolderModel>>? folders = null,
+        Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null)
         => FolderPickerWindow.ForRuleTarget(
             accounts ?? [Account()], folders ?? Folders(),
-            accountId ?? AccountId, currentFolderKey, "Choose Target Folder");
+            accountId ?? AccountId, currentFolderKey, "Choose Target Folder", folderCreator);
+
+    /// <summary>A creator that is never called — these tests only ask whether the button is offered.</summary>
+    private static Task<IReadOnlyList<MailFolderModel>?> NeverCreates(Guid _, string? __, string ___)
+        => Task.FromResult<IReadOnlyList<MailFolderModel>?>(null);
 
     /// <summary>Realizes the window so item containers exist, without stealing focus from the desktop.</summary>
     private static FolderPickerWindow Shown(FolderPickerWindow window)
@@ -131,8 +137,9 @@ public class RuleTargetPickerTests
             Assert.Equal(Visibility.Visible,   Named<TreeView>(window, "FolderTreeView").Visibility);
             Assert.Equal(Visibility.Collapsed, Named<ListBox>(window, "FolderListBox").Visibility);
             Assert.Equal(Visibility.Collapsed, Named<TextBox>(window, "SearchBox").Visibility);
-            // A rule editor is given no way to create a folder, so neither the button nor its Alt+N
-            // must be offered here.
+            // No creator handed in, so neither the button nor its Alt+N must be offered — the state
+            // of a caller that has no way to make a folder. The editors do hand one in; see
+            // OffersNewFolderWhenTheCallerCanCreateOne.
             Assert.Equal(Visibility.Collapsed, Named<Button>(window, "NewFolderButton").Visibility);
         }
         finally { window.Close(); }
@@ -290,5 +297,63 @@ public class RuleTargetPickerTests
             Assert.Contains(all, n => n.Label == "Archive");
         }
         finally { uncached.Close(); }
+    }
+
+    /// <summary>
+    /// Writing a rule is where a user decides a folder should exist ("file this newsletter under
+    /// News"), so making them abandon the rule, create the folder in the main window and start over
+    /// is the wrong order of work (issue #645). Given a creator, the picker offers the same New
+    /// Folder button the move/copy-message picker has had since #250.
+    /// </summary>
+    [StaFact]
+    public void OffersNewFolderWhenTheCallerCanCreateOne()
+    {
+        var window = Picker(folderCreator: NeverCreates);
+        try
+        {
+            Assert.Equal(Visibility.Visible, Named<Button>(window, "NewFolderButton").Visibility);
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// POP3 has no server folders to create (#128), and the button is one button over the whole
+    /// tree rather than one per account — so a tree holding a POP3 account must not offer it, even
+    /// though the caller supplied a creator. Reachable here because a rule with no account falls
+    /// back to showing every account.
+    /// </summary>
+    [StaFact]
+    public void WithholdsNewFolderWhenAnAccountInTheTreeCannotManageFolders()
+    {
+        var pop = Guid.NewGuid();
+        var folders = Folders();
+        folders[pop] = [Folder("INBOX", "Inbox", pop)];
+        var accounts = new[]
+        {
+            Account(),
+            new AccountModel
+            {
+                Id = pop, AccountName = "Legacy", Username = "kelly@example.net",
+                BackendKind = BackendKind.Pop3Smtp,
+            },
+        };
+
+        // Scoped to the POP3 account: the account the rule files into cannot hold a new folder.
+        var scoped = Picker(accountId: pop, accounts: accounts, folders: folders, folderCreator: NeverCreates);
+        try
+        {
+            Assert.Equal(Visibility.Collapsed, Named<Button>(scoped, "NewFolderButton").Visibility);
+        }
+        finally { scoped.Close(); }
+
+        // Unscoped fallback: the IMAP account could hold one, but the tree also offers the POP3
+        // account's folders, and the button acts on whichever node is selected.
+        var unscoped = FolderPickerWindow.ForRuleTarget(
+            accounts, folders, accountId: null, currentFolderKey: null, "Choose Target Folder", NeverCreates);
+        try
+        {
+            Assert.Equal(Visibility.Collapsed, Named<Button>(unscoped, "NewFolderButton").Visibility);
+        }
+        finally { unscoped.Close(); }
     }
 }

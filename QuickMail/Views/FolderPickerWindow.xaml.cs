@@ -438,15 +438,27 @@ public partial class FolderPickerWindow : Window
     /// picker opens on the folder the rule already files into. A rule that has no target yet passes
     /// null, and <see cref="SelectOpeningNode"/> stands in the first real folder: this picker, like
     /// every other, must not open with nothing selected.</para>
+    ///
+    /// <para><paramref name="folderCreator"/> turns on the "New Folder…" button (issue #645). Writing
+    /// a rule is where a user decides a folder should exist — "file this newsletter under News" — so
+    /// having to abandon the rule, create the folder in the main window, and start again is the
+    /// wrong order of work. Same creator contract as the move/copy-message picker: create it,
+    /// refresh the owning account, hand back that account's folders so the tree can rebuild in
+    /// place. Null (the default) leaves the button hidden, and so does a tree holding any account
+    /// that cannot manage folders — see the note at the call to the constructor.</para>
     /// </summary>
     public static FolderPickerWindow ForRuleTarget(
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
         Guid? accountId,
         string? currentFolderKey,
-        string title)
+        string title,
+        Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null)
     {
-        var scopedAccounts = accountId is Guid id ? accounts.Where(a => a.Id == id).ToList() : [];
+        // Materialized once: the accounts are read three times below (scoping, the fallback, and the
+        // folder-CRUD gate), and the callers hand in LINQ queries over the live account list.
+        var allAccounts    = accounts.ToList();
+        var scopedAccounts = accountId is Guid id ? allAccounts.Where(a => a.Id == id).ToList() : [];
         var scopedFolders  = accountId is Guid fid && cachedFolders.TryGetValue(fid, out var owned) && owned.Count > 0
             ? new Dictionary<Guid, List<MailFolderModel>> { [fid] = owned }
             : null;
@@ -455,6 +467,7 @@ public partial class FolderPickerWindow : Window
         // empty tree the user cannot get a folder out of.
         var useScoped = scopedAccounts.Count > 0 && scopedFolders != null;
 
+        var pickerAccounts = useScoped ? scopedAccounts : allAccounts;
         var folders = useScoped ? scopedFolders! : cachedFolders;
         var initial = string.IsNullOrEmpty(currentFolderKey)
             ? null
@@ -462,11 +475,17 @@ public partial class FolderPickerWindow : Window
                      .FirstOrDefault(f => string.Equals(f.FullName, currentFolderKey, StringComparison.Ordinal));
 
         return new FolderPickerWindow(
-            useScoped ? scopedAccounts : accounts,
+            pickerAccounts,
             folders,
             title: title,
             initialFolder: initial,
-            useTreeView: true);
+            useTreeView: true,
+            // No creator, no New Folder button. Withheld too when any account in the tree cannot
+            // manage folders (POP3, #128): the button is one button over the whole tree, not one per
+            // account, and offering an action that can only fail is worse than not offering it. The
+            // unscoped fallback above is what makes this more than a formality — a rule with no
+            // account shows every account, POP3 ones included.
+            folderCreator: pickerAccounts.All(a => a.SupportsFolderCrud) ? folderCreator : null);
     }
 
     /// <summary>
