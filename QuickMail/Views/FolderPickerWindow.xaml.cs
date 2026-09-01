@@ -740,11 +740,15 @@ public partial class FolderPickerWindow : Window
     /// one while marking the key handled strands the user in the tree with no way forward. Cancel
     /// is always shown and always enabled, so this never comes back empty.
     /// </summary>
-    private Button FirstFocusableButton =>
-        Focusable(NewFolderButton) ?? Focusable(OpenButton) ?? CancelButton;
-
-    private static Button? Focusable(Button button) =>
-        button is { Visibility: Visibility.Visible, IsEnabled: true } ? button : null;
+    private Button FirstFocusableButton
+    {
+        get
+        {
+            if (NewFolderButton is { Visibility: Visibility.Visible, IsEnabled: true }) return NewFolderButton;
+            if (OpenButton is { Visibility: Visibility.Visible, IsEnabled: true }) return OpenButton;
+            return CancelButton;
+        }
+    }
 
     /// <summary>Whether a key event came from inside the folder tree, nested items included.</summary>
     private bool IsInFolderTree(object? source)
