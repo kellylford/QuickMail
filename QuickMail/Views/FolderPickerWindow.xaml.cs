@@ -673,12 +673,124 @@ public partial class FolderPickerWindow : Window
             e.Handled = true;
     }
 
+    /// <summary>
+    /// Reads the modifier state for a key event. Shipped behaviour asks the event's own keyboard
+    /// device — which is <c>Keyboard.PrimaryDevice</c>, so it reports whatever is <em>physically
+    /// held right now</em>. That is correct in the app and untestable: a synthesized
+    /// <see cref="KeyEventArgs"/> carries no modifier state of its own, so a test that raises one
+    /// is at the mercy of whatever the machine's keyboard happens to be doing. Tests assign this
+    /// instead; nothing in the app does. Same device, same reason, as
+    /// <see cref="Helpers.TabStripNavigation.ModifiersOf"/>.
+    /// </summary>
+    internal static Func<KeyEventArgs, ModifierKeys> ModifiersOf { get; set; } =
+        e => e.KeyboardDevice.Modifiers;
+
+    /// <summary>
+    /// Tab and Shift+Tab across the boundary between the folder tree and the buttons.
+    ///
+    /// <para>WPF cannot enter a <see cref="TreeView"/> by reverse traversal: <c>TreeViewItem</c>
+    /// leaves <c>IsTabStop</c> false, so Shift+Tab out of the New Folder button found no tab stop
+    /// inside the tree, skipped the tree altogether and wrapped round to Cancel. The folders the
+    /// user had just tabbed away from were the one thing Shift+Tab could not get back to. Forward
+    /// traversal works by a different route — Tab into a <c>TabNavigation="Once"</c> container goes
+    /// to the container's focused descendant, not to a tab stop — which is why only one direction
+    /// was broken.</para>
+    ///
+    /// <para>Making the items tab stops was measured first and is worse: reverse entry then lands
+    /// on the first folder rather than the selected one, and Shift+Tab from there does not leave
+    /// the tree at all. So the whole boundary is wired here instead, in one place with one set of
+    /// rules, rather than half of it here and half in the framework.</para>
+    ///
+    /// <para>Tree presentation only. The flat list traverses correctly in both directions —
+    /// <c>ListBoxItem</c> is a tab stop — and is left to WPF.</para>
+    /// </summary>
+    private bool HandleTreeTab(KeyEventArgs e)
+    {
+        if (!_useTreeView || FolderTreeView.Visibility != Visibility.Visible) return false;
+
+        // Anything else held is not ours: Ctrl+Tab and friends belong to whatever owns them.
+        var modifiers = ModifiersOf(e);
+        if (modifiers is not (ModifierKeys.None or ModifierKeys.Shift)) return false;
+        var shift = modifiers == ModifierKeys.Shift;
+
+        // In tree mode the search box and the flat list are collapsed, so the ring is exactly:
+        // tree → New Folder (when shown) → Open (when enabled) → Cancel → tree.
+        var first = FirstFocusableButton;
+
+        if (IsInFolderTree(e.OriginalSource))
+        {
+            e.Handled = true;
+            (shift ? CancelButton : first).Focus();
+            return true;
+        }
+
+        var neighbour = shift ? first : CancelButton;
+        if (!ReferenceEquals(e.OriginalSource, neighbour)) return false;
+
+        e.Handled = true;
+        FocusTreeSelection();
+        return true;
+    }
+
+    /// <summary>
+    /// The first button Tab can actually land on, which is not always the first one declared.
+    /// New Folder is only shown where a folder can be created, and Open greys out whenever the
+    /// selection carries no folder — an account header, or an IMAP path segment that is not itself
+    /// a mailbox. Focusing a disabled button does nothing and reports nothing, so handing Tab to
+    /// one while marking the key handled strands the user in the tree with no way forward. Cancel
+    /// is always shown and always enabled, so this never comes back empty.
+    /// </summary>
+    private Button FirstFocusableButton =>
+        Focusable(NewFolderButton) ?? Focusable(OpenButton) ?? CancelButton;
+
+    private static Button? Focusable(Button button) =>
+        button is { Visibility: Visibility.Visible, IsEnabled: true } ? button : null;
+
+    /// <summary>Whether a key event came from inside the folder tree, nested items included.</summary>
+    private bool IsInFolderTree(object? source)
+    {
+        // Walking the containers rather than the visual tree: a nested TreeViewItem's
+        // ItemsControlFromItemContainer is its parent item, not the TreeView.
+        var item = source as TreeViewItem;
+        while (item != null)
+        {
+            var owner = ItemsControl.ItemsControlFromItemContainer(item);
+            if (ReferenceEquals(owner, FolderTreeView)) return true;
+            item = owner as TreeViewItem;
+        }
+
+        // Fallback for a real keypress whose source is something other than the item container.
+        return FolderTreeView.IsKeyboardFocusWithin;
+    }
+
+    /// <summary>
+    /// Puts focus back on the selected folder, so Shift+Tab returns the user to where they were in
+    /// the tree rather than to its first row. Falls back to the opening selection when nothing is
+    /// selected — the picker must never leave the user in a tree with no current item.
+    /// </summary>
+    private void FocusTreeSelection()
+    {
+        if (FolderTreeView.SelectedItem is FolderTreeNode selected &&
+            TreeViewFocusHelper.SelectTreeViewNode(FolderTreeView, selected))
+            return;
+
+        // Focus the tree without touching the selection. A guard, not a path with a known way in:
+        // SelectTreeViewNode walks only expanded subtrees, but collapsing an ancestor is not a way
+        // to reach it — WPF moves the selection up to the collapsed ancestor itself, whose
+        // container is still there. It is written this way because the alternative, re-selecting
+        // the folder the picker opened on, would silently change the destination and file the mail
+        // somewhere the user never chose. An empty tree is the one case that lands here.
+        FolderTreeView.Focus();
+    }
+
     // Alt+N (New Folder), Alt+O (Open), Alt+C (Cancel) are wired explicitly rather than as
     // button mnemonics, because a bare mnemonic letter fires without Alt when focus isn't in a
     // text field and steals type-ahead (see the XAML notes on the buttons). Handled window-wide
     // so they work whatever picker control has focus.
     private void FolderPicker_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Tab && HandleTreeTab(e)) return;
+
         // With Alt held, the character arrives as a System key; the real key is in SystemKey.
         // Exactly Alt, not "Alt among others": AltGr reports as Ctrl+Alt, and on layouts where
         // AltGr+O/C/N produce letters those keystrokes must reach type-ahead, not the buttons.

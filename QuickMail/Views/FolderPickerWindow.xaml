@@ -13,49 +13,29 @@
         FontFamily="{DynamicResource Theme.FontFamily}"
         FontSize="{DynamicResource Theme.FontSizeBase}">
 
-    <DockPanel Margin="10">
+    <!-- A Grid, not a DockPanel: tab order follows declaration order, and a DockPanel
+         has to declare the filling child last. With the buttons declared before the
+         list and tree, Shift+Tab from New Folder walked back through Cancel and Open
+         and never reached the folders at all. Rows keep the reading order — search,
+         folders, buttons — which is the tab order the user expects. -->
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
         <TextBox x:Name="SearchBox"
-                 DockPanel.Dock="Top"
+                 Grid.Row="0"
                  Margin="0,0,0,8"
                  TextChanged="SearchBox_TextChanged"
                  PreviewKeyDown="SearchBox_PreviewKeyDown"
                  AutomationProperties.Name="Folder search"/>
 
-        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-            <!-- No access-key underscore on the content: WPF activates a bare mnemonic letter
-                 without Alt when focus isn't in a text field, so "_New Folder" fired on plain "n"
-                 in the folder tree and stole the tree's type-ahead. Alt+N is wired explicitly in
-                 code-behind instead; the accessible name still reads "New Folder". -->
-            <Button x:Name="NewFolderButton"
-                    DockPanel.Dock="Left"
-                    Content="New Folder…"
-                    MinWidth="90"
-                    Visibility="Collapsed"
-                    Click="NewFolderButton_Click"
-                    AutomationProperties.Name="New Folder"/>
-            <!-- Open and Cancel carry no access-key underscore for the same reason as New Folder
-                 above: a bare "o" or "c" typed for type-ahead in the list or tree would activate
-                 the button (Cancel would close the picker). Enter (IsDefault), Escape (IsCancel),
-                 and explicit Alt+O / Alt+C in code-behind keep both reachable from the keyboard. -->
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="OpenButton"
-                        Content="Open"
-                        IsDefault="True"
-                        MinWidth="75"
-                        Margin="0,0,6,0"
-                        Click="OpenButton_Click"
-                        AutomationProperties.Name="Open selected folder"/>
-                <Button Content="Cancel"
-                        IsCancel="True"
-                        MinWidth="75"
-                        AutomationProperties.Name="Cancel"/>
-            </StackPanel>
-        </DockPanel>
-
         <!-- ListBox text search is enabled by default; TextPath points it at the folder path so
              typing a folder name jumps to it (without this it matched the item's type name). -->
         <ListBox x:Name="FolderListBox"
+                 Grid.Row="1"
                  AutomationProperties.Name="Folders"
                  TextSearch.TextPath="FolderPath"
                  BorderThickness="1"
@@ -105,6 +85,7 @@
              TextSearch.TextPath attribute — that shipped once (v0.8.32) and did nothing;
              TypeAheadWiringTests now guards against it. -->
         <TreeView x:Name="FolderTreeView"
+                  Grid.Row="1"
                   Visibility="Collapsed"
                   AutomationProperties.Name="Folders"
                   BorderThickness="1"
@@ -138,5 +119,37 @@
             </TreeView.ItemContainerStyle>
         </TreeView>
 
-    </DockPanel>
+        <DockPanel Grid.Row="2" Margin="0,8,0,0">
+            <!-- No access-key underscore on the content: WPF activates a bare mnemonic letter
+                 without Alt when focus isn't in a text field, so "_New Folder" fired on plain "n"
+                 in the folder tree and stole the tree's type-ahead. Alt+N is wired explicitly in
+                 code-behind instead; the accessible name still reads "New Folder". -->
+            <Button x:Name="NewFolderButton"
+                    DockPanel.Dock="Left"
+                    Content="New Folder…"
+                    MinWidth="90"
+                    Visibility="Collapsed"
+                    Click="NewFolderButton_Click"
+                    AutomationProperties.Name="New Folder"/>
+            <!-- Open and Cancel carry no access-key underscore for the same reason as New Folder
+                 above: a bare "o" or "c" typed for type-ahead in the list or tree would activate
+                 the button (Cancel would close the picker). Enter (IsDefault), Escape (IsCancel),
+                 and explicit Alt+O / Alt+C in code-behind keep both reachable from the keyboard. -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="OpenButton"
+                        Content="Open"
+                        IsDefault="True"
+                        MinWidth="75"
+                        Margin="0,0,6,0"
+                        Click="OpenButton_Click"
+                        AutomationProperties.Name="Open selected folder"/>
+                <Button x:Name="CancelButton"
+                        Content="Cancel"
+                        IsCancel="True"
+                        MinWidth="75"
+                        AutomationProperties.Name="Cancel"/>
+            </StackPanel>
+        </DockPanel>
+
+    </Grid>
 </Window>

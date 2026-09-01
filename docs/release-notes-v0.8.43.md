@@ -1,7 +1,5 @@
 # QuickMail v0.8.43 Release Notes
 
-<!-- Add "What is new" sections here (Changed/Fixed/New), then the Reporting Issues footer, then the Download footer last. -->
-
 ## Changed: a bug report now says which kind of account you use
 
 A report sent with **Report a Bug** already describes the setting it happened in — your QuickMail
@@ -13,8 +11,9 @@ from one another, so a report that leaves it out can take a while to place.
 Reports now include one more line — how many accounts you have set up and the protocols they use,
 for example *"2 (IMAP, Microsoft 365)"*. Shared mailboxes are counted on their own, as in *"2
 (Microsoft 365), plus 1 shared mailbox"*, because a shared mailbox is not one of your own accounts.
-It is counts and protocol names, nothing else: no address, no server name, no account name. As always the **Preview** in the report window shows the
-complete text before you send it, so you can read exactly what is going.
+It is counts and protocol names, nothing else: no address, no server name, no account name. As
+always the **Preview** in the report window shows the complete text before you send it, so you can
+read exactly what is being sent.
 ([#639](https://github.com/kellylford/QuickMail/issues/639))
 
 ## Fixed: a sender's email address sometimes went missing
@@ -31,8 +30,6 @@ their address filled back in the next time they are opened.
 
 Message Properties also reports the sender's full address now, matching the **To** line right below
 it. ([#636](https://github.com/kellylford/QuickMail/issues/636))
-
----
 
 ## New: create a folder while you are writing a rule
 
