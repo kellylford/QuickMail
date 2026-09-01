@@ -56,7 +56,17 @@ Folder…</strong> button; the button then shows the folder you picked.
 The picker is the same folder tree used everywhere else you choose a
 destination, showing the folders of the rule’s own account — a rule
 files mail within one mailbox. It opens on the folder the rule already
-files into, or on the first folder for a new rule.</li>
+files into, or on the first folder for a new rule. If the folder you
+want to file into does not exist yet, activate <strong>New
+Folder</strong> (or <strong>Alt+N</strong>) in the picker to create one
+under the selected folder and target it without leaving the rule you are
+writing. The button is not offered for a POP3 account, which has no
+server folders to create, nor for a rule QuickMail cannot tie to one
+account — a rule that has no account of its own, or an account whose
+folders have not been read yet. The picker then falls back to showing
+every account, where a folder created under the selected node could land
+in a different mailbox from the one the rule files in; you can still
+pick an existing folder there.</li>
 </ul>
 <p><strong>Test Rule</strong> runs the rule against the messages
 currently in your list and tells you how many it would match, so you can

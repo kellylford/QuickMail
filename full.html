@@ -248,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.42</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.43</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -2532,7 +2532,17 @@ Folder…</strong> button; the button then shows the folder you picked.
 The picker is the same folder tree used everywhere else you choose a
 destination, showing the folders of the rule’s own account — a rule
 files mail within one mailbox. It opens on the folder the rule already
-files into, or on the first folder for a new rule.</li>
+files into, or on the first folder for a new rule. If the folder you
+want to file into does not exist yet, activate <strong>New
+Folder</strong> (or <strong>Alt+N</strong>) in the picker to create one
+under the selected folder and target it without leaving the rule you are
+writing. The button is not offered for a POP3 account, which has no
+server folders to create, nor for a rule QuickMail cannot tie to one
+account — a rule that has no account of its own, or an account whose
+folders have not been read yet. The picker then falls back to showing
+every account, where a folder created under the selected node could land
+in a different mailbox from the one the rule files in; you can still
+pick an existing folder there.</li>
 </ul>
 <p><strong>Test Rule</strong> runs the rule against the messages
 currently in your list and tells you how many it would match, so you can
@@ -3700,8 +3710,14 @@ included in a report — and what’s never included</h3>
 short <strong>Environment</strong> section so a problem can be
 reproduced in the right context: the QuickMail version, your Windows
 version, the .NET runtime version, the active color theme, the current
-view, the current sort order, and the message open mode (reading pane,
-tab, or window).</p>
+view, the current sort order, the message open mode (reading pane, tab,
+or window), and how many accounts you have set up together with the mail
+protocols they connect over — for example
+<code>2 (IMAP, Microsoft 365)</code>. Any shared mailboxes are counted
+separately, as in <code>2 (Microsoft 365), plus 1 shared mailbox</code>,
+since a shared mailbox is not one of your own accounts. That last line
+is counts and protocol names only: no address, server name, or account
+name is included.</p>
 <p><strong>No message content, email addresses, account settings,
 passwords, or log file content is ever collected or sent.</strong> The
 Preview shows the full report verbatim, so you always see exactly what
