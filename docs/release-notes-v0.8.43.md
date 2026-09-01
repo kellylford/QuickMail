@@ -53,6 +53,23 @@ one mailbox while the rule files mail in another; picking an existing folder is 
 there, creating one is not.
 ([#645](https://github.com/kellylford/QuickMail/issues/645))
 
+## Fixed: Shift+Tab goes back to the folder list
+
+The window that asks you to choose a folder — moving or copying messages, moving or copying a
+folder, choosing a rule's target, choosing the startup folder — let you tab forward from the list
+of folders to the buttons, but not back. Shift+Tab landed on **Cancel** instead of returning to the
+folders, so the only way back to the list was to keep tabbing forward all the way round.
+
+Shift+Tab now returns to the folder list, on the folder you had selected rather than at the top of
+it. Tab and Shift+Tab move round the window in a ring: the folders, **New Folder** where it is
+offered, **Open**, **Cancel**, and back to the folders.
+
+Two smaller things came with it. **Open** is unavailable while the selection is an account name, or
+a folder path that is not itself a folder, and Tab stopped dead there instead of moving on to a
+button you could actually use; it now goes to the next available one. And in **Go to Folder**, Tab
+from the search box reached the buttons before it reached the list of folders those buttons act on
+— the list comes first now.
+
 ---
 
 ## Reporting Issues
