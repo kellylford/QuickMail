@@ -34,16 +34,22 @@ public partial class ServerRuleEditorWindow : Window
     // capturing here would let a rule be saved to one account with a folder chosen from another.
     private readonly Func<Guid?>? _ruleAccountId;
 
+    // How the folder picker creates a folder without this window reaching a mail service itself
+    // (issue #645). Null hides the picker's New Folder button.
+    private readonly FolderCreationSupport? _folderCreation;
+
     public ServerRuleEditorWindow(
         ServerRuleEditorViewModel vm,
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
-        Func<Guid?>? ruleAccountId = null)
+        Func<Guid?>? ruleAccountId = null,
+        FolderCreationSupport? folderCreation = null)
     {
         _vm = vm;
         _accounts = accounts;
         _cachedFolders = cachedFolders;
         _ruleAccountId = ruleAccountId;
+        _folderCreation = folderCreation;
         InitializeComponent();
         DataContext = vm;
 
@@ -61,11 +67,19 @@ public partial class ServerRuleEditorWindow : Window
     private (string Id, string Name)? OnPickFolderRequested(string? currentFolderId)
     {
         var picker = FolderPickerWindow.ForRuleTarget(
-            _accounts, _cachedFolders, _ruleAccountId?.Invoke(), currentFolderId, title: "Choose Folder");
+            _accounts, _cachedFolders, _ruleAccountId?.Invoke(), currentFolderId, title: "Choose Folder",
+            folderCreator: _folderCreation?.CreateAsync);
         picker.Owner = this;
+
+        (string Id, string Name)? chosen = null;
         if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
-            return (folder.FullName, folder.DisplayName);
-        return null;
+            chosen = (folder.FullName, folder.DisplayName);
+
+        // Apply a folder created inside the picker, even on Cancel (a no-op otherwise): it exists on
+        // the server whichever button closed the picker, and the main window's folder tree could not
+        // be rebuilt while that modal loop was running.
+        _folderCreation?.PickerClosed();
+        return chosen;
     }
 
     private void OnCloseRequested() => Close();

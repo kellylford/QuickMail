@@ -19,6 +19,30 @@ complete text before you send it, so you can read exactly what is going.
 
 ---
 
+## New: create a folder while you are writing a rule
+
+Writing a rule is often where you decide a folder ought to exist — "everything from the school
+goes in a folder called School", and there is no School folder yet. Until now that meant leaving
+the rule half-written, going back to the main window to make the folder, and starting the rule
+again.
+
+The folder picker a rule opens for **Move to folder** now has the same **New Folder** button the
+message move and copy pickers have had for a while. Activate it (or press **Alt+N**) with a folder
+selected, type a name, and the new folder is created under that one, appears in the tree, and is
+selected ready for you to choose as the rule's target — without leaving the rule you were writing.
+It works in both the Rules Manager and, where Microsoft 365 server rules are available, the rule
+editor there.
+
+Two places the button does not appear, both on purpose. A POP3 account has no folders on the
+server to create, so there is nothing the button could do. And a rule the picker cannot tie to one
+particular account — a rule that has no account of its own, or an account whose folders QuickMail
+has not read yet — falls back to showing every account's folders, where a new folder would land in
+one mailbox while the rule files mail in another; picking an existing folder is still offered
+there, creating one is not.
+([#645](https://github.com/kellylford/QuickMail/issues/645))
+
+---
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

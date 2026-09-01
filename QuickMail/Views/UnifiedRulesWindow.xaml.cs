@@ -30,17 +30,23 @@ public partial class UnifiedRulesWindow : Window
 
     private readonly MailRule? _prefillTemplate;
 
+    // Passed straight through to the rule editor, whose folder picker is the one that offers to
+    // create a folder (issue #645). This window opens no picker of its own.
+    private readonly FolderCreationSupport? _folderCreation;
+
     public UnifiedRulesWindow(
         UnifiedRulesViewModel vm,
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
-        MailRule? prefillTemplate = null)
+        MailRule? prefillTemplate = null,
+        FolderCreationSupport? folderCreation = null)
     {
         InitializeComponent();
         _vm = vm;
         _accounts = accounts;
         _cachedFolders = cachedFolders;
         _prefillTemplate = prefillTemplate;
+        _folderCreation = folderCreation;
         DataContext = vm;
 
         vm.EditorRequested += OnEditorRequested;
@@ -133,7 +139,7 @@ public partial class UnifiedRulesWindow : Window
         // live rather than captured: the editor is modeless and the save path reads this same
         // selection, so both must see the account the list is on at the moment they act.
         var editor = new ServerRuleEditorWindow(
-            editorVm, _accounts, _cachedFolders, () => _vm.SelectedAccount?.Id) { Owner = this };
+            editorVm, _accounts, _cachedFolders, () => _vm.SelectedAccount?.Id, _folderCreation) { Owner = this };
         editor.Show();
         editor.Activate();
     }

@@ -30,15 +30,21 @@ public partial class RulesManagerWindow : Window
     private readonly IEnumerable<AccountModel> _accounts;
     private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>> _cachedFolders;
 
+    // How the target-folder picker creates a folder without this window reaching a mail service
+    // itself (issue #645). Null hides the picker's New Folder button.
+    private readonly FolderCreationSupport? _folderCreation;
+
     public RulesManagerWindow(
         RulesManagerViewModel vm,
         IEnumerable<AccountModel> accounts,
-        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders)
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        FolderCreationSupport? folderCreation = null)
     {
         InitializeComponent();
         _vm = vm;
         _accounts = accounts;
         _cachedFolders = cachedFolders;
+        _folderCreation = folderCreation;
         DataContext = vm;
 
         // Wire VM events
@@ -91,14 +97,21 @@ public partial class RulesManagerWindow : Window
     {
         var picker = FolderPickerWindow.ForRuleTarget(
             _accounts, _cachedFolders, accountId, currentFolder,
-            title: "Choose Target Folder");
+            title: "Choose Target Folder",
+            folderCreator: _folderCreation?.CreateAsync);
         picker.Owner = this;
 
+        string? chosen = null;
         if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
         {
-            return folder.FullName;
+            chosen = folder.FullName;
         }
-        return null;
+
+        // Apply a folder created inside the picker, even on Cancel (a no-op otherwise): it exists on
+        // the server whichever button closed the picker, and the main window's folder tree could not
+        // be rebuilt while that modal loop was running.
+        _folderCreation?.PickerClosed();
+        return chosen;
     }
 
     private void OnCloseRequested()
