@@ -14,7 +14,11 @@ public static class MessagePropertiesBuilder
     {
         var headers = new List<PropertyItem>
         {
-            new("From",       NoneIfBlank(summary.From)),
+            // Detail first: the summary's From is the display name alone, which is what the message
+            // list's From column wants but leaves Properties with no address to show (issue #636).
+            // The summary is the fallback for a message whose detail has not been loaded.
+            new("From",       NoneIfBlank(detail is not null && !string.IsNullOrWhiteSpace(detail.From)
+                                              ? detail.From : summary.From)),
             new("To",         NoneIfBlank(summary.To)),
             new("Cc",         detail is not null ? NoneIfBlank(detail.Cc) : "(not loaded)"),
             new("Reply-To",   detail is not null ? NoneIfBlank(detail.ReplyTo) : "(not loaded)"),

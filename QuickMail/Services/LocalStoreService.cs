@@ -211,6 +211,18 @@ public class LocalStoreService : ILocalStoreService
         // MessageDetail by CREATE/INSERT/DROP/RENAME against a fixed column list, so a column added
         // before it would be dropped again and stay missing for the rest of the session.
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN mime_bytes BLOB DEFAULT NULL;");
+
+        // The sender's full address ("Kelly Ford <kelly@example.com>"), issue #636. The detail row
+        // used to have no From column at all: LoadDetailAsync read it from MessageSummary.from_disp,
+        // which holds the display name alone because that is what the message list's From column
+        // wants. So the same message showed a full address when opened straight from IMAP and a bare
+        // name when served from cache, and a reply composed from the cached copy addressed a name
+        // with no mailbox behind it.
+        //
+        // Rows written before this column keep an empty string; LoadDetailAsync falls back to
+        // from_disp for them, and MainViewModel re-fetches from the server on open so the row
+        // repairs itself. AFTER RunDataMigrations for the same reason as mime_bytes above.
+        RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN from_addr TEXT NOT NULL DEFAULT '';");
     }
 
     // SQLite's PRAGMA user_version stores a single integer per database. We use it as a
@@ -882,9 +894,10 @@ public class LocalStoreService : ILocalStoreService
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO MessageDetail(unique_id, account_id, folder_name, to_addr, cc, reply_to, plain_body, html_body, attachments_json, calendar_ics)
-            VALUES($uid, $aid, $fn, $to, $cc, $rt, $plain, $html, $attjson, $ics)
+            INSERT INTO MessageDetail(unique_id, account_id, folder_name, from_addr, to_addr, cc, reply_to, plain_body, html_body, attachments_json, calendar_ics)
+            VALUES($uid, $aid, $fn, $from, $to, $cc, $rt, $plain, $html, $attjson, $ics)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
+                from_addr        = excluded.from_addr,
                 to_addr          = excluded.to_addr,
                 cc               = excluded.cc,
                 reply_to         = excluded.reply_to,
@@ -896,6 +909,7 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$uid",    detail.MessageId);
         cmd.Parameters.AddWithValue("$aid",    detail.AccountId.ToString());
         cmd.Parameters.AddWithValue("$fn",     detail.FolderName);
+        cmd.Parameters.AddWithValue("$from",   detail.From);
         cmd.Parameters.AddWithValue("$to",     detail.To);
         cmd.Parameters.AddWithValue("$cc",     detail.Cc);
         cmd.Parameters.AddWithValue("$rt",     detail.ReplyTo);
@@ -931,7 +945,7 @@ public class LocalStoreService : ILocalStoreService
         cmd.CommandText = """
             SELECT d.to_addr, d.cc, d.reply_to, d.plain_body, d.html_body,
                    s.from_disp, s.subject, s.date_ticks, s.is_read, d.attachments_json, d.calendar_ics,
-                   s.internet_message_id
+                   s.internet_message_id, d.from_addr
             FROM MessageDetail d
             LEFT JOIN MessageSummary s USING (unique_id, account_id, folder_name)
             WHERE d.unique_id=$uid AND d.account_id=$aid AND d.folder_name=$fn;
@@ -974,7 +988,11 @@ public class LocalStoreService : ILocalStoreService
             ReplyTo       = r.GetString(2),
             PlainTextBody = r.GetString(3),
             HtmlBody      = r.GetString(4),
-            From          = r.IsDBNull(5) ? string.Empty : r.GetString(5),
+            // The detail's own full address where the row has one; the summary's display-name-only
+            // column for rows written before from_addr existed (issue #636). MainViewModel re-fetches
+            // on open when what comes back has no address in it, so a legacy row repairs itself.
+            From          = FirstNonEmpty(r.IsDBNull(12) ? null : r.GetString(12),
+                                          r.IsDBNull(5)  ? null : r.GetString(5)),
             Subject       = r.IsDBNull(6) ? "(no subject)" : r.GetString(6),
             Date          = r.IsDBNull(7) ? DateTimeOffset.MinValue : new DateTimeOffset(r.GetInt64(7), TimeSpan.Zero),
             IsRead        = !r.IsDBNull(8) && r.GetInt64(8) != 0,
@@ -988,6 +1006,11 @@ public class LocalStoreService : ILocalStoreService
             CalendarInvite = string.IsNullOrWhiteSpace(calendarIcs) ? null : IcsModel.Parse(calendarIcs),
         };
     }
+
+    private static string FirstNonEmpty(string? preferred, string? fallback) =>
+        !string.IsNullOrWhiteSpace(preferred) ? preferred
+        : !string.IsNullOrWhiteSpace(fallback) ? fallback
+        : string.Empty;
 
     /// <summary>
     /// Stores (or clears, when <paramref name="mimeBytes"/> is null) the raw message bytes on an

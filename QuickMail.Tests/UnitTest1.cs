@@ -605,6 +605,63 @@ public class LocalStoreServiceTests
     }
 
     [Fact]
+    public async Task DetailFrom_RoundTripsTheFullAddress_NotTheSummaryDisplayName()
+    {
+        // Issue #636: the detail row had no From column, so a cache-served open handed the reading
+        // pane, Properties and the reply To field the summary's display-name-only value. Opening the
+        // same message straight from IMAP gave the full address — the "sometimes" in the report.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
+        store.Initialize();
+
+        var acct = Guid.NewGuid();
+        await store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            MessageId = "7", AccountId = acct, FolderName = "Inbox",
+            From = "Kelly Ford",                       // display name alone, as the list column wants
+            Subject = "s", Date = DateTimeOffset.UtcNow,
+        }]);
+        await store.UpsertDetailAsync(new MailMessageDetail
+        {
+            MessageId = "7", AccountId = acct, FolderName = "Inbox",
+            From = "Kelly Ford <kelly@example.com>",
+            To = "you@example.com", PlainTextBody = "body",
+        });
+
+        var loaded = await store.LoadDetailAsync(acct, "Inbox", "7");
+        Assert.NotNull(loaded);
+        Assert.Equal("Kelly Ford <kelly@example.com>", loaded!.From);
+    }
+
+    [Fact]
+    public async Task DetailFrom_FallsBackToTheSummary_ForRowsWrittenBeforeFromAddrExisted()
+    {
+        // A detail row cached by an older build has from_addr = '' and cannot be repaired from the
+        // database — the address is stored nowhere else. Serving the summary's display name keeps
+        // such a message readable; MainViewModel re-fetches it on open to fill the address back in.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
+        store.Initialize();
+
+        var acct = Guid.NewGuid();
+        await store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            MessageId = "8", AccountId = acct, FolderName = "Inbox",
+            From = "Kelly Ford", Subject = "s", Date = DateTimeOffset.UtcNow,
+        }]);
+        await store.UpsertDetailAsync(new MailMessageDetail
+        {
+            MessageId = "8", AccountId = acct, FolderName = "Inbox",
+            From = string.Empty,                       // what a pre-#636 row looks like on disk
+            To = "you@example.com", PlainTextBody = "body",
+        });
+
+        var loaded = await store.LoadDetailAsync(acct, "Inbox", "8");
+        Assert.NotNull(loaded);
+        Assert.Equal("Kelly Ford", loaded!.From);
+    }
+
+    [Fact]
     public async Task CountSummariesByFolder_GroupsPerFolderForOneAccount()
     {
         // #462 sweep instrumentation: one grouped query yields every folder's cached count.
