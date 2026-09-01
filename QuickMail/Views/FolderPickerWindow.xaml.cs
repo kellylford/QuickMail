@@ -718,9 +718,10 @@ public partial class FolderPickerWindow : Window
         {
             // Nothing selected that says which account and which parent — a path-only node in a
             // multi-account tree, say. An enabled button that does nothing at all is a dead end, and
-            // silence is how it reads to a screen reader, so name the missing input.
+            // silence is how it reads to a screen reader, so name the missing input. "Where" rather
+            // than "which folder": an account header is a legal parent too.
             AccessibilityHelper.Announce(
-                this, "Choose a folder to create the new folder in.",
+                this, "Choose where to create the folder.",
                 category: AnnouncementCategory.Result);
             return;
         }

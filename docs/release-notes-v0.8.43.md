@@ -35,7 +35,7 @@ editor there.
 
 Two places the button does not appear, both on purpose. A POP3 account has no folders on the
 server to create, so there is nothing the button could do. And a rule the picker cannot tie to one
-particular account — a new rule with no account chosen yet, or an account whose folders QuickMail
+particular account — a rule that has no account of its own, or an account whose folders QuickMail
 has not read yet — falls back to showing every account's folders, where a new folder would land in
 one mailbox while the rule files mail in another; picking an existing folder is still offered
 there, creating one is not.
