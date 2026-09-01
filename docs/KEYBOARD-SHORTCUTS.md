@@ -197,3 +197,39 @@ Like the date-field stepping keys above, these are **deliberately not registered
 `CommandRegistry`**: they are in-control navigation keys, the same kind as the arrow keys inside a
 list box, and they do nothing outside a tab header. `Ctrl+Tab` / `Ctrl+Shift+Tab` remain
 `TabControl`'s own — the handler ignores any key pressed with a modifier.
+
+## Folder picker: Tab across the tree and the buttons
+
+In its tree presentation (`FolderPickerWindow` with `useTreeView: true` — move or copy messages,
+move or copy a folder, a rule's target folder, the startup folder) the picker handles `Tab` and
+`Shift+Tab` itself where they cross between the folder tree and the buttons. The ring is: the tree
+→ **New Folder** (where it is shown) → **Open** (while it is enabled) → **Cancel** → back to the
+tree. Coming back into the tree lands on the folder that was selected, not on the first row, and
+does not change the selection.
+
+WPF cannot do this half of it on its own. `TreeViewItem` leaves `IsTabStop` false, so reverse
+traversal finds no tab stop inside the tree, skips the whole control and wraps round to the last
+button: `Shift+Tab` out of the first button could not get back to the folders at all. Forward entry
+works by a different route — into a `TabNavigation="Once"` container it goes to the container's
+focused descendant rather than to a tab stop — which is why only one direction was broken. Making
+the items tab stops was measured first and is worse: reverse entry then lands on the first folder
+rather than the selected one, and `Shift+Tab` from there does not leave the tree at all.
+
+The other trap is that `Open` is disabled whenever the selection carries no folder (an account
+header, or an IMAP path segment that is not itself a mailbox), and focusing a disabled button does
+nothing while reporting nothing — so the handler steps to the first button that can actually take
+focus, and `Cancel`, always shown and always enabled, is the backstop.
+
+The main window solved the same problem the same way, earlier: `MessageList_PreviewKeyDown`,
+`ConversationTree_PreviewKeyDown` and the sender/recipient group trees all intercept `Shift+Tab`
+and call `SyncFolderTreeSelection`, and `AccountList_PreviewKeyDown` mirrors it. Its folder tree is
+a `TreeView` with the same `TabNavigation="Once"`, so without those handlers `Shift+Tab` out of the
+message list would skip it and land on the account list. A hand-wired `Shift+Tab` is what reaching
+a `TreeView` in reverse costs in this framework; expect to write one for any new tree.
+
+Like the date-field and tab-strip keys above, these are **deliberately not registered in
+`CommandRegistry`**: `Tab` and `Shift+Tab` are framework focus navigation, not application
+commands, and they carry no command title to show in the palette. Any other modifier is left alone
+— `Ctrl+Tab` and friends fall straight through. The flat list presentation ("Go to Folder") is not
+touched by any of this: `ListBoxItem` is a tab stop, so it traverses correctly both ways on its
+own. Covered by `FolderPickerTabOrderTests`.

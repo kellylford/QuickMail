@@ -1,7 +1,5 @@
 # QuickMail v0.8.43 Release Notes
 
-<!-- Add "What is new" sections here (Changed/Fixed/New), then the Reporting Issues footer, then the Download footer last. -->
-
 ## Fixed: a bad connection can no longer cost you a draft
 
 If you have written mail somewhere with unreliable connectivity — an airport was the case that
@@ -101,8 +99,9 @@ from one another, so a report that leaves it out can take a while to place.
 Reports now include one more line — how many accounts you have set up and the protocols they use,
 for example *"2 (IMAP, Microsoft 365)"*. Shared mailboxes are counted on their own, as in *"2
 (Microsoft 365), plus 1 shared mailbox"*, because a shared mailbox is not one of your own accounts.
-It is counts and protocol names, nothing else: no address, no server name, no account name. As always the **Preview** in the report window shows the
-complete text before you send it, so you can read exactly what is going.
+It is counts and protocol names, nothing else: no address, no server name, no account name. As
+always the **Preview** in the report window shows the complete text before you send it, so you can
+read exactly what is being sent.
 ([#639](https://github.com/kellylford/QuickMail/issues/639))
 
 ## Fixed: a sender's email address sometimes went missing
@@ -119,8 +118,6 @@ their address filled back in the next time they are opened.
 
 Message Properties also reports the sender's full address now, matching the **To** line right below
 it. ([#636](https://github.com/kellylford/QuickMail/issues/636))
-
----
 
 ## New: create a folder while you are writing a rule
 
@@ -143,6 +140,23 @@ has not read yet — falls back to showing every account's folders, where a new 
 one mailbox while the rule files mail in another; picking an existing folder is still offered
 there, creating one is not.
 ([#645](https://github.com/kellylford/QuickMail/issues/645))
+
+## Fixed: Shift+Tab goes back to the folder list
+
+The window that asks you to choose a folder — moving or copying messages, moving or copying a
+folder, choosing a rule's target, choosing the startup folder — let you tab forward from the list
+of folders to the buttons, but not back. Shift+Tab landed on **Cancel** instead of returning to the
+folders, so the only way back to the list was to keep tabbing forward all the way round.
+
+Shift+Tab now returns to the folder list, on the folder you had selected rather than at the top of
+it. Tab and Shift+Tab move round the window in a ring: the folders, **New Folder** where it is
+offered, **Open**, **Cancel**, and back to the folders.
+
+Two smaller things came with it. **Open** is unavailable while the selection is an account name, or
+a folder path that is not itself a folder, and Tab stopped dead there instead of moving on to a
+button you could actually use; it now goes to the next available one. And in **Go to Folder**, Tab
+from the search box reached the buttons before it reached the list of folders those buttons act on
+— the list comes first now.
 
 ---
 
