@@ -82,9 +82,14 @@ public class RuleTargetPickerCallSiteTests
     {
         var source = Source("Views/MainWindow.xaml.cs");
 
-        Assert.Contains("new FolderCreationSupport(", source, StringComparison.Ordinal);
-        Assert.Contains("CreateFolderReturningFoldersAsync", source, StringComparison.Ordinal);
-        Assert.Contains("CommitPendingFolderTreeRebuild", source, StringComparison.Ordinal);
+        // Scoped to the construction: both method names appear all over this file already, from the
+        // move/copy picker wiring, so asserting them against the whole source would pass with the
+        // rules wiring deleted.
+        var support = Regex.Match(
+            source, @"new\s+FolderCreationSupport\s*\((?<args>.*?)\)\s*;", RegexOptions.Singleline);
+        Assert.True(support.Success, "MainWindow no longer builds a FolderCreationSupport for the rules windows.");
+        Assert.Contains("CreateFolderReturningFoldersAsync", support.Groups["args"].Value, StringComparison.Ordinal);
+        Assert.Contains("CommitPendingFolderTreeRebuild", support.Groups["args"].Value, StringComparison.Ordinal);
 
         foreach (var window in new[] { "RulesManagerWindow", "UnifiedRulesWindow" })
         {

@@ -65,6 +65,12 @@ public class RuleTargetPickerTests
             accounts ?? [Account()], folders ?? Folders(),
             accountId ?? AccountId, currentFolderKey, "Choose Target Folder", folderCreator);
 
+    private static AccountModel Pop3Account(Guid id) => new()
+    {
+        Id = id, AccountName = "Legacy", Username = "kelly@example.net",
+        BackendKind = BackendKind.Pop3Smtp,
+    };
+
     /// <summary>A creator that is never called — these tests only ask whether the button is offered.</summary>
     private static Task<IReadOnlyList<MailFolderModel>?> NeverCreates(Guid _, string? __, string ___)
         => Task.FromResult<IReadOnlyList<MailFolderModel>?>(null);
@@ -316,44 +322,57 @@ public class RuleTargetPickerTests
         finally { window.Close(); }
     }
 
-    /// <summary>
-    /// POP3 has no server folders to create (#128), and the button is one button over the whole
-    /// tree rather than one per account — so a tree holding a POP3 account must not offer it, even
-    /// though the caller supplied a creator. Reachable here because a rule with no account falls
-    /// back to showing every account.
-    /// </summary>
+    /// <summary>POP3 has no server folders to create (#128), so the account a rule files into being a
+    /// POP3 one withholds the button even though the caller supplied a creator.</summary>
     [StaFact]
-    public void WithholdsNewFolderWhenAnAccountInTheTreeCannotManageFolders()
+    public void WithholdsNewFolderForAnAccountThatCannotManageFolders()
     {
         var pop = Guid.NewGuid();
         var folders = Folders();
         folders[pop] = [Folder("INBOX", "Inbox", pop)];
-        var accounts = new[]
-        {
-            Account(),
-            new AccountModel
-            {
-                Id = pop, AccountName = "Legacy", Username = "kelly@example.net",
-                BackendKind = BackendKind.Pop3Smtp,
-            },
-        };
 
-        // Scoped to the POP3 account: the account the rule files into cannot hold a new folder.
-        var scoped = Picker(accountId: pop, accounts: accounts, folders: folders, folderCreator: NeverCreates);
+        var window = Picker(
+            accountId: pop, accounts: [Account(), Pop3Account(pop)], folders: folders,
+            folderCreator: NeverCreates);
         try
         {
-            Assert.Equal(Visibility.Collapsed, Named<Button>(scoped, "NewFolderButton").Visibility);
+            Assert.Equal(Visibility.Collapsed, Named<Button>(window, "NewFolderButton").Visibility);
         }
-        finally { scoped.Close(); }
+        finally { window.Close(); }
+    }
 
-        // Unscoped fallback: the IMAP account could hold one, but the tree also offers the POP3
-        // account's folders, and the button acts on whichever node is selected.
-        var unscoped = FolderPickerWindow.ForRuleTarget(
+    /// <summary>
+    /// The unscoped fallback shows every account, and the button creates under whichever node is
+    /// selected — so it would make the folder in one mailbox while the rule files into another. The
+    /// user watches the folder appear and reasonably concludes the target is real, which is worse
+    /// than the wrong-folder <em>pick</em> the fallback already allows. So the button is withheld
+    /// there, even with every account able to manage folders.
+    /// </summary>
+    [StaFact]
+    public void WithholdsNewFolderOnTheUnscopedFallbackTree()
+    {
+        var other = Guid.NewGuid();
+        var folders = Folders();
+        folders[other] = [Folder("Receipts", "Receipts", other)];
+        var accounts = new[] { Account(), Account("Personal", other) };
+
+        var noAccount = FolderPickerWindow.ForRuleTarget(
             accounts, folders, accountId: null, currentFolderKey: null, "Choose Target Folder", NeverCreates);
         try
         {
-            Assert.Equal(Visibility.Collapsed, Named<Button>(unscoped, "NewFolderButton").Visibility);
+            Assert.Contains(Flatten(Roots(noAccount)), n => n.Label == "Receipts");
+            Assert.Equal(Visibility.Collapsed, Named<Button>(noAccount, "NewFolderButton").Visibility);
         }
-        finally { unscoped.Close(); }
+        finally { noAccount.Close(); }
+
+        // Same fallback, reached the other way: the rule has an account, but its folders are not
+        // cached yet, so there is nothing to scope to.
+        var uncached = Picker(
+            accountId: Guid.NewGuid(), accounts: accounts, folders: folders, folderCreator: NeverCreates);
+        try
+        {
+            Assert.Equal(Visibility.Collapsed, Named<Button>(uncached, "NewFolderButton").Visibility);
+        }
+        finally { uncached.Close(); }
     }
 }
