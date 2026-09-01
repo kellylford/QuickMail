@@ -326,11 +326,12 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 ### Rules
 
 - **Register first, hardcode never.** Do not add a raw `if (modifiers == ... && key == ...)` block in `PreviewKeyDown` for a new action. Register the command with `defaultKey` / `defaultModifiers` and let the registry dispatch it.
-- **Four exceptions** are allowed to remain hardcoded (they are framework-level or in-control, not user actions):
+- **Five exceptions** are allowed to remain hardcoded (they are framework-level or in-control, not user actions):
   - `Ctrl+Shift+P` — opens the Command Palette itself (cannot dispatch through the palette)
   - Navigation shortcuts `Ctrl+0–3`, `Ctrl+9`, `Ctrl+Y`, `F6` — focus-only pane jumps with no associated command title
   - The stepping gestures inside `Controls/DateTimeField` (arrows, Shift+arrows, Page keys) — in-field editing keys like the arrow keys inside any `TextBox`, meaningless outside the field. See `docs/KEYBOARD-SHORTCUTS.md`.
   - Left/Right/Home/End on a tab header (`Helpers/TabStripNavigation.cs`, issue #528) — in-control navigation, the same kind as the arrow keys inside a list box, and meaningless outside a tab strip. See `docs/KEYBOARD-SHORTCUTS.md`.
+  - Tab/Shift+Tab across the folder picker's tree/buttons boundary (`FolderPickerWindow.HandleTreeTab`) — framework focus navigation with no command title, wired by hand only because WPF's reverse traversal cannot enter a `TreeView` at all (`TreeViewItem` leaves `IsTabStop` false). See `docs/KEYBOARD-SHORTCUTS.md`.
 - **`InputGestureText` in menus** must match the registered default key, e.g. `InputGestureText="Ctrl+Shift+F"`.
 - **Category** must be one of: `View`, `Mail`, `Account`, `Contacts`, `Calendar`, `Settings`, `Help`. (`Calendar` added 2026-07-17 per the full-calendar spec, resolved question Q4.)
 
