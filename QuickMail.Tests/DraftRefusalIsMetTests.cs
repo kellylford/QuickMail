@@ -216,4 +216,81 @@ public class DraftRefusalIsMetTests
         Assert.DoesNotContain("Drafts folder", vm.DeliveryNotice, StringComparison.Ordinal);
         Assert.Equal(string.Empty, vm.DeliveryNotice);
     }
+
+    // ── Send refusals: durable, and not wiped by a save that does not fix them ──
+
+    private static ComposeViewModel Sendable(ILocalDraftService drafts) => new(
+        new StubSmtpService(), new StubAccountService(), new StubCredentialService(),
+        new RecordingMailService { AppendDraftThrows = true }, drafts, new StubTemplateService())
+    {
+        SenderAccount = new AccountModel
+        {
+            Id = AccountId, Username = "samuel@interfree.ca", AuthType = AuthType.OAuth2Google,
+        },
+        Subject = "Airport thoughts",
+        Body = "Boarding soon.",
+    };
+
+    [Fact]
+    public async Task SendingWithNoRecipient_LeavesADurableReason()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var vm = Sendable(store.Drafts);
+        var refused = 0;
+        vm.SaveRefused += () => refused++;
+
+        await vm.SendCommand.ExecuteAsync(null);
+
+        Assert.Contains("no recipient", vm.DeliveryNotice, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, refused);
+    }
+
+    [Fact]
+    public async Task SendingWithTooManyAttachments_LeavesADurableReason()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var vm = Sendable(store.Drafts);
+        vm.To = "someone@example.com";
+        vm.Attachments.Add(new AttachmentModel { FileName = "big.bin", FileSize = 26_000_000 });
+
+        await vm.SendCommand.ExecuteAsync(null);
+
+        Assert.Contains("25 MB", vm.DeliveryNotice, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ASaveDoesNotWipeASendRefusalThatIsStillTrue()
+    {
+        // A refused send leaves the draft dirty, so the auto-save timer fires within minutes. It
+        // used to clear the notice -- erasing a still-true warning, collapsing the field the user
+        // had just been put on, and moving focus out from under them. Saving the draft says nothing
+        // about whether the message can be sent (#637).
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var vm = Sendable(store.Drafts);
+
+        await vm.SendCommand.ExecuteAsync(null);           // refused: no recipient
+        Assert.Contains("no recipient", vm.DeliveryNotice, StringComparison.OrdinalIgnoreCase);
+
+        await vm.AutoSaveAsync();                          // succeeds locally
+
+        Assert.Contains("no recipient", vm.DeliveryNotice, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task FixingTheCause_RetiresTheSendRefusal()
+    {
+        using var store = new RealDraftStore();
+        await store.SeedDraftsFolderAsync(AccountId);
+        var vm = Sendable(store.Drafts);
+
+        await vm.SendCommand.ExecuteAsync(null);
+        Assert.NotEqual(string.Empty, vm.DeliveryNotice);
+
+        vm.To = "someone@example.com";                     // the user does what it asked
+
+        Assert.Equal(string.Empty, vm.DeliveryNotice);
+    }
 }

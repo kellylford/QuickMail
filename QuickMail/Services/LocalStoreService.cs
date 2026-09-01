@@ -656,6 +656,24 @@ public class LocalStoreService : ILocalStoreService
     }
 
     /// <summary>
+    /// Drafts this account holds that will NOT upload on their own (#637).
+    /// <para>Narrower than <see cref="CountUnsentMailAsync"/> on purpose. That one answers "what
+    /// would this destroy", so it counts a draft still waiting to go up. This one answers "is the
+    /// user stuck", which only a REFUSED draft is: a waiting one clears itself on the next
+    /// connection, and telling someone to send or delete it every launch is nagging about a
+    /// problem that is already solving itself.</para>
+    /// </summary>
+    public async Task<int> CountRefusedDraftsAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT COUNT(*) FROM MessageSummary WHERE account_id=$aid AND send_failed_reason IS NOT NULL;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync() ?? 0);
+    }
+
+    /// <summary>
     /// Drafts held only on this computer for an account: not yet uploaded, or refused (#637).
     /// <para>Removing an account purges its store, and these cannot be downloaded again — they
     /// exist nowhere else. This is what the confirmation counts.</para>

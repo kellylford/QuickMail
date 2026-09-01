@@ -372,19 +372,31 @@ public partial class App : Application
                                 .ToList();
                             if (blocking.Count > 0)
                             {
-                                // Deferred, not failed: the marker stays unwritten so a later launch
-                                // retries. Named, not merely logged -- a refused draft is never
-                                // retried by the upload pass, so this can hold the #366 fix off for
-                                // ever and the user would have no way to know (#637).
+                                // Deferred, not failed: the marker stays unwritten so a later
+                                // launch retries.
+                                //
+                                // The user is TOLD only when it will not clear itself. Deferring is
+                                // right for a merely-waiting draft too, since the clear would
+                                // destroy it -- but that draft uploads on the next connection, and
+                                // a dialog every launch telling someone to send or delete it is
+                                // nagging about a problem that is already solving itself. Only a
+                                // REFUSED draft leaves them stuck, because the upload pass never
+                                // retries one (#637).
+                                var stuck = blocking
+                                    .Where(id => localStore.CountRefusedDraftsAsync(id).GetAwaiter().GetResult() > 0)
+                                    .ToList();
                                 // The list already loaded above, not a second read.
                                 var labels = accounts
-                                    .Where(a => blocking.Contains(a.Id))
+                                    .Where(a => stuck.Contains(a.Id))
                                     .Select(a => a.AccountLabel)
                                     .ToList();
                                 deferredRebuildFor = labels.Count > 0
                                     ? string.Join(", ", labels)
-                                    : $"{blocking.Count} account{(blocking.Count == 1 ? "" : "s")}";
-                                LogService.Log($"Immutable-id cache rebuild deferred: {deferredRebuildFor} still holds drafts that have not reached the server.");
+                                    : stuck.Count > 0
+                                        ? $"{stuck.Count} account{(stuck.Count == 1 ? "" : "s")}"
+                                        : string.Empty;
+                                LogService.Log($"Immutable-id cache rebuild deferred: {blocking.Count} account(s) still hold drafts that have not reached the server"
+                                             + (stuck.Count > 0 ? $"; {deferredRebuildFor} will not clear without help." : "."));
                             }
                             else
                             {

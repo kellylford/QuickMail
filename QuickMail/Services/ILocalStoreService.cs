@@ -44,6 +44,9 @@ public interface ILocalStoreService
 
     /// <summary>Drafts held only on this computer for an account — what removing it destroys (#637).</summary>
     Task<int> CountUnsentMailAsync(Guid accountId);
+
+    /// <summary>Drafts that will not upload on their own, i.e. ones the server refused (#637).</summary>
+    Task<int> CountRefusedDraftsAsync(Guid accountId);
     Task DeleteAccountDataAsync(Guid accountId);
 
     /// <summary>Clears cached mail (summaries, bodies, delta cursors) for the given accounts only —

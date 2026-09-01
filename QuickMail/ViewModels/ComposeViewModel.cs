@@ -239,7 +239,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     }
 
     // Dirty-marking partial methods — fired by the [ObservableProperty] source generator
-    partial void OnToChanged(string value)      => _isDirty = true;
+    // Editing any of these can be what fixes a refused send, so the reason is retired here rather
+    // than left sitting on screen after the user has acted on it (#637).
+    partial void OnToChanged(string value)      { _isDirty = true; ClearSendRefusalNotice(); }
     partial void OnCcChanged(string value)      => _isDirty = true;
     partial void OnBccChanged(string value)     => _isDirty = true;
     partial void OnSubjectChanged(string value) => _isDirty = true;
@@ -452,11 +454,14 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             {
                 _draftFolderName = await _imap.FindDraftsFolderNameAsync(account.Id, findCombined.Token);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (externalCt.IsCancellationRequested)
             {
-                // Ahead of the broad catch, or a cancelled auto-save arrives at the caller dressed
-                // as DraftFolderMissingException and tells the user their account has no Drafts
-                // folder -- about an account that is fine. Same pattern as the upload pass (#637).
+                // Only when the CALLER cancelled. Rethrowing every cancellation also swallowed the
+                // 30-second lookup timeout on the linked token, and since AutoSaveAsync's
+                // cancellation arm is deliberately silent, a folder lookup that stalled produced
+                // no notice, no status and no local write -- silence, which is worse than the wrong
+                // sentence it replaced. A timeout falls through to the broad catch below and is
+                // reported as the missing-folder outcome, which is what it is (#637).
                 throw;
             }
             catch (Exception ex)
@@ -523,8 +528,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 _draftCreatedByThisWindow = true;
             localId               = saved.MessageId;
             // The save re-arms the upload (the store clears the reason), so the notice must go
-            // with it rather than sit there describing a refusal that is no longer true.
-            DeliveryNotice        = string.Empty;
+            // with it rather than sit there describing a refusal that is no longer true. A SEND
+            // refusal is left alone: storing the draft does not give it a recipient.
+            ClearNoticeUnlessSendRefusal();
             // Re-claim on the id this save just minted. Seed can only claim a draft that was
             // ALREADY local, which leaves out every new compose, reply and forward — precisely the
             // rows the upload pass skips claimed drafts to protect. Without this the pass uploads
@@ -578,7 +584,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // server leg succeeds left the notice saying the message was saved nowhere -- and
             // telling the user to keep trying Save Draft -- about a message that had just reached
             // the server. The durable channel is the one that must not be stale (#637).
-            DeliveryNotice        = string.Empty;
+            ClearNoticeUnlessSendRefusal();
 
             // The server holds it now, so the local copy is redundant — and leaving it would show
             // the draft twice in Drafts once the folder syncs.
@@ -767,16 +773,43 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Retires a send refusal once the user changes something that could resolve it.</summary>
+    private void ClearSendRefusalNotice()
+    {
+        if (!_noticeIsSendRefusal) return;
+        _noticeIsSendRefusal = false;
+        DeliveryNotice = string.Empty;
+    }
+
     /// <summary>
     /// A send the user asked for that cannot proceed: says why on the durable, focusable field as
     /// well as the status line, and asks the window to put focus there (#637).
     /// </summary>
     private void RefuseSend(string why)
     {
-        DeliveryNotice = why;
+        DeliveryNotice   = why;
+        // Marked so a save cannot clear it. A refused SEND is still true after a draft saves --
+        // saving says nothing about whether the message can go out -- and the auto-save timer was
+        // erasing the reason within a couple of minutes, collapsing the field the user had been
+        // put on and moving focus out from under them (#637).
+        _noticeIsSendRefusal = true;
         SetStatusOutcome(why);
         SaveRefused?.Invoke();
     }
+
+    /// <summary>Clears the notice a save wrote, leaving a send refusal in place.</summary>
+    private void ClearNoticeUnlessSendRefusal()
+    {
+        if (_noticeIsSendRefusal) return;
+        DeliveryNotice = string.Empty;
+    }
+
+    /// <summary>
+    /// True while <see cref="DeliveryNotice"/> holds a reason a SEND was refused. A save clears the
+    /// notice it wrote itself, never this one: the condition it describes -- no recipient, no
+    /// sender, attachments too large -- is unaffected by the draft being stored.
+    /// </summary>
+    private bool _noticeIsSendRefusal;
 
     /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>
     private bool HasAutoSavableContent()
@@ -832,7 +865,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         var password = _credentials.GetPassword(account.Id);
         if (string.IsNullOrEmpty(password) && account.AuthType == Models.AuthType.Password)
         {
-            SetStatusOutcome("No password stored for this account.");
+            RefuseSend("This account has no stored password, so this message cannot be sent. "
+                     + "Open Manage Accounts and sign in again.");
             return;
         }
 

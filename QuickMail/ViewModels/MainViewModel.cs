@@ -2814,6 +2814,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public string ImmutableIdRebuildDeferredFor { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Shows the deferred-rebuild notice, if there is one. Called AFTER the window is up and the
+    /// background sync has started, alongside the other startup dialogs -- raising it from inside
+    /// InitialLoadAsync put a modal loop in front of the folder restore, the message load and the
+    /// focus move, so it sat over an empty window (#637).
+    /// </summary>
+    public void MaybeShowDeferredRebuildNotice()
+    {
+        if (string.IsNullOrEmpty(ImmutableIdRebuildDeferredFor)) return;
+
+        var deferred = $"A one-time Microsoft 365 mail refresh is waiting on {ImmutableIdRebuildDeferredFor}, "
+                     + "which still holds drafts that have not reached the server. Send or delete "
+                     + "them, then restart QuickMail to let it run.";
+        ImmutableIdRebuildDeferredFor = string.Empty;
+        ShowNoticeRequested?.Invoke(deferred);
+    }
+
+    /// <summary>
+    /// Set by the View to show a message the user must dismiss that is NOT a refusal -- nothing was
+    /// declined, so it must not carry the refusal dialog's title (#637).
+    /// </summary>
+    public Action<string>? ShowNoticeRequested { get; set; }
+
     // The one-time re-sync notice, shared between the immediate announce and the visible status.
     private const string ImmutableIdRebuildNotice =
         "Microsoft 365 mail is doing a one-time re-sync — this may take a few minutes.";
@@ -2990,22 +3013,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var d in defs.OrderBy(d => d.SortOrder))
                 FlagDefinitions.Add(d);
         }
-        if (!string.IsNullOrEmpty(ImmutableIdRebuildDeferredFor))
-        {
-            // Through the dialog, not the status bar. The first attempt used Announce(Status) plus
-            // SetStatus, and both were dead ends: Status is the category a user who turns
-            // announcements off turns off first, and the status write is overwritten by
-            // "Connecting and syncing..." further down THIS method. So the one thing this notice
-            // exists to report stayed in the log, which is exactly what it was meant to stop.
-            // It repeats each launch until the drafts are cleared, which is the point -- a refused
-            // draft is never retried, so nothing else will ever raise it (#637).
-            var deferred = $"A one-time Microsoft 365 mail refresh is waiting on {ImmutableIdRebuildDeferredFor}, "
-                         + "which still holds drafts that have not reached the server. Send or delete "
-                         + "them, then restart QuickMail to let it run.";
-            ImmutableIdRebuildDeferredFor = string.Empty;
-            ShowRefusalRequested?.Invoke(deferred);
-        }
-
         var rebuildNotice = ImmutableIdRebuildAnnouncePending;
         if (rebuildNotice)
         {
@@ -5508,6 +5515,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
     internal const string MissingSavedCopy =
         "That draft could not be opened: its saved copy on this computer is missing. The message cannot be recovered, so deleting the row is all there is to do.";
 
+    /// <summary>
+    /// The same two sentences for a window that is NOT restricted to drafts (#637).
+    /// <para>MessageWindow reaches this branch for any message whose stored copy will not load,
+    /// and POP3 mints local ids for every message it holds -- so pointing it at the draft-worded
+    /// constants told someone opening ordinary received mail that their DRAFT could not be
+    /// recovered and to delete it. One sentence per condition per audience, not one for all.</para>
+    /// </summary>
+    internal const string StoreUnreadableMessage =
+        "That message could not be opened: this computer's mail store could not be read just now. "
+        + "Nothing has been lost — close this window and try again in a moment.";
+
+    internal const string MissingSavedCopyMessage =
+        "That message could not be opened: its saved copy on this computer is missing. The message cannot be recovered, so deleting the row is all there is to do.";
+
     private static MailMessageDetail MissingSavedCopyPlaceholder(
         MailMessageSummary summary, Exception? storeFailure = null) => new()
     {
@@ -5518,14 +5539,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         From       = summary.From,
         PlainTextBody = storeFailure != null ? StoreUnreadable : MissingSavedCopy,
     };
-
-    /// <summary>
-    /// Whether this selection holds a draft that exists only on this computer, WITHOUT refusing or
-    /// telling the user anything. The View asks before arming a one-shot focus listener that a
-    /// refused command would leave dangling (#637).
-    /// </summary>
-    public bool AnyHeldOnlyHere(IEnumerable<MailMessageSummary> messages) =>
-        messages is not null && messages.Any(IsLocalOnlyId);
 
     /// <summary>
     /// Refuses a move or copy while the selection holds a draft that has not reached the server,

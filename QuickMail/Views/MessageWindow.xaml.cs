@@ -340,9 +340,12 @@ public partial class MessageWindow : Window
                 // The SAME sentences the reading pane uses, not a second wording of the same
                 // thing: the user guide can only quote one, and a user in Window mode was meeting
                 // the other and could not find it (#637).
+                // The MESSAGE-worded pair. This branch is not restricted to drafts -- POP3 gives
+                // every message a local id, so the fetch above is skipped for all of them -- and
+                // the draft-worded constants told those users their draft could not be recovered.
                 var missing = storeFailure != null
-                    ? ViewModels.MainViewModel.StoreUnreadable
-                    : ViewModels.MainViewModel.MissingSavedCopy;
+                    ? ViewModels.MainViewModel.StoreUnreadableMessage
+                    : ViewModels.MainViewModel.MissingSavedCopyMessage;
                 var placeholder = new MailMessageDetail
                 {
                     MessageId  = summary.MessageId,

@@ -53,7 +53,9 @@ Also fixed in this release, all of them ways an offline draft could go wrong qui
   the top of the compose window and puts the cursor there, rather than leaving a window that
   quietly will not close.
 - If a draft your server refused is holding back the one-time Microsoft 365 mail refresh, QuickMail
-  now says so at startup and names the account, instead of only recording it in the log.
+  now says so at startup and names the account, instead of only recording it in the log. A draft
+  that is merely waiting to upload also holds the refresh back, but you are not told about that one
+  — it clears itself the next time the account is reachable.
 - The status bar says how many drafts went up when the upload runs. It is replaced by the folder
   counts from the same sync shortly afterwards; the lasting record is the row no longer saying
   **Not on server**.

@@ -342,6 +342,12 @@ public partial class MainWindow : Window
             MessageBox.Show(this, message, "Cannot do that",
                 MessageBoxButton.OK, MessageBoxImage.Information);
 
+        // Its own title: nothing was refused, so "Cannot do that" -- the first thing spoken -- was
+        // wrong for a notice the user did not trigger.
+        vm.ShowNoticeRequested = message =>
+            MessageBox.Show(this, message, "QuickMail",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+
         vm.ConfirmationRequested = (message, title, startOnNo) =>
             MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning,
                 startOnNo ? MessageBoxResult.No : MessageBoxResult.Yes)
@@ -1517,6 +1523,10 @@ public partial class MainWindow : Window
         // the background sync has been kicked off, so the dialog does not delay startup;
         // the offer handler restores focus to the message panel explicitly on close.
         _vm.MaybeOfferDesktopShortcut();
+
+        // The one-time Microsoft 365 refresh that a still-unsent draft is holding back. Here rather
+        // than inside InitialLoadAsync for the reason given just above (#637).
+        _vm.MaybeShowDeferredRebuildNotice();
 
         // "QuickMail Update Installed" notice, once per applied update. After the shortcut
         // offer so a first-run-after-migration launch never stacks two dialogs.
@@ -4348,16 +4358,8 @@ public partial class MainWindow : Window
             }
             else if (ConversationTree.SelectedItem is ConversationGroup group)
             {
-                // Asked before registering, not after: the listener has to go on before the
-                // rebuild it waits for, but a refused archive produces no rebuild at all and would
-                // leave it armed to fire on the next unrelated one -- a sync sweep minutes later --
-                // pulling focus into the tree from wherever the user then is. This asks without
-                // showing the refusal, which ArchiveMessagesAsync does for itself (#637).
-                if (!_vm.AnyHeldOnlyHere(group.Messages))
-                {
-                    var targetIdx = _vm.Conversations.IndexOf(group);
-                    LandOnConversationAfterRebuild(targetIdx);   // register before the rebuild fires
-                }
+                var targetIdx = _vm.Conversations.IndexOf(group);
+                LandOnConversationAfterRebuild(targetIdx);   // self-disarms if nothing rebuilds
                 await _vm.ArchiveMessagesAsync(group.Messages);
             }
         }
@@ -4381,6 +4383,34 @@ public partial class MainWindow : Window
             await _vm.ToggleGroupFlagAsync(cg.Messages);
         else if (fe.Tag is SenderGroup sg)
             await _vm.ToggleGroupFlagAsync(sg.Messages);
+    }
+
+    /// <summary>
+    /// Registers a one-shot rebuild listener that disarms itself if the rebuild never comes.
+    /// </summary>
+    /// <remarks>
+    /// These listeners unsubscribe only when they fire, and a command can now finish without
+    /// rebuilding anything -- an archive or a move refused because the selection holds a draft that
+    /// is not on the server, an archive with no Archive folder, or a delete the user answers No to.
+    /// The listener then stays armed and fires on the NEXT rebuild, a background sync minutes
+    /// later, dragging keyboard focus into the tree from wherever the user has since gone. Guarding
+    /// each call site against each way a command can decline was tried and reached two sites out of
+    /// seven; this bounds every one of them instead. The window is generous because a slow archive
+    /// legitimately takes seconds, and landing focus late is a far smaller harm than stealing it
+    /// minutes later (#637).
+    /// </remarks>
+    private void ArmOneShotRebuildListener(PropertyChangedEventHandler handler)
+    {
+        _vm.PropertyChanged += handler;
+
+        var disarm = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+        disarm.Tick += (_, _) =>
+        {
+            disarm.Stop();
+            _vm.PropertyChanged -= handler;   // no-op if it already fired and unsubscribed
+            LogService.Debug("[FOCUS] one-shot rebuild listener disarmed without firing");
+        };
+        disarm.Start();
     }
 
     // After an async conversation rebuild, selects and focuses the conversation
@@ -4428,7 +4458,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        _vm.PropertyChanged += OnPropertyChanged;
+        ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
     // ── SenderGroup tree focus helpers ───────────────────────────────────────
@@ -4484,7 +4514,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        _vm.PropertyChanged += OnPropertyChanged;
+        ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
     // After an async to-group rebuild, selects and focuses the recipient group
@@ -4531,7 +4561,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        _vm.PropertyChanged += OnPropertyChanged;
+        ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
     // ── Group-boundary navigation (< / >) ────────────────────────────────────
@@ -4784,7 +4814,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        _vm.PropertyChanged += OnPropertyChanged;
+        ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
 
@@ -4818,7 +4848,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        _vm.PropertyChanged += OnPropertyChanged;
+        ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
 
@@ -4852,7 +4882,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
-        _vm.PropertyChanged += OnPropertyChanged;
+        ArmOneShotRebuildListener(OnPropertyChanged);
     }
 
     // ── SenderGroup tree event handlers ─────────────────────────────────────
@@ -6575,14 +6605,6 @@ public partial class MainWindow : Window
     {
         var messages = GetSelectedMessages();
         if (messages.Count == 0) return;
-
-        // Same reason as the conversation-tree path: a refused archive rebuilds nothing, and
-        // these listeners are one-shot and would fire on an unrelated rebuild later (#637).
-        if (_vm.AnyHeldOnlyHere(messages))
-        {
-            await _vm.ArchiveMessagesAsync(messages);
-            return;
-        }
 
         await _vm.ArchiveMessagesAsync(messages);
 
