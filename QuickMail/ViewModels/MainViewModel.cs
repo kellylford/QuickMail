@@ -163,6 +163,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         UnsubscribeConnectivity();
         DrainCts(ref _offlineRetryCts);
+        _syncService.OfflineBodyPassCompleted -= OnOfflineBodyPassCompleted;
         if (_rowLayoutService != null && _onRowLayoutsChanged != null)
         {
             _rowLayoutService.LayoutsChanged -= _onRowLayoutsChanged;
@@ -1751,6 +1752,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _previewLines = cfg.PreviewLines;
         _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
+        _offlineBodyDays = cfg.EffectiveOfflineBodyDays;
+        _syncService.OfflineBodyPassCompleted += OnOfflineBodyPassCompleted;
         _viewMode = ConfigModel.ParseViewMode(cfg.ViewMode);
         _listDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
@@ -2482,6 +2485,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _themeService?.ApplyAppearance(cfg);
 
         ApplyConnectionDiagnosticsSetting(cfg.ConnectionDiagnostics);
+        ApplyOfflineBodySetting(cfg);
 
         // Keep the View menu's density check marks in sync with a Settings save.
         ListDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
@@ -3601,6 +3605,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     try { await Task.Delay(TimeSpan.FromMilliseconds(250), ct).ConfigureAwait(false); pacedDelays++; }
                     catch (OperationCanceledException) { break; }
                 }
+
+                // The offline-bodies pass (#637) rides the same timer, after the folders: it picks up
+                // where the startup pass stopped (the per-pass cap), and covers an account that was
+                // unreachable at launch. Quiet: never lets the sweep die for it.
+                if (!ct.IsCancellationRequested)
+                    await BackfillOfflineBodiesQuietlyAsync(
+                        jobs.Select(j => j.Account).Distinct().ToList(), ct).ConfigureAwait(false);
 
                 // Per-cycle summary at Debug (a measurement aid, not always-on telemetry; #462). The paced
                 // figure is the count of delays actually executed × 250 ms — measured, not derived from the

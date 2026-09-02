@@ -158,6 +158,27 @@
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
                                                TextWrapping="Wrap" Margin="0,3,0,0"/>
                                 </StackPanel>
+
+                                <!-- Offline bodies (#637). Static items, like SyncDaysCombo: no bound item type,
+                                     so the ToString() rule for Selector items does not apply. -->
+                                <StackPanel Margin="0,8,0,0">
+                                    <Label x:Name="OfflineBodyLabel"
+                                           Content="Download _messages for offline reading:"
+                                           Target="{Binding ElementName=OfflineBodyCombo}"
+                                           FontWeight="SemiBold"/>
+                                    <ComboBox x:Name="OfflineBodyCombo"
+                                              SelectedValue="{Binding OfflineBodyDays, Mode=TwoWay}"
+                                              SelectedValuePath="Tag"
+                                              AutomationProperties.LabeledBy="{Binding ElementName=OfflineBodyLabel}">
+                                        <ComboBoxItem Tag="0" Content="Off"/>
+                                        <ComboBoxItem Tag="7" Content="Last 7 days"/>
+                                        <ComboBoxItem Tag="30" Content="Last 30 days"/>
+                                        <ComboBoxItem Tag="90" Content="Last 90 days"/>
+                                    </ComboBox>
+                                    <TextBlock Text="Keeps the full text of recent Inbox messages on this computer so you can read them without a connection. Never wider than the sync range above. Attachments are fetched when you open them and need a connection."
+                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                               TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                </StackPanel>
                             </StackPanel>
                         </GroupBox>
 

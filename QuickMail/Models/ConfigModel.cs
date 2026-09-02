@@ -133,6 +133,18 @@ public class ConfigModel
     /// </summary>
     public int MailSyncPollMinutes { get; set; } = 5;
 
+    /// <summary>
+    /// Days of recent Inbox mail whose full bodies sync downloads for offline reading (#637).
+    /// 0 (the default) is off: bodies are cached only as messages are opened or prefetched.
+    /// Offered as 0, 7, 30 or 90; never wider than <see cref="SyncDays"/> when that is set.
+    /// Attachments are not included — they are fetched when opened and need a connection.
+    /// </summary>
+    public int OfflineBodyDays { get; set; } = 0;
+
+    /// <summary>The offline-bodies window actually used: <see cref="OfflineBodyDays"/> capped by <see cref="SyncDays"/>.</summary>
+    public int EffectiveOfflineBodyDays =>
+        OfflineBodyDays <= 0 ? 0 : SyncDays <= 0 ? OfflineBodyDays : Math.Min(OfflineBodyDays, SyncDays);
+
     // ── Appearance ────────────────────────────────────────────────────────────────
 
     /// <summary>

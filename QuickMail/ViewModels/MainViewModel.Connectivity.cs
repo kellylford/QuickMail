@@ -140,6 +140,60 @@ public partial class MainViewModel
         Announce(OnlineMode ? "Offline." : "Offline. Showing cached messages.", AnnouncementCategory.Status);
     }
 
+    // ── Offline bodies (#637) ───────────────────────────────────────────────────
+
+    private int _offlineBodyDays;
+
+    /// <summary>
+    /// One announcement when a pass finishes, never one per batch — the pass runs behind the
+    /// previews and after every sweep and would otherwise chatter every ten messages. Says what
+    /// was actually cached; a pass that cached nothing (the server went away) says nothing, the
+    /// offline announcement covers that.
+    /// </summary>
+    private void OnOfflineBodyPassCompleted(int downloaded, int planned)
+    {
+        if (downloaded <= 0) return;
+        var noun = downloaded == 1 ? "message" : "messages";
+        Announce(downloaded >= planned
+            ? $"Downloaded {downloaded} {noun} for offline reading."
+            : $"Downloaded {downloaded} of {planned} messages for offline reading.",
+            AnnouncementCategory.Status);
+    }
+
+    /// <summary>
+    /// A widened window is backfilled now rather than at the next sweep; a narrowed one just stops
+    /// fetching. Compares the effective window, so widening SyncDays under a capped setting counts.
+    /// </summary>
+    private void ApplyOfflineBodySetting(ConfigModel cfg)
+    {
+        var was = _offlineBodyDays;
+        _offlineBodyDays = cfg.EffectiveOfflineBodyDays;
+        if (OnlineMode || _offlineBodyDays <= was) return;
+        var connected = Accounts.Where(a => _connectedAccountIds.Contains(a.Id)).ToList();
+        if (connected.Count == 0) return;
+        BackfillOfflineBodiesQuietlyAsync(connected, _bgSyncCts?.Token ?? CancellationToken.None)
+            .LogFaults("offline bodies backfill");
+    }
+
+    /// <summary>
+    /// Runs the offline-bodies pass for the given accounts with a UI-thread snapshot of their
+    /// folder lists, and never lets a failure escape — the periodic sweep and a Settings save both
+    /// call this and neither should die for it.
+    /// </summary>
+    private async Task BackfillOfflineBodiesQuietlyAsync(List<AccountModel> accounts, CancellationToken ct)
+    {
+        if (OnlineMode || accounts.Count == 0) return;
+        var folders = new Dictionary<Guid, List<MailFolderModel>>();
+        _ui.Invoke(() =>
+        {
+            foreach (var a in accounts)
+                if (_cachedFolders.TryGetValue(a.Id, out var f)) folders[a.Id] = f;
+        });
+        try { await _syncService.BackfillOfflineBodiesAsync(accounts, folders, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("Offline bodies pass", ex); }
+    }
+
     /// <summary>Chooses the status-bar wording for a failed server call: offline wording for a transport failure, the raw error otherwise.</summary>
     private static string OfflineOrErrorStatus(Exception ex, CancellationToken ct, Func<string> offline, Func<string> error)
         => ConnectionFailure.IsConnectionFailure(ex, ct) ? offline() : error();

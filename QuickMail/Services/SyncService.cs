@@ -9,7 +9,7 @@ using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public class SyncService : ISyncService
+public partial class SyncService : ISyncService
 {
     private readonly IMailService _imap;
     private readonly ILocalStoreService _store;
@@ -24,13 +24,14 @@ public class SyncService : ISyncService
     private readonly bool _probeMode;
 
     public SyncService(IMailService imap, ILocalStoreService store, IConfigService config, IRuleService rules,
-        IUiDispatcher? ui = null, bool probeMode = false)
+        IUiDispatcher? ui = null, bool probeMode = false, IConnectivityService? connectivity = null)
     {
         _imap   = imap;
         _store  = store;
         _config = config;
         _rules  = rules;
         _probeMode = probeMode;
+        _connectivity = connectivity;
         // WpfUiDispatcher marshals only when the real QuickMail App is present, and runs inline
         // otherwise — a plain Application.Current null-check is NOT enough (tests create a pumpless
         // Application, so InvokeAsync would park forever).
@@ -222,9 +223,21 @@ public class SyncService : ISyncService
         // don't race with the sync IMAP calls on the same shared client.
         // They run sequentially — fire-and-forget the whole batch so SyncAllAccounts
         // returns promptly and the status bar updates, while previews trickle in.
-        if (!previewJobs.IsEmpty)
-            FetchAllPreviewsAsync(previewJobs.ToList(), ct)
-                .LogFaults("sync: preview fetch batch");
+        // The offline-bodies pass (#637) follows the previews on the same trickle, so it never
+        // competes with them or with the sync for background leases.
+        RunPostSyncTrickleAsync(previewJobs.ToList(), accountList, cachedFolders, ct)
+            .LogFaults("sync: post-sync trickle");
+    }
+
+    private async Task RunPostSyncTrickleAsync(
+        List<(AccountModel Account, MailFolderModel Folder, List<MailMessageSummary> Incoming)> previewJobs,
+        List<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        CancellationToken ct)
+    {
+        if (previewJobs.Count > 0)
+            await FetchAllPreviewsAsync(previewJobs, ct);
+        await DownloadOfflineBodiesAsync(accounts, cachedFolders, ct);
     }
 
     private async Task FetchAllPreviewsAsync(
@@ -450,6 +463,7 @@ public class SyncService : ISyncService
             IReadOnlyCollection<string>? preFetch = account.BackendKind == BackendKind.Pop3Smtp
                 ? Array.Empty<string>() : null;
             incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: false, ct, preFetch);
+            QueueArrivalBodies(account, folder, incoming, ct);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
         return incoming;

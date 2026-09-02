@@ -87,6 +87,31 @@ public interface ISyncService
     void SeedRebuildBaseline(IEnumerable<Guid> accountIds);
 
     /// <summary>
+    /// Fired on the UI thread as the offline-bodies pass (#637) downloads message bodies:
+    /// (done, total), where total is what this pass set out to fetch. Intermediate only; done is
+    /// always below total here.
+    /// </summary>
+    event Action<int, int>? OfflineBodyProgressChanged;
+
+    /// <summary>
+    /// Fired once, on the UI thread, when an offline-bodies pass ends: (downloaded, planned).
+    /// downloaded is what was actually cached; it is below planned when a server went away.
+    /// </summary>
+    event Action<int, int>? OfflineBodyPassCompleted;
+
+    /// <summary>
+    /// The offline-bodies pass on its own (#637): downloads the bodies of recent Inbox messages
+    /// inside <see cref="ConfigModel.EffectiveOfflineBodyDays"/> that have no cached body yet, for
+    /// the given (connected) accounts. A no-op when the setting is off, and when a pass is already
+    /// running. Sync runs it after the startup sync; the view model runs it after each periodic
+    /// sweep and when Settings widens the window.
+    /// </summary>
+    Task BackfillOfflineBodiesAsync(
+        IEnumerable<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        CancellationToken ct);
+
+    /// <summary>
     /// Returns the UTC time of the last completed sync for the given account,
     /// or null if the account has never been synced in this session.
     /// </summary>

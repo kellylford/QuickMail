@@ -29,6 +29,8 @@ public class AllArchiveVirtualFolderTests
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
         public event Action<int>? RulesApplied;
         public event Action<int, int>? SyncProgressChanged;
+        public event Action<int, int>? OfflineBodyProgressChanged;
+    public event Action<int, int>? OfflineBodyPassCompleted;
 #pragma warning restore CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
 
@@ -45,6 +47,7 @@ public class AllArchiveVirtualFolderTests
         public Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult(0);
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
         public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
+        public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
     }
 
     private static readonly Guid AccountA = Guid.Parse("11111111-1111-1111-1111-111111111111");
