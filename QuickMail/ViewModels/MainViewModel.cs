@@ -5557,7 +5557,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             LogService.Debug($"Prefetched msgId={summary.MessageId} folder={summary.FolderName}");
         }
         catch (OperationCanceledException) { /* expected on switch */ }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("not connected"))
+        catch (AccountNotConnectedException)
         {
             // Prefetch raced startup or a disconnect; the next prefetch trigger
             // (folder load, message open) will retry once the account is up.
