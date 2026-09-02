@@ -127,6 +127,14 @@ public class SelectorItemAccessibilityTests
         var group = new GroupModel { Name = "Team" };
         Assert.Equal(group.Display, group.ToString());
 
+        // Contacts (issue #644). The address book stamps a richer AccessibleName onto the row
+        // container, but every other contact list falls back to ToString() — which read
+        // "QuickMail.Models.ContactModel" until this override existed.
+        Assert.Equal("Alice Adams <alice@example.com>",
+            new ContactModel { DisplayName = "Alice Adams", EmailAddress = "alice@example.com" }.ToString());
+        Assert.Equal("zeta@example.com",
+            new ContactModel { DisplayName = "", EmailAddress = "zeta@example.com" }.ToString());
+
         // Message List Fields chooser: the row-type ComboBox and the field ListBox. The field
         // rows render a CheckBox, which drives only the visual — the item's name is ToString().
         // Watched Conversations manager: the row must speak its label, count, and when it was
@@ -334,6 +342,7 @@ public class SelectorItemAccessibilityTests
             new MessageTemplate { Title = "Alpha" }.ToString(),
             new MailRule { Name = "Alpha" }.ToString(),
             new GroupModel { Name = "Alpha" }.ToString(),
+            new ContactModel { DisplayName = "Alpha", EmailAddress = "alpha@example.com" }.ToString(),
             new ProviderCatalog().Other.ToString(),
             new ConnectionAccountRow
             {
