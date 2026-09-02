@@ -414,15 +414,18 @@ public class OutboxServiceTests
     {
         var f = new Fixture();
         using var svc = f.Build();
+        // The reconnect drain is debounced (two seconds in the app) so several accounts returning
+        // together start one drain, not one each. Shortened here, and awaited rather than polled:
+        // a loaded CI runner can hold a queued task past any wall-clock wait a test is willing to
+        // make, which is how this test failed on the push run of the same commit it passed on.
+        svc.ReconnectDebounce = TimeSpan.FromMilliseconds(50);
         await svc.EnqueueSendAsync(f.Compose(), f.Account.Id, null);
 
         f.Connectivity.RaiseOnlineChanged(true);
 
-        // The reconnect drain is debounced by a couple of seconds so several accounts returning
-        // together start one drain, not one each.
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (f.Smtp.Sent.Count == 0 && DateTime.UtcNow < deadline)
-            await Task.Delay(50);
+        var drain = svc.LastReconnectFlush;
+        Assert.NotNull(drain);
+        await drain;
         Assert.Single(f.Smtp.Sent);
         Assert.Single(f.Completed);
     }
