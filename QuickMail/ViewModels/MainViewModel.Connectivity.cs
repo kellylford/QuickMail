@@ -195,7 +195,7 @@ public partial class MainViewModel
     }
 
     /// <summary>Chooses the status-bar wording for a failed server call: offline wording for a transport failure, the raw error otherwise.</summary>
-    private static string OfflineOrErrorStatus(Exception ex, CancellationToken ct, Func<string> offline, Func<string> error)
+    private static string OfflineOrErrorStatus(Exception ex, Func<string> offline, Func<string> error, CancellationToken ct = default)
         => ConnectionFailure.IsConnectionFailure(ex, ct) ? offline() : error();
 
     private static string CachedCountText(int count)

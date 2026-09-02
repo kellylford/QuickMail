@@ -33,8 +33,9 @@ public partial class SyncService
     internal TimeSpan FetchPacing { get; set; } = TimeSpan.FromMilliseconds(100);
 
     // One pass at a time: the startup pass, a sweep, and a Settings-widen backfill would otherwise
-    // plan overlapping id lists and fetch the same bodies twice.
-    private readonly SemaphoreSlim _bodiesPassGate = new(1, 1);
+    // plan overlapping id lists and fetch the same bodies twice. An interlocked flag rather than a
+    // SemaphoreSlim, which would make SyncService own a disposable it has no lifetime hook to release.
+    private int _bodiesPassRunning;
 
     public event Action<int, int>? OfflineBodyProgressChanged;
     public event Action<int, int>? OfflineBodyPassCompleted;
@@ -59,7 +60,7 @@ public partial class SyncService
         var days = _config.Load().EffectiveOfflineBodyDays;
         if (days <= 0) return;
 
-        if (!await _bodiesPassGate.WaitAsync(0, ct))
+        if (Interlocked.CompareExchange(ref _bodiesPassRunning, 1, 0) != 0)
         {
             LogService.Debug("Offline bodies: a pass is already running; skipping this one.");
             return;
@@ -70,7 +71,7 @@ public partial class SyncService
         }
         finally
         {
-            _bodiesPassGate.Release();
+            Volatile.Write(ref _bodiesPassRunning, 0);
         }
     }
 
@@ -165,7 +166,7 @@ public partial class SyncService
     /// the whole first window while the sync is still using the same background leases, and then
     /// fetch it all again in the pass. Fire-and-forget, a handful of ids, no progress events.
     /// </summary>
-    private void QueueArrivalBodies(AccountModel account, MailFolderModel folder, IReadOnlyList<MailMessageSummary> arrivals, CancellationToken ct)
+    private void QueueArrivalBodies(AccountModel account, MailFolderModel folder, List<MailMessageSummary> arrivals, CancellationToken ct)
     {
         if (_probeMode || arrivals.Count == 0) return;
         if (folder.Kind != SpecialFolderKind.Inbox || !EligibleForBodies(account)) return;
