@@ -258,4 +258,28 @@ public interface ILocalStoreService
 
     /// <summary>Persists the Graph delta cursor for an account+folder, replacing any existing value.</summary>
     Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken);
+
+    // ── Outbox (#637) ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Writes or replaces one queued item: the row, the compose model as JSON (attachments stripped),
+    /// and every loaded attachment as its own blob row, in one transaction. Sets
+    /// <see cref="OutboxItem.HasAttachments"/> and <see cref="OutboxItem.UpdatedUtc"/> on the way.
+    /// </summary>
+    Task UpsertOutboxItemAsync(OutboxItem item, ComposeModel compose);
+
+    /// <summary>Every queued item across all accounts, newest first. Reads no JSON and no blobs.</summary>
+    Task<List<OutboxItem>> LoadOutboxItemsAsync();
+
+    Task<OutboxItem?> LoadOutboxItemAsync(string id);
+
+    /// <summary>The stored compose model with attachment bytes rehydrated and <see cref="ComposeModel.OutboxId"/> set; null when the row is gone.</summary>
+    Task<ComposeModel?> LoadOutboxComposeAsync(string id);
+
+    Task UpdateOutboxStateAsync(string id, OutboxState state, int attempts, string? lastError, DateTimeOffset? nextAttemptUtc);
+
+    /// <summary>Removes the row and its attachment blobs. A missing id is a no-op.</summary>
+    Task DeleteOutboxItemAsync(string id);
+
+    Task<int> CountOutboxItemsAsync();
 }

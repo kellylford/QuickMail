@@ -315,6 +315,40 @@ class StubLocalStoreService : ILocalStoreService
         if (Pop3Uidls.TryGetValue(accountId, out var set)) set.ExceptWith(uidls);
         return Task.CompletedTask;
     }
+    /// <summary>In-memory Outbox rows (#637), keyed by id, so compose and main-window tests can
+    /// assert what was queued without SQLite. Functional: upsert replaces, delete removes, and the
+    /// compose comes back with <see cref="ComposeModel.OutboxId"/> stamped like the real store.</summary>
+    public Dictionary<string, (OutboxItem Item, ComposeModel Compose)> OutboxRows { get; } = new(StringComparer.Ordinal);
+    public virtual Task UpsertOutboxItemAsync(OutboxItem item, ComposeModel compose)
+    {
+        item.HasAttachments = compose.Attachments.Any(a => a.IsLoaded);
+        item.UpdatedUtc = DateTimeOffset.UtcNow;
+        if (item.CreatedUtc == default) item.CreatedUtc = item.UpdatedUtc;
+        OutboxRows[item.Id] = (item, compose);
+        return Task.CompletedTask;
+    }
+    public virtual Task<List<OutboxItem>> LoadOutboxItemsAsync()
+        => Task.FromResult(OutboxRows.Values.Select(v => v.Item).OrderByDescending(i => i.CreatedUtc).ToList());
+    public virtual Task<OutboxItem?> LoadOutboxItemAsync(string id)
+        => Task.FromResult(OutboxRows.TryGetValue(id, out var row) ? row.Item : null);
+    public virtual Task<ComposeModel?> LoadOutboxComposeAsync(string id)
+    {
+        if (!OutboxRows.TryGetValue(id, out var row)) return Task.FromResult<ComposeModel?>(null);
+        row.Compose.OutboxId = id;
+        return Task.FromResult<ComposeModel?>(row.Compose);
+    }
+    public virtual Task UpdateOutboxStateAsync(string id, OutboxState state, int attempts, string? lastError, DateTimeOffset? nextAttemptUtc)
+    {
+        if (OutboxRows.TryGetValue(id, out var row))
+        {
+            row.Item.State = state; row.Item.Attempts = attempts; row.Item.LastError = lastError;
+            row.Item.NextAttemptUtc = nextAttemptUtc; row.Item.UpdatedUtc = DateTimeOffset.UtcNow;
+        }
+        return Task.CompletedTask;
+    }
+    public virtual Task DeleteOutboxItemAsync(string id) { OutboxRows.Remove(id); return Task.CompletedTask; }
+    public virtual Task<int> CountOutboxItemsAsync() => Task.FromResult(OutboxRows.Count);
+
     public virtual Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
     public virtual Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     public virtual Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());

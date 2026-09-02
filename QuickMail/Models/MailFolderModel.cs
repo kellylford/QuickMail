@@ -6,7 +6,9 @@ namespace QuickMail.Models;
 // content that also lives in real folders, so they are deprioritized when picking the representative
 // copy for a deduplicated aggregate view (see MessageDeduplicator). They are NOT excluded from sync —
 // [Gmail]/All Mail is the only home of archived mail, so excluding it would lose messages.
-public enum SpecialFolderKind { None, Inbox, Sent, Drafts, Trash, Junk, AllMail, Important, Starred, Archive }
+// Outbox is appended last: the value is persisted as an integer in the Folder table, so existing
+// members must keep their positions. Only the virtual Outbox sentinel carries it (issue #637).
+public enum SpecialFolderKind { None, Inbox, Sent, Drafts, Trash, Junk, AllMail, Important, Starred, Archive, Outbox }
 
 public class MailFolderModel
 {
