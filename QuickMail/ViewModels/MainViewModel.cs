@@ -161,6 +161,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _outbox.Changed        -= OnOutboxChanged;
             _outbox.FlushCompleted -= OnOutboxFlushCompleted;
         }
+        UnsubscribeConnectivity();
+        DrainCts(ref _offlineRetryCts);
         if (_rowLayoutService != null && _onRowLayoutsChanged != null)
         {
             _rowLayoutService.LayoutsChanged -= _onRowLayoutsChanged;
@@ -1704,10 +1706,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IRowLayoutService? rowLayoutService = null,
         IWatchService? watchService = null,
         IFolderViewStateService? folderViewState = null,
-        IOutboxService? outboxService = null)
+        IOutboxService? outboxService = null,
+        IConnectivityService? connectivity = null)
     {
         _folderViewState = folderViewState;
         _outbox = outboxService;
+        _connectivity = connectivity;
+        SubscribeConnectivity();
         if (_outbox != null)
         {
             _outbox.Changed        += OnOutboxChanged;
@@ -3172,7 +3177,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Must ask _connectedAccountIds, not _cachedFolders: since #516 the folder cache is restored
         // from SQLite at launch, so it is non-empty even when every connect failed. Testing the
         // dictionary here would send the full sync at accounts that have no connection (#516).
-        if (_connectedAccountIds.Count == 0) return;
+        if (_connectedAccountIds.Count == 0)
+        {
+            // A launch into a dead or captive network: keep trying on a backoff, so the user is not
+            // stuck offline until a restart or an F5 (#637). The network-returned handler covers the
+            // no-NIC case; this covers the NIC-up-but-nothing-answers case.
+            if (Accounts.Count > 0) StartOfflineRetryLoop();
+            return;
+        }
 
         // Connected accounts only. Everything downstream of this list needs a live connection —
         // the full sync, the folder-count STATUS sweep, and the NOOP heartbeat — and since #516 the
@@ -4533,6 +4545,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     $"source={source} — the account list now shows this account as disconnected");
             }
             _truthProbe?.NoteDisconnected(account.Id, source);
+            // Every one of this method's callers is a real outcome against the server, so this is
+            // the one place the app's online/offline verdict needs feeding from (#637).
+            _connectivity?.NoteAccountUnreachable(account.Id, source);
             return;
         }
 
@@ -4543,6 +4558,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 "ui-shows-connected", $"source={source}");
         }
         _truthProbe?.NoteConnected(account.Id, source);
+        _connectivity?.NoteAccountReachable(account.Id, source);
 
         account.IsConnected = true;
         // Exclude Gmail's virtual folders (All Mail / Important / Starred): their counts overlap the
@@ -4604,9 +4620,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         var isOAuth = account.AuthType is Models.AuthType.OAuth2Microsoft or Models.AuthType.OAuth2Google;
 
+        // No network at all: three timed attempts would only turn "Offline" into three minutes of
+        // "Connecting…" (#637). The reconnect runs when Windows reports the network back.
+        if (_connectivity is { IsNetworkAvailable: false })
+        {
+            LogService.Log($"ConnectAll/{account.AccountLabel}: no network — not attempting.");
+            return (account.Id, null);
+        }
+
         // Startup retry: up to 3 attempts with backoff (30s, 45s, 60s timeouts).
         for (int attempt = 1; attempt <= 3; attempt++)
         {
+            if (attempt > 1 && _connectivity is { IsNetworkAvailable: false })
+            {
+                LogService.Log($"ConnectAll/{account.AccountLabel}: network went away — giving up until it returns.");
+                return (account.Id, null);
+            }
             try
             {
                 // Timeouts increase per attempt: 30s, 45s, 60s
@@ -8088,6 +8117,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Accounts.Remove(a);
             _cachedFolders.Remove(a.Id);
             _connectedAccountIds.Remove(a.Id);
+            _connectivity?.Forget(a.Id);
         }
         // DeleteAccountDataAsync drops the account's persisted folders too, so a removed account
         // does not come back in the folder tree on the next launch (#516).
@@ -9212,18 +9242,39 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // The VM-side predicate asks "has this account connected this session", which _cachedFolders
         // stopped answering in #516 — it is restored from SQLite at launch, so a never-connected
         // account would look present here and never be reconnected.
-        var accountsToConnect = AccountsNeedingConnect(
-            Accounts, _imap.IsConnected, id => _connectedAccountIds.Contains(id));
-        _ = Task.Run(async () =>
+        _ = ReconnectOfflineAccountsAsync("account-list-refresh");
+    }
+
+    /// <summary>
+    /// Connects every account that is not truly connected, off the UI thread, then rewires the
+    /// watchers. Shared by the account-list refresh, the network-returned handler and the offline
+    /// retry loop (#637). Returns how many accounts connected.
+    /// </summary>
+    private async Task<int> ReconnectOfflineAccountsAsync(string source)
+    {
+        // _cachedFolders and _connectedAccountIds are UI-thread-owned: snapshot the work list on the
+        // UI thread and marshal every write back through _ui so the background loop never touches them.
+        // The VM-side predicate asks "has this account connected this session AND is it not known to
+        // be offline": _cachedFolders stopped answering the first half in #516 (restored from SQLite at
+        // launch), and the connectivity service answers the second so a dropped account reconnects.
+        List<AccountModel> accountsToConnect = [];
+        _ui.Invoke(() => accountsToConnect = AccountsNeedingConnect(
+            Accounts, _imap.IsConnected,
+            id => _connectedAccountIds.Contains(id) && (_connectivity?.IsAccountOnline(id) ?? true)));
+        if (accountsToConnect.Count == 0) return 0;
+
+        var connected = 0;
+        await Task.Run(async () =>
         {
             foreach (var account in accountsToConnect)
             {
                 var result = await ConnectOneAccountAsync(account);
                 _ui.Invoke(() =>
                 {
-                    ApplyAccountStatus(account, result.Folders, "account-list-refresh");
+                    ApplyAccountStatus(account, result.Folders, source);
                     if (result.Folders != null)
                     {
+                        connected++;
                         SetCachedFolders(result.Id, result.Folders);
                         RebuildFolderListFromCache();
                     }
@@ -9236,6 +9287,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // account list, which is what the old inline block here did for issue #126.
             _ui.Invoke(WireUpWatchers);
         });
+        return connected;
     }
 
     // ── Preview extraction ────────────────────────────────────────────────────────
