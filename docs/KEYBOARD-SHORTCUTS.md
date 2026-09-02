@@ -26,6 +26,7 @@
 | Ctrl+Q | `mail.markRead` | Mark as Read |
 | F5 | `mail.refresh` | Refresh |
 | Ctrl+Shift+E | `mail.emptyTrash` | Empty Trash |
+| *(unassigned)* | `mail.sendOutboxNow` | Send Outbox Now — tries every queued message and draft right away, including ones marked Failed (#637) |
 | Ctrl+Shift+W | `mail.toggleWatch` | Watch Conversation — watches the selected message's conversation, or unwatches it if already watched. On a Conversations group header it acts on that group; on a From/To group header it is unavailable (a sender group spans many conversations) |
 | *(unassigned)* | `mail.watchManager` | Watched Conversations… (review, rename, stop watching) |
 | *(unassigned)* | `view.filterWatched` | Show Watched Conversations Only |
@@ -153,6 +154,8 @@ editable, because changing it would silently change which messages the watch col
 **Window title** is `"{subject or kind} - {mode} - QuickMail"` (e.g. "Lunch Friday - HTML - QuickMail") so the taskbar and Alt+Tab identify the message and editing format. `WindowTitle` is notified on both Subject and CurrentMode changes.
 
 **Draft autosave**: compose windows auto-save dirty composes as drafts on a `DispatcherTimer` (config keys `AutoSaveDrafts`, default on, and `AutoSaveIntervalSeconds`, default 120, clamped 30–600; both editable in Settings → General → Composing). `ComposeViewModel.AutoSaveAsync` is quiet by design: success only updates the visual `AutoSaveText` status ("Auto-saved 3:42 PM") with **no announcement**; a failure raises `AutoSaveFailed` once (announced with `AnnouncementCategory.Status`) and re-arms after the next success. Autosave skips template edits, untouched composes, and composes with no recipient/subject/body/attachment. The palette command `compose.announceAutoSave` ("Announce Last Auto-Save") speaks the last autosave time on demand.
+
+**Offline (#637)**: no new compose gestures. `Ctrl+S` and auto-save fall back to the local Outbox when the server cannot be reached ("Draft saved on this computer. It will upload when you're online.", `Result`; auto-save says "Auto-save is keeping your draft on this computer until you're online." once, `Status`). `Alt+S` queues the message and closes the window when the server never answered ("Message queued. It will be sent when you're online.", `Result`); a server that answered and refused still fails in the window. `Escape` with unsaved changes → Save closes the window once the draft is kept locally; it stays open only when `ComposeViewModel.LastSaveOutcome` is `Failed` (nowhere took it — `--online` mode, or a broken store). The main window's `mail.sendOutboxNow` drains the queue on demand.
 
 **Compose modes** (`ComposeMode`: PlainText / Markdown / Html) are switched with `Ctrl+Shift+1/2/3`, the View menu, or the mode ComboBox in the status row. Plain Text and Markdown edit in `BodyBox` (TextBox); HTML mode edits in `RichBodyBox` — a native WPF `RichTextBox`, deliberately **not** WebView2 `contenteditable`, so screen readers stay in their normal edit cursor with no virtual cursor.
 

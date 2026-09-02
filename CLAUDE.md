@@ -111,7 +111,7 @@ Users access the guide via **Help** → **Open User Guide** (F1). The link in `M
 ## Architecture
 
 Manual DI root in `App.xaml.cs` — no container. Services wired in `OnStartup`:
-`ProfileContext` → `AccountService` → `CredentialService` → `OAuthService` → `ImapService` → `SmtpService` → `ConfigService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
+`ProfileContext` → `AccountService` → `CredentialService` → `OAuthService` → `ImapService` → `SmtpService` → `ConfigService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `OutboxService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
 
 Every service has a matching interface in `Services/I*.cs`. See `docs/ARCHITECTURE.md` for full service descriptions, runtime modes, and virtual folder sentinels.
 

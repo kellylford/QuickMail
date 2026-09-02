@@ -940,9 +940,27 @@ Press `Ctrl+K` to check every address in the To, Cc, and Bcc fields. QuickMail l
 
 ### Auto-Save Drafts
 
-QuickMail saves your compose as a draft automatically every 2 minutes (on by default). A quiet status line in the compose window shows "Auto-saved 3:42 PM" after each save — no announcement interrupts your writing. If a save fails, it is announced once. You can check the last auto-save time from the command palette: **Ctrl+Shift+P → Announce Last Auto-Save**.
+QuickMail saves your compose as a draft automatically every 2 minutes (on by default). A quiet status line in the compose window shows "Auto-saved 3:42 PM" after each save — no announcement interrupts your writing. When the server cannot be reached, the status line reads "Kept on this computer 3:42 PM" instead and that is announced once; see [Working Offline: Drafts and the Outbox](#working-offline-drafts-and-the-outbox). If a save fails entirely, it is announced once. You can check the last auto-save time from the command palette: **Ctrl+Shift+P → Announce Last Auto-Save**.
 
 Control auto-save in **Settings → General → Composing**: turn it off, change the interval (30 seconds to 10 minutes), and set the default compose mode for new messages.
+
+### Working Offline: Drafts and the Outbox
+
+A dropped connection no longer traps your message in the compose window. QuickMail always tries your account first and falls back to this computer only when the server does not answer:
+
+- **Save Draft** (`Ctrl+S`) and auto-save keep the draft on this computer when the server cannot be reached. You hear "Draft saved on this computer. It will upload when you're online." The draft goes to your account's Drafts folder the next time QuickMail connects.
+- **Send** (`Alt+S`) queues the message when the server cannot be reached. You hear "Message queued. It will be sent when you're online.", the window closes, and the message leaves the moment a connection returns. A server that answers and refuses the message — a bad address, a rejected login — still fails in the window, where you can fix it.
+- **Closing** a window with unsaved changes and choosing Save keeps the draft on this computer if the server is unreachable, and the window closes. It stays open only when the draft could be saved nowhere at all.
+
+Everything waiting lives in the **Outbox**, the last entry in the All Mail group of the folder tree. The folder's count is spoken as "waiting" rather than "unread". Each row shows the account it will leave from, and its subject starts with its state: "Waiting to send", "Waiting to upload draft", "Sending…", or "Failed" followed by the reason.
+
+| In the Outbox | What happens |
+|---------------|--------------|
+| `Enter` on a row | Reopens it in the compose window, exactly as it was written — recipients, Bcc, attachments, and compose mode included. Saving or sending from there replaces the queued copy. |
+| `Delete` on a row | Asks first, then removes it from the queue. There is no Trash to recover from: the message has never been anywhere but this computer. |
+| **Send Outbox Now** (Message menu, or `Ctrl+Shift+P` → Send Outbox Now) | Tries every queued item right away, including any marked Failed. |
+
+The Outbox drains on its own when QuickMail connects at startup, when the connection returns, and on each background sync. A drain is announced once as a whole, for example "Outbox: 2 messages sent, 1 draft uploaded." A message the server refused stays in the Outbox marked "Failed" with the reason, until you reopen and fix it, or remove it. The Outbox is not available in `--online` mode, which runs without the local store.
 
 ### Forwarding with Attachments
 
@@ -1479,6 +1497,7 @@ The direction matters, so it is worth being blunt about it: a **two-way** item i
 | **Calendar events** | Mostly two-way | Single (non-repeating) events on a connected calendar can be created, edited, and deleted from QuickMail. Repeating events, meeting invitations, and the events your provider manages for you are [download only](#events-your-account-will-not-let-quickmail-change). |
 | **Meeting responses** | Two-way | Accept, Tentative, and Decline are emailed to the organizer and update your calendar. |
 | **Mail rules** | This computer only | Rules run inside QuickMail as mail arrives. They are not server rules — your provider does not know about them, and they do nothing while QuickMail is closed. |
+| **The Outbox** | This computer only, until sent | Messages and drafts queued while the server was unreachable wait in QuickMail's data folder and go to your account the next time it connects. No other program sees them until then. See [Working Offline: Drafts and the Outbox](#working-offline-drafts-and-the-outbox). |
 | **Everything else in QuickMail** | This computer only | Settings, themes, keyboard customizations, signatures, message templates, saved views, message-list field choices, contact groups, and the contacts you typed in yourself. |
 
 ### If something you changed came back
