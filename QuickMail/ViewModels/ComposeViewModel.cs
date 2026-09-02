@@ -532,13 +532,14 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                     // BOTH keys: the old row has gone and the new one now exists. Raising only
                     // the old one is why a re-keyed draft vanished from the list and did not
                     // reappear under the account it had moved to until a folder reload.
-                    // Only when the sender changed on THIS save. Retrying a discard that failed
-                    // earlier moves nothing, and saying so would report a move on an ordinary save
-                    // some time later.
+                    // Only when the sender changed on THIS save, and only once however many
+                    // orphans the loop clears. Retrying a discard that failed earlier moves
+                    // nothing, and saying so would report a move on an ordinary save some time
+                    // later -- or twice for one save, once the list could hold two.
                     DraftRowsChanged?.Invoke(
                         [new DraftRowKey(old.Account, old.Folder, old.Id),
                          new DraftRowKey(account.Id, _draftFolderName!, saved.MessageId)],
-                        orphaned != null ? "Draft moved to another account." : null);
+                        orphaned != null && !announcedRekey ? "Draft moved to another account." : null);
                     announcedRekey = true;
                     _orphanedRows.Remove(old);
                 }
@@ -727,9 +728,43 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // is going away, so there is nothing left to protect (#637).
         _draftClaim?.Dispose();
         _draftClaim = null;
+
+        // One last attempt at any row a sender change left behind. Nothing else will: the list
+        // lives on this window, so a discard that kept failing until the user closed the window
+        // left that row queued under the account they had moved the draft OUT of, and the sweep
+        // then filed their message there -- the defect the re-key exists to prevent, reached by
+        // waiting instead. Fire and forget, and quiet: the window is going away either way (#637).
+        DrainOrphanedRows();
+
         _autoSaveCts.Cancel();
         _autoSaveCts.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Drops any rows a sender change left behind, on the way out. Failures are logged and dropped:
+    /// there is nowhere left to report them to.
+    /// </summary>
+    private void DrainOrphanedRows()
+    {
+        if (_orphanedRows.Count == 0) return;
+        var pending = _orphanedRows.ToList();
+        _orphanedRows.Clear();
+        _ = Task.Run(async () =>
+        {
+            foreach (var old in pending)
+            {
+                try
+                {
+                    await _drafts.DiscardAsync(old.Account, old.Folder, old.Id);
+                    DraftRowsChanged?.Invoke([new DraftRowKey(old.Account, old.Folder, old.Id)], null);
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log("ComposeViewModel: could not drop a re-keyed row on close", ex);
+                }
+            }
+        });
     }
 
     /// <summary>Visual status-row text, e.g. "Auto-saved 3:42 PM". Never announced on success.</summary>

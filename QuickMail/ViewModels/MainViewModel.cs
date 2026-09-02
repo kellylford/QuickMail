@@ -258,13 +258,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         _cachedFolders[accountId] = folders;
         // The one place an account becomes connected, and therefore the moment "back online"
-        // actually happens. Without this the upload pass ran only from StartBackgroundSyncAsync, at
-        // window load -- so "It will go to the server when you are back online" meant "the next
-        // time you restart QuickMail", which is not what it says and not what the guide promises.
-        // Only on the TRANSITION: HashSet.Add answers false when the account was already connected,
-        // so an ordinary folder refresh does not queue another pass (#637).
+        // actually happens. Only on the TRANSITION: HashSet.Add answers false when the account was
+        // already connected, so an ordinary folder refresh does not queue another pass. The sweep
+        // is what covers a session that stays open, since nothing takes an account back out of this
+        // set (#637).
         var newlyConnected = _connectedAccountIds.Add(accountId);
-        if (newlyConnected) QueueDraftUploadFor(accountId);
 
         // Never let an empty result overwrite a good cache. SaveFoldersAsync is replace-all, so
         // persisting [] erases the account's folders — and an empty list is reachable from a
@@ -286,6 +284,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (OnlineMode) return;
 
         _localStore.SaveFoldersAsync(accountId, folders).LogFaults("persist folder list");
+
+        // After the empty-folder guard, not before it: a successful LIST that answers with nothing
+        // is the partial-outage case that guard exists for, and queueing a pass on it produced
+        // "this account has no Drafts folder on the server" about a transient condition (#637).
+        if (newlyConnected) QueueDraftUploadFor(accountId);
     }
 
     // Debounced folder-unread-count refresh (issue #227). Folder counts are server-authoritative
@@ -3531,6 +3534,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     }
                 });
 
+                // Before the folder passes, so the Drafts sync in the same cycle sees the server
+                // copy. Below the poll-disabled check on purpose (see above): uploading is
+                // contacting the server on a timer, which is what that setting turns off.
+                await UploadWaitingDraftsAsync(ct).ConfigureAwait(false);
+
                 // Per-folder cached item counts for the instrumentation (#462, /debug only): one grouped
                 // query per account, snapshotted here with the cycle timer PAUSED so the measurement never
                 // measures itself (review A). Per folder is then a dictionary lookup, not a query.
@@ -5979,24 +5987,66 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// Nothing will upload for this account until the user acts (#637).
     /// </summary>
     /// <remarks>
-    /// No row is marked — that is the point, the drafts stay queued — so nothing on screen carries
-    /// this. The status bar cannot be the record: this branch's own row wording exists BECAUSE the
-    /// status bar is overwritten within seconds, and it is overwritten by the very sweep that
-    /// produced this, which runs the upload pass before the folder passes. So it is met, once per
-    /// account per run, the way a refused move is met.
-    /// <para>Once per account per run: the pass runs again on every reconnect and every poll, and
-    /// re-meeting the same dialog each time would be its own defect.</para>
+    /// The reason goes onto the ROWS, in memory only. Nothing is written to the store, because
+    /// send_failed_reason is what LoadPendingDraftsAsync excludes on — persisting it here would
+    /// de-queue the whole backlog, which is the defect the account scope exists to prevent. The row
+    /// then reads "not uploaded", which is what the label means: stuck until you do something.
+    /// <para>Not a modal, and not the status bar alone. A modal was tried and was wrong twice over:
+    /// it opens a nested message loop inside the sweep, while that same sweep is still posting
+    /// folder updates into the collections the dialog sits over — the re-entrancy CLAUDE.md's
+    /// modal rules exist to prevent — and it arrives while the user is somewhere of their own
+    /// choosing, so dismissing it took focus out of the compose window they were typing in. The
+    /// status bar on its own is not durable either: the sweep that raises this overwrites it with
+    /// the folder counts moments later. The row is the record here for the same reason it is the
+    /// record for a refusal (#637).</para>
     /// </remarks>
     private void OnDraftUploadsBlocked(AccountModel account, string reason)
     {
         if (account == null || string.IsNullOrWhiteSpace(reason)) return;
         SetStatus($"{account.AccountLabel}: {reason}", AnnouncementCategory.Result);
-        if (!_blockedAccountsReported.Add(account.Id)) return;
-        ShowNoticeRequested?.Invoke($"{account.AccountLabel}: {reason}");
+
+        foreach (var live in Messages.Concat(_rawMessages))
+            if (live.AccountId == account.Id && live.IsPendingUpload)
+                live.SendFailedReason = reason;
     }
 
-    /// <summary>Accounts already met about a blocked upload, so it is said once rather than every sweep.</summary>
-    private readonly HashSet<Guid> _blockedAccountsReported = [];
+    /// <summary>
+    /// Sends what every connected account has waiting (#637). One cycle of the periodic sweep.
+    /// </summary>
+    /// <remarks>
+    /// This is what makes "it will go to the server when you are back online" true for a session
+    /// that stays open. <see cref="QueueDraftUploadFor"/> fires on the transition into the
+    /// connected set, and nothing takes an account back OUT of that set when the network drops --
+    /// so on its own it fired once per account per run, which is to say at launch, which is exactly
+    /// what it was added to stop meaning.
+    /// </remarks>
+    internal async Task UploadWaitingDraftsAsync(CancellationToken ct)
+    {
+        if (OnlineMode) return;
+
+        // Accounts is UI-thread-owned; the sweep body runs on the thread pool.
+        var connected = new List<AccountModel>();
+        _ui.Invoke(() => connected.AddRange(Accounts.Where(a => _connectedAccountIds.Contains(a.Id))));
+
+        foreach (var account in connected)
+        {
+            if (ct.IsCancellationRequested) break;
+            try
+            {
+                await _syncService.UploadPendingDraftsAsync(account, ct).ConfigureAwait(false);
+            }
+            // Only the sweep's own cancellation stops the sweep. An HttpClient timeout arrives as a
+            // cancellation carrying somebody else's token, and treating it as ours ended the cycle.
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                // The pass reports its own outcomes through the sync service's events. An account
+                // that answers a folder listing but not an append is the ordinary offline case this
+                // feature exists to survive.
+                LogService.Log($"Sweep draft upload {account.AccountLabel}", ex);
+            }
+        }
+    }
 
     /// <summary>
     /// Sends whatever this account has waiting, now that it is reachable (#637).
@@ -6019,9 +6069,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 await _syncService.UploadPendingDraftsAsync(account, ct);
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
             catch (Exception ex)
             {
+                // A network timeout lands here rather than in the arm above, and is logged like any
+                // other failure: the pass has already reported what it could through its events.
                 LogService.Log($"Draft upload on connect {account.AccountLabel}", ex);
             }
         }, ct);

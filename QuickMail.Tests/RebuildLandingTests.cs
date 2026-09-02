@@ -2,7 +2,8 @@
 //
 // This lived inline in MainWindow, and a deletion probe showed the whole mechanism could be removed
 // with the suite still green: the view model's half was pinned, the window's half was not, and
-// nothing joined them. It is a helper now so the rule itself can be stated.
+// nothing joined them. It is a helper now so the rule itself can be stated — including the taking of
+// the mark, which a later probe showed was the half still living untested in the window.
 
 using System;
 using System.Collections.Generic;
@@ -17,33 +18,61 @@ namespace QuickMail.Tests;
 
 public class RebuildLandingTests
 {
+    private static readonly object Mark = new();
+
+    private static Task RunAsync(Func<Action> arm, Func<Task> command,
+                                 Func<object, Task>? settledSince = null,
+                                 Func<object>? mark = null)
+        => RebuildLanding.RunAsync(mark ?? (() => Mark),
+                                   settledSince ?? (_ => Task.CompletedTask), arm, command);
+
     [Fact]
-    public async Task TheListenerIsArmedBeforeTheCommandRuns()
+    public async Task TheMarkIsTakenBeforeTheListenerIsArmed()
     {
-        // A command that rebuilds immediately would otherwise land with nobody listening.
+        // Half the rule, and the half that was still in the window when a probe found the wiring
+        // uncovered. A mark taken after arming describes a moment the listener was already live
+        // for, so a rebuild in that gap counts as "somebody else's" when it may be the command's.
         var order = new List<string>();
 
         await RebuildLanding.RunAsync(
+            mark: () => { order.Add("mark"); return Mark; },
+            settledSince: _ => { order.Add("wait"); return Task.CompletedTask; },
             arm: () => { order.Add("arm"); return () => order.Add("disarm"); },
-            command: () => { order.Add("command"); return Task.CompletedTask; },
-            settled: () => Task.CompletedTask);
+            command: () => { order.Add("command"); return Task.CompletedTask; });
 
-        Assert.Equal(["arm", "command", "disarm"], order);
+        Assert.Equal(["mark", "arm", "command", "wait", "disarm"], order);
+    }
+
+    [Fact]
+    public async Task TheWaitIsAskedAboutTheMarkThatWasTaken()
+    {
+        // Not about "whatever is in flight now": that is what let a refused command block on a
+        // background sync's rebuild and its listener land on it.
+        object? askedAbout = null;
+        var taken = new object();
+
+        await RebuildLanding.RunAsync(
+            mark: () => taken,
+            settledSince: m => { askedAbout = m; return Task.CompletedTask; },
+            arm: () => () => { },
+            command: () => Task.CompletedTask);
+
+        Assert.Same(taken, askedAbout);
     }
 
     [Fact]
     public async Task TheListenerStaysOnUntilTheRebuildHasSettled()
     {
-        // The defect this replaced: the command completing is not the rebuild landing. An
-        // all-local draft delete has no network leg and returns without ever yielding, so
-        // disarming when it returned tore the listener off before it could fire.
+        // The command completing is not the rebuild landing. An all-local draft delete has no
+        // network leg and returns without ever yielding, so disarming when it returned tore the
+        // listener off before it could fire.
         var disarmed = false;
         var rebuild  = new TaskCompletionSource();
 
-        var run = RebuildLanding.RunAsync(
+        var run = RunAsync(
             arm: () => () => disarmed = true,
             command: () => Task.CompletedTask,
-            settled: () => rebuild.Task);
+            settledSince: _ => rebuild.Task);
 
         Assert.False(run.IsCompleted);
         Assert.False(disarmed);
@@ -61,10 +90,9 @@ public class RebuildLandingTests
         // minutes later -- and drags keyboard focus into the tree from wherever the user has gone.
         var disarmed = false;
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => RebuildLanding.RunAsync(
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(
             arm: () => () => disarmed = true,
-            command: () => throw new InvalidOperationException("boom"),
-            settled: () => Task.CompletedTask));
+            command: () => throw new InvalidOperationException("boom")));
 
         Assert.True(disarmed);
     }
@@ -73,36 +101,28 @@ public class RebuildLandingTests
     public async Task ACommandThatRebuildsNothing_TakesTheListenerOffAtOnce()
     {
         // A move refused because the selection holds a draft that is not on the server, or a
-        // delete the user answers No to. Nothing rebuilds, so the wait is already over.
+        // delete the user answers No to.
         //
-        // The settled callback is the REAL one from the view model rather than a hard-coded
-        // completed task: written the lazy way, this test passed while a refused command sat
-        // waiting on whatever rebuild a background sync happened to have in flight, and the
-        // listener it had armed fired on that -- focus dragged into the tree after a command the
-        // user had just declined.
+        // The wait is the REAL one from the view model rather than a hard-coded completed task:
+        // written the lazy way, this test passed while a refused command sat waiting on whatever
+        // rebuild a background sync happened to have in flight.
         var disarmed = false;
         var vm = LandingVm();
-        var mark = vm.GroupRebuildMark();
 
         await RebuildLanding.RunAsync(
+            vm.GroupRebuildMark, vm.GroupRebuildSettledSince,
             arm: () => () => disarmed = true,
-            command: () => Task.CompletedTask,
-            settled: () => vm.GroupRebuildSettledSince(mark));
+            command: () => Task.CompletedTask);
 
         Assert.True(disarmed);
     }
 
     [Fact]
-    public async Task ARefusedCommand_DoesNotWaitOnSomebodyElsesRebuild()
+    public void ARefusedCommand_DoesNotWaitOnSomebodyElsesRebuild()
     {
-        // Measured behaviour before this: the wait returned the last rebuild scheduled by ANYONE,
-        // so a command that rebuilt nothing still blocked on a background sync's rebuild and its
-        // listener landed on it.
+        // Measured behaviour before this: the wait returned the last rebuild scheduled by ANYONE.
         var vm = LandingVm();
-        vm.Messages.Add(new MailMessageSummary
-        {
-            MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX", Subject = "One",
-        });
+        vm.Messages.Add(Row());
         vm.ViewMode = ViewMode.Conversations;          // somebody else's rebuild, still in flight
 
         var mark = vm.GroupRebuildMark();              // taken AFTER it was scheduled
@@ -116,14 +136,16 @@ public class RebuildLandingTests
         // The other half: the mark must not make the wait useless.
         var vm = LandingVm();
         var mark = vm.GroupRebuildMark();
-        vm.Messages.Add(new MailMessageSummary
-        {
-            MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX", Subject = "One",
-        });
+        vm.Messages.Add(Row());
         vm.ViewMode = ViewMode.Conversations;
 
-        Assert.NotSame(mark, vm.GroupRebuildMark());
+        Assert.False(vm.GroupRebuildSettledSince(mark).IsCompleted);
     }
+
+    private static MailMessageSummary Row() => new()
+    {
+        MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX", Subject = "One",
+    };
 
     private static MainViewModel LandingVm() => new(
         new StubImapMailService(), new StubAccountService(), new StubCredentialService(),

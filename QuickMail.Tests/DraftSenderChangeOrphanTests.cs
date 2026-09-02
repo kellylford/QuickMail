@@ -115,6 +115,32 @@ public class DraftSenderChangeOrphanTests
         Assert.Contains((AccountC, "local-3"), drafts.Rows);
     }
 
+    [Fact]
+    public async Task AWindowThatCloses_TakesOneLastRunAtTheOrphan()
+    {
+        // The list lives on the window. A discard that kept failing until the user closed it left
+        // that row queued under the account they had moved the draft OUT of, and nothing was left
+        // to try again -- so the sweep filed their message there, which is the defect the re-key
+        // exists to prevent, reached by waiting instead.
+        var drafts = new TwoAccountDrafts { DiscardThrows = true };
+        var mail   = new RecordingMailService { AppendDraftThrows = true };
+        var vm = Compose(drafts, mail);
+
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+        vm.SenderAccount = Account(AccountB);
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+        Assert.Contains((AccountA, "local-1"), drafts.Rows);
+
+        drafts.DiscardThrows = false;
+        vm.Dispose();
+
+        // The drain runs off the UI thread; give it a turn.
+        for (var i = 0; i < 40 && drafts.Rows.Exists(r => r.Account == AccountA); i++)
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain((AccountA, "local-1"), drafts.Rows);
+    }
+
     /// <summary>A store that keys rows the way the real one does, and can be told to misbehave.</summary>
     private sealed class TwoAccountDrafts : ILocalDraftService
     {

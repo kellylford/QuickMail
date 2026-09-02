@@ -105,38 +105,42 @@ public class DraftRefusalIsSaidOutLoudTests
     }
 
     [Fact]
-    public void ABlockedAccount_IsMetAndNotOnlyWrittenToTheStatusBar()
+    public void ABlockedAccount_PutsTheReasonOnTheRowsAndOpensNoDialog()
     {
-        // The status bar cannot be the record here: no row is marked (the drafts stay queued, which
-        // is the point), and the sweep that raises this overwrites the status line with folder
-        // counts moments later. This branch's own row wording exists for that reason.
-        var (vm, sync) = Vm(Row("local-1"));
+        // The status bar cannot be the record: the sweep that raises this overwrites it with the
+        // folder counts moments later. Nor can a modal -- it opens a nested message loop inside
+        // that same sweep and takes focus from wherever the user actually is. The row is the record
+        // here, as it is for a refusal.
+        var live = Row("local-1");
+        var (vm, sync) = Vm(live);
         var met = new List<string>();
         vm.ShowNoticeRequested = m => met.Add(m);
         var account = new AccountModel { Id = AccountId, AccountName = "Work", Username = "me@example.com" };
 
         sync.RaiseBlocked(account, "Open Manage Accounts and sign in again.");
 
-        var shown = Assert.Single(met);
-        Assert.Contains("sign in again", shown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Work", shown, StringComparison.Ordinal);
+        Assert.Empty(met);                                   // no interruption
+        Assert.Contains("sign in again", live.SendFailedReason ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("not uploaded", live.LocationLabel);    // stuck until you act, which is true
+        Assert.Contains("Work", vm.StatusText, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void TheSameBlockedAccount_IsNotMetAgainOnEverySweep()
+    public void ABlockedAccount_LeavesOtherAccountsRowsAlone()
     {
-        // The pass runs on every reconnect and every poll, so re-meeting the same dialog would be
-        // its own defect.
-        var (vm, sync) = Vm(Row("local-1"));
-        var met = new List<string>();
-        vm.ShowNoticeRequested = m => met.Add(m);
+        var mine  = Row("local-1");
+        var other = new MailMessageSummary
+        {
+            MessageId = "local-2", AccountId = Guid.NewGuid(), FolderName = "Drafts",
+            Subject = "Someone else", IsRead = true, IsPendingUpload = true,
+        };
+        var (_, sync) = Vm(mine, other);
         var account = new AccountModel { Id = AccountId, AccountName = "Work", Username = "me@example.com" };
 
         sync.RaiseBlocked(account, "Open Manage Accounts and sign in again.");
-        sync.RaiseBlocked(account, "Open Manage Accounts and sign in again.");
-        sync.RaiseBlocked(account, "Open Manage Accounts and sign in again.");
 
-        Assert.Single(met);
+        Assert.NotNull(mine.SendFailedReason);
+        Assert.Null(other.SendFailedReason);
     }
 
     private sealed class RaisingSyncService : ISyncService

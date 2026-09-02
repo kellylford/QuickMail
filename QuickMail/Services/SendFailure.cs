@@ -74,7 +74,7 @@ public static class SendFailure
         SmtpProtocolException or ProtocolException or ServiceNotConnectedException => true,
 
         // A wrapper around one of the above — MailKit and HttpClient both nest the real cause.
-        _ => ex.InnerException != null && IsTransient(ex.InnerException),
+        _ => AnyInner(ex, IsTransient),
     };
 
     /// <summary>
@@ -138,11 +138,18 @@ public static class SendFailure
                   + "certificate or server-settings problem rather than anything wrong with the "
                   + "drafts.");
 
-        if (IsNoDraftsFolder(ex))
+        // Asked AFTER the verdict question, because it matches on message TEXT: a server error
+        // body that happens to contain the phrase was being read as "this account has no Drafts
+        // folder" and stalling the whole queue on what was a verdict about one draft (#637).
+        if (!IsServerVerdict(ex) && IsNoDraftsFolder(ex))
+            // Not "connect the account once": this is raised AFTER a live connection has asked the
+            // server, so the account is connected and connecting again changes nothing. The compose
+            // window's copy of that sentence is about the CACHED folder list and is right there;
+            // the same words in the durable channel told the user to do what they had just done.
             return (UploadScope.Account,
-                    "This account has no Drafts folder on the server, so there is nowhere to upload "
-                  + "the drafts waiting on this computer. Connect the account once so QuickMail can "
-                  + "find it.");
+                    "This account has no Drafts folder on the server, so there is nowhere to put the "
+                  + "drafts waiting on this computer. They will go up on their own once the account "
+                  + "has one.");
 
         return IsServerVerdict(ex)
             ? (UploadScope.Message,
@@ -176,22 +183,41 @@ public static class SendFailure
         // Graph answered, and its answer was about who is asking rather than about the draft.
         HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden } => true,
 
-        _ => ex.InnerException != null && IsSignInRefused(ex.InnerException),
+        _ => AnyInner(ex, IsSignInRefused),
     };
+
+    /// <summary>
+    /// Whether any exception nested inside this one answers <paramref name="ask"/>.
+    /// </summary>
+    /// <remarks>
+    /// InnerException alone misses an AggregateException, which holds several and exposes the first
+    /// through that property — so a batch whose second failure was a refused sign-in classified on
+    /// its first, and the whole backlog was marked refused with the wrong sentence (#637).
+    /// </remarks>
+    private static bool AnyInner(Exception ex, Func<Exception?, bool> ask)
+    {
+        if (ex is AggregateException agg)
+        {
+            foreach (var inner in agg.InnerExceptions)
+                if (ask(inner)) return true;
+            return false;
+        }
+        return ex.InnerException != null && ask(ex.InnerException);
+    }
 
     /// <summary>A certificate or protocol mismatch: neither the draft's fault nor its to fix.</summary>
     private static bool IsSecureConnectionFailure(Exception? ex) => ex switch
     {
         null => false,
         SslHandshakeException => true,
-        _ => ex.InnerException != null && IsSecureConnectionFailure(ex.InnerException),
+        _ => AnyInner(ex, IsSecureConnectionFailure),
     };
 
     /// <summary>Nowhere to file drafts on this account, which no draft can put right.</summary>
     private static bool IsNoDraftsFolder(Exception? ex) =>
         ex != null &&
         ((ex.Message?.Contains("No Drafts folder", StringComparison.OrdinalIgnoreCase) ?? false) ||
-         (ex.InnerException != null && IsNoDraftsFolder(ex.InnerException)));
+         AnyInner(ex, IsNoDraftsFolder));
 
     /// <summary>
     /// True when the server actually answered and its answer is what failed, as opposed to the
@@ -220,6 +246,6 @@ public static class SendFailure
         HttpRequestException { StatusCode: not null and not HttpStatusCode.Unauthorized
                                                    and not HttpStatusCode.Forbidden } => true,
 
-        _ => ex.InnerException != null && IsServerVerdict(ex.InnerException),
+        _ => AnyInner(ex, IsServerVerdict),
     };
 }

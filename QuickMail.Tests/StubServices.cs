@@ -73,7 +73,7 @@ class StubImapMailServiceBase : IMailService
     public virtual Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default) => _inner.ConnectAsync(account, password, ct);
     public bool IsConnected(Guid accountId) => _inner.IsConnected(accountId);
     public virtual Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => _inner.DisconnectAsync(accountId, ct);
-    public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) => _inner.GetFoldersAsync(accountId, ct);
+    public virtual Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) => _inner.GetFoldersAsync(accountId, ct);
     public Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid accountId, string folderName, int maxMessages, CancellationToken ct = default) => _inner.GetMessageSummariesAsync(accountId, folderName, maxMessages, ct);
     // Virtual: the two fetch entry points a sync exercises, so a double can record which folders
     // were actually visited (#516 startup sync scope) without reimplementing IMailService.

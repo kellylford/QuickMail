@@ -37,6 +37,16 @@ public class GroupRebuildLandingTests
         Date = new DateTimeOffset(2026, 8, 31, 12, 0, 0, TimeSpan.Zero),
     };
 
+    private static StubConfigService ConfigFor(MessageOpenMode? openMode)
+    {
+        var config = new StubConfigService();
+        if (openMode is not { } mode) return config;
+        var cfg = config.Load();
+        cfg.Windowing.MessageOpenMode = mode;
+        config.Save(cfg);
+        return config;
+    }
+
     private sealed class OneAccount : IAccountService
     {
         public List<AccountModel> LoadAccounts() =>
@@ -46,10 +56,10 @@ public class GroupRebuildLandingTests
     }
 
     private static MainViewModel Vm(IUiDispatcher? ui = null, StubLocalStoreService? store = null,
-                                    IMailService? mail = null) =>
+                                    IMailService? mail = null, MessageOpenMode? openMode = null) =>
         new(mail ?? new StubImapMailService(), new OneAccount(), new StubCredentialService(),
             store ?? new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
-            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            ConfigFor(openMode), new StubCommandRegistry(), new StubViewService(),
             new StubRuleService(), new StubSmtpService(),
             uiDispatcher: ui ?? new StubUiDispatcher());
 
@@ -224,6 +234,24 @@ public class GroupRebuildLandingTests
         Assert.Equal(MainViewModel.DraftCouldNotBeOpened, vm.MessageDetail!.PlainTextBody);
         Assert.Contains("could not be opened", vm.StatusText, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("damaged", vm.MessageDetail.PlainTextBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task InWindowMode_TheFailedDraftDoesNotClaimTheReadingPaneIsOpen()
+    {
+        // The sibling exit sets this the same way, with a comment: asserting true in Window mode
+        // retitles the main window after the draft and arms every command gated on IsMessageOpen
+        // against a synthetic detail, while a MessageWindow is what is actually opening.
+        var vm = Vm(mail: new UnreachableMailService(), openMode: MessageOpenMode.Window);
+        vm.SelectedAccount = vm.Accounts.FirstOrDefault()
+                             ?? new AccountModel { Id = AccountId, Username = "me@example.com" };
+        vm.SelectedFolder = Folder("Drafts", "Drafts", SpecialFolderKind.Drafts);
+        vm.SelectedMessage = Row("41", "Drafts");
+
+        await vm.OpenDraftCommand.ExecuteAsync(null);
+
+        Assert.NotNull(vm.MessageDetail);      // the explanation is still handed to the window
+        Assert.False(vm.IsMessageOpen);
     }
 
     private sealed class UnreachableMailService : StubImapMailServiceBase

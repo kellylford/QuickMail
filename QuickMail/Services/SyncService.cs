@@ -223,6 +223,8 @@ public class SyncService : ISyncService
         {
             foreach (var account in hostGroup)
             {
+                // A timeout inside the pass must not be read as the sweep being cancelled: it
+                // reaches here as an OperationCanceledException with somebody else's token.
                 try { await UploadPendingDraftsAsync(account, ct); }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex) { LogService.Log($"Draft upload {account.AccountLabel}", ex); }
@@ -251,8 +253,8 @@ public class SyncService : ISyncService
     /// <summary>
     /// Sends drafts saved on this computer to the account's Drafts folder, oldest first, and drops
     /// the local copy of each one that lands (#637).
-    /// <para>Internal so the replay order and the stop-on-failure rule are testable without a sync
-    /// sweep. Returns how many were uploaded.</para>
+    /// <para>On the interface so the view model can run it the moment an account connects and on
+    /// every sweep cycle, not only from the startup pass. Returns how many were uploaded.</para>
     /// </summary>
     public async Task<int> UploadPendingDraftsAsync(AccountModel account, CancellationToken ct)
     {
@@ -413,7 +415,14 @@ public class SyncService : ISyncService
                     LogService.Log($"Draft upload {account.AccountLabel}: uploaded {draft.MessageId}, but the local copy could not be dropped", discardEx);
                 }
             }
-            catch (OperationCanceledException) { throw; }
+            // Only when the CALLER cancelled. HttpClient's own timeout throws a
+            // TaskCanceledException whose token is not this one, and rethrowing it aborted the pass
+            // before anything was classified: the draft it happened on stayed first in the
+            // oldest-first replay, so every draft behind it went up on no sweep, ever, with no row
+            // marked and nothing said. Worse, it propagated out of SyncAllAccountsAsync, whose
+            // caller reads a cancellation as "the user asked" -- so one slow draft silently
+            // abandoned the whole sync, folder passes and safety-net loops included (#637).
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 var (scope, reason) = SendFailure.ClassifyUpload(ex, Sentence);

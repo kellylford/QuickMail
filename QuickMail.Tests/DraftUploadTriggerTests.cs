@@ -45,7 +45,7 @@ public class DraftUploadTriggerTests
         ];
         var sync = new CountingSync();
         var vm = new MainViewModel(
-            new StubImapMailService(), new OneAccount(), new StubCredentialService(),
+            new AnsweringMailService(), new OneAccount(), new StubCredentialService(),
             store, new StubOAuthService(), sync, new StubConfigService(),
             new StubCommandRegistry(), new StubViewService(), new StubRuleService(),
             new StubSmtpService(), onlineMode, uiDispatcher: new StubUiDispatcher());
@@ -85,6 +85,36 @@ public class DraftUploadTriggerTests
     }
 
     [Fact]
+    public async Task EachSweepCycle_SendsWhatEveryConnectedAccountIsHolding()
+    {
+        // The connect trigger fires once per account per run, because nothing takes an account back
+        // OUT of the connected set when the network drops. So on its own it meant "at launch" --
+        // which is exactly what it was added to stop meaning. The sweep is what makes "when you are
+        // back online" true for a session that stays open.
+        var (vm, sync) = Vm();
+        await vm.InitialLoadAsync();
+        await vm.StartBackgroundSyncAsync();
+        await sync.Settled();
+        var afterConnect = sync.UploadedFor.Count;
+
+        await vm.UploadWaitingDraftsAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(afterConnect + 1, sync.UploadedFor.Count);
+        Assert.Contains(AccountId, sync.UploadedFor);
+    }
+
+    [Fact]
+    public async Task ASweepCycleInOnlineMode_SendsNothing()
+    {
+        var (vm, sync) = Vm(onlineMode: true);
+        await vm.InitialLoadAsync();
+
+        await vm.UploadWaitingDraftsAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(sync.UploadedFor);
+    }
+
+    [Fact]
     public async Task InOnlineMode_NothingIsQueued()
     {
         // No local store, so nothing is being held and there is nothing to send.
@@ -113,6 +143,21 @@ public class DraftUploadTriggerTests
 
         Assert.Equal(1, drafts.MaxConcurrent);
         Assert.Equal(1, both.Sum());          // the second pass finds the queue already emptied
+    }
+
+    /// <summary>
+    /// Answers a folder LIST with real folders. The connect trigger deliberately sits behind the
+    /// empty-list guard -- a successful LIST that returns nothing is the partial-outage case, and
+    /// queueing an upload on it produced "this account has no Drafts folder" about a blip.
+    /// </summary>
+    private sealed class AnsweringMailService : StubImapMailServiceBase
+    {
+        public override Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
+            => Task.FromResult(new List<MailFolderModel>
+            {
+                Folder("INBOX", SpecialFolderKind.Inbox),
+                Folder("Drafts", SpecialFolderKind.Drafts),
+            });
     }
 
     /// <summary>Counts passes per account and lets a test wait for the fire-and-forget ones.</summary>

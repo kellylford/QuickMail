@@ -19,9 +19,9 @@ Drafts are now saved to your computer first and sent to the server afterwards. I
   field is left switched off for you and the combined one says the same thing in its own words. You can open it, edit it, and save it again as often as you
   like without a connection, and any attachments stay with it.
 - Closing a compose window is never blocked by being offline.
-- QuickMail sends these drafts up on its own the next time it reaches the account. The **Not on
-  server** status then goes away, and a draft that already existed on the server is replaced rather
-  than duplicated.
+- QuickMail sends these drafts up on its own — when the account connects, and again on every
+  background sync while it is running. The **Not on server** status then goes away, and a draft that
+  already existed on the server is replaced rather than duplicated.
 
 Also fixed in this release, all of them ways an offline draft could go wrong quietly:
 
