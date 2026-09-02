@@ -156,6 +156,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (_screenshotCapture != null)
             _screenshotCapture.EnabledChanged -= OnScreenshotCaptureEnabledChanged;
+        if (_outbox != null)
+        {
+            _outbox.Changed        -= OnOutboxChanged;
+            _outbox.FlushCompleted -= OnOutboxFlushCompleted;
+        }
         if (_rowLayoutService != null && _onRowLayoutsChanged != null)
         {
             _rowLayoutService.LayoutsChanged -= _onRowLayoutsChanged;
@@ -760,6 +765,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllArchiveFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, OutboxFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllWatchedFolder.FullName, StringComparison.Ordinal) ||
                IsCalendarFolderName(folder.FullName);
     }
@@ -1697,9 +1703,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IScreenshotCaptureService? screenshotCapture = null,
         IRowLayoutService? rowLayoutService = null,
         IWatchService? watchService = null,
-        IFolderViewStateService? folderViewState = null)
+        IFolderViewStateService? folderViewState = null,
+        IOutboxService? outboxService = null)
     {
         _folderViewState = folderViewState;
+        _outbox = outboxService;
+        if (_outbox != null)
+        {
+            _outbox.Changed        += OnOutboxChanged;
+            _outbox.FlushCompleted += OnOutboxFlushCompleted;
+        }
         _watchService = watchService;
         _rowLayoutService = rowLayoutService;
         _truthProbe = truthProbe;
@@ -2590,6 +2603,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             execute: () => EmptyTrashCommand.Execute(null),
             defaultKey: Key.E, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
+        // No default key: a rare, deliberate action that the Outbox drains on its own anyway (#637).
+        registry.Register(new CommandDefinition(
+            id: "mail.sendOutboxNow", category: "Mail", title: "Send Outbox Now",
+            description: "Try to send queued messages and upload queued drafts right away",
+            execute: () => SendOutboxNowCommand.Execute(null),
+            isAvailable: () => ShowOutboxFolder));
+
         // Ctrl+Shift+W, not Ctrl+W: Ctrl+W already closes a tab / the reading pane / a child window.
         registry.Register(new CommandDefinition(
             id: "mail.toggleWatch", category: "Mail", title: "Watch Conversation",
@@ -2936,6 +2956,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (folder.AccountId != Guid.Empty && folder.FullName.Length > 0 && folder.FullName[0] != '\0')
             return await _localStore.LoadFolderSummariesAsync(folder.AccountId, folder.FullName);
 
+        // The Outbox is local by definition (#637); its listing needs no network at any time.
+        if (string.Equals(folder.FullName, OutboxFolder.FullName, StringComparison.Ordinal))
+            return await BuildOutboxSummariesAsync();
+
         // Any other sentinel (All Flagged, Watched, a view, contact mail…) has no cheap cached
         // form here; fall back to the whole cache and let the post-connect refresh narrow it.
         return ExcludeSharedMail(await _localStore.LoadAllSummariesAsync());
@@ -3129,6 +3153,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Signal that the startup connect finished so a notification click that cold-started the app
         // (its account wasn't connected yet when the toast was activated) can now open its message.
         StartupConnectCompleted?.Invoke();
+
+        // Anything queued while the app was closed goes out now that accounts are up (#637). The
+        // reconnect-driven drain cannot see a cold start, so this is its startup counterpart.
+        _outbox?.FlushAsync(ct: ct).LogFaults("startup Outbox drain");
 
         // Contact sync (issue #256): best-effort, fire-and-forget, after mail accounts have connected
         // so their OAuth tokens are warm — contact-scope acquisition is then silent (no sign-in popup).
@@ -3439,6 +3467,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // anyone who chose it to avoid exactly that (metered or locked-down networks).
                 await ReconcileCurrentFolderAsync(ct).ConfigureAwait(false);
 
+                // Queued mail rides the same timer (#637): a network that came back without Windows
+                // noticing, or an account that reconnected quietly, still drains within one poll.
+                await DrainOutboxQuietlyAsync(ct).ConfigureAwait(false);
+
                 // Snapshot EVERY non-excluded folder for EVERY account (all backends). Non-Inbox folders
                 // have no live watcher — Graph's delta poll and IMAP's IDLE both cover only the Inbox —
                 // so mail a server-side rule files into a custom folder at delivery is invisible until the
@@ -3620,6 +3652,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // otherwise never let an aggregate see these messages. Shared mailboxes are excluded here
             // too (#31), so the live path agrees with the cache read in FetchWatchedAsync.
             relevant = incoming.Where(m => IsWatchedMessage(m) && !IsSharedAccountId(m.AccountId));
+        }
+        else if (selected.FullName == OutboxFolder.FullName)
+        {
+            // The Outbox lists the local queue, never synced mail (#637).
+            relevant = [];
         }
         else if (IsFolderScopedAggregate(selected.FullName))
         {
@@ -4653,6 +4690,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // folder instead of the live singleton.
             AllArchiveFolder, AllTrashFolder, AllFlaggedFolder, AllWatchedFolder
         };
+        if (ShowOutboxFolder) items.Add(OutboxFolder);
 
         foreach (var account in Accounts)
         {
@@ -4679,6 +4717,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         BuildFolderTree();
+
+        // The Outbox count is a local read, so it is right from the first tree the user sees (#637).
+        RefreshOutboxCountAsync().LogFaults("Outbox count");
     }
 
     private void BuildFolderTree()
@@ -4813,6 +4854,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllTrashFolder,   Label = AllTrashFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllFlaggedFolder, Label = AllFlaggedFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllWatchedFolder, Label = AllWatchedFolder.DisplayName });
+        if (ShowOutboxFolder)
+            allMailGroup.Children.Add(new FolderTreeNode { Folder = OutboxFolder, Label = OutboxFolder.DisplayName });
         roots.Add(allMailGroup);
 
         foreach (var account in Accounts)
@@ -5937,6 +5980,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (IsFolderScopedAggregate(folder.FullName))     return FetchVirtualFolderAsync(folder.FullName);
         if (folder.FullName == AllFlaggedFolder.FullName) return FetchAllFlaggedAsync();
         if (folder.FullName == AllWatchedFolder.FullName) return FetchWatchedAsync();
+        if (folder.FullName == OutboxFolder.FullName)     return FetchOutboxAsync();
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
         if (TryGetContactMailFromSentinel(folder.FullName, out var contactAddress, out var contactDirection))
             return FetchContactMailAsync(contactAddress, contactDirection);
@@ -6984,6 +7028,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task DeleteMessagesAsync(IReadOnlyList<MailMessageSummary> toDelete)
     {
         if (toDelete.Count == 0) return;
+
+        // Outbox rows have no server copy and no Trash to recover from; the Outbox code path asks
+        // first and removes from the queue (#637). A list shows one folder, so the selection is all
+        // Outbox or none of it.
+        if (toDelete.All(m => m.FolderName == OutboxFolder.FullName))
+        {
+            await RemoveOutboxItemsAsync(toDelete);
+            return;
+        }
 
         var minIdx = toDelete.Min(m => Messages.IndexOf(m));
         var label  = toDelete.Count == 1 ? "message" : $"{toDelete.Count} messages";

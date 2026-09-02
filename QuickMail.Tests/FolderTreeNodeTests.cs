@@ -89,4 +89,18 @@ public class FolderTreeNodeTests
 
         Assert.DoesNotContain(nameof(FolderTreeNode.IsExpanded), changed);
     }
+    [Fact]
+    public void OutboxCountsWaitingItems_NeverUnread()
+    {
+        // The Outbox count is mail waiting to leave (#637): "3 unread" on it would be a lie the
+        // screen reader repeats on every visit.
+        var node = new FolderTreeNode
+        {
+            Folder = new MailFolderModel { FullName = "\0Outbox", DisplayName = "Outbox", Kind = SpecialFolderKind.Outbox, UnreadCount = 3 },
+            Label  = "Outbox",
+        };
+        Assert.Equal("Outbox, 3 waiting", node.AutomationName);
+        Assert.Equal("3 waiting", node.ItemStatusLabel);
+        Assert.Equal("(3)", node.UnreadDisplay);
+    }
 }

@@ -46,7 +46,7 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     /// Do not move the count back out of the Name without checking with a screen-reader user first.
     /// </summary>
     public string AutomationName =>
-        ShowUnread ? $"{Label}, {Folder!.UnreadCount} unread"
+        ShowUnread ? $"{Label}, {Folder!.UnreadCount} {CountNoun}"
         : IsDefaultCalendar ? $"{Label}, default calendar"
         : IsSharedAccount ? $"{Label}, shared mailbox"
         : Label;
@@ -79,13 +79,17 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     // archived mail, so they're hidden here to avoid a misleading count (issue #227).
     private bool ShowUnread => Folder is { UnreadCount: > 0, SuppressUnreadCount: false };
 
+    // The Outbox count is mail waiting to leave, not mail waiting to be read (#637): "3 unread" on it
+    // would be a lie the screen reader repeats on every visit.
+    private string CountNoun => Folder?.Kind == SpecialFolderKind.Outbox ? "waiting" : "unread";
+
     /// <summary>
     /// UIA ItemStatus string used by AutomationProperties.ItemStatus on the TreeViewItem.
     /// Announced by screen readers after the folder name, e.g. "3 unread".
     /// Empty for folders with no unread messages and for header/group nodes.
     /// </summary>
     public string ItemStatusLabel =>
-        ShowUnread ? $"{Folder!.UnreadCount} unread" : string.Empty;
+        ShowUnread ? $"{Folder!.UnreadCount} {CountNoun}" : string.Empty;
 
     /// <summary>
     /// Visual unread badge shown next to the folder label, e.g. "(5)".

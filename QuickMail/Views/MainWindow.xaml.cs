@@ -5253,6 +5253,12 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task OpenMessageFromListAsync(MailMessageSummary summary)
     {
+        // An Outbox row is a message that has not gone anywhere yet; it reopens in compose (#637).
+        if (_vm.IsSelectedFolderOutbox)
+        {
+            await _vm.OpenOutboxItemCommand.ExecuteAsync(null);
+            return;
+        }
         if (_vm.IsSelectedFolderDrafts)
         {
             await _vm.OpenDraftCommand.ExecuteAsync(null);
