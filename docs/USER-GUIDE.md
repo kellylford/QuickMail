@@ -20,6 +20,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 - [Saved Views](#saved-views)
 - [Calendar](#calendar)
 - [What Syncs and What Doesn't](#what-syncs-and-what-doesnt)
+- [Working Offline](#working-offline)
 - [Notifications](#notifications)
 - [Tools Menu](#tools-menu)
 - [Connection Diagnostics](#connection-diagnostics)
@@ -1509,6 +1510,31 @@ That is nearly always a download-only item. QuickMail refreshed from the account
 Your mail, your contacts, and your connected calendars come back on their own once you add your accounts again, because they live on the server. The **This computer only** row above does not: rules, flags you named, templates, signatures, saved views, and your settings are stored in QuickMail's data folder (`%APPDATA%\QuickMail`) and need to be copied across if you want them.
 
 **A [POP3 account](#pop3-accounts) is the exception to the first sentence.** If it is set to remove mail from the server once collected, the server has nothing left to give back and `mail.db` in that data folder is your mail — copy it across, or back it up, like any other document.
+
+---
+
+## Working Offline
+
+QuickMail keeps a copy of your recent mail on this computer, and when the connection drops you keep reading it. The status bar's connection label reads **Offline**; screen readers hear "Offline. Showing cached messages." once, and "Back online." when the connection returns. QuickMail waits a few seconds before saying Offline, so a momentary blip never interrupts you.
+
+### What works offline
+
+- Reading any message you have opened before, or that QuickMail fetched ahead of time (it keeps the newest messages of each folder you open, and the ones around any message you read).
+- The message list of every folder you have opened, with its unread state and flags.
+- Searching and filtering what is on this computer, the calendar, and the address book.
+- Composing. Saving a draft keeps it on this computer, and Send queues the message; both go to your account the moment the connection returns. See [Working Offline: Drafts and the Outbox](#working-offline-drafts-and-the-outbox).
+
+When you open a folder offline the status bar reads "Offline — showing 12 cached messages." or "Offline — no cached messages in Projects." It never sits on "Loading…".
+
+### What needs a connection
+
+- A message that was never downloaded: "This message is not available offline." Reply and Forward on it say the same and open nothing.
+- Attachments: "Attachments are not available offline."
+- New mail, folder changes, and everything else a server has to do. Marking read, flagging, moving and deleting are not queued: offline they fail with a message, and the next sync after the connection returns puts the message back the way the server has it. Only composing waits for you.
+
+### Getting back online
+
+Nothing to press. When Windows reports the network again QuickMail reconnects every account by itself; if the network is up but the server does not answer (a hotel or airport sign-in page, an outage at the provider), it keeps trying on its own, first every half minute and then every five. **F5** forces an attempt at any time. Once something answers, the folder you are looking at refreshes and anything waiting in the Outbox goes out.
 
 ---
 

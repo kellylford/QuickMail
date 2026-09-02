@@ -161,6 +161,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _outbox.Changed        -= OnOutboxChanged;
             _outbox.FlushCompleted -= OnOutboxFlushCompleted;
         }
+        UnsubscribeConnectivity();
+        DrainCts(ref _offlineRetryCts);
         if (_rowLayoutService != null && _onRowLayoutsChanged != null)
         {
             _rowLayoutService.LayoutsChanged -= _onRowLayoutsChanged;
@@ -1704,10 +1706,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IRowLayoutService? rowLayoutService = null,
         IWatchService? watchService = null,
         IFolderViewStateService? folderViewState = null,
-        IOutboxService? outboxService = null)
+        IOutboxService? outboxService = null,
+        IConnectivityService? connectivity = null)
     {
         _folderViewState = folderViewState;
         _outbox = outboxService;
+        _connectivity = connectivity;
+        SubscribeConnectivity();
         if (_outbox != null)
         {
             _outbox.Changed        += OnOutboxChanged;
@@ -3003,8 +3008,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // SelectedFolder — so the choice is honoured here too. It was not before: the old
             // default-view application sat after an early return on this path.
             SelectStartupFolder(ResolveOnlineStartupFolder(startupCfg) ?? AllMailFolder);
+            if (IsKnownOffline)
+            {
+                // No store to fall back on: say so at once rather than "connecting…" (#637).
+                StatusText = "Online mode — offline. Nothing to show until the connection returns.";
+                AnnounceOfflineOnce();
+                SetConnectionPhase(ConnectionPhase.Idle);
+                return;
+            }
             StatusText = "Online mode — connecting…";
-            ConnectionStatusText = "Connecting…";
+            SetConnectionPhase(ConnectionPhase.Connecting);
             return;
         }
 
@@ -3068,11 +3081,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var where = SelectedFolder == AllMailFolder && startupView == null
             ? null : startupView?.Name ?? SelectedFolder.DisplayName;
-        StatusText = cached.Count > 0
-            ? where == null
-                ? $"{cached.Count} messages (cached — syncing…)"
-                : $"{cached.Count} messages in {where} (cached — syncing…)"
-            : rebuildNotice ? ImmutableIdRebuildNotice : "Connecting and syncing…";
+        // Launched with no network (#637): say so now, before the user touches anything, rather
+        // than showing "syncing…" for a sync that cannot start.
+        if (IsKnownOffline)
+        {
+            StatusText = cached.Count > 0
+                ? where == null
+                    ? $"{cached.Count} messages (cached — offline)"
+                    : $"{cached.Count} messages in {where} (cached — offline)"
+                : "Offline — no cached messages.";
+            AnnounceOfflineOnce();
+        }
+        else
+        {
+            StatusText = cached.Count > 0
+                ? where == null
+                    ? $"{cached.Count} messages (cached — syncing…)"
+                    : $"{cached.Count} messages in {where} (cached — syncing…)"
+                : rebuildNotice ? ImmutableIdRebuildNotice : "Connecting and syncing…";
+        }
 
         // A configured startup folder that no longer resolves must say so. Silently showing All Mail
         // looks like the setting was ignored, and the user has no way to tell which it was.
@@ -3096,7 +3123,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             LogService.Log($"InitialLoad: {fallbackReason}");
         }
 
-        ConnectionStatusText = "Connecting…";
+        SetConnectionPhase(IsKnownOffline ? ConnectionPhase.Idle : ConnectionPhase.Connecting);
         StartPrefetchTopOfFolder();
     }
 
@@ -3172,7 +3199,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Must ask _connectedAccountIds, not _cachedFolders: since #516 the folder cache is restored
         // from SQLite at launch, so it is non-empty even when every connect failed. Testing the
         // dictionary here would send the full sync at accounts that have no connection (#516).
-        if (_connectedAccountIds.Count == 0) return;
+        if (_connectedAccountIds.Count == 0)
+        {
+            // A launch into a dead or captive network: keep trying on a backoff, so the user is not
+            // stuck offline until a restart or an F5 (#637). The network-returned handler covers the
+            // no-NIC case; this covers the NIC-up-but-nothing-answers case.
+            if (Accounts.Count > 0) StartOfflineRetryLoop();
+            return;
+        }
 
         // Connected accounts only. Everything downstream of this list needs a live connection —
         // the full sync, the folder-count STATUS sweep, and the NOOP heartbeat — and since #516 the
@@ -3235,7 +3269,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         await RetryStartupFolderIfDeferredAsync();
 
         StatusText = "Syncing mail…";
-        ConnectionStatusText = "Syncing…";
+        SetConnectionPhase(ConnectionPhase.Syncing);
         // If we've never synced before, show "In progress" instead of "Never synced"
         // to avoid the confusing impression that syncing will never happen
         if (LastSyncText == "Never synced")
@@ -3272,7 +3306,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             LastSyncText = $"Synced {DateTime.Now:t}";
             // Report accounts that connected, not accounts configured — this label read
             // "3 accounts connected" with two of them offline.
-            ConnectionStatusText = $"{accountList.Count} account{(accountList.Count == 1 ? "" : "s")} connected";
+            SetConnectionPhase(ConnectionPhase.Idle);
             Announce($"{count} {(count == 1 ? "message" : "messages")} loaded.", AnnouncementCategory.Status);
 
             // Start periodic NOOP heartbeat (10-minute interval) to keep connections alive
@@ -3289,9 +3323,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             LogService.Log("BackgroundSync", ex);
             StatusText = $"Sync error: {ex.Message}";
             Announce($"Sync error: {ex.Message}", AnnouncementCategory.Status);
-            // Only set "Connection error" if no accounts connected at all.
-            if (_connectedAccountIds.Count == 0)
-                ConnectionStatusText = "Connection error";
+            // With nothing connected the derived label reads "Offline", which is the truth the old
+            // "Connection error" was gesturing at (#637).
+            SetConnectionPhase(ConnectionPhase.Idle);
         }
         finally
         {
@@ -3373,9 +3407,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        ConnectionStatusText = _connectedAccountIds.Count > 0
-            ? $"{_connectedAccountIds.Count} account{(_connectedAccountIds.Count == 1 ? "" : "s")} connected"
-            : "Offline";
+        SetConnectionPhase(ConnectionPhase.Idle);
 
         // Don't leave the label stuck at its pre-sync defaults once an account is actually connected;
         // the sync/poll paths (OnFolderSynced, StartBackgroundSyncAsync) keep it current from here.
@@ -4459,7 +4491,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         StatusText = Accounts.Count == 1
             ? $"Connecting to {Accounts[0].DisplayName}…"
             : $"Connecting to {Accounts.Count} accounts…";
-        ConnectionStatusText = "Connecting…";
+        SetConnectionPhase(ConnectionPhase.Connecting);
         IsBusy = true;
 
         // Group by incoming host: accounts sharing a server connect sequentially to stay under the
@@ -4498,12 +4530,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RebuildFolderListFromCache();
         // Count connections, not cache entries: since #516 _cachedFolders is pre-filled from the
         // local store at launch, so its size would report accounts that never connected.
-        StatusText = _connectedAccountIds.Count > 0
-            ? $"{_connectedAccountIds.Count} of {Accounts.Count} account(s) connected."
-            : "No accounts could be connected.";
-        ConnectionStatusText = _connectedAccountIds.Count > 0
-            ? $"{_connectedAccountIds.Count} account(s) connected"
-            : "Offline";
+        // Known offline: keep the cached-count text InitialLoadAsync set; "No accounts could be
+        // connected" would only restate what the status label already says (#637).
+        if (_connectedAccountIds.Count > 0)
+            StatusText = $"{_connectedAccountIds.Count} of {Accounts.Count} account(s) connected.";
+        else if (!IsKnownOffline)
+            StatusText = "No accounts could be connected.";
+        SetConnectionPhase(ConnectionPhase.Idle);
     }
 
     /// <summary>
@@ -4533,6 +4566,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     $"source={source} — the account list now shows this account as disconnected");
             }
             _truthProbe?.NoteDisconnected(account.Id, source);
+            // This is the one place the app's online/offline verdict is fed from (#637). Most callers
+            // report a real transport outcome; a connect that never reached the server (no stored
+            // password, a sign-in the user has to do) says nothing about the network, and a server
+            // that answered and refused is, by definition, reachable.
+            NoteConnectOutcome(account.Id, source);
             return;
         }
 
@@ -4543,6 +4581,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 "ui-shows-connected", $"source={source}");
         }
         _truthProbe?.NoteConnected(account.Id, source);
+        _lastConnectFailure.TryRemove(account.Id, out _);
+        _connectivity?.NoteAccountReachable(account.Id, source);
 
         account.IsConnected = true;
         // Exclude Gmail's virtual folders (All Mail / Important / Starred): their counts overlap the
@@ -4600,13 +4640,35 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (account.AuthType == Models.AuthType.Password)
         {
             password = _credentials.GetPassword(account.Id);
-            if (string.IsNullOrEmpty(password)) return (account.Id, null);
+            if (string.IsNullOrEmpty(password))
+            {
+                // Nothing was tried, so this says nothing about the network (#637).
+                _lastConnectFailure[account.Id] = ConnectFailureKind.NotAttempted;
+                return (account.Id, null);
+            }
         }
         var isOAuth = account.AuthType is Models.AuthType.OAuth2Microsoft or Models.AuthType.OAuth2Google;
+
+        // No network at all: three timed attempts would only turn "Offline" into three minutes of
+        // "Connecting…" (#637). The reconnect runs when Windows reports the network back. A
+        // loopback server (a local bridge or proxy) needs no network, so it is always tried.
+        var loopback = IsLoopbackHost(account.IncomingHost);
+        if (!loopback && _connectivity is { IsNetworkAvailable: false })
+        {
+            LogService.Log($"ConnectAll/{account.AccountLabel}: no network — not attempting.");
+            _lastConnectFailure[account.Id] = ConnectFailureKind.Transport;
+            return (account.Id, null);
+        }
 
         // Startup retry: up to 3 attempts with backoff (30s, 45s, 60s timeouts).
         for (int attempt = 1; attempt <= 3; attempt++)
         {
+            if (attempt > 1 && !loopback && _connectivity is { IsNetworkAvailable: false })
+            {
+                LogService.Log($"ConnectAll/{account.AccountLabel}: network went away — giving up until it returns.");
+                _lastConnectFailure[account.Id] = ConnectFailureKind.Transport;
+                return (account.Id, null);
+            }
             try
             {
                 // Timeouts increase per attempt: 30s, 45s, 60s
@@ -4636,6 +4698,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // here. Leave it disconnected (not retried — the state won't change on its own); the
                 // user starts sign-in by activating the account.
                 LogService.Log($"ConnectAll/{account.AccountLabel}: interactive sign-in required — leaving disconnected until the user signs in.");
+                _lastConnectFailure[account.Id] = ConnectFailureKind.NotAttempted;
                 return (account.Id, null);
             }
             catch (OperationCanceledException) when (attempt < 3)
@@ -4660,16 +4723,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 // Outer CTS cancelled — exit immediately
                 LogService.Log($"ConnectAll/{account.AccountLabel}: cancelled by user");
+                _lastConnectFailure[account.Id] = ConnectFailureKind.Transport;
                 return (account.Id, null);
             }
             catch (Exception ex)
             {
-                // Final attempt failed
+                // Final attempt failed. Remember what kind of failure it was: a server that refused
+                // (bad credentials, a rejected login) is reachable, and must not make the app say
+                // "Offline" and stop opening folders (#637).
                 LogService.Log($"ConnectAll/{account.AccountLabel}: final attempt failed", ex);
+                _lastConnectFailure[account.Id] = ClassifyConnectFailure(ex);
                 return (account.Id, null);
             }
         }
 
+        _lastConnectFailure[account.Id] = ConnectFailureKind.Transport;
         return (account.Id, null);
     }
 
@@ -5335,6 +5403,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                 await ResolveFlagNamesAsync(cached);
                 SetMessages(cached);
+
+                // Known offline: the cache is the answer, and a server refresh would only turn
+                // "Loading…" into a raw socket error twenty seconds later (#637). The reconnect path
+                // refreshes the folder when something answers again.
+                if (IsKnownOffline)
+                {
+                    StatusText = cached.Count > 0
+                        ? CachedCountText(cached.Count)
+                        : $"Offline — no cached messages in {folder.DisplayName}.";
+                    if (cached.Count > 0 && IsConversationsView)
+                        ScheduleConversationRebuild();
+                    IsBusy = false;
+                    return;
+                }
+
                 StatusText = cached.Count > 0
                     ? $"{cached.Count} cached {(cached.Count == 1 ? "message" : "messages")} (checking for new…)"
                     : $"Loading {folder.DisplayName}…";
@@ -5381,14 +5464,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// How long a folder listing may take before the user is told the server is slow (#637). A bound
+    /// on the wait, not a connectivity verdict: a large folder on a thin link can legitimately take
+    /// this long, so a timeout here never marks the account unreachable.
+    /// </summary>
+    private static readonly TimeSpan FolderRefreshTimeout = TimeSpan.FromSeconds(45);
+
     private async Task RefreshFolderFromServerAsync(
         Guid accountId, MailFolderModel folder, int version, CancellationToken ct)
     {
+        // Bounded: a black-holed network otherwise leaves "Loading {folder}…" on screen until
+        // MailKit's own two-minute timeout, or forever when the account never connected (#637).
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(FolderRefreshTimeout);
+        var token = timeoutCts.Token;
         try
         {
             var list = _syncDays > 0
-                ? await _imap.GetMessagesSinceDateAsync(accountId, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
-                : await _imap.GetMessageSummariesAsync(accountId, folder.FullName, 50000, ct);
+                ? await _imap.GetMessagesSinceDateAsync(accountId, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), token)
+                : await _imap.GetMessageSummariesAsync(accountId, folder.FullName, 50000, token);
+            _connectivity?.NoteAccountReachable(accountId, "folder-loaded");
             if (!IsCurrentFolderLoad(version, folder))
                 return;
 
@@ -5401,15 +5497,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ScheduleConversationRebuild();
             StartPrefetchTopOfFolder();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
         {
             if (version == _folderLoadVersion)
                 StatusText = "Message list load cancelled.";
+            LogService.Debug($"RefreshFolderFromServer: cancelled ({ex.Message})");
+        }
+        catch (OperationCanceledException)
+        {
+            // The bound above fired: slow, not necessarily gone. Say so and leave the verdict to a
+            // real transport failure, or the next attempt.
+            if (version == _folderLoadVersion)
+                StatusText = !OnlineMode && Messages.Count > 0
+                    ? $"Showing {Messages.Count} cached {(Messages.Count == 1 ? "message" : "messages")} — the server is slow to answer."
+                    : $"{folder.DisplayName} is taking a long time to load. The server is slow to answer.";
+            LogService.Log($"RefreshFolderFromServer: {folder.DisplayName} did not answer within {FolderRefreshTimeout.TotalSeconds:F0}s");
         }
         catch (Exception ex)
         {
+            _connectivity?.NoteOperationOutcome(accountId, ex, "folder-load-failed", ct);
             if (version == _folderLoadVersion)
-                StatusText = $"Failed to load messages: {ex.Message}";
+                StatusText = OfflineOrErrorStatus(ex, ct,
+                    () => OnlineMode ? $"Offline — could not load {folder.DisplayName}."
+                        : Messages.Count > 0 ? CachedCountText(Messages.Count)
+                        : $"Offline — no cached messages in {folder.DisplayName}.",
+                    () => $"Failed to load messages: {ex.Message}");
             LogService.Log("RefreshFolderFromServer", ex);
         }
         finally
@@ -5454,11 +5566,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                // Serve from cache when available; fall back to IMAP and cache the result.
-                detail = await _localStore.LoadDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.MessageId)
-                    ?? await _imap.GetMessageDetailAsync(
+                // Serve from cache when available; fall back to IMAP and cache the result. Two scopes,
+                // per the standard fetch pattern (docs/ARCHITECTURE.md): a store failure must fall
+                // through to the server, not skip it (#637).
+                MailMessageDetail? cached = null;
+                try
+                {
+                    cached = await _localStore.LoadDetailAsync(
+                        summary.AccountId, summary.FolderName, summary.MessageId);
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log("SelectMessage: local store unavailable — falling back to the server", ex);
+                }
+                if (cached != null)
+                {
+                    detail = cached;
+                }
+                else
+                {
+                    detail = await _imap.GetMessageDetailAsync(
                         summary.AccountId, summary.FolderName, summary.MessageId, token);
+                    _connectivity?.NoteAccountReachable(summary.AccountId, "message-loaded");
+                }
                 // A pre-from_addr cache row carries a bare display name where the sender's address
                 // belongs (issue #636); re-fetch it so the header and any reply get a real address.
                 detail = await RepairMissingFromAddressAsync(detail, background: false, token);
@@ -5467,7 +5597,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // The calendar harvest reads calendar_ics from this row; if the store
                 // hasn't completed, the event won't be harvestable and opening it from
                 // the calendar list will fail with "message not found".
-                await _localStore.UpsertDetailAsync(detail);
+                try { await _localStore.UpsertDetailAsync(detail); }
+                catch (Exception ex) { LogService.Log("SelectMessage: cache write failed", ex); }
             }
 
             if (loadVersion != _messageLoadVersion || SelectedMessage != summary)
@@ -5528,8 +5659,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            _connectivity?.NoteOperationOutcome(summary.AccountId, ex, "message-load-failed");
             if (loadVersion == _messageLoadVersion)
-                StatusText = $"Failed to load message: {ex.Message}";
+                StatusText = OfflineOrErrorStatus(ex, CancellationToken.None,
+                    () => "This message is not available offline.",
+                    () => $"Failed to load message: {ex.Message}");
             LogService.Log("SelectMessage", ex);
         }
         finally
@@ -7649,6 +7783,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     int total = selected.Count;
                     int downloaded = 0;
                     int failed = 0;
+                    int offlineFailures = 0;
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                     for (int i = 0; i < selected.Count; i++)
                     {
@@ -7673,6 +7808,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                             {
                                 LogService.Log($"Forward: failed to download '{att.FileName}'", ex);
                                 failed++;
+                                if (ConnectionFailure.IsConnectionFailure(ex, CancellationToken.None))
+                                    offlineFailures++;
+                                else
+                                    _connectivity?.NoteAccountReachable(detail.AccountId, "attachment-download-refused");
                             }
                         }
                         else if (att.IsLoaded)
@@ -7688,7 +7827,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                     if (failed > 0)
                     {
-                        StatusText = $"{downloaded} of {total} attachment{(total == 1 ? "" : "s")} included ({failed} could not be downloaded).";
+                        if (offlineFailures > 0)
+                            _connectivity?.NoteAccountUnreachable(detail.AccountId, "attachment-download-failed");
+                        StatusText = offlineFailures == failed
+                            ? $"{downloaded} of {total} attachment{(total == 1 ? "" : "s")} included — attachments are not available offline."
+                            : $"{downloaded} of {total} attachment{(total == 1 ? "" : "s")} included ({failed} could not be downloaded).";
                         Announce(StatusText, AnnouncementCategory.Status);
                     }
                     else
@@ -7752,17 +7895,46 @@ public partial class MainViewModel : ObservableObject, IDisposable
             SelectedAccount = Accounts.FirstOrDefault(a => a.Id == summary.AccountId) ?? SelectedAccount;
         if (SelectedAccount == null) return null;
 
-        // Load from local cache first, fall back to IMAP.
+        // Load from local cache first, fall back to IMAP — in two scopes, so a store failure
+        // (--online mode) falls through to the server instead of skipping it (#637).
+        MailMessageDetail? detail = null;
         try
         {
-            var detail = await _localStore.LoadDetailAsync(
+            detail = await _localStore.LoadDetailAsync(
                 summary.AccountId, summary.FolderName, summary.MessageId);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("EnsureDetail: local store unavailable — falling back to the server", ex);
+        }
 
+        try
+        {
             if (detail == null)
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                detail = await _imap.GetMessageDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.MessageId, cts.Token);
+                try
+                {
+                    detail = await _imap.GetMessageDetailAsync(
+                        summary.AccountId, summary.FolderName, summary.MessageId, cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // A bound on the wait, not a verdict on the network: a large message on a thin link.
+                    StatusText = "The message is taking too long to load. Try again.";
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    _connectivity?.NoteOperationOutcome(summary.AccountId, ex, "message-load-failed");
+                    // Callers (Reply, Forward…) do nothing on null, so the user has to hear why here.
+                    StatusText = OfflineOrErrorStatus(ex, CancellationToken.None,
+                        () => "This message is not available offline.",
+                        () => $"Failed to load message: {ex.Message}");
+                    LogService.Log("EnsureDetail", ex);
+                    return null;
+                }
+                _connectivity?.NoteAccountReachable(summary.AccountId, "message-loaded");
                 _localStore.UpsertDetailAsync(detail).LogFaults("local store: upsert detail");
             }
             else
@@ -8088,6 +8260,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Accounts.Remove(a);
             _cachedFolders.Remove(a.Id);
             _connectedAccountIds.Remove(a.Id);
+            _connectivity?.Forget(a.Id);
         }
         // DeleteAccountDataAsync drops the account's persisted folders too, so a removed account
         // does not come back in the folder tree on the next launch (#516).
@@ -8126,7 +8299,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         StatusText = sharedChildren.Count == 0
             ? $"Account '{account.AccountLabel}' removed."
             : $"Account '{account.AccountLabel}' removed, along with {sharedChildren.Count} shared mailbox{(sharedChildren.Count == 1 ? "" : "es")}.";
-        ConnectionStatusText = Accounts.Count == 0 ? "Offline" : $"{Accounts.Count} account(s) connected";
+        SetConnectionPhase(ConnectionPhase.Idle);
     }
 
     [RelayCommand]
@@ -9071,7 +9244,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             catch (Exception ex)
             {
-                StatusText = $"Download failed: {ex.Message}";
+                _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
+                StatusText = OfflineOrErrorStatus(ex, CancellationToken.None,
+                    () => "Attachments are not available offline.",
+                    () => $"Download failed: {ex.Message}");
                 IsBusy = false;
                 return;
             }
@@ -9118,7 +9294,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            StatusText = $"Save all failed: {ex.Message}";
+            _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
+            StatusText = OfflineOrErrorStatus(ex, CancellationToken.None,
+                () => "Attachments are not available offline.",
+                () => $"Save all failed: {ex.Message}");
             LogService.Log("SaveAllAttachments", ex);
         }
         finally { IsBusy = false; }
@@ -9143,7 +9322,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             catch (Exception ex)
             {
-                StatusText = $"Download failed: {ex.Message}";
+                _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
+                StatusText = OfflineOrErrorStatus(ex, CancellationToken.None,
+                    () => "Attachments are not available offline.",
+                    () => $"Download failed: {ex.Message}");
                 IsBusy = false;
                 return;
             }
@@ -9212,18 +9394,39 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // The VM-side predicate asks "has this account connected this session", which _cachedFolders
         // stopped answering in #516 — it is restored from SQLite at launch, so a never-connected
         // account would look present here and never be reconnected.
-        var accountsToConnect = AccountsNeedingConnect(
-            Accounts, _imap.IsConnected, id => _connectedAccountIds.Contains(id));
-        _ = Task.Run(async () =>
+        ReconnectOfflineAccountsAsync("account-list-refresh").LogFaults("reconnect after account-list refresh");
+    }
+
+    /// <summary>
+    /// Connects every account that is not truly connected, off the UI thread, then rewires the
+    /// watchers. Shared by the account-list refresh, the network-returned handler and the offline
+    /// retry loop (#637). Returns how many accounts connected.
+    /// </summary>
+    private async Task<int> ReconnectOfflineAccountsAsync(string source)
+    {
+        // _cachedFolders and _connectedAccountIds are UI-thread-owned: snapshot the work list on the
+        // UI thread and marshal every write back through _ui so the background loop never touches them.
+        // The VM-side predicate asks "has this account connected this session AND is it not known to
+        // be offline": _cachedFolders stopped answering the first half in #516 (restored from SQLite at
+        // launch), and the connectivity service answers the second so a dropped account reconnects.
+        List<AccountModel> accountsToConnect = [];
+        _ui.Invoke(() => accountsToConnect = AccountsNeedingConnect(
+            Accounts, _imap.IsConnected,
+            id => _connectedAccountIds.Contains(id) && (_connectivity?.IsAccountOnline(id) ?? true)));
+        if (accountsToConnect.Count == 0) return 0;
+
+        var connected = 0;
+        await Task.Run(async () =>
         {
             foreach (var account in accountsToConnect)
             {
                 var result = await ConnectOneAccountAsync(account);
                 _ui.Invoke(() =>
                 {
-                    ApplyAccountStatus(account, result.Folders, "account-list-refresh");
+                    ApplyAccountStatus(account, result.Folders, source);
                     if (result.Folders != null)
                     {
+                        connected++;
                         SetCachedFolders(result.Id, result.Folders);
                         RebuildFolderListFromCache();
                     }
@@ -9236,6 +9439,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // account list, which is what the old inline block here did for issue #126.
             _ui.Invoke(WireUpWatchers);
         });
+        return connected;
     }
 
     // ── Preview extraction ────────────────────────────────────────────────────────
