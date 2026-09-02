@@ -606,7 +606,15 @@ public partial class UnifiedRulesViewModel : ObservableObject
             // Only the account-context load (open/switch) speaks the mode; a write-reload does not. This
             // sits past every early return above, so a superseded refresh never announces a stale account.
             if (announceMode)
+            {
+                // TEMP diagnostic (#550): logs which account's mode is announced and its supportsServer
+                // value, so a "supports only client, then supports both" report can be traced to whether
+                // one account announced twice or two accounts were visited. Runs only under /debug.
+                // Remove once the double-announce report is understood.
+                LogService.Debug($"UnifiedRules: announce mode for account={accountId} " +
+                    $"'{SelectedAccountModel?.AccountLabel}' supportsServer={AccountSupportsServerRules}");
                 Announce(RuleModeHint(AccountSupportsServerRules), AnnouncementCategory.Hint);
+            }
         }
         finally
         {
