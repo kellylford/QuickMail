@@ -45,6 +45,7 @@ public partial class App : Application
     private GraphMailService? _graphBackend;
     private Pop3MailService? _pop3Backend;
     private OutboxService? _outboxService;
+    private ConnectivityService? _connectivity;
     private UpdateCheckService? _updateCheckService;
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
@@ -312,6 +313,11 @@ public partial class App : Application
             _graphNotifier  = new GraphChangeNotifier(graphBackend.Client, localStore, configService);
             _changeNotifier = new ChangeNotifierRouter(new IChangeNotifier[] { imapBackend, _graphNotifier });
 
+            // The app's one answer to "are we online?" (#637): Windows' network signal plus what real
+            // operations report per account. Null in ui-probe mode, which is structurally offline and
+            // must not say so in its captures.
+            _connectivity = probeMode ? null : new ConnectivityService(new NetworkChangeAvailabilitySource());
+
             // Load accounts once — after the store is initialized — and reuse the list for the VM.
             // Router registration runs via mainVm.RegisterAccountBackend (set below), which also
             // covers accounts added at runtime through RefreshAccountList.
@@ -388,9 +394,9 @@ public partial class App : Application
             var syncService = new SyncService(effectiveMail, localStore, configService, ruleService, probeMode: probeMode);
             // The Outbox (#637): mail written while the server could not be reached. Drains through the
             // same router and send service as a live send, so a queued message leaves exactly as an
-            // online one would have. Connectivity arrives with PR 2; until then it drains on startup,
-            // on the fallback sync tick, and on Send Outbox Now.
-            _outboxService = new OutboxService(localStore, effectiveMail, effectiveSmtp, accountService, credentialService, connectivity: null, onlineMode: onlineMode);
+            // online one would have. It drains on reconnect, after the startup connect, on the fallback
+            // sync tick, and on Send Outbox Now.
+            _outboxService = new OutboxService(localStore, effectiveMail, effectiveSmtp, accountService, credentialService, connectivity: _connectivity, onlineMode: onlineMode);
             var outboxService = _outboxService;
             // The one-time immutable-id wipe emptied these accounts' store, so their first re-sync would
             // read old mail as new and re-run rules over it on upgrade day. Baseline it (#366/N5).
@@ -512,7 +518,7 @@ public partial class App : Application
             mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe, rowLayoutService, watchService, outboxService);
+            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe, rowLayoutService, watchService, outboxService, _connectivity);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
@@ -540,6 +546,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _changeNotifier?.Dispose(); // stops all watchers (IDLE + Graph poll) + severs the event chain
+        _connectivity?.Dispose();   // stops listening to NetworkChange; after the notifiers, which feed it
         _graphNotifier?.Dispose();  // disposes the Graph poll CTS (StopWatchers already ran; idempotent)
         _outboxService?.Dispose();  // cancels an in-flight drain before the pools it sends through go away
         _imapBackend?.Dispose();    // closes connection pools (StopWatchers already ran, and is idempotent)
