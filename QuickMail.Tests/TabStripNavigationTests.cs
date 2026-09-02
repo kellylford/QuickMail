@@ -230,10 +230,26 @@ public class TabStripNavigationTests
         // The regression #528 reported, against the real dialog: its six tabs wrap onto two rows,
         // which is what broke geometric navigation. Pressing Right once per tab must visit every
         // one of them and come back to where it started.
+        //
+        // ThemedControls.xaml is merged rather than simulated (issue #652). It is what gives a tab
+        // header its real Padding, and without it the six headers are narrow enough to fit on one
+        // line — the layout that was never broken. An earlier version hand-stamped a guess at the
+        // themed values instead; the guess had already drifted from the style it was standing in for.
         EnsureApplication();
+        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
+
         var vm     = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
         var dialog = new SettingsDialog(vm) { ShowActivated = false };
         dialog.Show();
+
+        // Pin the window to the size its XAML declares (issue #652). A process whose STARTUPINFO
+        // asks for SW_SHOWMAXIMIZED maximizes the first top-level window it shows, and the test host
+        // is sometimes launched that way — which put this dialog on a 1485-DIP work area, fitted all
+        // six headers on one row, and failed the premise assertion below every time on that machine
+        // while CI stayed green. RestoreBounds still held the declared 520x560 throughout, so the
+        // dialog was only being PLACED maximized; the app is not affected, since the flag reaches
+        // only a process's first window and never a dialog opened later.
+        dialog.WindowState = WindowState.Normal;
         TabOrderWalker.Drain();
         try
         {
@@ -242,16 +258,6 @@ public class TabStripNavigationTests
             var items = tabs!.Items.Cast<TabItem>().ToArray();
             Assert.Equal(6, items.Length);
 
-            // The test process merges AccessibleStyles.xaml but not ThemedControls.xaml, which is
-            // what gives a tab header its real Padding — without it the six headers are narrow
-            // enough to fit on one line, which is the layout that was never broken. Stamping the
-            // themed padding and font size on reproduces what the user has, so the walk below runs
-            // against the two-row strip #528 was reported against.
-            foreach (var item in items)
-            {
-                item.Padding  = new Thickness(12, 6, 12, 6);
-                item.FontSize = 13;
-            }
             dialog.UpdateLayout();
             TabOrderWalker.Drain();
 
