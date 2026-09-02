@@ -246,6 +246,8 @@ public partial class ComposeWindow : Window
         // only; a failure is announced once (Status category) by the VM event.
         vm.AutoSaveFailed += message =>
             AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Status);
+        vm.AutoSaveNotice += message =>
+            AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Status);
         var cfg = _configService.Load();
         if (cfg.AutoSaveDrafts)
         {
@@ -696,7 +698,10 @@ public partial class ComposeWindow : Window
 
         // decision == true: save the draft first
         await _vm.SaveDraftCommand.ExecuteAsync(null);
-        if (_vm.StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase))
+        // Only when neither the server nor the local Outbox took the draft does the window stay open
+        // (--online mode, or SQLite itself is broken). Deciding this by string-matching "failed" in
+        // the status text missed "No Drafts folder found" and discarded the message (#637).
+        if (_vm.LastSaveOutcome == DraftSaveOutcome.Failed)
             return;
 
         Closing -= OnWindowClosing;

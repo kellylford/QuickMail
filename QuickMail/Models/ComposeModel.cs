@@ -72,3 +72,14 @@ public class ComposeModel
         Attachments = [],
     };
 }
+
+/// <summary>How the last Save Draft in a compose window ended (#637).</summary>
+public enum DraftSaveOutcome
+{
+    None,
+    SavedToServer,
+    /// <summary>The server could not be reached; the draft is in the local Outbox awaiting upload.</summary>
+    SavedLocally,
+    /// <summary>Neither the server nor the local store took it. The window must not close and lose it.</summary>
+    Failed,
+}
