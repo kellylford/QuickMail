@@ -5528,11 +5528,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             _connectivity?.NoteOperationOutcome(accountId, ex, "folder-load-failed", ct);
             if (version == _folderLoadVersion)
-                StatusText = OfflineOrErrorStatus(ex, ct,
+                StatusText = OfflineOrErrorStatus(ex,
                     () => OnlineMode ? $"Offline — could not load {folder.DisplayName}."
                         : Messages.Count > 0 ? CachedCountText(Messages.Count)
                         : $"Offline — no cached messages in {folder.DisplayName}.",
-                    () => $"Failed to load messages: {ex.Message}");
+                    () => $"Failed to load messages: {ex.Message}", ct);
             LogService.Log("RefreshFolderFromServer", ex);
         }
         finally
@@ -5672,9 +5672,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             _connectivity?.NoteOperationOutcome(summary.AccountId, ex, "message-load-failed");
             if (loadVersion == _messageLoadVersion)
-                StatusText = OfflineOrErrorStatus(ex, CancellationToken.None,
+                StatusText = OfflineOrErrorStatus(ex,
                     () => "This message is not available offline.",
-                    () => $"Failed to load message: {ex.Message}");
+                    () => $"Failed to load message: {ex.Message}", CancellationToken.None);
             LogService.Log("SelectMessage", ex);
         }
         finally
@@ -7939,9 +7939,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 {
                     _connectivity?.NoteOperationOutcome(summary.AccountId, ex, "message-load-failed");
                     // Callers (Reply, Forward…) do nothing on null, so the user has to hear why here.
-                    StatusText = OfflineOrErrorStatus(ex, CancellationToken.None,
+                    StatusText = OfflineOrErrorStatus(ex,
                         () => "This message is not available offline.",
-                        () => $"Failed to load message: {ex.Message}");
+                        () => $"Failed to load message: {ex.Message}", CancellationToken.None);
                     LogService.Log("EnsureDetail", ex);
                     return null;
                 }
@@ -9256,9 +9256,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             catch (Exception ex)
             {
                 _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
-                StatusText = OfflineOrErrorStatus(ex, CancellationToken.None,
+                StatusText = OfflineOrErrorStatus(ex,
                     () => "Attachments are not available offline.",
-                    () => $"Download failed: {ex.Message}");
+                    () => $"Download failed: {ex.Message}", CancellationToken.None);
                 IsBusy = false;
                 return;
             }
@@ -9306,9 +9306,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
-            StatusText = OfflineOrErrorStatus(ex, CancellationToken.None,
+            StatusText = OfflineOrErrorStatus(ex,
                 () => "Attachments are not available offline.",
-                () => $"Save all failed: {ex.Message}");
+                () => $"Save all failed: {ex.Message}", CancellationToken.None);
             LogService.Log("SaveAllAttachments", ex);
         }
         finally { IsBusy = false; }
@@ -9334,9 +9334,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             catch (Exception ex)
             {
                 _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
-                StatusText = OfflineOrErrorStatus(ex, CancellationToken.None,
+                StatusText = OfflineOrErrorStatus(ex,
                     () => "Attachments are not available offline.",
-                    () => $"Download failed: {ex.Message}");
+                    () => $"Download failed: {ex.Message}", CancellationToken.None);
                 IsBusy = false;
                 return;
             }

@@ -19,8 +19,16 @@ public sealed class OutboxService : IOutboxService, IDisposable
     private static readonly TimeSpan DraftTimeout      = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SentAppendTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TrashTimeout      = TimeSpan.FromSeconds(15);
-    private static readonly TimeSpan ReconnectDebounce = TimeSpan.FromSeconds(2);
     private const int MaxBackoffMinutes = 32;
+
+    /// <summary>
+    /// How long a reconnect signal is held before the drain starts, so several accounts returning
+    /// together start one drain rather than one each. Settable so tests do not wait on the clock.
+    /// </summary>
+    internal TimeSpan ReconnectDebounce { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>The most recently scheduled reconnect drain, for tests to await instead of polling.</summary>
+    internal Task? LastReconnectFlush { get; private set; }
 
     private readonly ILocalStoreService _store;
     private readonly IMailService _mail;
@@ -399,11 +407,12 @@ public sealed class OutboxService : IOutboxService, IDisposable
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         _reconnectDebounce = cts;
-        _ = Task.Run(async () =>
+        var debounce = ReconnectDebounce;
+        LastReconnectFlush = Task.Run(async () =>
         {
             try
             {
-                await Task.Delay(ReconnectDebounce, cts.Token);
+                await Task.Delay(debounce, cts.Token);
                 await FlushAsync(force: false, cts.Token);
             }
             catch (OperationCanceledException) { }
