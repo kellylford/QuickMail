@@ -633,6 +633,7 @@ sealed class StubSyncService : ISyncService
     public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
     public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
     public event Action<AccountModel, string>? DraftUploadsBlocked;
+    public Task<int> UploadPendingDraftsAsync(AccountModel account, CancellationToken ct) => Task.FromResult(0);
     public event Action<int>? DraftsUploaded;
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
     public event Action<int>? RulesApplied;

@@ -39,6 +39,7 @@ public class DraftRefusalReachesTheRowTests
 #pragma warning restore CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
         public event Action<AccountModel, string>? DraftUploadsBlocked;
+        public Task<int> UploadPendingDraftsAsync(AccountModel account, CancellationToken ct) => Task.FromResult(0);
         public event Action<int>? DraftsUploaded;
 
         public void RaiseRefused(params MailMessageSummary[] rows) => DraftUploadsRefused?.Invoke(rows);

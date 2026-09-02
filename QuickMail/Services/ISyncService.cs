@@ -41,6 +41,19 @@ public interface ISyncService
     event Action<AccountModel, string>? DraftUploadsBlocked;
 
     /// <summary>
+    /// Sends the drafts this account is holding on this computer, and reports what happened through
+    /// <see cref="DraftsUploaded"/>, <see cref="DraftUploadsRefused"/> and
+    /// <see cref="DraftUploadsBlocked"/> (#637). Returns how many went up.
+    /// </summary>
+    /// <remarks>
+    /// On the interface because the sync pass is not the only caller: the promise the compose
+    /// window makes is "when you are back online", so the view model runs it the moment an account
+    /// connects. Concurrent calls for one account are serialised inside, since two passes over the
+    /// same queue would upload the same draft twice.
+    /// </remarks>
+    Task<int> UploadPendingDraftsAsync(AccountModel account, CancellationToken ct);
+
+    /// <summary>
     /// Drafts held only on this computer have just reached the server (the count). Their rows are
     /// dropped through <see cref="MessagesRemoved"/>; this exists so the user can be told the
     /// disappearance was an upload rather than the list reordering itself (#637).

@@ -10,8 +10,10 @@ using MailKit.Security;
 namespace QuickMail.Services;
 
 /// <summary>
-/// Whether a failure will pass on its own, or is a verdict that will repeat (#637).
-/// <para>The draft upload pass asks this and nothing else. "Will pass" means STOP: the account is
+/// Whose problem an upload failure is (#637).
+/// <para>The draft upload pass asks <see cref="ClassifyUpload"/>, which sorts a failure into three
+/// answers: the account is unreachable, the account is blocked until the user acts, or this one
+/// draft is the problem. The predicates below are how it decides. "Will pass" means STOP: the account is
 /// almost certainly still unreachable, and trying the remaining drafts would spend a connection
 /// timeout each, so they wait for the next sweep and stay visible marked "not on server". A
 /// verdict means the opposite — that draft is marked with what the server said and the pass
@@ -120,6 +122,9 @@ public static class SendFailure
 
         if (IsTransient(ex)) return (UploadScope.Unreachable, string.Empty);
 
+        // None of the three account sentences quotes the exception. A Graph refusal's message is
+        // a JSON error blob, and putting that on a durable, user-facing field says nothing the user
+        // can act on -- the action is the same whichever backend refused (#637).
         if (IsSignInRefused(ex))
             return (UploadScope.Account,
                     "Your mail server would not accept the sign-in for this account, so the drafts "
@@ -148,11 +153,29 @@ public static class SendFailure
              + "computer, and saving it again is what tries once more.");
     }
 
-    /// <summary>The server read the credentials and said no — for the account, not for a draft.</summary>
+    /// <summary>
+    /// The sign-in is what failed — for the account, not for a draft.
+    /// </summary>
+    /// <remarks>
+    /// Every backend, not only MailKit's. Recognising IMAP's two types alone left every Microsoft
+    /// account out: a Graph 401 is an HttpRequestException, and a token that cannot be renewed
+    /// silently is an InteractiveSignInRequiredException, so both fell through to message scope and
+    /// marked the whole backlog refused — the exact defect the account scope was added to prevent,
+    /// still live on the backend most likely to expire a token (#637).
+    /// </remarks>
     private static bool IsSignInRefused(Exception? ex) => ex switch
     {
         null => false,
+
+        // IMAP and SMTP.
         MailKit.Security.AuthenticationException or ServiceNotAuthenticatedException => true,
+
+        // Graph and Microsoft 365: no token could be obtained without asking the user.
+        InteractiveSignInRequiredException => true,
+
+        // Graph answered, and its answer was about who is asking rather than about the draft.
+        HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden } => true,
+
         _ => ex.InnerException != null && IsSignInRefused(ex.InnerException),
     };
 
@@ -192,8 +215,10 @@ public static class SendFailure
         // derives from CommandException for IMAP -- a renamed folder, a message it will not accept.
         SmtpCommandException or CommandException => true,
 
-        // Graph. A null status code means nothing answered, which is the offline case.
-        HttpRequestException { StatusCode: not null } => true,
+        // Graph. A null status code means nothing answered, which is the offline case; 401 and
+        // 403 are answers about the SIGN-IN, and are account scope before this is asked.
+        HttpRequestException { StatusCode: not null and not HttpStatusCode.Unauthorized
+                                                   and not HttpStatusCode.Forbidden } => true,
 
         _ => ex.InnerException != null && IsServerVerdict(ex.InnerException),
     };

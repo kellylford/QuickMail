@@ -104,6 +104,41 @@ public class DraftRefusalIsSaidOutLoudTests
         Assert.Contains("Work", vm.StatusText, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ABlockedAccount_IsMetAndNotOnlyWrittenToTheStatusBar()
+    {
+        // The status bar cannot be the record here: no row is marked (the drafts stay queued, which
+        // is the point), and the sweep that raises this overwrites the status line with folder
+        // counts moments later. This branch's own row wording exists for that reason.
+        var (vm, sync) = Vm(Row("local-1"));
+        var met = new List<string>();
+        vm.ShowNoticeRequested = m => met.Add(m);
+        var account = new AccountModel { Id = AccountId, AccountName = "Work", Username = "me@example.com" };
+
+        sync.RaiseBlocked(account, "Open Manage Accounts and sign in again.");
+
+        var shown = Assert.Single(met);
+        Assert.Contains("sign in again", shown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Work", shown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheSameBlockedAccount_IsNotMetAgainOnEverySweep()
+    {
+        // The pass runs on every reconnect and every poll, so re-meeting the same dialog would be
+        // its own defect.
+        var (vm, sync) = Vm(Row("local-1"));
+        var met = new List<string>();
+        vm.ShowNoticeRequested = m => met.Add(m);
+        var account = new AccountModel { Id = AccountId, AccountName = "Work", Username = "me@example.com" };
+
+        sync.RaiseBlocked(account, "Open Manage Accounts and sign in again.");
+        sync.RaiseBlocked(account, "Open Manage Accounts and sign in again.");
+        sync.RaiseBlocked(account, "Open Manage Accounts and sign in again.");
+
+        Assert.Single(met);
+    }
+
     private sealed class RaisingSyncService : ISyncService
     {
 #pragma warning disable CS0067 // the rest of the interface is not what this file is about
@@ -117,6 +152,7 @@ public class DraftRefusalIsSaidOutLoudTests
         public event Action<IReadOnlyList<MailMessageSummary>>? DraftUploadsRefused;
         public event Action<AccountModel, string>? DraftUploadsBlocked;
 
+        public Task<int> UploadPendingDraftsAsync(AccountModel account, CancellationToken ct) => Task.FromResult(0);
         public void RaiseBlocked(AccountModel account, string reason)
             => DraftUploadsBlocked?.Invoke(account, reason);
 

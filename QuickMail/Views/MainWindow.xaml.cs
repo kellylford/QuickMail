@@ -4435,7 +4435,12 @@ public partial class MainWindow : Window
     /// the rebuild to settle asks the question directly (#637).
     /// </remarks>
     private Task RunAndLandAsync(Func<Action> arm, Func<Task> command)
-        => RebuildLanding.RunAsync(arm, command, _vm.GroupRebuildSettledAsync);
+    {
+        // Taken before the listener is armed, so the wait afterwards is about what THIS command
+        // scheduled rather than about any rebuild a background sync had in flight (#637).
+        var mark = _vm.GroupRebuildMark();
+        return RebuildLanding.RunAsync(arm, command, () => _vm.GroupRebuildSettledSince(mark));
+    }
 
     /// <summary>
     /// How focus lands in whichever grouped view is showing, or null in the flat message list,

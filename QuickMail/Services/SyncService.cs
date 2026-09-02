@@ -254,9 +254,29 @@ public class SyncService : ISyncService
     /// <para>Internal so the replay order and the stop-on-failure rule are testable without a sync
     /// sweep. Returns how many were uploaded.</para>
     /// </summary>
-    internal async Task<int> UploadPendingDraftsAsync(AccountModel account, CancellationToken ct)
+    public async Task<int> UploadPendingDraftsAsync(AccountModel account, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(account);
         if (_probeMode) return 0;
+
+        // One pass per account at a time. The sweep and a reconnect can both ask, and two passes
+        // reading the same queue would each read the same rows and append them twice (#637).
+        var gate = _draftUploadGates.GetOrAdd(account.Id, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
+        {
+            return await UploadPendingDraftsCoreAsync(account, ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, SemaphoreSlim> _draftUploadGates = new();
+
+    private async Task<int> UploadPendingDraftsCoreAsync(AccountModel account, CancellationToken ct)
+    {
 
         IReadOnlyList<MailMessageSummary> pending;
         try

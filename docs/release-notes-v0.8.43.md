@@ -81,6 +81,13 @@ Two things worth knowing. A waiting draft is on this computer only, so it will n
 phone or another PC until it has uploaded. And an account that has never finished syncing its folders
 has nowhere to file a draft even locally, so connect a brand-new account once before relying on this.
 
+Some upload failures are not about any one draft — a sign-in your server will not accept, a secure
+connection it will not complete, or an account with no Drafts folder on the server. Nothing would
+upload for that account whatever you did to the drafts, so QuickMail leaves them all queued and
+still reading **Not on server**, and tells you once what needs putting right. Fix that — usually by
+signing in again in **Manage Accounts** — and they start going up on their own as soon as the
+account connects.
+
 Sending still needs a connection — a message sent while offline still reports that the send failed,
 and the compose window stays open so you can save it as a draft and send it later. An outbox that
 queues the send itself is the next piece of this work.

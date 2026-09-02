@@ -22,6 +22,7 @@ public class DraftSenderChangeOrphanTests
 {
     private static readonly Guid AccountA = Guid.Parse("5e5e5e5e-5e5e-5e5e-5e5e-5e5e5e5e5e5e");
     private static readonly Guid AccountB = Guid.Parse("6f6f6f6f-6f6f-6f6f-6f6f-6f6f6f6f6f6f");
+    private static readonly Guid AccountC = Guid.Parse("8a8a8a8a-8a8a-8a8a-8a8a-8a8a8a8a8a8a");
 
     private static AccountModel Account(Guid id) => new()
     {
@@ -86,6 +87,32 @@ public class DraftSenderChangeOrphanTests
         await vm.SaveDraftCommand.ExecuteAsync(null);
 
         Assert.DoesNotContain((AccountA, "local-1"), drafts.Rows);
+    }
+
+    [Fact]
+    public async Task ASecondSenderChange_DoesNotAbandonTheFirstOrphan()
+    {
+        // One slot kept the first orphan and silently dropped the next, so A→B with the discard
+        // failing and then B→C left B's row queued and unreferenced -- and the sweep filed the
+        // user's draft in the account they had moved it out of, which is the whole point of the
+        // re-key.
+        var drafts = new TwoAccountDrafts { DiscardThrows = true };
+        var mail   = new RecordingMailService { AppendDraftThrows = true };
+        var vm = Compose(drafts, mail);
+
+        await vm.SaveDraftCommand.ExecuteAsync(null);          // A
+        vm.SenderAccount = Account(AccountB);
+        await vm.SaveDraftCommand.ExecuteAsync(null);          // B, A's discard refused
+        vm.SenderAccount = Account(AccountC);
+        await vm.SaveDraftCommand.ExecuteAsync(null);          // C, B's discard refused
+
+        drafts.DiscardThrows = false;
+        vm.Body = "Boarding now.";
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain((AccountA, "local-1"), drafts.Rows);
+        Assert.DoesNotContain((AccountB, "local-2"), drafts.Rows);
+        Assert.Contains((AccountC, "local-3"), drafts.Rows);
     }
 
     /// <summary>A store that keys rows the way the real one does, and can be told to misbehave.</summary>

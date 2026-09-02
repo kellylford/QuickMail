@@ -257,7 +257,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void SetCachedFolders(Guid accountId, List<MailFolderModel> folders)
     {
         _cachedFolders[accountId] = folders;
-        _connectedAccountIds.Add(accountId);
+        // The one place an account becomes connected, and therefore the moment "back online"
+        // actually happens. Without this the upload pass ran only from StartBackgroundSyncAsync, at
+        // window load -- so "It will go to the server when you are back online" meant "the next
+        // time you restart QuickMail", which is not what it says and not what the guide promises.
+        // Only on the TRANSITION: HashSet.Add answers false when the account was already connected,
+        // so an ordinary folder refresh does not queue another pass (#637).
+        var newlyConnected = _connectedAccountIds.Add(accountId);
+        if (newlyConnected) QueueDraftUploadFor(accountId);
 
         // Never let an empty result overwrite a good cache. SaveFoldersAsync is replace-all, so
         // persisting [] erases the account's folders — and an empty list is reachable from a
@@ -5143,6 +5150,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public Task GroupRebuildSettledAsync() => _lastGroupRebuild;
 
+    /// <summary>
+    /// A token identifying the rebuild in flight right now, for pairing with
+    /// <see cref="GroupRebuildSettledSince"/>.
+    /// </summary>
+    public object GroupRebuildMark() => _lastGroupRebuild;
+
+    /// <summary>
+    /// Completes once a rebuild scheduled since <paramref name="mark"/> has landed — and completes
+    /// at once if nothing has been scheduled since.
+    /// </summary>
+    /// <remarks>
+    /// Waiting on <see cref="GroupRebuildSettledAsync"/> instead meant a command that rebuilt
+    /// NOTHING -- an archive refused because the selection holds a draft that is not on the server,
+    /// a delete the user answered No to -- still waited on whatever rebuild a background sync
+    /// happened to have in flight, and the listener it had armed then fired on that: keyboard focus
+    /// dragged into the tree after a command the user had just declined.
+    /// <para>It does not make the pairing exact. If a background sync schedules a rebuild between
+    /// the mark being taken and the command returning, this cannot tell that rebuild from the
+    /// command's own, and the listener may still land on it. Closing that needs the command to
+    /// report whether it rebuilt, which is a change to every command; this removes the common case
+    /// (nothing scheduled at all) rather than all of it (#637).</para>
+    /// </remarks>
+    public Task GroupRebuildSettledSince(object mark)
+        => ReferenceEquals(_lastGroupRebuild, mark) ? Task.CompletedTask : _lastGroupRebuild;
+
     /// <summary>Starts tracking a rebuild, superseding whatever the last one was.</summary>
     private TaskCompletionSource BeginGroupRebuild()
     {
@@ -5610,6 +5642,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
     internal const string MissingSavedCopyMessage =
         "That message could not be opened: its saved copy on this computer is missing. The message cannot be recovered, so deleting the row is all there is to do.";
 
+    /// <summary>
+    /// A message body carrying a sentence the caller has already chosen (#637).
+    /// <para>Distinct from <see cref="MissingSavedCopyPlaceholder"/>, which picks between two
+    /// sentences about the LOCAL STORE from a store failure. Handing it a network failure made it
+    /// tell the user their saved copy was damaged and unrecoverable about a draft that was safe on
+    /// the server.</para>
+    /// </summary>
+    private static MailMessageDetail ExplanationPlaceholder(MailMessageSummary summary, string sentence)
+        => new()
+        {
+            MessageId     = summary.MessageId,
+            AccountId     = summary.AccountId,
+            FolderName    = summary.FolderName,
+            Subject       = summary.Subject,
+            From          = summary.From,
+            To            = summary.To,
+            Date          = summary.Date,
+            PlainTextBody = sentence,
+            HtmlBody      = string.Empty,
+        };
+
     private static MailMessageDetail MissingSavedCopyPlaceholder(
         MailMessageSummary summary, Exception? storeFailure = null) => new()
     {
@@ -5923,6 +5976,58 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Nothing will upload for this account until the user acts (#637).
+    /// </summary>
+    /// <remarks>
+    /// No row is marked — that is the point, the drafts stay queued — so nothing on screen carries
+    /// this. The status bar cannot be the record: this branch's own row wording exists BECAUSE the
+    /// status bar is overwritten within seconds, and it is overwritten by the very sweep that
+    /// produced this, which runs the upload pass before the folder passes. So it is met, once per
+    /// account per run, the way a refused move is met.
+    /// <para>Once per account per run: the pass runs again on every reconnect and every poll, and
+    /// re-meeting the same dialog each time would be its own defect.</para>
+    /// </remarks>
+    private void OnDraftUploadsBlocked(AccountModel account, string reason)
+    {
+        if (account == null || string.IsNullOrWhiteSpace(reason)) return;
+        SetStatus($"{account.AccountLabel}: {reason}", AnnouncementCategory.Result);
+        if (!_blockedAccountsReported.Add(account.Id)) return;
+        ShowNoticeRequested?.Invoke($"{account.AccountLabel}: {reason}");
+    }
+
+    /// <summary>Accounts already met about a blocked upload, so it is said once rather than every sweep.</summary>
+    private readonly HashSet<Guid> _blockedAccountsReported = [];
+
+    /// <summary>
+    /// Sends whatever this account has waiting, now that it is reachable (#637).
+    /// </summary>
+    /// <remarks>
+    /// Fire and forget, and deliberately quiet on failure: the pass reports its own outcomes
+    /// (uploaded, refused, blocked) through the sync service's events, and an account that is
+    /// reachable for folders but not for an append is the ordinary offline case this feature
+    /// exists to survive. Skipped in online mode, which has no local store to hold drafts.
+    /// </remarks>
+    private void QueueDraftUploadFor(Guid accountId)
+    {
+        if (OnlineMode) return;
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account == null) return;
+        var ct = _bgSyncCts?.Token ?? CancellationToken.None;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _syncService.UploadPendingDraftsAsync(account, ct);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                LogService.Log($"Draft upload on connect {account.AccountLabel}", ex);
+            }
+        }, ct);
+    }
+
+    /// <summary>
     /// A draft will not be uploaded, and its row stays where it is (#637). Copies the reason onto
     /// the summary the list is actually showing.
     /// <para>Without this the refusal reached only the store, so the row went on saying "not on
@@ -5931,17 +6036,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// hands over are freshly read from the store and are NOT the instances the list holds, which
     /// is why this matches them up rather than assigning them in.</para>
     /// </summary>
-    /// <summary>
-    /// Nothing will upload for this account until the user acts (#637). No row is marked, so the
-    /// status bar is the only durable record there is — and an announcement alone would be silence
-    /// for a user who has them turned off.
-    /// </summary>
-    private void OnDraftUploadsBlocked(AccountModel account, string reason)
-    {
-        if (account == null || string.IsNullOrWhiteSpace(reason)) return;
-        SetStatus($"{account.AccountLabel}: {reason}", AnnouncementCategory.Result);
-    }
-
     private void OnDraftUploadsRefused(IReadOnlyList<MailMessageSummary> refused)
     {
         foreach (var marked in refused)
@@ -8502,17 +8596,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
          string.Equals(SelectedFolder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal));
 
     /// <summary>
-    /// Whether a row is a draft. Asked of the ROW, not of the folder on screen: a message window
-    /// navigates Prev/Next through a whole list, a notification opens mail from another folder
-    /// entirely, and All Mail lists local-only drafts beside ordinary mail -- it reads the whole
-    /// cache through LoadAllSummariesAsync rather than merging folder by folder, so nothing filters
-    /// them out. "The Drafts folder is selected" therefore answered for the wrong message on four
-    /// routes, and answered "no" for a real draft opened out of All Mail, which is where the app
-    /// starts (#637).
-    /// <para>Says nothing on its own about a server draft in an account whose folder cache has not
-    /// loaded; a caller that needs an answer there asks the selected folder as well.</para>
-    /// </summary>
-    /// <summary>
     /// Whether a row is a draft THIS COMPUTER is still holding — the ones that must open in a
     /// compose window, because the server has no copy to answer with (#637).
     /// </summary>
@@ -8529,6 +8612,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return summary.IsPendingUpload || IsLocalOnlyId(summary);
     }
 
+    /// <summary>
+    /// Whether a row is a draft. Asked of the ROW, not of the folder on screen: a message window
+    /// navigates Prev/Next through a whole list, a notification opens mail from another folder
+    /// entirely, and All Mail lists local-only drafts beside ordinary mail -- it reads the whole
+    /// cache through LoadAllSummariesAsync rather than merging folder by folder, so nothing filters
+    /// them out. "The Drafts folder is selected" therefore answered for the wrong message on four
+    /// routes, and answered "no" for a real draft opened out of All Mail, which is where the app
+    /// starts (#637).
+    /// <para>Says nothing on its own about a server draft in an account whose folder cache has not
+    /// loaded; a caller that needs an answer there asks the selected folder as well.</para>
+    /// </summary>
     public bool IsDraftRow(MailMessageSummary summary)
     {
         // Only ever set on a draft this computer is still holding.
@@ -8674,9 +8768,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Rendered as well as said. The caller reads "MessageDetail is still set" as "show the
             // explanation", so this leaves one behind rather than returning with the pane untouched
             // -- which is what happened when the server could not be reached (#637).
+            //
+            // The SAME sentence on both channels. Handing the exception to
+            // MissingSavedCopyPlaceholder made it choose StoreUnreadable, which means "the copy on
+            // this computer is damaged and the draft cannot be recovered" -- about a draft sitting
+            // intact on the server, on the durable channel, while the status line said correctly
+            // that the server could not be reached. This branch is reached for ANY failure, so it
+            // must not name a cause it has not established.
             SetStatus(DraftCouldNotBeOpened, AnnouncementCategory.Result);
-            MessageDetail = MissingSavedCopyPlaceholder(summary, ex);
-            IsMessageOpen = true;
+            MessageDetail = ExplanationPlaceholder(summary, DraftCouldNotBeOpened);
+            // Matches the sibling at the other exit rather than asserting true: in Window mode a
+            // MessageWindow is opened instead, and claiming the reading pane is open retitles the
+            // main window after the draft and arms every command gated on this against a synthetic
+            // detail.
+            IsMessageOpen = MessageOpenMode != MessageOpenMode.Window;
         }
         finally
         {
@@ -8685,13 +8790,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// The draft is neither on this computer nor reachable on the server right now. Says which,
-    /// rather than repeating the exception, which named a socket timeout at a user who wanted to
-    /// read their own mail (#637).
+    /// Written by the catch-all, so it names no cause it has not established (#637).
+    /// <para>An earlier wording asserted the server could not be reached, which this branch cannot
+    /// know: it catches every failure, including ones that never touched the network. Saying what
+    /// is certain -- the draft was not opened, and nothing has been thrown away -- is what a
+    /// catch-all can honestly say. The detail goes to the log.</para>
     /// </summary>
     internal const string DraftCouldNotBeOpened =
-        "That draft could not be opened: there is no copy on this computer and the server could "
-        + "not be reached. It is still there — try again once you are back online.";
+        "That draft could not be opened. Nothing has been discarded — it is still listed, and the "
+        + "log records what went wrong. Try again in a moment, or once you are back online.";
 
     [RelayCommand]
     private async Task EmptyTrashAsync()

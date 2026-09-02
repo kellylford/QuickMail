@@ -101,6 +101,57 @@ public class DraftUploadScopeTests
         Assert.Contains("no Drafts folder", reason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task AGraphSignInRefusal_IsAccountScopeToo()
+    {
+        // The first version of this recognised MailKit's two exception types only, so every
+        // Microsoft account was left out -- a Graph 401 is an HttpRequestException -- and the whole
+        // backlog was marked refused on one expired token, which is the defect the scope exists for.
+        var (sync, store, blocked) = MakeSync(new System.Net.Http.HttpRequestException(
+            "Graph request failed (401 Unauthorized): {\"error\":{\"code\":\"InvalidAuthenticationToken\"}}",
+            inner: null, statusCode: System.Net.HttpStatusCode.Unauthorized));
+        store.AddPending("local-1");
+        store.AddPending("local-2");
+
+        await sync.UploadPendingDraftsAsync(Account(), TestContext.Current.CancellationToken);
+
+        Assert.Empty(store.Failed);
+        Assert.Equal(2, store.Pending.Count);
+        var (_, reason) = Assert.Single(blocked);
+        Assert.Contains("sign in again", reason, StringComparison.OrdinalIgnoreCase);
+        // And it does not quote the Graph error blob at the user.
+        Assert.DoesNotContain("InvalidAuthenticationToken", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ATokenThatCannotBeRenewedSilently_IsAccountScope()
+    {
+        var (sync, store, blocked) = MakeSync(
+            new InteractiveSignInRequiredException("interactive sign-in required"));
+        store.AddPending("local-1");
+
+        await sync.UploadPendingDraftsAsync(Account(), TestContext.Current.CancellationToken);
+
+        Assert.Empty(store.Failed);
+        Assert.Single(blocked);
+    }
+
+    [Fact]
+    public async Task AGraphErrorAboutTheMessage_IsStillMessageScope()
+    {
+        // Only 401 and 403 are about who is asking. A 400 is Graph answering about this draft, and
+        // must still mark just that one and let the rest through.
+        var (sync, store, blocked) = MakeSync(new System.Net.Http.HttpRequestException(
+            "Graph request failed (400 BadRequest): invalid recipient",
+            inner: null, statusCode: System.Net.HttpStatusCode.BadRequest));
+        store.AddPending("local-1");
+
+        await sync.UploadPendingDraftsAsync(Account(), TestContext.Current.CancellationToken);
+
+        Assert.Empty(blocked);
+        Assert.Contains("Your mail server refused it", store.Failed["local-1"], StringComparison.Ordinal);
+    }
+
     // ── message-scope: mark this one, carry on, and say whose fault it is ────
 
     [Fact]

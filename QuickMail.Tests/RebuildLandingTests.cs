@@ -8,6 +8,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using QuickMail.Helpers;
+using QuickMail.Models;
+using QuickMail.Services;
+using QuickMail.ViewModels;
 using Xunit;
 
 namespace QuickMail.Tests;
@@ -71,13 +74,67 @@ public class RebuildLandingTests
     {
         // A move refused because the selection holds a draft that is not on the server, or a
         // delete the user answers No to. Nothing rebuilds, so the wait is already over.
+        //
+        // The settled callback is the REAL one from the view model rather than a hard-coded
+        // completed task: written the lazy way, this test passed while a refused command sat
+        // waiting on whatever rebuild a background sync happened to have in flight, and the
+        // listener it had armed fired on that -- focus dragged into the tree after a command the
+        // user had just declined.
         var disarmed = false;
+        var vm = LandingVm();
+        var mark = vm.GroupRebuildMark();
 
         await RebuildLanding.RunAsync(
             arm: () => () => disarmed = true,
             command: () => Task.CompletedTask,
-            settled: () => Task.CompletedTask);
+            settled: () => vm.GroupRebuildSettledSince(mark));
 
         Assert.True(disarmed);
+    }
+
+    [Fact]
+    public async Task ARefusedCommand_DoesNotWaitOnSomebodyElsesRebuild()
+    {
+        // Measured behaviour before this: the wait returned the last rebuild scheduled by ANYONE,
+        // so a command that rebuilt nothing still blocked on a background sync's rebuild and its
+        // listener landed on it.
+        var vm = LandingVm();
+        vm.Messages.Add(new MailMessageSummary
+        {
+            MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX", Subject = "One",
+        });
+        vm.ViewMode = ViewMode.Conversations;          // somebody else's rebuild, still in flight
+
+        var mark = vm.GroupRebuildMark();              // taken AFTER it was scheduled
+
+        Assert.True(vm.GroupRebuildSettledSince(mark).IsCompleted);
+    }
+
+    [Fact]
+    public void ARebuildScheduledAfterTheMark_IsStillWaitedFor()
+    {
+        // The other half: the mark must not make the wait useless.
+        var vm = LandingVm();
+        var mark = vm.GroupRebuildMark();
+        vm.Messages.Add(new MailMessageSummary
+        {
+            MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX", Subject = "One",
+        });
+        vm.ViewMode = ViewMode.Conversations;
+
+        Assert.NotSame(mark, vm.GroupRebuildMark());
+    }
+
+    private static MainViewModel LandingVm() => new(
+        new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+        new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+        new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+        new StubRuleService(), new StubSmtpService(), uiDispatcher: new HoldsEverything());
+
+    /// <summary>Never runs what it is given, so a scheduled rebuild stays in flight.</summary>
+    private sealed class HoldsEverything : IUiDispatcher
+    {
+        public void Invoke(Action action) => action();
+        public void Post(Action action) { }
     }
 }

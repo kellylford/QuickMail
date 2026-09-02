@@ -514,15 +514,17 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // this window, so a save that throws on the next line used to lose the key altogether
             // -- and the old account's row stayed queued and went up into the mailbox the user had
             // just moved the draft out of (#637).
-            _orphanedRow ??= orphaned;
+            if (orphaned is { } justOrphaned && !_orphanedRows.Contains(justOrphaned))
+                _orphanedRows.Add(justOrphaned);
             var announcedRekey = false;
 
             var saved = await _drafts.SaveAsync(account, compose, _draftFolderName, _draftMessageId, externalCt);
 
-            // Write-then-delete: the replacement row exists by the time the old one goes. Cleared
-            // only once the row is really gone, so a discard that throws is retried by the next
-            // save rather than leaving a queued row under an account the user has moved away from.
-            if (_orphanedRow is { } old)
+            // Write-then-delete: the replacement row exists by the time the old one goes. An entry
+            // is removed only once its row is really gone, so a discard that throws is retried by
+            // the next save rather than leaving a queued row under an account the user has moved
+            // away from. Iterated over a copy: the list is mutated inside the loop.
+            foreach (var old in _orphanedRows.ToList())
             {
                 try
                 {
@@ -538,7 +540,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                          new DraftRowKey(account.Id, _draftFolderName!, saved.MessageId)],
                         orphaned != null ? "Draft moved to another account." : null);
                     announcedRekey = true;
-                    _orphanedRow   = null;
+                    _orphanedRows.Remove(old);
                 }
                 catch (Exception ex)
                 {
@@ -944,9 +946,15 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private bool _passwordMissing;
 
     /// <summary>
-    /// A stored row left behind by a sender change, still waiting to be dropped. Null once it is.
+    /// Stored rows left behind by sender changes, still waiting to be dropped. Empty once they are.
     /// </summary>
-    private (Guid Account, string Folder, string Id)? _orphanedRow;
+    /// <remarks>
+    /// A list, not one slot. A single slot kept the first orphan and silently dropped any later
+    /// one, so changing the sender A to B with the discard failing and then B to C left B's row
+    /// queued and unreferenced -- and the sweep uploaded the user's draft into the account they had
+    /// moved it out of, which is the whole defect the re-key exists to prevent (#637).
+    /// </remarks>
+    private readonly List<(Guid Account, string Folder, string Id)> _orphanedRows = [];
 
     /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>
     private bool HasAutoSavableContent()

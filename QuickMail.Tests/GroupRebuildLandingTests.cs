@@ -13,6 +13,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using QuickMail.Models;
 using QuickMail.Services;
@@ -43,8 +45,9 @@ public class GroupRebuildLandingTests
         public void SetDefaultAccount(Guid accountId) { }
     }
 
-    private static MainViewModel Vm(IUiDispatcher? ui = null, StubLocalStoreService? store = null) =>
-        new(new StubImapMailService(), new OneAccount(), new StubCredentialService(),
+    private static MainViewModel Vm(IUiDispatcher? ui = null, StubLocalStoreService? store = null,
+                                    IMailService? mail = null) =>
+        new(mail ?? new StubImapMailService(), new OneAccount(), new StubCredentialService(),
             store ?? new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
             new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
             new StubRuleService(), new StubSmtpService(),
@@ -199,6 +202,49 @@ public class GroupRebuildLandingTests
 
         Assert.True(vm.IsDraftRow(held));
         Assert.True(vm.IsLocalDraftRow(held));
+    }
+
+    [Fact]
+    public async Task AServerDraftThatWillNotLoad_SaysTheSameThingOnBothChannels()
+    {
+        // The channel that matters is the one the user reads with announcements off. Handing the
+        // network failure to the store placeholder made the reading pane say the saved copy was
+        // damaged and the draft unrecoverable -- about a draft sitting intact on the server --
+        // while the status line correctly said the server could not be reached.
+        var vm = Vm(mail: new UnreachableMailService());
+        vm.SelectedAccount = vm.Accounts.FirstOrDefault()
+                             ?? new AccountModel { Id = AccountId, Username = "me@example.com" };
+        vm.SelectedFolder = Folder("Drafts", "Drafts", SpecialFolderKind.Drafts);
+        var serverDraft = Row("41", "Drafts");          // no local id, not pending: lives on the server
+        vm.SelectedMessage = serverDraft;
+
+        await vm.OpenDraftCommand.ExecuteAsync(null);
+
+        Assert.NotNull(vm.MessageDetail);
+        Assert.Equal(MainViewModel.DraftCouldNotBeOpened, vm.MessageDetail!.PlainTextBody);
+        Assert.Contains("could not be opened", vm.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("damaged", vm.MessageDetail.PlainTextBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class UnreachableMailService : StubImapMailServiceBase
+    {
+        public override Task<MailMessageDetail> GetMessageDetailAsync(
+            Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+            => throw new System.Net.Sockets.SocketException(10060);
+    }
+
+    [Fact]
+    public void TheCatchAllSentence_DoesNotNameACauseItCannotKnow()
+    {
+        // It is reached for ANY failure, including ones that never touched the network, so it must
+        // not assert the server was unreachable -- and it must not be the store-damage sentence
+        // either, which was what the reading pane showed for a draft sitting intact on the server.
+        Assert.DoesNotContain("server could not be reached", MainViewModel.DraftCouldNotBeOpened,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("damaged", MainViewModel.DraftCouldNotBeOpened,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Nothing has been discarded", MainViewModel.DraftCouldNotBeOpened,
+            StringComparison.Ordinal);
     }
 
     [Fact]
