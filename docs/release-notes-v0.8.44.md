@@ -1,5 +1,89 @@
 # QuickMail v0.8.44 Release Notes
 
+## New: writing mail works without a connection
+
+Until now a dropped connection could trap a message in the compose window. Saving a draft was
+always a trip to the server, so on a flaky airport connection it failed; sending failed the same
+way; and a window with unsaved changes refused to close after a failed save, leaving you holding a
+message you could not keep and could not let go of.
+
+QuickMail now tries your account first and falls back to this computer only when the server does
+not answer:
+
+- **Save Draft** (`Ctrl+S`) and auto-save keep the draft on this computer when the server cannot be
+  reached. You hear *"Draft saved on this computer. It will upload when you're online."* The draft
+  goes to your account's Drafts folder the next time QuickMail connects. Auto-save shows *"Kept on
+  this computer 3:42 PM"* in its status line and says so once.
+- **Send** (`Alt+S`) queues the message when the server cannot be reached. You hear *"Message
+  queued. It will be sent when you're online."*, the window closes, and the message leaves the
+  moment a connection returns. A server that answers and refuses the message — a bad address, a
+  rejected login — still fails in the window, where you can fix it.
+- **Closing** a window with unsaved changes and choosing Save keeps the draft on this computer if
+  the server is unreachable, and the window closes. It stays open only when the draft could be
+  saved nowhere at all.
+
+Everything waiting lives in a new **Outbox**, the last entry in the All Mail group of the folder
+tree. Its count is spoken as *"waiting"*, not *"unread"*. Each row shows the account the message
+will leave from, and its subject starts with its state: *"Waiting to send"*, *"Waiting to upload
+draft"*, *"Sending…"*, or *"Failed"* followed by the server's reason. Press `Enter` on a row to
+reopen it in the compose window exactly as you wrote it — recipients, Bcc, attachments and compose
+mode included; saving or sending from there replaces the queued copy. Press `Delete` to remove one;
+QuickMail asks first, because there is no Trash to get it back from. **Send Outbox Now** (Message
+menu, or the command palette) tries everything right away, including anything marked Failed.
+
+The Outbox drains on its own when QuickMail connects at launch, when the connection returns, and on
+each background check for new mail. A drain is announced once as a whole — *"Outbox: 2 messages
+sent, 1 draft uploaded."* A message the server refused stays in the Outbox marked Failed with the
+reason until you reopen and fix it, or remove it. A message you have reopened is never sent from
+under you while its window is open. The Outbox is not available when QuickMail is started with
+`--online`, which runs without the local store.
+([#637](https://github.com/kellylford/QuickMail/issues/637))
+
+## New: QuickMail knows when it is offline, and says so
+
+QuickMail keeps a copy of your recent mail on this computer, and when the connection drops you keep
+reading it. The connection label in the status bar now reads **Offline**, and screen readers hear
+*"Offline. Showing cached messages."* once, and *"Back online."* when the connection returns.
+QuickMail waits a few seconds before saying Offline, so a momentary blip never interrupts you.
+
+Opening a folder offline shows what is cached with plain wording — *"Offline — showing 12 cached
+messages."* or *"Offline — no cached messages in Projects."* — instead of a raw network error, and
+it never sits on *"Loading…"*. A message that was never downloaded says *"This message is not
+available offline."*; Reply and Forward on it say the same rather than silently doing nothing;
+attachments say *"Attachments are not available offline."*
+
+Getting back online needs nothing from you. When Windows reports the network again QuickMail
+reconnects every account by itself; when the network is up but nothing answers — a hotel or airport
+sign-in page, an outage at the provider — it keeps trying on its own, first every half minute and
+then every five, until something does. `F5` forces an attempt at any time. Once something answers,
+the folder you are looking at refreshes and anything waiting in the Outbox goes out. A sign-in you
+have to do yourself, or a missing password, is reported as exactly that and never as being offline.
+
+Launching with no network no longer spends up to three minutes on *"Connecting…"* before admitting
+it; it says Offline at once and shows your cached mail. ([#637](https://github.com/kellylford/QuickMail/issues/637))
+
+## New: keep recent messages for reading offline
+
+By default QuickMail keeps the full text of a message only once you have opened it, or when it
+fetched a few ahead of time. A new setting, **Settings → General → Sync → Download messages for
+offline reading**, keeps more ready before the connection drops: **Off** (the default), or the last
+**7**, **30** or **90** days. With a window set, the sync at launch and each background check finish
+by downloading the text of each Inbox message in that window that QuickMail does not have yet,
+newest first, and new mail gets its text as it arrives. When a pass completes you hear *"Downloaded
+120 messages for offline reading."* once.
+
+Inbox only; never wider than the sync range above it; attachments are not included and still need
+a connection; POP3 accounts already keep every message whole. The text lives in `mail.db` in
+QuickMail's data folder, which grows accordingly.
+([#637](https://github.com/kellylford/QuickMail/issues/637))
+
+## Fixed: two cache fallbacks that skipped the server
+
+Opening a message, and the fetch behind Reply and Forward, both read QuickMail's local copy first
+and went to the server only if there was none. A failure reading the local copy — every read fails
+in `--online` mode — skipped the server too, so the message did not open at all. Both now fall
+through to the server as intended. ([#637](https://github.com/kellylford/QuickMail/issues/637))
+
 ## Fixed: the address book reads out contacts again
 
 Moving through the list of contacts in the address book announced every row as
