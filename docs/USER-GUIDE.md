@@ -1530,7 +1530,7 @@ When you open a folder offline the status bar reads "Offline — showing 12 cach
 
 - A message that was never downloaded: "This message is not available offline." Reply and Forward on it say the same and open nothing.
 - Attachments: "Attachments are not available offline."
-- New mail, folder changes, and everything a server has to do. Marking read, moving and deleting still change what you see; they reach the server when the connection returns through the next sync.
+- New mail, folder changes, and everything else a server has to do. Marking read, flagging, moving and deleting are not queued: offline they fail with a message, and the next sync after the connection returns puts the message back the way the server has it. Only composing waits for you.
 
 ### Getting back online
 

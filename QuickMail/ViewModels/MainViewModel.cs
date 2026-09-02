@@ -3008,6 +3008,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // SelectedFolder — so the choice is honoured here too. It was not before: the old
             // default-view application sat after an early return on this path.
             SelectStartupFolder(ResolveOnlineStartupFolder(startupCfg) ?? AllMailFolder);
+            if (IsKnownOffline)
+            {
+                // No store to fall back on: say so at once rather than "connecting…" (#637).
+                StatusText = "Online mode — offline. Nothing to show until the connection returns.";
+                AnnounceOfflineOnce();
+                SetConnectionPhase(ConnectionPhase.Idle);
+                return;
+            }
             StatusText = "Online mode — connecting…";
             SetConnectionPhase(ConnectionPhase.Connecting);
             return;
@@ -4558,9 +4566,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     $"source={source} — the account list now shows this account as disconnected");
             }
             _truthProbe?.NoteDisconnected(account.Id, source);
-            // Every one of this method's callers is a real outcome against the server, so this is
-            // the one place the app's online/offline verdict needs feeding from (#637).
-            _connectivity?.NoteAccountUnreachable(account.Id, source);
+            // This is the one place the app's online/offline verdict is fed from (#637). Most callers
+            // report a real transport outcome; a connect that never reached the server (no stored
+            // password, a sign-in the user has to do) says nothing about the network, and a server
+            // that answered and refused is, by definition, reachable.
+            NoteConnectOutcome(account.Id, source);
             return;
         }
 
@@ -4571,6 +4581,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 "ui-shows-connected", $"source={source}");
         }
         _truthProbe?.NoteConnected(account.Id, source);
+        _lastConnectFailure.TryRemove(account.Id, out _);
         _connectivity?.NoteAccountReachable(account.Id, source);
 
         account.IsConnected = true;
@@ -4629,24 +4640,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (account.AuthType == Models.AuthType.Password)
         {
             password = _credentials.GetPassword(account.Id);
-            if (string.IsNullOrEmpty(password)) return (account.Id, null);
+            if (string.IsNullOrEmpty(password))
+            {
+                // Nothing was tried, so this says nothing about the network (#637).
+                _lastConnectFailure[account.Id] = ConnectFailureKind.NotAttempted;
+                return (account.Id, null);
+            }
         }
         var isOAuth = account.AuthType is Models.AuthType.OAuth2Microsoft or Models.AuthType.OAuth2Google;
 
         // No network at all: three timed attempts would only turn "Offline" into three minutes of
-        // "Connecting…" (#637). The reconnect runs when Windows reports the network back.
-        if (_connectivity is { IsNetworkAvailable: false })
+        // "Connecting…" (#637). The reconnect runs when Windows reports the network back. A
+        // loopback server (a local bridge or proxy) needs no network, so it is always tried.
+        var loopback = IsLoopbackHost(account.IncomingHost);
+        if (!loopback && _connectivity is { IsNetworkAvailable: false })
         {
             LogService.Log($"ConnectAll/{account.AccountLabel}: no network — not attempting.");
+            _lastConnectFailure[account.Id] = ConnectFailureKind.Transport;
             return (account.Id, null);
         }
 
         // Startup retry: up to 3 attempts with backoff (30s, 45s, 60s timeouts).
         for (int attempt = 1; attempt <= 3; attempt++)
         {
-            if (attempt > 1 && _connectivity is { IsNetworkAvailable: false })
+            if (attempt > 1 && !loopback && _connectivity is { IsNetworkAvailable: false })
             {
                 LogService.Log($"ConnectAll/{account.AccountLabel}: network went away — giving up until it returns.");
+                _lastConnectFailure[account.Id] = ConnectFailureKind.Transport;
                 return (account.Id, null);
             }
             try
@@ -4678,6 +4698,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // here. Leave it disconnected (not retried — the state won't change on its own); the
                 // user starts sign-in by activating the account.
                 LogService.Log($"ConnectAll/{account.AccountLabel}: interactive sign-in required — leaving disconnected until the user signs in.");
+                _lastConnectFailure[account.Id] = ConnectFailureKind.NotAttempted;
                 return (account.Id, null);
             }
             catch (OperationCanceledException) when (attempt < 3)
@@ -4702,16 +4723,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 // Outer CTS cancelled — exit immediately
                 LogService.Log($"ConnectAll/{account.AccountLabel}: cancelled by user");
+                _lastConnectFailure[account.Id] = ConnectFailureKind.Transport;
                 return (account.Id, null);
             }
             catch (Exception ex)
             {
-                // Final attempt failed
+                // Final attempt failed. Remember what kind of failure it was: a server that refused
+                // (bad credentials, a rejected login) is reachable, and must not make the app say
+                // "Offline" and stop opening folders (#637).
                 LogService.Log($"ConnectAll/{account.AccountLabel}: final attempt failed", ex);
+                _lastConnectFailure[account.Id] = ClassifyConnectFailure(ex);
                 return (account.Id, null);
             }
         }
 
+        _lastConnectFailure[account.Id] = ConnectFailureKind.Transport;
         return (account.Id, null);
     }
 
@@ -5438,8 +5464,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>How long a folder listing may take before it is treated as the network being gone (#637).</summary>
-    private static readonly TimeSpan FolderRefreshTimeout = TimeSpan.FromSeconds(20);
+    /// <summary>
+    /// How long a folder listing may take before the user is told the server is slow (#637). A bound
+    /// on the wait, not a connectivity verdict: a large folder on a thin link can legitimately take
+    /// this long, so a timeout here never marks the account unreachable.
+    /// </summary>
+    private static readonly TimeSpan FolderRefreshTimeout = TimeSpan.FromSeconds(45);
 
     private async Task RefreshFolderFromServerAsync(
         Guid accountId, MailFolderModel folder, int version, CancellationToken ct)
@@ -5473,14 +5503,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 StatusText = "Message list load cancelled.";
             LogService.Debug($"RefreshFolderFromServer: cancelled ({ex.Message})");
         }
+        catch (OperationCanceledException)
+        {
+            // The bound above fired: slow, not necessarily gone. Say so and leave the verdict to a
+            // real transport failure, or the next attempt.
+            if (version == _folderLoadVersion)
+                StatusText = !OnlineMode && Messages.Count > 0
+                    ? $"Showing {Messages.Count} cached {(Messages.Count == 1 ? "message" : "messages")} — the server is slow to answer."
+                    : $"{folder.DisplayName} is taking a long time to load. The server is slow to answer.";
+            LogService.Log($"RefreshFolderFromServer: {folder.DisplayName} did not answer within {FolderRefreshTimeout.TotalSeconds:F0}s");
+        }
         catch (Exception ex)
         {
-            // The timeout above surfaces here as an OperationCanceledException with the caller's
-            // token still live; the classifier reads that as a transport failure.
             _connectivity?.NoteOperationOutcome(accountId, ex, "folder-load-failed", ct);
             if (version == _folderLoadVersion)
                 StatusText = OfflineOrErrorStatus(ex, ct,
-                    () => Messages.Count > 0 ? CachedCountText(Messages.Count) : $"Offline — no cached messages in {folder.DisplayName}.",
+                    () => OnlineMode ? $"Offline — could not load {folder.DisplayName}."
+                        : Messages.Count > 0 ? CachedCountText(Messages.Count)
+                        : $"Offline — no cached messages in {folder.DisplayName}.",
                     () => $"Failed to load messages: {ex.Message}");
             LogService.Log("RefreshFolderFromServer", ex);
         }
@@ -7878,6 +7918,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     detail = await _imap.GetMessageDetailAsync(
                         summary.AccountId, summary.FolderName, summary.MessageId, cts.Token);
                 }
+                catch (OperationCanceledException)
+                {
+                    // A bound on the wait, not a verdict on the network: a large message on a thin link.
+                    StatusText = "The message is taking too long to load. Try again.";
+                    return null;
+                }
                 catch (Exception ex)
                 {
                     _connectivity?.NoteOperationOutcome(summary.AccountId, ex, "message-load-failed");
@@ -9348,7 +9394,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // The VM-side predicate asks "has this account connected this session", which _cachedFolders
         // stopped answering in #516 — it is restored from SQLite at launch, so a never-connected
         // account would look present here and never be reconnected.
-        _ = ReconnectOfflineAccountsAsync("account-list-refresh");
+        ReconnectOfflineAccountsAsync("account-list-refresh").LogFaults("reconnect after account-list refresh");
     }
 
     /// <summary>

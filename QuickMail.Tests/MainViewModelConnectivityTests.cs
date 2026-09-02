@@ -20,9 +20,13 @@ public class MainViewModelConnectivityTests
     private sealed class CountingMailService : StubImapMailServiceBase
     {
         public int Connects;
+        /// <summary>Thrown by the first N connects; a sign-in requirement is not retried, so one is enough.</summary>
+        public Exception? FailFirstWith { get; set; }
+        public int FailCount { get; set; } = 1;
         public override Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
         {
-            Interlocked.Increment(ref Connects);
+            var n = Interlocked.Increment(ref Connects);
+            if (FailFirstWith != null && n <= FailCount) throw FailFirstWith;
             return Task.CompletedTask;
         }
     }
@@ -114,6 +118,82 @@ public class MainViewModelConnectivityTests
 
         Assert.False(f.Vm.IsAccountReady(f.Account.Id));
         Assert.False(f.Account.IsConnected);
+    }
+
+    [Fact]
+    public async Task AConnectThatNeverReachedTheServerSaysNothingAboutTheNetwork()
+    {
+        // An OAuth account whose token needs an interactive sign-in used to be reported unreachable,
+        // so a credentials problem made the whole app say "Offline" and stop opening folders.
+        var f = new Fixture();
+        f.Mail.FailFirstWith = new InteractiveSignInRequiredException("sign in");
+
+        await f.Vm.ConnectAllAccountsAsync();
+
+        Assert.False(f.Account.IsConnected);
+        Assert.DoesNotContain(f.Connectivity.Notes, n => n.AccountId == f.Account.Id && !n.Reachable);
+        Assert.Equal(AccountConnectivity.Unknown, f.Connectivity.AccountState(f.Account.Id));
+    }
+
+    [Theory]
+    [InlineData(typeof(System.Net.Sockets.SocketException), MainViewModel.ConnectFailureKind.Transport)]
+    [InlineData(typeof(MailKit.Security.AuthenticationException), MainViewModel.ConnectFailureKind.ServerRefused)]
+    [InlineData(typeof(TimeoutException), MainViewModel.ConnectFailureKind.Transport)]
+    public void AFinalConnectFailureIsClassified(Type exceptionType, MainViewModel.ConnectFailureKind expected)
+    {
+        var ex = (Exception)Activator.CreateInstance(exceptionType)!;
+        Assert.Equal(expected, MainViewModel.ClassifyConnectFailure(ex));
+    }
+
+    [Theory]
+    [InlineData("localhost", true)]
+    [InlineData("127.0.0.1", true)]
+    [InlineData("::1", true)]
+    [InlineData("imap.example.com", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void LoopbackHostsAreRecognised(string? host, bool expected)
+    {
+        Assert.Equal(expected, MainViewModel.IsLoopbackHost(host));
+    }
+
+    [Fact]
+    public async Task AnAccountReportedReachableAgainRejoinsTheConnectedSet()
+    {
+        var f = new Fixture();
+        await f.Vm.ConnectAllAccountsAsync();
+        f.Connectivity.RaiseAccountOnlineChanged(f.Account.Id, false);
+        Assert.False(f.Vm.IsAccountReady(f.Account.Id));
+
+        f.Connectivity.RaiseAccountOnlineChanged(f.Account.Id, true);
+
+        Assert.True(f.Vm.IsAccountReady(f.Account.Id));
+        Assert.True(f.Account.IsConnected);
+    }
+
+    [Fact]
+    public async Task ALaunchWithNothingAnsweringRetriesUntilSomethingDoes()
+    {
+        // The network is up but the first connect is refused with a sign-in requirement; the app is
+        // then told it is offline. The retry loop must actually run — it used to check the verdict
+        // before its first wait, inside the service's debounce, and exit at once while leaving a
+        // token behind that stopped every later start.
+        var f = new Fixture();
+        f.Vm.OfflineRetryBaseDelay = TimeSpan.FromMilliseconds(50);
+        f.Mail.FailFirstWith = new InteractiveSignInRequiredException("first time only");
+        f.Connectivity.IsOnline = false;
+
+        await f.Vm.StartBackgroundSyncAsync();
+        Assert.Equal(1, f.Mail.Connects);
+
+        await f.WaitForConnectsAsync(2);
+
+        Assert.True(f.Mail.Connects >= 2);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!f.Account.IsConnected && DateTime.UtcNow < deadline)
+            await Task.Delay(25);
+        Assert.True(f.Account.IsConnected);
+        Assert.Contains((f.Account.Id, "offline-retry", true), f.Connectivity.Notes);
     }
 
     [Fact]

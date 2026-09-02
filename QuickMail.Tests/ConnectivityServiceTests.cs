@@ -26,7 +26,7 @@ public class ConnectivityServiceTests
         public void Dispose() => Disposed = true;
     }
 
-    private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(60);
+    private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(150);
 
     private sealed class Harness : IDisposable
     {
