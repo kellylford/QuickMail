@@ -499,7 +499,8 @@ public partial class App : Application
                 truthProbe: probeMode ? null : _truthProbe,
                 rowLayoutService: rowLayoutService,
                 watchService: watchService,
-                folderViewState: folderViewState);
+                folderViewState: folderViewState,
+                outboxService: outboxService);
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
             // #31: a credential-less shared mailbox borrows its parent account's token. The resolver runs
             // on background sweep threads, so it goes through ResolveAccountById — a thread-safe snapshot
