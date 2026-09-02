@@ -369,6 +369,9 @@
                 <MenuItem Header="Empty _Trash"
                           Command="{Binding EmptyTrashCommand}"
                           InputGestureText="Ctrl+Shift+E"/>
+                <!-- No gesture: the Outbox drains on its own when the connection returns (#637). -->
+                <MenuItem Header="Send _Outbox Now"
+                          Command="{Binding SendOutboxNowCommand}"/>
                 <Separator/>
                 <!-- Click, not Command: the target depends on which group tree is selected, which
                      only the window can resolve (see WatchTargetSubject). Dimmed rather than

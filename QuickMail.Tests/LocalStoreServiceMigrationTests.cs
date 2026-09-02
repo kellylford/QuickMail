@@ -208,6 +208,22 @@ public class LocalStoreServiceMigrationTests
     }
 
     [Fact]
+    public void Migration_FromV1_AddsTheOutboxTables()
+    {
+        // The Outbox (#637) is additive: a profile upgraded from the oldest schema gains both tables
+        // on the same Initialize() that runs the v2 rebuild, and the rebuild still completes.
+        var dir = NewTempDir();
+        var dbPath = Path.Combine(dir, "mail.db");
+        SeedV1Database(dbPath, Guid.NewGuid());
+
+        new LocalStoreService(new ProfileContext(dir)).Initialize();
+
+        Assert.True(TableExists(dbPath, "Outbox"));
+        Assert.True(TableExists(dbPath, "OutboxAttachment"));
+        Assert.Equal("TEXT", ColumnType(dbPath, "MessageSummary", "unique_id"));
+    }
+
+    [Fact]
     public async Task GetMaxMessageKey_IsNumericMax()
     {
         // Seeded via v1 then migrated (v5 clears summaries), so insert fresh rows post-migration

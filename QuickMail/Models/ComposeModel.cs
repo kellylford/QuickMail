@@ -45,5 +45,41 @@ public class ComposeModel
     /// <summary>Folder name of the existing draft (null when composing new).</summary>
     public string? DraftFolderName { get; set; }
 
+    /// <summary>
+    /// Id of the local Outbox row this compose was opened from, or that it last saved into (null when
+    /// nothing is queued). A save or send replaces that row instead of queuing another (issue #637).
+    /// </summary>
+    public string? OutboxId { get; set; }
+
     public List<AttachmentModel> Attachments { get; set; } = [];
+
+    /// <summary>A shallow copy with no attachments — what the Outbox stores as JSON, keeping the bytes in their own rows.</summary>
+    public ComposeModel WithoutAttachments() => new()
+    {
+        Kind = Kind,
+        AccountId = AccountId,
+        To = To,
+        Cc = Cc,
+        Bcc = Bcc,
+        Subject = Subject,
+        Body = Body,
+        Mode = Mode,
+        HtmlBody = HtmlBody,
+        InReplyToMessageId = InReplyToMessageId,
+        DraftMessageId = DraftMessageId,
+        DraftFolderName = DraftFolderName,
+        OutboxId = OutboxId,
+        Attachments = [],
+    };
+}
+
+/// <summary>How the last Save Draft in a compose window ended (#637).</summary>
+public enum DraftSaveOutcome
+{
+    None,
+    SavedToServer,
+    /// <summary>The server could not be reached; the draft is in the local Outbox awaiting upload.</summary>
+    SavedLocally,
+    /// <summary>Neither the server nor the local store took it. The window must not close and lose it.</summary>
+    Failed,
 }

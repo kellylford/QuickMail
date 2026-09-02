@@ -11,7 +11,7 @@ using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public class LocalStoreService : ILocalStoreService
+public partial class LocalStoreService : ILocalStoreService
 {
     private readonly string _connectionString;
     private readonly string _dbPath;
@@ -193,6 +193,46 @@ public class LocalStoreService : ILocalStoreService
                 account_id TEXT NOT NULL,
                 uidl       TEXT NOT NULL,
                 PRIMARY KEY (account_id, uidl)
+            );
+            """;
+        cmd.ExecuteNonQuery();
+
+        // Outbox (#637): mail written on this computer while the server could not be reached — drafts
+        // waiting to upload and messages waiting to send. The compose model is kept as JSON so a row
+        // reopens in the compose window losslessly (Bcc, Markdown source, mode, reply linkage all
+        // survive, which a MIME round-trip loses); attachment bytes sit in their own rows so listing
+        // the Outbox never reads them. User-authored, not cache: ClearCachedMailAsync leaves these
+        // alone and only DeleteAccountDataAsync removes them. Additive, so no user_version bump.
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS Outbox (
+                id                 TEXT    NOT NULL PRIMARY KEY,
+                account_id         TEXT    NOT NULL,
+                kind               INTEGER NOT NULL,
+                state              INTEGER NOT NULL DEFAULT 0,
+                created_ticks      INTEGER NOT NULL,
+                updated_ticks      INTEGER NOT NULL,
+                attempts           INTEGER NOT NULL DEFAULT 0,
+                last_error         TEXT    DEFAULT NULL,
+                next_attempt_ticks INTEGER DEFAULT NULL,
+                replace_draft_id   TEXT    DEFAULT NULL,
+                draft_folder_name  TEXT    DEFAULT NULL,
+                subject            TEXT    NOT NULL DEFAULT '',
+                to_addr            TEXT    NOT NULL DEFAULT '',
+                cc                 TEXT    NOT NULL DEFAULT '',
+                bcc                TEXT    NOT NULL DEFAULT '',
+                has_attachments    INTEGER NOT NULL DEFAULT 0,
+                compose_json       TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_outbox_created ON Outbox(created_ticks DESC);
+
+            CREATE TABLE IF NOT EXISTS OutboxAttachment (
+                outbox_id    TEXT    NOT NULL,
+                ordinal      INTEGER NOT NULL,
+                file_name    TEXT    NOT NULL DEFAULT '',
+                content_type TEXT    NOT NULL DEFAULT 'application/octet-stream',
+                size         INTEGER NOT NULL DEFAULT 0,
+                content      BLOB    NOT NULL,
+                PRIMARY KEY (outbox_id, ordinal)
             );
             """;
         cmd.ExecuteNonQuery();
@@ -571,7 +611,9 @@ public class LocalStoreService : ILocalStoreService
             "DELETE FROM CalendarEvent     WHERE account_id = $aid;" +
             "DELETE FROM Folder            WHERE account_id = $aid;" +
             "DELETE FROM Pop3CollectedUidl WHERE account_id = $aid;" +
-            "DELETE FROM CalendarSource    WHERE account_id = $aid;";
+            "DELETE FROM CalendarSource    WHERE account_id = $aid;" +
+            "DELETE FROM OutboxAttachment WHERE outbox_id IN (SELECT id FROM Outbox WHERE account_id = $aid);" +
+            "DELETE FROM Outbox            WHERE account_id = $aid;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();

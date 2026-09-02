@@ -166,7 +166,7 @@ public class GraphMailService : IMailService, IConnectionProbe
     private AccountModel Account(Guid accountId)
         => _accounts.TryGetValue(accountId, out var a)
             ? a
-            : throw new InvalidOperationException($"Graph account {accountId} is not connected.");
+            : throw new AccountNotConnectedException(accountId);
 
     // ── Folders ──────────────────────────────────────────────────────────────────
     public async Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)

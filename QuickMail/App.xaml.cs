@@ -44,6 +44,7 @@ public partial class App : Application
     private ImapMailService? _imapBackend;
     private GraphMailService? _graphBackend;
     private Pop3MailService? _pop3Backend;
+    private OutboxService? _outboxService;
     private UpdateCheckService? _updateCheckService;
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
@@ -385,6 +386,12 @@ public partial class App : Application
             // Reuses the shared GraphClient (no own disposables), so no disposal wiring needed.
             var serverRuleService = new GraphServerRuleService(accountService, graphBackend.Client);
             var syncService = new SyncService(effectiveMail, localStore, configService, ruleService, probeMode: probeMode);
+            // The Outbox (#637): mail written while the server could not be reached. Drains through the
+            // same router and send service as a live send, so a queued message leaves exactly as an
+            // online one would have. Connectivity arrives with PR 2; until then it drains on startup,
+            // on the fallback sync tick, and on Send Outbox Now.
+            _outboxService = new OutboxService(localStore, effectiveMail, effectiveSmtp, accountService, credentialService, connectivity: null, onlineMode: onlineMode);
+            var outboxService = _outboxService;
             // The one-time immutable-id wipe emptied these accounts' store, so their first re-sync would
             // read old mail as new and re-run rules over it on upgrade day. Baseline it (#366/N5).
             if (immutableIdRebuilt) syncService.SeedRebuildBaseline(rebuiltGraphAccountIds);
@@ -492,7 +499,8 @@ public partial class App : Application
                 truthProbe: probeMode ? null : _truthProbe,
                 rowLayoutService: rowLayoutService,
                 watchService: watchService,
-                folderViewState: folderViewState);
+                folderViewState: folderViewState,
+                outboxService: outboxService);
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
             // #31: a credential-less shared mailbox borrows its parent account's token. The resolver runs
             // on background sweep threads, so it goes through ResolveAccountById — a thread-safe snapshot
@@ -504,7 +512,7 @@ public partial class App : Application
             mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe, rowLayoutService, watchService);
+            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe, rowLayoutService, watchService, outboxService);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
@@ -533,6 +541,7 @@ public partial class App : Application
     {
         _changeNotifier?.Dispose(); // stops all watchers (IDLE + Graph poll) + severs the event chain
         _graphNotifier?.Dispose();  // disposes the Graph poll CTS (StopWatchers already ran; idempotent)
+        _outboxService?.Dispose();  // cancels an in-flight drain before the pools it sends through go away
         _imapBackend?.Dispose();    // closes connection pools (StopWatchers already ran, and is idempotent)
         _graphBackend?.Dispose();   // releases GraphClient/HttpClient; after the notifiers, which poll through its client
         _pop3Backend?.Dispose();    // releases the per-account session locks (POP3 holds no open connection)

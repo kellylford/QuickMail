@@ -554,7 +554,9 @@ public class GraphMailServiceTests
     {
         var (svc, _) = Make(url => (HttpStatusCode.OK, "{}"));
         // No ConnectAsync first → the account isn't registered, so token resolution can't proceed.
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        // The typed exception (an InvalidOperationException) is what lets callers tell "not
+        // connected" from every other invalid-operation without matching the message text (#637).
+        await Assert.ThrowsAsync<AccountNotConnectedException>(
             () => svc.GetFoldersAsync(Guid.NewGuid(), TestContext.Current.CancellationToken));
     }
 }

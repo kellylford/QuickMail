@@ -75,7 +75,7 @@ class StubImapMailServiceBase : IMailService
     public Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.MarkReadAsync(accountId, folderName, messageId, ct);
     public Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.MarkReadBatchAsync(accountId, folderName, messageIds, ct);
     public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default) => _inner.SetMessageFlaggedAsync(accountId, folderName, messageId, flagged, ct);
-    public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.MoveToTrashAsync(accountId, folderName, messageId, ct);
+    public virtual Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.MoveToTrashAsync(accountId, folderName, messageId, ct);
     public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.MoveToTrashBatchAsync(accountId, folderName, messageIds, ct);
     public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.PermanentlyDeleteBatchAsync(accountId, folderName, messageIds, ct);
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => _inner.NoOpAsync(accountId, ct);
@@ -86,9 +86,9 @@ class StubImapMailServiceBase : IMailService
     public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default) => _inner.FetchPreviewsAsync(accountId, folderName, messageIds, maxLines, ct);
     public Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default) => _inner.PollAsync(accountId, folderName, ct);
     public Task<(int Total, int Unread)> GetInboxStatusAsync(Guid accountId, CancellationToken ct = default) => _inner.GetInboxStatusAsync(accountId, ct);
-    public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) => _inner.FindDraftsFolderNameAsync(accountId, ct);
-    public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default) => _inner.AppendDraftAsync(accountId, draft, replaceMessageId, ct);
-    public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => _inner.AppendToSentAsync(accountId, sent, ct);
+    public virtual Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) => _inner.FindDraftsFolderNameAsync(accountId, ct);
+    public virtual Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default) => _inner.AppendDraftAsync(accountId, draft, replaceMessageId, ct);
+    public virtual Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => _inner.AppendToSentAsync(accountId, sent, ct);
     public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default) => _inner.DownloadAttachmentAsync(accountId, folderName, messageId, partSpecifier, ct);
     // Virtual: a double needs to make the server refuse, so a test can tell "it worked" from "it
     // was recorded anyway" — which is the whole of the remembered-destination rule (#515).
@@ -315,6 +315,40 @@ class StubLocalStoreService : ILocalStoreService
         if (Pop3Uidls.TryGetValue(accountId, out var set)) set.ExceptWith(uidls);
         return Task.CompletedTask;
     }
+    /// <summary>In-memory Outbox rows (#637), keyed by id, so compose and main-window tests can
+    /// assert what was queued without SQLite. Functional: upsert replaces, delete removes, and the
+    /// compose comes back with <see cref="ComposeModel.OutboxId"/> stamped like the real store.</summary>
+    public Dictionary<string, (OutboxItem Item, ComposeModel Compose)> OutboxRows { get; } = new(StringComparer.Ordinal);
+    public virtual Task UpsertOutboxItemAsync(OutboxItem item, ComposeModel compose)
+    {
+        item.HasAttachments = compose.Attachments.Any(a => a.IsLoaded);
+        item.UpdatedUtc = DateTimeOffset.UtcNow;
+        if (item.CreatedUtc == default) item.CreatedUtc = item.UpdatedUtc;
+        OutboxRows[item.Id] = (item, compose);
+        return Task.CompletedTask;
+    }
+    public virtual Task<List<OutboxItem>> LoadOutboxItemsAsync()
+        => Task.FromResult(OutboxRows.Values.Select(v => v.Item).OrderByDescending(i => i.CreatedUtc).ToList());
+    public virtual Task<OutboxItem?> LoadOutboxItemAsync(string id)
+        => Task.FromResult(OutboxRows.TryGetValue(id, out var row) ? row.Item : null);
+    public virtual Task<ComposeModel?> LoadOutboxComposeAsync(string id)
+    {
+        if (!OutboxRows.TryGetValue(id, out var row)) return Task.FromResult<ComposeModel?>(null);
+        row.Compose.OutboxId = id;
+        return Task.FromResult<ComposeModel?>(row.Compose);
+    }
+    public virtual Task UpdateOutboxStateAsync(string id, OutboxState state, int attempts, string? lastError, DateTimeOffset? nextAttemptUtc)
+    {
+        if (OutboxRows.TryGetValue(id, out var row))
+        {
+            row.Item.State = state; row.Item.Attempts = attempts; row.Item.LastError = lastError;
+            row.Item.NextAttemptUtc = nextAttemptUtc; row.Item.UpdatedUtc = DateTimeOffset.UtcNow;
+        }
+        return Task.CompletedTask;
+    }
+    public virtual Task DeleteOutboxItemAsync(string id) { OutboxRows.Remove(id); return Task.CompletedTask; }
+    public virtual Task<int> CountOutboxItemsAsync() => Task.FromResult(OutboxRows.Count);
+
     public virtual Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
     public virtual Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     public virtual Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());
@@ -548,6 +582,120 @@ sealed class StubRuleService : IRuleService
     public Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
         ILocalStoreService store, IReadOnlyDictionary<Guid, string> inboxFolderByAccount, CancellationToken ct)
         => Task.FromResult(new List<MailMessageSummary>());
+}
+
+/// <summary>
+/// Records what the compose window and main window queue (#637) without a store, and lets a test
+/// decide whether the Outbox is "available" (it is not in --online mode) and whether an enqueue
+/// blows up, the way a broken SQLite file would.
+/// </summary>
+sealed class StubOutboxService : IOutboxService
+{
+    public bool IsAvailable { get; set; } = true;
+    public Exception? EnqueueFailure { get; set; }
+    public List<(OutboxKind Kind, ComposeModel Compose, Guid AccountId, string? ExistingId, string Id)> Enqueued { get; } = [];
+    public List<string> Removed { get; } = [];
+    public List<OutboxItem> Items { get; } = [];
+    public Dictionary<string, ComposeModel> Composes { get; } = new(StringComparer.Ordinal);
+    public List<bool> Flushes { get; } = [];
+    public OutboxFlushResult NextFlushResult { get; set; } = OutboxFlushResult.Nothing;
+
+    public event Action? Changed;
+    public event Action<OutboxFlushResult>? FlushCompleted;
+
+    public void RaiseChanged() => Changed?.Invoke();
+    public void RaiseFlushCompleted(OutboxFlushResult r) => FlushCompleted?.Invoke(r);
+
+    private Task<string> Enqueue(OutboxKind kind, ComposeModel compose, Guid accountId, string? existingId)
+    {
+        if (!IsAvailable) throw new InvalidOperationException("The Outbox is not available in --online mode.");
+        if (EnqueueFailure != null) return Task.FromException<string>(EnqueueFailure);
+        var id = existingId ?? OutboxItem.NewId();
+        Enqueued.Add((kind, compose, accountId, existingId, id));
+        Items.RemoveAll(i => i.Id == id);
+        Items.Add(new OutboxItem { Id = id, AccountId = accountId, Kind = kind, Subject = compose.Subject, To = compose.To, CreatedUtc = DateTimeOffset.UtcNow });
+        Composes[id] = compose;
+        return Task.FromResult(id);
+    }
+    public Task<string> EnqueueDraftAsync(ComposeModel compose, Guid accountId, string? existingId, CancellationToken ct = default)
+        => Enqueue(OutboxKind.Draft, compose, accountId, existingId);
+    public Task<string> EnqueueSendAsync(ComposeModel compose, Guid accountId, string? existingId, CancellationToken ct = default)
+        => Enqueue(OutboxKind.Send, compose, accountId, existingId);
+    public Task<IReadOnlyList<OutboxItem>> ListAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<OutboxItem>>([.. Items.OrderByDescending(i => i.CreatedUtc)]);
+    public Task<OutboxItem?> GetAsync(string id, CancellationToken ct = default)
+        => Task.FromResult(Items.FirstOrDefault(i => i.Id == id));
+    public Task<ComposeModel?> LoadComposeAsync(string id, CancellationToken ct = default)
+    {
+        if (!Composes.TryGetValue(id, out var c)) return Task.FromResult<ComposeModel?>(null);
+        c.OutboxId = id;
+        return Task.FromResult<ComposeModel?>(c);
+    }
+    /// <summary>When set, RemoveAsync raises Changed inline the way the real service does.</summary>
+    public bool RaiseChangedOnRemove { get; set; }
+    public Task<bool> RemoveAsync(string id, CancellationToken ct = default)
+    {
+        Removed.Add(id);
+        var existed = Items.RemoveAll(i => i.Id == id) > 0;
+        Composes.Remove(id);
+        Held.Remove(id);
+        if (existed && RaiseChangedOnRemove) Changed?.Invoke();
+        return Task.FromResult(existed);
+    }
+    public HashSet<string> Held { get; } = new(StringComparer.Ordinal);
+    public void Hold(string id) => Held.Add(id);
+    public void Release(string id) => Held.Remove(id);
+    public Task<int> CountAsync(CancellationToken ct = default) => Task.FromResult(Items.Count);
+    /// <summary>When set, FlushAsync raises FlushCompleted with NextFlushResult before returning,
+    /// as the real drain does when anything reached an outcome.</summary>
+    public bool RaiseFlushCompletedDuringFlush { get; set; }
+    public Task<OutboxFlushResult> FlushAsync(bool force = false, CancellationToken ct = default)
+    {
+        Flushes.Add(force);
+        if (RaiseFlushCompletedDuringFlush && NextFlushResult.Any) FlushCompleted?.Invoke(NextFlushResult);
+        return Task.FromResult(NextFlushResult);
+    }
+    public Task<OutboxFlushResult> FlushAccountAsync(Guid accountId, bool force = false, CancellationToken ct = default)
+        => FlushAsync(force, ct);
+}
+
+/// <summary>
+/// A settable stand-in for the app's online/offline state (#637). Tests flip accounts and the
+/// machine signal and raise the events by hand; the notes fed back by the code under test are
+/// recorded so a test can assert which failure sites report what.
+/// </summary>
+sealed class StubConnectivityService : IConnectivityService
+{
+    private readonly Dictionary<Guid, AccountConnectivity> _accounts = [];
+    public bool IsNetworkAvailable { get; set; } = true;
+    private bool? _isOnline;
+    public bool IsOnline
+    {
+        get => _isOnline ?? (IsNetworkAvailable && !(_accounts.Count > 0 && _accounts.Values.All(s => s == AccountConnectivity.Offline)));
+        set => _isOnline = value;
+    }
+    public List<(Guid AccountId, string Source, bool Reachable)> Notes { get; } = [];
+
+    public void SetAccount(Guid accountId, bool online) => _accounts[accountId] = online ? AccountConnectivity.Online : AccountConnectivity.Offline;
+    public bool IsAccountOnline(Guid accountId) => IsNetworkAvailable && AccountState(accountId) != AccountConnectivity.Offline;
+    public AccountConnectivity AccountState(Guid accountId) => _accounts.TryGetValue(accountId, out var s) ? s : AccountConnectivity.Unknown;
+    public void NoteAccountReachable(Guid accountId, string source) { _accounts[accountId] = AccountConnectivity.Online; Notes.Add((accountId, source, true)); }
+    public void NoteAccountUnreachable(Guid accountId, string source) { _accounts[accountId] = AccountConnectivity.Offline; Notes.Add((accountId, source, false)); }
+    public void NoteOperationOutcome(Guid accountId, Exception? ex, string source, CancellationToken callerToken = default)
+    {
+        if (ex != null && ConnectionFailure.IsConnectionFailure(ex, callerToken)) NoteAccountUnreachable(accountId, source);
+        else NoteAccountReachable(accountId, source);
+    }
+    public void Forget(Guid accountId) => _accounts.Remove(accountId);
+
+    public event Action<bool>? OnlineChanged;
+    public event Action<Guid, bool>? AccountOnlineChanged;
+    public event Action<bool>? NetworkAvailabilityChanged;
+
+    public int OnlineChangedSubscribers => OnlineChanged?.GetInvocationList().Length ?? 0;
+    public void RaiseOnlineChanged(bool online) { _isOnline = online; OnlineChanged?.Invoke(online); }
+    public void RaiseAccountOnlineChanged(Guid accountId, bool online) { SetAccount(accountId, online); AccountOnlineChanged?.Invoke(accountId, online); }
+    public void RaiseNetworkAvailabilityChanged(bool available) { IsNetworkAvailable = available; NetworkAvailabilityChanged?.Invoke(available); }
 }
 
 sealed class StubSyncService : ISyncService

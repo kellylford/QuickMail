@@ -168,6 +168,8 @@ public partial class MainWindow : Window
     private readonly IThemeService? _themeService;
     private readonly IBugReportService? _bugReportService;
     private readonly ConnectionTruthProbe? _truthProbe;
+    private readonly IOutboxService? _outbox;
+    private readonly IConnectivityService? _connectivity;
     private readonly INotificationService? _notificationService;
 
     // ── Close-to-tray / run-in-background ──────────────────────────────────────
@@ -232,7 +234,9 @@ public partial class MainWindow : Window
         IAutoDiscoverService? autoDiscover = null,
         ConnectionTruthProbe? truthProbe = null,
         IRowLayoutService? rowLayoutService = null,
-        IWatchService? watchService = null)
+        IWatchService? watchService = null,
+        IOutboxService? outbox = null,
+        IConnectivityService? connectivity = null)
     {
         _vm = vm;
         _watchService = watchService;
@@ -264,6 +268,8 @@ public partial class MainWindow : Window
         _bugReportService = bugReportService;
 
         _truthProbe       = truthProbe;
+        _outbox           = outbox;
+        _connectivity     = connectivity;
         InitializeComponent();
         DataContext = vm;
 
@@ -5193,7 +5199,7 @@ public partial class MainWindow : Window
         // Compose windows are modeless, so the one-turn delay is imperceptible.
         Dispatcher.InvokeAsync(() =>
         {
-            var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
+            var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity);
             composeVm.Seed(composeModel);
             var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
             composeVm.CloseRequested += window.Close;
@@ -5247,6 +5253,12 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task OpenMessageFromListAsync(MailMessageSummary summary)
     {
+        // An Outbox row is a message that has not gone anywhere yet; it reopens in compose (#637).
+        if (_vm.IsSelectedFolderOutbox)
+        {
+            await _vm.OpenOutboxItemCommand.ExecuteAsync(null);
+            return;
+        }
         if (_vm.IsSelectedFolderDrafts)
         {
             await _vm.OpenDraftCommand.ExecuteAsync(null);
@@ -6171,7 +6183,7 @@ public partial class MainWindow : Window
         ComposeWindow GetOrOpenCompose()
         {
             if (pending?.IsLoaded == true) return pending;
-            var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
+            var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity);
             // Seed with an empty new-message model so the sender-account list is populated and the
             // default account + signature are applied — same as the normal "New message" path. Without
             // this the From picker is empty and the user can't choose who to send from (a pre-existing

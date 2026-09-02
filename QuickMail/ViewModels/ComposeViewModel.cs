@@ -23,6 +23,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private readonly IMailService _imap;
     private readonly ITemplateService _templateService;
     private readonly IMarkdownService _markdown;
+    private readonly IOutboxService? _outbox;
+    private readonly IConnectivityService? _connectivity;
 
     [ObservableProperty] private string _to = string.Empty;
     [ObservableProperty] private string _cc = string.Empty;
@@ -143,8 +145,26 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private string? _inReplyToMessageId;
     private string? _draftMessageId;
     private string? _draftFolderName;
+    /// <summary>The local Outbox row this compose owns (#637): the one it was opened from, or the one
+    /// its last offline save went into. Every later save or send replaces that row.</summary>
+    private string? _outboxId;
     private bool _isDirty;
     private bool _isSent;
+
+    /// <summary>
+    /// How the last Save Draft ended. The window reads this to decide whether a close may go ahead —
+    /// it used to string-match "failed" in the status text, which missed "No Drafts folder found"
+    /// and discarded the message (#637).
+    /// </summary>
+    public DraftSaveOutcome LastSaveOutcome { get; private set; } = DraftSaveOutcome.None;
+
+    /// <summary>
+    /// Raised once when auto-save first has to keep the draft on this computer instead of the
+    /// server, so the window can say so (Status category) without nagging every interval. Reset by
+    /// the next server save.
+    /// </summary>
+    public event Action<string>? AutoSaveNotice;
+    private bool _localAutoSaveNoticed;
     private ComposeMode _seededMode = ComposeMode.PlainText;
     private string? _seededHtmlBody;
 
@@ -170,7 +190,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public IAccountService AccountService => _accountService;
 
-    public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null)
+    public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null,
+        IOutboxService? outbox = null, IConnectivityService? connectivity = null)
     {
         _smtp = smtp;
         _accountService = accountService;
@@ -178,6 +199,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         _imap = imap;
         _templateService = templateService;
         _markdown = markdown ?? new MarkdownService();
+        _outbox = outbox;
+        _connectivity = connectivity;
         _attachments.CollectionChanged += (_, _) =>
         {
             _isDirty = true;
@@ -197,6 +220,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         _inReplyToMessageId = model.InReplyToMessageId;
         _draftMessageId     = model.DraftMessageId;
         _draftFolderName    = model.DraftFolderName;
+        _outboxId           = model.OutboxId;
+        // Reopened from the Outbox: the row is ours until this window closes (#637).
+        if (_outboxId != null) _outbox?.Hold(_outboxId);
         ComposeKind         = model.Kind;
         OnPropertyChanged(nameof(WindowTitle));
 
@@ -223,9 +249,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                         ?? SenderAccounts.FirstOrDefault(a => a.IsDefault)
                         ?? SenderAccounts.FirstOrDefault();
 
-        // Auto-append signature if this is a new compose (not a draft re-open) and the
+        // Auto-append signature if this is a new compose (not a draft or Outbox re-open) and the
         // account has a signature configured. Drafts already have the signature in the body.
-        if (model.DraftMessageId == null && SenderAccount != null && !string.IsNullOrWhiteSpace(SenderAccount.Signature))
+        if (model.DraftMessageId == null && model.OutboxId == null && SenderAccount != null && !string.IsNullOrWhiteSpace(SenderAccount.Signature))
         {
             var sig = SenderAccount.Signature;
             // Add separator if body already has content (reply/forward)
@@ -241,15 +267,20 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task SaveDraftAsync()
     {
+        // Every exit sets an outcome: the window's close prompt reads it, and a stale success from
+        // an earlier save would otherwise let a refused save close the window and lose the message.
+        LastSaveOutcome = DraftSaveOutcome.None;
         var account = SenderAccount;
         if (account == null)
         {
+            LastSaveOutcome = DraftSaveOutcome.Failed;
             SetStatusOutcome("Please select a sender account.");
             return;
         }
 
         if (Attachments.Sum(a => a.FileSize) > 25_000_000)
         {
+            LastSaveOutcome = DraftSaveOutcome.Failed;
             SetStatusOutcome("Total attachment size exceeds 25 MB. Please remove some attachments.");
             return;
         }
@@ -259,20 +290,97 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         try
         {
             await SaveDraftCoreAsync(account);
+            await ForgetLocalCopyAsync();
+            LastSaveOutcome = DraftSaveOutcome.SavedToServer;
             SetStatusOutcome("Draft saved.");
-        }
-        catch (DraftFolderMissingException)
-        {
-            SetStatusOutcome("No Drafts folder found on this account.");
         }
         catch (Exception ex)
         {
-            SetStatusOutcome($"Save draft failed: {ex.Message}");
+            // Server first, this computer second (#637) — but only when the server could not be
+            // reached. A server that answered and refused (over quota, a rejected append) is an error
+            // the user has to see, not something to queue and fail again every auto-save. The one
+            // deliberate exception is "no Drafts folder": the text the user typed is worth more than
+            // folder purity, so it is kept locally, fails on upload with that reason, and stays
+            // reopenable instead of being discarded when the window closes.
+            if (ShouldKeepLocally(ex) && await TryKeepDraftLocallyAsync(account))
+            {
+                LastSaveOutcome = DraftSaveOutcome.SavedLocally;
+                SetStatusOutcome("Draft saved on this computer. It will upload when you're online.");
+            }
+            else
+            {
+                LastSaveOutcome = DraftSaveOutcome.Failed;
+                SetStatusOutcome(ex is DraftFolderMissingException
+                    ? "No Drafts folder found on this account."
+                    : $"Save draft failed: {ex.Message}");
+            }
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Writes the compose into the local Outbox as a draft, replacing the row it already owns.
+    /// False when there is no Outbox (<c>--online</c> mode) or the store itself failed — the caller
+    /// then reports the original server failure. Own try/catch: a local-store failure must never
+    /// hide the server failure it was standing in for.
+    /// </summary>
+    private static bool ShouldKeepLocally(Exception ex)
+        => ex is DraftFolderMissingException || ConnectionFailure.IsConnectionFailure(ex, CancellationToken.None);
+
+    private async Task<bool> TryKeepDraftLocallyAsync(AccountModel account)
+    {
+        if (_outbox?.IsAvailable != true) return false;
+        try
+        {
+            var compose = BuildComposeModel(account.Id);
+            _outboxId = await _outbox.EnqueueDraftAsync(compose, account.Id, _outboxId);
+            // Ours while this window is open: a drain must not upload or send it from under the edit.
+            _outbox.Hold(_outboxId);
+            _isDirty = false;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("SaveDraft: keeping the draft locally failed", ex);
+            return false;
+        }
+    }
+
+    /// <summary>The server now holds this message, so the local Outbox row is redundant. Best effort.</summary>
+    private async Task ForgetLocalCopyAsync()
+    {
+        if (_outboxId == null || _outbox == null) return;
+        var id = _outboxId;
+        _outboxId = null;
+        _outbox.Release(id);
+        try { await _outbox.RemoveAsync(id); }
+        catch (Exception ex) { LogService.Log("Compose: removing the local Outbox copy failed", ex); }
+    }
+
+    /// <summary>
+    /// Queues the message in the local Outbox to be sent when the server is reachable (#637).
+    /// Supersedes any draft row this compose owns. False when there is no Outbox or it failed.
+    /// </summary>
+    private async Task<bool> QueueSendAsync(ComposeModel compose, AccountModel account)
+    {
+        if (_outbox?.IsAvailable != true) return false;
+        try
+        {
+            _outboxId = await _outbox.EnqueueSendAsync(compose, account.Id, _outboxId);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Send: queueing the message in the Outbox failed", ex);
+            return false;
+        }
+        _isSent = true;
+        _isDirty = false;
+        SetStatusOutcome("Message queued. It will be sent when you're online.");
+        CloseRequested?.Invoke();
+        return true;
     }
 
     /// <summary>Uploads the current compose state as a draft, replacing any previous draft.</summary>
@@ -308,6 +416,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     {
         _autoSaveCts.Cancel();
         _autoSaveCts.Dispose();
+        // The window is gone; whatever row it held can be drained now (#637).
+        if (_outboxId != null) _outbox?.Release(_outboxId);
         GC.SuppressFinalize(this);
     }
 
@@ -341,12 +451,28 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         try
         {
             await SaveDraftCoreAsync(account, _autoSaveCts.Token);
+            await ForgetLocalCopyAsync();
             AutoSaveText = $"Auto-saved {DateTime.Now:t}";
             _autoSaveFailureAnnounced = false;
+            _localAutoSaveNoticed = false;
+        }
+        catch (OperationCanceledException) when (_autoSaveCts.IsCancellationRequested)
+        {
+            // The window is closing; its own close-time save decides what happens to the draft.
         }
         catch (Exception ex)
         {
             LogService.Log("AutoSaveAsync: draft auto-save failed", ex);
+            if (ShouldKeepLocally(ex) && await TryKeepDraftLocallyAsync(account))
+            {
+                AutoSaveText = $"Kept on this computer {DateTime.Now:t}";
+                if (!_localAutoSaveNoticed)
+                {
+                    _localAutoSaveNoticed = true;
+                    AutoSaveNotice?.Invoke("Auto-save is keeping your draft on this computer until you're online.");
+                }
+                return;
+            }
             AutoSaveText = "Auto-save failed";
             if (!_autoSaveFailureAnnounced)
             {
@@ -418,10 +544,35 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             var compose = BuildComposeModel(account.Id);
 
+            // Known offline: no point holding the window for a 30-second timeout (#637).
+            if (_connectivity?.IsAccountOnline(account.Id) == false && _outbox?.IsAvailable == true
+                && await QueueSendAsync(compose, account))
+                return;
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await _smtp.SendAsync(compose, account, password, cts.Token);
+            try
+            {
+                await _smtp.SendAsync(compose, account, password, cts.Token);
+            }
+            catch (OperationCanceledException) when (_connectivity is { IsOnline: true })
+            {
+                // Thirty seconds with the app online is a slow upload, not an outage: a large
+                // attachment on a thin uplink. Queuing it would say "when you're online" to someone
+                // who is, and could send twice if the server had already taken the data.
+                SetStatusOutcome("Send timed out after 30 seconds. Try again.");
+                return;
+            }
+            catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, CancellationToken.None))
+            {
+                // The server never answered. A rejection (bad address, refused login) is not
+                // caught here and still fails in the window, where the user can fix it.
+                if (await QueueSendAsync(compose, account))
+                    return;
+                throw;
+            }
             SetStatusOutcome("Message sent.");
             _isSent = true;
+            await ForgetLocalCopyAsync();
 
             // Append to Sent folder (best-effort — fire and forget so it doesn't block the UI).
             // Providers that auto-save sent mail (e.g. Gmail) may produce a duplicate; that is
@@ -749,6 +900,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
         return new ComposeModel
         {
+            // Kind and the Outbox row travel with the model so a queued reply reopens as a reply.
+            Kind                = ComposeKind,
+            OutboxId            = _outboxId,
             AccountId           = accountId,
             To                  = To,
             Cc                  = Cc,

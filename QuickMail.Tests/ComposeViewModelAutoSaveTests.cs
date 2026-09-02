@@ -147,11 +147,17 @@ sealed class RecordingMailService : IMailService
     public string? LastReplaceMessageId { get; private set; }
     public bool AppendDraftThrows { get; set; }
 
+    /// <summary>When set, AppendDraftAsync throws exactly this — e.g. a SocketException to stand in
+    /// for an unreachable server (#637), which the plain AppendDraftThrows (an
+    /// InvalidOperationException, "the server answered") deliberately is not.</summary>
+    public Exception? AppendDraftFailure { get; set; }
+
     public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) =>
         Task.FromResult<string?>("Drafts");
 
     public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default)
     {
+        if (AppendDraftFailure != null) throw AppendDraftFailure;
         if (AppendDraftThrows) throw new InvalidOperationException("simulated append failure");
         AppendDraftCalls++;
         LastReplaceMessageId = replaceMessageId;

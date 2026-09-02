@@ -3,7 +3,7 @@
 ## Service Layer
 
 **App.xaml.cs** is the manual DI composition root — no container. Services are wired in `OnStartup` in dependency order:
-`ProfileContext` → `AccountService` → `CredentialService` → `ConfigService` → `ProviderCatalog` → `AutoDiscoverService` → `OAuthService` → `ImapService` → `SmtpService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
+`ProfileContext` → `AccountService` → `CredentialService` → `ConfigService` → `ProviderCatalog` → `AutoDiscoverService` → `OAuthService` → `ImapService` → `SmtpService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `OutboxService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
 
 Every service has a matching interface in `Services/I*.cs`, making them fully substitutable in tests.
 
@@ -14,6 +14,10 @@ Every service has a matching interface in `Services/I*.cs`, making them fully su
 **BugReportService** submits **Help → Report a Bug** through a Cloudflare Worker relay rather than to the GitHub API directly, so no GitHub credential ships inside the executable and user-filed issues are authored by a bot rather than the maintainer. It falls back to clipboard + a pre-filled `issues/new` URL whenever the relay is unavailable — including every local build, which carries no relay credentials by design. Operations and troubleshooting: [BUG-REPORTING.md](BUG-REPORTING.md). Relay setup: [`relay/README.md`](../relay/README.md).
 
 **SyncService** runs background IMAP sync. It raises `FolderSynced`, `MessagesRemoved`, and `RulesApplied` events; `MainViewModel` subscribes and merges new data into observable collections. UI is populated from the SQLite cache immediately, then background sync fills gaps.
+
+**OutboxService** (#637) is the local queue of mail written while the server could not be reached: drafts waiting to upload and messages waiting to send. Rows live in the `Outbox` and `OutboxAttachment` tables as the compose model (JSON) plus attachment blobs — the model rather than MIME, because a MIME round-trip loses Bcc, the Markdown source, the compose mode and the reply linkage. `ComposeViewModel` tries the server first and enqueues on failure; the drain (`FlushAsync`) runs one at a time, oldest first, through the same router and send service as a live send, and classifies every failure with `ConnectionFailure.IsConnectionFailure`: a transport failure keeps the row pending with doubling backoff, a server rejection parks it as Failed for the user. Drains are triggered by the startup connect, the fallback sync tick, the Send Outbox Now command, and (through `IConnectivityService`) a reconnect. `MainViewModel` shows the queue as the `\0Outbox` virtual folder.
+
+**ConnectionFailure** is the one shared answer to "could the server be reached?": a server that answered — even to say no (`SmtpCommandException`, `ImapCommandException`, an HTTP status other than 502/503/504, an authentication failure) — is reachable; a transport failure anywhere in the exception chain (`SocketException`, `IOException`, a timeout, `ServiceNotConnectedException`, `AccountNotConnectedException`) is not. `ImapMailService.IsConnectionDrop` is deliberately separate: it decides whether a pooled connection is worth one transparent retry, a narrower question.
 
 **OAuthService** wraps MSAL (`Microsoft.Identity.Client`) for Microsoft 365 / Outlook OAuth2. Token refresh is handled automatically; passwords for OAuth accounts are not stored in Credential Manager.
 
@@ -74,7 +78,7 @@ QuickMail has startup flags that alter which services are available. New code th
 | Flag | Effect on services |
 |---|---|
 | *(normal)* | All services available. SQLite schema fully created. `LocalStoreService` returns cached data. |
-| `--online` | SQLite schema is **not created**. `LocalStoreService` methods will throw `SqliteException` on any call. All data must come from the backend (IMAP or Graph). |
+| `--online` | SQLite schema is **not created**. `LocalStoreService` methods will throw `SqliteException` on any call. All data must come from the backend (IMAP or Graph). No Outbox: `IOutboxService.IsAvailable` is false, the Outbox folder is not shown, and a draft save or send that cannot reach the server fails in the compose window as it always did. |
 | `--profileDir <path>` | All file-based services use the alternate path. No effect on availability. |
 
 **Graph accounts in `--online` mode:** fully supported, no behavioral difference. `GraphMailService` has **no `ILocalStoreService` dependency** — every read goes straight to the Graph REST API, so the uncreated SQLite schema never matters. (`GraphMailServiceTests.GraphMailService_HasNoLocalStoreDependency_SoOnlineModeWorks` guards this structurally.) The local-store-first / backend-fallback pattern below lives in `MainViewModel`, which dispatches the fallback through the `MailServiceRouter` to whichever backend owns the account.
@@ -112,6 +116,7 @@ Virtual folders use `FullName` sentinel strings starting with `\x00` to distingu
 | `\x00AllArchive` | Every account's archive destination |
 | `\x00AllFlagged` | Flagged messages across all accounts |
 | `\x00AccountMail:{guid}` | All folders for one account |
+| `\x00Outbox` | Queued drafts and sends across all accounts (#637), read from the local store only. Not a folder-scoped aggregate, never a startup folder, never a saved-view target; absent in `--online` mode. Enter reopens a row in compose, Delete removes it from the queue. |
 
 Trash, Junk, Sent, and Drafts are excluded from `\x00AllMail` via `folder.ExcludeFromAllMail`. When a virtual folder is selected, `MainViewModel` queries multiple real folders and merges results sorted newest-first.
 

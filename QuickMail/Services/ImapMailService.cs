@@ -1102,12 +1102,12 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         if (!_pools.TryGetValue(accountId, out var pool))
         {
             if (!_accounts.TryGetValue(accountId, out var account))
-                throw new InvalidOperationException($"Account {accountId} is not connected.");
+                throw new AccountNotConnectedException(accountId);
 
             _passwords.TryGetValue(accountId, out var password);
             await ConnectAsync(account, password, ct);
             if (!_pools.TryGetValue(accountId, out pool))
-                throw new InvalidOperationException($"Account {accountId} is not connected.");
+                throw new AccountNotConnectedException(accountId);
         }
 
         return await pool.RentAsync(priority, ct);
