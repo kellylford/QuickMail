@@ -163,6 +163,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         UnsubscribeConnectivity();
         DrainCts(ref _offlineRetryCts);
+        _syncService.OfflineBodyProgressChanged -= OnOfflineBodyProgress;
         if (_rowLayoutService != null && _onRowLayoutsChanged != null)
         {
             _rowLayoutService.LayoutsChanged -= _onRowLayoutsChanged;
@@ -1751,6 +1752,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _previewLines = cfg.PreviewLines;
         _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
+        _offlineBodyDays = cfg.OfflineBodyDays;
+        _syncService.OfflineBodyProgressChanged += OnOfflineBodyProgress;
         _viewMode = ConfigModel.ParseViewMode(cfg.ViewMode);
         _listDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
@@ -2482,6 +2485,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _themeService?.ApplyAppearance(cfg);
 
         ApplyConnectionDiagnosticsSetting(cfg.ConnectionDiagnostics);
+        ApplyOfflineBodySetting(cfg);
 
         // Keep the View menu's density check marks in sync with a Settings save.
         ListDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";

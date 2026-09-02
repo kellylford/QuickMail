@@ -140,6 +140,32 @@ public partial class MainViewModel
         Announce(OnlineMode ? "Offline." : "Offline. Showing cached messages.", AnnouncementCategory.Status);
     }
 
+    // ── Offline bodies (#637) ───────────────────────────────────────────────────
+
+    private int _offlineBodyDays;
+
+    /// <summary>
+    /// One announcement when a pass finishes, never one per batch — the pass runs behind the
+    /// previews after every sweep and would otherwise chatter every ten messages.
+    /// </summary>
+    private void OnOfflineBodyProgress(int done, int total)
+    {
+        if (total > 0 && done >= total)
+            Announce($"Downloaded {total} {(total == 1 ? "message" : "messages")} for offline reading.", AnnouncementCategory.Status);
+    }
+
+    /// <summary>A widened window is backfilled now rather than at the next sweep; a narrowed one just stops fetching.</summary>
+    private void ApplyOfflineBodySetting(ConfigModel cfg)
+    {
+        var was = _offlineBodyDays;
+        _offlineBodyDays = cfg.OfflineBodyDays;
+        if (OnlineMode || cfg.OfflineBodyDays <= was) return;
+        var connected = Accounts.Where(a => _connectedAccountIds.Contains(a.Id)).ToList();
+        if (connected.Count == 0) return;
+        _syncService.BackfillOfflineBodiesAsync(connected, _cachedFolders, _bgSyncCts?.Token ?? CancellationToken.None)
+            .LogFaults("offline bodies backfill");
+    }
+
     /// <summary>Chooses the status-bar wording for a failed server call: offline wording for a transport failure, the raw error otherwise.</summary>
     private static string OfflineOrErrorStatus(Exception ex, CancellationToken ct, Func<string> offline, Func<string> error)
         => ConnectionFailure.IsConnectionFailure(ex, ct) ? offline() : error();

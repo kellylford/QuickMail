@@ -43,6 +43,7 @@ public class WatchedConversationsTests
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
         public event Action<int>? RulesApplied;
         public event Action<int, int>? SyncProgressChanged;
+        public event Action<int, int>? OfflineBodyProgressChanged;
 #pragma warning restore CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
 
@@ -59,6 +60,7 @@ public class WatchedConversationsTests
         public Task<int> ReconcileFolderAsync(AccountModel a, MailFolderModel f, CancellationToken ct) => Task.FromResult(0);
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
         public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
+        public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
     }
 
     private static (MainViewModel Vm, StubWatchService Watch, RaisableSync Sync) MakeVm(

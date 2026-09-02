@@ -391,7 +391,7 @@ public partial class App : Application
             // Server-side (Exchange/Graph) Inbox rules — read/manage a Graph account's messageRules.
             // Reuses the shared GraphClient (no own disposables), so no disposal wiring needed.
             var serverRuleService = new GraphServerRuleService(accountService, graphBackend.Client);
-            var syncService = new SyncService(effectiveMail, localStore, configService, ruleService, probeMode: probeMode);
+            var syncService = new SyncService(effectiveMail, localStore, configService, ruleService, probeMode: probeMode, connectivity: _connectivity);
             // The Outbox (#637): mail written while the server could not be reached. Drains through the
             // same router and send service as a live send, so a queued message leaves exactly as an
             // online one would have. It drains on reconnect, after the startup connect, on the fallback

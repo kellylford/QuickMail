@@ -326,4 +326,18 @@ public class ConfigServiceSaveTests
         var reloaded = new ConfigService(profile).Load();
         Assert.NotNull(reloaded);
     }
+    [Fact]
+    public void SaveThenLoad_RoundTripsOfflineBodyDays()
+    {
+        // #637: off by default, and a chosen window survives a restart.
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+        Assert.Equal(0, service.Load().OfflineBodyDays);
+
+        var config = service.Load();
+        config.OfflineBodyDays = 30;
+        service.Save(config);
+
+        Assert.Equal(30, new ConfigService(profile).Load().OfflineBodyDays);
+    }
 }

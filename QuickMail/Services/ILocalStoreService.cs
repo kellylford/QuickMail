@@ -140,6 +140,13 @@ public interface ILocalStoreService
     Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
 
     /// <summary>
+    /// Ids of summaries in the folder dated <paramref name="since"/> or later that have no
+    /// MessageDetail row, newest first, at most <paramref name="limit"/>. Drives the offline-bodies
+    /// pass (#637).
+    /// </summary>
+    Task<List<string>> GetMessageIdsMissingDetailAsync(Guid accountId, string folderName, DateTimeOffset since, int limit);
+
+    /// <summary>
     /// Counts all message summaries stored for the given account.
     /// Returns 0 if the account has no messages or does not exist.
     /// </summary>

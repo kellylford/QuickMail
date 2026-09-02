@@ -349,6 +349,8 @@ class StubLocalStoreService : ILocalStoreService
     public virtual Task DeleteOutboxItemAsync(string id) { OutboxRows.Remove(id); return Task.CompletedTask; }
     public virtual Task<int> CountOutboxItemsAsync() => Task.FromResult(OutboxRows.Count);
 
+    public virtual Task<List<string>> GetMessageIdsMissingDetailAsync(Guid accountId, string folderName, DateTimeOffset since, int limit)
+        => Task.FromResult(new List<string>());
     public virtual Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
     public virtual Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     public virtual Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());
@@ -706,7 +708,15 @@ sealed class StubSyncService : ISyncService
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
     public event Action<int>? RulesApplied;
     public event Action<int, int>? SyncProgressChanged;
+    public event Action<int, int>? OfflineBodyProgressChanged;
 #pragma warning restore CS0067
+    /// <summary>Every backfill request (#637), so a test can assert Settings triggered one.</summary>
+    public int BackfillCalls { get; private set; }
+    public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct)
+    {
+        BackfillCalls++;
+        return Task.CompletedTask;
+    }
     public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
     public Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
     public Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());

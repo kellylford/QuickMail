@@ -36,6 +36,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private int _mailSyncPollMinutes;
 
+    /// <summary>Days of Inbox mail whose bodies sync downloads for offline reading; 0 = off (#637).</summary>
+    [ObservableProperty]
+    private int _offlineBodyDays;
+
     [ObservableProperty]
     private bool _customAnnouncements;
 
@@ -449,6 +453,7 @@ public partial class SettingsViewModel : ObservableObject
         SyncDays = cfg.SyncDays;
         InitialSyncCount = cfg.InitialSyncCount;
         MailSyncPollMinutes = cfg.MailSyncPollMinutes;
+        OfflineBodyDays = cfg.OfflineBodyDays;
         CustomAnnouncements = cfg.CustomAnnouncements;
         AnnounceHints       = cfg.AnnounceHints;
         AnnounceStatus      = cfg.AnnounceStatus;
@@ -532,6 +537,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.SyncDays = SyncDays;
         cfg.InitialSyncCount = InitialSyncCount;
         cfg.MailSyncPollMinutes = MailSyncPollMinutes;
+        cfg.OfflineBodyDays = OfflineBodyDays;
         cfg.CustomAnnouncements = CustomAnnouncements;
         cfg.AnnounceHints       = AnnounceHints;
         cfg.AnnounceStatus      = AnnounceStatus;

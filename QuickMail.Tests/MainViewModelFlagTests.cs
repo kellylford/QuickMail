@@ -95,6 +95,7 @@ public class MainViewModelFlagTests
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
         public event Action<int>? RulesApplied;
         public event Action<int, int>? SyncProgressChanged;
+        public event Action<int, int>? OfflineBodyProgressChanged;
 #pragma warning restore CS0067
         public void Fire(IReadOnlyList<MailMessageSummary> messages) => FolderSynced?.Invoke(messages);
         public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
@@ -103,6 +104,7 @@ public class MainViewModelFlagTests
         public Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult(0);
         public Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
         public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
+        public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
     }
 
