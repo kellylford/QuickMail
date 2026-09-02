@@ -522,7 +522,6 @@ public partial class SyncService : ISyncService
             // RulesApplied / MessagesRemoved; here we just surface the survivors to the UI —
             // immediately, without waiting for body preview fetches.
             incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: true, ct);
-            QueueArrivalBodies(account, folder, incoming, ct);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
 
@@ -672,7 +671,6 @@ public partial class SyncService : ISyncService
         IReadOnlyCollection<string>? preFetchKnownIds = null)
     {
         var incoming = await ApplyRulesToArrivalsAsync(account, folder, fetched, persisted: true, consumeRebuildBaseline: true, ct, preFetchKnownIds);
-        QueueArrivalBodies(account, folder, incoming, ct);
         if (incoming.Count > 0)
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         return incoming;

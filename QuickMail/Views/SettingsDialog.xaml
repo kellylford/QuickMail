@@ -163,7 +163,7 @@
                                      so the ToString() rule for Selector items does not apply. -->
                                 <StackPanel Margin="0,8,0,0">
                                     <Label x:Name="OfflineBodyLabel"
-                                           Content="Download messages for offline _reading:"
+                                           Content="Download _messages for offline reading:"
                                            Target="{Binding ElementName=OfflineBodyCombo}"
                                            FontWeight="SemiBold"/>
                                     <ComboBox x:Name="OfflineBodyCombo"

@@ -12,8 +12,9 @@ namespace QuickMail.Services;
 /// <summary>
 /// The offline-bodies pass (#637): when <see cref="ConfigModel.OfflineBodyDays"/> is set, sync
 /// downloads the full bodies of recent Inbox messages that have no cached body yet, so they read
-/// offline. Runs after every full sweep (behind the previews), on each Inbox arrival, and on demand
-/// when Settings widens the window. Attachments are not included; POP3 already keeps whole messages.
+/// offline. Runs after the startup sync (behind the previews), after each periodic sweep, on each
+/// IDLE Inbox arrival, and on demand when Settings widens the window. Attachments are not
+/// included; POP3 already keeps whole messages.
 /// </summary>
 public partial class SyncService
 {
@@ -24,7 +25,19 @@ public partial class SyncService
 
     private const int ProgressEvery = 10;
 
+    /// <summary>
+    /// A short gap between fetches: this is background caching, and a burst of hundreds of
+    /// back-to-back fetches is what pushes Graph into 503 and an IMAP server into throttling.
+    /// Settable so tests do not pay it.
+    /// </summary>
+    internal TimeSpan FetchPacing { get; set; } = TimeSpan.FromMilliseconds(100);
+
+    // One pass at a time: the startup pass, a sweep, and a Settings-widen backfill would otherwise
+    // plan overlapping id lists and fetch the same bodies twice.
+    private readonly SemaphoreSlim _bodiesPassGate = new(1, 1);
+
     public event Action<int, int>? OfflineBodyProgressChanged;
+    public event Action<int, int>? OfflineBodyPassCompleted;
 
     public Task BackfillOfflineBodiesAsync(
         IEnumerable<AccountModel> accounts,
@@ -45,8 +58,28 @@ public partial class SyncService
         if (_probeMode) return;
         var days = _config.Load().EffectiveOfflineBodyDays;
         if (days <= 0) return;
-        var since = DateTimeOffset.UtcNow.AddDays(-days);
 
+        if (!await _bodiesPassGate.WaitAsync(0, ct))
+        {
+            LogService.Debug("Offline bodies: a pass is already running; skipping this one.");
+            return;
+        }
+        try
+        {
+            await RunPassAsync(accounts, cachedFolders, DateTimeOffset.UtcNow.AddDays(-days), ct);
+        }
+        finally
+        {
+            _bodiesPassGate.Release();
+        }
+    }
+
+    private async Task RunPassAsync(
+        List<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        DateTimeOffset since,
+        CancellationToken ct)
+    {
         // Plan first so the progress total is the whole pass, not one account at a time.
         var work = new List<(AccountModel Account, MailFolderModel Folder, List<string> Ids)>();
         foreach (var account in accounts.Where(EligibleForBodies))
@@ -63,24 +96,29 @@ public partial class SyncService
 
         var total = work.Sum(w => w.Ids.Count);
         if (total == 0) return;
-        _ui.Post(() => OfflineBodyProgressChanged?.Invoke(0, total));
+        ReportProgress(0, total);
 
         var done = 0;
         foreach (var (account, folder, ids) in work)
         {
             var timer = Stopwatch.StartNew();
-            var fetched = await DownloadBodiesForIdsAsync(account, folder, ids, ct, n => ReportProgress(done + n, total));
+            var before = done;
+            // Intermediate progress never reaches the total: the pass reports its own end, once,
+            // with the count it actually cached.
+            var fetched = await DownloadBodiesForIdsAsync(account, folder, ids, ct,
+                n => { if (before + n < total) ReportProgress(before + n, total); });
             done += fetched;
             LogService.Log($"Offline bodies {account.AccountLabel}/{folder.DisplayName}: {fetched} of {ids.Count} downloaded in {timer.ElapsedMilliseconds} ms");
         }
-        ReportProgress(total, total);
+        _ui.Post(() => OfflineBodyPassCompleted?.Invoke(done, total));
     }
 
     private void ReportProgress(int done, int total)
         => _ui.Post(() => OfflineBodyProgressChanged?.Invoke(done, total));
 
     /// <summary>
-    /// Fetches and caches each body in turn. A connection failure stops this account's batch — there
+    /// Fetches and caches each body in turn, skipping any that arrived in the cache meanwhile (an
+    /// open, a prefetch, the arrival hook). A connection failure stops this account's batch — there
     /// is no point hammering a server that just went away — and tells the connectivity service;
     /// any other failure is logged and the next id is tried. Returns how many were cached.
     /// </summary>
@@ -94,11 +132,16 @@ public partial class SyncService
             ct.ThrowIfCancellationRequested();
             try
             {
+                if (await _store.LoadDetailAsync(account.Id, folder.FullName, id) != null)
+                    continue;
+
                 // Background lease, and no \Seen: this is caching, not reading.
                 var detail = await _imap.PrefetchMessageDetailAsync(account.Id, folder.FullName, id, ct);
                 await _store.UpsertDetailAsync(detail);
                 fetched++;
                 if (fetched % ProgressEvery == 0) progress?.Invoke(fetched);
+                if (FetchPacing > TimeSpan.Zero)
+                    await Task.Delay(FetchPacing, ct);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, ct))
@@ -116,9 +159,11 @@ public partial class SyncService
     }
 
     /// <summary>
-    /// The arrival hook: new Inbox mail inside the window gets its body cached right away, so the
-    /// setting stays true between sweeps (IDLE, the fallback poll and the periodic sweep all pass
-    /// through here). Fire-and-forget, a handful of ids at a time, no progress events.
+    /// The arrival hook, on the IDLE path only: new Inbox mail inside the window gets its body
+    /// cached right away, so the setting stays true between sweeps. The startup sync and the
+    /// periodic sweep run the full pass themselves, so they do not hook — hooking there would queue
+    /// the whole first window while the sync is still using the same background leases, and then
+    /// fetch it all again in the pass. Fire-and-forget, a handful of ids, no progress events.
     /// </summary>
     private void QueueArrivalBodies(AccountModel account, MailFolderModel folder, IReadOnlyList<MailMessageSummary> arrivals, CancellationToken ct)
     {
@@ -131,13 +176,7 @@ public partial class SyncService
         var ids = arrivals.Where(m => m.Date >= since).Select(m => m.MessageId).ToList();
         if (ids.Count == 0) return;
 
-        Task.Run(async () =>
-        {
-            // Skip anything the open-time cache or the prefetch already stored.
-            var missing = new HashSet<string>(await _store.GetMessageIdsMissingDetailAsync(account.Id, folder.FullName, since, MaxBodiesPerPass), StringComparer.Ordinal);
-            var wanted = ids.Where(missing.Contains).ToList();
-            if (wanted.Count > 0)
-                await DownloadBodiesForIdsAsync(account, folder, wanted, ct);
-        }, ct).LogFaults("offline bodies for arrivals");
+        Task.Run(() => DownloadBodiesForIdsAsync(account, folder, ids, ct), ct)
+            .LogFaults("offline bodies for arrivals");
     }
 }
