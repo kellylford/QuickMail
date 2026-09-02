@@ -48,6 +48,52 @@ public partial class MainViewModel
     /// <summary>True when the app is known to be offline; null service means "assume online".</summary>
     private bool IsKnownOffline => _connectivity is { IsOnline: false };
 
+    // ── The connection status label ─────────────────────────────────────────────
+
+    public enum ConnectionPhase { Idle, Connecting, Syncing }
+
+    private ConnectionPhase _connectionPhase;
+    private bool _announcedOffline;
+
+    /// <summary>
+    /// Sets the phase and recomputes <see cref="ConnectionStatusText"/>. The label used to be
+    /// written from eight sites with eight different ideas of what it meant; now it is derived
+    /// from the phase, the connectivity verdict and the connected count (#637).
+    /// </summary>
+    private void SetConnectionPhase(ConnectionPhase phase)
+    {
+        _connectionPhase = phase;
+        UpdateConnectionStatusText();
+    }
+
+    private void UpdateConnectionStatusText() =>
+        ConnectionStatusText = ConnectionStatusFor(_connectionPhase, !IsKnownOffline, _connectedAccountIds.Count, Accounts.Count);
+
+    internal static string ConnectionStatusFor(ConnectionPhase phase, bool online, int connected, int accounts) => phase switch
+    {
+        ConnectionPhase.Connecting => "Connecting…",
+        ConnectionPhase.Syncing    => "Syncing…",
+        _ when accounts == 0       => "No accounts",
+        _ when !online             => "Offline",
+        _ when connected == 0      => "Offline",
+        _                          => $"{connected} account{(connected == 1 ? "" : "s")} connected",
+    };
+
+    /// <summary>"Offline. Showing cached messages." once per outage; "Back online." only after it was said.</summary>
+    private void AnnounceOfflineOnce()
+    {
+        if (_announcedOffline) return;
+        _announcedOffline = true;
+        Announce(OnlineMode ? "Offline." : "Offline. Showing cached messages.", AnnouncementCategory.Status);
+    }
+
+    /// <summary>Chooses the status-bar wording for a failed server call: offline wording for a transport failure, the raw error otherwise.</summary>
+    private static string OfflineOrErrorStatus(Exception ex, CancellationToken ct, Func<string> offline, Func<string> error)
+        => ConnectionFailure.IsConnectionFailure(ex, ct) ? offline() : error();
+
+    private static string CachedCountText(int count)
+        => $"Offline — showing {count} cached {(count == 1 ? "message" : "messages")}.";
+
     private void OnNetworkAvailabilityChanged(bool available)
     {
         // Nothing to do on loss: in-flight operations fail on their own and feed the service, and
@@ -58,18 +104,26 @@ public partial class MainViewModel
 
     private void OnOnlineChanged(bool online)
     {
+        UpdateConnectionStatusText();
         if (online)
         {
             DrainCts(ref _offlineRetryCts);
+            if (_announcedOffline)
+            {
+                _announcedOffline = false;
+                Announce("Back online.", AnnouncementCategory.Status);
+            }
         }
         else
         {
+            AnnounceOfflineOnce();
             StartOfflineRetryLoop();
         }
     }
 
     private void OnAccountOnlineChanged(Guid accountId, bool online)
     {
+        UpdateConnectionStatusText();
         if (online) return;
         // This is the one place an id leaves the connected set other than account removal: every
         // reader of _connectedAccountIds wants "currently reachable", and a sweep or a watcher
