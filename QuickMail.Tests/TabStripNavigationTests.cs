@@ -242,13 +242,17 @@ public class TabStripNavigationTests
         var dialog = new SettingsDialog(vm) { ShowActivated = false };
         dialog.Show();
 
-        // Pin the window to the size its XAML declares (issue #652). A process whose STARTUPINFO
-        // asks for SW_SHOWMAXIMIZED maximizes the first top-level window it shows, and the test host
-        // is sometimes launched that way — which put this dialog on a 1485-DIP work area, fitted all
-        // six headers on one row, and failed the premise assertion below every time on that machine
-        // while CI stayed green. RestoreBounds still held the declared 520x560 throughout, so the
-        // dialog was only being PLACED maximized; the app is not affected, since the flag reaches
-        // only a process's first window and never a dialog opened later.
+        // Pin the window to the size its XAML declares (issue #652). Windows 11 26H2 added
+        // Settings > Accessibility > Visual effects > "Open apps maximized", which opens every app
+        // window maximized — a developer running with it on gets this dialog on the full work area
+        // (1485 DIPs at 200% scaling here), where all six headers fit on one row, so the premise
+        // assertion below failed every run on that machine while CI stayed green. Width and
+        // RestoreBounds still held the declared 520x560: the window is only PLACED maximized.
+        //
+        // The setting reaches EVERY window, not just a process's first, so any future test with a
+        // geometry premise has to pin its window the same way. It is an accessibility setting a real
+        // user turns on deliberately — the app is expected to work under it, and a test that quietly
+        // depends on the opposite is testing the developer's Settings app, not QuickMail.
         dialog.WindowState = WindowState.Normal;
         TabOrderWalker.Drain();
         try
