@@ -6,8 +6,12 @@ using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-/// <summary>What one drain of the Outbox did.</summary>
-public sealed record OutboxFlushResult(int Sent, int DraftsUploaded, int Failed, int Skipped)
+/// <summary>
+/// What one drain of the Outbox did. Skipped counts rows the drain did not attempt (not yet due,
+/// held open in a compose window, or a drain already running); Deferred counts rows it attempted
+/// and could not reach the server for.
+/// </summary>
+public sealed record OutboxFlushResult(int Sent, int DraftsUploaded, int Failed, int Skipped, int Deferred = 0)
 {
     public static readonly OutboxFlushResult Nothing = new(0, 0, 0, 0);
 
@@ -47,6 +51,15 @@ public interface IOutboxService
 
     /// <summary>Removes a row. Returns false when it was already gone.</summary>
     Task<bool> RemoveAsync(string id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Keeps a row out of every drain while a compose window has it open: sending it meanwhile
+    /// would send stale content and then delete the edit in progress. Released when the window
+    /// closes, or the row is removed.
+    /// </summary>
+    void Hold(string id);
+
+    void Release(string id);
 
     Task<int> CountAsync(CancellationToken ct = default);
 

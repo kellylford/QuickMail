@@ -32,7 +32,10 @@ public sealed class OutboxService : IOutboxService, IDisposable
 
     private readonly SemaphoreSlim _drain = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly HashSet<string> _held = new(StringComparer.Ordinal);
+    private readonly object _heldGate = new();
     private CancellationTokenSource? _reconnectDebounce;
+    private bool _staleRowsReset;
     private bool _disposed;
 
     public OutboxService(
@@ -104,6 +107,25 @@ public sealed class OutboxService : IOutboxService, IDisposable
         return item.Id;
     }
 
+    // ── Hold ────────────────────────────────────────────────────────────────────
+
+    public void Hold(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        lock (_heldGate) _held.Add(id);
+    }
+
+    public void Release(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        lock (_heldGate) _held.Remove(id);
+    }
+
+    private bool IsHeld(string id)
+    {
+        lock (_heldGate) return _held.Contains(id);
+    }
+
     // ── Read / remove ───────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<OutboxItem>> ListAsync(CancellationToken ct = default)
@@ -123,6 +145,7 @@ public sealed class OutboxService : IOutboxService, IDisposable
         if (!IsAvailable) return false;
         var existed = await _store.LoadOutboxItemAsync(id) != null;
         await _store.DeleteOutboxItemAsync(id);
+        Release(id);
         if (existed) RaiseChanged();
         return existed;
     }
@@ -149,10 +172,25 @@ public sealed class OutboxService : IOutboxService, IDisposable
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, ct);
         var token = linked.Token;
-        int sent = 0, drafts = 0, failed = 0, skipped = 0;
+        int sent = 0, drafts = 0, failed = 0, skipped = 0, deferred = 0;
+        var touched = false;
         try
         {
             var items = await _store.LoadOutboxItemsAsync();
+
+            // A row still marked Sending when no drain has run this session was interrupted by a
+            // crash or an exit mid-send; nothing will ever finish it. Give it back to the queue.
+            if (!_staleRowsReset)
+            {
+                _staleRowsReset = true;
+                foreach (var stale in items.Where(i => i.State == OutboxState.Sending))
+                {
+                    stale.State = OutboxState.Pending;
+                    await _store.UpdateOutboxStateAsync(stale.Id, OutboxState.Pending, stale.Attempts, stale.LastError, null);
+                    touched = true;
+                }
+            }
+
             var now = DateTimeOffset.UtcNow;
             // Oldest first, so messages leave in the order they were written.
             foreach (var item in Enumerable.Reverse(items))
@@ -161,13 +199,15 @@ public sealed class OutboxService : IOutboxService, IDisposable
                 if (onlyAccount.HasValue && item.AccountId != onlyAccount.Value) continue;
                 if (!IsEligible(item, now, force)) { skipped++; continue; }
 
-                var outcome = await ProcessOneAsync(item, token);
+                touched = true;
+                var outcome = await ProcessOneAsync(item, force, token);
                 switch (outcome)
                 {
-                    case Outcome.Sent:          sent++;   break;
-                    case Outcome.DraftUploaded: drafts++; break;
-                    case Outcome.Failed:        failed++; break;
-                    default:                    skipped++; break;
+                    case Outcome.Sent:          sent++;     break;
+                    case Outcome.DraftUploaded: drafts++;   break;
+                    case Outcome.Failed:        failed++;   break;
+                    case Outcome.Deferred:      deferred++; break;
+                    default:                    skipped++;  break;
                 }
             }
         }
@@ -176,8 +216,8 @@ public sealed class OutboxService : IOutboxService, IDisposable
             _drain.Release();
         }
 
-        var result = new OutboxFlushResult(sent, drafts, failed, skipped);
-        RaiseChanged();
+        var result = new OutboxFlushResult(sent, drafts, failed, skipped, deferred);
+        if (touched) RaiseChanged();
         if (result.Any)
         {
             try { FlushCompleted?.Invoke(result); }
@@ -188,6 +228,9 @@ public sealed class OutboxService : IOutboxService, IDisposable
 
     private bool IsEligible(OutboxItem item, DateTimeOffset now, bool force)
     {
+        // A row open in a compose window belongs to the user until that window closes: sending it
+        // now would send stale content and then delete the edit they are making.
+        if (IsHeld(item.Id)) return false;
         if (force) return item.State != OutboxState.Sending;
         if (item.State != OutboxState.Pending) return false;
         if (item.NextAttemptUtc is { } next && next > now) return false;
@@ -197,7 +240,7 @@ public sealed class OutboxService : IOutboxService, IDisposable
 
     private enum Outcome { Sent, DraftUploaded, Failed, Deferred, Vanished }
 
-    private async Task<Outcome> ProcessOneAsync(OutboxItem item, CancellationToken token)
+    private async Task<Outcome> ProcessOneAsync(OutboxItem item, bool force, CancellationToken token)
     {
         var compose = await _store.LoadOutboxComposeAsync(item.Id);
         if (compose == null) return Outcome.Vanished;
@@ -210,14 +253,12 @@ public sealed class OutboxService : IOutboxService, IDisposable
             if (item.Kind == OutboxKind.Draft)
             {
                 await UploadDraftAsync(item, compose, token);
-                await _store.DeleteOutboxItemAsync(item.Id);
-                LogService.Log($"Outbox: draft {item.Id} uploaded");
+                await FinishRowAsync(item, "draft uploaded");
                 return Outcome.DraftUploaded;
             }
 
             await SendAsync(item, compose, token);
-            await _store.DeleteOutboxItemAsync(item.Id);
-            LogService.Log($"Outbox: message {item.Id} sent");
+            await FinishRowAsync(item, "message sent");
             return Outcome.Sent;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -236,6 +277,14 @@ public sealed class OutboxService : IOutboxService, IDisposable
         {
             if (ConnectionFailure.IsConnectionFailure(ex, token))
             {
+                if (force)
+                {
+                    // The user asked and the network was not there. That is not a strike against the
+                    // row: leave the automatic schedule exactly as it was.
+                    await _store.UpdateOutboxStateAsync(item.Id, OutboxState.Pending, item.Attempts, ex.Message, item.NextAttemptUtc);
+                    LogService.Log($"Outbox: {item.Kind} {item.Id} still unreachable on a manual drain", ex);
+                    return Outcome.Deferred;
+                }
                 var attempts = item.Attempts + 1;
                 var next = DateTimeOffset.UtcNow + Backoff(attempts);
                 await _store.UpdateOutboxStateAsync(item.Id, OutboxState.Pending, attempts, ex.Message, next);
@@ -247,6 +296,23 @@ public sealed class OutboxService : IOutboxService, IDisposable
             LogService.Log($"Outbox: {item.Kind} {item.Id} failed", ex);
             return Outcome.Failed;
         }
+    }
+
+    /// <summary>
+    /// Removes the row the server now holds — unless a newer save replaced it while the drain was
+    /// working (the row is no longer marked Sending). Then the new content stays queued for the
+    /// next drain rather than being deleted on the strength of the old content having gone out.
+    /// </summary>
+    private async Task FinishRowAsync(OutboxItem item, string what)
+    {
+        var current = await _store.LoadOutboxItemAsync(item.Id);
+        if (current != null && current.State != OutboxState.Sending)
+        {
+            LogService.Log($"Outbox: {what} for {item.Id}, but the row was rewritten meanwhile; keeping the newer copy queued");
+            return;
+        }
+        await _store.DeleteOutboxItemAsync(item.Id);
+        LogService.Log($"Outbox: {what} ({item.Id})");
     }
 
     private async Task UploadDraftAsync(OutboxItem item, ComposeModel compose, CancellationToken token)

@@ -273,6 +273,95 @@ public class MainViewModelOutboxTests
     }
 
     [Fact]
+    public async Task DeleteKeepsTheSelectionEvenThoughTheQueueRelistsInline()
+    {
+        // The real service raises Changed inline on the UI thread from RemoveAsync; the relist
+        // used to clear the list under the removal and strand focus.
+        var f = new Fixture();
+        f.Outbox.RaiseChangedOnRemove = true;
+        f.Outbox.Items.Add(Row(Work, OutboxKind.Send, "Third", 1));
+        f.Outbox.Items.Add(Row(Work, OutboxKind.Send, "Second", 2));
+        f.Outbox.Items.Add(Row(Work, OutboxKind.Send, "First", 3));
+        await f.ConnectAsync();
+        await f.SelectOutboxAsync();
+        f.Vm.ConfirmationRequested = (_, _) => true;
+        var second = f.Vm.Messages[1];
+
+        await f.Vm.DeleteMessagesAsync([second]);
+
+        Assert.Equal(2, f.Vm.Messages.Count);
+        Assert.NotNull(f.Vm.SelectedMessage);
+        Assert.EndsWith("First", f.Vm.SelectedMessage.Subject, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ADrainRelistsTheOutboxWithoutLosingTheSelection()
+    {
+        var f = new Fixture();
+        f.Outbox.Items.Add(Row(Work, OutboxKind.Send, "A", 2));
+        f.Outbox.Items.Add(Row(Work, OutboxKind.Send, "B", 1));
+        await f.ConnectAsync();
+        await f.SelectOutboxAsync();
+        f.Vm.SelectedMessage = f.Vm.Messages[1];   // "A"
+        var selectedId = f.Vm.SelectedMessage.MessageId;
+
+        f.Outbox.RaiseChanged();
+
+        Assert.Equal(selectedId, f.Vm.SelectedMessage?.MessageId);
+    }
+
+    [Fact]
+    public async Task SendOutboxNowWhileUnreachableSaysSoRatherThanBusy()
+    {
+        var f = new Fixture();
+        await f.ConnectAsync();
+        f.Outbox.NextFlushResult = new OutboxFlushResult(0, 0, 0, 0, Deferred: 1);
+
+        await f.Vm.SendOutboxNowCommand.ExecuteAsync(null);
+
+        Assert.Equal("Could not reach the server. The Outbox will try again when you're online.", f.Vm.StatusText);
+    }
+
+    [Fact]
+    public async Task AnAutomaticDrainIsBackgroundProgressAManualOneIsAResult()
+    {
+        var f = new Fixture();
+        await f.ConnectAsync();
+        var categories = new List<AnnouncementCategory>();
+        f.Vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.StatusText) && f.Vm.StatusText.StartsWith("Outbox:", StringComparison.Ordinal))
+                categories.Add(f.Vm.StatusAnnouncementCategory);
+        };
+
+        f.Outbox.RaiseFlushCompleted(new OutboxFlushResult(1, 0, 0, 0));
+        Assert.Equal([AnnouncementCategory.Status], categories);
+
+        // The manual command's completion arrives while the command is still awaiting the drain.
+        f.Outbox.NextFlushResult = new OutboxFlushResult(1, 0, 0, 0);
+        f.Outbox.RaiseFlushCompletedDuringFlush = true;
+        await f.Vm.SendOutboxNowCommand.ExecuteAsync(null);
+        Assert.Equal([AnnouncementCategory.Status, AnnouncementCategory.Result], categories);
+    }
+
+    [Fact]
+    public async Task ReplyOnAnOutboxRowSaysToUseEnter()
+    {
+        var f = new Fixture();
+        f.Outbox.Items.Add(Row(Work, OutboxKind.Send, "Lunch", 1));
+        await f.ConnectAsync();
+        await f.SelectOutboxAsync();
+        f.Vm.SelectedMessage = f.Vm.Messages[0];
+        var opened = 0;
+        f.Vm.ComposeRequested += _ => opened++;
+
+        await f.Vm.ReplyCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, opened);
+        Assert.Equal(MainViewModel.OutboxRowHint, f.Vm.StatusText);
+    }
+
+    [Fact]
     public void DisposeUnsubscribesFromTheQueue()
     {
         var f = new Fixture();

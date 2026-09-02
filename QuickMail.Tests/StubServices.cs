@@ -631,17 +631,28 @@ sealed class StubOutboxService : IOutboxService
         c.OutboxId = id;
         return Task.FromResult<ComposeModel?>(c);
     }
+    /// <summary>When set, RemoveAsync raises Changed inline the way the real service does.</summary>
+    public bool RaiseChangedOnRemove { get; set; }
     public Task<bool> RemoveAsync(string id, CancellationToken ct = default)
     {
         Removed.Add(id);
         var existed = Items.RemoveAll(i => i.Id == id) > 0;
         Composes.Remove(id);
+        Held.Remove(id);
+        if (existed && RaiseChangedOnRemove) Changed?.Invoke();
         return Task.FromResult(existed);
     }
+    public HashSet<string> Held { get; } = new(StringComparer.Ordinal);
+    public void Hold(string id) => Held.Add(id);
+    public void Release(string id) => Held.Remove(id);
     public Task<int> CountAsync(CancellationToken ct = default) => Task.FromResult(Items.Count);
+    /// <summary>When set, FlushAsync raises FlushCompleted with NextFlushResult before returning,
+    /// as the real drain does when anything reached an outcome.</summary>
+    public bool RaiseFlushCompletedDuringFlush { get; set; }
     public Task<OutboxFlushResult> FlushAsync(bool force = false, CancellationToken ct = default)
     {
         Flushes.Add(force);
+        if (RaiseFlushCompletedDuringFlush && NextFlushResult.Any) FlushCompleted?.Invoke(NextFlushResult);
         return Task.FromResult(NextFlushResult);
     }
     public Task<OutboxFlushResult> FlushAccountAsync(Guid accountId, bool force = false, CancellationToken ct = default)

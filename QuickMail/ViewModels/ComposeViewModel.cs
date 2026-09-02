@@ -221,6 +221,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         _draftMessageId     = model.DraftMessageId;
         _draftFolderName    = model.DraftFolderName;
         _outboxId           = model.OutboxId;
+        // Reopened from the Outbox: the row is ours until this window closes (#637).
+        if (_outboxId != null) _outbox?.Hold(_outboxId);
         ComposeKind         = model.Kind;
         OnPropertyChanged(nameof(WindowTitle));
 
@@ -265,15 +267,20 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task SaveDraftAsync()
     {
+        // Every exit sets an outcome: the window's close prompt reads it, and a stale success from
+        // an earlier save would otherwise let a refused save close the window and lose the message.
+        LastSaveOutcome = DraftSaveOutcome.None;
         var account = SenderAccount;
         if (account == null)
         {
+            LastSaveOutcome = DraftSaveOutcome.Failed;
             SetStatusOutcome("Please select a sender account.");
             return;
         }
 
         if (Attachments.Sum(a => a.FileSize) > 25_000_000)
         {
+            LastSaveOutcome = DraftSaveOutcome.Failed;
             SetStatusOutcome("Total attachment size exceeds 25 MB. Please remove some attachments.");
             return;
         }
@@ -289,11 +296,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            // Server first, this computer second (#637). The text the user typed is worth more than
-            // folder purity, so even "no Drafts folder" keeps the draft locally: the Outbox row will
-            // fail on upload with that reason and stay reopenable, instead of the message being
-            // discarded when the window closes.
-            if (await TryKeepDraftLocallyAsync(account))
+            // Server first, this computer second (#637) — but only when the server could not be
+            // reached. A server that answered and refused (over quota, a rejected append) is an error
+            // the user has to see, not something to queue and fail again every auto-save. The one
+            // deliberate exception is "no Drafts folder": the text the user typed is worth more than
+            // folder purity, so it is kept locally, fails on upload with that reason, and stays
+            // reopenable instead of being discarded when the window closes.
+            if (ShouldKeepLocally(ex) && await TryKeepDraftLocallyAsync(account))
             {
                 LastSaveOutcome = DraftSaveOutcome.SavedLocally;
                 SetStatusOutcome("Draft saved on this computer. It will upload when you're online.");
@@ -318,6 +327,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// then reports the original server failure. Own try/catch: a local-store failure must never
     /// hide the server failure it was standing in for.
     /// </summary>
+    private static bool ShouldKeepLocally(Exception ex)
+        => ex is DraftFolderMissingException || ConnectionFailure.IsConnectionFailure(ex, CancellationToken.None);
+
     private async Task<bool> TryKeepDraftLocallyAsync(AccountModel account)
     {
         if (_outbox?.IsAvailable != true) return false;
@@ -325,6 +337,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             var compose = BuildComposeModel(account.Id);
             _outboxId = await _outbox.EnqueueDraftAsync(compose, account.Id, _outboxId);
+            // Ours while this window is open: a drain must not upload or send it from under the edit.
+            _outbox.Hold(_outboxId);
             _isDirty = false;
             return true;
         }
@@ -341,6 +355,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (_outboxId == null || _outbox == null) return;
         var id = _outboxId;
         _outboxId = null;
+        _outbox.Release(id);
         try { await _outbox.RemoveAsync(id); }
         catch (Exception ex) { LogService.Log("Compose: removing the local Outbox copy failed", ex); }
     }
@@ -401,6 +416,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     {
         _autoSaveCts.Cancel();
         _autoSaveCts.Dispose();
+        // The window is gone; whatever row it held can be drained now (#637).
+        if (_outboxId != null) _outbox?.Release(_outboxId);
         GC.SuppressFinalize(this);
     }
 
@@ -446,7 +463,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             LogService.Log("AutoSaveAsync: draft auto-save failed", ex);
-            if (await TryKeepDraftLocallyAsync(account))
+            if (ShouldKeepLocally(ex) && await TryKeepDraftLocallyAsync(account))
             {
                 AutoSaveText = $"Kept on this computer {DateTime.Now:t}";
                 if (!_localAutoSaveNoticed)
@@ -536,6 +553,14 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             try
             {
                 await _smtp.SendAsync(compose, account, password, cts.Token);
+            }
+            catch (OperationCanceledException) when (_connectivity is { IsOnline: true })
+            {
+                // Thirty seconds with the app online is a slow upload, not an outage: a large
+                // attachment on a thin uplink. Queuing it would say "when you're online" to someone
+                // who is, and could send twice if the server had already taken the data.
+                SetStatusOutcome("Send timed out after 30 seconds. Try again.");
+                return;
             }
             catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, CancellationToken.None))
             {
@@ -875,6 +900,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
         return new ComposeModel
         {
+            // Kind and the Outbox row travel with the model so a queued reply reopens as a reply.
+            Kind                = ComposeKind,
+            OutboxId            = _outboxId,
             AccountId           = accountId,
             To                  = To,
             Cc                  = Cc,

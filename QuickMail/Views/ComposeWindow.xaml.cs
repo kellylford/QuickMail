@@ -701,7 +701,7 @@ public partial class ComposeWindow : Window
         // Only when neither the server nor the local Outbox took the draft does the window stay open
         // (--online mode, or SQLite itself is broken). Deciding this by string-matching "failed" in
         // the status text missed "No Drafts folder found" and discarded the message (#637).
-        if (_vm.LastSaveOutcome == DraftSaveOutcome.Failed)
+        if (_vm.LastSaveOutcome is not (DraftSaveOutcome.SavedToServer or DraftSaveOutcome.SavedLocally))
             return;
 
         Closing -= OnWindowClosing;

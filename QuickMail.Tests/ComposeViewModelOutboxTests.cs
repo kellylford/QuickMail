@@ -50,6 +50,8 @@ public class ComposeViewModelOutboxTests
         }
     }
 
+    private static SocketException Unreachable() => new((int)SocketError.HostUnreachable);
+
     private sealed class NoDraftsFolderMail : StubImapMailServiceBase
     {
         public override Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default)
@@ -62,7 +64,7 @@ public class ComposeViewModelOutboxTests
     public async Task SaveDraft_WhenTheServerFails_KeepsTheDraftOnThisComputer()
     {
         var h = new Harness();
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
 
         await h.Vm.SaveDraftCommand.ExecuteAsync(null);
 
@@ -80,7 +82,7 @@ public class ComposeViewModelOutboxTests
     public async Task SaveDraft_Twice_ReplacesTheSameLocalRow()
     {
         var h = new Harness();
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
 
         await h.Vm.SaveDraftCommand.ExecuteAsync(null);
         h.Vm.Subject = "Lunch (moved)";
@@ -95,11 +97,11 @@ public class ComposeViewModelOutboxTests
     public async Task SaveDraft_ServerSuccessAfterALocalSave_RemovesTheLocalRow()
     {
         var h = new Harness();
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
         await h.Vm.SaveDraftCommand.ExecuteAsync(null);
         var localId = h.Outbox.Enqueued[0].Id;
 
-        h.Mail.AppendDraftThrows = false;
+        h.Mail.AppendDraftFailure = null;
         await h.Vm.SaveDraftCommand.ExecuteAsync(null);
 
         Assert.Equal(("Draft saved.", AnnouncementCategory.Result), h.Status.Last);
@@ -125,7 +127,7 @@ public class ComposeViewModelOutboxTests
     public async Task SaveDraft_WithoutAnOutbox_FailsTheWayItAlwaysDid()
     {
         var h = new Harness(withOutbox: false);
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
 
         await h.Vm.SaveDraftCommand.ExecuteAsync(null);
 
@@ -151,12 +153,12 @@ public class ComposeViewModelOutboxTests
     public async Task SaveDraft_WhenTheLocalStoreAlsoFails_ReportsTheServerFailure()
     {
         var h = new Harness();
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
         h.Outbox.EnqueueFailure = new InvalidOperationException("disk full");
 
         await h.Vm.SaveDraftCommand.ExecuteAsync(null);
 
-        Assert.Contains("simulated append failure", h.Status.Last.Text, StringComparison.Ordinal);
+        Assert.StartsWith("Save draft failed:", h.Status.Last.Text, StringComparison.Ordinal);
         Assert.Equal(DraftSaveOutcome.Failed, h.Vm.LastSaveOutcome);
     }
 
@@ -211,7 +213,7 @@ public class ComposeViewModelOutboxTests
     public async Task Send_SupersedesTheLocalDraftRow()
     {
         var h = new Harness();
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
         await h.Vm.SaveDraftCommand.ExecuteAsync(null);
         var draftRow = h.Outbox.Enqueued[0].Id;
 
@@ -228,7 +230,7 @@ public class ComposeViewModelOutboxTests
     public async Task Send_SuccessAfterALocalSave_RemovesTheLocalRow()
     {
         var h = new Harness();
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
         await h.Vm.SaveDraftCommand.ExecuteAsync(null);
         var localId = h.Outbox.Enqueued[0].Id;
 
@@ -258,7 +260,7 @@ public class ComposeViewModelOutboxTests
     public async Task AutoSave_FallsBackLocallyAndSaysSoOnce()
     {
         var h = new Harness();
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
         var notices = 0;
         h.Vm.AutoSaveNotice += _ => notices++;
         var failures = 0;
@@ -280,18 +282,18 @@ public class ComposeViewModelOutboxTests
     public async Task AutoSave_ServerSuccess_ResetsTheNoticeAndRemovesTheLocalRow()
     {
         var h = new Harness();
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
         var notices = 0;
         h.Vm.AutoSaveNotice += _ => notices++;
         await h.Vm.AutoSaveAsync();
 
-        h.Mail.AppendDraftThrows = false;
+        h.Mail.AppendDraftFailure = null;
         h.Vm.Body = "edited";
         await h.Vm.AutoSaveAsync();
         Assert.Single(h.Outbox.Removed);
         Assert.StartsWith("Auto-saved", h.Vm.AutoSaveText, StringComparison.Ordinal);
 
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
         h.Vm.Body = "edited again";
         await h.Vm.AutoSaveAsync();
         Assert.Equal(2, notices);
@@ -313,11 +315,95 @@ public class ComposeViewModelOutboxTests
             Body = "text",
         });
         h.Vm.SenderAccount = h.Account;
-        h.Mail.AppendDraftThrows = true;
+        h.Mail.AppendDraftFailure = Unreachable();
 
         await h.Vm.SaveDraftCommand.ExecuteAsync(null);
 
         Assert.Equal("outbox-abc", Assert.Single(h.Outbox.Enqueued).ExistingId);
         Assert.DoesNotContain("-- Kelly", h.Vm.Body, StringComparison.Ordinal);
+    }
+
+    // ── Review fixes ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SaveDraft_WhenTheServerRefuses_FailsInTheWindowInsteadOfQueuing()
+    {
+        // Over quota, a rejected append: the server answered. Queuing it would fail again on every
+        // auto-save and announce a failure each time.
+        var h = new Harness();
+        h.Mail.AppendDraftFailure = new MailKit.Net.Imap.ImapCommandException(
+            MailKit.Net.Imap.ImapCommandResponse.No, "NO [OVERQUOTA] Not enough space");
+
+        await h.Vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.StartsWith("Save draft failed:", h.Status.Last.Text, StringComparison.Ordinal);
+        Assert.Equal(DraftSaveOutcome.Failed, h.Vm.LastSaveOutcome);
+        Assert.Empty(h.Outbox.Enqueued);
+        Assert.True(h.Vm.IsDirty);
+    }
+
+    [Fact]
+    public async Task SaveDraft_ThatReturnsEarly_CountsAsFailedSoTheWindowStaysOpen()
+    {
+        var h = new Harness();
+        h.Mail.AppendDraftFailure = Unreachable();
+        await h.Vm.SaveDraftCommand.ExecuteAsync(null);
+        Assert.Equal(DraftSaveOutcome.SavedLocally, h.Vm.LastSaveOutcome);
+
+        // A stale success must not let a refused save close the window and lose the message.
+        h.Vm.Attachments.Add(new AttachmentModel { FileName = "huge.iso", FileSize = 30_000_000, Content = [1] });
+        await h.Vm.SaveDraftCommand.ExecuteAsync(null);
+
+        Assert.Equal(DraftSaveOutcome.Failed, h.Vm.LastSaveOutcome);
+        Assert.Contains("25 MB", h.Status.Last.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ALocallyKeptDraftIsHeldWhileTheWindowIsOpenAndReleasedWhenItCloses()
+    {
+        var h = new Harness();
+        h.Mail.AppendDraftFailure = Unreachable();
+
+        await h.Vm.SaveDraftCommand.ExecuteAsync(null);
+        var id = h.Outbox.Enqueued[0].Id;
+        Assert.Contains(id, h.Outbox.Held);
+
+        h.Vm.Dispose();
+        Assert.DoesNotContain(id, h.Outbox.Held);
+    }
+
+    [Fact]
+    public void AComposeReopenedFromTheOutboxHoldsItsRow()
+    {
+        var h = new Harness();
+        h.Vm.Seed(new ComposeModel { AccountId = h.Account.Id, OutboxId = "outbox-held", To = "a@example.com" });
+        Assert.Contains("outbox-held", h.Outbox.Held);
+    }
+
+    [Fact]
+    public async Task AQueuedReplyIsStillAReply()
+    {
+        var h = new Harness();
+        h.Vm.Seed(new ComposeModel { AccountId = h.Account.Id, Kind = ComposeKind.Reply, To = "a@example.com", InReplyToMessageId = "<p@x>" });
+        h.Vm.SenderAccount = h.Account;
+        h.Smtp.SendFailure = new SocketException((int)SocketError.HostUnreachable);
+
+        await h.Vm.SendCommand.ExecuteAsync(null);
+
+        Assert.Equal(ComposeKind.Reply, Assert.Single(h.Outbox.Enqueued).Compose.Kind);
+    }
+
+    [Fact]
+    public async Task ASendThatTimesOutWhileOnlineFailsInTheWindow()
+    {
+        var h = new Harness();
+        h.Connectivity.IsOnline = true;
+        h.Smtp.SendFailure = new OperationCanceledException();
+
+        await h.Vm.SendCommand.ExecuteAsync(null);
+
+        Assert.Equal("Send timed out after 30 seconds. Try again.", h.Status.Last.Text);
+        Assert.Empty(h.Outbox.Enqueued);
+        Assert.Equal(0, h.CloseRequests);
     }
 }

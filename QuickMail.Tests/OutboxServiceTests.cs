@@ -192,7 +192,7 @@ public class OutboxServiceTests
 
         var result = await svc.FlushAsync();
 
-        Assert.Equal(new OutboxFlushResult(0, 0, 0, 1), result);
+        Assert.Equal(new OutboxFlushResult(0, 0, 0, 0, Deferred: 1), result);
         Assert.Empty(f.Completed);
         var row = await svc.GetAsync(id);
         Assert.NotNull(row);
@@ -436,6 +436,79 @@ public class OutboxServiceTests
         // Raising after dispose must not throw and must not start work on a disposed service.
         f.Connectivity.RaiseOnlineChanged(true);
         Assert.Equal(0, f.Connectivity.OnlineChangedSubscribers);
+    }
+
+    [Fact]
+    public async Task ARowLeftSendingByACrashIsGivenBackToTheQueue()
+    {
+        var f = new Fixture();
+        using var svc = f.Build();
+        var id = await svc.EnqueueSendAsync(f.Compose(), f.Account.Id, null);
+        // The previous process died mid-send: the row says Sending and nobody will finish it.
+        await f.Store.UpdateOutboxStateAsync(id, OutboxState.Sending, 1, null, null);
+
+        var result = await svc.FlushAsync();
+
+        Assert.Equal(1, result.Sent);
+        Assert.Empty(await svc.ListAsync());
+    }
+
+    [Fact]
+    public async Task ARowHeldByAComposeWindowIsNeverDrainedEvenWhenForced()
+    {
+        var f = new Fixture();
+        using var svc = f.Build();
+        var id = await svc.EnqueueSendAsync(f.Compose(), f.Account.Id, null);
+        svc.Hold(id);
+
+        Assert.Equal(1, (await svc.FlushAsync()).Skipped);
+        Assert.Equal(1, (await svc.FlushAsync(force: true)).Skipped);
+        Assert.Empty(f.Smtp.Sent);
+
+        svc.Release(id);
+        Assert.Equal(1, (await svc.FlushAsync()).Sent);
+    }
+
+    [Fact]
+    public async Task AForcedDrainThatCannotReachTheServerLeavesTheScheduleAlone()
+    {
+        var f = new Fixture();
+        using var svc = f.Build();
+        f.Smtp.SendFailure = Unreachable();
+        var id = await svc.EnqueueSendAsync(f.Compose(), f.Account.Id, null);
+
+        var forced = await svc.FlushAsync(force: true);
+
+        Assert.Equal(1, forced.Deferred);
+        Assert.Equal(0, forced.Skipped);
+        var row = await svc.GetAsync(id);
+        Assert.NotNull(row);
+        Assert.Equal(OutboxState.Pending, row.State);
+        Assert.Equal(0, row.Attempts);          // Send Outbox Now is not a strike against the row
+        Assert.Null(row.NextAttemptUtc);
+    }
+
+    [Fact]
+    public async Task ARowRewrittenWhileItWasBeingSentIsKeptForTheNextDrain()
+    {
+        var f = new Fixture();
+        var gate = new TaskCompletionSource();
+        var slowSmtp = new GatedSmtp(gate.Task);
+        using var svc = new OutboxService(f.Store, f.Mail, slowSmtp, new ListAccountService(f.Account),
+            new PasswordCredentialService("pw"), null, onlineMode: false);
+        var id = await svc.EnqueueSendAsync(f.Compose("first wording"), f.Account.Id, null);
+
+        var drain = svc.FlushAsync();
+        await slowSmtp.Started.Task;
+        // The user saved a newer version into the same row while the old one was on the wire.
+        await svc.EnqueueDraftAsync(f.Compose("second wording"), f.Account.Id, id);
+        gate.SetResult();
+        var result = await drain;
+
+        Assert.Equal(1, result.Sent);
+        var kept = Assert.Single(await svc.ListAsync());
+        Assert.Equal("second wording", kept.Subject);
+        Assert.Equal(OutboxState.Pending, kept.State);
     }
 
     [Theory]

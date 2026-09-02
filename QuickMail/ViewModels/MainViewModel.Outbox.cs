@@ -25,7 +25,7 @@ public partial class MainViewModel
     /// absent from <see cref="AllVirtualFolders"/>: it is never a startup folder and never the
     /// subject of a saved view. Not shown in --online mode, which has no store to queue into.
     /// </summary>
-    // "\0" rather than "\u0000": a fixed one-character escape, so it cannot swallow a following hex
+    // "\0" rather than " ": a fixed one-character escape, so it cannot swallow a following hex
     // digit the way "\x00" can (see the sentinel comment in MainViewModel.cs). Same NUL either way.
     public static readonly MailFolderModel OutboxFolder = new()
     {
@@ -34,6 +34,9 @@ public partial class MainViewModel
         Kind        = SpecialFolderKind.Outbox,
     };
 
+    /// <summary>What every message command other than Enter and Delete says on an Outbox row.</summary>
+    internal const string OutboxRowHint = "This message is waiting in the Outbox. Press Enter to open it in the compose window.";
+
     /// <summary>True when the Outbox exists at all: a queue is wired and there is a store behind it.</summary>
     private bool ShowOutboxFolder => !OnlineMode && _outbox is { IsAvailable: true };
 
@@ -41,6 +44,17 @@ public partial class MainViewModel
     public bool IsSelectedFolderOutbox =>
         SelectedFolder != null &&
         string.Equals(SelectedFolder.FullName, OutboxFolder.FullName, StringComparison.Ordinal);
+
+    private static bool IsOutboxRow(MailMessageSummary? summary)
+        => summary != null && string.Equals(summary.FolderName, OutboxFolder.FullName, StringComparison.Ordinal);
+
+    // True while a Send Outbox Now is in flight, so its outcome is announced as the result of the
+    // user's action; automatic drains are background progress.
+    private bool _manualOutboxDrain;
+
+    // True while Delete is removing rows itself, so the queue's Changed event does not relist the
+    // Outbox out from under the removal (the real service raises it inline on the UI thread).
+    private bool _suppressOutboxRelist;
 
     /// <summary>
     /// The queue as message rows. The state leads the subject ("Waiting to send: Lunch Friday") so
@@ -87,8 +101,7 @@ public partial class MainViewModel
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
             SetMessages(rows);
-            var n = Messages.Count;
-            StatusText = n == 0 ? "Outbox is empty." : $"{n} {(n == 1 ? "item" : "items")} in Outbox.";
+            StatusText = OutboxCountText(Messages.Count);
         }
         catch (OperationCanceledException)
         {
@@ -105,6 +118,33 @@ public partial class MainViewModel
             if (loadVersion == _folderLoadVersion)
                 IsBusy = false;
         }
+    }
+
+    private static string OutboxCountText(int n)
+        => n == 0 ? "Outbox is empty." : $"{n} {(n == 1 ? "item" : "items")} in Outbox.";
+
+    /// <summary>
+    /// Refreshes the Outbox listing in place after the queue changed, keeping the user's selection
+    /// (by row id, else by position) instead of clearing the list out from under their focus — a
+    /// drain flips each row through "Sending…" and the listing follows.
+    /// </summary>
+    private async Task RelistOutboxPreservingSelectionAsync()
+    {
+        if (!IsSelectedFolderOutbox) return;
+        var selectedId = SelectedMessage?.MessageId;
+        var selectedIndex = SelectedMessage != null ? Messages.IndexOf(SelectedMessage) : -1;
+
+        List<MailMessageSummary> rows;
+        try { rows = await BuildOutboxSummariesAsync(); }
+        catch (Exception ex) { LogService.Log("Outbox relist", ex); return; }
+        if (!IsSelectedFolderOutbox) return;
+
+        SetMessages(rows);
+        StatusText = OutboxCountText(Messages.Count);
+        if (Messages.Count == 0) { SelectedMessage = null; return; }
+
+        var byId = selectedId == null ? null : Messages.FirstOrDefault(m => m.MessageId == selectedId);
+        SelectedMessage = byId ?? Messages[Math.Clamp(selectedIndex, 0, Messages.Count - 1)];
     }
 
     /// <summary>
@@ -144,9 +184,11 @@ public partial class MainViewModel
         {
             // Sent or removed since the list was drawn.
             SetStatus("That Outbox item is no longer there.", AnnouncementCategory.Result);
-            await FetchOutboxAsync();
+            await RelistOutboxPreservingSelectionAsync();
             return;
         }
+        // Held from here until the compose window closes, so no drain sends it from under the edit.
+        _outbox.Hold(id);
         ComposeRequested?.Invoke(compose);
     }
 
@@ -166,14 +208,22 @@ public partial class MainViewModel
             return;
 
         var minIdx = rows.Min(m => Messages.IndexOf(m));
-        foreach (var row in rows)
+        _suppressOutboxRelist = true;
+        try
         {
-            Messages.Remove(row);
-            try { await _outbox.RemoveAsync(row.MessageId); }
-            catch (Exception ex) { LogService.Log($"Outbox: remove {row.MessageId}", ex); }
+            foreach (var row in rows)
+            {
+                Messages.Remove(row);
+                try { await _outbox.RemoveAsync(row.MessageId); }
+                catch (Exception ex) { LogService.Log($"Outbox: remove {row.MessageId}", ex); }
+            }
+        }
+        finally
+        {
+            _suppressOutboxRelist = false;
         }
         var removedIds = new HashSet<string>(rows.Select(r => r.MessageId), StringComparer.Ordinal);
-        _rawMessages.RemoveAll(m => m.FolderName == OutboxFolder.FullName && removedIds.Contains(m.MessageId));
+        _rawMessages.RemoveAll(m => IsOutboxRow(m) && removedIds.Contains(m.MessageId));
         RebuildActiveGroupView();
 
         if (ViewMode == ViewMode.Messages && Messages.Count > 0)
@@ -198,6 +248,7 @@ public partial class MainViewModel
         SetStatus("Sending Outbox…", AnnouncementCategory.Status);
 
         OutboxFlushResult result;
+        _manualOutboxDrain = true;
         try { result = await _outbox!.FlushAsync(force: true); }
         catch (Exception ex)
         {
@@ -205,10 +256,15 @@ public partial class MainViewModel
             SetStatus($"Outbox: {ex.Message}", AnnouncementCategory.Result);
             return;
         }
+        finally { _manualOutboxDrain = false; }
 
         // Anything that reached an outcome is announced by the FlushCompleted handler, once.
-        if (!result.Any)
-            SetStatus(result.Skipped > 0 ? "Outbox is already sending." : "Outbox is empty.", AnnouncementCategory.Result);
+        if (result.Any) return;
+        SetStatus(
+            result.Deferred > 0 ? "Could not reach the server. The Outbox will try again when you're online."
+            : result.Skipped > 0 ? "Outbox is busy: a drain is already running, or every item is open in a compose window."
+            : "Outbox is empty.",
+            AnnouncementCategory.Result);
     }
 
     /// <summary>The fallback sync tick's drain: never lets a queue problem stop the sweep.</summary>
@@ -222,16 +278,22 @@ public partial class MainViewModel
 
     private void OnOutboxChanged() => _ui.Post(() =>
     {
+        if (_suppressOutboxRelist) return;
         RefreshOutboxCountAsync().LogFaults("Outbox count");
-        if (IsSelectedFolderOutbox)
-            FetchOutboxAsync().LogFaults("Outbox relist");
+        RelistOutboxPreservingSelectionAsync().LogFaults("Outbox relist");
     });
 
-    private void OnOutboxFlushCompleted(OutboxFlushResult result) => _ui.Post(() =>
+    private void OnOutboxFlushCompleted(OutboxFlushResult result)
     {
-        SetStatus(SummariseFlush(result), AnnouncementCategory.Result);
-        RefreshOutboxCountAsync().LogFaults("Outbox count");
-    });
+        // Read on the raising thread: the manual command's own await is what clears it, and that
+        // continuation cannot run before this handler returns.
+        var category = _manualOutboxDrain ? AnnouncementCategory.Result : AnnouncementCategory.Status;
+        _ui.Post(() =>
+        {
+            SetStatus(SummariseFlush(result), category);
+            RefreshOutboxCountAsync().LogFaults("Outbox count");
+        });
+    }
 
     /// <summary>One sentence per drain, never one per item: "Outbox: 2 messages sent, 1 draft uploaded."</summary>
     internal static string SummariseFlush(OutboxFlushResult r)

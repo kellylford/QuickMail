@@ -5423,6 +5423,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task SelectMessageAsync(MailMessageSummary? summary)
     {
         if (summary == null) return;
+        // An Outbox row has no server message behind it and no reading-pane form; Enter opens it in
+        // the compose window (#637).
+        if (IsOutboxRow(summary))
+        {
+            SelectedMessage = summary;
+            MessageDetail   = null;
+            IsMessageOpen   = false;
+            return;
+        }
         if (SelectedAccount?.Id != summary.AccountId)
             SelectedAccount = Accounts.FirstOrDefault(a => a.Id == summary.AccountId) ?? SelectedAccount;
         if (SelectedAccount == null) return;
@@ -7188,6 +7197,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedGroupMessages() is { } group) { await ArchiveMessagesAsync(group); return; }
         if (SelectedMessage == null) return;
+        if (IsOutboxRow(SelectedMessage)) { SetStatus(OutboxRowHint, AnnouncementCategory.Result); return; }
         await ArchiveMessagesAsync([SelectedMessage]);
     }
 
@@ -7724,6 +7734,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var summary = SelectedMessage;
         if (summary == null) return null;
+        if (IsOutboxRow(summary))
+        {
+            SetStatus(OutboxRowHint, AnnouncementCategory.Result);
+            return null;
+        }
 
         // Fast path: detail already loaded for this exact message.
         if (MessageDetail != null &&
