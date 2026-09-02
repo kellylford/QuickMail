@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -85,6 +86,59 @@ public class AddressBookRowSpeechTests
             AssertNoTypeNames(names);
         }
         finally { Cleanup(window, dir); }
+    }
+
+    /// <summary>
+    /// The mechanism, not just the outcome. For the Groups and group-members lists the composed
+    /// name happens to equal the item's ToString(), so the peer-name tests above still pass if
+    /// someone moves AutomationProperties.Name back inside the DataTemplate — the ToString()
+    /// fallback silently covers for it, and #644 comes back the next time a list gains a richer
+    /// name than its ToString(). This asserts what actually has to be true: every realized row
+    /// CONTAINER carries the name itself.
+    /// </summary>
+    [StaFact]
+    public void EveryList_PutsTheNameOnTheRowContainer_NotInsideTheTemplate()
+    {
+        var (window, dir) = BuildWindow();
+        try
+        {
+            AssertContainersAreNamed(window, "ContactList");
+
+            SelectGroupsTab(window);
+            AssertContainersAreNamed(window, "GroupsList");
+
+            var groups = window.FindName("GroupsList") as ListView;
+            Assert.NotNull(groups);
+            groups!.SelectedItem = groups.Items.Cast<GroupModel>().First(g => g.Name == "Work");
+            window.UpdateLayout();
+            Drain();
+
+            AssertContainersAreNamed(window, "GroupMembersList");
+        }
+        finally { Cleanup(window, dir); }
+    }
+
+    private static void AssertContainersAreNamed(Window window, string listName)
+    {
+        var list = window.FindName(listName) as ListView;
+        Assert.NotNull(list);
+        list!.UpdateLayout();
+        Drain();
+
+        var containers = list.Items
+            .Cast<object>()
+            .Select(item => list.ItemContainerGenerator.ContainerFromItem(item) as ListViewItem)
+            .ToList();
+
+        Assert.NotEmpty(containers);
+        foreach (var container in containers)
+        {
+            Assert.NotNull(container);
+            Assert.False(
+                string.IsNullOrWhiteSpace(AutomationProperties.GetName(container!)),
+                $"A row container in {listName} has no AutomationProperties.Name — the name is " +
+                "inside the DataTemplate again, where a screen reader never reads it (issue #644).");
+        }
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

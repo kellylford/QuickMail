@@ -3,9 +3,10 @@
 ## Fixed: the address book reads out contacts again
 
 Moving through the list of contacts in the address book announced every row as
-*"QuickMail.Models.ContactModel"* followed by its position — the same seven words for all 35 of
-your contacts, with no way to tell one from the next except by opening it. The Groups list and
-the list of a group's members had the same fault waiting in them.
+*"QuickMail.Models.ContactModel"* followed by its position — the same thing for all 35 of your
+contacts, with no way to tell one from the next except by opening it. The list of a group's
+members was silent in exactly the same way. The Groups list happened to escape it, but only by
+accident: it had the same underlying fault and was one small edit away from going silent too.
 
 The rows carried the right text all along; it was attached to the wrong part of the row. Screen
 readers read a list row's name from the row itself, and the address book had put the name on
@@ -15,8 +16,9 @@ too.
 
 A contact row reads as its name, its address, and where it came from — *"Alice Adams,
 alice@example.com, Local address book"* — or with each part labelled, if you have turned on field
-labels in the contact list. A contact saved with no name reads as its address. Groups read as
-their name and size, and a group's members read as name and address.
+labels in the contact list. A contact saved with no name reads as its address and where it came
+from. A group reads as its name and how many members it has, and a group's member reads as name
+and address.
 
 As a safety net for any list of contacts anywhere in QuickMail, a contact with nothing else to say
 for itself now falls back to reading its name and address rather than its internal type name, so
