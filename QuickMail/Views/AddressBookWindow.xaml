@@ -261,6 +261,11 @@
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <!-- The spoken name must land on the ROW CONTAINER, not on an element
+                                     inside the DataTemplate: a screen reader reads the item peer, whose
+                                     name comes from the container and otherwise falls back to the item's
+                                     ToString() — "QuickMail.Models.ContactModel" (issue #644). -->
+                                <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
                             </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
@@ -268,7 +273,7 @@
                                 <!-- Name | Email | Account columns. The row's accessible name is the
                                      composed field data (concise or labeled per setting), so a screen
                                      reader hears one utterance rather than three cells. -->
-                                <Grid AutomationProperties.Name="{Binding AccessibleName}">
+                                <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" MinWidth="120" SharedSizeGroup="ContactNameCol"/>
                                         <ColumnDefinition Width="*"/>
@@ -316,12 +321,13 @@
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <!-- On the container, not the template child — see the contact list above. -->
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
                                 </Style>
                             </ListView.ItemContainerStyle>
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal"
-                                                AutomationProperties.Name="{Binding Display}">
+                                    <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                                         <TextBlock Text="  "/>
                                         <TextBlock Text="{Binding Display, Converter={x:Static local:GroupSubtitleConverter.Instance}}"
@@ -371,12 +377,13 @@
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <!-- On the container, not the template child — see the contact list above. -->
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
                                 </Style>
                             </ListView.ItemContainerStyle>
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal"
-                                                AutomationProperties.Name="{Binding Display}">
+                                    <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
                                         <TextBlock Text="  &lt;"/>
                                         <TextBlock Text="{Binding EmailAddress}" Opacity="0.75"/>
