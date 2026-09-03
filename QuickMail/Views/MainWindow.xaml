@@ -19,7 +19,6 @@
     <Window.Resources>
         <local:BoolToFontWeightConverter x:Key="BoolToWeightConverter"/>
         <BooleanToVisibilityConverter    x:Key="BoolToVisibilityConverter"/>
-        <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
         <local:BoolToGridLengthConverter        x:Key="BoolToGridLengthConverter"/>
         <local:StringToVisibilityConverter      x:Key="StringToVisibilityConverter"/>
         <local:StringToBrushConverter           x:Key="StringToBrushConverter"/>

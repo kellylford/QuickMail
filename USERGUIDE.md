@@ -86,7 +86,7 @@ The menu bar at the top of the window provides access to all major features, org
 |------|----------|
 | **File** | New Message, Manage Accounts, Address Book, Settings (`Ctrl+,`), Exit |
 | **Message** | Reply, Reply All, Forward, Delete, Empty Trash, Move/Copy to Folder, Grab Addresses |
-| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Filter (All / Unread / Read / With Attachments / Replied / Forwarded / To Me), Sort (Newest First / Oldest First / A → Z / Z → A / Most Messages / Fewest Messages), Views (saved views list, Save View, Manage Views, Clear View), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
+| **View** | Refresh, View Mode (Messages / Conversations / From / To), Filter (All / Unread / Read / With Attachments / Replied / Forwarded / To Me), Sort (Newest First / Oldest First / A → Z / Z → A / Most Messages / Fewest Messages), Views (saved views list, Save View, Manage Views, Clear View), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
 | **Help** | User Guide |
 
 All menu items show their keyboard shortcuts for quick reference. You can also press **Alt** or **F10** to activate the menu bar if you prefer keyboard-only navigation.
@@ -167,7 +167,7 @@ Open **File → Settings** (or press `Ctrl+,`) to change application-wide prefer
 
 | Setting | What it controls |
 |---------|------------------|
-| **View Mode** | Default message grouping when the app starts (Messages, Conversations, By Sender, By Recipient) |
+| **View Mode** | Default message grouping when the app starts (Messages, Conversations, From, To) |
 | **Sync Days** | How many days back to fetch messages on sync. `0` means all mail. |
 | **Preview Lines** | Number of body-preview lines shown under each subject in the message list (0–5). |
 | **Initial Sync Count** | Maximum messages fetched per folder on the first sync of a newly connected account. |
@@ -572,7 +572,7 @@ The **View → Sort** submenu controls the order in which messages or groups are
 | **Most Messages** | Groups with the most messages first — grouped views only |
 | **Fewest Messages** | Groups with the fewest messages first — grouped views only |
 
-**Most Messages** and **Fewest Messages** only apply when a grouped view is active (Conversations, By Sender, or By Recipient) and are greyed out in the flat Messages view. They let you instantly see, for example, who you have the most correspondence with.
+**Most Messages** and **Fewest Messages** only apply when a grouped view is active (Conversations, From, or To) and are greyed out in the flat Messages view. They let you instantly see, for example, who you have the most correspondence with.
 
 **Applying a sort:**
 - Open **View → Sort** and choose an option.

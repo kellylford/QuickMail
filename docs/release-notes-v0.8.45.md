@@ -16,7 +16,8 @@ The **View mode** button on the toolbar (`Ctrl+Shift+V`) drops the same list, so
 same way — it was counting seven — and it gains **Month**, which it had been missing while the
 calendar is open. Two View menu entries are renamed to match what the toolbar button, the folder
 tree and the user guide have always called them: **By Sender** and **By Recipient** are now **From**
-and **To**.
+and **To**. **Settings → General → View → Display mode**, which sets the same four modes, follows
+suit and reads **From (grouped by sender)** and **To (grouped by recipient)**.
 ([#663](https://github.com/kellylford/QuickMail/issues/663))
 
 ---

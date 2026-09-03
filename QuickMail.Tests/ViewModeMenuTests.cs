@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using QuickMail.Models;
 using QuickMail.ViewModels;
 using QuickMail.Views;
@@ -235,6 +237,65 @@ public class ViewModeMenuTests
             Assert.Equal(ViewMode.From, vm.ViewMode);
         }
         finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// The count is the whole of issue #663, so it is asserted on the containers the View menu
+    /// really generates, in their real ancestry — two levels inside the menu bar, which is what
+    /// the command's MenuBase ancestor binding has to resolve through. Containers are generated
+    /// here the way an open submenu's items host generates them, so the test needs no shown
+    /// window and no synthesized input.
+    /// </summary>
+    [StaFact]
+    public void TheViewModeSubmenu_GeneratesFourItems_EachWiredToTheCommand()
+    {
+        EnsureThemedApplication();
+        var window = MakeWindow(out var vm);
+        try
+        {
+            var submenu = window.FindName("ViewModeMenuItem") as MenuItem;
+            Assert.NotNull(submenu);
+            DoEvents();
+
+            var items = Generate(submenu!);
+
+            // Four on screen, four generated. Before the fix the menu declared eight.
+            Assert.Equal(4, items.Count);
+            Assert.Equal(new[] { "Messages", "Conversations", "From", "To" },
+                         items.Select(AutomationProperties.GetName).ToArray());
+            Assert.Equal(new[] { "_Messages", "_Conversations", "_From", "_To" },
+                         items.Select(i => i.Header as string).ToArray());
+            Assert.All(items, i => Assert.True(i.IsCheckable));
+            Assert.Equal("Messages", AutomationProperties.GetName(Assert.Single(items.Where(i => i.IsChecked))));
+
+            vm.SelectedFolder = CalendarFolder();
+            DoEvents();
+            Assert.Equal(new[] { "Agenda", "Day", "Week", "Month" },
+                         Generate(submenu).Select(AutomationProperties.GetName).ToArray());
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// Realizes an ItemsControl's containers without opening its popup — the same calls an items
+    /// host makes, so the containers get the ItemContainerStyle and their item as DataContext.
+    /// It does not attach them to a parent, so the Command setter's ancestor binding stays
+    /// unresolved here; GeneratedMenuItem_AnnouncesTheMode_AndIsWiredToTheCommand covers that.
+    /// </summary>
+    private static List<MenuItem> Generate(ItemsControl owner)
+    {
+        var generator = (IItemContainerGenerator)owner.ItemContainerGenerator;
+        var containers = new List<MenuItem>();
+        using (generator.StartAt(new GeneratorPosition(-1, 0), GeneratorDirection.Forward))
+        {
+            while (generator.GenerateNext() is MenuItem container)
+            {
+                generator.PrepareItemContainer(container);
+                containers.Add(container);
+            }
+        }
+        DoEvents();
+        return containers;
     }
 
     private static void DoEvents() =>

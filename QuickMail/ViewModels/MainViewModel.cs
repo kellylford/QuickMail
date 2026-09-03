@@ -9180,14 +9180,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// refreshes which entry is checked. The collection is replaced in place only when the set
     /// actually changes, so arrowing through an open menu does not regenerate its containers.
     /// </summary>
-    public void RebuildViewModeOptions()
+    private void RebuildViewModeOptions()
     {
-        var wanted = BuildViewModeOptions(IsCalendarView);
-        if (ViewModeOptions.Count != wanted.Length
-            || !ViewModeOptions.Select(o => o.Id).SequenceEqual(wanted.Select(o => o.Id), StringComparer.Ordinal))
+        // Folder selection is a hot path, so the common case — the set is already right —
+        // costs one comparison and builds nothing.
+        var calendar = IsCalendarView;
+        if (ViewModeOptions.Count == 0 || ViewModeOptions[0].IsCalendarMode != calendar)
         {
             ViewModeOptions.Clear();
-            foreach (var option in wanted) ViewModeOptions.Add(option);
+            foreach (var option in BuildViewModeOptions(calendar)) ViewModeOptions.Add(option);
         }
         RefreshViewModeOptionChecks();
     }

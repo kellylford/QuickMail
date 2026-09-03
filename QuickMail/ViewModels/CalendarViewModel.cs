@@ -96,7 +96,8 @@ public partial class CalendarViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsListView))]
     private CalendarViewMode _viewMode = CalendarViewMode.Agenda;
 
-    /// <summary>Which slice is in effect, for check states and view-specific behaviour.</summary>
+    /// <summary>Which slice is in effect. IsMonthView drives the Month grid's visibility and
+    /// the focus routing that goes with it; the other three are read by the calendar's tests.</summary>
     public bool IsAgendaView => ViewMode == CalendarViewMode.Agenda;
     public bool IsDayView => ViewMode == CalendarViewMode.Day;
     public bool IsWeekView => ViewMode == CalendarViewMode.Week;
