@@ -661,6 +661,28 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task ClientRuleSummary_GraphTargetNotCached_ReadsAnotherFolder_NotTheOpaqueId() // #550 review L3
+    {
+        // A Graph client rule whose target folder isn't in the cache — not yet synced, or the id drifted
+        // (#366) — must not print the raw "AQMkAD…" id; it reads "another folder", as a server rule does.
+        var a = Guid.NewGuid();
+        const string folderId = "AQMkAD-not-in-cache";
+        var rule = new MailRule
+        {
+            Name = "File", AccountId = a, UseSubjectCondition = true, SubjectContains = "x",
+            Action = RuleAction.MoveToFolder, TargetFolder = folderId,
+        };
+        var client = new StubRuleService { LoadedRules = [rule] };
+        var folders = new Dictionary<Guid, List<MailFolderModel>> { [a] = [] };   // Graph account, id not cached
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Graph(a)], folders, preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var row = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        Assert.Contains("move to another folder", row.RowText);
+        Assert.DoesNotContain(folderId, row.RowText);            // the opaque id never reaches the user
+    }
+
+    [Fact]
     public async Task ServerRuleDetail_ResolvesCopyFolderIdToName_WhenNameMissing() // #550 review: copy-to path
     {
         var a = Guid.NewGuid();
