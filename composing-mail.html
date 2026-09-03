@@ -387,12 +387,82 @@ resolved and how many are invalid.</p>
 <p>QuickMail saves your compose as a draft automatically every 2 minutes
 (on by default). A quiet status line in the compose window shows
 “Auto-saved 3:42 PM” after each save — no announcement interrupts your
-writing. If a save fails, it is announced once. You can check the last
-auto-save time from the command palette: <strong>Ctrl+Shift+P → Announce
-Last Auto-Save</strong>.</p>
+writing. When the server cannot be reached, the status line reads “Kept
+on this computer 3:42 PM” instead and that is announced once; see <a
+href="#working-offline-drafts-and-the-outbox">Working Offline: Drafts
+and the Outbox</a>. If a save fails entirely, it is announced once. You
+can check the last auto-save time from the command palette:
+<strong>Ctrl+Shift+P → Announce Last Auto-Save</strong>.</p>
 <p>Control auto-save in <strong>Settings → General → Composing</strong>:
 turn it off, change the interval (30 seconds to 10 minutes), and set the
 default compose mode for new messages.</p>
+<h3 id="working-offline-drafts-and-the-outbox">Working Offline: Drafts
+and the Outbox</h3>
+<p>A dropped connection no longer traps your message in the compose
+window. QuickMail always tries your account first and falls back to this
+computer only when the server does not answer:</p>
+<ul>
+<li><strong>Save Draft</strong> (<code>Ctrl+S</code>) and auto-save keep
+the draft on this computer when the server cannot be reached. You hear
+“Draft saved on this computer. It will upload when you’re online.” The
+draft goes to your account’s Drafts folder the next time QuickMail
+connects.</li>
+<li><strong>Send</strong> (<code>Alt+S</code>) queues the message when
+the server cannot be reached. You hear “Message queued. It will be sent
+when you’re online.”, the window closes, and the message leaves the
+moment a connection returns. A server that answers and refuses the
+message — a bad address, a rejected login — still fails in the window,
+where you can fix it.</li>
+<li><strong>Closing</strong> a window with unsaved changes and choosing
+Save keeps the draft on this computer if the server is unreachable, and
+the window closes. It stays open only when the draft could be saved
+nowhere at all.</li>
+</ul>
+<p>Everything waiting lives in the <strong>Outbox</strong>, the last
+entry in the All Mail group of the folder tree. The folder’s count is
+spoken as “waiting” rather than “unread”. Each row shows the account it
+will leave from, and its subject starts with its state: “Waiting to
+send”, “Waiting to upload draft”, “Sending…”, or “Failed” followed by
+the reason.</p>
+<table>
+<colgroup>
+<col style="width: 51%" />
+<col style="width: 48%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>In the Outbox</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Enter</code> on a row</td>
+<td>Reopens it in the compose window, exactly as it was written —
+recipients, Bcc, attachments, and compose mode included. Saving or
+sending from there replaces the queued copy.</td>
+</tr>
+<tr class="even">
+<td><code>Delete</code> on a row</td>
+<td>Asks first, then removes it from the queue. There is no Trash to
+recover from: the message has never been anywhere but this
+computer.</td>
+</tr>
+<tr class="odd">
+<td><strong>Send Outbox Now</strong> (Message menu, or
+<code>Ctrl+Shift+P</code> → Send Outbox Now)</td>
+<td>Tries every queued item right away, including any marked
+Failed.</td>
+</tr>
+</tbody>
+</table>
+<p>The Outbox drains on its own when QuickMail connects at startup, when
+the connection returns, and on each background sync. A drain is
+announced once as a whole, for example “Outbox: 2 messages sent, 1 draft
+uploaded.” A message the server refused stays in the Outbox marked
+“Failed” with the reason, until you reopen and fix it, or remove it. The
+Outbox is not available in <code>--online</code> mode, which runs
+without the local store.</p>
 <h3 id="forwarding-with-attachments">Forwarding with Attachments</h3>
 <p>When forwarding a message that has attachments, QuickMail opens an
 <strong>Include Attachments</strong> dialog before downloading. All

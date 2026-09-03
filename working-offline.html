@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Working Offline - QuickMail User Guide</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="what-syncs-and-what-doesnt.html">Previous: What Syncs and What Doesn't</a> | <a href="notifications.html">Next: Notifications</a></div>
+  <h1 id="working-offline">Working Offline</h1>
+<p>QuickMail keeps a copy of your recent mail on this computer, and when
+the connection drops you keep reading it. The status bar’s connection
+label reads <strong>Offline</strong>; screen readers hear “Offline.
+Showing cached messages.” once, and “Back online.” when the connection
+returns. QuickMail waits a few seconds before saying Offline, so a
+momentary blip never interrupts you.</p>
+<h3 id="what-works-offline">What works offline</h3>
+<ul>
+<li>Reading any message you have opened before, or that QuickMail
+fetched ahead of time (it keeps the newest messages of each folder you
+open, and the ones around any message you read). To keep more, see <a
+href="#reading-recent-messages-without-a-connection">Reading recent
+messages without a connection</a>.</li>
+<li>The message list of every folder you have opened, with its unread
+state and flags.</li>
+<li>Searching and filtering what is on this computer, the calendar, and
+the address book.</li>
+<li>Composing. Saving a draft keeps it on this computer, and Send queues
+the message; both go to your account the moment the connection returns.
+See <a href="#working-offline-drafts-and-the-outbox">Working Offline:
+Drafts and the Outbox</a>.</li>
+</ul>
+<p>When you open a folder offline the status bar reads “Offline —
+showing 12 cached messages.” or “Offline — no cached messages in
+Projects.” It never sits on “Loading…”.</p>
+<h3 id="what-needs-a-connection">What needs a connection</h3>
+<ul>
+<li>A message that was never downloaded: “This message is not available
+offline.” Reply and Forward on it say the same and open nothing.</li>
+<li>Attachments: “Attachments are not available offline.”</li>
+<li>New mail, folder changes, and everything else a server has to do.
+Marking read, flagging, moving and deleting are not queued: offline they
+fail with a message, and the next sync after the connection returns puts
+the message back the way the server has it. Only composing waits for
+you.</li>
+</ul>
+<h3 id="reading-recent-messages-without-a-connection">Reading recent
+messages without a connection</h3>
+<p>By default QuickMail keeps the full text of a message only once you
+have opened it, or when it fetched a few ahead of time. To have more
+ready before the connection drops, choose a window under
+<strong>Settings → General → Sync → Download messages for offline
+reading</strong>: <strong>Off</strong> (the default), or the last
+<strong>7</strong>, <strong>30</strong> or <strong>90</strong> days.</p>
+<p>With a window set, the sync at launch and each background check
+(<strong>Check for new mail every</strong>) finish by downloading the
+text of each Inbox message in that window that QuickMail does not have
+yet, newest first, a few hundred at a time; new mail arriving in the
+Inbox gets its text straight away. When a pass completes you hear
+“Downloaded 120 messages for offline reading.” once. A few things to
+know:</p>
+<ul>
+<li>Inbox only. Other folders keep working the way they always have: a
+message is kept once you open it.</li>
+<li>Never wider than the <strong>Sync range</strong> above it, since
+QuickMail cannot keep what it has not synced.</li>
+<li>Attachments are not included. Opening one still needs a
+connection.</li>
+<li>POP3 accounts already keep every message whole, so the setting does
+not apply to them.</li>
+<li>The text lives in <code>mail.db</code> in QuickMail’s data folder,
+which grows accordingly — roughly tens of megabytes for a month of a
+busy Inbox.</li>
+</ul>
+<h3 id="getting-back-online">Getting back online</h3>
+<p>Nothing to press. When Windows reports the network again QuickMail
+reconnects every account by itself; if the network is up but the server
+does not answer (a hotel or airport sign-in page, an outage at the
+provider), it keeps trying on its own, first every half minute and then
+every five. <strong>F5</strong> forces an attempt at any time. Once
+something answers, the folder you are looking at refreshes and anything
+waiting in the Outbox goes out.</p>
+<hr />
+
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="what-syncs-and-what-doesnt.html">Previous: What Syncs and What Doesn't</a> | <a href="notifications.html">Next: Notifications</a></div>
+</body>
+</html>

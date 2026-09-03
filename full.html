@@ -248,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.43</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.44</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -275,6 +275,7 @@ Message</a></li>
 <li><a href="#calendar">Calendar</a></li>
 <li><a href="#what-syncs-and-what-doesnt">What Syncs and What
 Doesn’t</a></li>
+<li><a href="#working-offline">Working Offline</a></li>
 <li><a href="#notifications">Notifications</a></li>
 <li><a href="#tools-menu">Tools Menu</a></li>
 <li><a href="#connection-diagnostics">Connection Diagnostics</a></li>
@@ -2247,12 +2248,82 @@ resolved and how many are invalid.</p>
 <p>QuickMail saves your compose as a draft automatically every 2 minutes
 (on by default). A quiet status line in the compose window shows
 “Auto-saved 3:42 PM” after each save — no announcement interrupts your
-writing. If a save fails, it is announced once. You can check the last
-auto-save time from the command palette: <strong>Ctrl+Shift+P → Announce
-Last Auto-Save</strong>.</p>
+writing. When the server cannot be reached, the status line reads “Kept
+on this computer 3:42 PM” instead and that is announced once; see <a
+href="#working-offline-drafts-and-the-outbox">Working Offline: Drafts
+and the Outbox</a>. If a save fails entirely, it is announced once. You
+can check the last auto-save time from the command palette:
+<strong>Ctrl+Shift+P → Announce Last Auto-Save</strong>.</p>
 <p>Control auto-save in <strong>Settings → General → Composing</strong>:
 turn it off, change the interval (30 seconds to 10 minutes), and set the
 default compose mode for new messages.</p>
+<h3 id="working-offline-drafts-and-the-outbox">Working Offline: Drafts
+and the Outbox</h3>
+<p>A dropped connection no longer traps your message in the compose
+window. QuickMail always tries your account first and falls back to this
+computer only when the server does not answer:</p>
+<ul>
+<li><strong>Save Draft</strong> (<code>Ctrl+S</code>) and auto-save keep
+the draft on this computer when the server cannot be reached. You hear
+“Draft saved on this computer. It will upload when you’re online.” The
+draft goes to your account’s Drafts folder the next time QuickMail
+connects.</li>
+<li><strong>Send</strong> (<code>Alt+S</code>) queues the message when
+the server cannot be reached. You hear “Message queued. It will be sent
+when you’re online.”, the window closes, and the message leaves the
+moment a connection returns. A server that answers and refuses the
+message — a bad address, a rejected login — still fails in the window,
+where you can fix it.</li>
+<li><strong>Closing</strong> a window with unsaved changes and choosing
+Save keeps the draft on this computer if the server is unreachable, and
+the window closes. It stays open only when the draft could be saved
+nowhere at all.</li>
+</ul>
+<p>Everything waiting lives in the <strong>Outbox</strong>, the last
+entry in the All Mail group of the folder tree. The folder’s count is
+spoken as “waiting” rather than “unread”. Each row shows the account it
+will leave from, and its subject starts with its state: “Waiting to
+send”, “Waiting to upload draft”, “Sending…”, or “Failed” followed by
+the reason.</p>
+<table>
+<colgroup>
+<col style="width: 51%" />
+<col style="width: 48%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>In the Outbox</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Enter</code> on a row</td>
+<td>Reopens it in the compose window, exactly as it was written —
+recipients, Bcc, attachments, and compose mode included. Saving or
+sending from there replaces the queued copy.</td>
+</tr>
+<tr class="even">
+<td><code>Delete</code> on a row</td>
+<td>Asks first, then removes it from the queue. There is no Trash to
+recover from: the message has never been anywhere but this
+computer.</td>
+</tr>
+<tr class="odd">
+<td><strong>Send Outbox Now</strong> (Message menu, or
+<code>Ctrl+Shift+P</code> → Send Outbox Now)</td>
+<td>Tries every queued item right away, including any marked
+Failed.</td>
+</tr>
+</tbody>
+</table>
+<p>The Outbox drains on its own when QuickMail connects at startup, when
+the connection returns, and on each background sync. A drain is
+announced once as a whole, for example “Outbox: 2 messages sent, 1 draft
+uploaded.” A message the server refused stays in the Outbox marked
+“Failed” with the reason, until you reopen and fix it, or remove it. The
+Outbox is not available in <code>--online</code> mode, which runs
+without the local store.</p>
 <h3 id="forwarding-with-attachments">Forwarding with Attachments</h3>
 <p>When forwarding a message that has attachments, QuickMail opens an
 <strong>Include Attachments</strong> dialog before downloading. All
@@ -3431,6 +3502,15 @@ rules — your provider does not know about them, and they do nothing
 while QuickMail is closed.</td>
 </tr>
 <tr class="even">
+<td><strong>The Outbox</strong></td>
+<td>This computer only, until sent</td>
+<td>Messages and drafts queued while the server was unreachable wait in
+QuickMail’s data folder and go to your account the next time it
+connects. No other program sees them until then. See <a
+href="#working-offline-drafts-and-the-outbox">Working Offline: Drafts
+and the Outbox</a>.</td>
+</tr>
+<tr class="odd">
 <td><strong>Everything else in QuickMail</strong></td>
 <td>This computer only</td>
 <td>Settings, themes, keyboard customizations, signatures, message
@@ -3460,6 +3540,80 @@ to the first sentence.</strong> If it is set to remove mail from the
 server once collected, the server has nothing left to give back and
 <code>mail.db</code> in that data folder is your mail — copy it across,
 or back it up, like any other document.</p>
+<hr />
+<h2 id="working-offline">Working Offline</h2>
+<p>QuickMail keeps a copy of your recent mail on this computer, and when
+the connection drops you keep reading it. The status bar’s connection
+label reads <strong>Offline</strong>; screen readers hear “Offline.
+Showing cached messages.” once, and “Back online.” when the connection
+returns. QuickMail waits a few seconds before saying Offline, so a
+momentary blip never interrupts you.</p>
+<h3 id="what-works-offline">What works offline</h3>
+<ul>
+<li>Reading any message you have opened before, or that QuickMail
+fetched ahead of time (it keeps the newest messages of each folder you
+open, and the ones around any message you read). To keep more, see <a
+href="#reading-recent-messages-without-a-connection">Reading recent
+messages without a connection</a>.</li>
+<li>The message list of every folder you have opened, with its unread
+state and flags.</li>
+<li>Searching and filtering what is on this computer, the calendar, and
+the address book.</li>
+<li>Composing. Saving a draft keeps it on this computer, and Send queues
+the message; both go to your account the moment the connection returns.
+See <a href="#working-offline-drafts-and-the-outbox">Working Offline:
+Drafts and the Outbox</a>.</li>
+</ul>
+<p>When you open a folder offline the status bar reads “Offline —
+showing 12 cached messages.” or “Offline — no cached messages in
+Projects.” It never sits on “Loading…”.</p>
+<h3 id="what-needs-a-connection">What needs a connection</h3>
+<ul>
+<li>A message that was never downloaded: “This message is not available
+offline.” Reply and Forward on it say the same and open nothing.</li>
+<li>Attachments: “Attachments are not available offline.”</li>
+<li>New mail, folder changes, and everything else a server has to do.
+Marking read, flagging, moving and deleting are not queued: offline they
+fail with a message, and the next sync after the connection returns puts
+the message back the way the server has it. Only composing waits for
+you.</li>
+</ul>
+<h3 id="reading-recent-messages-without-a-connection">Reading recent
+messages without a connection</h3>
+<p>By default QuickMail keeps the full text of a message only once you
+have opened it, or when it fetched a few ahead of time. To have more
+ready before the connection drops, choose a window under
+<strong>Settings → General → Sync → Download messages for offline
+reading</strong>: <strong>Off</strong> (the default), or the last
+<strong>7</strong>, <strong>30</strong> or <strong>90</strong> days.</p>
+<p>With a window set, the sync at launch and each background check
+(<strong>Check for new mail every</strong>) finish by downloading the
+text of each Inbox message in that window that QuickMail does not have
+yet, newest first, a few hundred at a time; new mail arriving in the
+Inbox gets its text straight away. When a pass completes you hear
+“Downloaded 120 messages for offline reading.” once. A few things to
+know:</p>
+<ul>
+<li>Inbox only. Other folders keep working the way they always have: a
+message is kept once you open it.</li>
+<li>Never wider than the <strong>Sync range</strong> above it, since
+QuickMail cannot keep what it has not synced.</li>
+<li>Attachments are not included. Opening one still needs a
+connection.</li>
+<li>POP3 accounts already keep every message whole, so the setting does
+not apply to them.</li>
+<li>The text lives in <code>mail.db</code> in QuickMail’s data folder,
+which grows accordingly — roughly tens of megabytes for a month of a
+busy Inbox.</li>
+</ul>
+<h3 id="getting-back-online">Getting back online</h3>
+<p>Nothing to press. When Windows reports the network again QuickMail
+reconnects every account by itself; if the network is up but the server
+does not answer (a hotel or airport sign-in page, an outage at the
+provider), it keeps trying on its own, first every half minute and then
+every five. <strong>F5</strong> forces an attempt at any time. Once
+something answers, the folder you are looking at refreshes and anything
+waiting in the Outbox goes out.</p>
 <hr />
 <h2 id="notifications">Notifications</h2>
 <p>New-mail notifications and the option to keep QuickMail running in
