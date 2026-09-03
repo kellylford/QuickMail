@@ -22,22 +22,29 @@ public sealed class UnifiedRuleRow
     // raw makes the summary unreadable; the VM looks the id up and passes the DisplayName ("Deleted
     // Items") here. Null when the VM chose not to resolve — no move action, an IMAP account (its
     // TargetFolder is already the readable path, deliberately left unresolved), or the folder isn't in
-    // the cache — and the summary then falls back to the raw TargetFolder.
+    // the cache.
     private readonly string? _targetFolderDisplay;
 
-    private UnifiedRuleRow(RuleRunsWhere runsWhere, ServerRuleModel? server, MailRule? client, bool showFieldLabels, string? targetFolderDisplay)
+    // Whether the raw MailRule.TargetFolder is an opaque id (a Graph account) rather than a readable
+    // path (IMAP). When true and no display name resolved — the folder isn't cached, or its id drifted
+    // (#366) — the summary must NOT fall back to the raw id; it says "another folder", as server rules
+    // already do. False leaves the raw TargetFolder as the fallback, which reads fine for IMAP.
+    private readonly bool _targetIsOpaque;
+
+    private UnifiedRuleRow(RuleRunsWhere runsWhere, ServerRuleModel? server, MailRule? client, bool showFieldLabels, string? targetFolderDisplay, bool targetIsOpaque)
     {
         RunsWhere = runsWhere;
         Server = server;
         Client = client;
         _showFieldLabels = showFieldLabels;
         _targetFolderDisplay = targetFolderDisplay;
+        _targetIsOpaque = targetIsOpaque;
     }
 
     public static UnifiedRuleRow ForServer(ServerRuleModel rule, bool showFieldLabels = false)
-        => new(RuleRunsWhere.Server, rule, null, showFieldLabels, targetFolderDisplay: null);
-    public static UnifiedRuleRow ForClient(MailRule rule, bool showFieldLabels = false, string? targetFolderDisplay = null)
-        => new(RuleRunsWhere.Client, null, rule, showFieldLabels, targetFolderDisplay);
+        => new(RuleRunsWhere.Server, rule, null, showFieldLabels, targetFolderDisplay: null, targetIsOpaque: false);
+    public static UnifiedRuleRow ForClient(MailRule rule, bool showFieldLabels = false, string? targetFolderDisplay = null, bool targetIsOpaque = false)
+        => new(RuleRunsWhere.Client, null, rule, showFieldLabels, targetFolderDisplay, targetIsOpaque);
 
     public RuleRunsWhere RunsWhere { get; }
 
@@ -68,7 +75,7 @@ public sealed class UnifiedRuleRow
             var head = _showFieldLabels
                 ? $"Rule {name}, runs {where}, status {state}"
                 : $"{name}, {where}, {state}";
-            var summary = RunsWhere == RuleRunsWhere.Server ? Server!.OneLineSummary() : ClientSummary(Client!, _targetFolderDisplay);
+            var summary = RunsWhere == RuleRunsWhere.Server ? Server!.OneLineSummary() : ClientSummary(Client!, _targetFolderDisplay, _targetIsOpaque);
             return string.IsNullOrEmpty(summary) ? head : $"{head}. {summary}";
         }
     }
@@ -89,17 +96,17 @@ public sealed class UnifiedRuleRow
             var sb = new StringBuilder();
             sb.AppendLine($"{name} ({(IsEnabled ? "enabled" : "disabled")})");
             AppendSection(sb, "Applies when:", ClientConditions(Client!), "all messages");
-            AppendSection(sb, "Does:", ClientActions(Client!, _targetFolderDisplay), "nothing");
+            AppendSection(sb, "Does:", ClientActions(Client!, _targetFolderDisplay, _targetIsOpaque), "nothing");
             return sb.ToString().TrimEnd();
         }
     }
 
     /// <summary>"If subject contains 'x' → move to Archive" for a client rule — the one-line list-row
     /// summary, mirroring <see cref="ServerRuleModel.OneLineSummary"/> so both kinds read the same way.</summary>
-    private static string ClientSummary(MailRule r, string? targetFolderDisplay)
+    private static string ClientSummary(MailRule r, string? targetFolderDisplay, bool targetIsOpaque)
     {
         var conditions = ClientConditions(r);
-        var actions = ClientActions(r, targetFolderDisplay);
+        var actions = ClientActions(r, targetFolderDisplay, targetIsOpaque);
         var lhs = conditions.Count == 0 ? "All messages" : "If " + string.Join(" and ", conditions);
         var rhs = actions.Count == 0 ? "do nothing" : string.Join(", ", actions);
         return $"{lhs} → {rhs}";
@@ -116,11 +123,14 @@ public sealed class UnifiedRuleRow
         return conditions;
     }
 
-    private static List<string> ClientActions(MailRule r, string? targetFolderDisplay)
+    private static List<string> ClientActions(MailRule r, string? targetFolderDisplay, bool targetIsOpaque)
     {
-        // Prefer the VM-resolved folder name (a Graph target is stored as an opaque id); fall back to the
-        // raw TargetFolder, which still reads for IMAP (its FullName is the path).
+        // Prefer the VM-resolved folder name. Fall back to the raw TargetFolder only when it is readable
+        // (IMAP, whose TargetFolder is the folder path); an opaque Graph id that didn't resolve (folder
+        // not cached, or its id drifted per #366) reads "another folder" rather than the "AQMkAD…" blob,
+        // matching how a server rule renders an unresolved move target.
         var target = !string.IsNullOrWhiteSpace(targetFolderDisplay) ? targetFolderDisplay
+                   : targetIsOpaque ? "another folder"
                    : !string.IsNullOrWhiteSpace(r.TargetFolder) ? r.TargetFolder
                    : "a folder";
         var action = r.Action switch

@@ -576,7 +576,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
                     _allAccounts.FirstOrDefault(a => a.Id == accountId)?.BackendKind == BackendKind.MicrosoftGraph;
                 rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels,
                     isGraphAccount && r.Action == RuleAction.MoveToFolder
-                        ? ResolveFolderName(accountId, r.TargetFolder) : null)));
+                        ? ResolveFolderName(accountId, r.TargetFolder) : null,
+                    targetIsOpaque: isGraphAccount)));
             }
             catch (Exception ex)
             {
