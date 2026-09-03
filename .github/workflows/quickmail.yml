@@ -607,3 +607,22 @@ jobs:
           # the release page. If a future release needs the same treatment, add the input
           # for that release and REMOVE IT IN THE SAME PR THAT TAGS THE NEXT ONE — or
           # simply tag it, then untick "Set as the latest release" once by hand.
+
+  # Publish the user guide for the release the build job just created.
+  #
+  # This exists because publish-user-guide.yml's `release: published` trigger never
+  # fires here: the Release step above creates the release with GITHUB_TOKEN, and
+  # GitHub does not start workflow runs from events a GITHUB_TOKEN raised. So the
+  # guide has only ever gone out when somebody remembered to run it by hand -- and
+  # when nobody did, 0.8.44 shipped while the site kept saying 0.8.43. Calling the
+  # workflow directly needs no PAT and cannot be forgotten.
+  #
+  # The version on the published page is read from QuickMail.csproj, not from the tag,
+  # so this must run off the same tagged commit the release was built from -- which a
+  # `needs: build` job in this run does by construction.
+  publish-guide:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/publish-user-guide.yml
+    permissions:
+      contents: write   # the called workflow pushes the gh-pages branch
