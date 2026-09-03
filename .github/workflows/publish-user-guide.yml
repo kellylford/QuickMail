@@ -2,12 +2,25 @@ name: Publish User Guide
 
 on:
   workflow_dispatch:
+  # Called by the release job in quickmail.yml once a v* tag's release is out. This,
+  # not the `release` trigger below, is what publishes the guide for a release: our
+  # releases are created by softprops/action-gh-release using GITHUB_TOKEN, and GitHub
+  # does not start workflow runs from events raised by a GITHUB_TOKEN, so the
+  # `release: published` event never arrives. It stayed unnoticed because every publish
+  # had been run by hand right after a release -- until 0.8.44 shipped and the site sat
+  # at 0.8.43.
+  workflow_call:
+  # Kept for a release created by hand in the GitHub UI, which does raise the event.
+  # A hand-made release from an existing tag does not re-run quickmail.yml, so this is
+  # that path's only trigger and cannot double up with the workflow_call above.
   release:
     types: [published]
 
 jobs:
   publish-guide:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # peaceiris/actions-gh-pages pushes the gh-pages branch
 
     steps:
       - name: Checkout repository

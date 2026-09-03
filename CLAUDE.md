@@ -82,10 +82,27 @@ The user guide (`docs/USER-GUIDE.md`) is automatically converted to HTML and pub
 2. Workflow generates single-page (`full.html`) and sectioned HTML with navigation (`index.html`)
 3. Deployed to `https://kellylford.github.io/QuickMail/`
 
-**Automatic publish** — triggered by GitHub release creation:
-- When you create a release, the workflow runs and publishes the current user guide automatically.
+**Automatic publish** — the `publish-guide` job at the end of `quickmail.yml` calls this
+workflow after the release job, on every `v*` tag.
 
-**Before you ship a release**: Update `docs/USER-GUIDE.md` with any changes, then publish (manual or automatic).
+Do **not** rely on the `release: published` trigger in `publish-user-guide.yml` for that.
+It is real but never fires for our releases: `softprops/action-gh-release` creates them
+with `GITHUB_TOKEN`, and GitHub does not start workflow runs from events a `GITHUB_TOKEN`
+raised. It has never worked (the trigger dates from the workflow's first commit,
+53ae694), and went unnoticed because somebody always ran the workflow by hand a minute
+after tagging — until 0.8.44 shipped and nobody did, leaving the site saying 0.8.43 with
+none of the offline documentation on it. The trigger is kept only for a release made
+by hand in the GitHub UI, which does raise the event; that path does not re-run
+`quickmail.yml`, so the two cannot double up.
+
+The version shown on the page comes from `<Version>` in `QuickMail.csproj`, **not** from
+the tag and not from anything in `USER-GUIDE.md` — the guide contains no version string.
+So a site showing a stale version means the workflow has not run since the version bump,
+never that a document needs editing. It also means the publish must run from the tagged
+commit; `needs: build` in the same run guarantees that.
+
+**Before you ship a release**: Update `docs/USER-GUIDE.md` with any changes. The tag
+publishes it; a manual run is only for guide edits between releases.
 
 **The Pages site is more than the user guide.** `peaceiris/actions-gh-pages` replaces the whole `gh-pages` branch on every run, so anything that is not written into `build/docs/` during the workflow is deleted on deploy — a file added to the branch by hand does not survive. That is why `docs/privacy.html` 404'd for months while sitting in the repository (issue #556). Every standalone page is therefore either generated (the articles step) or copied (`docs/privacy.html`) inside the workflow. The privacy URL, `https://kellylford.github.io/QuickMail/privacy.html`, is cited by Google OAuth verification and by the winget manifest's `PrivacyUrl`; the copy step fails the run rather than deploying without it.
 
