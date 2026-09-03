@@ -80,8 +80,8 @@
                                               AutomationProperties.LabeledBy="{Binding ElementName=ViewModeLabel}">
                                         <ComboBoxItem Tag="messages" Content="Messages (flat list)"/>
                                         <ComboBoxItem Tag="conversations" Content="Conversations (grouped by subject)"/>
-                                        <ComboBoxItem Tag="from" Content="By Sender"/>
-                                        <ComboBoxItem Tag="to" Content="By Recipient"/>
+                                        <ComboBoxItem Tag="from" Content="From (grouped by sender)"/>
+                                        <ComboBoxItem Tag="to" Content="To (grouped by recipient)"/>
                                     </ComboBox>
                                 </StackPanel>
 

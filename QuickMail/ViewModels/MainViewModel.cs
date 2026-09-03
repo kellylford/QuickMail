@@ -156,6 +156,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (_screenshotCapture != null)
             _screenshotCapture.EnabledChanged -= OnScreenshotCaptureEnabledChanged;
+        if (CalendarVm != null)
+            CalendarVm.PropertyChanged -= OnCalendarVmPropertyChanged;
         if (_outbox != null)
         {
             _outbox.Changed        -= OnOutboxChanged;
@@ -1079,6 +1081,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsContactMailView))]
     private MailFolderModel? _selectedFolder;
 
+    // Selecting the calendar folder (or leaving it) swaps the View Mode menu between the mail
+    // groupings and the calendar slices — see RebuildViewModeOptions and issue #663.
+    partial void OnSelectedFolderChanged(MailFolderModel? value) => RebuildViewModeOptions();
+
     [ObservableProperty]
     private BatchObservableCollection<MailMessageSummary> _messages = [];
 
@@ -1785,7 +1791,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             RemindersEnabled = cfg.CalendarReminders;
             ReminderLeadMinutes = cfg.CalendarReminderMinutes;
             StartReminderTimer();
+            // Keeps the View Mode menu's check mark on the calendar slice actually in effect,
+            // whichever way the user switched (menu, hotkey, or drilling into a month cell).
+            CalendarVm.PropertyChanged += OnCalendarVmPropertyChanged;
         }
+
+        RebuildViewModeOptions();
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
@@ -5067,6 +5078,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsToView));
         OnPropertyChanged(nameof(ViewModeLabel));
         OnPropertyChanged(nameof(IsCountSortAvailable));
+        RefreshViewModeOptionChecks();
 
         // The stale collections are always cleared; only the rebuilds are suppressed. Leaving
         // the previous folder's groups in place while navigating is what would be read out.
@@ -9134,12 +9146,100 @@ public partial class MainViewModel : ObservableObject, IDisposable
         await ArchiveMessagesAsync(group.Messages);
     }
 
-    // ── View mode command ─────────────────────────────────────────────────────
+    // ── View mode menu ────────────────────────────────────────────────────────
 
-    [RelayCommand]
-    private void SetViewMode(string? mode)
+    /// <summary>
+    /// The entries the "View Mode" menu shows right now — the four mail groupings, or the four
+    /// calendar slices while the calendar is open. Never both: the menu used to declare all
+    /// eight and collapse the inapplicable four, and a collapsed MenuItem still counts in its
+    /// parent's automation peer, so a screen reader announced "1 of 8" over a four-item menu
+    /// (issue #663). Rebuilding the collection is what keeps the announced count honest.
+    /// </summary>
+    public ObservableCollection<ViewModeOption> ViewModeOptions { get; } = [];
+
+    private static ViewModeOption[] BuildViewModeOptions(bool calendar) => calendar
+        ? [
+            new ViewModeOption("Agenda", "Agenda", "_Agenda", isCalendarMode: true),
+            new ViewModeOption("Day",    "Day",    "_Day",    isCalendarMode: true),
+            new ViewModeOption("Week",   "Week",   "_Week",   isCalendarMode: true),
+            new ViewModeOption("Month",  "Month",  "M_onth",  isCalendarMode: true),
+          ]
+        : [
+            new ViewModeOption("Messages",      "Messages",     "_Messages",      isCalendarMode: false),
+            new ViewModeOption("Conversations", "Conversations", "_Conversations", isCalendarMode: false),
+            // "From"/"To" everywhere: it is what the toolbar button label, the folder-tree
+            // headings and the user guide already call these two. The View menu used to say
+            // "By Sender"/"By Recipient" — the odd one out, and now that both menus draw from
+            // this one list it could no longer differ from the button it drops from.
+            new ViewModeOption("From",          "From",         "_From",          isCalendarMode: false),
+            new ViewModeOption("To",            "To",           "_To",            isCalendarMode: false),
+          ];
+
+    /// <summary>
+    /// Swaps the menu between the mail and calendar sets when the active folder changes, and
+    /// refreshes which entry is checked. The collection is replaced in place only when the set
+    /// actually changes, so arrowing through an open menu does not regenerate its containers.
+    /// </summary>
+    private void RebuildViewModeOptions()
     {
-        ViewMode = ConfigModel.ParseViewMode(mode);
+        // Folder selection is a hot path, so the common case — the set is already right —
+        // costs one comparison and builds nothing.
+        var calendar = IsCalendarView;
+        if (ViewModeOptions.Count == 0 || ViewModeOptions[0].IsCalendarMode != calendar)
+        {
+            ViewModeOptions.Clear();
+            foreach (var option in BuildViewModeOptions(calendar)) ViewModeOptions.Add(option);
+        }
+        RefreshViewModeOptionChecks();
+    }
+
+    private void OnCalendarVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CalendarViewModel.ViewMode)) RefreshViewModeOptionChecks();
+    }
+
+    /// <summary>Pushes the current mode onto the menu's check marks.</summary>
+    private void RefreshViewModeOptionChecks()
+    {
+        var current = IsCalendarView
+            ? (CalendarVm?.ViewMode.ToString() ?? nameof(CalendarViewMode.Agenda))
+            : ViewMode.ToString();
+
+        foreach (var option in ViewModeOptions)
+        {
+            var selected = string.Equals(option.Id, current, StringComparison.Ordinal);
+            if (option.IsSelected != selected) option.IsSelected = selected;
+            else option.RefreshIsSelected();
+        }
+    }
+
+    /// <summary>
+    /// Activation of a View Mode menu entry. Calendar entries go through the calendar's own
+    /// commands, which also re-filter, re-announce the period, and move focus to the control
+    /// the new slice shows — setting <c>CalendarVm.ViewMode</c> directly would skip all three.
+    /// </summary>
+    [RelayCommand]
+    private void SelectViewMode(ViewModeOption? option)
+    {
+        if (option == null) return;
+
+        if (option.IsCalendarMode)
+        {
+            if (CalendarVm == null) return;
+            switch (option.Id)
+            {
+                case nameof(CalendarViewMode.Agenda): CalendarVm.ShowAgendaCommand.Execute(null); break;
+                case nameof(CalendarViewMode.Day):    CalendarVm.ShowDayCommand.Execute(null);    break;
+                case nameof(CalendarViewMode.Week):   CalendarVm.ShowWeekCommand.Execute(null);   break;
+                case nameof(CalendarViewMode.Month):  CalendarVm.ShowMonthCommand.Execute(null);  break;
+            }
+        }
+        else
+        {
+            ViewMode = ConfigModel.ParseViewMode(option.Id);
+        }
+
+        RefreshViewModeOptionChecks();
     }
 
     // ── List density command (#421, View menu) ────────────────────────────────

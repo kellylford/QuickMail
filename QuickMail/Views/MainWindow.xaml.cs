@@ -37,19 +37,6 @@ public class BoolToFontWeightConverter : IValueConverter
 }
 
 /// <summary>
-/// Converts bool to Visibility: true → Collapsed, false → Visible.
-/// Used to hide the standard message ListView when conversation view is on.
-/// </summary>
-public class InverseBoolToVisibilityConverter : IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
-        value is true ? Visibility.Collapsed : Visibility.Visible;
-
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
-}
-
-/// <summary>
 /// Converts a bool to a GridLength using a "trueValue|falseValue" parameter, e.g. "*|0" or
 /// "Auto|*". Each token is parsed as a GridLength ("*", "Auto", "0", "2*", "200"). Used to swap
 /// the message-list and reading-pane row sizes so a message opened in a tab fills the content
