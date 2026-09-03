@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -96,7 +96,7 @@ public partial class CalendarViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsListView))]
     private CalendarViewMode _viewMode = CalendarViewMode.Agenda;
 
-    /// <summary>Check-state helpers for the View Mode menu.</summary>
+    /// <summary>Which slice is in effect, for check states and view-specific behaviour.</summary>
     public bool IsAgendaView => ViewMode == CalendarViewMode.Agenda;
     public bool IsDayView => ViewMode == CalendarViewMode.Day;
     public bool IsWeekView => ViewMode == CalendarViewMode.Week;

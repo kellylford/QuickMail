@@ -6,6 +6,7 @@
         xmlns:local="clr-namespace:QuickMail.Views"
         xmlns:models="clr-namespace:QuickMail.Models"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:prim="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
         Height="650" Width="1000"
@@ -22,6 +23,30 @@
         <local:BoolToGridLengthConverter        x:Key="BoolToGridLengthConverter"/>
         <local:StringToVisibilityConverter      x:Key="StringToVisibilityConverter"/>
         <local:StringToBrushConverter           x:Key="StringToBrushConverter"/>
+
+        <!-- View Mode menu entries (#663).
+             The menu is bound to MainViewModel.ViewModeOptions, which holds only the four
+             modes that apply right now — the mail groupings, or the calendar slices. It used
+             to declare all eight and collapse the inapplicable four, but a collapsed MenuItem
+             is still a child of its parent's automation peer, so a screen reader counted eight
+             items in a menu showing four.
+
+             The ancestor for the command is MenuBase, which covers both hosts: the View menu
+             (inside a Menu) and the toolbar button's ContextMenu. Both carry the MainViewModel
+             as their DataContext — the ContextMenu by way of its PlacementTarget binding. -->
+        <Style x:Key="ViewModeMenuItemStyle" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+            <Setter Property="Header" Value="{Binding Header}"/>
+            <!-- The header carries a mnemonic underscore; the accessible name must not. -->
+            <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
+            <!-- IsCheckable="True" is what makes the automation peer expose the Toggle
+                 pattern, so the active mode is announced as checked. -->
+            <Setter Property="IsCheckable" Value="True"/>
+            <Setter Property="IsChecked" Value="{Binding IsSelected, Mode=OneWay}"/>
+            <Setter Property="Command"
+                    Value="{Binding DataContext.SelectViewModeCommand,
+                                    RelativeSource={RelativeSource AncestorType={x:Type prim:MenuBase}}}"/>
+            <Setter Property="CommandParameter" Value="{Binding}"/>
+        </Style>
 
         <!-- ── Shared context menus ── -->
 
@@ -472,54 +497,12 @@
                           Click="MenuPlainText_Click"
                           InputGestureText="Ctrl+Shift+H"/>
                 <Separator/>
-                <MenuItem Header="View _Mode">
-                    <!-- Mail view modes — hidden while the calendar is open. -->
-                    <MenuItem Header="_Messages"
-                              Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                              IsCheckable="True"
-                              IsChecked="{Binding IsMessagesView, Mode=OneWay}"
-                              Command="{Binding SetViewModeCommand}"
-                              CommandParameter="Messages"/>
-                    <MenuItem Header="_Conversations"
-                              Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                              IsCheckable="True"
-                              IsChecked="{Binding IsConversationsView, Mode=OneWay}"
-                              Command="{Binding SetViewModeCommand}"
-                              CommandParameter="Conversations"/>
-                    <MenuItem Header="By _Sender"
-                              Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                              IsCheckable="True"
-                              IsChecked="{Binding IsFromView, Mode=OneWay}"
-                              Command="{Binding SetViewModeCommand}"
-                              CommandParameter="From"/>
-                    <MenuItem Header="By _Recipient"
-                              Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                              IsCheckable="True"
-                              IsChecked="{Binding IsToView, Mode=OneWay}"
-                              Command="{Binding SetViewModeCommand}"
-                              CommandParameter="To"/>
-                    <!-- Calendar view modes — shown only while the calendar is open. -->
-                    <MenuItem Header="_Agenda"
-                              Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
-                              IsCheckable="True"
-                              IsChecked="{Binding CalendarVm.IsAgendaView, Mode=OneWay}"
-                              Command="{Binding CalendarVm.ShowAgendaCommand}"/>
-                    <MenuItem Header="_Day"
-                              Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
-                              IsCheckable="True"
-                              IsChecked="{Binding CalendarVm.IsDayView, Mode=OneWay}"
-                              Command="{Binding CalendarVm.ShowDayCommand}"/>
-                    <MenuItem Header="_Week"
-                              Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
-                              IsCheckable="True"
-                              IsChecked="{Binding CalendarVm.IsWeekView, Mode=OneWay}"
-                              Command="{Binding CalendarVm.ShowWeekCommand}"/>
-                    <MenuItem Header="M_onth"
-                              Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
-                              IsCheckable="True"
-                              IsChecked="{Binding CalendarVm.IsMonthView, Mode=OneWay}"
-                              Command="{Binding CalendarVm.ShowMonthCommand}"/>
-                </MenuItem>
+                <!-- Only the four modes that apply are in the tree at all (#663) — see
+                     ViewModeMenuItemStyle. -->
+                <MenuItem Header="View _Mode"
+                          x:Name="ViewModeMenuItem"
+                          ItemsSource="{Binding ViewModeOptions}"
+                          ItemContainerStyle="{StaticResource ViewModeMenuItemStyle}"/>
                 <!-- Density (#421): the same setting as Settings → Appearance,
                      adjustable in place. Padding only — never the accessibility
                      surface. Registered as view.density.* for palette/hotkeys. -->
@@ -853,48 +836,13 @@
                     ToolTip="Select message view mode (Ctrl+Shift+V)"
                     Click="ViewModeButton_Click">
                 <Button.ContextMenu>
-                    <ContextMenu AutomationProperties.Name="View mode"
-                                 DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Header="_Messages"
-                                  Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                                  IsCheckable="True"
-                                  IsChecked="{Binding IsMessagesView, Mode=OneWay}"
-                                  Command="{Binding SetViewModeCommand}"
-                                  CommandParameter="Messages"/>
-                        <MenuItem Header="_Conversations"
-                                  Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                                  IsCheckable="True"
-                                  IsChecked="{Binding IsConversationsView, Mode=OneWay}"
-                                  Command="{Binding SetViewModeCommand}"
-                                  CommandParameter="Conversations"/>
-                        <MenuItem Header="_From"
-                                  Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                                  IsCheckable="True"
-                                  IsChecked="{Binding IsFromView, Mode=OneWay}"
-                                  Command="{Binding SetViewModeCommand}"
-                                  CommandParameter="From"/>
-                        <MenuItem Header="_To"
-                                  Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                                  IsCheckable="True"
-                                  IsChecked="{Binding IsToView, Mode=OneWay}"
-                                  Command="{Binding SetViewModeCommand}"
-                                  CommandParameter="To"/>
-                        <MenuItem Header="_Agenda"
-                                  Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
-                                  IsCheckable="True"
-                                  IsChecked="{Binding CalendarVm.IsAgendaView, Mode=OneWay}"
-                                  Command="{Binding CalendarVm.ShowAgendaCommand}"/>
-                        <MenuItem Header="_Day"
-                                  Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
-                                  IsCheckable="True"
-                                  IsChecked="{Binding CalendarVm.IsDayView, Mode=OneWay}"
-                                  Command="{Binding CalendarVm.ShowDayCommand}"/>
-                        <MenuItem Header="_Week"
-                                  Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
-                                  IsCheckable="True"
-                                  IsChecked="{Binding CalendarVm.IsWeekView, Mode=OneWay}"
-                                  Command="{Binding CalendarVm.ShowWeekCommand}"/>
-                    </ContextMenu>
+                    <!-- Same collection the View menu binds, so the toolbar offers exactly the
+                         modes that apply and announces the right count (#663). -->
+                    <ContextMenu x:Name="ViewModeMenu"
+                                 AutomationProperties.Name="View mode"
+                                 DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                 ItemsSource="{Binding ViewModeOptions}"
+                                 ItemContainerStyle="{StaticResource ViewModeMenuItemStyle}"/>
                 </Button.ContextMenu>
             </Button>
             <Separator/>
