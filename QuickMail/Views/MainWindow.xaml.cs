@@ -6605,11 +6605,8 @@ public partial class MainWindow : Window
         // to the open window rather than silently dropping it.
         if (_rulesWindow is { IsLoaded: true } existing)
         {
-            if (template != null)
-            {
-                if (existing is RulesManagerWindow rmw) rmw.PrefillFromTemplate(template);
-                else if (existing is UnifiedRulesWindow urw) urw.PrefillFromTemplate(template);
-            }
+            if (template != null && existing is UnifiedRulesWindow urw)
+                urw.PrefillFromTemplate(template);
             existing.Activate();
             return;
         }
@@ -6620,11 +6617,6 @@ public partial class MainWindow : Window
 
         var accounts = _vm.Accounts.ToList();
 
-        // Unowned (issue #347) so the window reads its own title, not the main window's. Modeless
-        // (.Show) — a modal loop over the live WebView2 reading pane hard-deadlocks with a screen
-        // reader (GrabAddresses). Choose the layout: the unified single-list manager (spec §20) when
-        // server rules are enabled and a Graph account exists; otherwise the client-only manager. The
-        // shared Closed handler below works for either window type.
         // On-demand "Run on Existing Mail" (issue #346): the VM has no local store, so the owner runs
         // client rules over cached mail off the UI thread and returns how many were moved/deleted.
         async Task<int> RunClientRulesOnExisting(Guid? accountScope)
@@ -6636,8 +6628,8 @@ public partial class MainWindow : Window
             // IMAP accounts whose folder tree isn't yet kind-tagged.
             //
             // accountScope (#493): the unified window is one account at a time, so it passes the account
-            // in its picker and we run only that one — never rules the user can't see. The client-only
-            // window lists every account together and passes null, keeping its run over all of them.
+            // in its picker and we run only that one — never rules the user can't see. The parameter stays
+            // nullable (null = every account) so a future all-accounts caller can reuse this unchanged.
             var inboxByAccount = new Dictionary<Guid, string>();
             foreach (var (accountId, folders) in _vm.CachedFolders)
             {
@@ -6671,10 +6663,8 @@ public partial class MainWindow : Window
 
         // Unowned (issue #347) so the window reads its own title, not the main window's. Modeless
         // (.Show) — a modal loop over the live WebView2 reading pane hard-deadlocks with a screen
-        // reader (GrabAddresses). Choose the layout: the unified single-list manager (spec §20) when
-        // server rules are enabled and a Graph account exists; otherwise the client-only manager. The
-        // shared Closed handler below works for either window type.
-        // Messages the Test Rule action runs against — the same set for either window type.
+        // reader (GrabAddresses). The shared Closed handler below works for the window.
+        // Messages the Test Rule action runs against.
         var selectedMessages = _vm.Messages.ToList();
 
         // Lets the rule editors' target-folder picker create a folder on the spot (#645). The two
@@ -6688,32 +6678,23 @@ public partial class MainWindow : Window
                 _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name),
             _vm.CommitPendingFolderTreeRebuild);
 
-        Window dialog;
-        UnifiedRulesWindow? unifiedWindow = null;
-        if (_serverRuleService != null
-            && _featureGate.IsEnabled(FeatureFlag.ServerRules)
-            && accounts.Any(a => a.BackendKind == BackendKind.MicrosoftGraph))
-        {
-            // Seed the picker with the account the user is currently in (null on aggregate views →
-            // VM falls back to the first account).
-            var unifiedVm = new UnifiedRulesViewModel(
-                _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id,
-                selectedMessagesForTest: selectedMessages, configService: _configService);
-            unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
-            // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.
-            unifiedWindow = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders, template, folderCreation);
-            dialog = unifiedWindow;
-        }
-        else
-        {
-            var rulesVm = new RulesManagerViewModel(
-                _ruleService, accounts,
-                prefillTemplate: template,
-                selectedMessagesForTest: selectedMessages,
-                configService: _configService);
-            rulesVm.RunOnExistingRequested += RunClientRulesOnExisting;
-            dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders, folderCreation);
-        }
+        // One rules window for every account (#550). The unified single-list manager (spec §20) is now
+        // THE rules UI: an IMAP or personal-Graph account simply shows its client rules — the same set
+        // the retired client-only manager showed — in the same window a work/school Graph account sees
+        // its server rules in, and the window adapts per selected account via AccountSupportsServerRules.
+        // There is no longer a chooser to drift out of step with that gate.
+        //
+        // The server-rule service is always passed in: server-side rules are a shipped capability, no
+        // longer feature-gated. Whether any actually load is still a per-account question the VM answers
+        // (AccountSupportsServerRules is false for non-work/school-Graph accounts, so nothing server-side
+        // loads for them). Seed the picker with the account the user is currently in (null on aggregate
+        // views → VM falls back to the first account).
+        var unifiedVm = new UnifiedRulesViewModel(
+            _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id,
+            selectedMessagesForTest: selectedMessages, configService: _configService);
+        unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
+        // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.
+        Window dialog = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders, template, folderCreation);
 
         _rulesWindow = dialog;
 

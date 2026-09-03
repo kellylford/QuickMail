@@ -104,9 +104,6 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// <summary>Ask the View to confirm a delete (message, title) → user's yes/no.</summary>
     public event Func<string, string, bool>? ConfirmDeleteRequested;
 
-    /// <summary>Ask the View to show the "saved as a QuickMail rule" dialog (spec §20.3).</summary>
-    public event Action<string>? ClientRuleNoticeRequested;
-
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
     public event Action<string>? WriteBlockedByPermission;
     public event Action? FocusSelectedRuleRequested;
@@ -312,15 +309,18 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 created => created.Id, reloadOnSuccess: true);
         }
 
-        // Client rule — persist and tell the user it runs in QuickMail (spec §20.3).
+        // Client rule — persist. Whether we say so depends on the account (#550):
+        //  • On an account that supports server rules, a rule landing client-side is a surprise — the
+        //    on-open hint said this account *also* runs rules in the cloud, yet this one won't (it uses a
+        //    client-only action like Mark as unread). So announce it. A non-blocking Announce (Result —
+        //    honors AnnounceResults), not the old modal: the rules window is now the one every account
+        //    uses, and a focus-stealing dialog on each such save doesn't belong there.
+        //  • On a client-only account (IMAP / personal Graph) every rule is a client-side rule, and the
+        //    on-open hint already said so — a per-save notice would just be chatter, so stay silent.
         var rule = editor.ToClientRule(accountId);
         AddClientRule(rule);
-        // Show the notice BEFORE re-selecting: ReloadAndReselect posts a focus move to the new row,
-        // and if that's pending when the modal notice opens, focus jumps into the background window
-        // while the notice is up. Raising the (modal) notice first means the reselect + focus request
-        // run only once it's dismissed.
-        ClientRuleNoticeRequested?.Invoke(
-            $"Saved as a QuickMail rule (it runs while QuickMail is open) — {kind.ClientReason}.");
+        if (AccountSupportsServerRules)
+            Announce("Saving as a client-side rule.", AnnouncementCategory.Result);
         await ReloadAndReselectAsync(clientId: rule.Id);
         return null;
     }
@@ -473,8 +473,24 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// </summary>
     public bool AccountSupportsServerRules
         => _serverRules != null
-           && SelectedAccountModel is { BackendKind: BackendKind.MicrosoftGraph } acct
-           && !OAuthService.ResolveIsPersonalMicrosoftAccount(acct);
+           && SelectedAccountModel is { } acct
+           && SupportsServerRules(acct);
+
+    /// <summary>
+    /// Whether <paramref name="account"/> is the kind that can carry server-side rules: a
+    /// <em>work or school</em> Microsoft 365 (Graph) account. Personal Graph accounts are excluded
+    /// for the reason spelt out on <see cref="AccountSupportsServerRules"/>.
+    /// <para>
+    /// The pure per-account capability test, factored out so it reads the same everywhere and
+    /// <see cref="AccountSupportsServerRules"/> (which also requires a live server-rule service) is its
+    /// one caller today. Since #550 there is a single rules window for every account, so the old
+    /// window-chooser that this once had to agree with is gone — but keeping the capability question in
+    /// one named place is still the right shape.
+    /// </para>
+    /// </summary>
+    public static bool SupportsServerRules(AccountModel account)
+        => account.BackendKind == BackendKind.MicrosoftGraph
+           && !OAuthService.ResolveIsPersonalMicrosoftAccount(account);
 
     private AccountModel? SelectedAccountModel
         => _allAccounts.FirstOrDefault(a => a.Id == SelectedAccount?.Id);
@@ -528,6 +544,16 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 try
                 {
                     var server = await _serverRules.ListAsync(accountId, token);
+                    // Graph returns folder ids, not names; resolve them from the folder cache so the
+                    // prose reads "move to Deleted Items" rather than "another folder". Only fill an
+                    // empty name — a name the editor already set is left as-is.
+                    foreach (var r in server)
+                    {
+                        if (string.IsNullOrWhiteSpace(r.MoveToFolderName))
+                            r.MoveToFolderName = ResolveFolderName(accountId, r.MoveToFolderId);
+                        if (string.IsNullOrWhiteSpace(r.CopyToFolderName))
+                            r.CopyToFolderName = ResolveFolderName(accountId, r.CopyToFolderId);
+                    }
                     rows.AddRange(server.Select(r => UnifiedRuleRow.ForServer(r, _showFieldLabels)));
                 }
                 catch (OperationCanceledException) { return; }   // superseded — leave state untouched
@@ -542,7 +568,16 @@ public partial class UnifiedRulesViewModel : ObservableObject
             try
             {
                 var client = _clientRules.LoadRules().Where(r => r.AccountId == accountId);
-                rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels)));
+                // Resolve a folder name only for a Graph account, whose TargetFolder is an opaque id.
+                // An IMAP TargetFolder is already the readable folder path, and resolving it would return
+                // the leaf DisplayName — collapsing "Work/Archive" and "Personal/Archive" to the same
+                // "Archive" — so leave IMAP rules to render their raw path (the ForClient fallback).
+                var isGraphAccount =
+                    _allAccounts.FirstOrDefault(a => a.Id == accountId)?.BackendKind == BackendKind.MicrosoftGraph;
+                rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels,
+                    isGraphAccount && r.Action == RuleAction.MoveToFolder
+                        ? ResolveFolderName(accountId, r.TargetFolder) : null,
+                    targetIsOpaque: isGraphAccount)));
             }
             catch (Exception ex)
             {
@@ -567,12 +602,20 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
             // A load failure must survive to the status line — otherwise "couldn't reach Graph" reads
             // as "this account has no server rules", which invites the wrong next action.
-            StatusText = BuildStatus(rows, failures);
+            StatusText = BuildStatus(rows, failures, AccountSupportsServerRules);
 
             // Only the account-context load (open/switch) speaks the mode; a write-reload does not. This
             // sits past every early return above, so a superseded refresh never announces a stale account.
             if (announceMode)
+            {
+                // TEMP diagnostic (#550): logs which account's mode is announced and its supportsServer
+                // value, so a "supports only client, then supports both" report can be traced to whether
+                // one account announced twice or two accounts were visited. Runs only under /debug.
+                // Remove once the double-announce report is understood.
+                LogService.Debug($"UnifiedRules: announce mode for account={accountId} " +
+                    $"'{SelectedAccountModel?.AccountLabel}' supportsServer={AccountSupportsServerRules}");
                 Announce(RuleModeHint(AccountSupportsServerRules), AnnouncementCategory.Hint);
+            }
         }
         finally
         {
@@ -586,28 +629,53 @@ public partial class UnifiedRulesViewModel : ObservableObject
     // rather than leaving silence to be interpreted. Pure so the wording is pinned by a test.
     internal static string RuleModeHint(bool supportsServerRules)
         => supportsServerRules
-            ? "This account also supports server-side rules that run in the cloud."
-            : "Rules for this account run in QuickMail while it's open.";
+            ? "This account supports both server-side and client-side rules."
+            : "This account supports only client-side rules.";
 
     /// <summary>Cancels any in-flight load. The View calls this on close so a slow Graph fetch can't
     /// complete and write into a window that's gone.</summary>
     public void CancelPendingLoad() => _refreshCts?.Cancel();
 
-    private static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures)
+    /// <summary>
+    /// The human-readable name for a folder id in <paramref name="accountId"/>'s folder cache, or null
+    /// when it can't be resolved (no cache for the account, or the id isn't in it). Both a Graph server
+    /// rule (<see cref="ServerRuleModel.MoveToFolderId"/>) and a Graph client rule
+    /// (<see cref="MailRule.TargetFolder"/>) store an opaque id (e.g. "AQMkAD…"); looking it up here lets
+    /// the rule prose read "move to Deleted Items" rather than the id. Null lets the caller keep whatever
+    /// fallback prose it has. Callers pass only Graph folder ids: an IMAP TargetFolder is already the
+    /// readable path and the client-row builder deliberately does not resolve it (see there).
+    /// </summary>
+    private string? ResolveFolderName(Guid accountId, string? folderId)
+    {
+        if (string.IsNullOrWhiteSpace(folderId)
+            || _foldersByAccount is null
+            || !_foldersByAccount.TryGetValue(accountId, out var folders))
+            return null;
+        var match = folders.FirstOrDefault(f => f.FullName == folderId);
+        return string.IsNullOrWhiteSpace(match?.DisplayName) ? null : match.DisplayName;
+    }
+
+    private static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures, bool supportsServerRules)
     {
         if (failures.Count > 0)
         {
             // Lead with what went wrong; append counts only for the section(s) that did load.
-            var loaded = rows.Count == 0 ? "" : " " + Counts(rows);
+            var loaded = rows.Count == 0 ? "" : " " + Counts(rows, supportsServerRules);
             return string.Join(" ", failures) + loaded;
         }
-        return rows.Count == 0 ? "No rules for this account." : Counts(rows);
+        return rows.Count == 0 ? "No rules for this account." : Counts(rows, supportsServerRules);
 
-        static string Counts(List<UnifiedRuleRow> r)
+        static string Counts(List<UnifiedRuleRow> r, bool supportsServer)
         {
+            // A client-only account can't have server rules, so the "N on server, N on client" split is
+            // just "0 on server" clutter — name them plainly as client-side instead. The split appears
+            // only on an account that can actually hold both kinds.
+            if (!supportsServer)
+                return $"{r.Count} client-side rule{(r.Count == 1 ? "" : "s")}.";
+
             var server = r.Count(x => x.RunsWhere == RuleRunsWhere.Server);
             var client = r.Count(x => x.RunsWhere == RuleRunsWhere.Client);
-            return $"{r.Count} rule{(r.Count == 1 ? "" : "s")}: {server} on server, {client} in QuickMail.";
+            return $"{r.Count} rule{(r.Count == 1 ? "" : "s")}: {server} on server, {client} on client.";
         }
     }
 }
