@@ -54,15 +54,23 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     /// <summary>A new rule prefilled from a message (create-rule-from-message, Ctrl+Shift+T): carries
     /// the message's From and Subject as conditions. It's still a new rule — the user picks the
-    /// action, and it's classified server/client on save like any other New rule.</summary>
+    /// action, and it's classified server/client on save like any other New rule.
+    ///
+    /// Both fields carry their text whatever the template's flags say; the flags drive the matching
+    /// condition checkbox instead (#665). Subject arrives switched OFF, because a rule that matches
+    /// one sender AND one exact subject line matches, in practice, the single thread it was made
+    /// from — which is not what "Rule for &lt;sender&gt;" means. The text is still sitting in the box,
+    /// so turning the subject back on is one keystroke rather than retyping it.</summary>
     public static ServerRuleEditorViewModel ForNewFromTemplate(MailRule template)
     {
         var vm = new ServerRuleEditorViewModel
         {
             IsNew = true,
             Name = template.Name ?? string.Empty,
-            FromAddresses = template.UseFromCondition ? (template.FromContains ?? string.Empty) : string.Empty,
-            SubjectContains = template.UseSubjectCondition ? (template.SubjectContains ?? string.Empty) : string.Empty,
+            FromAddresses = template.FromContains ?? string.Empty,
+            UseFromAddresses = template.UseFromCondition,
+            SubjectContains = template.SubjectContains ?? string.Empty,
+            UseSubjectContains = template.UseSubjectCondition,
         };
         vm.IsAdvancedExpanded = vm.HasAdvancedContent();
         return vm;
@@ -107,6 +115,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             string.Equals(o.Value, rule.Importance, StringComparison.OrdinalIgnoreCase)) ?? ImportanceOptions[0];
         vm.SelectedMarkImportance = ImportanceOptions.FirstOrDefault(o =>
             string.Equals(o.Value, rule.MarkImportance, StringComparison.OrdinalIgnoreCase)) ?? ImportanceOptions[0];
+        vm.SyncConditionSwitchesToContent();
         // If the rule already uses any advanced field, open the Advanced section so editing never
         // hides a populated field. A brand-new rule leaves it collapsed.
         vm.IsAdvancedExpanded = vm.HasAdvancedContent();
@@ -127,10 +136,17 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             IsNew = false,
             Name = rule.Name,
             IsEnabled = rule.IsEnabled,
-            FromAddresses = rule.UseFromCondition ? (rule.FromContains ?? string.Empty) : string.Empty,
-            SentToAddresses = rule.UseToCondition ? (rule.ToContains ?? string.Empty) : string.Empty,
-            SubjectContains = rule.UseSubjectCondition ? (rule.SubjectContains ?? string.Empty) : string.Empty,
-            BodyContains = rule.UseBodyCondition ? (rule.BodyContains ?? string.Empty) : string.Empty,
+            // A client condition is live only when its flag is set AND it has a value; the editor's
+            // checkbox carries that same meaning, so the text comes across either way and the flag
+            // decides whether the condition is switched on (#665).
+            FromAddresses = rule.FromContains ?? string.Empty,
+            UseFromAddresses = rule.UseFromCondition,
+            SentToAddresses = rule.ToContains ?? string.Empty,
+            UseSentToAddresses = rule.UseToCondition,
+            SubjectContains = rule.SubjectContains ?? string.Empty,
+            UseSubjectContains = rule.UseSubjectCondition,
+            BodyContains = rule.BodyContains ?? string.Empty,
+            UseBodyContains = rule.UseBodyCondition,
             HasAttachments = rule.MustHaveAttachments,
         };
 
@@ -146,6 +162,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             case RuleAction.Delete: vm.Delete = true; break;
         }
 
+        vm.SyncConditionSwitchesToContent();
         vm.IsAdvancedExpanded = vm.HasAdvancedContent();
         return vm;
     }
@@ -172,6 +189,48 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [ObservableProperty] private bool _sentOnlyToMe;
     [ObservableProperty] private bool _hasAttachments;
     [ObservableProperty] private ImportanceOption _selectedImportance = ImportanceOptions[0];
+
+    // ── Condition switches (#665) ───────────────────────────────────────────
+    //
+    // One per free-text condition, matching the checkbox in front of its field. Reported: the editor
+    // filled From and Subject from the message and offered no way to say which of them the rule was
+    // supposed to use, so it used both. The switch is what says so, and — unlike clearing the box —
+    // it leaves the text in place, so a prefilled value can be turned back on with one keystroke.
+    //
+    // They start ON, matching the client Rules Manager, so a hand-made rule behaves exactly as before:
+    // an empty field was, and still is, no condition. Loading an existing rule clears the switch on
+    // every empty field (SyncConditionSwitchesToContent), so the editor reads back what the rule does.
+    //
+    // Everything downstream reads the gated Effective* values below — never the raw text — so a
+    // switched-off condition is invisible to saving, classification and the Advanced auto-expand.
+    [ObservableProperty] private bool _useSenderContains = true;
+    [ObservableProperty] private bool _useFromAddresses = true;
+    [ObservableProperty] private bool _useSentToAddresses = true;
+    [ObservableProperty] private bool _useSubjectContains = true;
+    [ObservableProperty] private bool _useBodyOrSubjectContains = true;
+    [ObservableProperty] private bool _useBodyContains = true;
+
+    private string EffectiveSenderContains => UseSenderContains ? SenderContains : string.Empty;
+    private string EffectiveFromAddresses => UseFromAddresses ? FromAddresses : string.Empty;
+    private string EffectiveSentToAddresses => UseSentToAddresses ? SentToAddresses : string.Empty;
+    private string EffectiveSubjectContains => UseSubjectContains ? SubjectContains : string.Empty;
+    private string EffectiveBodyOrSubjectContains => UseBodyOrSubjectContains ? BodyOrSubjectContains : string.Empty;
+    private string EffectiveBodyContains => UseBodyContains ? BodyContains : string.Empty;
+
+    /// <summary>
+    /// Clears the switch on every condition that has no text, so an existing rule opens with exactly
+    /// the conditions it actually uses switched on. Never switches one ON — a deliberately-off but
+    /// prefilled field (Ctrl+Shift+T's subject) has to stay off.
+    /// </summary>
+    private void SyncConditionSwitchesToContent()
+    {
+        if (string.IsNullOrWhiteSpace(SenderContains)) UseSenderContains = false;
+        if (string.IsNullOrWhiteSpace(FromAddresses)) UseFromAddresses = false;
+        if (string.IsNullOrWhiteSpace(SentToAddresses)) UseSentToAddresses = false;
+        if (string.IsNullOrWhiteSpace(SubjectContains)) UseSubjectContains = false;
+        if (string.IsNullOrWhiteSpace(BodyOrSubjectContains)) UseBodyOrSubjectContains = false;
+        if (string.IsNullOrWhiteSpace(BodyContains)) UseBodyContains = false;
+    }
 
     // Actions
     [ObservableProperty]
@@ -264,12 +323,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         DisplayName = Name.Trim(),
         IsEnabled = IsEnabled,
 
-        SenderContains = Blank(SenderContains),
-        FromAddresses = SplitAddresses(FromAddresses),
-        SentToAddresses = SplitAddresses(SentToAddresses),
-        SubjectContains = Blank(SubjectContains),
-        BodyOrSubjectContains = Blank(BodyOrSubjectContains),
-        BodyContains = Blank(BodyContains),
+        SenderContains = Blank(EffectiveSenderContains),
+        FromAddresses = SplitAddresses(EffectiveFromAddresses),
+        SentToAddresses = SplitAddresses(EffectiveSentToAddresses),
+        SubjectContains = Blank(EffectiveSubjectContains),
+        BodyOrSubjectContains = Blank(EffectiveBodyOrSubjectContains),
+        BodyContains = Blank(EffectiveBodyContains),
         SentToMe = SentToMe,
         SentOnlyToMe = SentOnlyToMe,
         HasAttachments = HasAttachments,
@@ -302,13 +361,13 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// </summary>
     public MailRule ToClientRule(Guid accountId)
     {
-        var fromAddrs = SplitAddresses(FromAddresses);
-        var from = !string.IsNullOrWhiteSpace(SenderContains) ? SenderContains.Trim()
+        var fromAddrs = SplitAddresses(EffectiveFromAddresses);
+        var from = !string.IsNullOrWhiteSpace(EffectiveSenderContains) ? EffectiveSenderContains.Trim()
                  : fromAddrs.Count == 1 ? fromAddrs[0]
                  : null;
-        var to = SplitAddresses(SentToAddresses) is { Count: 1 } toList ? toList[0] : null;
-        var subject = Blank(SubjectContains);
-        var body = Blank(BodyContains);
+        var to = SplitAddresses(EffectiveSentToAddresses) is { Count: 1 } toList ? toList[0] : null;
+        var subject = Blank(EffectiveSubjectContains);
+        var body = Blank(EffectiveBodyContains);
 
         return new MailRule
         {
@@ -435,17 +494,17 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         var f = new List<string>();
 
         // Conditions with no client equivalent.
-        if (!string.IsNullOrWhiteSpace(BodyOrSubjectContains)) f.Add("the subject-or-body condition");
+        if (!string.IsNullOrWhiteSpace(EffectiveBodyOrSubjectContains)) f.Add("the subject-or-body condition");
         if (SentToMe) f.Add("the “sent to me” condition");
         if (SentOnlyToMe) f.Add("the “sent only to me” condition");
         if (SelectedImportance?.Value is not null) f.Add("the importance condition");
 
         // A client rule has a single From and a single To field.
-        var fromAddrs = SplitAddresses(FromAddresses);
+        var fromAddrs = SplitAddresses(EffectiveFromAddresses);
         if (fromAddrs.Count > 1) f.Add("multiple From addresses");
-        if (!string.IsNullOrWhiteSpace(SenderContains) && fromAddrs.Count > 0)
+        if (!string.IsNullOrWhiteSpace(EffectiveSenderContains) && fromAddrs.Count > 0)
             f.Add("both Sender-contains and From-addresses");
-        if (SplitAddresses(SentToAddresses).Count > 1) f.Add("multiple Sent-to addresses");
+        if (SplitAddresses(EffectiveSentToAddresses).Count > 1) f.Add("multiple Sent-to addresses");
 
         // Actions with no client equivalent.
         if (CopyToFolder) f.Add("Copy to folder");
@@ -477,10 +536,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// editing. Keep this list in sync with the Advanced group in ServerRuleEditorWindow.xaml.
     /// </summary>
     private bool HasAdvancedContent()
-        => !string.IsNullOrWhiteSpace(SenderContains)
-           || !string.IsNullOrWhiteSpace(SentToAddresses)
-           || !string.IsNullOrWhiteSpace(BodyOrSubjectContains)
-           || !string.IsNullOrWhiteSpace(BodyContains)
+        => !string.IsNullOrWhiteSpace(EffectiveSenderContains)
+           || !string.IsNullOrWhiteSpace(EffectiveSentToAddresses)
+           || !string.IsNullOrWhiteSpace(EffectiveBodyOrSubjectContains)
+           || !string.IsNullOrWhiteSpace(EffectiveBodyContains)
            || SentToMe || SentOnlyToMe || HasAttachments
            || !string.IsNullOrWhiteSpace(SelectedImportance?.Value)
            || MarkAsUnread

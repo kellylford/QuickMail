@@ -1,5 +1,27 @@
 # QuickMail v0.8.45 Release Notes
 
+## Fixed: every rule condition now has a checkbox
+
+**Create Rule from Message** (`Ctrl+Shift+T`) filled in the sender *and* the subject of the message
+you were reading, and the rule editor had no way to say which of them the rule was supposed to use.
+Both were conditions, both had to match, so "Rule for someone@example.com" quietly became a rule
+that matched that sender only when the subject was the exact line it was made from — in practice,
+the one conversation you started from.
+
+Each text condition in the editor now has its own checkbox in front of it: **From addresses**,
+**Subject contains**, and the four under **Advanced conditions & actions** (**Sender contains**,
+**Sent to addresses**, **Subject or body contains**, **Body contains**). A message has to satisfy
+every condition you checked, so leaving one unchecked is how you say "don't care". Clearing a
+checkbox keeps the text in its box — read-only and skipped by Tab, but one keystroke from being
+part of the rule again, rather than something you have to retype.
+
+Creating a rule from a message uses that: the sender arrives checked, and the subject arrives
+**unchecked** with its text ready to switch on. So the rule you get by default is the one the name
+says — everything from that sender.
+([#665](https://github.com/kellylford/QuickMail/issues/665))
+
+---
+
 ## Fixed: View Mode counts its choices correctly
 
 **View → View Mode** offers four choices — Messages, Conversations, From, To — but arrowing

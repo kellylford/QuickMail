@@ -7999,11 +7999,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var source = SelectedMessage;
         if (source == null) return;
 
+        // The subject comes across so it is there to switch on, but the condition starts OFF (#665):
+        // "Rule for <sender>" that also has to match one exact subject line matches, in practice, the
+        // single thread it was made from. The editor shows it in a cleared checkbox, one keystroke
+        // from being part of the rule, rather than silently ANDing it with the sender.
         var template = new MailRule
         {
             Name = $"Rule for {source.From}",
             FromContains = source.From,
             SubjectContains = string.IsNullOrWhiteSpace(source.Subject) ? null : source.Subject,
+            UseSubjectCondition = false,
             AccountId = source.AccountId,
         };
 
