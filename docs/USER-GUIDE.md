@@ -1135,7 +1135,7 @@ Each row in the rules list says the rule's name and the account it belongs to. T
 
 ### Creating a Rule from a Message
 
-Select a message and choose **Create Rule from Message** from the context menu or the command palette. QuickMail opens a new rule pre-filled with a condition matching the sender and, if present, the subject — a quick starting point you can adjust before saving.
+Select a message and choose **Create Rule from Message** from the context menu or the command palette. QuickMail opens a new rule pre-filled from that message: the sender is filled in and its condition is **checked**, so the rule matches everything from that sender. The subject is filled in too, but its condition starts **unchecked** — a rule that has to match one sender *and* one exact subject line matches, in practice, only the conversation you made it from. If you did want the subject as well, check its box; the text is already there.
 
 ### Microsoft 365: server-side rules
 
@@ -1146,6 +1146,8 @@ Server-side rules are an organization feature, so **personal Outlook.com, Hotmai
 **One account at a time.** With a Microsoft 365 account present, the Rules Manager opens on a single account chosen in an **Account** list at the top, rather than listing every account's rules together. Choose the account whose rules you want, and the list below shows just that mailbox's rules. If you have only one account there is no picker. This is the first thing to notice if you are used to seeing every account's rules in one list: your rules are not gone, they are behind the account picker.
 
 **One list, marked where each rule runs.** Server rules and QuickMail rules appear together in a single list. Each row says where the rule runs — **on server** or **in QuickMail** — along with its name and whether it is enabled. Creating, editing, enabling or disabling, reordering, and deleting all work the same way whichever kind a rule is. When you open the Rules Manager, or switch to another account with the account picker, QuickMail announces that account's rule mode — that its rules run in QuickMail while it is open, or that the account also supports server-side rules — so an empty list is never a mystery about which kind the account can have.
+
+**Every condition has a checkbox.** In the rule editor, each text condition — **From addresses**, **Subject contains**, and the ones under **Advanced conditions & actions** — is switched on by the checkbox in front of it. A message must satisfy **every** condition you checked, so leaving one unchecked is how you say "don't care". Clearing a checkbox leaves the text sitting in its box, now read-only and skipped by Tab, so a condition you turned off is one keystroke from being turned back on rather than something you have to retype.
 
 **QuickMail chooses where a new rule lives.** When you create a rule, QuickMail saves it as a server rule whenever it can, so it keeps working while QuickMail is closed. A rule that needs something only QuickMail can do — today that is **Mark as unread** — is saved as a QuickMail rule instead, and QuickMail tells you why.
 
