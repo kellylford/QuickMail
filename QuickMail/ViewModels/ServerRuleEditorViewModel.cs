@@ -369,16 +369,35 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         var subject = Blank(EffectiveSubjectContains);
         var body = Blank(EffectiveBodyContains);
 
+        // Which conditions the rule actually matches on — decided before the switched-off text below
+        // is carried in, so carrying it can never turn a condition on.
+        var useFrom = from is not null;
+        var useTo = to is not null;
+        var useSubject = subject is not null;
+        var useBody = body is not null;
+
+        // A switched-off condition keeps its text in the saved rule with its flag clear, so reopening
+        // the rule offers the text back instead of an empty box. That is MailRule's own meaning of the
+        // flag — the engine, the row summary and the standalone Rules Manager's validation all require
+        // the flag AND text — and it is what the standalone manager has always stored, so the same rule
+        // no longer means different things depending on which window saved it. Each line fills only a
+        // slot the switched-on conditions left empty: a populated-but-off Sender must never displace
+        // the From address that IS in use.
+        from ??= OffText(UseSenderContains, SenderContains) ?? OffSingleAddress(UseFromAddresses, FromAddresses);
+        to ??= OffSingleAddress(UseSentToAddresses, SentToAddresses);
+        subject ??= OffText(UseSubjectContains, SubjectContains);
+        body ??= OffText(UseBodyContains, BodyContains);
+
         return new MailRule
         {
             Name = Name.Trim(),
             IsEnabled = IsEnabled,
             AccountId = accountId,
 
-            UseFromCondition = from is not null, FromContains = from,
-            UseToCondition = to is not null, ToContains = to,
-            UseSubjectCondition = subject is not null, SubjectContains = subject,
-            UseBodyCondition = body is not null, BodyContains = body,
+            UseFromCondition = useFrom, FromContains = from,
+            UseToCondition = useTo, ToContains = to,
+            UseSubjectCondition = useSubject, SubjectContains = subject,
+            UseBodyCondition = useBody, BodyContains = body,
             MustHaveAttachments = HasAttachments,
 
             Action = ClientAction(),
@@ -534,12 +553,16 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>
     /// True when any field that lives in the Advanced section is set — used to auto-expand it when
     /// editing. Keep this list in sync with the Advanced group in ServerRuleEditorWindow.xaml.
+    ///
+    /// Deliberately the RAW text, not the switched-on value: a field holding text the user cannot see
+    /// is exactly what "editing never hides a populated field" is here to prevent, and a condition
+    /// that is switched off but populated is still something they need to be shown.
     /// </summary>
     private bool HasAdvancedContent()
-        => !string.IsNullOrWhiteSpace(EffectiveSenderContains)
-           || !string.IsNullOrWhiteSpace(EffectiveSentToAddresses)
-           || !string.IsNullOrWhiteSpace(EffectiveBodyOrSubjectContains)
-           || !string.IsNullOrWhiteSpace(EffectiveBodyContains)
+        => !string.IsNullOrWhiteSpace(SenderContains)
+           || !string.IsNullOrWhiteSpace(SentToAddresses)
+           || !string.IsNullOrWhiteSpace(BodyOrSubjectContains)
+           || !string.IsNullOrWhiteSpace(BodyContains)
            || SentToMe || SentOnlyToMe || HasAttachments
            || !string.IsNullOrWhiteSpace(SelectedImportance?.Value)
            || MarkAsUnread
@@ -558,6 +581,13 @@ public partial class ServerRuleEditorViewModel : ObservableObject
            || SplitAddresses(ForwardTo).Count > 0;
 
     private static string? Blank(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>The text of a condition that is switched OFF — null when it is on, or has none.</summary>
+    private static string? OffText(bool isOn, string raw) => isOn ? null : Blank(raw);
+
+    /// <summary>Same, for an address list the client model can only hold one entry of.</summary>
+    private static string? OffSingleAddress(bool isOn, string raw)
+        => isOn ? null : SplitAddresses(raw) is { Count: 1 } one ? one[0] : null;
 
     /// <summary>Parses a free-text recipient field ("a@b.com, c@d.com; e@f.com").</summary>
     private static List<string> SplitAddresses(string text)

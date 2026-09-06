@@ -166,7 +166,7 @@ public class RuleConditionSwitchTests
     }
 
     [Fact]
-    public void ToClientRule_SwitchedOffConditionIsNotCarriedOver()
+    public void ToClientRule_SwitchedOffConditionIsSavedInert_ButKeepsItsText()
     {
         var vm = ServerRuleEditorViewModel.ForNewFromTemplate(Template());
         vm.MarkAsRead = true;
@@ -175,8 +175,50 @@ public class RuleConditionSwitchTests
 
         Assert.True(rule.UseFromCondition);
         Assert.Equal("boss@work.com", rule.FromContains);
+
+        // The flag is what makes a condition live (RuleService requires flag AND text), so the rule
+        // matches on the sender alone — but the text is kept, so reopening the rule offers it back
+        // instead of an empty box. This is what the standalone Rules Manager has always stored.
         Assert.False(rule.UseSubjectCondition);
-        Assert.Null(rule.SubjectContains);
+        Assert.Equal("Weekly Report", rule.SubjectContains);
+    }
+
+    [Fact]
+    public void ToClientRule_CarriedTextNeverDisplacesAConditionThatIsInUse()
+    {
+        // Sender-contains and From-addresses share one slot in the client model. With Sender switched
+        // off and From switched on, the saved rule must match the From address — carrying the dead
+        // Sender text into that slot would silently change what the rule matches.
+        var vm = ServerRuleEditorViewModel.ForNew();
+        vm.SenderContains = "accounts";
+        vm.UseSenderContains = false;
+        vm.FromAddresses = "billing@x.com";
+        vm.MarkAsRead = true;
+
+        var rule = vm.ToClientRule(Guid.NewGuid());
+
+        Assert.True(rule.UseFromCondition);
+        Assert.Equal("billing@x.com", rule.FromContains);
+    }
+
+    [Fact]
+    public void PopulatedButSwitchedOffAdvancedField_IsNotHiddenBehindTheCollapsedSection()
+    {
+        // "Editing never hides a populated field": a client rule whose Body condition was switched
+        // off in the standalone Rules Manager still carries its text, and the Advanced section has to
+        // open so the user can see it — otherwise the editor holds text they cannot see.
+        var vm = ServerRuleEditorViewModel.ForEditClient(new MailRule
+        {
+            Name = "Invoices",
+            FromContains = "billing@x.com",
+            BodyContains = "invoice",
+            UseBodyCondition = false,
+            Action = RuleAction.MarkAsRead,
+        });
+
+        Assert.Equal("invoice", vm.BodyContains);
+        Assert.False(vm.UseBodyContains);
+        Assert.True(vm.IsAdvancedExpanded);
     }
 
     // ── Classification (spec §20.3) reads the switches too ──────────────────

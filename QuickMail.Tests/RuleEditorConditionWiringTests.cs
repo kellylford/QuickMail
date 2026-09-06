@@ -61,24 +61,30 @@ public class RuleEditorConditionWiringTests
         {
             var tree = Descendants(window).ToList();
 
-            var switches = tree.OfType<CheckBox>()
-                .Select(c => PathOf(c, ToggleButton.IsCheckedProperty))
-                .Where(p => p != null)
-                .ToHashSet();
-
             foreach (var (field, gate) in Conditions)
             {
                 var box = tree.OfType<TextBox>().SingleOrDefault(t => PathOf(t, TextBox.TextProperty) == field);
                 Assert.True(box != null, $"No TextBox bound to '{field}' in the rule editor.");
 
-                Assert.True(switches.Contains(gate),
-                    $"'{field}' has no CheckBox bound to '{gate}'. A condition the user cannot switch " +
-                    "off is the #665 defect.");
+                // The checkbox has to be the element immediately in front of this box, not merely
+                // somewhere in the window: a checkbox bound to the right property but sitting in
+                // another section labels the wrong field, and reads as the wrong field too.
+                var siblings = ((Panel)LogicalTreeHelper.GetParent(box!)).Children.Cast<UIElement>().ToList();
+                var previous = siblings[siblings.IndexOf(box!) - 1] as CheckBox;
+                Assert.True(previous != null && PathOf(previous, ToggleButton.IsCheckedProperty) == gate,
+                    $"'{field}' is not immediately preceded by a CheckBox bound to '{gate}'. A condition " +
+                    "the user cannot switch off is the #665 defect.");
 
                 // Switched off, the field must stop being editable AND leave the tab order. A box that
                 // is skipped but still typeable, or typeable but unreachable, is worse than neither.
                 Assert.True(PathOf(box!, TextBox.IsReadOnlyProperty) == gate,
                     $"'{field}' does not bind IsReadOnly to '{gate}'.");
+                // …and through the inverter. Binding IsReadOnly straight to the switch compiles, reads
+                // right, and does the exact opposite: editable only while the condition is switched off.
+                Assert.True(
+                    BindingOperations.GetBinding(box!, TextBox.IsReadOnlyProperty)?.Converter is InverseBoolConverter,
+                    $"'{field}' binds IsReadOnly to '{gate}' without InverseBoolConverter, so the box is " +
+                    "editable exactly when the condition is switched off.");
                 Assert.True(PathOf(box!, Control.IsTabStopProperty) == gate,
                     $"'{field}' does not bind IsTabStop to '{gate}'.");
             }
