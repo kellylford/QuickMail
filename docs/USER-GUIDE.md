@@ -1789,7 +1789,7 @@ Control which categories of announcements QuickMail makes:
 | Announce hints | Instructional tips ("Press Escape to return") |
 | Announce status | Background progress (sync, loading, connection state) |
 | Announce results | Action outcomes (messages moved, addresses saved, flag changes) |
-| Announce delete and archive actions | Delete and archive outcomes ("1 message archived"). Turn off to stop these from interrupting the screen reader as it reads the next message; failures are still announced |
+| Announce delete and archive actions | Delete and archive outcomes that are worth saying: a count when you acted on several at once ("3 messages deleted"), and "Folder is now empty". Deleting or archiving a single message says nothing either way — the row is gone and the next one is read, so there is nothing left to tell you. Failures are always announced |
 | Announce formatting while navigating | Block type announced when caret enters a new paragraph type in HTML compose |
 | Announce spelling errors when typing | Misspellings called out as you type them |
 | Announce spelling errors while navigating | Misspellings called out as you move the cursor through the message |

@@ -288,6 +288,7 @@ public partial class MainWindow : Window
         vm.ManageAccountsRequested += OpenAccountManager;
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
+        vm.MessageListFocusNowRequested += FocusSelectedMessageRowNow;
         // Normally the main window is where a VM announcement belongs. _announceTarget redirects it
         // for the duration of a call made on behalf of another window — a UIA notification raised on
         // a background window's peer is not what the user is looking at.
@@ -3708,6 +3709,42 @@ public partial class MainWindow : Window
         _vm.IsMessageOpen = false;
         _vm.MessageDetail = null;
         ReturnFocusToMessageList();
+    }
+
+    // Puts keyboard focus on the selected message row before this method returns, rather than
+    // queueing the move the way ReturnFocusToMessageList does.
+    //
+    // This exists for one caller: the ViewModel is about to remove rows from the list, and focus
+    // has to be off the doomed rows BEFORE they go, or the user hears "unavailable" (issue #667 —
+    // the reasoning is in MainViewModel.LandFocusBeforeRemoval). A queued focus move lands after
+    // the removal has already happened, which is exactly the case being avoided, so this one
+    // realizes the container synchronously and focuses it.
+    // Returns whether keyboard focus actually reached the row; false leaves the ViewModel to fall
+    // back to its queued MessageListFocusRequested.
+    private bool FocusSelectedMessageRowNow()
+    {
+        // The flat list only, and only when it is the list on screen. ViewMode is orthogonal to
+        // IsCalendarView — that one comes from the selected folder — so ViewMode == Messages alone
+        // does not mean MessageList is visible; ReturnFocusToMessageList tests the same pair.
+        if (_vm.IsCalendarView || _vm.ViewMode != ViewMode.Messages) return false;
+
+        // From the ViewModel's own selection, not MessageList.SelectedIndex: the caller set
+        // SelectedMessage a statement ago and the two-way binding is what would have to have
+        // propagated for SelectedIndex to be right. Reading the source removes the assumption —
+        // and a stale index here would focus the row that is about to be removed, which is the
+        // whole bug.
+        if (_vm.SelectedMessage is not { } target) return false;
+
+        var idx = MessageList.Items.IndexOf(target);
+        if (idx < 0) return false;
+
+        MessageList.ScrollIntoView(target);
+        // ScrollIntoView only schedules the panel's measure pass; without this the container for a
+        // row that was off screen does not exist yet and there is nothing to focus.
+        MessageList.UpdateLayout();
+
+        return MessageList.ItemContainerGenerator.ContainerFromIndex(idx) is ListViewItem row
+               && row.Focus();
     }
 
     // Return keyboard focus to the active message panel after reading a message.
