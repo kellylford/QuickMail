@@ -7235,8 +7235,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (landing == null) return null;         // the whole list is leaving
 
         SelectedMessage = landing;
-        MessageListFocusNowRequested?.Invoke();
-        return landing;
+
+        // Null unless focus genuinely reached the row. A non-null return is the caller's licence to
+        // skip the queued MessageListFocusRequested afterwards, and skipping it is the point: that
+        // request lands on a later dispatcher pass, by which time the removal may have regenerated
+        // the container, and focusing a fresh container raises a second focus event that reads the
+        // row out again. The sequence measured as silent does not re-focus after the removal.
+        return MessageListFocusNowRequested?.Invoke() == true ? landing : null;
     }
 
     [RelayCommand]
@@ -7304,15 +7309,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // In flat Messages view: advance selection to the next item so the
             // global Delete hotkey (HasSelectedMessage guard) stays coherent.
-            // Normally LandFocusBeforeRemoval has already done this and its row is still here, so
-            // this is the fallback for when it could not land — and the re-focus below is a no-op
-            // when focus is already on the row, but recovers it if the container was regenerated.
+            //
+            // Only when LandFocusBeforeRemoval did not already do it. When it did, focus is on that
+            // row now and asking again would queue a second focus move — see the comment there.
             if (landed == null || !Messages.Contains(landed))
             {
                 var landIdx = Math.Max(0, Math.Min(minIdx, Messages.Count - 1));
                 SelectedMessage = Messages[landIdx];
+                MessageListFocusRequested?.Invoke();
             }
-            MessageListFocusRequested?.Invoke();
         }
         else
         {
@@ -7552,13 +7557,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (ViewMode == ViewMode.Messages && Messages.Count > 0)
         {
-            // Fallback for when LandFocusBeforeRemoval could not land, exactly as in delete.
+            // Fallback for when LandFocusBeforeRemoval could not land, exactly as in delete —
+            // including not re-asking for focus when it did land.
             if (landed == null || !Messages.Contains(landed))
             {
                 var landIdx = Math.Max(0, Math.Min(minIdx, Messages.Count - 1));
                 SelectedMessage = Messages[landIdx];
+                MessageListFocusRequested?.Invoke();
             }
-            MessageListFocusRequested?.Invoke();
         }
         else
         {
@@ -7671,8 +7677,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <para>Raised only by <see cref="LandFocusBeforeRemoval"/>, and only for that purpose: the
     /// focused row must stop being a row that is about to be removed, and "later" is too late for
     /// that. See <see cref="LandFocusBeforeRemoval"/> for why (issue #667).</para>
+    ///
+    /// <para>Returns whether focus actually reached the row, so the caller knows whether it still
+    /// needs the queued request as a fallback — and, just as importantly, knows when it must not
+    /// ask again. (One subscriber, so the multicast return value is that subscriber's.)</para>
     /// </summary>
-    public event Action? MessageListFocusNowRequested;
+    public event Func<bool>? MessageListFocusNowRequested;
     public event EventHandler<(string Text, AnnouncementCategory Category)>? AnnouncementRequested;
     public event EventHandler? RulesManagerRequested;
     public event EventHandler<MailRule>? CreateRuleFromMessageRequested;

@@ -90,12 +90,22 @@ public class MessageRemovalFocusTests
         /// <summary>What Messages held each time the ViewModel asked for a synchronous focus move.</summary>
         public List<(MailMessageSummary? Selected, List<MailMessageSummary> Rows)> FocusNowCalls { get; } = new();
 
+        /// <summary>How many times the ViewModel asked for the queued (post-removal) focus move.</summary>
+        public int QueuedFocusCalls { get; private set; }
+
+        /// <summary>What the stand-in View reports back: did focus reach the row?</summary>
+        public bool FocusNowSucceeds { get; set; } = true;
+
         private Fixture(MainViewModel vm)
         {
             Vm        = vm;
             Announced = StatusAnnouncementRecorder.Watch(vm);
             vm.MessageListFocusNowRequested += () =>
+            {
                 FocusNowCalls.Add((vm.SelectedMessage, vm.Messages.ToList()));
+                return FocusNowSucceeds;
+            };
+            vm.MessageListFocusRequested += () => QueuedFocusCalls++;
         }
 
         public static async Task<Fixture> CreateAsync(int messageCount = 5)
@@ -179,6 +189,35 @@ public class MessageRemovalFocusTests
         // Nowhere to land, so nothing is asked for — rather than focusing a row about to vanish.
         Assert.Empty(f.FocusNowCalls);
         Assert.Empty(f.Vm.Messages);
+    }
+
+    [Fact]
+    public async Task FocusIsNotAskedForTwiceWhenItAlreadyLanded()
+    {
+        var f = await Fixture.CreateAsync();
+
+        await f.Vm.DeleteMessagesAsync([f.Row("b")]);
+
+        // The queued request lands on a later dispatcher pass, by which time the removal may have
+        // regenerated the container — focusing a fresh one reads the row out a second time. Once
+        // focus has landed there is nothing left to ask for.
+        Assert.Single(f.FocusNowCalls);
+        Assert.Equal(0, f.QueuedFocusCalls);
+    }
+
+    [Fact]
+    public async Task TheQueuedRequestStillRunsWhenFocusCouldNotLand()
+    {
+        var f = await Fixture.CreateAsync();
+        f.FocusNowSucceeds = false;   // e.g. the container was never realized
+
+        await f.Vm.DeleteMessagesAsync([f.Row("b")]);
+
+        // Skipping the fallback is only safe when focus actually arrived. It did not, so the user
+        // must not be left with focus nowhere.
+        Assert.Single(f.FocusNowCalls);
+        Assert.Equal(1, f.QueuedFocusCalls);
+        Assert.Equal("c", f.Vm.SelectedMessage?.MessageId);
     }
 
     [Fact]
