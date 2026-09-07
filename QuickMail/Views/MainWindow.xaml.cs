@@ -288,6 +288,7 @@ public partial class MainWindow : Window
         vm.ManageAccountsRequested += OpenAccountManager;
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
+        vm.MessageListFocusNowRequested += FocusSelectedMessageRowNow;
         // Normally the main window is where a VM announcement belongs. _announceTarget redirects it
         // for the duration of a call made on behalf of another window — a UIA notification raised on
         // a background window's peer is not what the user is looking at.
@@ -3708,6 +3709,34 @@ public partial class MainWindow : Window
         _vm.IsMessageOpen = false;
         _vm.MessageDetail = null;
         ReturnFocusToMessageList();
+    }
+
+    // Puts keyboard focus on the selected message row before this method returns, rather than
+    // queueing the move the way ReturnFocusToMessageList does.
+    //
+    // This exists for one caller: the ViewModel is about to remove rows from the list, and focus
+    // has to be off the doomed rows BEFORE they go, or the user hears "unavailable" (issue #667 —
+    // the reasoning is in MainViewModel.LandFocusBeforeRemoval). A queued focus move lands after
+    // the removal has already happened, which is exactly the case being avoided, so this one
+    // realizes the container synchronously and focuses it.
+    private void FocusSelectedMessageRowNow()
+    {
+        // The flat list only. The group trees keep their own selection, and the ViewModel does not
+        // ask for this in those views.
+        if (_vm.ViewMode != ViewMode.Messages) return;
+
+        var idx = MessageList.SelectedIndex;
+        if (idx < 0 || idx >= MessageList.Items.Count) return;
+
+        MessageList.ScrollIntoView(MessageList.Items[idx]);
+        // ScrollIntoView only schedules the panel's measure pass; without this the container for a
+        // row that was off screen does not exist yet and there is nothing to focus.
+        MessageList.UpdateLayout();
+
+        if (MessageList.ItemContainerGenerator.ContainerFromIndex(idx) is ListViewItem row)
+            row.Focus();
+        // No fallback here on purpose: the caller follows up with MessageListFocusRequested after
+        // the removal, which recovers focus if the container could not be realized.
     }
 
     // Return keyboard focus to the active message panel after reading a message.

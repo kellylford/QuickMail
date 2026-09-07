@@ -44,6 +44,34 @@ suit and reads **From (grouped by sender)** and **To (grouped by recipient)**.
 
 ---
 
+## Fixed: deleting a message no longer talks over the next one
+
+Pressing Delete on a message could produce a spoken **"unavailable"** before the next message was
+read, and the confirmation that followed could cut that reading off. Two separate faults, both now
+fixed.
+
+The **"unavailable"** came from the order things happened in. The deleted row was taken out of the
+list while it still held keyboard focus, which leaves focus on a row that no longer exists —
+Windows then describes that row as a disabled control, and a screen reader says so. Focus now moves
+to the message you are about to land on *before* the deleted one leaves the list, so there is never
+a moment where the focused row is a row that has gone. Delete and Archive both do this.
+
+The confirmation was the second half. Deleting one message announced **"1 message deleted"** a
+moment after the next message started being read — telling you something you had just been told,
+by interrupting the sentence that told you. **A single delete or archive now says nothing.** The
+row is gone and the next one is read: that is the confirmation.
+
+What still speaks is anything you could not otherwise know: a count when you acted on several at
+once ("3 messages deleted"), "Folder is now empty" when the last one goes, and every failure. All
+of it still appears in the status bar, and `Ctrl+9` reads the status bar on demand.
+
+This is not the announcement setting doing its job — **Settings → Accessibility → Announce delete
+and archive actions** is still on by default and still controls the announcements that remain.
+Nothing to turn off, and nothing to turn back on.
+([#667](https://github.com/kellylford/QuickMail/issues/667))
+
+---
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

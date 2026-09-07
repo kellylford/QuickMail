@@ -104,6 +104,9 @@ internal static class AccessibilityHelper
         AnnouncementCategory.Status        => _statusEnabled,
         AnnouncementCategory.Result        => _resultsEnabled,
         AnnouncementCategory.MessageAction => _messageActionsEnabled,
+        // Never spoken, and deliberately not user-configurable: a Silent status carries nothing
+        // the user does not already have from the UI itself. See the enum for the reasoning.
+        AnnouncementCategory.Silent        => false,
         _                                  => true
     };
 

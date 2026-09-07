@@ -1355,6 +1355,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         StatusAnnouncementCategory = AnnouncementCategory.Status;
     }
 
+    /// <summary>
+    /// Puts <paramref name="text"/> in the status bar without speaking it. For an outcome the user
+    /// already has from the UI itself — see <see cref="AnnouncementCategory.Silent"/>.
+    /// </summary>
+    private void SetStatusSilently(string text) => SetStatus(text, AnnouncementCategory.Silent);
+
     [ObservableProperty]
     private string _rulesStatusText = string.Empty;
 
@@ -7181,6 +7187,58 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Moves selection and keyboard focus onto the row that will survive <paramref name="leaving"/>,
+    /// <em>before</em> those rows are taken out of <see cref="Messages"/>. Returns the row it landed
+    /// on, or null when there was nowhere to land (a group view, or every row is leaving).
+    ///
+    /// <para>Removing the row that owns keyboard focus leaves focus sitting on a container whose
+    /// item is gone. WPF exposes a row through an <c>ItemAutomationPeer</c> that throws
+    /// <c>ElementNotAvailableException</c> from <c>IsEnabledCore()</c> once its container has gone,
+    /// and UI Automation turns a throwing provider into the property's default — <c>false</c> for
+    /// <c>IsEnabled</c>. A screen reader reading that peer therefore finds a disabled element and
+    /// says so, and the user hears "unavailable" before the next message (issue #667). Nothing in
+    /// QuickMail was ever disabled.</para>
+    ///
+    /// <para>Landing first is what fixes it, and only landing first: deferring the focus move,
+    /// making it synchronous, or turning virtualization off were each measured against a screen
+    /// reader and each still spoke. The focus move must therefore be synchronous, which is why
+    /// this raises <see cref="MessageListFocusNowRequested"/> rather than
+    /// <see cref="MessageListFocusRequested"/>.</para>
+    ///
+    /// <para>The landing row is the first survivor after the block being removed, falling back to
+    /// the last survivor before it — the same row the caller's post-removal index arithmetic picks,
+    /// so what the user lands on does not change.</para>
+    /// </summary>
+    private MailMessageSummary? LandFocusBeforeRemoval(IReadOnlyList<MailMessageSummary> leaving)
+    {
+        // The group trees own their own focus after RebuildActiveGroupView replaces their items;
+        // this is the flat list's business only.
+        if (ViewMode != ViewMode.Messages) return null;
+
+        var doomed = new HashSet<MailMessageSummary>(leaving);
+
+        var first = int.MaxValue;
+        foreach (var m in leaving)
+        {
+            var i = Messages.IndexOf(m);
+            if (i >= 0 && i < first) first = i;
+        }
+        if (first == int.MaxValue) return null;   // none of them are in the flat list
+
+        MailMessageSummary? landing = null;
+        for (var i = first + 1; i < Messages.Count && landing == null; i++)
+            if (!doomed.Contains(Messages[i])) landing = Messages[i];
+        for (var i = first - 1; i >= 0 && landing == null; i--)
+            if (!doomed.Contains(Messages[i])) landing = Messages[i];
+
+        if (landing == null) return null;         // the whole list is leaving
+
+        SelectedMessage = landing;
+        MessageListFocusNowRequested?.Invoke();
+        return landing;
+    }
+
     [RelayCommand]
     private async Task DeleteMessageAsync()
     {
@@ -7208,7 +7266,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var label  = toDelete.Count == 1 ? "message" : $"{toDelete.Count} messages";
         // Delete/archive progress + outcome go through the MessageAction category (issue #317) so users
         // can silence this frequent chatter — it can interrupt the screen reader reading the next message.
-        SetStatus($"Deleting {label}…", AnnouncementCategory.MessageAction);
+        // Deleting a single message is silent: see the outcome status at the end of the try block.
+        SetStatus($"Deleting {label}…",
+            toDelete.Count == 1 ? AnnouncementCategory.Silent : AnnouncementCategory.MessageAction);
         IsBusy        = true;
         MessageDetail = null;
         IsMessageOpen = false;
@@ -7218,6 +7278,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // messages vanish instantly, focus lands correctly, and the IMAP
         // move-to-trash runs afterwards. If it fails the messages will reappear
         // on the next background sync.
+        //
+        // Focus lands on the surviving row FIRST, so that none of the rows about to be removed is
+        // the one holding keyboard focus — see LandFocusBeforeRemoval (issue #667).
+        var landed = LandFocusBeforeRemoval(toDelete);
+
         int removed = 0;
         foreach (var msg in toDelete)
         {
@@ -7239,8 +7304,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // In flat Messages view: advance selection to the next item so the
             // global Delete hotkey (HasSelectedMessage guard) stays coherent.
-            var landIdx = Math.Max(0, Math.Min(minIdx, Messages.Count - 1));
-            SelectedMessage = Messages[landIdx];
+            // Normally LandFocusBeforeRemoval has already done this and its row is still here, so
+            // this is the fallback for when it could not land — and the re-focus below is a no-op
+            // when focus is already on the row, but recovers it if the container was regenerated.
+            if (landed == null || !Messages.Contains(landed))
+            {
+                var landIdx = Math.Max(0, Math.Min(minIdx, Messages.Count - 1));
+                SelectedMessage = Messages[landIdx];
+            }
             MessageListFocusRequested?.Invoke();
         }
         else
@@ -7301,10 +7372,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ScheduleFolderCountRefresh(acctId);
 
             var count = toDelete.Count;
-            SetStatus(Messages.Count > 0
-                ? $"{count} {(count == 1 ? "message" : "messages")} deleted."
-                : $"{count} {(count == 1 ? "message" : "messages")} deleted. Folder is now empty.",
-                AnnouncementCategory.MessageAction);
+            if (Messages.Count == 0)
+                // The list is empty, so there is no next row being read and nothing to interrupt —
+                // and "the folder is empty now" is a state the user cannot see any other way.
+                SetStatus($"{count} {(count == 1 ? "message" : "messages")} deleted. Folder is now empty.",
+                    AnnouncementCategory.MessageAction);
+            else if (count == 1)
+                // Self-evident: the row is gone and the next one has just been read. Saying so as
+                // well only interrupts that reading. Status bar only (issue #667).
+                SetStatusSilently("1 message deleted.");
+            else
+                // The count is information the user cannot get by looking at what is left.
+                SetStatus($"{count} messages deleted.", AnnouncementCategory.MessageAction);
         }
         catch (OperationCanceledException)
         {
@@ -7449,12 +7528,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var actionable = plan.SelectMany(p => p.Group).ToList();
         var minIdx = actionable.Min(m => Messages.IndexOf(m));
         var label  = actionable.Count == 1 ? "message" : $"{actionable.Count} messages";
-        SetStatus($"Archiving {label}…", AnnouncementCategory.MessageAction);
+        SetStatus($"Archiving {label}…",
+            actionable.Count == 1 ? AnnouncementCategory.Silent : AnnouncementCategory.MessageAction);
         IsBusy        = true;
         MessageDetail = null;
         IsMessageOpen = false;
 
         // ── Step 1: Remove from UI immediately (same optimistic pattern as delete) ──
+        // Focus lands on the surviving row before anything leaves the list, for the reason set out
+        // in LandFocusBeforeRemoval (issue #667).
+        var landed = LandFocusBeforeRemoval(actionable);
+
         foreach (var msg in actionable)
             Messages.Remove(msg);
 
@@ -7468,8 +7552,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (ViewMode == ViewMode.Messages && Messages.Count > 0)
         {
-            var landIdx = Math.Max(0, Math.Min(minIdx, Messages.Count - 1));
-            SelectedMessage = Messages[landIdx];
+            // Fallback for when LandFocusBeforeRemoval could not land, exactly as in delete.
+            if (landed == null || !Messages.Contains(landed))
+            {
+                var landIdx = Math.Max(0, Math.Min(minIdx, Messages.Count - 1));
+                SelectedMessage = Messages[landIdx];
+            }
             MessageListFocusRequested?.Invoke();
         }
         else
@@ -7516,8 +7604,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ScheduleFolderCountRefresh(acctId);
 
             var count = actionable.Count;
-            SetStatus($"{count} {(count == 1 ? "message" : "messages")} archived.",
-                AnnouncementCategory.MessageAction);
+            if (count == 1 && Messages.Count > 0)
+                // Self-evident, same as a single delete (issue #667): the row has gone and the next
+                // one has just been read. Status bar only.
+                SetStatusSilently("1 message archived.");
+            else
+                SetStatus($"{count} {(count == 1 ? "message" : "messages")} archived.",
+                    AnnouncementCategory.MessageAction);
         }
         catch (OperationCanceledException)
         {
@@ -7569,6 +7662,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event Func<IReadOnlyList<AttachmentModel>, Task<IReadOnlyList<AttachmentModel>?>>? SelectAttachmentsForForwardRequested;
     public event Action? ManageAccountsRequested;
     public event Action? MessageListFocusRequested;
+
+    /// <summary>
+    /// Asks the View to put keyboard focus on the selected message row <em>synchronously</em>,
+    /// before this method returns — unlike <see cref="MessageListFocusRequested"/>, which queues
+    /// the focus move and lands it on a later dispatcher pass.
+    ///
+    /// <para>Raised only by <see cref="LandFocusBeforeRemoval"/>, and only for that purpose: the
+    /// focused row must stop being a row that is about to be removed, and "later" is too late for
+    /// that. See <see cref="LandFocusBeforeRemoval"/> for why (issue #667).</para>
+    /// </summary>
+    public event Action? MessageListFocusNowRequested;
     public event EventHandler<(string Text, AnnouncementCategory Category)>? AnnouncementRequested;
     public event EventHandler? RulesManagerRequested;
     public event EventHandler<MailRule>? CreateRuleFromMessageRequested;
