@@ -96,6 +96,11 @@ public static class DefaultFixtureSet
             "<p>This week's items, rendered as real HTML:</p>" +
             "<h2>Highlights</h2>" +
             "<ul><li>First list item</li><li>Second list item with a <a href=\"https://example.com\">link</a></li><li>Third item</li></ul>" +
+            // Link shapes the context menu has to tell apart (issue #671): an address link, a link
+            // whose wording differs from where it goes, and one that is its own address.
+            "<p>Questions? <a href=\"mailto:ava@example.com\">Email Ava</a>, " +
+            "or read the <a href=\"https://example.com/notice\">full notice</a>.</p>" +
+            "<p><a href=\"https://example.com/plain\">https://example.com/plain</a></p>" +
             "<blockquote>A blockquote to exercise quoted styling in the reading pane.</blockquote>" +
             "<p>Plain closing paragraph.</p>"));
         await localStore.UpsertDetailAsync(Detail(inbox[2],

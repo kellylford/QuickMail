@@ -703,6 +703,8 @@ Press **Ctrl+Enter** to open a message in a new tab regardless of the Reading Mo
 
 The reading pane renders HTML messages with WebView2. Links open in your default browser.
 
+**Links have a context menu.** With a link focused, press **Shift+F10** or the Applications key (or right-click it) for **Open**, **Copy Address**, and — when the link's text is not simply its address again — **Copy Text**. On an email address link a **Compose to This Address** entry opens a new message in QuickMail, instead of handing the address to whichever mail client Windows has registered. Copying the address is how you check where a link actually goes before following it, and comparing it with the link's text is how you spot one that does not go where it says it does. Closing the menu returns you to the link you opened it on, not to the top of the message. The menu is offered for ordinary web and email links; it does not appear on the **Accept** / **Tentative** / **Decline** buttons of a meeting invitation, which are internal to QuickMail.
+
 Images from remote sources are not loaded — fetching them tells the sender your address is live, which is what a tracking pixel in a newsletter is for. Where the sender wrote a description for a picture, QuickMail shows that description in its place, so a picture that is also a link reads by what it is ("Facebook link") rather than by its web address. A picture the sender marked as decorative contributes nothing, which is what marking it that way asks for.
 
 Press **F6** or **Shift+F6** to move between the reading pane and other panes.

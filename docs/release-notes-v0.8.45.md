@@ -95,6 +95,34 @@ are unaffected and open the same menus as before, including on the first press a
 
 ---
 
+## Added: a context menu on links in a message
+
+Pressing **Shift+F10** or the Applications key on a link in a message did nothing. The link could
+be opened with Enter, but there was no way to copy where it went — or to find out where it went
+without going there.
+
+Links in a message now have a context menu, reached with **Shift+F10**, the Applications key, or a
+right-click:
+
+- **Open** — the same as pressing Enter: opens in your default browser.
+- **Compose to This Address** — on an email address link only. Opens a new message in QuickMail,
+  rather than handing the address to whichever mail client Windows has registered.
+- **Copy Address** — puts the destination on the clipboard.
+- **Copy Text** — puts the link's own wording on the clipboard. Offered only when that wording is
+  not simply the address again, so an auto-linked address does not present the same item twice.
+
+Copying the address is how you check where a link goes before following it, and comparing it with
+the link's text is how you spot a link that does not go where it says it does.
+
+Escape closes the menu and leaves you exactly where you were — on the link you opened it on, not at
+the top of the message and not back on the message list. The menu works the same way in the reading
+pane, in a message tab, and in a message window. It is offered for ordinary web and email links,
+and not for the **Accept** / **Tentative** / **Decline** buttons on a meeting invitation, which are
+internal to QuickMail; on ordinary body text the key does nothing, as before.
+([#671](https://github.com/kellylford/QuickMail/issues/671))
+
+---
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

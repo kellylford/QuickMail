@@ -7990,6 +7990,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ComposeRequested?.Invoke(model);
     }
 
+    /// <summary>
+    /// Opens a new message addressed to <paramref name="address"/> — the link context menu's
+    /// "Compose to This Address" on a <c>mailto:</c> link (issue #671). Handing the URI to the OS
+    /// instead would open whichever mail client is registered, which for most people is not this
+    /// one. Only the address is carried: a mailto may also specify a subject and body, and those
+    /// come from message content, which does not get to write the user's mail.
+    /// </summary>
+    public void ComposeToAddress(string address)
+    {
+        if (string.IsNullOrWhiteSpace(address)) return;
+
+        ComposeRequested?.Invoke(new ComposeModel
+        {
+            Kind      = ComposeKind.NewMessage,
+            AccountId = SelectedAccount?.Id ?? Guid.Empty,
+            To        = address,
+        });
+    }
+
     /// <summary>Cached detail for the Properties dialog, repaired first so the From row shows a real
     /// address rather than the display name the summary carries (issue #636).</summary>
     private async Task<MailMessageDetail?> LoadDetailForPropertiesAsync(MailMessageSummary msg)

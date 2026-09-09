@@ -47,6 +47,10 @@ public partial class MessageWindow : Window
     // F6 focus cycle: 0=Toolbar, 1=Headers, 2=Body
     private int _f6FocusStop;
 
+    // Lets the link context menu claim the Escape that dismisses it (issue #671).
+    private LinkContextMenuSupport.LinkMenuState? _linkMenu;
+
+
     public MessageWindow(
         MessageWindowViewModel vm,
         IMailService imap,
@@ -202,7 +206,15 @@ public partial class MessageWindow : Window
             await MessageBody.EnsureCoreWebView2Async(env);
             _webViewReady = true;
 
-            MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            // Left enabled deliberately: WebView2 does not raise ContextMenuRequested when the
+            // default menus are off, and that event is how the link menu is built (#671).
+            // Chromium's own items never reach the user — LinkContextMenuSupport clears the
+            // collection and adds only ours, so Save as / Inspect / Open in new window (the
+            // #483 concerns) are gone either way.
+            MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+            _linkMenu = LinkContextMenuSupport.Attach(
+                MessageBody.CoreWebView2, env, ClipboardService.Default,
+                ReportLinkMenuResult, address => _vm.ComposeToAction?.Invoke(address));
             MessageBody.CoreWebView2.Settings.AreDevToolsEnabled             = false;
             MessageBody.CoreWebView2.Settings.IsStatusBarEnabled             = false;
 
@@ -232,6 +244,9 @@ public partial class MessageWindow : Window
                 var msg = args.TryGetWebMessageAsString();
                 switch (msg)
                 {
+                    // Deliberately unguarded by the link menu: a relayed escape means the DOCUMENT
+                    // saw the keydown, and while a native context menu owns input the page sees
+                    // nothing. So this can only be a real "close the window" Escape.
                     case "escape":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
                     case "ctrl-w":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
                     case "ctrl-shift-w": Dispatcher.InvokeAsync(RequestWatchToggle, DispatcherPriority.Input); break;
@@ -568,6 +583,8 @@ public partial class MessageWindow : Window
     private void MessageBody_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         _f6FocusStop = 2;
+
+
         _ = TryFocusDocumentAsync(_vm.MessageDetail?.Subject is { } s && !string.IsNullOrWhiteSpace(s)
             ? $"Message body. {s.Trim()}"
             : "Message body");
@@ -619,7 +636,15 @@ public partial class MessageWindow : Window
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         var mod = Keyboard.Modifiers;
 
-        if (key == Key.Escape || (key == Key.W && mod == ModifierKeys.Control))
+        // A link menu is up: skip the close, and leave the key UNHANDLED. This is a tunnelling
+        // handler, so WPF sees Escape before the WebView2 does; handling it here keeps the key
+        // from reaching Chromium and the menu stays open with no way to dismiss it. Left alone,
+        // the key passes down and Chromium closes its own menu (#671).
+        if (key == Key.Escape && _linkMenu?.TryConsumeEscape() == true)
+        {
+            // Deliberately not handled.
+        }
+        else if (key == Key.Escape || (key == Key.W && mod == ModifierKeys.Control))
         {
             Close();
             e.Handled = true;
@@ -832,6 +857,18 @@ public partial class MessageWindow : Window
 
     // Message content is untrusted; only allow-listed schemes (http/https/mailto)
     // may leave the app via ShellExecute. See ExternalUriPolicy.
+    /// <summary>
+    /// Reports a link-menu outcome into the open document: a host-window announcement is dropped
+    /// while focus is inside the WebView2 (issue #329), and it is there for the whole life of this
+    /// menu. A failure is always written; a success honours the AnnounceResults preference.
+    /// </summary>
+    private void ReportLinkMenuResult(string text, bool succeeded)
+    {
+        if (!succeeded || AccessibilityHelper.WouldAnnounce(AnnouncementCategory.Result))
+            _ = MessageBody.CoreWebView2?.ExecuteScriptAsync(
+                    LinkContextMenuSupport.StatusScript(text));
+    }
+
     private static void OpenExternal(string uri) =>
         Helpers.ExternalUriPolicy.TryOpenExternal(uri);
 }

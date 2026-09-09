@@ -98,6 +98,15 @@ internal static class AccessibilityHelper
         }
     }
 
+    /// <summary>
+    /// Whether announcements in <paramref name="category"/> would currently be spoken. For a
+    /// surface that has to deliver its own text — an in-document live region, because a host-window
+    /// notification is dropped while focus is inside a WebView2 (issue #329) — and still wants to
+    /// honour the user's preference rather than talk over it.
+    /// </summary>
+    public static bool WouldAnnounce(AnnouncementCategory category) =>
+        _masterEnabled && IsCategoryEnabled(category);
+
     private static bool IsCategoryEnabled(AnnouncementCategory c) => c switch
     {
         AnnouncementCategory.Hint          => _hintsEnabled,

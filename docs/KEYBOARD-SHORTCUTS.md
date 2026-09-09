@@ -262,10 +262,37 @@ means two unrelated things:
   as the first ran the startup repair on someone who was simply reading and moved focus to the
   message list (issue #672).
 
-So while a message is being read, both gestures are left alone and the `WM_CONTEXTMENU` is
-swallowed — the message body has no context menu of its own yet, and falling through would answer
-with the Win32 system menu. The swallow is scoped to the keyboard gesture (`lParam == -1`); the
-hook is on the top-level window, so a right-click anywhere in it arrives there too.
+So while a message is being read, the window leaves both gestures alone: no focus is moved, and the
+`WM_CONTEXTMENU` is swallowed rather than falling through to the Win32 system menu. The swallow is
+scoped to the keyboard gesture (`lParam == -1`); the hook is on the top-level window, so a
+right-click anywhere in it arrives there too.
+
+### The link menu inside the body (issue #671)
+
+What answers the gesture inside a message body is Chromium, not WPF — for Shift+F10 and the
+Applications key alike, both verified by hand. `LinkContextMenuSupport`
+handles WebView2's `ContextMenuRequested` and rebuilds the menu: **Open**, **Copy Address**, and
+**Copy Text** when the text is not the address again, plus **Compose to This Address** on a
+`mailto:` link. The labels drop the word "Link" to match the attachment and address-chip menus,
+which name the action and not the thing the menu was opened on. On anything that is not
+an allow-listed link the menu is emptied and marked handled, so body text shows nothing at all.
+
+This is why `AreDefaultContextMenusEnabled` is **true** on both message-body surfaces, which reads
+like the opposite of what the codebase wants. The event is not raised at all when it is false.
+Chromium's own items never reach the user — the collection is cleared before ours are added — so
+Save as, Inspect and Open link in new window (the issue #483 concerns) are gone by construction
+rather than by the setting. A WPF `ContextMenu` was tried first and does not work over a WebView2:
+it takes keyboard focus but never enters menu mode, leaving arrow keys unhandled and a screen
+reader with the popup's own name and no item to read.
+
+One interaction needs the two layers to cooperate. `OnWindowKeyDown` is a **tunnelling** handler, so
+WPF sees Escape *before* the WebView2 does. Marking it handled there stops the key ever reaching
+Chromium and the menu cannot be dismissed at all; leaving it alone closes the reading pane as well
+as the menu. So while a link menu is up the handler skips the close and deliberately leaves the key
+**unhandled**, letting it pass down for Chromium to dismiss its own menu. WebView2 raises no
+"menu closed" event, so that claim is one-shot: shown when a menu is built, released by an Escape
+or by activating an item. Dismissing the menu another way (a click elsewhere) leaves the claim
+standing and costs one extra Escape.
 
 The policy is a pure function so the decision can be unit-tested, the same carve-out
 `ContextMenuKeys` got: `ContextMenuFocusPolicyTests` covers all sixteen input combinations, since
