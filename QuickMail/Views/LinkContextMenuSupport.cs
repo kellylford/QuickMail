@@ -298,10 +298,19 @@ public static class LinkContextMenuSupport
     /// </summary>
     /// <summary>
     /// Sets or removes the region's <c>aria-live</c>, following the user's AnnounceResults
-    /// preference. Run as its OWN step, before the text: a region made live in the same pass as
-    /// its content is not reliably announced, which is the whole reason the region is created at
-    /// load rather than on demand. Toggling and writing together would have reintroduced that on
-    /// the fail, retry-succeeds, fail-again path.
+    /// preference. Run as its OWN step, before the text: a region made live in the same pass as its
+    /// content is not reliably announced, which is the whole reason the region is created at load
+    /// rather than on demand.
+    ///
+    /// Do not expect the write to be SPOKEN in practice. It lands just as the native menu is
+    /// dismissing, while the screen reader is announcing its way back into the document ("leaving
+    /// menus", the document title, then the focused link), and it is passed over inside that
+    /// sequence. Verified by hand; the same region announces reliably when the document is otherwise
+    /// still, which is why the invite card's status (issue #329) works. Delaying the write to clear
+    /// the sequence was tried and rejected: its length depends on the reader's own verbosity
+    /// settings, so any delay is a guess that will sometimes lose. The line is therefore written to
+    /// be FOUND — at the end of the message, and in the status bar where the host has one — and
+    /// aria-live is kept only because it costs nothing where a platform does deliver it.
     /// </summary>
     public static string LiveScript(bool live) =>
         "(function(){var s=window.__qmLinkStatus;" +

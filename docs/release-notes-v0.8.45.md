@@ -111,9 +111,11 @@ right-click:
 - **New Message to This Address** — last, and only on an email address link. Opens a new message in
   QuickMail rather than handing the address to whichever mail client Windows has registered.
 
-A copy that works says nothing — it did what you asked. A copy that fails writes a line at the end
-of the message saying so, so the outcome is there to find; whether it is spoken as it appears
-follows your announcement settings, like every other action outcome.
+A copy that works says nothing — it did what you asked. A copy that fails writes a line at the end of
+the message, starting **QuickMail:**, and in the reading pane also puts it in the status bar where
+**Ctrl+9** reads it back. That line is not usually spoken as it appears, because it is written just as
+the menu closes and your screen reader is already announcing its way back into the message; it is
+there to be found rather than to interrupt.
 
 Copying the address is how you check where a link goes before following it, and comparing it with
 the link's text is how you spot a link that does not go where it says it does.
