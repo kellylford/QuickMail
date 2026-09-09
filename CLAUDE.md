@@ -343,12 +343,20 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 ### Rules
 
 - **Register first, hardcode never.** Do not add a raw `if (modifiers == ... && key == ...)` block in `PreviewKeyDown` for a new action. Register the command with `defaultKey` / `defaultModifiers` and let the registry dispatch it.
-- **Five exceptions** are allowed to remain hardcoded (they are framework-level or in-control, not user actions):
+- **Six exceptions** are allowed to remain hardcoded (they are framework-level or in-control, not user actions):
   - `Ctrl+Shift+P` — opens the Command Palette itself (cannot dispatch through the palette)
   - Navigation shortcuts `Ctrl+0–3`, `Ctrl+9`, `Ctrl+Y`, `F6` — focus-only pane jumps with no associated command title
   - The stepping gestures inside `Controls/DateTimeField` (arrows, Shift+arrows, Page keys) — in-field editing keys like the arrow keys inside any `TextBox`, meaningless outside the field. See `docs/KEYBOARD-SHORTCUTS.md`.
   - Left/Right/Home/End on a tab header (`Helpers/TabStripNavigation.cs`, issue #528) — in-control navigation, the same kind as the arrow keys inside a list box, and meaningless outside a tab strip. See `docs/KEYBOARD-SHORTCUTS.md`.
   - Tab/Shift+Tab across the folder picker's tree/buttons boundary (`FolderPickerWindow.HandleTreeTab`) — framework focus navigation with no command title, wired by hand only because WPF's reverse traversal cannot enter a `TreeView` at all (`TreeViewItem` leaves `IsTabStop` false). See `docs/KEYBOARD-SHORTCUTS.md`.
+  - `Shift+F10` and the Applications key at the window level (`MainWindow.OnWindowKeyDown`, the
+    `WM_CONTEXTMENU` hook `OnWmContextMenu`, and the attachment lists in `MainWindow` and
+    `MessageWindow`, which open their own menu via `Helpers/ContextMenuKeys.cs`) —
+    Windows' own context-menu gestures, with no command title. The focus decision behind them is
+    `Helpers/ContextMenuFocusPolicy.cs`, kept a pure function so it can be unit-tested; route any
+    new site through it rather than testing `Keyboard.FocusedElement` directly, which is null both
+    at startup and while the reading pane holds focus (issues #148, #672). See
+    `docs/KEYBOARD-SHORTCUTS.md`.
 - **`InputGestureText` in menus** must match the registered default key, e.g. `InputGestureText="Ctrl+Shift+F"`.
 - **Category** must be one of: `View`, `Mail`, `Account`, `Contacts`, `Calendar`, `Settings`, `Help`. (`Calendar` added 2026-07-17 per the full-calendar spec, resolved question Q4.)
 

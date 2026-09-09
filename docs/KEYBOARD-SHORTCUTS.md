@@ -236,3 +236,37 @@ commands, and they carry no command title to show in the palette. Any other modi
 — `Ctrl+Tab` and friends fall straight through. The flat list presentation ("Go to Folder") is not
 touched by any of this: `ListBoxItem` is a tab stop, so it traverses correctly both ways on its
 own. Covered by `FolderPickerTabOrderTests`.
+
+## Context-menu gestures: Shift+F10 and the Applications key
+
+Neither is registered in `CommandRegistry`. They are Windows' own context-menu gestures, carry no
+command title, and mean nothing outside the control they are pressed on — the same category as the
+in-control keys above. What follows is where they are handled and why, because three separate
+pieces of code answer them and the reasons are not guessable from any one of them.
+
+They do not reach an application the same way. `DefWindowProc` turns Shift+F10 into
+`WM_CONTEXTMENU` while processing the key **down**; the Applications key becomes `WM_CONTEXTMENU`
+only on the key **up**. `Helpers/ContextMenuKeys.cs` carries the full account (issue #631) — it is
+why the attachment lists open their own menu for Shift+F10 and deliberately leave the Applications
+key to Windows.
+
+`MainWindow` answers both at the window level, in `OnWindowKeyDown` (Shift+F10 only) and in the
+`WM_CONTEXTMENU` hook `OnWmContextMenu` (both keys). Each consults
+`Helpers/ContextMenuFocusPolicy.cs`, which exists because `Keyboard.FocusedElement` being null
+means two unrelated things:
+
+- **Nothing has been focused yet**, at startup. The panel is focused synchronously so
+  `ContextMenuOpening` has an element to route from; without it the Win32 system menu
+  (Move/Size/Close) appears instead of QuickMail's (issue #148).
+- **Focus is inside the reading pane's WebView2**, a child HWND outside the WPF tree. Treating this
+  as the first ran the startup repair on someone who was simply reading and moved focus to the
+  message list (issue #672).
+
+So while a message is being read, both gestures are left alone and the `WM_CONTEXTMENU` is
+swallowed — the message body has no context menu of its own yet, and falling through would answer
+with the Win32 system menu. The swallow is scoped to the keyboard gesture (`lParam == -1`); the
+hook is on the top-level window, so a right-click anywhere in it arrives there too.
+
+The policy is a pure function so the decision can be unit-tested, the same carve-out
+`ContextMenuKeys` got: `ContextMenuFocusPolicyTests` covers all sixteen input combinations, since
+the failure mode at stake is silence and nobody reports silence.
