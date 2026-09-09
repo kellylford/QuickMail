@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using QuickMail.Helpers;
@@ -22,7 +23,7 @@ namespace QuickMail.Views;
 /// This requires <c>AreDefaultContextMenusEnabled</c> to stay TRUE. That is an OBSERVED
 /// requirement, not a documented one: the event is not raised with the setting off. Chromium's own
 /// items never reach the user — the collection is cleared before ours are added — so Save as,
-/// Inspect and Open link in new window (the issue #483 concerns) are gone by construction rather
+/// Inspect and Open link in new window are gone by construction rather
 /// than by the setting. If a runtime update ever changed that, the failure would be silent, which
 /// is why <c>LinkContextMenuTests</c> pins the setting on both surfaces.
 /// </para>
@@ -46,15 +47,16 @@ public static class LinkContextMenuSupport
     /// people is a different mail client.
     /// </param>
     public static LinkMenuState Attach(CoreWebView2 core, CoreWebView2Environment environment,
-                                       IClipboardService clipboard, Action<string, bool> report,
+                                       IClipboardService clipboard, Action<string> reportFailure,
                                        Action<string> composeTo)
     {
         ArgumentNullException.ThrowIfNull(core);
         ArgumentNullException.ThrowIfNull(environment);
         ArgumentNullException.ThrowIfNull(clipboard);
-        ArgumentNullException.ThrowIfNull(report);
+        ArgumentNullException.ThrowIfNull(reportFailure);
         ArgumentNullException.ThrowIfNull(composeTo);
 
+        var context = new MenuContext(clipboard, reportFailure, composeTo);
         var state = new LinkMenuState();
 
         core.ContextMenuRequested += (_, args) =>
@@ -74,31 +76,77 @@ public static class LinkContextMenuSupport
                 }
 
                 LogService.Debug($"LinkContextMenu: menu for a {SchemeOf(link.Href)} link");
+
+                foreach (var entry in ItemsFor(link))
+                    args.MenuItems.Add(Item(environment, state, entry.Label,
+                        () => entry.Run(context)));
+
+                // Taken only once every item exists. Set before the build, a throw from
+                // CreateContextMenuItem would leave a claim standing with no menu to explain it,
+                // and the next Escape anywhere would be swallowed.
                 state.MenuShown();
-
-                args.MenuItems.Add(Item(environment, state, "Open",
-                    () => ExternalUriPolicy.TryOpenExternal(link.Href)));
-
-                if (MailtoRecipient(link.Href) is { } recipient)
-                    args.MenuItems.Add(Item(environment, state, "Compose to This Address",
-                        () => composeTo(recipient)));
-
-                args.MenuItems.Add(Item(environment, state, "Copy Address",
-                    () => Copy(clipboard, report, link.Href, "Link address")));
-
-                if (HasDistinctText(link))
-                    args.MenuItems.Add(Item(environment, state, "Copy Text",
-                        () => Copy(clipboard, report, link.Text, "Link text")));
             }
             catch (Exception ex)
             {
                 LogService.Log("LinkContextMenu: building the menu failed", ex);
+                state.Released();
                 args.MenuItems.Clear();
                 args.Handled = true;
             }
         };
 
         return state;
+    }
+
+    /// <summary>One entry in the menu: what it is called and what choosing it does.</summary>
+    /// <summary>
+    /// What a menu item needs to do its work. A record rather than two positional
+    /// <c>Action&lt;string&gt;</c> parameters: those are the same type, so swapping them compiled, passed
+    /// every test, and would have made a failed copy open a compose window addressed to
+    /// "Could not copy the link address."
+    /// </summary>
+    public sealed record MenuContext(
+        IClipboardService Clipboard,
+        Action<string> Report,
+        Action<string> ComposeTo);
+
+    /// <summary>One entry in the menu: what it is called and what choosing it does.</summary>
+    public sealed record MenuEntry(string Label, Action<MenuContext> Run);
+
+    /// <summary>
+    /// The menu for a link, in order. A pure function so the labels, the order, and which items a
+    /// given link gets are all testable — three documents make promises about exactly that, and
+    /// nothing held them while this lived inside the event handler.
+    ///
+    /// <para>
+    /// <b>New Message to This Address</b> is LAST rather than second so the earlier items keep fixed
+    /// positions on every link: Copy Address is item 2 whatever the link is, and the one item that
+    /// moves the user out of the message is the one furthest from a mis-press.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<MenuEntry> ItemsFor(Link link)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+
+        var items = new List<MenuEntry>
+        {
+            new("Open", ctx =>
+                // Reports the one failure the user would otherwise see as nothing happening at
+                // all — no browser registered, no mail handler, a shell error — and reports empty
+                // on success so a retry retires the earlier notice, exactly as Copy does.
+                ctx.Report(ExternalUriPolicy.TryOpenExternal(link.Href)
+                    ? string.Empty
+                    : "Could not open the link.")),
+            new("Copy Address", ctx => Copy(ctx, link.Href, "Link address")),
+        };
+
+        if (HasDistinctText(link))
+            items.Add(new("Copy Text", ctx => Copy(ctx, link.Text, "Link text")));
+
+        if (MailtoRecipient(link.Href) is { } recipient)
+            items.Add(new("New Message to This Address", ctx => ctx.ComposeTo(recipient)));
+
+        return items;
     }
 
     /// <summary>A link under the context-menu gesture: its destination and its display text.</summary>
@@ -177,24 +225,129 @@ public static class LinkContextMenuSupport
         Uri.TryCreate(href, UriKind.Absolute, out var uri) ? uri.Scheme : "unknown";
 
     /// <summary>
-    /// Writes feedback into the open document rather than raising it on the host window. A
-    /// host-window notification is dropped while focus is inside the WebView2 (issue #329), and
-    /// focus is inside it for the whole life of this menu. The region is created on demand and
-    /// positioned off-screen, so it exists for any message rather than only an invite card.
+    /// Creates the live region a copy failure is written into, on every document, as soon as the
+    /// body exists. Appended to each surface's document-created script.
+    ///
+    /// <para>
+    /// Created here rather than at write time because a live region that is inserted and made live
+    /// in the same pass as its text is not reliably announced — the invite card's region (issue
+    /// #329) is rendered empty into the document for the same reason. <c>aria-live</c> is set HERE
+    /// too, so by the time any text is written the element has been a live region since load.
+    /// </para>
+    ///
+    /// <para>
+    /// What protects the handle is the explicit <c>window.__qmLinkStatus = d</c> assignment, NOT the
+    /// sanitizer's CSP. Every element with an id becomes a property of <c>window</c> by HTML's named
+    /// access rules, with no script involved — so a message carrying
+    /// <c>&lt;div id="__qmLinkStatus" hidden&gt;</c> would otherwise be handed the write, and a hidden
+    /// element is out of the accessibility tree, where <c>aria-live</c> announces nothing. An own
+    /// data property shadows named access and cannot be re-clobbered by markup inserted later. The
+    /// <c>__qmOwned</c> expando is the belt to that braces: message HTML can create an element, but
+    /// not a JavaScript property on one, so a write can tell our region from a look-alike even if
+    /// this script never ran.
+    /// </para>
+    ///
+    /// <para>
+    /// An earlier version looked the region up by element id, and the version after it trusted the
+    /// <c>window</c> property without owning it. Both were the same defect wearing a different name.
+    /// </para>
     /// </summary>
-    public static string StatusScript(string text) =>
-        "(function(){var s=document.getElementById('qm-link-status');" +
-        "if(!s){s=document.createElement('div');s.id='qm-link-status';" +
-        "s.setAttribute('aria-live','assertive');s.setAttribute('aria-atomic','true');" +
-        "s.style.cssText='position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden';" +
-        "document.body.appendChild(s);}" +
-        "s.textContent=" + JsonSerializer.Serialize(text) + ";})();";
+    public const string StatusRegionScript =
+        // Every DOM primitive this needs is captured HERE, at document-created, before any sender
+        // markup is parsed — and then only the captures are used.
+        //
+        // HTML named access lets an element claim a property of document: <object
+        // name="createElement"> or an unclosed <form name="getElementsByTagName"> both survive the
+        // sanitizer (its element rule needs a closing tag, and name is not stripped) and replace
+        // the function. Calling one later throws, before the ownership assignment, and every
+        // failure report after that is silently dropped — the exact outcome this region exists to
+        // prevent. Capturing createElement but then reading getElementsByTagName off the live
+        // document only moved the hole, which is how the second version of this shipped.
+        //
+        // The inline display/visibility are !important because the sanitizer's <style> rule needs
+        // a literal </style>, and the tokenizer also accepts "</style >" — so a sender stylesheet
+        // survives and [aria-live]{display:none} would take the region out of the accessibility
+        // tree. An inline !important beats an author !important.
+        "(function(){" +
+        "var C=document.createElement.bind(document);" +
+        "var G=document.getElementsByTagName.bind(document);" +
+        "var A=Node.prototype.appendChild;var D=document;" +
+        "D.addEventListener('DOMContentLoaded',function(){try{" +
+        "var b=G('body')[0];if(!b)return;" +
+        "var d=C('div');" +
+        "d.setAttribute('aria-live','assertive');d.setAttribute('aria-atomic','true');" +
+        "d.style.cssText='margin-top:12px;font-weight:600;'+" +
+        "'display:block !important;visibility:visible !important';" +
+        "d.__qmOwned=1;A.call(b,d);window.__qmLinkStatus=d;" +
+        "}catch(e){window.__qmLinkStatusError=String(e);}});})();";
 
-    private static void Copy(IClipboardService clipboard, Action<string, bool> report,
-                             string text, string what)
+    /// <summary>
+    /// Reports a copy FAILURE into that region. There is no success message by design: choosing a
+    /// menu item is expected to do what it says, and announcing that it did is noise on every use to
+    /// cover the rare case.
+    ///
+    /// <para>
+    /// The TEXT is always written — it is content in the document, the same way status-bar text
+    /// is content, and it stays there to be found. Whether the region is LIVE, and so spoken
+    /// without being sought, follows the user's AnnounceResults preference like every other
+    /// action outcome. Nothing here overrides a setting.
+    /// </para>
+    ///
+    /// The text names QuickMail because the region sits after the sender's content: an unattributed
+    /// line at the end of a message reads as something the sender wrote.
+    /// </summary>
+    /// <summary>
+    /// Sets or removes the region's <c>aria-live</c>, following the user's AnnounceResults
+    /// preference. Run as its OWN step, before the text: a region made live in the same pass as
+    /// its content is not reliably announced, which is the whole reason the region is created at
+    /// load rather than on demand. Toggling and writing together would have reintroduced that on
+    /// the fail, retry-succeeds, fail-again path.
+    /// </summary>
+    public static string LiveScript(bool live) =>
+        "(function(){var s=window.__qmLinkStatus;" +
+        "if(!s||!s.isConnected||s.__qmOwned!==1)return;" +
+        (live
+            ? "s.setAttribute('aria-live','assertive');"
+            : "s.removeAttribute('aria-live');") +
+        "})();";
+
+    /// <summary>
+    /// Writes an outcome into the region. Empty text means the action succeeded and retires any
+    /// notice an earlier failure left — success itself says nothing, because choosing a menu item
+    /// is expected to do what it says.
+    ///
+    /// The text names QuickMail because the region sits after the sender's content: an
+    /// unattributed line at the end of a message reads as something the sender wrote.
+    /// </summary>
+    public static string TextScript(string text) =>
+        "(function(){var s=window.__qmLinkStatus;" +
+        "if(!s||!s.isConnected||s.__qmOwned!==1)return;" +
+        "s.textContent=" + JsonSerializer.Serialize(text.Length == 0 ? "" : "QuickMail: " + text) +
+        ";})();";
+
+    /// <summary>
+    /// Copies, and reports only a failure. Success is deliberately silent: choosing a menu item is
+    /// expected to do what it says, and confirming it every time is noise to cover the rare case.
+    ///
+    /// A success does clear any earlier failure, though — it writes empty text rather than a
+    /// confirmation. Without that, a copy that failed and then succeeded on retry would leave the
+    /// message ending in "Could not copy…", the only statement about the copy anywhere and no longer
+    /// true. Silence has no other way to retract.
+    /// </summary>
+    /// <summary>
+    /// Copies, and reports only a failure. Success is deliberately silent: choosing a menu item is
+    /// expected to do what it says, and confirming it every time is noise to cover the rare case.
+    ///
+    /// A success does report EMPTY text, which retires any notice an earlier failure left. Without
+    /// that, a copy that failed and then succeeded on retry would leave the message ending in
+    /// "Could not copy…" — the only statement about the copy anywhere, and no longer true. Silence
+    /// has no other way to retract.
+    /// </summary>
+    private static void Copy(MenuContext ctx, string text, string what)
     {
-        var copied = clipboard.SetText(text);
-        report(copied ? $"{what} copied." : $"Could not copy the {what.ToLowerInvariant()}.", copied);
+        ctx.Report(ctx.Clipboard.SetText(text)
+            ? string.Empty
+            : $"Could not copy the {what.ToLowerInvariant()}.");
     }
 
     private static CoreWebView2ContextMenuItem Item(CoreWebView2Environment environment,
@@ -231,9 +384,6 @@ public static class LinkContextMenuSupport
         private bool _shown;
 
         internal void MenuShown() => _shown = true;
-
-        /// <summary>Test seam: the production setter runs only inside the menu build.</summary>
-        internal void MenuShownForTests() => MenuShown();
 
         /// <summary>Drops any outstanding claim. Safe to call when there is none.</summary>
         public void Released() => _shown = false;

@@ -118,6 +118,10 @@ public partial class MainWindow : Window
     private UIElement? _announceTarget;
     private bool _webViewReady;
 
+    // The last link-menu failure this window put in the status bar, so a later success clears
+    // only that and not whatever else has since been reported there.
+    private string? _linkMenuStatusText;
+
     // Lets the link context menu claim the Escape that dismisses it (issue #671).
     private LinkContextMenuSupport.LinkMenuState? _linkMenu;
 
@@ -127,7 +131,6 @@ public partial class MainWindow : Window
     // tell apart (issue #672).
     private bool _messageBodyHasFocus;
     private CoreWebView2Environment? _webViewEnvironment;
-
 
     private readonly TypeAheadPrefixTracker _typeAhead = new();
     private int _messageBodyRenderVersion;
@@ -1694,7 +1697,6 @@ public partial class MainWindow : Window
         }
     }
 
-
     // Global key handler (PreviewKeyDown so it fires before any child can swallow the event).
     private async void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
@@ -1863,7 +1865,10 @@ public partial class MainWindow : Window
                 // WebView2 and so has the same link menu. Guarding only the reading-pane case left
                 // Tab mode switching views out from under an open menu, with the key marked handled
                 // so Chromium never saw it and the menu stayed up over a different view (#671).
-                case Key.Escape when _linkMenu?.TryConsumeEscape() == true:
+                // Only while the body has focus. A claim left standing by a mouse dismissal would
+                // otherwise swallow an Escape pressed from the message list or the folder tree,
+                // with nothing to connect it to a link.
+                case Key.Escape when _messageBodyHasFocus && _linkMenu?.TryConsumeEscape() == true:
                     // Deliberately NOT handled: this is a tunnelling handler, so leaving the key
                     // alone is what lets it reach Chromium to dismiss the menu.
                     return;
@@ -2175,7 +2180,6 @@ public partial class MainWindow : Window
 
         return false;
     }
-
 
     private bool TryHandleMessageListTypeAhead(string? text)
         => TryBuildTypeAheadPrefix(text, MessageList, out var prefix)
@@ -3342,15 +3346,23 @@ public partial class MainWindow : Window
             await MessageBody.EnsureCoreWebView2Async(_webViewEnvironment);
             _webViewReady = true;
 
+            // Closed until the link-menu handler is attached below; see the note there.
+            MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+
             // Left enabled deliberately: WebView2 does not raise ContextMenuRequested when the
             // default menus are off, and that event is how the link menu is built (#671).
             // Chromium's own items never reach the user — LinkContextMenuSupport clears the
             // collection and adds only ours, so Save as / Inspect / Open in new window (the
-            // #483 concerns) are gone either way.
-            MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+            // in-app popup #483 was about) are gone either way.
             _linkMenu = LinkContextMenuSupport.Attach(
                 MessageBody.CoreWebView2, _webViewEnvironment!, ClipboardService.Default,
                 ReportLinkMenuResult, address => _vm.ComposeToAddress(address));
+            // Off, then on again once the handler that empties the menu is attached. The
+            // reordering alone bought nothing: this setting DEFAULTS to true, so a throw before
+            // the handler is wired would have left Chromium's own menu live on untrusted content.
+            // Turning it off first makes the window between the two genuinely closed. It has to end
+            // up true because the event is not raised at all with it off.
+            MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             MessageBody.CoreWebView2.Settings.AreDevToolsEnabled = false;
             MessageBody.CoreWebView2.Settings.IsStatusBarEnabled = false;
 
@@ -3367,7 +3379,9 @@ public partial class MainWindow : Window
                 // Watching a thread while reading it is the most natural moment to do so, and focus
                 // is inside this WebView2 then. Note the key is 'W' (upper case) with Shift held.
                 +"else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}"
-                +"});");
+                +"});"
+                // The live region the link menu writes outcomes into (issues #671, #329).
+                + LinkContextMenuSupport.StatusRegionScript);
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
@@ -3477,6 +3491,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task RerenderReadingPaneAsync()
     {
+        ReleaseLinkMenuClaim();
         if (!_webViewReady || !_vm.IsMessageOpen || _vm.MessageDetail is null) return;
 
         // Invalidate any in-flight render so its deferred focus logic bails out.
@@ -3667,23 +3682,67 @@ public partial class MainWindow : Window
             _vm.DeclineInviteCommand.Execute(null);
     }
 
-    // Message content is untrusted; only allow-listed schemes (http/https/mailto)
-    // may leave the app via ShellExecute. See ExternalUriPolicy.
     /// <summary>
-    /// Reports a link-menu outcome where the reader actually is. A host-window announcement is
-    /// dropped while focus is inside the WebView2 (issue #329), so the text is written into a live
-    /// region in the open document. A failure is always written — believing an address is on the
-    /// clipboard when it is not is the one outcome that must never be silent — while a success
-    /// honours the user's AnnounceResults preference. Both reach the status bar, where Ctrl+9 can
-    /// read the last one back on demand.
+    /// Reports a link-menu outcome where the reader actually is: a live region inside the open
+    /// document, because a host-window announcement is dropped while focus is in the WebView2
+    /// (issue #329). Empty text means the action succeeded and retires any notice an earlier
+    /// failure left — success itself says nothing.
     /// </summary>
-    private void ReportLinkMenuResult(string text, bool succeeded)
+    private void ReportLinkMenuResult(string text)
     {
-        _vm.StatusText = text;
+        UpdateLinkMenuStatusBar(text);
+        _ = ReportLinkMenuResultAsync(text);
+    }
 
-        if (!succeeded || AccessibilityHelper.WouldAnnounce(AnnouncementCategory.Result))
-            _ = MessageBody.CoreWebView2?.ExecuteScriptAsync(
-                    LinkContextMenuSupport.StatusScript(text));
+    /// <summary>
+    /// Two ordered steps: the region is made live (or not) BEFORE its text changes. A region made
+    /// live in the same pass as its content is not reliably announced, which is the same reason it
+    /// is created at document load rather than on demand.
+    ///
+    /// Whether it is live follows the AnnounceResults preference, like every other action outcome.
+    /// </summary>
+
+    private async Task ReportLinkMenuResultAsync(string text)
+    {
+        try
+        {
+            var core = MessageBody.CoreWebView2;
+            if (core is null) return;
+
+            // A clear is never live: removing text is the retraction, and an empty string is the
+            // case AccessibilityHelper.Announce refuses outright. There is nothing to hear.
+            await core.ExecuteScriptAsync(LinkContextMenuSupport.LiveScript(
+                      text.Length > 0 && AccessibilityHelper.WouldAnnounce(AnnouncementCategory.Result)));
+            await core.ExecuteScriptAsync(LinkContextMenuSupport.TextScript(text));
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("ReportLinkMenuResult", ex);
+        }
+    }
+
+    /// <summary>
+    /// Mirrors a link-menu FAILURE into the status bar so Ctrl+9 can read it back, without
+    /// speaking it twice.
+    ///
+    /// The status bar is shared: it carries message counts, sync progress, connection state and
+    /// sync errors. So a success does not blank it — it clears only text this feature put there
+    /// and that is still standing. Clearing unconditionally destroyed whatever a sync had just
+    /// reported, every time a copy worked.
+    /// </summary>
+    private void UpdateLinkMenuStatusBar(string text)
+    {
+        if (text.Length > 0)
+        {
+            _linkMenuStatusText = text;
+            _vm.SetStatusWithoutSpeaking(text);
+            return;
+        }
+
+        if (_linkMenuStatusText is { Length: > 0 } mine && _vm.StatusText == mine)
+            _vm.SetStatusWithoutSpeaking(string.Empty);
+
+        _linkMenuStatusText = null;
     }
 
     private static void OpenExternal(string uri) =>
@@ -4897,7 +4956,6 @@ public partial class MainWindow : Window
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
-
     private void LandOnToMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
     {
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -4930,7 +4988,6 @@ public partial class MainWindow : Window
         }
         _vm.PropertyChanged += OnPropertyChanged;
     }
-
 
     private void LandOnConversationMessageAfterRebuild(string normalizedSubject, int msgIdx, int fallbackGroupIdx)
     {

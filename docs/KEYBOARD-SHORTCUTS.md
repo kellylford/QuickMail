@@ -241,7 +241,7 @@ own. Covered by `FolderPickerTabOrderTests`.
 
 Neither is registered in `CommandRegistry`. They are Windows' own context-menu gestures, carry no
 command title, and mean nothing outside the control they are pressed on — the same category as the
-in-control keys above. What follows is where they are handled and why, because three separate
+in-control keys above. What follows is where they are handled and why, because four separate
 pieces of code answer them and the reasons are not guessable from any one of them.
 
 They do not reach an application the same way. `DefWindowProc` turns Shift+F10 into
@@ -267,20 +267,25 @@ So while a message is being read, the window leaves both gestures alone: no focu
 scoped to the keyboard gesture (`lParam == -1`); the hook is on the top-level window, so a
 right-click anywhere in it arrives there too.
 
+The policy is a pure function so the decision can be unit-tested, the same carve-out
+`ContextMenuKeys` got: `ContextMenuFocusPolicyTests` covers all sixteen input combinations, since
+the failure mode at stake is silence and nobody reports silence.
+
 ### The link menu inside the body (issue #671)
 
 What answers the gesture inside a message body is Chromium, not WPF — for Shift+F10 and the
 Applications key alike, both verified by hand. `LinkContextMenuSupport`
 handles WebView2's `ContextMenuRequested` and rebuilds the menu: **Open**, **Copy Address**, and
-**Copy Text** when the text is not the address again, plus **Compose to This Address** on a
-`mailto:` link. The labels drop the word "Link" to match the attachment and address-chip menus,
-which name the action and not the thing the menu was opened on. On anything that is not
+**Copy Text** when the text is not the address again. **New Message to This Address** comes last on a `mailto:` link, so the items before it keep fixed
+positions whatever the link is. The labels drop the word "Link" to match the attachment menu
+(`MainWindow.xaml`) and the address-chip menu (`Controls/TokenizedAddressBox.xaml.cs`), which name
+the action and not the thing the menu was opened on. On anything that is not
 an allow-listed link the menu is emptied and marked handled, so body text shows nothing at all.
 
 This is why `AreDefaultContextMenusEnabled` is **true** on both message-body surfaces, which reads
 like the opposite of what the codebase wants. The event is not raised at all when it is false.
 Chromium's own items never reach the user — the collection is cleared before ours are added — so
-Save as, Inspect and Open link in new window (the issue #483 concerns) are gone by construction
+Save as, Inspect and Open link in new window are gone by construction
 rather than by the setting. A WPF `ContextMenu` was tried first and does not work over a WebView2:
 it takes keyboard focus but never enters menu mode, leaving arrow keys unhandled and a screen
 reader with the popup's own name and no item to read.
@@ -294,6 +299,3 @@ as the menu. So while a link menu is up the handler skips the close and delibera
 or by activating an item. Dismissing the menu another way (a click elsewhere) leaves the claim
 standing and costs one extra Escape.
 
-The policy is a pure function so the decision can be unit-tested, the same carve-out
-`ContextMenuKeys` got: `ContextMenuFocusPolicyTests` covers all sixteen input combinations, since
-the failure mode at stake is silence and nobody reports silence.

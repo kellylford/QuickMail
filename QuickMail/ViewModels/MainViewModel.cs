@@ -1361,6 +1361,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void SetStatusSilently(string text) => SetStatus(text, AnnouncementCategory.Silent);
 
+    /// <summary>
+    /// Status-bar text for an outcome the View has already spoken through its own channel — the
+    /// link menu writes into a live region inside the message document, because a host-window
+    /// announcement is dropped while focus is in the WebView2 (issue #329). Speaking it here as
+    /// well would say it twice, and a plain <c>StatusText = …</c> would say it in the Status
+    /// category, which is the wrong one for an action outcome.
+    /// </summary>
+    public void SetStatusWithoutSpeaking(string text) => SetStatusSilently(text);
+
     [ObservableProperty]
     private string _rulesStatusText = string.Empty;
 
@@ -7992,7 +8001,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Opens a new message addressed to <paramref name="address"/> — the link context menu's
-    /// "Compose to This Address" on a <c>mailto:</c> link (issue #671). Handing the URI to the OS
+    /// "New Message to This Address" on a <c>mailto:</c> link (issue #671). Handing the URI to the OS
     /// instead would open whichever mail client is registered, which for most people is not this
     /// one. Only the address is carried: a mailto may also specify a subject and body, and those
     /// come from message content, which does not get to write the user's mail.

@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using QuickMail.Views;
 using Xunit;
@@ -86,10 +88,23 @@ public class LinkContextMenuTests
     public void MailtoRecipient_TakesTheAddressAndNothingElse(string? href, string? expected)
         => Assert.Equal(expected, LinkContextMenuSupport.MailtoRecipient(href));
 
-    /// <summary>A header-injection attempt must not reach the compose window.</summary>
-    [Fact]
-    public void MailtoRecipient_RejectsAnEmbeddedNewline()
-        => Assert.Null(LinkContextMenuSupport.MailtoRecipient("mailto:a@b.com%0ABcc:victim@example.com"));
+    /// <summary>
+    /// A header-injection attempt must not reach the compose window. The input matters: the
+    /// obvious one, mailto:a@b.com%0ABcc:..., carries two @ signs, so it fails to parse and is
+    /// refused by the allow-list before the newline guard is ever reached. A review showed the
+    /// old test passed with that guard deleted. These parse, so only the guard can stop them.
+    /// </summary>
+    [Theory]
+    [InlineData("mailto:a%0Ab@example.com")]
+    [InlineData("mailto:a%0D%0Ab@example.com")]
+    public void MailtoRecipient_RejectsAnEmbeddedNewlineThatWouldOtherwiseParse(string href)
+    {
+        // Guard the guard: if this stops parsing, the test silently stops testing anything.
+        Assert.True(System.Uri.TryCreate(href, System.UriKind.Absolute, out _),
+                    "input no longer parses, so it no longer exercises the newline guard");
+
+        Assert.Null(LinkContextMenuSupport.MailtoRecipient(href));
+    }
 
     // ── Which text is worth offering separately from the address ────────────────────────────────
 
@@ -138,7 +153,7 @@ public class LinkContextMenuTests
         var state = new LinkContextMenuSupport.LinkMenuState();
         Assert.False(state.TryConsumeEscape());
 
-        state.MenuShownForTests();
+        state.MenuShown();
         Assert.True(state.TryConsumeEscape());
         Assert.False(state.TryConsumeEscape());
     }
@@ -152,10 +167,230 @@ public class LinkContextMenuTests
     public void TheEscapeClaim_IsDroppedWhenReleased()
     {
         var state = new LinkContextMenuSupport.LinkMenuState();
-        state.MenuShownForTests();
+        state.MenuShown();
         state.Released();
 
         Assert.False(state.TryConsumeEscape());
+    }
+
+    // ── The in-document status region ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The handle is OWNED, not merely named. Every element with an id becomes a property of
+    /// <c>window</c> under HTML's named-access rules, with no script involved — so a message
+    /// carrying <c>&lt;div id="__qmLinkStatus" hidden&gt;</c> would be handed the write, and a hidden
+    /// element announces nothing. Two earlier versions of this feature were exploitable that way,
+    /// the second while its comment asserted the CSP made it safe.
+    ///
+    /// What makes it safe is the explicit assignment (an own data property shadows named access)
+    /// plus the <c>__qmOwned</c> expando, which message HTML cannot create. Asserting the absence of
+    /// <c>getElementById</c> pins none of that — the exploitable version had no getElementById.
+    /// </summary>
+    [Fact]
+    public void TheStatusRegion_HandleIsOwnedNotJustNamed()
+    {
+        Assert.Contains("window.__qmLinkStatus=d", LinkContextMenuSupport.StatusRegionScript,
+                        System.StringComparison.Ordinal);
+        Assert.Contains("d.__qmOwned=1", LinkContextMenuSupport.StatusRegionScript,
+                        System.StringComparison.Ordinal);
+
+        // And the write refuses anything it does not own.
+        Assert.Contains("s.__qmOwned!==1", LinkContextMenuSupport.TextScript("x"),
+                        System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Liveness and text are two separate steps, and the host runs them in that order: a region made
+    /// live in the same pass as its content is not reliably announced, which is why the region is
+    /// created at document load in the first place.
+    /// </summary>
+    [Fact]
+    public void LivenessAndTextAreSeparateSteps()
+    {
+        Assert.Contains("setAttribute('aria-live'", LinkContextMenuSupport.LiveScript(live: true),
+                        System.StringComparison.Ordinal);
+        Assert.Contains("removeAttribute('aria-live'", LinkContextMenuSupport.LiveScript(live: false),
+                        System.StringComparison.Ordinal);
+
+        var text = LinkContextMenuSupport.TextScript("Could not copy the link address.");
+        Assert.DoesNotContain("aria-live", text, System.StringComparison.Ordinal);
+        Assert.Contains("QuickMail: Could not copy the link address.", text,
+                        System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A clear is never made live — the hosts pass live:false for empty text — and writes no prefix.
+    /// Removing the text is the retraction; an empty string is the case Announce refuses outright.
+    /// </summary>
+    [Theory]
+    [InlineData("MainWindow.xaml.cs")]
+    [InlineData("MessageWindow.xaml.cs")]
+    public void AClear_IsNeverLive(string codeBehind)
+    {
+        var source = Source(Path.Combine("Views", codeBehind));
+        Assert.Contains("text.Length > 0 && AccessibilityHelper.WouldAnnounce", source,
+                        System.StringComparison.Ordinal);
+
+        Assert.DoesNotContain("QuickMail:", LinkContextMenuSupport.TextScript(string.Empty),
+                              System.StringComparison.Ordinal);
+    }
+    /// <summary>
+    /// The region is in the document, and live, from load — a region inserted and made live in the
+    /// same pass as its text is not reliably announced. The write only changes text (and toggles
+    /// aria-live off when the user has results announcements disabled).
+    /// </summary>
+    [Fact]
+    public void TheStatusRegion_IsLiveFromCreation()
+    {
+        Assert.Contains("aria-live", LinkContextMenuSupport.StatusRegionScript,
+                        System.StringComparison.Ordinal);
+        Assert.DoesNotContain("createElement", LinkContextMenuSupport.TextScript("x"),
+                              System.StringComparison.Ordinal);
+    }
+    // -- The menu itself: labels, order, and what each item does --------------------------------
+
+    /// <summary>
+    /// The menu, in order, for a web link whose wording differs from its address. Three documents
+    /// promise this order and nothing held it while composition lived inside the event handler,
+    /// where reordering the calls left every test green.
+    /// </summary>
+    [Fact]
+    public void AWebLink_GetsOpenThenCopyAddressThenCopyText()
+        => Assert.Equal(new[] { "Open", "Copy Address", "Copy Text" },
+            LinkContextMenuSupport.ItemsFor(new LinkContextMenuSupport.Link(
+                "https://example.com/x", "Click here")).Select(i => i.Label));
+
+    /// <summary>A link whose text is its own address drops Copy Text.</summary>
+    [Fact]
+    public void ALinkThatIsItsOwnAddress_DropsCopyText()
+        => Assert.Equal(new[] { "Open", "Copy Address" },
+            LinkContextMenuSupport.ItemsFor(new LinkContextMenuSupport.Link(
+                "https://example.com/x", "https://example.com/x")).Select(i => i.Label));
+
+    /// <summary>
+    /// New Message to This Address is LAST, so the items before it keep fixed positions on every
+    /// link. It used to be second, which made Down-Down-Enter copy an address on a web link and
+    /// open a compose window on a mailto one.
+    /// </summary>
+    [Fact]
+    public void AMailtoLink_PutsNewMessageLast()
+        => Assert.Equal(new[] { "Open", "Copy Address", "New Message to This Address" },
+            LinkContextMenuSupport.ItemsFor(new LinkContextMenuSupport.Link(
+                "mailto:someone@example.com", "someone@example.com")).Select(i => i.Label));
+
+    /// <summary>
+    /// A successful copy reports empty text, which clears any earlier failure, and never a
+    /// confirmation. Asserting one literal string missed rewordings; this drives the real action.
+    /// </summary>
+    [Fact]
+    public void ASuccessfulCopy_ReportsNothingButClears()
+    {
+        var clipboard = new FakeClipboard();
+        var reported = new List<string>();
+
+        Run("Copy Address", "https://example.com/x", clipboard, reported.Add);
+
+        Assert.Equal("https://example.com/x", clipboard.Text);
+        Assert.Equal(new[] { string.Empty }, reported);
+    }
+
+    /// <summary>A failed copy reports, and the text names what failed.</summary>
+    [Fact]
+    public void AFailedCopy_Reports()
+    {
+        var clipboard = new FakeClipboard { Fails = true };
+        var reported = new List<string>();
+
+        Run("Copy Address", "https://example.com/x", clipboard, reported.Add);
+
+        Assert.Equal(new[] { "Could not copy the link address." }, reported);
+    }
+
+    /// <summary>Copy Address copies the ADDRESS. Swapping it for the text defeats the point.</summary>
+    [Fact]
+    public void CopyAddress_CopiesTheAddressNotTheText()
+    {
+        var clipboard = new FakeClipboard();
+        Run("Copy Address", "https://evil.example/x", clipboard, _ => { }, "https://bank.example");
+
+        Assert.Equal("https://evil.example/x", clipboard.Text);
+    }
+
+    [Fact]
+    public void CopyText_CopiesTheText()
+    {
+        var clipboard = new FakeClipboard();
+        Run("Copy Text", "https://evil.example/x", clipboard, _ => { }, "https://bank.example");
+
+        Assert.Equal("https://bank.example", clipboard.Text);
+    }
+
+    /// <summary>Records what was copied. No Windows clipboard, no apartment requirement.</summary>
+    private sealed class FakeClipboard : QuickMail.Services.IClipboardService
+    {
+        public string Text { get; private set; } = string.Empty;
+        public bool Fails { get; init; }
+        public bool SetText(string text) { if (Fails) return false; Text = text; return true; }
+        public string GetText() => Text;
+    }
+
+    private static void Run(string label, string href, FakeClipboard clipboard,
+                            System.Action<string> report, string text = "Click here")
+    {
+        var entry = LinkContextMenuSupport.ItemsFor(new LinkContextMenuSupport.Link(href, text))
+                                          .Single(i => i.Label == label);
+        entry.Run(new LinkContextMenuSupport.MenuContext(clipboard, report, _ => { }));
+    }
+
+    /// <summary>
+    /// The text is JSON-escaped and assigned to textContent, so a string that ever became
+    /// attacker-influenced could not break out of the script or inject markup.
+    /// </summary>
+    [Fact]
+    public void TheStatusRegion_EscapesItsText()
+    {
+        var script = LinkContextMenuSupport.TextScript("</script><img src=x onerror=alert(1)>");
+
+        Assert.DoesNotContain("</script>", script, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("innerHTML", script, System.StringComparison.Ordinal);
+        Assert.Contains("textContent", script, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The status bar is shared — message counts, sync progress, connection state. A link-menu
+    /// failure is mirrored there through the SILENT setter (a plain StatusText assignment raises its
+    /// own announcement, in the Status category), and a later success clears only what this feature
+    /// put there. Clearing unconditionally destroyed whatever a sync had just reported, every time a
+    /// copy worked.
+    /// </summary>
+    [Fact]
+    public void TheStatusBar_IsSetSilentlyAndClearedOnlyWhenItIsOurs()
+    {
+        var source = Source(Path.Combine("Views", "MainWindow.xaml.cs"));
+        var report = source[source.IndexOf("private void UpdateLinkMenuStatusBar",
+                                           System.StringComparison.Ordinal)..];
+        report = report[..report.IndexOf("\n    }", System.StringComparison.Ordinal)];
+
+        Assert.Contains("SetStatusWithoutSpeaking", report, System.StringComparison.Ordinal);
+        // A single = would be a direct assignment, which announces in the Status category. The
+        // trailing space keeps this from matching the == comparison in the clear below.
+        Assert.DoesNotContain("_vm.StatusText = ", report, System.StringComparison.Ordinal);
+
+        // The clear is conditional on the standing text still being ours.
+        Assert.Contains("_vm.StatusText == mine", report, System.StringComparison.Ordinal);
+    }
+    /// <summary>
+    /// Both surfaces must drop the claim when the message a menu belonged to goes away. MainWindow
+    /// did and MessageWindow did not, which left a dismissed menu able to swallow the Escape meant
+    /// to close the window after navigating on with Alt+Left / Alt+Right.
+    /// </summary>
+    [Theory]
+    [InlineData("MainWindow.xaml.cs")]
+    [InlineData("MessageWindow.xaml.cs")]
+    public void EveryMessageBodySurface_ReleasesTheClaimWhenTheMessageChanges(string codeBehind)
+    {
+        var source = Source(Path.Combine("Views", codeBehind));
+        Assert.Contains("Released()", source, System.StringComparison.Ordinal);
     }
 
     // ── The wiring, which needs a live browser to exercise ──────────────────────────────────────
@@ -183,13 +418,19 @@ public class LinkContextMenuTests
     [InlineData("MessageWindow.xaml.cs")]
     public void EveryMessageBodySurface_LeavesDefaultContextMenusEnabled(string codeBehind)
     {
-        // Whitespace-normalised: written without spaces, a literal assertion passes silently while
-        // the setting is off and the event stops being raised at all.
+        // Whitespace-normalised so the assertions survive reformatting; the ordering below is what
+        // actually holds the invariant, and it fails loudly if a write is removed.
         var normalised = Regex.Replace(Source(Path.Combine("Views", codeBehind)), @"\s+", " ");
 
-        Assert.Contains("AreDefaultContextMenusEnabled = true", normalised, System.StringComparison.Ordinal);
-        Assert.DoesNotContain("AreDefaultContextMenusEnabled = false", normalised,
-                              System.StringComparison.Ordinal);
+        // It must END true — the event is not raised otherwise — but it is turned off first so the
+        // window before the handler is attached is closed rather than at the SDK default of true.
+        var off = normalised.IndexOf("AreDefaultContextMenusEnabled = false", System.StringComparison.Ordinal);
+        var attach = normalised.IndexOf("LinkContextMenuSupport.Attach(", System.StringComparison.Ordinal);
+        var on = normalised.IndexOf("AreDefaultContextMenusEnabled = true", System.StringComparison.Ordinal);
+
+        Assert.True(off >= 0, "the setting is never turned off, so the pre-attach window is open");
+        Assert.True(off < attach, "the setting is turned off after the handler is attached");
+        Assert.True(attach < on, "the setting is turned on before the handler is attached");
     }
 
     /// <summary>
@@ -229,6 +470,81 @@ public class LinkContextMenuTests
         Assert.True(branch >= 0, "the no-link branch is gone");
         Assert.True(handled > branch, "the no-link branch no longer sets Handled");
         Assert.True(handled < firstAdd, "Handled is set after items are added, not on the empty path");
+    }
+
+    /// <summary>
+    /// The gate asks about the RESULT category — a copy outcome is an action result, not background
+    /// progress. Hardcoding true, or asking about Status, would silently ignore the setting the
+    /// user actually set for this kind of message.
+    /// </summary>
+    [Theory]
+    [InlineData("MainWindow.xaml.cs")]
+    [InlineData("MessageWindow.xaml.cs")]
+    public void TheSpokenDelivery_FollowsTheResultSetting(string codeBehind)
+    {
+        var source = Source(Path.Combine("Views", codeBehind));
+        Assert.Contains("WouldAnnounce(AnnouncementCategory.Result)", source,
+                        System.StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// The four-item case, which is what the fixture message actually produces: a mailto link whose
+    /// wording differs from its address. No test covered it, so swapping the two conditional blocks
+    /// — putting New Message before Copy Text — stayed green.
+    /// </summary>
+    [Fact]
+    public void AMailtoLinkWithDistinctText_GetsAllFourInOrder()
+        => Assert.Equal(new[] { "Open", "Copy Address", "Copy Text", "New Message to This Address" },
+            LinkContextMenuSupport.ItemsFor(new LinkContextMenuSupport.Link(
+                "mailto:ava@example.com", "Email Ava")).Select(i => i.Label));
+
+    /// <summary>Copy Text names the text, not the address, when it fails.</summary>
+    [Fact]
+    public void AFailedCopyText_NamesTheText()
+    {
+        var reported = new List<string>();
+        Run("Copy Text", "https://example.com/x", new FakeClipboard { Fails = true },
+            reported.Add, "Click here");
+
+        Assert.Equal(new[] { "Could not copy the link text." }, reported);
+    }
+
+
+    /// <summary>
+    /// The DOM primitives are captured before any sender markup is parsed, and used from the capture
+    /// — not re-read off document at write time. An unclosed &lt;form name="createElement"&gt; survives the
+    /// sanitizer and clobbers document.createElement by named access, which would throw before the
+    /// ownership assignment and silently suppress the failure report.
+    /// </summary>
+    [Fact]
+    public void TheStatusRegion_UsesCapturedDomPrimitives()
+    {
+        var script = LinkContextMenuSupport.StatusRegionScript;
+        var prologue = script[..script.IndexOf("addEventListener", System.StringComparison.Ordinal)];
+        var body = script[script.IndexOf("addEventListener", System.StringComparison.Ordinal)..];
+
+        Assert.Contains("document.createElement.bind(document)", prologue, System.StringComparison.Ordinal);
+        Assert.Contains("Node.prototype.appendChild", prologue, System.StringComparison.Ordinal);
+
+        // After the capture, nothing goes back to the live document for them.
+        Assert.DoesNotContain("document.createElement(", body, System.StringComparison.Ordinal);
+        Assert.DoesNotContain(".appendChild(", body, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>Open retracts on success too, so a retry retires the earlier notice.</summary>
+    [Fact]
+    public void Open_ReportsEmptyOnSuccess()
+    {
+        var reported = new List<string>();
+        var entry = LinkContextMenuSupport.ItemsFor(
+            new LinkContextMenuSupport.Link("https://example.com/x", "Click here"))
+            .Single(i => i.Label == "Open");
+
+        entry.Run(new LinkContextMenuSupport.MenuContext(new FakeClipboard(), reported.Add, _ => { }));
+
+        // Either outcome is a report; what must never happen is silence on one and text on the other.
+        Assert.Single(reported);
     }
 
     private static string Source(string relativePath) =>

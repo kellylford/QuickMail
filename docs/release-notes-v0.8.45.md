@@ -84,10 +84,8 @@ its own underneath. QuickMail had a piece of startup repair that read the second
 moved focus to the message list to correct a problem that was not happening.
 
 Reading a message is now told apart from having nothing focused, so focus stays where you are
-reading. To be plain about what this does and does not do: **the message body still has no context
-menu of its own, so the key now does nothing there** rather than doing the wrong thing. A menu for
-links inside a message is a separate piece of work, tracked as
-[#671](https://github.com/kellylford/QuickMail/issues/671).
+reading. On ordinary body text the key now does nothing, rather than doing the wrong thing; on a
+link it opens a menu — see **a context menu on links in a message**, below.
 
 Shift+F10 and the Applications key on the message list, the folder tree, and the attachment list
 are unaffected and open the same menus as before, including on the first press after launch.
@@ -104,12 +102,18 @@ without going there.
 Links in a message now have a context menu, reached with **Shift+F10**, the Applications key, or a
 right-click:
 
-- **Open** — the same as pressing Enter: opens in your default browser.
-- **Compose to This Address** — on an email address link only. Opens a new message in QuickMail,
-  rather than handing the address to whichever mail client Windows has registered.
+- **Open** — the same as pressing Enter. A web link opens in your default browser; an email address
+  link goes to whichever mail program Windows has registered, which is what **New Message
+  to This Address**, below, avoids.
 - **Copy Address** — puts the destination on the clipboard.
 - **Copy Text** — puts the link's own wording on the clipboard. Offered only when that wording is
   not simply the address again, so an auto-linked address does not present the same item twice.
+- **New Message to This Address** — last, and only on an email address link. Opens a new message in
+  QuickMail rather than handing the address to whichever mail client Windows has registered.
+
+A copy that works says nothing — it did what you asked. A copy that fails writes a line at the end
+of the message saying so, so the outcome is there to find; whether it is spoken as it appears
+follows your announcement settings, like every other action outcome.
 
 Copying the address is how you check where a link goes before following it, and comparing it with
 the link's text is how you spot a link that does not go where it says it does.
