@@ -162,13 +162,21 @@ public static class MessageBodyHtmlBuilder
             "a{color:var(--qm-link, #0645ad);}</style>";
         var styleBlock = ThemeStyleTag(themeCss) + css;
 
-        var headIdx = body.IndexOf("<head>", StringComparison.OrdinalIgnoreCase);
-        if (headIdx >= 0)
-        {
-            body = RemoveTitle(body);
-            body = body.Insert(headIdx + 6, "<meta charset=\"utf-8\">" + titleTag + cspTag + styleBlock);
-            return EnsureBodyFocusable(body);
-        }
+        // The document is ALWAYS one this method builds, and the sender's markup is always content
+        // inside its body. An earlier version spliced the head block in at the first literal
+        // "<head>" found anywhere in the message, which a sender could simply write in the middle
+        // of a paragraph: the CSP meta then landed in body content, where a browser ignores it, and
+        // the document rendered with no policy at all. A meta CSP is only a policy when it is a
+        // child of the real head, so the real head is the only place this may put it.
+        //
+        // The sender's own structural tags are removed rather than left to the parser. A stray
+        // <html>/<head>/<body> start tag in body content is ignored, but its ATTRIBUTES are merged
+        // onto the existing element — so "<body onload=…>" buried in a message would be writing
+        // attributes onto the document's real body. The on* handler is stripped above; nothing
+        // should depend on that being the only such attribute anyone ever finds.
+        body = RemoveTitle(body);
+        body = SafeRegexReplace(body, "</?(html|head|body)\\b[^>]*>", string.Empty,
+                                RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
         return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
                titleTag + cspTag + styleBlock +
@@ -239,10 +247,36 @@ public static class MessageBodyHtmlBuilder
     /// attributes, malformed nesting); the strict CSP injected by
     /// ComposeSanitizedDocument — script-src 'none', default-src 'none' — is what actually
     /// prevents execution and remote loads. Never weaken that CSP on the assumption that
-    /// this stripping protects the document. Returns false when any pass timed out, in
+    /// this stripping protects the document.
+    ///
+    /// <para>
+    /// The obvious extra layer, <c>CoreWebView2Settings.IsScriptEnabled = false</c> on the two
+    /// message-body surfaces, was measured against WebView2 1.0.4022.49 and MUST NOT be adopted.
+    /// It does block page script, and <c>ExecuteScriptAsync</c> and the top level of an
+    /// <c>AddScriptToExecuteOnDocumentCreatedAsync</c> script still run — but any CALLBACK those
+    /// register never fires. That silently removes the reading pane's keydown relay (Escape, F6,
+    /// Ctrl+W, Alt+A all become unreachable from inside the document, where focus lands when a
+    /// message opens) and the link menu's status region, which is appended on DOMContentLoaded.
+    /// Trading a keyboard trap and a dead live region for defence in depth behind a CSP that
+    /// already denies script is not a trade worth making. If a second layer is wanted, the one to
+    /// build is a CSP HEADER — serve the message body through <c>WebResourceRequested</c> rather
+    /// than <c>NavigateToString</c> — since a header cannot be displaced by document structure the
+    /// way a meta element can.
+    /// </para>
+    ///
+    /// Returns false when any pass timed out, in
     /// which case <paramref name="stripped"/> holds a PARTIALLY stripped document that
     /// must not be rendered.
     /// </summary>
+    /// <summary>
+    /// An end tag for <paramref name="name"/> as the HTML tokenizer accepts one: the name must be
+    /// followed by whitespace, a solidus, or the closing bracket — so <c>&lt;/script&gt;</c>,
+    /// <c>&lt;/script &gt;</c>, <c>&lt;/script/&gt;</c> and <c>&lt;/script foo="bar"&gt;</c> all
+    /// match, while <c>&lt;/scriptable&gt;</c> (a different element) does not.
+    /// <paramref name="name"/> may be a backreference such as <c>\1</c>.
+    /// </summary>
+    private static string EndTag(string name) => "</" + name + "(?=[\\s/>])[^>]*>";
+
     internal static bool TryStripHeavyHtml(string html, TimeSpan timeout, out string stripped)
     {
         var complete = true;
@@ -264,13 +298,18 @@ public static class MessageBodyHtmlBuilder
         // Remove elements hidden via inline display:none (e.g. newsletter preheader padding divs).
         // Must run before style-attribute stripping, which would make these visible.
         body = Step(body,
-            @"<(div|span|p)\b[^>]*\bstyle\s*=\s*(?:""[^""]*display\s*:\s*none[^""]*""|'[^']*display\s*:\s*none[^']*')[^>]*>.*?</\1>",
+            @"<(div|span|p)\b[^>]*\bstyle\s*=\s*(?:""[^""]*display\s*:\s*none[^""]*""|'[^']*display\s*:\s*none[^']*')[^>]*>.*?" + EndTag("\\1"),
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Step(body, "<!--.*?-->", RegexOptions.Singleline);
-        body = Step(body, "<script\\b.*?</script>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = Step(body, "<style\\b.*?</style>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = Step(body, "<svg\\b.*?</svg>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = Step(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?</\\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        // End tags use EndTag() rather than a literal "</script>": the HTML tokenizer closes an
+        // element at "</script >", "</script/>" and "</script foo>" as readily as at "</script>",
+        // and a pattern that accepts only the last of those leaves the other three to be stripped
+        // by nobody and executed by the parser. Reported privately 2026-09-09 with a working
+        // proof of concept; the same asymmetry applied to every rule below.
+        body = Step(body, "<script\\b.*?" + EndTag("script"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = Step(body, "<style\\b.*?" + EndTag("style"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = Step(body, "<svg\\b.*?" + EndTag("svg"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = Step(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?" + EndTag("\\1"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
         // Substitute each image's alt text before images are removed (issue #163). Removing the
         // element outright discards the only name the image has: the CSP blocks the pixels either
         // way, so what is lost is not the picture but the words describing it. Worst where the
@@ -305,21 +344,14 @@ public static class MessageBodyHtmlBuilder
         return alt.Length == 0 ? string.Empty : WebUtility.HtmlEncode(WebUtility.HtmlDecode(alt));
     }
 
+    /// <summary>
+    /// Removes any &lt;title&gt; the sender wrote. It must go even though the sender's markup ends
+    /// up in the document's BODY: a title start tag in body content is handled by the parser's
+    /// in-head rules, so a sender one would otherwise set document.title — which the reading pane
+    /// uses for the message's own subject.
+    /// </summary>
     public static string RemoveTitle(string html) =>
-        SafeRegexReplace(html, "<title[^>]*>.*?</title>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-
-    public static string EnsureBodyFocusable(string html)
-    {
-        var bodyIdx = html.IndexOf("<body", StringComparison.OrdinalIgnoreCase);
-        if (bodyIdx < 0) return html;
-        // Scope the check to the opening tag only — attribute values elsewhere in the
-        // document can contain the substring "tabindex=" and must not trigger a false positive.
-        var tagEnd  = html.IndexOf('>', bodyIdx);
-        var openTag = tagEnd >= 0 ? html[bodyIdx..tagEnd] : html[bodyIdx..];
-        if (openTag.Contains("tabindex=", StringComparison.OrdinalIgnoreCase))
-            return html;
-        return SafeRegexReplace(html, "<body\\b", "<body tabindex=\"0\"", RegexOptions.IgnoreCase);
-    }
+        SafeRegexReplace(html, "<title[^>]*>.*?" + EndTag("title"), string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
     public static string HtmlToText(string html)
     {
