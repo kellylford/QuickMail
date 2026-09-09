@@ -72,6 +72,29 @@ Nothing to turn off, and nothing to turn back on.
 
 ---
 
+## Fixed: Shift+F10 while reading no longer throws you back to the message list
+
+Pressing **Shift+F10** with focus in the message body moved focus out of the message and back to
+the message list. Nothing had closed, but there was no way to tell that from the outside: you were
+reading, and then you were on the list.
+
+Windows reports "no element has focus" in two unrelated situations — at startup, before any pane
+has been focused, and whenever focus is inside the message body, which sits in a separate window of
+its own underneath. QuickMail had a piece of startup repair that read the second as the first, and
+moved focus to the message list to correct a problem that was not happening.
+
+Reading a message is now told apart from having nothing focused, so focus stays where you are
+reading. To be plain about what this does and does not do: **the message body still has no context
+menu of its own, so the key now does nothing there** rather than doing the wrong thing. A menu for
+links inside a message is a separate piece of work, tracked as
+[#671](https://github.com/kellylford/QuickMail/issues/671).
+
+Shift+F10 and the Applications key on the message list, the folder tree, and the attachment list
+are unaffected and open the same menus as before, including on the first press after launch.
+([#672](https://github.com/kellylford/QuickMail/issues/672))
+
+---
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

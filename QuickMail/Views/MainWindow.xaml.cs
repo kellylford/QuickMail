@@ -117,6 +117,12 @@ public partial class MainWindow : Window
     // duration of a synchronous call made on another window's behalf. See AnnouncementRequested.
     private UIElement? _announceTarget;
     private bool _webViewReady;
+
+    // True while the reading pane's message body owns keyboard focus. Tracked rather than derived
+    // from Keyboard.FocusedElement, which is null BOTH at startup before any pane has been focused
+    // AND whenever Win32 focus sits inside the WebView2's child HWND — the two states this has to
+    // tell apart (issue #672).
+    private bool _messageBodyHasFocus;
     private CoreWebView2Environment? _webViewEnvironment;
     private readonly TypeAheadPrefixTracker _typeAhead = new();
     private int _messageBodyRenderVersion;
@@ -259,6 +265,14 @@ public partial class MainWindow : Window
         _connectivity     = connectivity;
         InitializeComponent();
         DataContext = vm;
+
+        // Focus moving to the message body, or away from it, is recorded in one place, so no pane
+        // handler has to remember to clear it. handledEventsToo is needed for the CLEARING half:
+        // focus landing on a control that marks the event handled must still reset the flag, and a
+        // flag left set while another pane holds focus is the staleness the guards below reject.
+        AddHandler(UIElement.GotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(
+            (_, e) => _messageBodyHasFocus = ReferenceEquals(e.NewFocus, MessageBody)),
+            handledEventsToo: true);
 
         if (_themeService != null)
         {
@@ -1544,7 +1558,33 @@ public partial class MainWindow : Window
             LogService.Debug($"[ATTLOG] WM_CONTEXTMENU: FocusedElement={focused?.GetType().Name ?? "null"}, " +
                            $"AttachListFocusWithin={ReadingPaneAttachmentList.IsKeyboardFocusWithin}, " +
                            $"AttachListFocused={ReferenceEquals(focused, ReadingPaneAttachmentList)}");
-            if (focused == null)
+
+            // lParam is -1 for a keyboard-raised menu, screen coordinates for a mouse one. This
+            // hook is on the top-level HWND, so a right-click anywhere in the window arrives here
+            // too, and only the keyboard gesture is ours to answer.
+            var keyboardRaised = (long)lParam == -1;
+
+            var decision = ContextMenuFocusPolicy.Decide(
+                ReadingPaneAttachmentList.IsKeyboardFocusWithin,
+                _messageBodyHasFocus, _vm.IsMessageOpen, focused != null);
+
+            // Belt and braces, not the operative fix for #672. In practice this hook does not see
+            // the gesture while the body has focus at all: WM_CONTEXTMENU goes to the WebView2's
+            // own child HWND and stops there — /debug logs across several sessions show no firing
+            // here for a Shift+F10 pressed while reading. The guard covers the case where it does
+            // arrive, since with no WPF focus DefWindowProc answers with the Win32 system menu
+            // (issue #148). Only the keyboard gesture is suppressed, and the repair below still
+            // answers everything else that reaches it. One behaviour does change: a right-click
+            // inside the body while reading used to run the repair and pull keyboard focus out of
+            // the message. It no longer does, which is the better answer — WPF routes a mouse
+            // context menu from the hit-test target, not from Keyboard.FocusedElement.
+            if (keyboardRaised && decision == ContextMenuFocusPolicy.Decision.LeaveFocusInMessageBody)
+            {
+                handled = true;
+                return IntPtr.Zero;
+            }
+
+            if (decision == ContextMenuFocusPolicy.Decision.RepairFocus)
             {
                 FocusPanelSynchronously();
 
@@ -1694,23 +1734,46 @@ public partial class MainWindow : Window
             var focused = Keyboard.FocusedElement;
             LogService.Debug($"[ATTLOG] OnWindowKeyDown Shift+F10: FocusedElement={focused?.GetType().Name ?? "null"}, " +
                            $"AttachListFocusWithin={ReadingPaneAttachmentList.IsKeyboardFocusWithin}");
-            // If focus is in the attachment list, leave it — its ContextMenu opens
-            // correctly via WM_CONTEXTMENU without needing a focus redirect.
+            // Unchanged: the attachment list opens its ContextMenu correctly via WM_CONTEXTMENU
+            // and needs no focus redirect.
             if (ReadingPaneAttachmentList.IsKeyboardFocusWithin)
                 return;
 
-            // Only supply a focus target when WPF has NONE (e.g. WebView2 stole Win32 focus at
-            // startup, leaving FocusedElement null). If focus is already in a real panel — the
-            // folder tree, the account list, a message panel — leave it so that panel's own
-            // context menu opens. Redirecting on any non-message focus wrongly replaced the folder
-            // tree's FolderContextMenu with the message menu (#255 follow-up: Shift+F10 on the
-            // folder list showed Reply/Reply All instead of New/Move/Delete Folder).
-            if (focused == null)
+            switch (ContextMenuFocusPolicy.Decide(
+                        ReadingPaneAttachmentList.IsKeyboardFocusWithin,
+                        _messageBodyHasFocus, _vm.IsMessageOpen, focused != null))
             {
-                if (_vm.IsConversationsView)      ConversationTree.Focus();
-                else if (_vm.IsFromView)           SenderGroupTree.Focus();
-                else if (_vm.IsToView)             ToGroupTree.Focus();
-                else if (_vm.IsMessagesView)       MessageList.Focus();
+                // Reading the message body is NOT "no focus" (issue #672). This repair fired while
+                // the user was simply reading and moved focus to the message list — the whole bug.
+                // It never marks the event handled (see the note below), so nothing here consumed
+                // the gesture: with focus inside the WebView2's child HWND the WM_CONTEXTMENU goes
+                // to Chromium, which drops it because its own menus are off. Net effect while
+                // reading is that the gesture does nothing, which is the intended outcome until the
+                // body has a menu of its own (#671).
+                // break, not return: skipping the repair is the whole point, but the rest of this
+                // handler must still run. Nothing binds Shift+F10 by default, so returning here
+                // looked equivalent — except to someone who has remapped it in keyboard
+                // customizations, whose command would then silently do nothing while reading.
+                case ContextMenuFocusPolicy.Decision.LeaveFocusInMessageBody:
+                    break;
+
+                // Nothing holds focus and no message is open: the startup case this repair exists
+                // for. Give ContextMenuOpening a real element to route from.
+                case ContextMenuFocusPolicy.Decision.RepairFocus:
+                    if (_vm.IsConversationsView)      ConversationTree.Focus();
+                    else if (_vm.IsFromView)           SenderGroupTree.Focus();
+                    else if (_vm.IsToView)             ToGroupTree.Focus();
+                    else if (_vm.IsMessagesView)       MessageList.Focus();
+                    break;
+
+                // Focus is already in a real panel — the folder tree, the account list, a message
+                // panel — so that panel's own menu opens. Redirecting on any non-message focus
+                // wrongly replaced the folder tree's FolderContextMenu with the message menu
+                // (#255 follow-up: Shift+F10 on the folder list showed Reply/Reply All instead of
+                // New/Move/Delete Folder). Falls through to the rest of the handler exactly as
+                // before, so a user-remapped binding on this gesture still dispatches.
+                case ContextMenuFocusPolicy.Decision.LeaveAlone:
+                    break;
             }
             // Do not mark e.Handled — WM_CONTEXTMENU must still fire so ContextMenuOpening
             // reaches the tree/list handler and opens the QuickMail context menu.
