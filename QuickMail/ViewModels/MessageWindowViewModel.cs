@@ -35,6 +35,13 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     public Action? DeleteAction      { get; set; }
     public Action? MarkReadAction    { get; set; }
     public Action? GrabAddressesAction { get; set; }
+
+    /// <summary>
+    /// Opens a new message addressed to the given address — the link menu's "Compose to This
+    /// Address" on a mailto: link (issue #671). Wired to MainViewModel so the compose window is
+    /// created the same way it is everywhere else.
+    /// </summary>
+    public Action<string>? ComposeToAction { get; set; }
     public Func<AttachmentModel?, Task>? OpenAttachmentAction   { get; set; }
     public Func<AttachmentModel?, Task>? SaveAttachmentAction   { get; set; }
     public Func<Task>? SaveAllAttachmentsAction { get; set; }

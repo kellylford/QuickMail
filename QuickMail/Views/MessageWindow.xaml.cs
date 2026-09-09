@@ -47,6 +47,9 @@ public partial class MessageWindow : Window
     // F6 focus cycle: 0=Toolbar, 1=Headers, 2=Body
     private int _f6FocusStop;
 
+    // Lets the link context menu claim the Escape that dismisses it (issue #671).
+    private LinkContextMenuSupport.LinkMenuState? _linkMenu;
+
     public MessageWindow(
         MessageWindowViewModel vm,
         IMailService imap,
@@ -202,7 +205,18 @@ public partial class MessageWindow : Window
             await MessageBody.EnsureCoreWebView2Async(env);
             _webViewReady = true;
 
+            // Off, then on again once the handler that empties the menu is attached. The setting
+            // DEFAULTS to true, so without turning it off first a throw before the handler was
+            // wired would leave Chromium's own menu live on untrusted content. It has to end up
+            // true because ContextMenuRequested is not raised at all with it off, and that event
+            // is how the link menu is built (#671). Chromium's own items never reach the user —
+            // LinkContextMenuSupport clears the collection and adds only ours, so Save as,
+            // Inspect and Open link in new window (the in-app popup #483 was about) are gone.
             MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            _linkMenu = LinkContextMenuSupport.Attach(
+                MessageBody.CoreWebView2, env, ClipboardService.Default,
+                ReportLinkMenuResult, address => _vm.ComposeToAction?.Invoke(address));
+            MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             MessageBody.CoreWebView2.Settings.AreDevToolsEnabled             = false;
             MessageBody.CoreWebView2.Settings.IsStatusBarEnabled             = false;
 
@@ -232,6 +246,9 @@ public partial class MessageWindow : Window
                 var msg = args.TryGetWebMessageAsString();
                 switch (msg)
                 {
+                    // Deliberately unguarded by the link menu: a relayed escape means the DOCUMENT
+                    // saw the keydown, and while a native context menu owns input the page sees
+                    // nothing. So this can only be a real "close the window" Escape.
                     case "escape":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
                     case "ctrl-w":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
                     case "ctrl-shift-w": Dispatcher.InvokeAsync(RequestWatchToggle, DispatcherPriority.Input); break;
@@ -412,6 +429,8 @@ public partial class MessageWindow : Window
     /// <summary>Re-renders the open message with fresh theme CSS. Never moves focus.</summary>
     private void OnThemeChanged(object? sender, EventArgs e)
     {
+        // A re-render replaces the document, so any menu it belonged to is gone with it.
+        _linkMenu?.Released();
         ApplyWebViewColorScheme();
         _ = Dispatcher.InvokeAsync(async () =>
         {
@@ -432,6 +451,8 @@ public partial class MessageWindow : Window
     /// </summary>
     private void TogglePlainTextView()
     {
+        // A re-render replaces the document, so any menu it belonged to is gone with it.
+        _linkMenu?.Released();
         if (_configService is null) return;
         var cfg = _configService.Load();
         cfg.ReadAsPlainText = !cfg.ReadAsPlainText;
@@ -473,6 +494,8 @@ public partial class MessageWindow : Window
 
     private async Task ShowMessageBodyAsync(MailMessageDetail detail)
     {
+        // A re-render replaces the document, so any menu it belonged to is gone with it.
+        _linkMenu?.Released();
         if (!_webViewReady) return;
 
         var version = Interlocked.Increment(ref _renderVersion);
@@ -568,6 +591,7 @@ public partial class MessageWindow : Window
     private void MessageBody_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         _f6FocusStop = 2;
+
         _ = TryFocusDocumentAsync(_vm.MessageDetail?.Subject is { } s && !string.IsNullOrWhiteSpace(s)
             ? $"Message body. {s.Trim()}"
             : "Message body");
@@ -619,7 +643,19 @@ public partial class MessageWindow : Window
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         var mod = Keyboard.Modifiers;
 
-        if (key == Key.Escape || (key == Key.W && mod == ModifierKeys.Control))
+        // A link menu is up: skip the close, and leave the key UNHANDLED. Handling it here would
+        // keep the key from reaching Chromium, and the menu could then not be dismissed at all.
+        // Left alone, it passes down and Chromium closes its own menu (#671).
+        //
+        // Only while the body actually has focus: a claim left standing by a mouse dismissal would
+        // otherwise swallow an Escape pressed from the toolbar or a header field, with nothing to
+        // connect it to a link.
+        if (key == Key.Escape && MessageBody.IsKeyboardFocusWithin
+            && _linkMenu?.TryConsumeEscape() == true)
+        {
+            // Deliberately not handled.
+        }
+        else if (key == Key.Escape || (key == Key.W && mod == ModifierKeys.Control))
         {
             Close();
             e.Handled = true;
@@ -832,6 +868,42 @@ public partial class MessageWindow : Window
 
     // Message content is untrusted; only allow-listed schemes (http/https/mailto)
     // may leave the app via ShellExecute. See ExternalUriPolicy.
+    /// <summary>
+    /// Reports a link-menu outcome into the open document: a host-window announcement is dropped
+    /// while focus is inside the WebView2 (issue #329), and it is there for the whole life of this
+    /// menu. Empty text means the action succeeded and retires any notice an earlier failure left —
+    /// success itself says nothing.
+    ///
+    /// Whether the region is LIVE, and so spoken without being sought, follows the AnnounceResults
+    /// preference like every other action outcome. This window has no free-text status bar to
+    /// mirror it into — its bar carries the position text — so the document is the only channel.
+    /// </summary>
+    private void ReportLinkMenuResult(string text) => _ = ReportLinkMenuResultAsync(text);
+
+    /// <summary>
+    /// Two ordered steps: the region is made live (or not) BEFORE its text changes. A region made
+    /// live in the same pass as its content is not reliably announced, which is the same reason it
+    /// is created at document load rather than on demand.
+    /// </summary>
+    private async Task ReportLinkMenuResultAsync(string text)
+    {
+        var core = MessageBody.CoreWebView2;
+        if (!_webViewReady || core is null) return;
+
+        try
+        {
+            // A clear is never live: removing text is the retraction, and an empty string is the
+            // case AccessibilityHelper.Announce refuses outright. There is nothing to hear.
+            await core.ExecuteScriptAsync(LinkContextMenuSupport.LiveScript(
+                      text.Length > 0 && AccessibilityHelper.WouldAnnounce(AnnouncementCategory.Result)));
+            await core.ExecuteScriptAsync(LinkContextMenuSupport.TextScript(text));
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("ReportLinkMenuResult", ex);
+        }
+    }
+
     private static void OpenExternal(string uri) =>
         Helpers.ExternalUriPolicy.TryOpenExternal(uri);
 }
