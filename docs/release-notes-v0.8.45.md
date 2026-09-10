@@ -73,6 +73,13 @@ One place still speaks up: on a work or school account, a rule that uses somethi
 do — marking a message unread, say — is saved as a client-side rule rather than a server-side one, and
 because that account *does* also do server rules, QuickMail announces that when it happens. The rule's
 own row reads **on client** regardless, so where it went is there to read with announcements off.
+
+The single window also brings back a safeguard the old one had. A **Move to folder** or **Delete** rule
+must now have at least one condition before it can be saved: with none, a rule matches every message,
+and rules run on mail as it arrives and through **Run on Existing Mail**, so it would empty the Inbox.
+This covers server-side rules too, since Exchange treats a rule with no conditions the same way. A
+server-side rule made in Outlook with no conditions still runs, and can still be turned on or off from
+QuickMail, but QuickMail asks for a condition before it will save a change to it.
 ([#550](https://github.com/kellylford/QuickMail/issues/550))
 
 ---

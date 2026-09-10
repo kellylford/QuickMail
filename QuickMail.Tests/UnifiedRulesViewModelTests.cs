@@ -264,6 +264,44 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task NewRule_DeleteWithNoCondition_IsNotSaved_OnAnImapAccount() // #550
+    {
+        // The accounts #550 moved onto this editor had this guard in the window they came from. Pinned
+        // end to end on their path: typing a name, ticking Delete and saving must reach no rule store,
+        // because a rule that tests nothing deletes every message it is shown.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Clean up"; editor.Delete = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Empty(client.LoadedRules);
+        Assert.Empty(vm.Rules);
+        Assert.Equal(ServerRuleEditorViewModel.NoConditionError, editor.ActionsError);
+    }
+
+    [Fact]
+    public async Task NewRule_DeleteWithNoCondition_IsNotSaved_AsAServerRuleEither()
+    {
+        // Exchange applies a condition-less rule to every message too, so the guard covers the rule
+        // that would have gone to the server.
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Clean up"; editor.Delete = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Empty(server.Stored);
+        Assert.Empty(client.LoadedRules);
+        Assert.Equal(ServerRuleEditorViewModel.NoConditionError, editor.ActionsError);
+    }
+
+    [Fact]
     public async Task NewRule_ConflictingMix_BlocksSave()
     {
         var a = Guid.NewGuid();

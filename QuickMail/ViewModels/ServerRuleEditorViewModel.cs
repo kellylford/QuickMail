@@ -414,6 +414,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         return RuleAction.MarkAsRead;
     }
 
+    /// <summary>Shown when a Move or Delete rule tests nothing. Public so tests can pin the whole string.</summary>
+    public const string NoConditionError =
+        "Move and Delete need at least one condition, or the rule acts on every message.";
+
     public bool Validate()
     {
         NameError = FolderError = ActionsError = string.Empty;
@@ -440,6 +444,19 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         if (!HasAnyAction())
         {
             ActionsError = "Choose at least one action.";
+            valid = false;
+        }
+
+        // A rule that tests nothing matches every message, and rules run on Inbox mail as it arrives
+        // and through Run on Existing Mail — so a condition-less Move or Delete empties the Inbox. The
+        // client-only rules window refused this; the check did not come with it when every account
+        // moved onto this editor (#412 for Microsoft 365, #550 for the rest). Server rules too:
+        // Exchange applies a condition-less rule to every message just the same.
+        if ((MoveToFolder || Delete) && !HasAnyCondition())
+        {
+            ActionsError = string.IsNullOrEmpty(ActionsError)
+                ? NoConditionError
+                : ActionsError + " " + NoConditionError;
             valid = false;
         }
 
@@ -564,6 +581,22 @@ public partial class ServerRuleEditorViewModel : ObservableObject
            || CopyToFolder
            || !string.IsNullOrWhiteSpace(SelectedMarkImportance?.Value)
            || !string.IsNullOrWhiteSpace(ForwardTo);
+
+    /// <summary>
+    /// True when the saved rule would test anything at all. Reads the switched-on
+    /// <c>Effective*</c> values — the same ones saving and classification read — so a condition
+    /// switched on but left empty, and one holding text but switched off (#665), both count as
+    /// absent: neither reaches the saved rule.
+    /// </summary>
+    private bool HasAnyCondition()
+        => !string.IsNullOrWhiteSpace(EffectiveSenderContains)
+           || !string.IsNullOrWhiteSpace(EffectiveFromAddresses)
+           || !string.IsNullOrWhiteSpace(EffectiveSentToAddresses)
+           || !string.IsNullOrWhiteSpace(EffectiveSubjectContains)
+           || !string.IsNullOrWhiteSpace(EffectiveBodyOrSubjectContains)
+           || !string.IsNullOrWhiteSpace(EffectiveBodyContains)
+           || SentToMe || SentOnlyToMe || HasAttachments
+           || !string.IsNullOrWhiteSpace(SelectedImportance?.Value);
 
     private bool HasAnyAction()
         => (MoveToFolder && !string.IsNullOrWhiteSpace(MoveToFolderId))
