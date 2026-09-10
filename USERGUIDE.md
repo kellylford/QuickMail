@@ -584,52 +584,41 @@ The **View → Sort** submenu controls the order in which messages or groups are
 
 ## Mail rules
 
-Mail rules let you define automatic actions that run on incoming messages as they arrive during background sync. For example, you can automatically move newsletters to a folder, mark messages from your manager as unread, or delete spam.
+Mail rules act on messages automatically: moving newsletters to a folder, marking a mailing list as read, deleting something you never want to see.
 
-Rules run **locally on your machine** — no data is sent to any server for rule processing. They fire during the normal sync cycle, so messages are acted on within seconds of arrival.
+A **client-side** rule is run by QuickMail on this computer, on Inbox mail as it arrives, while QuickMail is open. A **work or school** account added with the **Microsoft 365 (Graph)** connection method can also have **server-side** rules, which Microsoft runs for you whether QuickMail is open or not. Every other account has client-side rules only. The [online user guide](https://kellylford.github.io/QuickMail/) covers rules in full.
 
 ### Opening the Rules Manager
 
-- Open **Message → Rules…** from the menu bar, or
+- Open **Tools → Rules…** from the menu bar, or
 - Press **Ctrl+Shift+L**, or
 - Open the command palette (`Ctrl+Shift+P`) and type "Manage Rules".
 
-The Rules Manager shows your rule list on the left and the editor for the selected rule on the right.
+The Rules Manager lists one account's rules at a time; choose the account in the **Account** list at the top. It opens on the account you were in, and from a view that spans accounts, such as All Inboxes, on your default account. Beside the list, the **Rule detail** pane reads out the selected rule, and the status line below the account list says how many rules the account has, where they run, and which kinds the account can have. **F6** cycles through the account list, the rules, the details, and the status line.
 
 ### Creating a rule
 
-1. In the Rules Manager, activate **New Rule**.
-2. Enter a **Rule Name**.
-3. Choose which **Account** the rule applies to ("All accounts" or a specific one).
-4. Check the condition fields you want to use (**From**, **To**, **Subject**, **Body**) and enter the text to match. All checked conditions must match for the rule to fire.
-5. Optionally check **Has attachments** to only match messages with attachments.
-6. Choose an **Action**:
-   - **Mark as read** — marks matching messages as read
-   - **Mark as unread** — marks matching messages as unread
-   - **Move to folder** — moves matching messages to a folder you choose
-   - **Delete** — moves matching messages to Trash
-7. If you chose **Move to folder**, activate **Choose Folder…** to pick the destination folder from your folder tree.
-8. Activate **Save**.
+1. In the Rules Manager, choose the account, then activate **New** or press **Ctrl+N**. The rule editor opens in its own window.
+2. Enter a **Rule name**.
+3. Under **Apply when a message matches**, check the conditions you want (**From addresses**, **Subject contains**) and type the text to look for. More conditions, such as **Sender contains**, **Sent to addresses**, **Body contains** and **Has attachments**, are under **Advanced conditions & actions**. A message must match every condition you checked.
+4. Under **Then do this**, choose what happens: **Move to folder** (then activate **Choose folder…**), **Mark as read**, or **Delete**, which moves the message to Trash. **Mark as unread** is under **Advanced conditions & actions**.
+5. Activate **Save**.
+
+A **Move to folder** or **Delete** rule needs at least one condition, because a rule with none would act on every message. On an account that supports both kinds, QuickMail saves a new rule as server-side whenever it can; a rule that needs something only QuickMail can do, such as **Mark as unread**, is saved as client-side. Some options work only in a server-side rule, and if you use one where it cannot work, **Save** tells you what to remove.
 
 ### Creating a rule from a message
 
-You can quickly create a rule based on a message you're looking at:
-
 1. Select a message in the message list.
-2. Right-click (or press **Shift+F10**) and choose **Create Rule from Message…**, or press **Ctrl+Shift+T**.
-3. The Rules Manager opens with the sender and subject pre-filled. Choose an action and save.
+2. Press **Shift+F10** or the Applications key and choose **Create Rule from Message…**, or press **Ctrl+Shift+T**.
+3. The rule editor opens with the sender filled in and its condition checked, and the subject filled in but unchecked. The rule belongs to that message's account. Choose an action and save.
 
 ### Testing a rule
 
-Before saving, you can test a rule against the messages currently shown in your message list:
-
-1. Select the rule in the Rules Manager.
-2. Activate **Test Rule**.
-3. The status bar shows how many messages would match — for example, "Rule would match 3 of 50 selected messages."
+Select a client-side rule and activate **Test**. QuickMail runs it against the messages that were in the message list when you opened the Rules Manager, and the status line says how many of them would match, for example "Rule would match 3 of 50 messages in the list." **Test** is turned off for server-side rules, which run on the server.
 
 ### Enabling and disabling rules
 
-Uncheck the **Enabled** checkbox on any rule to temporarily disable it. Disabled rules are skipped during sync but kept in your rule list for later use.
+Select a rule and press **Space**, or activate **Enable** or **Disable**. A disabled rule stays in the list but does not run. The **Enabled** checkbox in the rule editor does the same.
 
 ### Deleting a rule
 
