@@ -209,6 +209,37 @@ public class ContextMenuFocusPolicyTests
         Assert.Contains("return IntPtr.Zero;",  swallow, System.StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Issue #673: F6 out of the message body cycled from the wrong pane, and focus was not
+    /// restored to the reading pane after a view-mode change, because both sites asked
+    /// <c>MessageBody.IsKeyboardFocusWithin</c> — false in exactly the state they were asking
+    /// about, since Win32 focus is inside the WebView2's child HWND and WPF has no focused element.
+    ///
+    /// Both now go through one predicate. They asked the same wrong question in two places and were
+    /// fixed in neither for months; a shared predicate is what stops them drifting apart again.
+    /// </summary>
+    [Fact]
+    public void TheReadingPaneIsRecognisedAsFocused_AtEverySiteThatAsks()
+    {
+        var source = MainWindowSource();
+
+        Assert.Contains("private bool IsMessageBodyFocused =>", source, System.StringComparison.Ordinal);
+        Assert.Contains("_messageBodyHasFocus && _vm.IsMessageOpen", source,
+                        System.StringComparison.Ordinal);
+
+        // Neither site may go back to asking the property on its own.
+        var pane = source[source.IndexOf("private int GetFocusedPaneIndex", System.StringComparison.Ordinal)..];
+        pane = pane[..pane.IndexOf("\n    }", System.StringComparison.Ordinal)];
+        Assert.Contains("IsMessageBodyFocused", pane, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("MessageBody.IsKeyboardFocusWithin", pane, System.StringComparison.Ordinal);
+
+        var restore = source[source.IndexOf("ShouldRestoreMessagePanelFocusAfterViewModeChange() =>",
+                                            System.StringComparison.Ordinal)..];
+        restore = restore[..restore.IndexOf(");", System.StringComparison.Ordinal)];
+        Assert.Contains("IsMessageBodyFocused", restore, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("MessageBody.IsKeyboardFocusWithin", restore, System.StringComparison.Ordinal);
+    }
+
     private static string MainWindowSource() =>
         File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "Views", "MainWindow.xaml.cs"));
 

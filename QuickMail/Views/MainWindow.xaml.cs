@@ -4015,7 +4015,7 @@ public partial class MainWindow : Window
         ConversationTree.IsKeyboardFocusWithin ||
         SenderGroupTree.IsKeyboardFocusWithin ||
         ToGroupTree.IsKeyboardFocusWithin ||
-        MessageBody.IsKeyboardFocusWithin ||
+        IsMessageBodyFocused ||
         ViewModeButton.IsKeyboardFocusWithin);
 
     // Focuses the first status bar region and announces it to screen readers.
@@ -4279,6 +4279,27 @@ public partial class MainWindow : Window
     //   3 = Message list / Conversation tree, 4 = Reading pane (WebView2),
     //   5 = Status bar.
     // Falls back to 0 if no match.
+    /// <summary>
+    /// Whether the reading pane's message body holds focus.
+    ///
+    /// <para>
+    /// <c>MessageBody.IsKeyboardFocusWithin</c> alone is not enough, and is false in exactly the
+    /// state it is being asked about: it is derived from the focused element's ancestor chain, and
+    /// while the document holds focus there is no WPF focused element at all — Win32 focus has
+    /// moved into the WebView2's child HWND. So the tracked flag answers the common case and the
+    /// property covers the moment focus is on the host element itself, before it reaches the
+    /// document (issue #673, the same root confusion as #672).
+    /// </para>
+    ///
+    /// <para>
+    /// Paired with <c>IsMessageOpen</c> for the reason the context-menu guards are: the flag is
+    /// cleared only by focus landing on another element, so a path that closes the pane without
+    /// moving focus would leave it standing. A stale flag cannot outlive the open message.
+    /// </para>
+    /// </summary>
+    private bool IsMessageBodyFocused =>
+        MessageBody.IsKeyboardFocusWithin || (_messageBodyHasFocus && _vm.IsMessageOpen);
+
     private int GetFocusedPaneIndex()
     {
         if (MainToolbar.IsKeyboardFocusWithin)  return 0;
@@ -4287,7 +4308,7 @@ public partial class MainWindow : Window
         if (SearchBox.IsKeyboardFocusWithin)    return 6;
         if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin || CalendarList.IsKeyboardFocusWithin || MonthGrid.IsKeyboardFocusWithin || CalendarDetails.IsKeyboardFocusWithin || CalendarSearchBox.IsKeyboardFocusWithin) return 3;
         if (TabStrip.IsKeyboardFocusWithin)     return 7; // between message list and reading pane
-        if (MessageBody.IsKeyboardFocusWithin)  return 4;
+        if (IsMessageBodyFocused)               return 4;
         if (MainStatusBar.IsKeyboardFocusWithin) return 5;
         return 0;
     }
