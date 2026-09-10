@@ -2832,7 +2832,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             id: "mail.createRuleFromMessage", category: "Mail", title: "Create Rule from Message",
             execute: () => { if (CreateRuleFromMessageCommand.CanExecute(null)) CreateRuleFromMessageCommand.Execute(null); },
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: CanCreateRuleFromMessage));
+            isAvailable: () => CanActOnSelection() && CanCreateRuleFromMessage()));
 
         registry.Register(new CommandDefinition(
             id: "mail.acceptInvite", category: "Mail", title: "Accept Invitation",

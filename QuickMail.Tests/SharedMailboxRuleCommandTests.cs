@@ -81,7 +81,7 @@ public class SharedMailboxRuleCommandTests
 
         Assert.Contains("if (CreateRuleFromMessageCommand.CanExecute(null)) CreateRuleFromMessageCommand.Execute(null);",
                         source, StringComparison.Ordinal);
-        Assert.Contains("isAvailable: CanCreateRuleFromMessage", source, StringComparison.Ordinal);
+        Assert.Contains("isAvailable: () => CanActOnSelection() && CanCreateRuleFromMessage()", source, StringComparison.Ordinal);
     }
 
     [Fact]
