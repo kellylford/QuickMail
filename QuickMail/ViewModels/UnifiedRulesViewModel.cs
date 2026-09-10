@@ -36,6 +36,13 @@ public partial class UnifiedRulesViewModel : ObservableObject
     // Settings change is picked up next time the manager opens.
     private readonly bool _showFieldLabels;
 
+    // Set when the Rules Manager was opened from a shared mailbox, which the account list leaves out
+    // (#678). The status line says so until the user chooses an account themselves.
+    private string? _sharedMailboxLabel;
+
+    // Every shared mailbox's label, so a rule template for one can say why it gets no rule.
+    private readonly Dictionary<Guid, string> _sharedAccountLabels;
+
     public UnifiedRulesViewModel(
         IRuleService clientRules,
         IServerRuleService? serverRules,
@@ -50,7 +57,16 @@ public partial class UnifiedRulesViewModel : ObservableObject
         _selectedMessagesForTest = selectedMessagesForTest?.ToList();
         _showFieldLabels = configService?.Load().RuleListShowFieldLabels ?? false;
         _foldersByAccount = foldersByAccount;
-        _allAccounts = accounts.ToList();
+        // Shared mailboxes are left out (#678). QuickMail cannot reach a shared mailbox's server-side
+        // rules, and a client-side rule there would act, from one person's machine, on mail everyone
+        // else reads; its rules belong in Outlook.
+        var everyAccount = accounts.ToList();
+        _allAccounts = everyAccount.Where(a => !a.IsShared).ToList();
+        _sharedAccountLabels = everyAccount.Where(a => a.IsShared)
+            .GroupBy(a => a.Id).ToDictionary(g => g.Key, g => g.First().AccountLabel);
+        if (preferredAccountId is Guid opened
+            && everyAccount.FirstOrDefault(a => a.Id == opened) is { IsShared: true } shared)
+            _sharedMailboxLabel = shared.AccountLabel;
 
         AccountOptions = _allAccounts
             .Select(a => new AccountOption { Id = a.Id, DisplayName = a.AccountLabel })
@@ -142,8 +158,22 @@ public partial class UnifiedRulesViewModel : ObservableObject
     public void NewRuleFromTemplate(MailRule template)
     {
         // Land on the message's account so the rule is scoped to it (the picker may be on another).
-        if (template.AccountId is Guid tid && AccountOptions.FirstOrDefault(o => o.Id == tid) is { } opt)
+        if (template.AccountId is Guid tid)
+        {
+            // An account the list does not hold, such as a shared mailbox (#678), gets no rule. Opening the
+            // editor anyway would scope the rule to whichever account the picker happens to show.
+            if (AccountOptions.FirstOrDefault(o => o.Id == tid) is not { } opt)
+            {
+                // Say why, on the status line (read on demand, and there whether announcements are on or
+                // off), rather than coming forward with nothing. The window's account list is taken when
+                // it opens, so an account added since is the other way to get here.
+                StatusText = _sharedAccountLabels.TryGetValue(tid, out var shared)
+                    ? $"Rules for the shared mailbox {shared} are managed in Outlook."
+                    : "The Rules Manager does not list that message's account. Close it and open it again to make a rule there.";
+                return;
+            }
             SelectedAccount = opt;
+        }
         OpenNewEditor(ServerRuleEditorViewModel.ForNewFromTemplate(template));
     }
 
@@ -499,7 +529,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
         => _allAccounts.FirstOrDefault(a => a.Id == SelectedAccount?.Id);
 
     partial void OnSelectedAccountChanged(AccountOption? value)
-        => RefreshCommand.ExecuteAsync(null).LogFaults("UnifiedRules: account-change refresh");
+    {
+        // Choosing an account answers the shared-mailbox notice: it was about where the window opened.
+        _sharedMailboxLabel = null;
+        RefreshCommand.ExecuteAsync(null).LogFaults("UnifiedRules: account-change refresh");
+    }
 
     /// <summary>
     /// Loads the selected account's rules into one list: server rules first (in execution order),
@@ -603,7 +637,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
             // A load failure must survive to the status line — otherwise "couldn't reach Graph" reads
             // as "this account has no server rules", which invites the wrong next action.
-            StatusText = BuildStatus(rows, failures, AccountSupportsServerRules);
+            StatusText = SharedMailboxPreamble() + BuildStatus(rows, failures, AccountSupportsServerRules);
         }
         finally
         {
@@ -655,6 +689,16 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// the whole message.</summary>
     internal static string NoRulesStatus(bool supportsServerRules)
         => "No rules yet. " + ModeClause(supportsServerRules);
+
+    /// <summary>
+    /// The sentence that opens the status line when the Rules Manager was opened from a shared mailbox
+    /// (#678): its rules are managed in Outlook, and the window is showing another account instead.
+    /// Empty otherwise, and once the user has chosen an account.
+    /// </summary>
+    internal string SharedMailboxPreamble()
+        => _sharedMailboxLabel is { } label
+            ? $"Rules for the shared mailbox {label} are managed in Outlook. Showing {SelectedAccount?.DisplayName} instead. "
+            : string.Empty;
 
     /// <summary>Ends a fragment with a full stop so the next sentence can be appended to it. Exception
     /// messages are the input here and are inconsistent about their own punctuation.</summary>

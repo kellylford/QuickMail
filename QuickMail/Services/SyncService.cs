@@ -61,6 +61,9 @@ public partial class SyncService : ISyncService
     // processed when it first arrived — isn't re-run through rules on upgrade day. Seeded via
     // SeedRebuildBaseline; _rebuildBaselined tracks which (account, folder) pairs have been baselined.
     private readonly ConcurrentDictionary<Guid, byte> _rebuildAccounts = new();
+
+    // Shared mailboxes whose kept-but-not-run client rules have been logged this session (#678).
+    private readonly ConcurrentDictionary<Guid, byte> _sharedRulesSkipLogged = new();
     private readonly ConcurrentDictionary<(Guid Account, string Folder), byte> _rebuildBaselined = new();
 
     /// <summary>
@@ -377,6 +380,18 @@ public partial class SyncService : ISyncService
         }
 
         if (newArrivals.Count == 0) return fetched;
+
+        // Client-side rules do not run on a shared mailbox (#678). Its rules belong in Outlook, and a client
+        // rule there would move or delete, from one person's machine, mail everyone else reads. A rule
+        // saved against one by an earlier version is kept, not run; the first skip each session is logged
+        // when there is such a rule.
+        if (account.IsShared)
+        {
+            if (_sharedRulesSkipLogged.TryAdd(account.Id, 0)
+                && _rules.LoadRules().Any(r => r.AccountId == account.Id && r.IsEnabled))
+                LogService.Log($"Client-side rules saved for the shared mailbox {account.AccountLabel} are kept but not run: a shared mailbox's rules are managed in Outlook (#678).");
+            return fetched;
+        }
 
         int matchedCount = 0;
         List<MailMessageSummary> removedMessages = [];

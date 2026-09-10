@@ -586,7 +586,7 @@ The **View → Sort** submenu controls the order in which messages or groups are
 
 Mail rules act on messages automatically: moving newsletters to a folder, marking a mailing list as read, deleting something you never want to see.
 
-A **client-side** rule is run by QuickMail on this computer, on Inbox mail as it arrives, while QuickMail is open. A **work or school** account added with the **Microsoft 365 (Graph)** connection method can also have **server-side** rules, which Microsoft runs for you whether QuickMail is open or not. Every other account has client-side rules only. The [online user guide](https://kellylford.github.io/QuickMail/) covers rules in full.
+A **client-side** rule is run by QuickMail on this computer, on Inbox mail as it arrives, while QuickMail is open. A **work or school** account added with the **Microsoft 365 (Graph)** connection method can also have **server-side** rules, which Microsoft runs for you whether QuickMail is open or not. Every other account has client-side rules only. A shared mailbox is not in the Rules Manager at all: its rules are managed in Outlook. The [online user guide](https://kellylford.github.io/QuickMail/) covers rules in full.
 
 ### Opening the Rules Manager
 
@@ -611,6 +611,8 @@ A **Move to folder** or **Delete** rule needs at least one condition, because a 
 1. Select a message in the message list.
 2. Press **Shift+F10** or the Applications key and choose **Create Rule from Message…**, or press **Ctrl+Shift+T**.
 3. The rule editor opens with the sender filled in and its condition checked, and the subject filled in but unchecked. The rule belongs to that message's account. Choose an action and save.
+
+Create Rule from Message is unavailable on a message in a shared mailbox, whose rules are managed in Outlook.
 
 ### Testing a rule
 

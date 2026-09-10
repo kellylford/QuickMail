@@ -6871,6 +6871,8 @@ public partial class MainWindow : Window
             foreach (var (accountId, folders) in _vm.CachedFolders)
             {
                 if (accountScope is { } scope && accountId != scope) continue;
+                // Client-side rules do not run on a shared mailbox (#678).
+                if (_vm.ResolveAccountById(accountId) is { IsShared: true }) continue;
                 // Since #516 the folder cache is restored from disk at launch, so an entry here no
                 // longer implies the account connected. The fail-closed rule below depends on
                 // "couldn't resolve an Inbox" meaning "not connected", so ask directly.
@@ -6885,7 +6887,7 @@ public partial class MainWindow : Window
             // yet) is skipped by the rule service rather than guessed at. Log which ones so a "my rules
             // didn't run on account X" report is diagnosable — the run is otherwise silent about it.
             var skipped = _vm.Accounts
-                .Where(a => (accountScope is null || a.Id == accountScope) && !inboxByAccount.ContainsKey(a.Id))
+                .Where(a => (accountScope is null || a.Id == accountScope) && !a.IsShared && !inboxByAccount.ContainsKey(a.Id))
                 .ToList();
             if (skipped.Count > 0)
                 LogService.Log($"Run on Existing Mail: skipping {skipped.Count} account(s) with no resolved Inbox: " +

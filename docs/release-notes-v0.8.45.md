@@ -115,6 +115,22 @@ against the messages in the message list, now says so instead of calling them yo
 
 ---
 
+## Changed: a shared mailbox's rules are left to Outlook
+
+QuickMail cannot reach a shared mailbox's server-side rules: signing in as yourself does not give access
+to another mailbox's rules, and no permission QuickMail can ask for changes that. Opening the Rules Manager
+on a shared mailbox used to ask you to get an administrator to grant a permission that was already
+granted, and that would not have helped if granted again.
+
+A shared mailbox is no longer in the Rules Manager's **Account** list. If you open the Rules Manager from
+one, the status line says its rules are managed in Outlook and the window shows your default account
+instead. **Create Rule from Message** is unavailable on a shared mailbox's messages. And a client-side rule
+saved on a shared mailbox by an earlier version is kept but no longer runs: it acted, from one person's
+computer only, on mail everyone with access to the mailbox reads.
+([#678](https://github.com/kellylford/QuickMail/issues/678))
+
+---
+
 ## Fixed: deleting a message no longer talks over the next one
 
 Pressing Delete on a message could produce a spoken **"unavailable"** before the next message was

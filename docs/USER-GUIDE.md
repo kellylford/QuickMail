@@ -397,6 +397,8 @@ Shared mailboxes are a **Microsoft 365 work or school** feature. You add one thr
 
 **New-mail notifications are off for a shared mailbox by default.** A shared mailbox is often a busy team address, so QuickMail does not pop a notification for every message that lands in it. If you do want notifications for a particular shared mailbox, select it in Account Manager and turn on **Notify me of new mail in this shared mailbox**. The main **Show a Notification When New Mail Arrives** setting still has to be on for any notification to appear.
 
+**Rules.** A shared mailbox's rules are managed in Outlook, not in QuickMail, so a shared mailbox is not in the Rules Manager's **Account** list. QuickMail cannot reach a shared mailbox's server-side rules, and a client-side rule would act, from your computer only, on mail everyone else reads. **Create Rule from Message** is unavailable on a shared mailbox's messages, and a client-side rule saved on a shared mailbox by an earlier version is kept but no longer runs.
+
 **Removing.** Removing the account that a shared mailbox reads through also removes the shared mailbox — you are told which shared mailboxes will go when you delete their parent account. Removing a shared mailbox on its own leaves the account it read through untouched.
 
 ---
@@ -1137,7 +1139,7 @@ To apply your rules to mail that is already there, use **Run on Existing Mail**.
 
 ### Rules belong to one account
 
-Each rule watches one account: the one chosen in the Rules Manager's **Account** list when you create it. The editor has no account field of its own, so to write a rule for another account, choose that account in the list first. The Rules Manager opens on the account you were in. From a view that spans accounts, such as **All Inboxes**, it opens on your default account — the one marked with **Set Default** in Account Manager. A rule made with [Create Rule from Message](#creating-a-rule-from-a-message) belongs to that message's account.
+Each rule watches one account: the one chosen in the Rules Manager's **Account** list when you create it. The editor has no account field of its own, so to write a rule for another account, choose that account in the list first. The Rules Manager opens on the account you were in. From a view that spans accounts, such as **All Inboxes**, it opens on your default account — the one marked with **Set Default** in Account Manager. A rule made with [Create Rule from Message](#creating-a-rule-from-a-message) belongs to that message's account. Shared mailboxes are not in the list, because their rules are managed in Outlook; if you open the Rules Manager from one, the status line says so and the window shows your default account instead. See [Shared mailboxes](#shared-mailboxes).
 
 If you had rules from an earlier version that applied to **all accounts**, QuickMail converts each one into a separate rule for every account that is not connected through Microsoft 365 directly, the first time it starts, so they keep doing what they did there. An old rule is never copied onto a Microsoft 365 mailbox, so it cannot start acting on one without your say-so; in a profile whose only accounts are Microsoft 365, it is dropped and the reason is written to the log.
 
@@ -1512,7 +1514,7 @@ The direction matters, so it is worth being blunt about it: a **two-way** item i
 | **Calendar events** | Mostly two-way | Single (non-repeating) events on a connected calendar can be created, edited, and deleted from QuickMail. Repeating events, meeting invitations, and the events your provider manages for you are [download only](#events-your-account-will-not-let-quickmail-change). |
 | **Meeting responses** | Two-way | Accept, Tentative, and Decline are emailed to the organizer and update your calendar. |
 | **Client-side mail rules** | This computer only | They run inside QuickMail as mail arrives. They are not server-side rules — your provider does not know about them, and they do nothing while QuickMail is closed. |
-| **Server-side mail rules** | Two-way | Only on a work or school Microsoft 365 account. They live on your Exchange mailbox, so they run while QuickMail is closed and apply wherever you read that mailbox. See [Microsoft 365: server-side rules](#microsoft-365-server-side-rules). |
+| **Server-side mail rules** | Two-way | Only on a work or school Microsoft 365 account, and not on a shared mailbox, whose rules are managed in Outlook. They live on your Exchange mailbox, so they run while QuickMail is closed and apply wherever you read that mailbox. Your organization may need to allow QuickMail to manage them, and a rule the server marks read-only cannot be changed here. See [Microsoft 365: server-side rules](#microsoft-365-server-side-rules). |
 | **The Outbox** | This computer only, until sent | Messages and drafts queued while the server was unreachable wait in QuickMail's data folder and go to your account the next time it connects. No other program sees them until then. See [Working Offline: Drafts and the Outbox](#working-offline-drafts-and-the-outbox). |
 | **Everything else in QuickMail** | This computer only | Settings, themes, keyboard customizations, signatures, message templates, saved views, message-list field choices, contact groups, and the contacts you typed in yourself. |
 

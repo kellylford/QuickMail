@@ -1129,6 +1129,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedMessage))]
+    [NotifyCanExecuteChangedFor(nameof(CreateRuleFromMessageCommand))]
     private MailMessageSummary? _selectedMessage;
 
     [ObservableProperty]
@@ -2069,6 +2070,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // so its verification loop would otherwise keep probing a mailbox the user has removed.
         _truthProbe?.RetainOnly(accounts.Select(a => a.Id));
 
+        // The status bar's rule count leaves out rules on shared mailboxes (#678), which it can only tell
+        // apart once the accounts are known; the count made in the constructor ran before they loaded.
+        UpdateRulesStatusText();
+
         if (previous.Count > 0)
         {
             var carriedCount = carried;
@@ -2825,9 +2830,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         registry.Register(new CommandDefinition(
             id: "mail.createRuleFromMessage", category: "Mail", title: "Create Rule from Message",
-            execute: () => CreateRuleFromMessageCommand.Execute(null),
+            execute: () => { if (CreateRuleFromMessageCommand.CanExecute(null)) CreateRuleFromMessageCommand.Execute(null); },
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: CanActOnSelection));
+            isAvailable: CanCreateRuleFromMessage));
 
         registry.Register(new CommandDefinition(
             id: "mail.acceptInvite", category: "Mail", title: "Accept Invitation",
@@ -4220,7 +4225,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public void UpdateRulesStatusText()
     {
-        var rules = _ruleService.LoadRules();
+        // A rule saved against a shared mailbox is kept but does not run (#678), so it is not "active".
+        var rules = _ruleService.LoadRules()
+            .Where(r => r.AccountId is not Guid id || ResolveAccountById(id) is not { IsShared: true })
+            .ToList();
         int active = rules.Count(r => r.IsEnabled);
         int disabled = rules.Count(r => !r.IsEnabled);
 
@@ -6566,7 +6574,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _hasMessageTarget;
 
     /// <summary>Recomputes <see cref="HasMessageTarget"/> from the View's resolver.</summary>
-    public void RefreshMessageTarget() => HasMessageTarget = CanActOnSelection();
+    public void RefreshMessageTarget()
+    {
+        HasMessageTarget = CanActOnSelection();
+        // A header selection changes the target without changing SelectedMessage, and with it the
+        // account a new rule would be for (#678).
+        CreateRuleFromMessageCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Create Rule from Message is unavailable on a message in a shared mailbox (#678): QuickMail does not
+    /// manage a shared mailbox's rules, which belong in Outlook. Judged on the message the command would
+    /// use: a group header's newest message, as <see cref="RetargetToGroupNewest"/> picks, else the
+    /// selected one.
+    /// </summary>
+    public bool CanCreateRuleFromMessage()
+    {
+        var target = SelectedGroupMessages() is { } group ? group[0] : SelectedMessage;
+        return target is not null && ResolveAccountById(target.AccountId) is not { IsShared: true };
+    }
 
     /// <summary>
     /// Points Reply, Reply All and Forward at the newest message of a selected group: one reply to
@@ -8172,7 +8198,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RulesManagerRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanCreateRuleFromMessage))]
     private void CreateRuleFromMessage()
     {
         // On a group header the rule comes from its newest message, the same one Reply answers.
