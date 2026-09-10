@@ -667,7 +667,7 @@ public class UnifiedRulesViewModelTests
         Assert.False(single.ShowAccountSelector);
     }
 
-    // ── Test Rule (#488 review: parity with RulesManagerWindow's Test button) ─────────
+    // ── Test Rule (#488 review) ─────────
 
     private static MailMessageSummary Msg(string id, string from = "a@b.com") => new() { MessageId = id, Subject = "hello", From = from };
 
@@ -988,5 +988,170 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [Graph(a)],
             preferredAccountId: a, selectedMessagesForTest: new[] { Msg("1") });
         Assert.False(vm.TestRuleCommand.CanExecute(null));   // no rule selected yet
+    }
+
+    // ── Ported from the retired client-only window's tests ────────────────────
+    // RulesManagerWindow and RulesManagerViewModel were deleted once every account used this window.
+    // Most of their 38 tests already had an equivalent here, or in RuleEditorValidationTests for the
+    // save checks; the rest are ported below. One behaviour was not ported, because this window does
+    // not have it: a new rule starting on the account marked default. The picker starts on the account
+    // the window was opened from, else the first.
+
+    [Fact]
+    public async Task DeleteRule_Declined_KeepsTheClientRule()
+    {
+        // Delete is destructive, so declining the confirmation has to stop it outright.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("Kept", a)] };
+        var vm = new UnifiedRulesViewModel(client, serverRules: null, [Imap(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        var announces = new List<string>();
+        vm.AnnouncementRequested += (t, _) => announces.Add(t);
+        vm.ConfirmDeleteRequested += (_, _) => false;
+
+        await vm.DeleteRuleCommand.ExecuteAsync(null);
+
+        Assert.Single(client.LoadedRules);
+        Assert.Single(vm.Rules);
+        Assert.Empty(announces);
+    }
+
+    [Fact]
+    public async Task DeleteRule_Confirmed_RemovesTheClientRule_AndSaysSo()
+    {
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("Gone", a)] };
+        var vm = new UnifiedRulesViewModel(client, serverRules: null, [Imap(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        var announces = new List<(string, AnnouncementCategory)>();
+        vm.AnnouncementRequested += (t, c) => announces.Add((t, c));
+        vm.ConfirmDeleteRequested += (_, _) => true;
+
+        await vm.DeleteRuleCommand.ExecuteAsync(null);
+
+        Assert.Empty(client.LoadedRules);
+        Assert.Empty(vm.Rules);
+        // The category too: it decides which of the user's announcement settings governs this.
+        Assert.Equal(new[] { ("Rule deleted.", AnnouncementCategory.Result) }, announces);
+    }
+
+    [Fact]
+    public async Task RuleCommands_AreUnavailable_UntilARuleIsSelected()
+    {
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("Only", a)] };
+        var vm = new UnifiedRulesViewModel(client, serverRules: null, [Imap(a)], preferredAccountId: a,
+            selectedMessagesForTest: new[] { Msg("1") });
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        vm.SelectedRule = null;
+        Assert.False(vm.EditRuleCommand.CanExecute(null));
+        Assert.False(vm.DeleteRuleCommand.CanExecute(null));
+        Assert.False(vm.ToggleEnabledCommand.CanExecute(null));
+        Assert.False(vm.TestRuleCommand.CanExecute(null));
+
+        vm.SelectedRule = vm.Rules.Single();
+        Assert.True(vm.EditRuleCommand.CanExecute(null));
+        Assert.True(vm.DeleteRuleCommand.CanExecute(null));
+        Assert.True(vm.ToggleEnabledCommand.CanExecute(null));
+        Assert.True(vm.TestRuleCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Opening_SelectsTheFirstRule()
+    {
+        // So the detail pane has something to show and the buttons are live on arrival.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("First", a), Client("Second", a)] };
+        var vm = new UnifiedRulesViewModel(client, serverRules: null, [Imap(a)], preferredAccountId: a);
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Same(vm.Rules[0], vm.SelectedRule);
+        Assert.Equal("First", vm.SelectedRule!.Name);
+    }
+
+    [Fact]
+    public async Task NewClientRule_IsSelectedAfterSaving_AmongOthers()
+    {
+        // A client save re-selects by the new rule's id. With a single rule, "select the first row"
+        // would pass by accident, so there is one already; the server path is pinned separately by
+        // NewRule_ServerCreate_SelectsTheNewRule.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("Existing", a)] };
+        var vm = new UnifiedRulesViewModel(client, serverRules: null, [Imap(a)], preferredAccountId: a);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Newest"; editor.SubjectContains = "x"; editor.MarkAsRead = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, vm.Rules.Count);
+        Assert.NotNull(vm.SelectedRule);
+        Assert.Equal("Newest", vm.SelectedRule.Name);
+    }
+
+    [Fact]
+    public async Task DeletingTheLastClientRule_TurnsRunOnExistingOff()
+    {
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("Only", a)] };
+        var vm = new UnifiedRulesViewModel(client, serverRules: null, [Imap(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        Assert.True(vm.CanRunOnExisting);
+        vm.ConfirmDeleteRequested += (_, _) => true;
+        var buttonToldToRecheck = 0;
+        vm.RunOnExistingCommand.CanExecuteChanged += (_, _) => buttonToldToRecheck++;
+
+        await vm.DeleteRuleCommand.ExecuteAsync(null);
+
+        Assert.False(vm.CanRunOnExisting);
+        Assert.False(vm.RunOnExistingCommand.CanExecute(null));
+        // Both of those recompute when asked, so on their own they cannot see a missing notification.
+        // A WPF button re-queries CanExecute only when CanExecuteChanged fires; without it, the button
+        // would stay enabled after the last rule was deleted.
+        Assert.True(buttonToldToRecheck > 0, "Run on Existing Mail was never told to re-check after the delete.");
+    }
+
+    [Fact]
+    public async Task RunOnExisting_NothingMoved_StillSaysItRan()
+    {
+        // With nothing to move, the run must still report that it happened — on the status line as well
+        // as aloud. Otherwise, for someone with announcements off, the button appears to do nothing.
+        var a = Guid.NewGuid();
+        // A reachable state: an enabled client rule, loaded, so the button would be live. The toolkit's
+        // ExecuteAsync does not check CanExecute, so without this the test would run a command the
+        // window could never offer, and break the day a defensive guard is added.
+        var vm = new UnifiedRulesViewModel(new StubRuleService { LoadedRules = [Client("C1", a)] },
+            new FakeServerRules(), [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        Assert.True(vm.CanRunOnExisting);
+        vm.RunOnExistingRequested += _ => Task.FromResult(0);
+        var announced = new List<(string, AnnouncementCategory)>();
+        vm.AnnouncementRequested += (t, c) => announced.Add((t, c));
+
+        await vm.RunOnExistingCommand.ExecuteAsync(null);
+
+        var expected = $"Applied {vm.SelectedAccount!.DisplayName}'s rules to existing mail.";
+        Assert.Equal(expected, vm.StatusText);
+        Assert.Equal((expected, AnnouncementCategory.Result), announced[^1]);
+    }
+
+    [Fact]
+    public async Task RunOnExisting_Failure_IsReportedOnTheStatusLine()
+    {
+        var a = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService { LoadedRules = [Client("C1", a)] },
+            new FakeServerRules(), [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        Assert.True(vm.CanRunOnExisting);           // reachable, as above
+        vm.RunOnExistingRequested += _ => throw new InvalidOperationException("store is locked");
+        var announced = new List<(string, AnnouncementCategory)>();
+        vm.AnnouncementRequested += (t, c) => announced.Add((t, c));
+
+        await vm.RunOnExistingCommand.ExecuteAsync(null);
+
+        const string expected = "Couldn't run rules on existing mail: store is locked";
+        Assert.Equal(expected, vm.StatusText);
+        Assert.Equal((expected, AnnouncementCategory.Result), announced[^1]);
     }
 }

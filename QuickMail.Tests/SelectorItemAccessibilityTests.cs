@@ -172,18 +172,22 @@ public class SelectorItemAccessibilityTests
         Assert.Contains("SocketError=TimedOut", evt.ToString());
     }
 
-    // End-to-end against the REAL RulesManagerWindow: what a screen reader actually speaks for a
-    // rule row must be "name, account" (issue: account-in-row not announced). Reads the live
-    // ListBoxItemAutomationPeer name — the ground truth, not the eyeballed template.
+    // End-to-end against the REAL UnifiedRulesWindow, the only rules window since #550. Asserts that
+    // the row CONTAINER carries the name, not merely what the item peer reports: UnifiedRuleRow's
+    // ToString() returns the same RowText, so a peer-name assertion would still pass with the
+    // ItemContainerStyle setter deleted. CLAUDE.md: a row's AutomationProperties.Name goes on the row
+    // container, and a test that asserts only the spoken text stops catching the regression.
     [StaFact]
-    public void RulesManagerWindow_RuleRow_ItemPeerName_IncludesAccount()
+    public void UnifiedRulesWindow_RuleRow_NameIsOnTheContainer()
     {
         var acctId = Guid.NewGuid();
-        var accounts = new[] { new AccountModel { Id = acctId, AccountName = "IdeaPlace" } };
-        var stub = new StubRuleService { LoadedRules = [new MailRule { Name = "Newsletters", AccountId = acctId }] };
-        var vm = new RulesManagerViewModel(stub, accounts);
+        var accounts = new[] { new AccountModel { Id = acctId, AccountName = "Home", BackendKind = BackendKind.ImapSmtp } };
+        var stub = new StubRuleService { LoadedRules = [new MailRule { Name = "Newsletters", AccountId = acctId, SubjectContains = "news" }] };
+        // No server-rule service and an IMAP account: the load is the synchronous client-only path, so
+        // the rows exist once the window's Loaded handler has run.
+        var vm = new UnifiedRulesViewModel(stub, serverRules: null, accounts, preferredAccountId: acctId);
 
-        var window = new RulesManagerWindow(vm, accounts, new Dictionary<Guid, List<MailFolderModel>>())
+        var window = new UnifiedRulesWindow(vm, accounts, new Dictionary<Guid, List<MailFolderModel>>())
         {
             WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
         };
@@ -193,13 +197,16 @@ public class SelectorItemAccessibilityTests
             window.UpdateLayout();
             DrainDispatcher();
 
-            var list = (ListBox)window.FindName("RuleListBox");
-            var names = (UIElementAutomationPeer.CreatePeerForElement(list).GetChildren() ?? new List<AutomationPeer>())
-                .OfType<ListBoxItemAutomationPeer>()
-                .Select(p => p.GetName())
-                .ToList();
+            var list = window.FindName("RulesListBox") as ListBox;
+            Assert.NotNull(list);
+            var row = Assert.Single(vm.Rules);
+            var container = list.ItemContainerGenerator.ContainerFromItem(row) as ListBoxItem;
+            Assert.NotNull(container);
 
-            Assert.Contains("Newsletters, IdeaPlace", names);
+            // The container's own property, which only the ItemContainerStyle setter writes. Neither the
+            // DataTemplate nor a ToString() fallback can put a value here.
+            Assert.Equal(row.RowText, System.Windows.Automation.AutomationProperties.GetName(container));
+            Assert.StartsWith("Newsletters, on client", row.RowText);
         }
         finally { window.Close(); }
     }

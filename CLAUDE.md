@@ -45,7 +45,7 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
     matching their class names. Search by class name, not filename.
 - **SettingsViewModelTests** — settings persistence and hotkey binding logic
 - **CommandRegistryTests** / **ViewManagerHotkeyIntegrationTests** — command registration and hotkey override
-- **RuleServiceTests** / **RulesManagerViewModelTests** — mail rule matching and actions
+- **RuleServiceTests** / **UnifiedRulesViewModelTests** / **RuleEditorValidationTests** — rule matching, the rules window, and the rule editor's save checks
 - **ComposeViewModelReplyTests** / **ComposeViewModelTemplateTests** — compose VM behavior
 - **ConversationBuilderTests** / **SenderGroupBuilderTests** — grouping utilities
 - **SavedViewsTests** / **ViewManagerViewModelTests** — saved-view persistence and management

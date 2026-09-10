@@ -10,13 +10,13 @@ namespace QuickMail.Tests;
 /// <c>ForRuleTarget</c> and so would stay green if the rule editors went back to constructing a flat
 /// <c>FolderPickerWindow</c> themselves — precisely the state this change fixed.
 ///
-/// <para>Neither editor can be stood up without a live rules ViewModel and an owner window, so this
-/// reads the source instead. Same shape as <see cref="FolderMoveCopyCallSiteTests"/>.</para>
+/// <para>The editor cannot be stood up without a live rules ViewModel and an owner window, so this
+/// reads the source instead. Same shape as <see cref="FolderMoveCopyCallSiteTests"/>. The theories
+/// keep their shape for the day a second editor exists; until then each has one row.</para>
 /// </summary>
 public class RuleTargetPickerCallSiteTests
 {
     [Theory]
-    [InlineData("Views/RulesManagerWindow.xaml.cs")]
     [InlineData("Views/ServerRuleEditorWindow.xaml.cs")]
     public void TheRuleEditorsBuildTheirFolderPickerThroughForRuleTarget(string file)
     {
@@ -35,7 +35,6 @@ public class RuleTargetPickerCallSiteTests
     /// than a literal null.
     /// </summary>
     [Theory]
-    [InlineData("Views/RulesManagerWindow.xaml.cs", "accountId")]
     [InlineData("Views/ServerRuleEditorWindow.xaml.cs", "_ruleAccountId")]
     public void TheRuleEditorsScopeThePickerToTheRulesAccount(string file, string accountArgument)
     {
@@ -52,7 +51,6 @@ public class RuleTargetPickerCallSiteTests
     /// perfectly good tree, just one with nothing to create a folder with (issue #645).
     /// </summary>
     [Theory]
-    [InlineData("Views/RulesManagerWindow.xaml.cs")]
     [InlineData("Views/ServerRuleEditorWindow.xaml.cs")]
     public void TheRuleEditorsGiveThePickerAWayToCreateAFolder(string file)
     {
@@ -73,9 +71,8 @@ public class RuleTargetPickerCallSiteTests
     /// <c>MainViewModel</c>, so if it stops handing the rules window a
     /// <c>FolderCreationSupport</c> it has nothing to pass on and the button quietly disappears.
     ///
-    /// <para>Since #550 there is a single rules window — <c>MainWindow</c> always constructs
-    /// <c>UnifiedRulesWindow</c> and no longer builds <c>RulesManagerWindow</c> (retired) — so only
-    /// the one construction is checked here.</para>
+    /// <para>Since #550 there is a single rules window, <c>UnifiedRulesWindow</c>, so there is only the
+    /// one construction to check.</para>
     ///
     /// <para>Whole-file rather than one method: <c>MethodBody</c> anchors on the first line that
     /// calls the name, and <c>OpenRulesManager</c> is invoked from two event wire-ups long before it

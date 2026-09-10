@@ -28,11 +28,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>>? _foldersByAccount;
     private readonly List<AccountModel> _allAccounts;
 
-    // Messages selected in the main window, for Test Rule (parity with RulesManagerViewModel). Null when
+    // Messages selected in the main window, for Test Rule. Null when
     // the manager was opened without a message-list selection.
     private readonly IReadOnlyList<MailMessageSummary>? _selectedMessagesForTest;
 
-    // "Show field labels in the rules list" — read once at open (matches RulesManagerViewModel); a
+    // "Show field labels in the rules list" — read once at open; a
     // Settings change is picked up next time the manager opens.
     private readonly bool _showFieldLabels;
 
@@ -169,9 +169,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private async Task RunOnExistingAsync()
     {
         if (RunOnExistingRequested is null || SelectedAccount is not { } account) return;
-        // Set StatusText as well as announcing (parity with RulesManagerViewModel): the status line is a
-        // visible, F6-reachable surface, so a user running with announcements off still sees the outcome —
-        // otherwise this newly-surfaced button would be imperceptible to them, error included.
+        // Set StatusText as well as announcing: the status line is a visible, F6-reachable surface, so a
+        // user running with announcements off still gets the outcome — error included — rather than a
+        // button that appears to do nothing.
         StatusText = $"Running {account.DisplayName}'s rules on existing mail…";
         Announce(StatusText, AnnouncementCategory.Status);
         int affected;
@@ -271,8 +271,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// for a user running with announcements off, does nothing perceptible when pressed.</summary>
     public bool CanTestSelected => SelectedRule is { RunsWhere: RuleRunsWhere.Client };
 
-    // Parity with RulesManagerViewModel.TestRule: run the selected client rule against the messages
-    // currently in the main window and report the match count.
+    // Run the selected client rule against the messages currently in the main window and report the
+    // match count.
     [RelayCommand(CanExecute = nameof(CanTestSelected))]
     private void TestRule()
     {
