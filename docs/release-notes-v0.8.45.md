@@ -52,21 +52,21 @@ ordinary IMAP way opened a simpler one.
 A personal Outlook.com account connected through Microsoft 365 is the case that went wrong. It
 connects the same way a work or school account does, so it was handed the fuller window — but a
 personal account cannot have server-side rules, so in that window the Move Up and Move Down buttons
-never came to life, and creating a rule popped up a box telling you it had been saved as a QuickMail
-rule instead. Neither made sense for an account that was only ever going to run its rules in
-QuickMail.
+never came to life, and creating a rule popped up a box telling you it had been saved as a
+client-side rule instead. Neither made sense for an account that was only ever going to run its
+rules inside QuickMail.
 
 There is now a single Rules window for every account. It shows what the selected account supports —
-server rules for a work or school account, QuickMail rules for everyone else — and when you open it,
+server-side rules for a work or school account, client-side rules for everyone else — and when you open it,
 it still tells you which kind this account uses: *"This account supports only client-side rules"* for
 an account without server rules. The pop-up box after saving a rule is gone; on an
 account that has no server rules there is nothing surprising to report, and the message when you open
 the window already covers it.
 
 One place still speaks up: on a work or school account, a rule that uses something only QuickMail can
-do — marking a message unread, say — is saved as a QuickMail rule rather than a server rule, and
-because that account *does* also do server rules, QuickMail says so when it happens, so the rule
-running in QuickMail rather than in the cloud is never a silent surprise.
+do — marking a message unread, say — is saved as a client-side rule rather than a server-side one,
+and because that account *does* also do server rules, QuickMail says so when it happens, so a rule
+running client-side rather than in the cloud is never a silent surprise.
 ([#550](https://github.com/kellylford/QuickMail/issues/550))
 
 ---
