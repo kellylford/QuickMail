@@ -122,7 +122,7 @@ internal sealed class UiProbeDriver
 
             case "rules":
                 return await CaptureChildWindowAsync(() => ExecuteCommand("mail.rules"),
-                    w => w is RulesManagerWindow or UnifiedRulesWindow, path);
+                    w => w is UnifiedRulesWindow, path);
 
             case "saved-views":
                 return await CaptureChildWindowAsync(() => _vm.ManageViewsCommand.Execute(null),

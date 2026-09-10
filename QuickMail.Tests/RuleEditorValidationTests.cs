@@ -79,6 +79,44 @@ public class RuleEditorValidationTests
         Assert.Equal("newsletter", vm.SubjectContains);   // switching off keeps the text (#665)
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ABlankName_IsRefused(string name)
+    {
+        // Its only test lived in the retired client-only window's suite; the check lives on here.
+        var vm = ServerRuleEditorViewModel.ForNew();
+        vm.Name = name;
+        vm.MarkAsRead = true;   // an action that needs no condition, so only the name is wrong
+
+        Assert.False(vm.Validate());
+        Assert.Equal("Rule name is required.", vm.NameError);
+    }
+
+    [Fact]
+    public void FixingTheForm_ClearsTheErrorsItRaised()
+    {
+        // Validate resets every error before checking, so a message cannot outlive the problem it
+        // described. All three are raised first: a stale error is also SPOKEN, because Validate joins
+        // every non-empty error into its announcement. Unticking Move does not clear the folder error
+        // by itself (only choosing a folder does), so that one depends entirely on the reset.
+        var vm = ServerRuleEditorViewModel.ForNew();
+        vm.MoveToFolder = true;                        // no folder, no name, no condition
+        Assert.False(vm.Validate());
+        Assert.NotEqual(string.Empty, vm.NameError);
+        Assert.NotEqual(string.Empty, vm.FolderError);
+        Assert.NotEqual(string.Empty, vm.ActionsError);
+
+        vm.Name = "Tidy";
+        vm.MoveToFolder = false;                       // changing course, not choosing a folder
+        vm.MarkAsRead = true;                          // needs no condition
+
+        Assert.True(vm.Validate());
+        Assert.Equal(string.Empty, vm.NameError);
+        Assert.Equal(string.Empty, vm.FolderError);
+        Assert.Equal(string.Empty, vm.ActionsError);
+    }
+
     [Fact]
     public void Delete_WithOneRealCondition_IsAccepted()
     {

@@ -52,9 +52,9 @@ public class ViewModelConstructionTests
     }
 
     [Fact]
-    public void RulesManagerViewModel_ConstructsWithoutException()
+    public void UnifiedRulesViewModel_ConstructsWithoutException()
     {
-        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: []);
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null, accounts: []);
         Assert.NotNull(vm);
     }
 
@@ -475,11 +475,13 @@ public class XamlParseTests
     }
 
     [StaFact]
-    public void RulesManagerWindow_XamlParsesWithoutException()
+    public void UnifiedRulesWindow_XamlParsesWithoutException()
     {
         EnsureApplication();
-        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: []);
-        var window = new RulesManagerWindow(vm, accounts: [], cachedFolders: new System.Collections.Generic.Dictionary<Guid, System.Collections.Generic.List<QuickMail.Models.MailFolderModel>>());
+        // The only rules window since #550, and until now no test constructed it at all. Constructed,
+        // not shown: parsing is what this guards, and showing it would run its Loaded refresh.
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null, accounts: []);
+        var window = new UnifiedRulesWindow(vm, accounts: [], cachedFolders: new System.Collections.Generic.Dictionary<Guid, System.Collections.Generic.List<QuickMail.Models.MailFolderModel>>());
         Assert.NotNull(window);
         window.Close();
     }
