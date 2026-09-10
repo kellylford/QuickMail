@@ -90,6 +90,38 @@ public class RuleEditorValidationTests
         Assert.Equal(string.Empty, vm.ActionsError);
     }
 
+    [Theory]
+    [InlineData(",")]
+    [InlineData(";")]
+    [InlineData(" , ; ")]
+    public void AnAddressFieldHoldingOnlySeparators_DoesNotCount(string separators)
+    {
+        // Saving splits the address fields and drops empty entries, so "," reaches the saved rule as
+        // no address at all — a condition-less Delete. A check that merely asked whether the field was
+        // blank let this through; the field has to be parsed the way saving parses it. Both address
+        // fields, because each is its own way in.
+        var from = Named();
+        from.Delete = true;
+        from.FromAddresses = separators;
+        Assert.False(from.Validate());
+
+        var sentTo = Named();
+        sentTo.Delete = true;
+        sentTo.SentToAddresses = separators;
+        Assert.False(sentTo.Validate());
+    }
+
+    [Fact]
+    public void ARealAddress_Counts()
+    {
+        // The other side of the separator case: parsing must still recognise an actual address.
+        var vm = Named();
+        vm.Delete = true;
+        vm.FromAddresses = "boss@work.com";
+
+        Assert.True(vm.Validate());
+    }
+
     [Fact]
     public void AnOnOffCondition_Counts()
     {

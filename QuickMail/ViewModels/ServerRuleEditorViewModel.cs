@@ -587,11 +587,17 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <c>Effective*</c> values — the same ones saving and classification read — so a condition
     /// switched on but left empty, and one holding text but switched off (#665), both count as
     /// absent: neither reaches the saved rule.
+    /// <para>
+    /// The address fields are parsed the way saving parses them, not merely checked for blankness.
+    /// Saving splits them and drops empty entries, so a field holding only "," or ";" — or a
+    /// separator left behind after deleting the address — is not blank, yet reaches the saved rule
+    /// as no address at all. A blankness test let exactly that condition-less Delete through.
+    /// </para>
     /// </summary>
     private bool HasAnyCondition()
         => !string.IsNullOrWhiteSpace(EffectiveSenderContains)
-           || !string.IsNullOrWhiteSpace(EffectiveFromAddresses)
-           || !string.IsNullOrWhiteSpace(EffectiveSentToAddresses)
+           || SplitAddresses(EffectiveFromAddresses).Count > 0
+           || SplitAddresses(EffectiveSentToAddresses).Count > 0
            || !string.IsNullOrWhiteSpace(EffectiveSubjectContains)
            || !string.IsNullOrWhiteSpace(EffectiveBodyOrSubjectContains)
            || !string.IsNullOrWhiteSpace(EffectiveBodyContains)
