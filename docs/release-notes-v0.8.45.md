@@ -60,8 +60,9 @@ rules inside QuickMail.
 
 There is now a single Rules window for every account. It shows what the selected account supports —
 server-side rules for a work or school account, client-side rules for everyone else — and the window's
-status line says which kinds the account can have, so an empty list is never a mystery. **F6** moves to
-that status line and reads it back at any time.
+status line says which kinds the account can have, so an empty list is never a mystery. **F6** cycles
+the panes — account list, rules, details, status line — so it reaches that status line and reads it
+back at any time.
 
 That replaces a spoken message on every account you landed on, which meant arrowing down the account
 list said a sentence about each account you passed through on the way to the one you wanted. The
@@ -71,7 +72,7 @@ never anything surprising to report.
 One place still speaks up: on a work or school account, a rule that uses something only QuickMail can
 do — marking a message unread, say — is saved as a client-side rule rather than a server-side one, and
 because that account *does* also do server rules, QuickMail announces that when it happens. The rule's
-own row reads **on client** regardless, so where it went is visible with announcements turned off.
+own row reads **on client** regardless, so where it went is there to read with announcements off.
 ([#550](https://github.com/kellylford/QuickMail/issues/550))
 
 ---

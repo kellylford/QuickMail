@@ -370,7 +370,7 @@ public class UnifiedRulesViewModelTests
 
         Assert.Contains("Couldn't load server rules", vm.StatusText);   // the evidence survives …
         Assert.Contains("Graph unreachable", vm.StatusText);
-        Assert.DoesNotContain("No rules for this account", vm.StatusText); // … not overwritten by BuildStatus
+        Assert.DoesNotContain("No rules yet", vm.StatusText);              // … not overwritten by BuildStatus
     }
 
     // ── The account's rule mode lives in the status line, and is not spoken ────
@@ -448,14 +448,16 @@ public class UnifiedRulesViewModelTests
         vm.AnnouncementRequested += (t, _) => announces.Add(t);
 
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == personal);
+        // Anchor on the FIRST switch, where the expected status differs from the one the initial refresh
+        // left behind. OnSelectedAccountChanged is fire-and-forget, so asserting the work account's own
+        // status after switching away and back proves nothing — deleting the auto-refresh wiring outright
+        // would leave that same value in place and pass. This value can only be here if the switch ran.
+        Assert.Equal(UnifiedRulesViewModel.NoRulesStatus(false), vm.StatusText);
+
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
+        Assert.Equal(UnifiedRulesViewModel.NoRulesStatus(true), vm.StatusText);
 
         Assert.Empty(announces);
-        // Anchor the silence to a load that demonstrably RAN. OnSelectedAccountChanged is
-        // fire-and-forget, so Assert.Empty alone would also pass if nothing had happened yet — and would
-        // keep passing if a re-added announcement fired after the assertion. The status line is the
-        // observable proof both switches completed, and that the second landed back on the work account.
-        Assert.Equal(UnifiedRulesViewModel.NoRulesStatus(true), vm.StatusText);
     }
 
     [Fact]
@@ -470,30 +472,61 @@ public class UnifiedRulesViewModelTests
 
         await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
 
-        Assert.Contains("Couldn't load server rules", vm.StatusText);      // the failure still leads
-        Assert.Contains(UnifiedRulesViewModel.ModeClause(true), vm.StatusText);
+        // The WHOLE line, not two Contains: the defect this replaced was a missing full stop between
+        // the failure and the clause, which every substring assertion passed straight over.
+        Assert.Equal("Couldn't load server rules: Graph unreachable. " + UnifiedRulesViewModel.ModeClause(true),
+                     vm.StatusText);
+    }
+
+    [Fact]
+    public void FailureText_IsPunctuatedBeforeTheClauseIsAppended()
+    {
+        // Exception messages rarely end in a full stop, so appending a sentence to one produced
+        // "…Graph unreachable It supports…" — one run-on with no break to read. Terminated() adds the
+        // stop; a message that already has one must not gain a second.
+        Assert.Equal("Ends already. " + UnifiedRulesViewModel.ModeClause(false),
+                     UnifiedRulesViewModel.BuildStatus([], ["Ends already."], supportsServerRules: false));
+        Assert.Equal("No full stop. " + UnifiedRulesViewModel.ModeClause(false),
+                     UnifiedRulesViewModel.BuildStatus([], ["No full stop"], supportsServerRules: false));
+        // Two failures: each is a sentence of its own, not one run-on with the next.
+        Assert.Equal("First. Second. " + UnifiedRulesViewModel.ModeClause(true),
+                     UnifiedRulesViewModel.BuildStatus([], ["First", "Second."], supportsServerRules: true));
     }
 
     [Fact]
     public async Task EveryStatusLine_SaysWhatKindsTheAccountCanHold()
     {
-        // The guide promises this unconditionally, and the mode used to be spoken on every load. Pin it
-        // for both account kinds, with and without rules, so no future status wording drops it silently.
+        // The guide promises this unconditionally, and the mode used to be spoken on every load. All four
+        // cells of (account kind x has rules), because an earlier pass covered three and the missing one —
+        // server-capable WITH rules — was the only one where the capability was merely implied, by the
+        // presence of "0 on server". Asserting the whole clause, not a substring of it, so a reworded
+        // clause cannot half-satisfy this.
         var work = Guid.NewGuid();
         var personal = Guid.NewGuid();
 
+        // Server-capable and client-only, no rules.
         var empty = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(),
             [Graph(work), PersonalGraph(personal)], preferredAccountId: work);
         await empty.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
-        Assert.Contains("server-side", empty.StatusText);                  // server-capable, no rules
+        Assert.Contains(UnifiedRulesViewModel.ModeClause(true), empty.StatusText);
         empty.SelectedAccount = empty.AccountOptions.First(o => o.Id == personal);
-        Assert.Contains("client-side rules only", empty.StatusText);       // client-only, no rules
+        Assert.Contains(UnifiedRulesViewModel.ModeClause(false), empty.StatusText);
 
-        var withRules = new UnifiedRulesViewModel(
+        // Client-only, WITH rules.
+        var clientRules = new UnifiedRulesViewModel(
             new StubRuleService { LoadedRules = [Client("C1", personal)] }, new FakeServerRules(),
             [PersonalGraph(personal)], preferredAccountId: personal);
-        await withRules.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
-        Assert.Contains("client-side only", withRules.StatusText);         // client-only, WITH rules
+        await clientRules.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(UnifiedRulesViewModel.ModeClause(false), clientRules.StatusText);
+
+        // Server-capable, WITH rules — and specifically with NO server rule among them, the shape where
+        // the count alone reads as though server rules were not available here.
+        var serverCapable = new UnifiedRulesViewModel(
+            new StubRuleService { LoadedRules = [Client("C1", work)] }, new FakeServerRules(),
+            [Graph(work)], preferredAccountId: work);
+        await serverCapable.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("0 on server", serverCapable.StatusText);
+        Assert.Contains(UnifiedRulesViewModel.ModeClause(true), serverCapable.StatusText);
     }
 
     [Fact]
@@ -883,13 +916,14 @@ public class UnifiedRulesViewModelTests
     {
         // A client-only account can't have server rules, so "0 on server" is noise — but dropping the
         // split must not drop the capability with it. The absence of "N on server" is not something a
-        // reader can be asked to notice, so the count says "client-side only" outright.
+        // reader can be asked to notice, so the mode clause says it outright, in the same words the
+        // server-capable branch uses.
         var a = Guid.NewGuid();
         var client = new StubRuleService { LoadedRules = [Client("C1", a), Client("C2", a)] };
         var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
         await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("2 rules, client-side only.", vm.StatusText);
+        Assert.Equal("2 rules. " + UnifiedRulesViewModel.ModeClause(false), vm.StatusText);
         Assert.DoesNotContain("on server", vm.StatusText);
     }
 
@@ -902,7 +936,11 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
         await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("2 rules: 1 on server, 1 on client.", vm.StatusText);
+        // The split, then the capability in the same words the client-only branch uses — the two
+        // account kinds are described in one register, neither left to be inferred from the
+        // other's shape.
+        Assert.Equal("2 rules: 1 on server, 1 on client. " + UnifiedRulesViewModel.ModeClause(true),
+                     vm.StatusText);
     }
 
     [Fact]

@@ -639,46 +639,60 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// region, so putting it here keeps the information available without pushing it at anyone.
     /// </para>
     /// </summary>
+    /// <remarks>Names its subject rather than opening with "It": the clause is appended to a count and
+    /// to a load failure, and after "Couldn't load server rules: …" the nearest noun an "It" could attach
+    /// to is <em>server rules</em>.</remarks>
     internal static string ModeClause(bool supportsServerRules)
         => supportsServerRules
-            ? "It supports server-side and client-side rules."
-            : "It supports client-side rules only.";
+            ? "This account supports server-side and client-side rules."
+            : "This account supports client-side rules only.";
 
     /// <summary>The status line for an account with no rules: there are none to count, so the mode is
     /// the whole message.</summary>
     internal static string NoRulesStatus(bool supportsServerRules)
-        => "No rules for this account. " + ModeClause(supportsServerRules);
+        => "No rules yet. " + ModeClause(supportsServerRules);
 
-    private static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures, bool supportsServerRules)
+    /// <summary>Ends a fragment with a full stop so the next sentence can be appended to it. Exception
+    /// messages are the input here and are inconsistent about their own punctuation.</summary>
+    private static string Terminated(string fragment)
+    {
+        var t = fragment.TrimEnd();
+        return t.Length == 0 || t[^1] is '.' or '!' or '?' ? t : t + ".";
+    }
+
+    internal static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures, bool supportsServerRules)
     {
         if (failures.Count > 0)
         {
             // Lead with what went wrong, then the counts for the section(s) that did load. With nothing
             // loaded there is nothing to count, so state the mode instead — otherwise a failed load on a
             // client-only account and one on a server-capable account produce the same sentence, and the
-            // window has no other surface that tells them apart.
+            // window has no other surface that tells them apart. Each failure is terminated first: an
+            // exception message rarely ends in a full stop, and gluing the next sentence onto it gives
+            // one run-on with no break to read.
             var loaded = rows.Count == 0
                 ? " " + ModeClause(supportsServerRules)
                 : " " + Counts(rows, supportsServerRules);
-            return string.Join(" ", failures) + loaded;
+            return string.Join(" ", failures.Select(Terminated)) + loaded;
         }
         return rows.Count == 0 ? NoRulesStatus(supportsServerRules) : Counts(rows, supportsServerRules);
 
         static string Counts(List<UnifiedRuleRow> r, bool supportsServer)
         {
-            // A client-only account can't have server rules, so the "N on server, N on client" split is
-            // just "0 on server" clutter. It still has to say the account is client-side ONLY, though:
-            // the split's absence is not something a reader can be asked to notice, and the mode used to
-            // be spoken on every load (#550). "client-side only" carries the capability in the same
-            // breath as the count.
-            if (!supportsServer)
-                return $"{r.Count} rule{(r.Count == 1 ? "" : "s")}, client-side only.";
+            // Counts first — what the reader came for — then what the account can hold, in the same words
+            // whichever kind it is. Neither half is left to be inferred from the other's shape: an earlier
+            // pass said "N client-side rules." and let the ABSENCE of the server split mean "client-only",
+            // then said the presence of "0 on server" meant "server rules are possible here". Both are the
+            // same trick, and the mode used to be spoken outright on every load (#550).
+            var head = supportsServer
+                ? $"{r.Count} rule{(r.Count == 1 ? "" : "s")}: " +
+                  $"{r.Count(x => x.RunsWhere == RuleRunsWhere.Server)} on server, " +
+                  $"{r.Count(x => x.RunsWhere == RuleRunsWhere.Client)} on client."
+                // A client-only account can't have server rules, so the split would be "0 on server"
+                // clutter; the clause that follows says the same thing in words.
+                : $"{r.Count} rule{(r.Count == 1 ? "" : "s")}.";
 
-            // On a server-capable account the split carries the capability itself — "0 on server" still
-            // says server rules are possible here — so no extra clause is needed.
-            var server = r.Count(x => x.RunsWhere == RuleRunsWhere.Server);
-            var client = r.Count(x => x.RunsWhere == RuleRunsWhere.Client);
-            return $"{r.Count} rule{(r.Count == 1 ? "" : "s")}: {server} on server, {client} on client.";
+            return head + " " + ModeClause(supportsServer);
         }
     }
 }

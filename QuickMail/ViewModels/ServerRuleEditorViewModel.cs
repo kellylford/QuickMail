@@ -456,8 +456,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     /// <summary>
     /// Decides where the rule runs. A Graph account gets a server rule unless the rule uses a
-    /// client-only capability; otherwise (or on a non-Graph account) it's a client rule, with a
-    /// reason for the save dialog. A rule that fits neither — a client-only action combined with a
+    /// client-only capability; otherwise (or on a non-Graph account) it's a client rule. A rule that
+    /// fits neither — a client-only action combined with a
     /// server-only condition/action — is a conflict the user must resolve. Assumes the rule already
     /// passed <see cref="Validate"/> (so it has at least one action).
     /// </summary>
