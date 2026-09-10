@@ -317,4 +317,109 @@ public class MessageBodyHtmlBuilderTests
         Assert.DoesNotContain("_blank", html);
         Assert.Contains("https://example.com/reset", html);
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Script execution from a crafted message (reported privately 2026-09-09).
+    //
+    // Two independent gaps combined into arbitrary script in the reading pane from a message the
+    // user only had to open: the CSP was spliced in at the first literal "<head>" ANYWHERE in the
+    // sender's markup, so a sender who wrote that string mid-paragraph got the policy emitted into
+    // body content where a browser ignores it; and the sanitizer's end-tag patterns required a
+    // literal "</script>", while the tokenizer also closes the element at "</script >".
+    //
+    // These assert the invariants, not the two shapes of the original proof of concept: the CSP is
+    // a child of the real head no matter what the sender writes, and an end tag is recognised in
+    // every form the tokenizer recognises it.
+    // ---------------------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("</script>")]
+    [InlineData("</script >")]
+    [InlineData("</script\t>")]
+    [InlineData("</script/>")]
+    [InlineData("</script foo=\"bar\">")]
+    [InlineData("</SCRIPT >")]
+    public void BuildSanitizedDocument_ScriptClosedAnyTokenizerWay_IsStripped(string endTag)
+    {
+        var body = "<p>Hello.</p><script>window.__pwned=1;" + endTag;
+
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedHtmlDocument("Subj", body, out var doc));
+
+        Assert.DoesNotContain("__pwned", doc, System.StringComparison.Ordinal);
+        Assert.Contains("Hello.", doc, System.StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("</style>")]
+    [InlineData("</style >")]
+    [InlineData("</style/>")]
+    public void BuildSanitizedDocument_StyleClosedAnyTokenizerWay_IsStripped(string endTag)
+    {
+        // A surviving sender stylesheet is not merely a rendering problem: [aria-live]{display:none}
+        // or content-visibility:hidden takes the in-document status regions (#329, #671) out of the
+        // accessibility tree, and a status region that announces nothing reads as success.
+        var body = "<p>Hello.</p><style>[aria-live]{content-visibility:hidden !important}" + endTag;
+
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedHtmlDocument("Subj", body, out var doc));
+
+        Assert.DoesNotContain("aria-live]", doc, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildSanitizedDocument_EndTagOfLongerName_IsNotTreatedAsMatch()
+    {
+        // "</scriptable>" closes a different element; accepting it would silently eat real content.
+        const string body = "<p>Hi.</p><scriptable>keep me</scriptable>";
+
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedHtmlDocument("Subj", body, out var doc));
+
+        Assert.Contains("keep me", doc, System.StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("<p>Hello.</p><head><script>window.__pwned=1;</script >")]
+    [InlineData("<p>Hello.</p><HEAD>")]
+    [InlineData("<html><head><title>Sender title</title></head><body><p>Hello.</p></body></html>")]
+    public void BuildSanitizedDocument_WhateverTheSenderWrites_CspIsInsideTheRealHead(string body)
+    {
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedHtmlDocument("Subj", body, out var doc));
+
+        // A meta CSP is a policy only as a child of the document's own head. Asserting the document
+        // merely CONTAINS the meta is what let the original bug through: it was present every time,
+        // and inert whenever a sender supplied the string "<head>".
+        var headStart = doc.IndexOf("<head>", System.StringComparison.Ordinal);
+        var headEnd   = doc.IndexOf("</head>", System.StringComparison.Ordinal);
+        var cspIdx    = doc.IndexOf("Content-Security-Policy", System.StringComparison.Ordinal);
+
+        Assert.StartsWith("<!DOCTYPE html><html lang=\"en\"><head>", doc, System.StringComparison.Ordinal);
+        Assert.InRange(cspIdx, headStart, headEnd);
+        Assert.Contains("Hello.", doc, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildSanitizedDocument_SenderStructuralTags_DoNotReachTheDocumentsOwnElements()
+    {
+        // A stray <body> start tag in body content is ignored by the parser, but its ATTRIBUTES are
+        // merged onto the real body element.
+        const string body = "<p>Hi.</p><body class=\"sender\" data-evil=\"1\">more";
+
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedHtmlDocument("Subj", body, out var doc));
+
+        Assert.DoesNotContain("data-evil", doc, System.StringComparison.Ordinal);
+        Assert.Contains("<body tabindex=\"0\">", doc, System.StringComparison.Ordinal);
+        Assert.Contains("more", doc, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildSanitizedDocument_SenderTitle_DoesNotBecomeTheDocumentTitle()
+    {
+        // <title> in body content is handled by the parser's in-head rules, so a sender one would
+        // set document.title over the message's own subject.
+        const string body = "<p>Hi.</p><title>Sender title</title>";
+
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedHtmlDocument("Subj", body, out var doc));
+
+        Assert.DoesNotContain("Sender title", doc, System.StringComparison.Ordinal);
+        Assert.Contains("<title>Subj</title>", doc, System.StringComparison.Ordinal);
+    }
 }

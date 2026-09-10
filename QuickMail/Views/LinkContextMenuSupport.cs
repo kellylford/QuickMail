@@ -264,10 +264,13 @@ public static class LinkContextMenuSupport
         // prevent. Capturing createElement but then reading getElementsByTagName off the live
         // document only moved the hole, which is how the second version of this shipped.
         //
-        // The inline display/visibility are !important because the sanitizer's <style> rule needs
-        // a literal </style>, and the tokenizer also accepts "</style >" — so a sender stylesheet
-        // survives and [aria-live]{display:none} would take the region out of the accessibility
-        // tree. An inline !important beats an author !important.
+        // The inline display/visibility/content-visibility are !important against a sender
+        // stylesheet: [aria-live]{display:none} would take this region out of the accessibility
+        // tree, and content-visibility:hidden does the same thing by a different name. An inline
+        // !important beats an author !important. (The tokenizer/regex asymmetry that let such a
+        // stylesheet through at all — "</style >" closing an element the sanitizer's literal
+        // "</style>" rule did not match — is fixed in MessageBodyHtmlBuilder.EndTag; this stays
+        // because the region must survive whatever else gets past that pass.)
         "(function(){" +
         "var C=document.createElement.bind(document);" +
         "var G=document.getElementsByTagName.bind(document);" +
@@ -277,7 +280,8 @@ public static class LinkContextMenuSupport
         "var d=C('div');" +
         "d.setAttribute('aria-live','assertive');d.setAttribute('aria-atomic','true');" +
         "d.style.cssText='margin-top:12px;font-weight:600;'+" +
-        "'display:block !important;visibility:visible !important';" +
+        "'display:block !important;visibility:visible !important;'+" +
+        "'content-visibility:visible !important';" +
         "d.__qmOwned=1;A.call(b,d);window.__qmLinkStatus=d;" +
         "}catch(e){window.__qmLinkStatusError=String(e);}});})();";
 

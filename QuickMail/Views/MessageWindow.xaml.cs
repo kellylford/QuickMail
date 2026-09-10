@@ -219,6 +219,10 @@ public partial class MessageWindow : Window
             MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             MessageBody.CoreWebView2.Settings.AreDevToolsEnabled             = false;
             MessageBody.CoreWebView2.Settings.IsStatusBarEnabled             = false;
+            // IsScriptEnabled is deliberately left at its default of true — see the note at the
+            // matching block in MainWindow. Turning it off blocks page script but also stops every
+            // callback a host-injected script registers, which would strand focus inside this
+            // document by killing the keydown relay below.
 
             ApplyWebViewColorScheme();
 

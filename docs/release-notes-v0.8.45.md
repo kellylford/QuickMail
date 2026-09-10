@@ -1,5 +1,27 @@
 # QuickMail v0.8.45 Release Notes
 
+## Security: a crafted message could run script in the reading pane
+
+**Please update.** A specially written HTML email could run its own JavaScript inside the component
+that displays message bodies, on nothing more than opening the message. Script that ran this way
+could read the message you were reading and send it elsewhere, and it could suppress the spoken
+confirmations QuickMail delivers from inside a message — the invitation RSVP result, and the link
+menu's report when a copy fails — so that an action appeared to have succeeded when it had not.
+
+Message bodies are displayed under a Content Security Policy that forbids script, and a stripping
+pass removes script blocks before they ever reach the display. Two flaws had to line up for either
+to be got past, and both are fixed: the policy is now always written into the part of the document
+where a browser reads it, and the stripping pass now recognises the ways of closing an element that
+it previously did not.
+
+It affects QuickMail 0.7.0 and later. It was found by review rather than by anything going wrong,
+and was reported privately rather than published.
+
+Found and reported privately by Timothy Spaulding, with a working proof of concept and a diagnosis
+that named both flaws exactly.
+
+---
+
 ## Fixed: every rule condition now has a checkbox
 
 **Create Rule from Message** (`Ctrl+Shift+T`) filled in the sender *and* the subject of the message

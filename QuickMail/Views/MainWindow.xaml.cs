@@ -3365,6 +3365,12 @@ public partial class MainWindow : Window
             MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             MessageBody.CoreWebView2.Settings.AreDevToolsEnabled = false;
             MessageBody.CoreWebView2.Settings.IsStatusBarEnabled = false;
+            // IsScriptEnabled is deliberately left at its default of true. Turning it off looks
+            // like free hardening on untrusted message content, and it does block page script —
+            // but it also stops any callback a host-injected script registers from ever firing,
+            // which takes the keydown relay below (Escape, F6, Ctrl+W, Alt+A) and the link menu's
+            // status region with it. Measured against 1.0.4022.49, not assumed; the full result is
+            // in the security note on MessageBodyHtmlBuilder.TryStripHeavyHtml.
 
             ApplyWebViewColorScheme();
 

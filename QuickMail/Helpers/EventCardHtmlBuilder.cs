@@ -115,8 +115,16 @@ public static class EventCardHtmlBuilder
             // Live status region for RSVP feedback (issue #329), updated in place via
             // ExecuteScriptAsync so the result is announced from inside the document — a host-window
             // notification is dropped while focus is in the WebView2. Empty until the user responds.
+            // The visibility declarations are !important for the same reason the link menu's status
+            // region pins its own: this card is injected after sanitization, so the sender cannot
+            // remove it — but a sender stylesheet reaching [aria-live] could hide it, and a hidden
+            // live region announces nothing. Losing the RSVP result silently is worse than any
+            // rendering the sender could otherwise ruin, because it is indistinguishable from the
+            // response having been sent.
             sb.Append("<div id=\"qm-invite-status\" aria-live=\"assertive\" aria-atomic=\"true\" " +
-                      "style=\"margin-top:8px;font-weight:600;\"></div>");
+                      "style=\"margin-top:8px;font-weight:600;" +
+                      "display:block !important;visibility:visible !important;" +
+                      "content-visibility:visible !important;\"></div>");
         }
 
         sb.Append("</div>");
