@@ -110,6 +110,20 @@ public class RulesAccountContextTests
         Assert.DoesNotContain("SelectedAccount?.Id", args, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The other half of the wiring. Every behaviour test above calls the pure function with the saved
+    /// views it is given; if the instance property handed it an empty list instead, all of them would
+    /// still pass while one-account saved views dropped to the default again.
+    /// </summary>
+    [Fact]
+    public void RulesAccountContext_PassesTheSavedViews()
+    {
+        var source = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "ViewModels", "MainViewModel.cs"));
+
+        Assert.Contains("AccountContextForRules(SelectedFolder, SelectedAccount?.Id, SavedViews)", source,
+                        StringComparison.Ordinal);
+    }
+
     private static string RepoRoot()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
