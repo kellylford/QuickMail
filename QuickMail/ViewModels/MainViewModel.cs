@@ -747,6 +747,45 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return false;
     }
 
+    /// <summary>
+    /// The account the Rules Manager opens on: the one the user is in, or null from a view that spans
+    /// accounts (All Inboxes, a saved view over several accounts, a contact's mail), so the rules window
+    /// falls back to the default account.
+    /// </summary>
+    public Guid? RulesAccountContext => AccountContextForRules(SelectedFolder, SelectedAccount?.Id, SavedViews);
+
+    /// <summary>
+    /// Pure form of <see cref="RulesAccountContext"/>, decided by the VIEW the user is in.
+    /// <list type="bullet">
+    /// <item>A folder that belongs to one account names it: a per-account "All Mail" (virtual, with its
+    /// account in its sentinel) or any folder carrying an account id. <paramref name="selectedAccountId"/>
+    /// cannot be trusted for this, because choosing a virtual folder never updates it; it still holds
+    /// whichever account was last visited.</item>
+    /// <item>A saved view names its account when all its folders are in one; over several accounts it
+    /// gives null, as it does when the view no longer exists.</item>
+    /// <item>Any other virtual folder with no account of its own spans accounts, and gives null.</item>
+    /// <item>With nothing selected, the selected account is all there is.</item>
+    /// </list>
+    /// </summary>
+    internal static Guid? AccountContextForRules(
+        MailFolderModel? folder, Guid? selectedAccountId, IEnumerable<SavedView> savedViews)
+    {
+        if (folder is null) return selectedAccountId;
+
+        if (TryGetAccountIdFromSentinel(folder.FullName, out var ownAccount)) return ownAccount;
+        if (folder.AccountId != Guid.Empty) return folder.AccountId;
+
+        if (TryGetViewIdFromSentinel(folder.FullName, out var viewId) ||
+            TryGetViewAllIdFromSentinel(folder.FullName, out viewId))
+        {
+            var accounts = savedViews.FirstOrDefault(v => v.Id == viewId)?.Folders
+                .Select(f => f.AccountId).Distinct().ToList();
+            return accounts is { Count: 1 } ? accounts[0] : null;
+        }
+
+        return IsVirtualFolder(folder) ? null : selectedAccountId;
+    }
+
     private static bool IsVirtualFolder(MailFolderModel? folder)
     {
         if (folder == null) return false;

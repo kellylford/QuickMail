@@ -28,8 +28,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>>? _foldersByAccount;
     private readonly List<AccountModel> _allAccounts;
 
-    // Messages selected in the main window, for Test Rule. Null when
-    // the manager was opened without a message-list selection.
+    // The main window's whole message list as it was when the Rules Manager opened, for Test Rule —
+    // not the selection. Null when there was no list.
     private readonly IReadOnlyList<MailMessageSummary>? _selectedMessagesForTest;
 
     // "Show field labels in the rules list" — read once at open; a
@@ -56,9 +56,13 @@ public partial class UnifiedRulesViewModel : ObservableObject
             .Select(a => new AccountOption { Id = a.Id, DisplayName = a.AccountLabel })
             .ToList();
 
-        // Land on the account the user is currently in; fall back to the first account when there's
-        // no current-account context (an aggregate view at the tree top).
+        // Land on the account the user is currently in. With no current-account context (a view that
+        // spans accounts, such as All Inboxes) fall back to the account marked default in Account
+        // Manager — the one new rules were created for before the rules windows were unified — and
+        // only then to the first. The picker decides the account a new rule belongs to.
+        var defaultAccountId = _allAccounts.FirstOrDefault(a => a.IsDefault)?.Id;
         _selectedAccount = AccountOptions.FirstOrDefault(o => o.Id == preferredAccountId)
+                           ?? AccountOptions.FirstOrDefault(o => o.Id == defaultAccountId)
                            ?? AccountOptions.FirstOrDefault();
     }
 
@@ -281,13 +285,13 @@ public partial class UnifiedRulesViewModel : ObservableObject
         var messages = _selectedMessagesForTest?.ToList() ?? [];
         if (messages.Count == 0)
         {
-            StatusText = "No messages selected in the main window.";
+            StatusText = "The message list is empty, so there is nothing to test the rule against.";
             Announce(StatusText, AnnouncementCategory.Result);
             return;
         }
 
         var matched = _clientRules.TestRule(row.Client!, messages);
-        StatusText = $"Rule would match {matched.Count} of {messages.Count} selected messages.";
+        StatusText = $"Rule would match {matched.Count} of {messages.Count} messages in the list.";
         Announce(StatusText, AnnouncementCategory.Result);
     }
 

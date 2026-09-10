@@ -102,6 +102,15 @@ and rules run on mail as it arrives and through **Run on Existing Mail**, so it 
 This covers server-side rules too, since Exchange treats a rule with no conditions the same way. A
 server-side rule made in Outlook with no conditions still runs, and can still be turned on or off from
 QuickMail, but QuickMail asks for a condition before it will save a change to it.
+
+Which account a new rule belongs to is now decided by where you are. A new rule belongs to the account
+the Rules Manager is showing, and it opens on the account of the folder or view you are in; from a view
+that spans accounts, such as **All Inboxes**, it opens on your default account. Before, a profile with
+no Microsoft 365 account got a window that gave every new rule your default account, and a profile with
+one got a window that opened on whichever account you had last visited or read a message from.
+
+In the rules list, **Space** on a rule reliably turns it on or off. And **Test**, which checks a rule
+against the messages in the message list, now says so instead of calling them your selected messages.
 ([#550](https://github.com/kellylford/QuickMail/issues/550))
 
 ---
