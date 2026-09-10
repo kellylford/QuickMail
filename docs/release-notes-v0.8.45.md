@@ -57,11 +57,14 @@ client-side rule instead. Neither made sense for an account that was only ever g
 rules inside QuickMail.
 
 There is now a single Rules window for every account. It shows what the selected account supports —
-server-side rules for a work or school account, client-side rules for everyone else — and when you open it,
-it still tells you which kind this account uses: *"This account supports only client-side rules"* for
-an account without server rules. The pop-up box after saving a rule is gone; on an
-account that has no server rules there is nothing surprising to report, and the message when you open
-the window already covers it.
+server-side rules for a work or school account, client-side rules for everyone else — and the window's
+status line says which kinds the account can have, so an empty list is never a mystery. **F6** moves to
+that status line and reads it back at any time.
+
+That replaces a spoken message on every account you landed on, which meant arrowing down the account
+list said a sentence about each account you passed through on the way to the one you wanted. The
+pop-up box after saving a rule is gone as well; on an account that has no server rules there was
+never anything surprising to report.
 
 One place still speaks up: on a work or school account, a rule that uses something only QuickMail can
 do — marking a message unread, say — is saved as a client-side rule rather than a server-side one,

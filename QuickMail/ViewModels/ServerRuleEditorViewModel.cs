@@ -479,8 +479,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         var serverOnly = ServerOnlyFeaturesUsed();
         var clientOnly = ClientOnlyFeaturesUsed();
         var conflict = accountSupportsServerRules && clientOnly.Count > 0
-            ? $"{Join(clientOnly)} only works in a QuickMail rule, but {Join(serverOnly)} only works in a server rule. Remove one to save."
-            : $"This account only supports QuickMail rules, but {Join(serverOnly)} isn't available in a QuickMail rule. Remove it to save.";
+            ? $"{Join(clientOnly)} only works in a client-side rule, but {Join(serverOnly)} only works in a server-side rule. Remove one to save."
+            : $"This account only supports client-side rules, but {Join(serverOnly)} isn't available in a client-side rule. Remove it to save.";
         return new RuleClassification { ConflictError = conflict };
     }
 

@@ -334,7 +334,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         // Editing preserves the kind: a client rule stays a client rule (spec §20.6). If the edits made
         // it un-representable as a client rule, block rather than silently convert.
         if (!editor.IsClientRepresentable)
-            return "This rule can no longer run in QuickMail. Remove the conditions or actions QuickMail rules don't support.";
+            return "This rule can no longer run as a client-side rule. Remove the conditions or actions client-side rules don't support.";
 
         var updated = editor.ToClientRule(accountId);
         updated.Id = original.Id;                          // preserve identity
@@ -443,9 +443,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private async Task ReloadAndReselectAsync(
         string? serverId = null, Guid? clientId = null, int? fallbackIndex = null, CancellationToken ct = default)
     {
-        // A write-triggered reload, NOT an account switch — so it must not re-speak the rule-mode hint
-        // (the account hasn't changed; only its rules did).
-        await RefreshCoreAsync(announceMode: false, ct);
+        await RefreshCoreAsync(ct);
         SelectedRule = Rules.FirstOrDefault(r =>
             (serverId != null && r.Server?.Id == serverId) ||
             (clientId != null && r.Client?.Id == clientId));
@@ -505,13 +503,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// </summary>
     private CancellationTokenSource? _refreshCts;
 
-    // The account-context refresh (initial open + every account switch, via RefreshCommand). Speaks the
-    // rule-mode hint once the load settles, so a screen-reader user hears whether the account they landed
-    // on runs rules on the server or only in QuickMail — the one thing the empty list can't convey.
+    // The account-context refresh (initial open + every account switch, via RefreshCommand).
     [RelayCommand]
-    private Task RefreshAsync(CancellationToken ct) => RefreshCoreAsync(announceMode: true, ct);
+    private Task RefreshAsync(CancellationToken ct) => RefreshCoreAsync(ct);
 
-    private async Task RefreshCoreAsync(bool announceMode, CancellationToken ct)
+    private async Task RefreshCoreAsync(CancellationToken ct)
     {
         if (SelectedAccount?.Id is not Guid accountId)
         {
@@ -581,7 +577,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                failures.Add($"Couldn't load QuickMail rules: {ex.Message}");
+                failures.Add($"Couldn't load client-side rules: {ex.Message}");
                 LogService.Log("UnifiedRules: client load failed", ex);
             }
 
@@ -604,25 +600,12 @@ public partial class UnifiedRulesViewModel : ObservableObject
             // as "this account has no server rules", which invites the wrong next action.
             StatusText = BuildStatus(rows, failures, AccountSupportsServerRules);
 
-            // Only the account-context load (open/switch) speaks the mode; a write-reload does not. This
-            // sits past every early return above, so a superseded refresh never announces a stale account.
-            if (announceMode)
-                Announce(RuleModeHint(AccountSupportsServerRules), AnnouncementCategory.Hint);
         }
         finally
         {
             IsBusy = false;
         }
     }
-
-    // The spoken rule-mode cue for the account just landed on — an AnnouncementCategory.Hint, so it
-    // honors the user's AnnounceHints preference. Both modes are announced (not just the client-only
-    // case) so that, in a multi-account manager, switching accounts always states the new account's mode
-    // rather than leaving silence to be interpreted. Pure so the wording is pinned by a test.
-    internal static string RuleModeHint(bool supportsServerRules)
-        => supportsServerRules
-            ? "This account supports both server-side and client-side rules."
-            : "This account supports only client-side rules.";
 
     /// <summary>Cancels any in-flight load. The View calls this on close so a slow Graph fetch can't
     /// complete and write into a window that's gone.</summary>
@@ -647,6 +630,21 @@ public partial class UnifiedRulesViewModel : ObservableObject
         return string.IsNullOrWhiteSpace(match?.DisplayName) ? null : match.DisplayName;
     }
 
+    /// <summary>
+    /// The status line for an account with no rules — the one case the counts can't speak for, since
+    /// there are none to split into "N on server, N on client". The mode is stated outright instead.
+    /// <para>
+    /// This used to be an <see cref="AnnouncementCategory.Hint"/> spoken on every account-context load,
+    /// which meant arrowing down the account picker spoke a sentence per account it passed through
+    /// (#550). The status line is an F6 stop, deliberately read on demand rather than made a live
+    /// region, so putting it here keeps the information available without pushing it at anyone.
+    /// </para>
+    /// </summary>
+    internal static string NoRulesStatus(bool supportsServerRules)
+        => supportsServerRules
+            ? "No rules for this account. It supports server-side and client-side rules."
+            : "No rules for this account. It supports client-side rules only.";
+
     private static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures, bool supportsServerRules)
     {
         if (failures.Count > 0)
@@ -655,7 +653,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             var loaded = rows.Count == 0 ? "" : " " + Counts(rows, supportsServerRules);
             return string.Join(" ", failures) + loaded;
         }
-        return rows.Count == 0 ? "No rules for this account." : Counts(rows, supportsServerRules);
+        return rows.Count == 0 ? NoRulesStatus(supportsServerRules) : Counts(rows, supportsServerRules);
 
         static string Counts(List<UnifiedRuleRow> r, bool supportsServer)
         {

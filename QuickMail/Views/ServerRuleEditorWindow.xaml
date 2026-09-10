@@ -151,8 +151,8 @@
                         <TextBlock Text="More actions" Style="{StaticResource SectionHeader}"/>
 
                         <!-- Client-only action: Microsoft 365 server rules can't mark unread, so using
-                             this makes the rule run in QuickMail (the classifier says so on save). -->
-                        <CheckBox Content="Mark as unread (runs in QuickMail)" IsChecked="{Binding MarkAsUnread}"
+                             this forces the rule to be client-side (the classifier says so on save). -->
+                        <CheckBox Content="Mark as unread (client-side only)" IsChecked="{Binding MarkAsUnread}"
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Mark as unread"/>
 
                         <CheckBox Content="Copy to folder" IsChecked="{Binding CopyToFolder}"
