@@ -6924,10 +6924,10 @@ public partial class MainWindow : Window
         // The server-rule service is always passed in: server-side rules are a shipped capability, no
         // longer feature-gated. Whether any actually load is still a per-account question the VM answers
         // (AccountSupportsServerRules is false for non-work/school-Graph accounts, so nothing server-side
-        // loads for them). Seed the picker with the account the user is currently in (null on aggregate
-        // views → VM falls back to the first account).
+        // loads for them). Seed the picker with the account the user is in; from a view that spans
+        // accounts this is null, and the VM falls back to the default account, then the first.
         var unifiedVm = new UnifiedRulesViewModel(
-            _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id,
+            _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.RulesAccountContext,
             selectedMessagesForTest: selectedMessages, configService: _configService);
         unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
         // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.

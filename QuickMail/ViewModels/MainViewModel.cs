@@ -747,6 +747,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return false;
     }
 
+    /// <summary>
+    /// The account the Rules Manager opens on: the one the user is in, or null from a view that spans
+    /// accounts (All Inboxes, a cross-account saved view, a contact's mail), so the rules window falls
+    /// back to the default account. <see cref="SelectedAccount"/> alone is not enough — choosing a
+    /// virtual folder leaves it on whichever account was last visited.
+    /// </summary>
+    public Guid? RulesAccountContext => AccountContextForRules(SelectedFolder, SelectedAccount?.Id);
+
+    /// <summary>
+    /// Pure form of <see cref="RulesAccountContext"/>. Only a virtual folder with no account of its own
+    /// spans accounts: a per-account "All Mail" is virtual too, but it belongs to one account, so the
+    /// Rules Manager should open there.
+    /// </summary>
+    internal static Guid? AccountContextForRules(MailFolderModel? folder, Guid? selectedAccountId)
+        => folder is not null && IsVirtualFolder(folder) && folder.AccountId == Guid.Empty
+            ? null
+            : selectedAccountId;
+
     private static bool IsVirtualFolder(MailFolderModel? folder)
     {
         if (folder == null) return false;

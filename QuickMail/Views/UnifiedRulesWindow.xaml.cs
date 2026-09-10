@@ -94,7 +94,7 @@ public partial class UnifiedRulesWindow : Window
             id: "rules.moveDown", category: "Rules", title: "Move Rule Down",
             execute: () => Run(_vm.MoveDownCommand), isAvailable: () => _vm.CanMoveDown));
         _registry.Register(new CommandDefinition(
-            id: "rules.test", category: "Rules", title: "Test Rule Against Selected Messages",
+            id: "rules.test", category: "Rules", title: "Test Rule Against the Message List",
             execute: () => Run(_vm.TestRuleCommand), isAvailable: () => _vm.CanTestSelected));
         _registry.Register(new CommandDefinition(
             id: "rules.runOnExisting", category: "Rules", title: "Run Rules on Existing Mail",
@@ -159,12 +159,23 @@ public partial class UnifiedRulesWindow : Window
 
     // Enter = edit, Space = enable/disable, Delete = delete. Each honours the command's CanExecute, so
     // a key does nothing where the button/menu item is disabled (e.g. Move on a client rule).
+    // Space toggles the selected rule. It is taken on PreviewKeyDown because the ListBox handles Space
+    // itself (to select the focused item) and can mark it handled before a bubbling KeyDown handler on
+    // the same element sees it. Plain Space only, and only when there is a rule it can toggle; otherwise
+    // the list keeps its normal behaviour.
+    private void RulesListBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Space || Keyboard.Modifiers != ModifierKeys.None) return;
+        if (!_vm.ToggleEnabledCommand.CanExecute(null)) return;
+        _vm.ToggleEnabledCommand.Execute(null);
+        e.Handled = true;
+    }
+
     private void RulesListBox_KeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
             case Key.Enter: Invoke(_vm.EditRuleCommand); e.Handled = true; break;
-            case Key.Space: Invoke(_vm.ToggleEnabledCommand); e.Handled = true; break;
             case Key.Delete: Invoke(_vm.DeleteRuleCommand); e.Handled = true; break;
         }
 

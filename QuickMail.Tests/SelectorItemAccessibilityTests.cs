@@ -211,6 +211,44 @@ public class SelectorItemAccessibilityTests
         finally { window.Close(); }
     }
 
+    // Space on a rule toggles it. Raised as PreviewKeyDown on the row, as the keyboard would, so it
+    // travels the tunnelling route through the ListBox, where the handler now sits — ahead of the
+    // ListBox's own key handling, which can take Space to select the item.
+    [StaFact]
+    public void UnifiedRulesWindow_SpaceOnARule_TurnsItOff()
+    {
+        var acctId = Guid.NewGuid();
+        var accounts = new[] { new AccountModel { Id = acctId, AccountName = "Home", BackendKind = BackendKind.ImapSmtp } };
+        var stub = new StubRuleService { LoadedRules = [new MailRule { Name = "Newsletters", AccountId = acctId, SubjectContains = "news" }] };
+        var vm = new UnifiedRulesViewModel(stub, serverRules: null, accounts, preferredAccountId: acctId);
+        var window = new UnifiedRulesWindow(vm, accounts, new Dictionary<Guid, List<MailFolderModel>>())
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+        };
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            var list = window.FindName("RulesListBox") as ListBox;
+            Assert.NotNull(list);
+            var container = list.ItemContainerGenerator.ContainerFromItem(Assert.Single(vm.Rules)) as ListBoxItem;
+            Assert.NotNull(container);
+            Assert.True(stub.LoadedRules[0].IsEnabled);
+
+            var space = new System.Windows.Input.KeyEventArgs(
+                System.Windows.Input.Keyboard.PrimaryDevice, PresentationSource.FromVisual(container), 0,
+                System.Windows.Input.Key.Space)
+            { RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent };
+            container.RaiseEvent(space);
+            DrainDispatcher();
+
+            Assert.True(space.Handled);
+            Assert.False(stub.LoadedRules.Single().IsEnabled);
+        }
+        finally { window.Close(); }
+    }
+
     // The composed spoken string must land on the row CONTAINER — the element a screen reader lands
     // on when arrowing the list. RowSpeech.Kind installs that binding from a Style setter; if it
     // were ever moved to a DataTemplate the name would attach to the wrong element and every row

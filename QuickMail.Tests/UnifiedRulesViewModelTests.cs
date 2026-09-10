@@ -694,7 +694,7 @@ public class UnifiedRulesViewModelTests
 
             vm.TestRuleCommand.Execute(null);
 
-            Assert.Equal("Rule would match 1 of 2 selected messages.", vm.StatusText);
+            Assert.Equal("Rule would match 1 of 2 messages in the list.", vm.StatusText);
             Assert.NotNull(announced);
             Assert.Equal(AnnouncementCategory.Result, announced!.Value.Cat);
         }
@@ -719,7 +719,7 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
-    public async Task TestRule_NoMessagesSelected_SaysNoneSelected()
+    public async Task TestRule_EmptyList_SaysThereIsNothingToTest()
     {
         var a = Guid.NewGuid();
         var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
@@ -730,7 +730,7 @@ public class UnifiedRulesViewModelTests
 
         vm.TestRuleCommand.Execute(null);
 
-        Assert.Equal("No messages selected in the main window.", vm.StatusText);
+        Assert.Equal("The message list is empty, so there is nothing to test the rule against.", vm.StatusText);
     }
 
     // ── Field labels (#493 Gap 1: honor RuleListShowFieldLabels in the unified list) ──────────
@@ -993,9 +993,64 @@ public class UnifiedRulesViewModelTests
     // ── Ported from the retired client-only window's tests ────────────────────
     // RulesManagerWindow and RulesManagerViewModel were deleted once every account used this window.
     // Most of their 38 tests already had an equivalent here, or in RuleEditorValidationTests for the
-    // save checks; the rest are ported below. One behaviour was not ported, because this window does
-    // not have it: a new rule starting on the account marked default. The picker starts on the account
-    // the window was opened from, else the first.
+    // save checks; the rest are ported below. Which account a new rule starts on — the retired window
+    // always used the account marked default — is pinned by the AccountPicker tests below.
+
+    // ── Which account the picker opens on ─────────────────────────────────────
+    // The picker decides the account a new rule belongs to. It lands on the account the user was in;
+    // from a view that spans accounts (no current account) it lands on the Account Manager default,
+    // as the retired client-only window did, and only then on the first account.
+
+    [Fact]
+    public void AccountPicker_WithNoCurrentAccount_OpensOnTheDefaultAccount()
+    {
+        var first = Guid.NewGuid();
+        var marked = Guid.NewGuid();
+        var dflt = Imap(marked); dflt.IsDefault = true;
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Imap(first), dflt], preferredAccountId: null);
+
+        Assert.Equal(marked, vm.SelectedAccount!.Id);   // not the first in the list
+    }
+
+    [Fact]
+    public void AccountPicker_PrefersTheAccountYouWereIn_OverTheDefault()
+    {
+        var current = Guid.NewGuid();
+        var marked = Guid.NewGuid();
+        var dflt = Imap(marked); dflt.IsDefault = true;
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Imap(current), dflt], preferredAccountId: current);
+
+        Assert.Equal(current, vm.SelectedAccount!.Id);
+    }
+
+    [Fact]
+    public void AccountPicker_WithNoCurrentAccountAndNoDefault_OpensOnTheFirst()
+    {
+        var first = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Imap(first), Imap(Guid.NewGuid())], preferredAccountId: null);
+
+        Assert.Equal(first, vm.SelectedAccount!.Id);
+    }
+
+    [Fact]
+    public async Task NewRule_FromAViewThatSpansAccounts_BelongsToTheDefaultAccount()
+    {
+        // End to end: the rule is saved to the account the picker opened on.
+        var first = Guid.NewGuid();
+        var marked = Guid.NewGuid();
+        var dflt = Imap(marked); dflt.IsDefault = true;
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, serverRules: null, [Imap(first), dflt], preferredAccountId: null);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "File it"; editor.SubjectContains = "x"; editor.MarkAsRead = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(marked, Assert.Single(client.LoadedRules).AccountId);
+    }
 
     [Fact]
     public async Task DeleteRule_Declined_KeepsTheClientRule()
