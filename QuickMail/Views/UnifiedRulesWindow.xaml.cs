@@ -148,8 +148,10 @@ public partial class UnifiedRulesWindow : Window
 
     private void OnAnnouncement(string text, AnnouncementCategory category)
         // Results and status are action outcomes the user should hear promptly, so they interrupt. A Hint
-        // is ambient — the rule-mode cue spoken as you land on an account — and must NOT cut off the
-        // platform's own announcement of the newly-selected account, so it queues instead of interrupting.
+        // is ambient and queues instead, so it can't cut off the platform's own announcement of whatever
+        // just took focus. Nothing in this window raises a Hint today — the rule-mode cue that did now
+        // lives in the status line (#550) — but the policy is per-category, not per-call-site, so it
+        // stays correct for the next one rather than being a branch about one deleted announcement.
         => AccessibilityHelper.Announce(this, text, interrupt: category != AnnouncementCategory.Hint, category: category);
 
     private void OnPermissionMessage(string message)

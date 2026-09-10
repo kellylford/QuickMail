@@ -127,7 +127,7 @@ public class UnifiedRulesViewModelTests
         // The VM can be built with no server-rule service (serverRules: null) — a defensive path the
         // _serverRules != null guards exist for. Exercise a full new-rule save through it: it must persist
         // a client rule, treat the account as client-only (no server rules, no save announcement — the
-        // on-open hint covers it), and never touch the absent server service.
+        // status line covers it), and never touch the absent server service.
         var a = Guid.NewGuid();
         var client = new StubRuleService();
         var vm = new UnifiedRulesViewModel(client, serverRules: null, [Graph(a)], preferredAccountId: a);
@@ -220,7 +220,7 @@ public class UnifiedRulesViewModelTests
     public async Task NewRule_MarkAsUnread_OnGraph_RoutesToClient_AndAnnounces() // #550
     {
         // On a server-capable (work/school Graph) account, a rule that uses a client-only action falls
-        // back to a client rule — a surprise the on-open hint (which said the account supports server
+        // back to a client rule — a surprise the status line (which says the account supports server
         // rules) doesn't cover, so the user is told, via a non-blocking Result announcement (no modal).
         var a = Guid.NewGuid();
         var server = new FakeServerRules();
@@ -451,6 +451,49 @@ public class UnifiedRulesViewModelTests
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
 
         Assert.Empty(announces);
+        // Anchor the silence to a load that demonstrably RAN. OnSelectedAccountChanged is
+        // fire-and-forget, so Assert.Empty alone would also pass if nothing had happened yet — and would
+        // keep passing if a re-added announcement fired after the assertion. The status line is the
+        // observable proof both switches completed, and that the second landed back on the work account.
+        Assert.Equal(UnifiedRulesViewModel.NoRulesStatus(true), vm.StatusText);
+    }
+
+    [Fact]
+    public async Task LoadFailureWithNoRules_StillStatesTheMode()
+    {
+        // Nothing loaded means nothing to count, so without the mode clause a failed load on a
+        // client-only account and one on a server-capable account read identically — and no other
+        // surface in the window tells them apart.
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules { ThrowOnList = new Exception("Graph unreachable") };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
+
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains("Couldn't load server rules", vm.StatusText);      // the failure still leads
+        Assert.Contains(UnifiedRulesViewModel.ModeClause(true), vm.StatusText);
+    }
+
+    [Fact]
+    public async Task EveryStatusLine_SaysWhatKindsTheAccountCanHold()
+    {
+        // The guide promises this unconditionally, and the mode used to be spoken on every load. Pin it
+        // for both account kinds, with and without rules, so no future status wording drops it silently.
+        var work = Guid.NewGuid();
+        var personal = Guid.NewGuid();
+
+        var empty = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(),
+            [Graph(work), PersonalGraph(personal)], preferredAccountId: work);
+        await empty.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("server-side", empty.StatusText);                  // server-capable, no rules
+        empty.SelectedAccount = empty.AccountOptions.First(o => o.Id == personal);
+        Assert.Contains("client-side rules only", empty.StatusText);       // client-only, no rules
+
+        var withRules = new UnifiedRulesViewModel(
+            new StubRuleService { LoadedRules = [Client("C1", personal)] }, new FakeServerRules(),
+            [PersonalGraph(personal)], preferredAccountId: personal);
+        await withRules.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("client-side only", withRules.StatusText);         // client-only, WITH rules
     }
 
     [Fact]
@@ -466,7 +509,10 @@ public class UnifiedRulesViewModelTests
 
         await vm.ToggleEnabledCommand.ExecuteAsync(null);   // a write → reload, but the account is unchanged
 
-        Assert.DoesNotContain(announces, t => t.Contains("supports", StringComparison.OrdinalIgnoreCase));
+        // Assert the exact set: probing for a word like "supports" would let any reworded mode
+        // announcement straight through, and the point is that the reload announces the WRITE and
+        // nothing else.
+        Assert.Equal(["Rule disabled."], announces);
     }
 
     // ── Prefill-from-message (Ctrl+Shift+T) and Run-on-Existing in the unified window ──────────
@@ -835,13 +881,16 @@ public class UnifiedRulesViewModelTests
     [Fact]
     public async Task StatusText_ClientOnlyAccount_DropsServerBreakdown() // #550 wording
     {
-        // A client-only account can't have server rules, so "0 on server" is noise — name them plainly.
+        // A client-only account can't have server rules, so "0 on server" is noise — but dropping the
+        // split must not drop the capability with it. The absence of "N on server" is not something a
+        // reader can be asked to notice, so the count says "client-side only" outright.
         var a = Guid.NewGuid();
         var client = new StubRuleService { LoadedRules = [Client("C1", a), Client("C2", a)] };
         var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
         await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("2 client-side rules.", vm.StatusText);
+        Assert.Equal("2 rules, client-side only.", vm.StatusText);
+        Assert.DoesNotContain("on server", vm.StatusText);
     }
 
     [Fact]

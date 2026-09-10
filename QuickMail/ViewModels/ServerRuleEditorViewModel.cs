@@ -467,12 +467,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             return new RuleClassification { Kind = RuleRunsWhere.Server };
 
         if (IsClientRepresentable)
-        {
-            var reason = accountSupportsServerRules
-                ? $"it uses {Join(ClientOnlyFeaturesUsed())}, which Microsoft 365 server rules don't support"
-                : "this account doesn't support server-side rules";
-            return new RuleClassification { Kind = RuleRunsWhere.Client, ClientReason = reason };
-        }
+            return new RuleClassification { Kind = RuleRunsWhere.Client };
 
         // Representable by neither: a client-only action combined with a server-only condition/action,
         // or a server-only feature on a non-Graph account.
@@ -600,13 +595,13 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
 /// <summary>
 /// Result of classifying a rule (spec §20.3). Exactly one of these holds: <see cref="Kind"/> is
-/// Server; <see cref="Kind"/> is Client with a <see cref="ClientReason"/> for the save dialog; or
-/// <see cref="ConflictError"/> is set (the rule fits neither and must be changed before saving).
+/// Server; <see cref="Kind"/> is Client; or <see cref="ConflictError"/> is set (the rule fits neither
+/// and must be changed before saving). Client carried a reason string until #550 dropped the modal
+/// save dialog that was its only reader.
 /// </summary>
 public sealed record RuleClassification
 {
     public RuleRunsWhere? Kind { get; init; }
-    public string? ClientReason { get; init; }
     public string? ConflictError { get; init; }
     public bool IsConflict => ConflictError is not null;
 }

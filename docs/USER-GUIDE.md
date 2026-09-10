@@ -1109,9 +1109,9 @@ A mail rule watches your Inbox and acts on messages that match what you describe
 
 Open the **Rules Manager** from the **Tools** menu (`Ctrl+Shift+L`) or the command palette. It opens with the list of rules on the left and the selected rule's settings on the right. It is the same window whatever kind of account you have; it shows what the selected account supports.
 
-**Client-side and server-side.** A rule QuickMail runs itself is a **client-side** rule: it is stored on this computer and it acts on your mail while QuickMail is open. A **work or school** Microsoft 365 account can also carry **server-side** rules, which your mail provider runs for you whether QuickMail is open or not — see [Microsoft 365: server-side rules](#microsoft-365-server-side-rules). Every other kind of account has client-side rules only. Each row in the rules list is marked **on client** or **on server**, and the status line says which kinds the selected account can have, so neither is ever a guess.
+**Client-side and server-side.** A rule QuickMail runs itself is a **client-side** rule: it is stored on this computer and it acts on your mail while QuickMail is open. A **work or school** account added with the **Microsoft 365 (Graph)** connection method can also carry **server-side** rules, which your mail provider runs for you whether QuickMail is open or not — see [Microsoft 365: server-side rules](#microsoft-365-server-side-rules). Every other account has client-side rules only, including a work or school account you added over Standard IMAP/SMTP. Each row in the rules list is marked **on client** or **on server**, and the status line says which kinds the selected account can have, so neither is ever a guess.
 
-**One account at a time.** When you have more than one account, the Rules Manager opens on a single account chosen in an **Account** list at the top, rather than listing every account's rules together. Choose the account whose rules you want, and the list below shows just that mailbox's rules. If you have only one account there is no picker. This is the first thing to notice if you are used to seeing every account's rules in one list: your rules are not gone, they are behind the account picker. The **status line** just below the picker says how many rules the account has and where they run; when it has none, it says which kinds that account can have, so an empty list is never a mystery. Press **F6** to move to it and read it at any time.
+**One account at a time.** When you have more than one account, the Rules Manager opens on a single account chosen in an **Account** list at the top, rather than listing every account's rules together. Choose the account whose rules you want, and the list below shows just that mailbox's rules. If you have only one account there is no picker. This is the first thing to notice if you are used to seeing every account's rules in one list: your rules are not gone, they are behind the account picker. The **status line** just below the picker says how many rules the account has and where they run; when it has none, it says which kinds that account can have, so an empty list is never a mystery. **F6** cycles the panes — account list, rules, details, status line — so it reaches the status line and reads it back at any time.
 
 ### What a rule is made of
 
@@ -1133,13 +1133,13 @@ To apply your rules to mail that is already there, use **Run on Existing Mail**.
 
 ### Rules belong to one account
 
-Each rule watches one account. Choose it in the **Account** list in the rule's settings; a new rule starts on your default account. The account each rule belongs to is shown beside its name in the rules list.
+Each rule watches one account. Choose it in the **Account** list in the rule's settings; a new rule starts on your default account. The rules list shows one account at a time, chosen in the **Account** list at the top of the window.
 
 If you had rules from an earlier version that applied to **all accounts**, QuickMail converts each one into a separate rule per account the first time it starts, so they keep doing what they did. The one exception is a profile whose only accounts connect through Microsoft 365 directly: those mailboxes have no client-side rule to convert to, so an old all-accounts rule is dropped and the reason is written to the log.
 
 ### Reading the rules list
 
-Each row in the rules list says the rule's name and the account it belongs to. Turn on **Show field labels in the rules list** in **Settings → General → Screen Reader Announcements** to hear those pieces named ("Name … account …") rather than run together.
+The list shows one account at a time, so a row does not repeat the account: it says the rule's name, where it runs, and whether it is enabled. Turn on **Show field labels in the rules list** in **Settings → General → Screen Reader Announcements** to hear those pieces named ("Rule … runs … status …") rather than run together.
 
 ### Creating a Rule from a Message
 
@@ -1151,11 +1151,11 @@ If you have a **work or school** Microsoft 365 (Exchange) account, the Rules Man
 
 Server-side rules are an organization feature, so **personal Outlook.com, Hotmail, and Live.com accounts do not have them** — even when connected through Microsoft 365 directly. For a personal account the Rules Manager shows only client-side rules, the same as any other non-Exchange account.
 
-**One list, marked where each rule runs.** For a work or school account, server-side and client-side rules appear together in a single list. Each row says where the rule runs — **on server** or **on client** — along with its name and whether it is enabled. Creating, editing, enabling or disabling, reordering, and deleting all work the same way whichever kind a rule is. The status line counts them the same way — "4 rules: 3 on server, 1 on client" — so which kinds an account is holding is a glance, or an **F6**, away.
+**One list, marked where each rule runs.** For a work or school account, server-side and client-side rules appear together in a single list. Each row says where the rule runs — **on server** or **on client** — along with its name and whether it is enabled. Creating, editing, enabling or disabling, reordering, and deleting all work the same way whichever kind a rule is. The status line counts them the same way — "4 rules: 3 on server, 1 on client" — so which kinds an account is holding is on screen, and **F6** cycles round to read it back.
 
 **Every condition has a checkbox.** In the rule editor, each text condition — **From addresses**, **Subject contains**, and the ones under **Advanced conditions & actions** — is switched on by the checkbox in front of it. A message must satisfy **every** condition you checked, so leaving one unchecked is how you say "don't care". Clearing a checkbox leaves the text sitting in its box, now read-only and skipped by Tab, so a condition you turned off is one keystroke from being turned back on rather than something you have to retype.
 
-**QuickMail chooses where a new rule lives.** When you create a rule, QuickMail saves it as a server rule whenever it can, so it keeps working while QuickMail is closed. A rule that needs something only QuickMail can do — today that is **Mark as unread** — is saved as a client-side rule instead, and because a work or school account *does* also do server rules, QuickMail tells you when that happens so a rule running client-side rather than in the cloud is never a silent surprise.
+**QuickMail chooses where a new rule lives.** When you create a rule, QuickMail saves it as a server rule whenever it can, so it keeps working while QuickMail is closed. A rule that needs something only QuickMail can do — today that is **Mark as unread** — is saved as a client-side rule instead. On a work or school account, which *does* also do server rules, QuickMail announces that when it happens; the saved rule's own row says **on client** either way, so you can see where it went whether or not you have announcements turned on.
 
 **Some server rules are read-only.** A rule you built in Outlook may use conditions or actions QuickMail cannot yet represent exactly. Rather than risk turning it into something you did not intend, QuickMail shows that rule as **read-only**: you can read it, but Edit, Delete, and Move are turned off. Change that rule in Outlook.
 
@@ -1516,7 +1516,7 @@ That is nearly always a download-only item. QuickMail refreshed from the account
 
 ### Moving to a new computer
 
-Your mail, your contacts, and your connected calendars come back on their own once you add your accounts again, because they live on the server. The **This computer only** row above does not: rules, flags you named, templates, signatures, saved views, and your settings are stored in QuickMail's data folder (`%APPDATA%\QuickMail`) and need to be copied across if you want them.
+Your mail, your contacts, and your connected calendars come back on their own once you add your accounts again, because they live on the server. The **This computer only** rows above do not: client-side rules, flags you named, templates, signatures, saved views, and your settings are stored in QuickMail's data folder (`%APPDATA%\QuickMail`) and need to be copied across if you want them.
 
 **A [POP3 account](#pop3-accounts) is the exception to the first sentence.** If it is set to remove mail from the server once collected, the server has nothing left to give back and `mail.db` in that data folder is your mail — copy it across, or back it up, like any other document.
 

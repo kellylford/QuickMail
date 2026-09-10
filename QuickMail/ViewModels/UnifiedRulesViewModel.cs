@@ -311,12 +311,13 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
         // Client rule — persist. Whether we say so depends on the account (#550):
         //  • On an account that supports server rules, a rule landing client-side is a surprise — the
-        //    on-open hint said this account *also* runs rules in the cloud, yet this one won't (it uses a
+        //    status line says this account *also* runs rules in the cloud, yet this one won't (it uses a
         //    client-only action like Mark as unread). So announce it. A non-blocking Announce (Result —
         //    honors AnnounceResults), not the old modal: the rules window is now the one every account
         //    uses, and a focus-stealing dialog on each such save doesn't belong there.
         //  • On a client-only account (IMAP / personal Graph) every rule is a client-side rule, and the
-        //    on-open hint already said so — a per-save notice would just be chatter, so stay silent.
+        //    status line says so on every load — "N rules, client-side only", or the mode outright when
+        //    there are none — so a per-save notice would just be chatter. Stay silent.
         var rule = editor.ToClientRule(accountId);
         AddClientRule(rule);
         if (AccountSupportsServerRules)
@@ -599,7 +600,6 @@ public partial class UnifiedRulesViewModel : ObservableObject
             // A load failure must survive to the status line — otherwise "couldn't reach Graph" reads
             // as "this account has no server rules", which invites the wrong next action.
             StatusText = BuildStatus(rows, failures, AccountSupportsServerRules);
-
         }
         finally
         {
@@ -631,8 +631,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The status line for an account with no rules — the one case the counts can't speak for, since
-    /// there are none to split into "N on server, N on client". The mode is stated outright instead.
+    /// What kinds of rule this account can hold, said outright.
     /// <para>
     /// This used to be an <see cref="AnnouncementCategory.Hint"/> spoken on every account-context load,
     /// which meant arrowing down the account picker spoke a sentence per account it passed through
@@ -640,17 +639,27 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// region, so putting it here keeps the information available without pushing it at anyone.
     /// </para>
     /// </summary>
-    internal static string NoRulesStatus(bool supportsServerRules)
+    internal static string ModeClause(bool supportsServerRules)
         => supportsServerRules
-            ? "No rules for this account. It supports server-side and client-side rules."
-            : "No rules for this account. It supports client-side rules only.";
+            ? "It supports server-side and client-side rules."
+            : "It supports client-side rules only.";
+
+    /// <summary>The status line for an account with no rules: there are none to count, so the mode is
+    /// the whole message.</summary>
+    internal static string NoRulesStatus(bool supportsServerRules)
+        => "No rules for this account. " + ModeClause(supportsServerRules);
 
     private static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures, bool supportsServerRules)
     {
         if (failures.Count > 0)
         {
-            // Lead with what went wrong; append counts only for the section(s) that did load.
-            var loaded = rows.Count == 0 ? "" : " " + Counts(rows, supportsServerRules);
+            // Lead with what went wrong, then the counts for the section(s) that did load. With nothing
+            // loaded there is nothing to count, so state the mode instead — otherwise a failed load on a
+            // client-only account and one on a server-capable account produce the same sentence, and the
+            // window has no other surface that tells them apart.
+            var loaded = rows.Count == 0
+                ? " " + ModeClause(supportsServerRules)
+                : " " + Counts(rows, supportsServerRules);
             return string.Join(" ", failures) + loaded;
         }
         return rows.Count == 0 ? NoRulesStatus(supportsServerRules) : Counts(rows, supportsServerRules);
@@ -658,11 +667,15 @@ public partial class UnifiedRulesViewModel : ObservableObject
         static string Counts(List<UnifiedRuleRow> r, bool supportsServer)
         {
             // A client-only account can't have server rules, so the "N on server, N on client" split is
-            // just "0 on server" clutter — name them plainly as client-side instead. The split appears
-            // only on an account that can actually hold both kinds.
+            // just "0 on server" clutter. It still has to say the account is client-side ONLY, though:
+            // the split's absence is not something a reader can be asked to notice, and the mode used to
+            // be spoken on every load (#550). "client-side only" carries the capability in the same
+            // breath as the count.
             if (!supportsServer)
-                return $"{r.Count} client-side rule{(r.Count == 1 ? "" : "s")}.";
+                return $"{r.Count} rule{(r.Count == 1 ? "" : "s")}, client-side only.";
 
+            // On a server-capable account the split carries the capability itself — "0 on server" still
+            // says server rules are possible here — so no extra clause is needed.
             var server = r.Count(x => x.RunsWhere == RuleRunsWhere.Server);
             var client = r.Count(x => x.RunsWhere == RuleRunsWhere.Client);
             return $"{r.Count} rule{(r.Count == 1 ? "" : "s")}: {server} on server, {client} on client.";

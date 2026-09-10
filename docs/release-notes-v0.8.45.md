@@ -42,6 +42,8 @@ and **To**. **Settings → General → View → Display mode**, which sets the s
 suit and reads **From (grouped by sender)** and **To (grouped by recipient)**.
 ([#663](https://github.com/kellylford/QuickMail/issues/663))
 
+---
+
 ## Changed: one Rules window, whatever kind of account you have
 
 QuickMail had two Rules windows behind the scenes, and which one you got depended on how the account
@@ -67,9 +69,9 @@ pop-up box after saving a rule is gone as well; on an account that has no server
 never anything surprising to report.
 
 One place still speaks up: on a work or school account, a rule that uses something only QuickMail can
-do — marking a message unread, say — is saved as a client-side rule rather than a server-side one,
-and because that account *does* also do server rules, QuickMail says so when it happens, so a rule
-running client-side rather than in the cloud is never a silent surprise.
+do — marking a message unread, say — is saved as a client-side rule rather than a server-side one, and
+because that account *does* also do server rules, QuickMail announces that when it happens. The rule's
+own row reads **on client** regardless, so where it went is visible with announcements turned off.
 ([#550](https://github.com/kellylford/QuickMail/issues/550))
 
 ---

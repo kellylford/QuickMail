@@ -153,7 +153,7 @@
                         <!-- Client-only action: Microsoft 365 server rules can't mark unread, so using
                              this forces the rule to be client-side (the classifier says so on save). -->
                         <CheckBox Content="Mark as unread (client-side only)" IsChecked="{Binding MarkAsUnread}"
-                                  Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Mark as unread"/>
+                                  Style="{StaticResource EditorCheckBox}"/>
 
                         <CheckBox Content="Copy to folder" IsChecked="{Binding CopyToFolder}"
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Copy to folder"/>
