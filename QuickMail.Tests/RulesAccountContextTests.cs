@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using QuickMail.Models;
 using QuickMail.ViewModels;
@@ -8,50 +9,92 @@ using Xunit;
 namespace QuickMail.Tests;
 
 /// <summary>
-/// Which account the Rules Manager opens on (#550 follow-up).
+/// Which account the Rules Manager opens on (#550 follow-up), decided by the view the user is in.
 ///
-/// <para>The rules window falls back to the default account when it is given no account. It is given
-/// <see cref="MainViewModel.RulesAccountContext"/>, and that is the piece that makes the fallback
-/// reachable: <c>SelectedAccount</c> alone never becomes null on All Inboxes, because choosing a virtual
-/// folder leaves it on whichever account was last visited. A first cut changed only the rules view model
-/// and passed tests that fed it null directly — a state the running app almost never produced.</para>
+/// <para>The rules window falls back to the default account when it is given no account, and it is
+/// given <see cref="MainViewModel.RulesAccountContext"/>. <c>SelectedAccount</c> cannot answer this on
+/// its own: choosing a virtual folder never updates it, so it still holds whichever account was last
+/// visited. Every test here therefore makes the selected account DIFFERENT from the account the view
+/// belongs to. An earlier version used the same id for both, and so passed while the app opened on the
+/// wrong account.</para>
 /// </summary>
 public class RulesAccountContextTests
 {
-    private static readonly Guid Visited = Guid.NewGuid();
+    private static readonly Guid Work = Guid.NewGuid();   // the account the view belongs to
+    private static readonly Guid Home = Guid.NewGuid();   // the account last visited: SelectedAccount
+
+    private static SavedView View(params Guid[] accounts) => new()
+    {
+        Name = "View",
+        Folders = accounts.Select((a, i) => new ViewFolder { AccountId = a, FolderFullName = "Folder" + i }).ToList(),
+    };
+
+    private static MailFolderModel SelectedAs(SavedView view, bool allFolders) => new()
+    {
+        FullName = (allFolders ? MainViewModel.ViewAllPrefix : MainViewModel.ViewPrefix) + view.Id,
+        DisplayName = view.Name,
+    };
 
     [Fact]
     public void AViewThatSpansAccounts_GivesNoAccount()
-        => Assert.Null(MainViewModel.AccountContextForRules(MainViewModel.AllInboxesFolder, Visited));
+        => Assert.Null(MainViewModel.AccountContextForRules(MainViewModel.AllInboxesFolder, Home, []));
 
     [Fact]
-    public void ARealFolder_GivesTheAccountYouAreIn()
+    public void ARealFolder_GivesItsOwnAccount()
     {
-        var inbox = new MailFolderModel { FullName = "INBOX", DisplayName = "Inbox", AccountId = Visited };
+        var inbox = new MailFolderModel { FullName = "INBOX", DisplayName = "Inbox", AccountId = Work };
 
-        Assert.Equal(Visited, MainViewModel.AccountContextForRules(inbox, Visited));
+        Assert.Equal(Work, MainViewModel.AccountContextForRules(inbox, Home, []));
     }
 
-    [Fact]
-    public void APerAccountAllMail_KeepsItsAccount()
+    [Theory]
+    [InlineData(true)]    // the model carries the account id…
+    [InlineData(false)]   // …and when it does not, the sentinel still names the account
+    public void APerAccountAllMail_GivesItsOwnAccount_NotTheOneLastVisited(bool accountIdOnModel)
     {
-        // Virtual, but it belongs to one account, so the Rules Manager should open on that account rather
-        // than jump to the default.
         var allMail = new MailFolderModel
         {
-            FullName = MainViewModel.AccountMailPrefix + Visited, DisplayName = "All Mail", AccountId = Visited,
+            FullName = MainViewModel.AccountMailPrefix + Work,
+            DisplayName = "All Mail",
+            AccountId = accountIdOnModel ? Work : Guid.Empty,
         };
 
-        Assert.Equal(Visited, MainViewModel.AccountContextForRules(allMail, Visited));
+        Assert.Equal(Work, MainViewModel.AccountContextForRules(allMail, Home, []));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ASavedViewOnOneAccount_GivesThatAccount(bool allFolders)
+    {
+        var view = View(Work, Work);
+
+        Assert.Equal(Work, MainViewModel.AccountContextForRules(SelectedAs(view, allFolders), Home, [view]));
     }
 
     [Fact]
-    public void NoFolderSelected_GivesTheAccountYouAreIn()
-        => Assert.Equal(Visited, MainViewModel.AccountContextForRules(null, Visited));
+    public void ASavedViewAcrossAccounts_GivesNoAccount()
+    {
+        var view = View(Work, Home);
+
+        Assert.Null(MainViewModel.AccountContextForRules(SelectedAs(view, allFolders: false), Home, [view]));
+    }
+
+    [Fact]
+    public void ASavedViewThatNoLongerExists_GivesNoAccount()
+    {
+        var gone = View(Work);
+
+        Assert.Null(MainViewModel.AccountContextForRules(SelectedAs(gone, allFolders: false), Home, []));
+    }
+
+    [Fact]
+    public void NoFolderSelected_GivesTheSelectedAccount()
+        => Assert.Equal(Home, MainViewModel.AccountContextForRules(null, Home, []));
 
     /// <summary>
-    /// The wiring the first cut missed. A correct view model is no use if the window that builds it hands
-    /// it <c>SelectedAccount</c>, which All Inboxes never clears. Read from source, the same way
+    /// The wiring. A correct decision is no use if the window that builds the rules view model hands it
+    /// <c>SelectedAccount</c> instead. Read from source, the same way
     /// <see cref="RuleTargetPickerCallSiteTests"/> checks the rule editors' wiring.
     /// </summary>
     [Fact]

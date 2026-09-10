@@ -103,10 +103,11 @@ This covers server-side rules too, since Exchange treats a rule with no conditio
 server-side rule made in Outlook with no conditions still runs, and can still be turned on or off from
 QuickMail, but QuickMail asks for a condition before it will save a change to it.
 
-Which account a new rule belongs to changed with the single window. The old window gave every new
-rule your default account, wherever you were. A new rule now belongs to the account the Rules Manager is
-showing, and it opens on the account you are in; from a view that spans accounts, such as **All
-Inboxes**, it opens on your default account rather than on the first account in the list.
+Which account a new rule belongs to changed with the single window. In the old window a new rule
+started on your default account, and you could change its account in the rule itself. Now a new rule
+belongs to the account the Rules Manager is showing, and the Rules Manager opens on the account you are
+in; from a view that spans accounts, such as **All Inboxes**, it opens on your default account rather
+than on the first account in the list.
 
 In the rules list, **Space** on a rule reliably turns it on or off. And **Test**, which checks a rule
 against the messages in the message list, now says so instead of calling them your selected messages.
