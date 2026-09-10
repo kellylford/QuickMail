@@ -129,6 +129,22 @@ internal to QuickMail; on ordinary body text the key does nothing, as before.
 
 ---
 
+## Fixed: F6 out of an open message goes to the next pane
+
+Pressing **F6** while reading a message skipped ahead: instead of moving to the pane after the
+reading pane, it carried on from the toolbar and landed on the account list. Coming back the other
+way, focus was not returned to the message after changing the view mode.
+
+Windows reports no focused element while the message body has focus — the message is drawn by a
+separate component with its own window, so the focus QuickMail can see has moved outside its own
+controls. Two pieces of code asked the question in a way that could not be true at the time they
+asked it, so the reading pane was never recognised as the pane you were in.
+
+Both now use the same test, and it is one that works while you are reading.
+([#673](https://github.com/kellylford/QuickMail/issues/673))
+
+---
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
