@@ -27,7 +27,7 @@ public class UnifiedRuleRowTests
     }
 
     [Fact]
-    public void ClientRow_ReadsFromMailRule_AndMarksInQuickMail()
+    public void ClientRow_ReadsFromMailRule_AndMarksOnClient()
     {
         var row = UnifiedRuleRow.ForClient(new MailRule
         {
@@ -41,7 +41,7 @@ public class UnifiedRuleRowTests
         Assert.Equal(RuleRunsWhere.Client, row.RunsWhere);
         Assert.Equal("Keep unread", row.Name);
         Assert.False(row.IsEnabled);
-        Assert.Contains("in QuickMail", row.RowText);
+        Assert.Contains("on client", row.RowText);
         Assert.Contains("disabled", row.RowText);
         Assert.Contains("subject contains 'later'", row.RowText);
         Assert.Contains("mark as unread", row.RowText);

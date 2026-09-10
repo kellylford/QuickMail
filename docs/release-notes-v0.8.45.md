@@ -66,6 +66,46 @@ suit and reads **From (grouped by sender)** and **To (grouped by recipient)**.
 
 ---
 
+## Changed: one Rules window, whatever kind of account you have
+
+QuickMail had two Rules windows behind the scenes, and which one you got depended on how the account
+connected rather than on what it could actually do. An account connected through Microsoft 365 opened
+a fuller window — the one that can also show rules that run on the server; an account connected the
+ordinary IMAP way opened a simpler one.
+
+A personal Outlook.com account connected through Microsoft 365 is the case that went wrong. It
+connects the same way a work or school account does, so it was handed the fuller window — but a
+personal account cannot have server-side rules, so in that window the Move Up and Move Down buttons
+never came to life, and creating a rule popped up a box telling you it had been saved as a
+client-side rule instead. Neither made sense for an account that was only ever going to run its
+rules inside QuickMail.
+
+There is now a single Rules window for every account. It shows what the selected account supports —
+server-side rules for a work or school account, client-side rules for everyone else — and the window's
+status line says which kinds the account can have, so an empty list is never a mystery. **F6** cycles
+the panes — account list, rules, details, status line — so it reaches that status line and reads it
+back at any time.
+
+That replaces a spoken message on every account you landed on, which meant arrowing down the account
+list said a sentence about each account you passed through on the way to the one you wanted. The
+pop-up box after saving a rule is gone as well; on an account that has no server rules there was
+never anything surprising to report.
+
+One place still speaks up: on a work or school account, a rule that uses something only QuickMail can
+do — marking a message unread, say — is saved as a client-side rule rather than a server-side one, and
+because that account *does* also do server rules, QuickMail announces that when it happens. The rule's
+own row reads **on client** regardless, so where it went is there to read with announcements off.
+
+The single window also brings back a safeguard the old one had. A **Move to folder** or **Delete** rule
+must now have at least one condition before it can be saved: with none, a rule matches every message,
+and rules run on mail as it arrives and through **Run on Existing Mail**, so it would empty the Inbox.
+This covers server-side rules too, since Exchange treats a rule with no conditions the same way. A
+server-side rule made in Outlook with no conditions still runs, and can still be turned on or off from
+QuickMail, but QuickMail asks for a condition before it will save a change to it.
+([#550](https://github.com/kellylford/QuickMail/issues/550))
+
+---
+
 ## Fixed: deleting a message no longer talks over the next one
 
 Pressing Delete on a message could produce a spoken **"unavailable"** before the next message was

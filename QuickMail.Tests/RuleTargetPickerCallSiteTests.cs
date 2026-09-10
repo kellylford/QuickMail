@@ -70,15 +70,19 @@ public class RuleTargetPickerCallSiteTests
 
     /// <summary>
     /// And the other end of the wire: <c>MainWindow</c> is the only place that owns a
-    /// <c>MainViewModel</c>, so if it stops handing the rules windows a
-    /// <c>FolderCreationSupport</c> they have nothing to pass on and the button quietly disappears.
+    /// <c>MainViewModel</c>, so if it stops handing the rules window a
+    /// <c>FolderCreationSupport</c> it has nothing to pass on and the button quietly disappears.
+    ///
+    /// <para>Since #550 there is a single rules window — <c>MainWindow</c> always constructs
+    /// <c>UnifiedRulesWindow</c> and no longer builds <c>RulesManagerWindow</c> (retired) — so only
+    /// the one construction is checked here.</para>
     ///
     /// <para>Whole-file rather than one method: <c>MethodBody</c> anchors on the first line that
     /// calls the name, and <c>OpenRulesManager</c> is invoked from two event wire-ups long before it
-    /// is declared. Each construction below appears exactly once in the file anyway.</para>
+    /// is declared. The construction below appears exactly once in the file anyway.</para>
     /// </summary>
     [Fact]
-    public void MainWindowHandsTheRulesWindowsAWayToCreateAFolder()
+    public void MainWindowHandsTheRulesWindowAWayToCreateAFolder()
     {
         var source = Source("Views/MainWindow.xaml.cs");
 
@@ -87,16 +91,13 @@ public class RuleTargetPickerCallSiteTests
         // rules wiring deleted.
         var support = Regex.Match(
             source, @"new\s+FolderCreationSupport\s*\((?<args>.*?)\)\s*;", RegexOptions.Singleline);
-        Assert.True(support.Success, "MainWindow no longer builds a FolderCreationSupport for the rules windows.");
+        Assert.True(support.Success, "MainWindow no longer builds a FolderCreationSupport for the rules window.");
         Assert.Contains("CreateFolderReturningFoldersAsync", support.Groups["args"].Value, StringComparison.Ordinal);
         Assert.Contains("CommitPendingFolderTreeRebuild", support.Groups["args"].Value, StringComparison.Ordinal);
 
-        foreach (var window in new[] { "RulesManagerWindow", "UnifiedRulesWindow" })
-        {
-            var construction = Regex.Match(source, $@"new\s+{window}\s*\((?<args>[^;]*?)\)", RegexOptions.Singleline);
-            Assert.True(construction.Success, $"MainWindow no longer constructs a {window}.");
-            Assert.Contains("folderCreation", construction.Groups["args"].Value, StringComparison.Ordinal);
-        }
+        var construction = Regex.Match(source, @"new\s+UnifiedRulesWindow\s*\((?<args>[^;]*?)\)", RegexOptions.Singleline);
+        Assert.True(construction.Success, "MainWindow no longer constructs a UnifiedRulesWindow.");
+        Assert.Contains("folderCreation", construction.Groups["args"].Value, StringComparison.Ordinal);
     }
 
     /// <summary>

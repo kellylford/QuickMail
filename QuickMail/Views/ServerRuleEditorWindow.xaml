@@ -90,6 +90,11 @@
                 <CheckBox Content="Mark as read" IsChecked="{Binding MarkAsRead}"
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Mark as read"/>
 
+                <!-- Named "Delete" on purpose, dropping the parenthetical from speech: "(move to Deleted
+                     Items)" explains what Delete means and is left to the screen. Compare Mark as unread
+                     below, which has NO Name so its parenthetical IS spoken — that one names a consequence
+                     (the rule becomes client-side) that nothing else reliably delivers. The two differ
+                     deliberately (#550); don't "fix" either to match the other. -->
                 <CheckBox Content="Delete (move to Deleted Items)" IsChecked="{Binding Delete}"
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Delete"/>
 
@@ -151,9 +156,12 @@
                         <TextBlock Text="More actions" Style="{StaticResource SectionHeader}"/>
 
                         <!-- Client-only action: Microsoft 365 server rules can't mark unread, so using
-                             this makes the rule run in QuickMail (the classifier says so on save). -->
-                        <CheckBox Content="Mark as unread (runs in QuickMail)" IsChecked="{Binding MarkAsUnread}"
-                                  Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Mark as unread"/>
+                             this forces the rule to be client-side. No AutomationProperties.Name, so the
+                             Content — qualifier included — is the accessible name: the save-time notice
+                             is a Result announcement a user may have turned off, which would leave this
+                             qualifier the only place a screen-reader user learns it. See Delete above. -->
+                        <CheckBox Content="Mark as unread (client-side only)" IsChecked="{Binding MarkAsUnread}"
+                                  Style="{StaticResource EditorCheckBox}"/>
 
                         <CheckBox Content="Copy to folder" IsChecked="{Binding CopyToFolder}"
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Copy to folder"/>

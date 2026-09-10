@@ -414,6 +414,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         return RuleAction.MarkAsRead;
     }
 
+    /// <summary>Shown when a Move or Delete rule tests nothing. Public so tests can pin the whole string.</summary>
+    public const string NoConditionError =
+        "Move and Delete need at least one condition, or the rule acts on every message.";
+
     public bool Validate()
     {
         NameError = FolderError = ActionsError = string.Empty;
@@ -443,6 +447,19 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             valid = false;
         }
 
+        // A rule that tests nothing matches every message, and rules run on Inbox mail as it arrives
+        // and through Run on Existing Mail — so a condition-less Move or Delete empties the Inbox. The
+        // client-only rules window refused this; the check did not come with it when every account
+        // moved onto this editor (#412 for Microsoft 365, #550 for the rest). Server rules too:
+        // Exchange applies a condition-less rule to every message just the same.
+        if ((MoveToFolder || Delete) && !HasAnyCondition())
+        {
+            ActionsError = string.IsNullOrEmpty(ActionsError)
+                ? NoConditionError
+                : ActionsError + " " + NoConditionError;
+            valid = false;
+        }
+
         if (!valid)
         {
             var errors = new[] { NameError, FolderError, ActionsError }.Where(e => !string.IsNullOrEmpty(e));
@@ -456,8 +473,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     /// <summary>
     /// Decides where the rule runs. A Graph account gets a server rule unless the rule uses a
-    /// client-only capability; otherwise (or on a non-Graph account) it's a client rule, with a
-    /// reason for the save dialog. A rule that fits neither — a client-only action combined with a
+    /// client-only capability; otherwise (or on a non-Graph account) it's a client rule. A rule that
+    /// fits neither — a client-only action combined with a
     /// server-only condition/action — is a conflict the user must resolve. Assumes the rule already
     /// passed <see cref="Validate"/> (so it has at least one action).
     /// </summary>
@@ -467,20 +484,15 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             return new RuleClassification { Kind = RuleRunsWhere.Server };
 
         if (IsClientRepresentable)
-        {
-            var reason = accountSupportsServerRules
-                ? $"it uses {Join(ClientOnlyFeaturesUsed())}, which Microsoft 365 server rules don't support"
-                : "this account doesn't support server-side rules";
-            return new RuleClassification { Kind = RuleRunsWhere.Client, ClientReason = reason };
-        }
+            return new RuleClassification { Kind = RuleRunsWhere.Client };
 
         // Representable by neither: a client-only action combined with a server-only condition/action,
         // or a server-only feature on a non-Graph account.
         var serverOnly = ServerOnlyFeaturesUsed();
         var clientOnly = ClientOnlyFeaturesUsed();
         var conflict = accountSupportsServerRules && clientOnly.Count > 0
-            ? $"{Join(clientOnly)} only works in a QuickMail rule, but {Join(serverOnly)} only works in a server rule. Remove one to save."
-            : $"This account only supports QuickMail rules, but {Join(serverOnly)} isn't available in a QuickMail rule. Remove it to save.";
+            ? $"{Join(clientOnly)} only works in a client-side rule, but {Join(serverOnly)} only works in a server-side rule. Remove one to save."
+            : $"This account only supports client-side rules, but {Join(serverOnly)} isn't available in a client-side rule. Remove it to save.";
         return new RuleClassification { ConflictError = conflict };
     }
 
@@ -570,6 +582,28 @@ public partial class ServerRuleEditorViewModel : ObservableObject
            || !string.IsNullOrWhiteSpace(SelectedMarkImportance?.Value)
            || !string.IsNullOrWhiteSpace(ForwardTo);
 
+    /// <summary>
+    /// True when the saved rule would test anything at all. Reads the switched-on
+    /// <c>Effective*</c> values — the same ones saving and classification read — so a condition
+    /// switched on but left empty, and one holding text but switched off (#665), both count as
+    /// absent: neither reaches the saved rule.
+    /// <para>
+    /// The address fields are parsed the way saving parses them, not merely checked for blankness.
+    /// Saving splits them and drops empty entries, so a field holding only "," or ";" — or a
+    /// separator left behind after deleting the address — is not blank, yet reaches the saved rule
+    /// as no address at all. A blankness test let exactly that condition-less Delete through.
+    /// </para>
+    /// </summary>
+    private bool HasAnyCondition()
+        => !string.IsNullOrWhiteSpace(EffectiveSenderContains)
+           || SplitAddresses(EffectiveFromAddresses).Count > 0
+           || SplitAddresses(EffectiveSentToAddresses).Count > 0
+           || !string.IsNullOrWhiteSpace(EffectiveSubjectContains)
+           || !string.IsNullOrWhiteSpace(EffectiveBodyOrSubjectContains)
+           || !string.IsNullOrWhiteSpace(EffectiveBodyContains)
+           || SentToMe || SentOnlyToMe || HasAttachments
+           || !string.IsNullOrWhiteSpace(SelectedImportance?.Value);
+
     private bool HasAnyAction()
         => (MoveToFolder && !string.IsNullOrWhiteSpace(MoveToFolderId))
            || (CopyToFolder && !string.IsNullOrWhiteSpace(CopyToFolderId))
@@ -600,13 +634,13 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
 /// <summary>
 /// Result of classifying a rule (spec §20.3). Exactly one of these holds: <see cref="Kind"/> is
-/// Server; <see cref="Kind"/> is Client with a <see cref="ClientReason"/> for the save dialog; or
-/// <see cref="ConflictError"/> is set (the rule fits neither and must be changed before saving).
+/// Server; <see cref="Kind"/> is Client; or <see cref="ConflictError"/> is set (the rule fits neither
+/// and must be changed before saving). Client carried a reason string until #550 dropped the modal
+/// save dialog that was its only reader.
 /// </summary>
 public sealed record RuleClassification
 {
     public RuleRunsWhere? Kind { get; init; }
-    public string? ClientReason { get; init; }
     public string? ConflictError { get; init; }
     public bool IsConflict => ConflictError is not null;
 }
