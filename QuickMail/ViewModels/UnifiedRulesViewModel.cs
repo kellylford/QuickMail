@@ -349,11 +349,22 @@ public partial class UnifiedRulesViewModel : ObservableObject
         if (kind.Kind == RuleRunsWhere.Server)
         {
             var model = editor.ToModel();
-            model.Sequence = ServerRows().Count + 1;       // Graph rejects sequence 0
             // Re-select the created rule — its id only exists on CreateAsync's return, so route
             // through the value-returning overload (otherwise nothing is selected and focus strands).
             return await RunServerWriteAsync(
-                () => _serverRules!.CreateAsync(accountId, model),
+                async () =>
+                {
+                    // After every rule already on the account it is created for (#683). Once the Account list
+                    // has moved on, the rows on screen are another account's, and a count of those could put the
+                    // rule ahead of ones that stop processing. Graph rejects sequence 0.
+                    var existing = SelectedAccount?.Id == accountId
+                        ? ServerRows().Select(r => r.Server!).ToList()
+                        : (await _serverRules!.ListAsync(accountId)).ToList();
+                    model.Sequence = existing.Select(r => r.Sequence).DefaultIfEmpty(0).Max() + 1;
+                    var created = await _serverRules!.CreateAsync(accountId, model);
+                    ReturnToAccount(accountId);
+                    return created;
+                },
                 created => created.Id, reloadOnSuccess: true);
         }
 
@@ -370,6 +381,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         AddClientRule(rule);
         if (supportsServerRules)
             Announce("Saving as a client-side rule.", AnnouncementCategory.Result);
+        ReturnToAccount(accountId);
         await ReloadAndReselectAsync(clientId: rule.Id);
         return null;
     }
@@ -381,7 +393,23 @@ public partial class UnifiedRulesViewModel : ObservableObject
         // refuse the save and name what to remove — the mirror of the client-side check below.
         if (editor.ServerEditError is { } error) return error;
         return await RunServerWriteAsync(
-            () => _serverRules!.UpdateAsync(accountId, editor.ToModel()), reloadOnSuccess: true, selectServerId: original.Id);
+            async () =>
+            {
+                await _serverRules!.UpdateAsync(accountId, editor.ToModel());
+                ReturnToAccount(accountId);
+            },
+            reloadOnSuccess: true, selectServerId: original.Id);
+    }
+
+    /// <summary>
+    /// Puts the Account list back on the account a saved rule belongs to, so the reload that follows shows
+    /// it and selects it. The editor is modeless and the list stays usable while it is open; without this, a
+    /// rule saved after the list moved on appeared nowhere and left nothing selected (#683).
+    /// </summary>
+    private void ReturnToAccount(Guid accountId)
+    {
+        if (SelectedAccount?.Id != accountId && AccountOptions.FirstOrDefault(o => o.Id == accountId) is { } option)
+            SelectedAccount = option;
     }
 
     private async Task<string?> SaveEditedClientAsync(Guid accountId, MailRule original, ServerRuleEditorViewModel editor)
@@ -394,6 +422,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         var updated = editor.ToClientRule(accountId);
         updated.Id = original.Id;                          // preserve identity
         UpdateClientRule(updated);
+        ReturnToAccount(accountId);
         await ReloadAndReselectAsync(clientId: updated.Id);
         return null;
     }

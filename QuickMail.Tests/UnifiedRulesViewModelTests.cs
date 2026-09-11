@@ -364,6 +364,8 @@ public class UnifiedRulesViewModelTests
 
         Assert.DoesNotContain("create", server.Calls);                     // never created on Graph for Home
         Assert.Equal(home, Assert.Single(client.LoadedRules).AccountId);   // a client rule, on Home
+        Assert.Equal(home, vm.SelectedAccount!.Id);                        // the list went back to Home …
+        Assert.Equal("Digests", vm.SelectedRule?.Name);                    // … and selected the new rule
     }
 
     [Fact]
@@ -382,6 +384,28 @@ public class UnifiedRulesViewModelTests
 
         Assert.Contains("create", server.Calls);   // a server rule on Work, as it would have been
         Assert.Empty(client.LoadedRules);
+        Assert.Equal(work, vm.SelectedAccount!.Id);          // the list went back to Work …
+        Assert.Equal("Digests", vm.SelectedRule?.Name);      // … and selected the new rule
+    }
+
+    [Fact]
+    public async Task NewServerRule_AfterAnAccountSwitch_GoesAfterItsOwnAccountsRules() // #683
+    {
+        // The position came from the rows on screen, which after a switch are the other account's: a rule for
+        // a mailbox with two server rules was created first in its order, ahead of rules that stop processing.
+        var home = Guid.NewGuid();
+        var work = Guid.NewGuid();
+        var s1 = Server("S1"); s1.Sequence = 1;
+        var s2 = Server("S2"); s2.Sequence = 2;
+        var server = new FakeServerRules { Stored = [s1, s2] };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Imap(home), Graph(work)], preferredAccountId: work);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == home);
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(3, server.Stored.Single(r => r.DisplayName == "Digests").Sequence);
     }
 
     [Fact]
@@ -446,6 +470,23 @@ public class UnifiedRulesViewModelTests
         Assert.True(closed);
         Assert.Contains("update", server.Calls);
         Assert.Equal("S1 renamed", Assert.Single(server.Stored).DisplayName);
+    }
+
+    [Fact]
+    public void MarkAsUnread_IsTurnedOff_OnlyWhileEditingAServerRule() // #684
+    {
+        // A server-side rule can't mark mail unread, so the box can't be ticked there. A new rule keeps it
+        // (ticking it makes the rule client-side), and so does a client-side rule.
+        Assert.False(ServerRuleEditorViewModel.ForEdit(Server("S1")).CanMarkAsUnread);
+        Assert.True(ServerRuleEditorViewModel.ForNew().CanMarkAsUnread);
+        Assert.True(ServerRuleEditorViewModel.ForEditClient(Client("C1", Guid.NewGuid())).CanMarkAsUnread);
+
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "QuickMail", "Views")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        var xaml = System.IO.File.ReadAllText(System.IO.Path.Combine(dir!.FullName, "QuickMail", "Views", "ServerRuleEditorWindow.xaml"));
+        Assert.Matches(@"Content=""Mark as unread \(client-side only\)""[^>]*IsEnabled=""\{Binding CanMarkAsUnread\}""", xaml);
     }
 
     // ── Failure paths (review: writes must not announce success on failure; a load failure must

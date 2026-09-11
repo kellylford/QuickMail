@@ -81,6 +81,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         var vm = new ServerRuleEditorViewModel
         {
             IsNew = false,
+            IsEditingServerRule = true,
             _ruleId = rule.Id,
             _sequence = rule.Sequence,
             _rawConditions = rule.RawConditions,
@@ -246,6 +247,13 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [ObservableProperty] private bool _markAsRead;
     /// <summary>Client-only action — Microsoft 365 server rules have no "mark as unread" (spec §20.2).</summary>
     [ObservableProperty] private bool _markAsUnread;
+
+    /// <summary>True while editing an existing server-side rule. Editing never changes a rule's kind.</summary>
+    public bool IsEditingServerRule { get; private set; }
+
+    /// <summary>Mark as unread can't run in a server-side rule, so it is turned off while editing one (#684).
+    /// A new rule keeps it: ticking it there makes the rule client-side.</summary>
+    public bool CanMarkAsUnread => !IsEditingServerRule;
     [ObservableProperty] private ImportanceOption _selectedMarkImportance = ImportanceOptions[0];
     [ObservableProperty] private bool _delete;
     [ObservableProperty] private string _forwardTo = string.Empty;
