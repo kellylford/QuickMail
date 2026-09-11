@@ -242,7 +242,7 @@
             <MenuItem Header="Flag_s"
                       Tag="FlagsSubmenu"
                       AutomationProperties.Name="Flags"/>
-            <!-- Hidden, with its separator, on a shared mailbox's message (#678): see ShowCreateRuleItem. -->
+            <!-- Taken out of the menu, with its separator, on a shared mailbox's message (#678): see ShowCreateRuleItem. -->
             <Separator Tag="CreateRuleSeparator"/>
             <MenuItem Header="Crea_te Rule from Message…"
                       Tag="CreateRuleItem"

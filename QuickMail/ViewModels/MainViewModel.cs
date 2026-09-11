@@ -6631,9 +6631,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
             CreateRuleFromMessageCommand.Execute(null);
             return;
         }
+        // Declined for one of two reasons. With nothing selected only the palette gets here, as it runs a
+        // command without consulting IsAvailable.
         var target = SelectedGroupMessages() is { } group ? group[0] : SelectedMessage;
-        if (target is not null && ResolveAccountById(target.AccountId) is { IsShared: true } shared)
-            SetStatus($"Rules for the shared mailbox {shared.AccountLabel} are managed in Outlook.", AnnouncementCategory.Result);
+        SetStatusEvenIfUnchanged(
+            target is not null && ResolveAccountById(target.AccountId) is { IsShared: true } shared
+                ? $"Rules for the shared mailbox {shared.AccountLabel} are managed in Outlook."
+                : "Select a message to create a rule from.",
+            AnnouncementCategory.Result);
+    }
+
+    /// <summary>
+    /// <see cref="SetStatus"/>, but said again when that text is already showing. The window announces a
+    /// change of <see cref="StatusText"/>, and assigning the text it already holds raises none, so pressing
+    /// the same key twice would be silent the second time.
+    /// </summary>
+    private void SetStatusEvenIfUnchanged(string text, AnnouncementCategory category)
+    {
+        if (StatusText != text)
+        {
+            SetStatus(text, category);
+            return;
+        }
+        StatusAnnouncementCategory = category;
+        OnPropertyChanged(nameof(StatusText));
+        StatusAnnouncementCategory = AnnouncementCategory.Status;
     }
 
     /// <summary>

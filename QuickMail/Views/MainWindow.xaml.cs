@@ -6854,9 +6854,10 @@ public partial class MainWindow : Window
         // to the open window rather than silently dropping it.
         if (_rulesWindow is { IsLoaded: true } existing)
         {
+            // Forward first, so anything the template makes the window announce comes from the active window.
+            existing.Activate();
             if (template != null && existing is UnifiedRulesWindow urw)
                 urw.PrefillFromTemplate(template);
-            existing.Activate();
             return;
         }
 

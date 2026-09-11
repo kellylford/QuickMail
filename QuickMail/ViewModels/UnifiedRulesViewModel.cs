@@ -701,11 +701,6 @@ public partial class UnifiedRulesViewModel : ObservableObject
         => "No rules yet. " + ModeClause(supportsServerRules);
 
     /// <summary>
-    /// The sentence that opens the status line when the Rules Manager was opened from a shared mailbox
-    /// (#678): its rules are managed in Outlook, and the window is showing another account instead.
-    /// Empty otherwise, and once the user has chosen an account.
-    /// </summary>
-    /// <summary>
     /// The window's title. Opened from a shared mailbox it names the account shown (#678): with one account
     /// there is no Account list to focus, and focus lands on that account's first rule, so the title is
     /// what says whose rules these are as the window opens.
@@ -714,6 +709,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
         ? $"Rules Manager — {shown.DisplayName}"
         : "Rules Manager";
 
+    /// <summary>
+    /// The sentence that opens the status line when the Rules Manager was opened from a shared mailbox
+    /// (#678): its rules are managed in Outlook, and the window is showing another account instead.
+    /// Empty otherwise, and once the user has chosen an account.
+    /// </summary>
     internal string SharedMailboxPreamble()
         => _sharedMailboxLabel is { } label
             ? $"Rules for the shared mailbox {label} are managed in Outlook. Showing {SelectedAccount?.DisplayName} instead. "

@@ -17,7 +17,7 @@ namespace QuickMail.Tests;
 
 /// <summary>
 /// The main window's side of #678: a shared mailbox's rules belong in Outlook. Create Rule from Message
-/// is hidden from a shared mailbox's message menu and unavailable there, Ctrl+Shift+T does nothing there,
+/// is taken out of a shared mailbox's message menu, Ctrl+Shift+T and the palette say why instead of acting,
 /// and the status bar does not count a rule that no longer runs as "active" — in a shared mailbox's
 /// folders it says the mailbox's rules are managed in Outlook instead.
 ///
@@ -134,6 +134,38 @@ public class SharedMailboxRuleCommandTests
         Assert.False(requested);
         Assert.Equal("Rules for the shared mailbox Team are managed in Outlook.", vm.StatusText);
         Assert.Equal(AnnouncementCategory.Result, category);
+    }
+
+    [Fact]
+    public void CtrlShiftT_PressedAgain_SaysWhyAgain()
+    {
+        // The window announces a change of StatusText, and an unchanged assignment raises none, so the second
+        // press on the same message would be silent.
+        var (vm, registry) = VmWithRegistry();
+        vm.SelectedMessage = MessageIn(Team);
+        var said = new List<AnnouncementCategory>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.StatusText)) said.Add(vm.StatusAnnouncementCategory);
+        };
+        var command = registry.FindById("mail.createRuleFromMessage")!;
+
+        command.Execute();
+        command.Execute();
+
+        Assert.Equal(new[] { AnnouncementCategory.Result, AnnouncementCategory.Result }, said);
+    }
+
+    [Fact]
+    public void ThePalette_WithNothingSelected_SaysSo()
+    {
+        // The palette runs a command without consulting IsAvailable; declining must not be silent.
+        var (vm, registry) = VmWithRegistry();
+        vm.SelectedMessage = null;
+
+        registry.FindById("mail.createRuleFromMessage")!.Execute();
+
+        Assert.Equal("Select a message to create a rule from.", vm.StatusText);
     }
 
     [Fact]
@@ -358,6 +390,15 @@ public class SharedMailboxRuleCommandTests
 
         Assert.Contains("AutomationProperties.Name=\"{Binding RulesStatusText, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("StringFormat='Rules", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheRulesManagersTitle_IsBoundToTheViewModel()
+    {
+        // Opened from a shared mailbox the title names the account shown; a fixed title would lose that.
+        var xaml = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "Views", "UnifiedRulesWindow.xaml"));
+
+        Assert.Contains("Title=\"{Binding WindowTitle, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
     }
 
     [Fact]
