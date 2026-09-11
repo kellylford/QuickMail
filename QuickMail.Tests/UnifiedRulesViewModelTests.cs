@@ -512,7 +512,9 @@ public class UnifiedRulesViewModelTests
 
         // The WHOLE line, not two Contains: the defect this replaced was a missing full stop between
         // the failure and the clause, which every substring assertion passed straight over.
-        Assert.Equal("Couldn't load server rules: Graph unreachable. " + UnifiedRulesViewModel.ModeClause(true),
+        // The client half loaded and is empty, and says so (#679): otherwise nothing tells that apart from
+        // a client half that was never read.
+        Assert.Equal("Couldn't load server rules: Graph unreachable. No client-side rules. " + UnifiedRulesViewModel.ModeClause(true),
                      vm.StatusText);
     }
 
@@ -555,6 +557,21 @@ public class UnifiedRulesViewModelTests
         Assert.Equal("Couldn't load client-side rules: disk full. 1 server-side rule. " + UnifiedRulesViewModel.ModeClause(true),
                      UnifiedRulesViewModel.BuildStatus(rows, ["Couldn't load client-side rules: disk full"],
                          supportsServerRules: true, clientLoadFailed: true));
+    }
+
+    [Fact]
+    public async Task AFailedClientLoad_IsFlaggedByTheRefresh() // #679
+    {
+        // Through a real load, so dropping the flag in RefreshCoreAsync is caught, not only BuildStatus.
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules { Stored = [Server("S1")] };
+        var client = new StubRuleService { ThrowOnLoad = new Exception("disk full") };
+        var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
+
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("Couldn't load client-side rules: disk full. 1 server-side rule. " + UnifiedRulesViewModel.ModeClause(true),
+                     vm.StatusText);
     }
 
     [Fact]
@@ -724,7 +741,7 @@ public class UnifiedRulesViewModelTests
 
             vm.TestRuleCommand.Execute(null);
 
-            Assert.Equal("Rule would match 1 of the 2 messages from Work in the list.", vm.StatusText);
+            Assert.Equal("Rule would match 1 of the 2 messages in the list for the Work account.", vm.StatusText);
             Assert.NotNull(announced);
             Assert.Equal(AnnouncementCategory.Result, announced!.Value.Cat);
         }
@@ -779,7 +796,25 @@ public class UnifiedRulesViewModelTests
 
         vm.TestRuleCommand.Execute(null);
 
-        Assert.Equal("The message list has no messages from Work, so there is nothing to test the rule against.", vm.StatusText);
+        Assert.Equal("The message list has no messages for the Work account, so there is nothing to test the rule against.", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task TestRule_OneMessageFromTheRulesAccount_SaysTheOnlyMessage() // #687
+    {
+        // "1 of the 1 messages" reads badly.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };   // the stub matches everything
+        var one = Msg("1");
+        one.AccountId = a;
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Graph(a)],
+            preferredAccountId: a, selectedMessagesForTest: [one]);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+        vm.SelectedRule = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+
+        vm.TestRuleCommand.Execute(null);
+
+        Assert.Equal("Rule would match the only message in the list for the Work account.", vm.StatusText);
     }
 
     // ── Field labels (#493 Gap 1: honor RuleListShowFieldLabels in the unified list) ──────────
