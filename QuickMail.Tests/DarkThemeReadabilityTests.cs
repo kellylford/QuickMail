@@ -21,8 +21,10 @@ public class DarkThemeReadabilityTests
         Assert.True(start >= 0, "StatusBarButtonStyle is gone.");
         var style = xaml[start..xaml.IndexOf("</Style>", start, StringComparison.Ordinal)];
 
-        Assert.Contains("<Setter Property=\"Foreground\" Value=\"{DynamicResource Theme.TextPrimary}\"/>",
-                        style, StringComparison.Ordinal);
+        // Spacing-tolerant: the neighbouring setters pad Value into a column.
+        Assert.Matches(@"<Setter\s+Property=""Foreground""\s+Value=""\{DynamicResource Theme\.TextPrimary\}""\s*/>", style);
+        // And held down, the selection pair rather than that text colour on Theme.Border (3.5-4.0:1).
+        Assert.Matches(@"Property=""IsPressed""[\s\S]*?Theme\.SelectionBackground[\s\S]*?Theme\.SelectionText", style);
     }
 
     [Fact]
