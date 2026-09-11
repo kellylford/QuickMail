@@ -242,8 +242,10 @@
             <MenuItem Header="Flag_s"
                       Tag="FlagsSubmenu"
                       AutomationProperties.Name="Flags"/>
-            <Separator/>
+            <!-- Hidden, with its separator, on a shared mailbox's message (#678): see ShowCreateRuleItem. -->
+            <Separator Tag="CreateRuleSeparator"/>
             <MenuItem Header="Create _Rule from Message…"
+                      Tag="CreateRuleItem"
                       InputGestureText="Ctrl+Shift+T"
                       AutomationProperties.Name="Create Rule from Message"
                       AutomationProperties.AcceleratorKey="Ctrl+Shift+T"

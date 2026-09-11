@@ -1122,7 +1122,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // Selecting the calendar folder (or leaving it) swaps the View Mode menu between the mail
     // groupings and the calendar slices — see RebuildViewModeOptions and issue #663.
-    partial void OnSelectedFolderChanged(MailFolderModel? value) => RebuildViewModeOptions();
+    partial void OnSelectedFolderChanged(MailFolderModel? value)
+    {
+        RebuildViewModeOptions();
+        UpdateRulesStatusText();   // the rule summary shows what applies in a shared mailbox's folders (#678)
+    }
+
+    partial void OnSelectedAccountChanged(AccountModel? value) => UpdateRulesStatusText();
 
     [ObservableProperty]
     private BatchObservableCollection<MailMessageSummary> _messages = [];
@@ -2124,6 +2130,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SavedViews = new ObservableCollection<SavedView>(views);
         RegisterViewCommands();
         BuildFolderTree();
+        // An edited view can now cover only a shared mailbox, or no longer (#678).
+        UpdateRulesStatusText();
         SavedViewsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -4223,8 +4231,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UpdateRulesStatusText();
     }
 
+    /// <summary>What the status bar's rule summary says in a shared mailbox's folders (#678).</summary>
+    internal const string SharedMailboxRulesStatus = "Rules for this shared mailbox are managed in Outlook";
+
     public void UpdateRulesStatusText()
     {
+        // The count below covers every account, so in a shared mailbox's folder it would read as if those
+        // rules ran there. Say where that mailbox's rules are instead (#678).
+        if (RulesAccountContext is Guid context && ResolveAccountById(context) is { IsShared: true })
+        {
+            RulesStatusText = SharedMailboxRulesStatus;
+            return;
+        }
+
         // A rule saved against a shared mailbox is kept but does not run (#678), so it is not "active".
         var rules = _ruleService.LoadRules()
             .Where(r => r.AccountId is not Guid id || ResolveAccountById(id) is not { IsShared: true })

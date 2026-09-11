@@ -612,7 +612,7 @@ A **Move to folder** or **Delete** rule needs at least one condition, because a 
 2. Press **Shift+F10** or the Applications key and choose **Create Rule from Message…**, or press **Ctrl+Shift+T**.
 3. The rule editor opens with the sender filled in and its condition checked, and the subject filled in but unchecked. The rule belongs to that message's account. Choose an action and save.
 
-Create Rule from Message is unavailable on a message in a shared mailbox, whose rules are managed in Outlook.
+Create Rule from Message is not in the context menu for a message in a shared mailbox, whose rules are managed in Outlook, and **Ctrl+Shift+T** does nothing there.
 
 ### Testing a rule
 
@@ -628,7 +628,7 @@ Select a rule in the list and activate **Delete**, or press the **Delete** key. 
 
 ### Rules status bar
 
-The status bar shows a summary of your rules — how many are active, how many are disabled, and when they last ran. Press **Enter** or **Space** on the Rules button in the status bar to open the Rules Manager.
+The status bar shows a summary of your rules — how many are active, how many are disabled, and when they last ran. The count covers every account. In a shared mailbox's folders it says instead that the mailbox's rules are managed in Outlook. Press **Enter** or **Space** on the Rules button in the status bar to open the Rules Manager.
 
 ### Status bar navigation
 

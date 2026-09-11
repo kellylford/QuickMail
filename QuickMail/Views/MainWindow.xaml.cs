@@ -331,6 +331,7 @@ public partial class MainWindow : Window
         FilterFlaggedItem.SubmenuOpened += (_, _) => UpdateFlagSubmenuChecks();
 
         ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => RebuildMessageContextFlagsSubmenu();
+        ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => OfferCreateRuleItem();
         ((ContextMenu)FindResource("ConversationGroupContextMenu")).Opened += (_, _) => RebuildConversationContextFlagsSubmenu();
         ((ContextMenu)FindResource("SenderGroupContextMenu")).Opened       += (_, _) => RebuildSenderContextFlagsSubmenu();
         ((ContextMenu)FindResource("ToGroupContextMenu")).Opened           += (_, _) => RebuildToContextFlagsSubmenu();
@@ -7075,6 +7076,27 @@ public partial class MainWindow : Window
     }
 
     // ── Context-menu Flags submenus ──────────────────────────────────────────
+
+    /// <summary>
+    /// Shows or hides Create Rule from Message and the separator above it. Hidden rather than grayed on a
+    /// shared mailbox's message (#678): WPF skips a disabled menu item when arrowing through a menu, so a
+    /// grayed item could be seen but never reached from the keyboard.
+    /// </summary>
+    internal static void ShowCreateRuleItem(ContextMenu menu, bool offered)
+    {
+        var visibility = offered ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var item in menu.Items)
+            if (item is FrameworkElement { Tag: "CreateRuleItem" or "CreateRuleSeparator" } element)
+                element.Visibility = visibility;
+    }
+
+    private void OfferCreateRuleItem()
+    {
+        // Re-check the enabled state too, which otherwise updates only as the selection moves, so a shown
+        // item is never a grayed one (an account list reload can change the answer under a selection).
+        _vm.CreateRuleFromMessageCommand.NotifyCanExecuteChanged();
+        ShowCreateRuleItem((ContextMenu)FindResource("MessageContextMenu"), _vm.CanCreateRuleFromMessage());
+    }
 
     private static MenuItem? FindFlagsSubmenu(ContextMenu menu)
     {

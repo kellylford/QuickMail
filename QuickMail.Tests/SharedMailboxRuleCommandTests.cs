@@ -1,16 +1,22 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Windows;
+using System.Windows.Controls;
 using QuickMail.Models;
+using QuickMail.Services;
 using QuickMail.ViewModels;
+using QuickMail.Views;
 using Xunit;
 
 namespace QuickMail.Tests;
 
 /// <summary>
 /// The main window's side of #678: a shared mailbox's rules belong in Outlook. Create Rule from Message
-/// stays in the menu but is unavailable on a shared mailbox's message, Ctrl+Shift+T does nothing there,
-/// and the status bar does not count a rule that no longer runs as "active".
+/// is hidden from a shared mailbox's message menu and unavailable there, Ctrl+Shift+T does nothing there,
+/// and the status bar does not count a rule that no longer runs as "active" — in a shared mailbox's
+/// folders it says the mailbox's rules are managed in Outlook instead.
 ///
 /// <para>Accounts are installed by REPLACING <see cref="MainViewModel.Accounts"/>, which is what rebuilds
 /// the id lookup <see cref="MainViewModel.ResolveAccountById"/> reads.</para>
@@ -148,6 +154,112 @@ public class SharedMailboxRuleCommandTests
         vm.LoadAccountList([Home, Team]);
 
         Assert.Equal("No active rules", vm.RulesStatusText);
+    }
+
+    [Fact]
+    public void RulesStatusBar_InASharedMailboxsFolder_SaysItsRulesAreInOutlook()
+    {
+        // The count covers every account, so in a shared mailbox's folder it read as if those rules ran there.
+        var rules = new StubRuleService
+        {
+            LoadedRules = [new MailRule { Name = "Home rule", AccountId = Home.Id, SubjectContains = "x" }],
+        };
+        var vm = Vm(rules);
+
+        vm.SelectedFolder = new MailFolderModel { AccountId = Team.Id, FullName = "INBOX", DisplayName = "Inbox" };
+        Assert.Equal("Rules for this shared mailbox are managed in Outlook", vm.RulesStatusText);
+
+        vm.SelectedFolder = new MailFolderModel { AccountId = Home.Id, FullName = "INBOX", DisplayName = "Inbox" };
+        Assert.Equal("Rules: 1 active, 0 disabled — Last run: not yet run", vm.RulesStatusText);
+    }
+
+    [Fact]
+    public void RulesStatusBar_OnASharedMailboxsAccount_SaysItsRulesAreInOutlook()
+    {
+        // With no folder selected the view's account is the selected account, so choosing one must recount.
+        var vm = Vm();
+        Assert.Equal("No active rules", vm.RulesStatusText);
+
+        vm.SelectedAccount = Team;
+
+        Assert.Equal("Rules for this shared mailbox are managed in Outlook", vm.RulesStatusText);
+    }
+
+    private sealed class OneViewService(SavedView view) : IViewService
+    {
+        public SavedView View { get; set; } = view;
+        public List<SavedView> Load() => [View];
+        public void Save(List<SavedView> views) { }
+    }
+
+    [Fact]
+    public void RulesStatusBar_IsRecounted_WhenASavedViewIsEdited()
+    {
+        // Editing the view in place changes its account without changing the selected folder.
+        var rules = new StubRuleService
+        {
+            LoadedRules = [new MailRule { Name = "Home rule", AccountId = Home.Id, SubjectContains = "x" }],
+        };
+        var view = new SavedView { Name = "Mine", Folders = [new ViewFolder { AccountId = Home.Id, FolderFullName = "INBOX" }] };
+        var views = new OneViewService(view);
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(), new StubConfigService(),
+            new StubCommandRegistry(), views, rules, new StubSmtpService());
+        vm.Accounts = new ObservableCollection<AccountModel>([Home, Team]);
+        vm.UpdateSavedViews();
+        vm.SelectedFolder = new MailFolderModel { FullName = MainViewModel.ViewPrefix + view.Id, DisplayName = "Mine" };
+        Assert.Equal("Rules: 1 active, 0 disabled — Last run: not yet run", vm.RulesStatusText);
+
+        views.View = new SavedView
+        {
+            Id = view.Id, Name = "Mine", Folders = [new ViewFolder { AccountId = Team.Id, FolderFullName = "INBOX" }],
+        };
+        vm.UpdateSavedViews();
+
+        Assert.Equal("Rules for this shared mailbox are managed in Outlook", vm.RulesStatusText);
+    }
+
+    [StaFact]
+    public void CreateRuleItem_AndItsSeparator_AreHiddenWhenNotOffered()
+    {
+        // Hidden, not grayed: WPF skips a disabled menu item when arrowing, so a grayed one is never reached.
+        var flags = new MenuItem { Header = "Flags" };
+        var separator = new Separator { Tag = "CreateRuleSeparator" };
+        var item = new MenuItem { Header = "Create Rule from Message", Tag = "CreateRuleItem" };
+        var menu = new ContextMenu();
+        menu.Items.Add(flags);
+        menu.Items.Add(separator);
+        menu.Items.Add(item);
+
+        MainWindow.ShowCreateRuleItem(menu, offered: false);
+        Assert.Equal(Visibility.Collapsed, item.Visibility);
+        Assert.Equal(Visibility.Collapsed, separator.Visibility);
+        Assert.Equal(Visibility.Visible, flags.Visibility);
+
+        MainWindow.ShowCreateRuleItem(menu, offered: true);
+        Assert.Equal(Visibility.Visible, item.Visibility);
+        Assert.Equal(Visibility.Visible, separator.Visibility);
+    }
+
+    [Fact]
+    public void TheMessageMenu_DecidesAsItOpens()
+    {
+        // The helper above only acts on items carrying these tags, and only if the menu calls it as it opens.
+        var root = RepoRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "QuickMail", "Views", "MainWindow.xaml"));
+        var code = File.ReadAllText(Path.Combine(root, "QuickMail", "Views", "MainWindow.xaml.cs"));
+
+        Assert.Contains("<Separator Tag=\"CreateRuleSeparator\"/>", xaml, StringComparison.Ordinal);
+        Assert.Contains("Tag=\"CreateRuleItem\"", xaml, StringComparison.Ordinal);
+        Assert.Matches(@"FindResource\(""MessageContextMenu""\)\)\.Opened\s*\+=\s*\(_, _\) => OfferCreateRuleItem\(\);", code);
+
+        var start = code.IndexOf("private void OfferCreateRuleItem()", StringComparison.Ordinal);
+        Assert.True(start >= 0, "OfferCreateRuleItem is gone.");
+        var body = code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
+        Assert.Contains("ShowCreateRuleItem((ContextMenu)FindResource(\"MessageContextMenu\"), _vm.CanCreateRuleFromMessage())",
+                        body, StringComparison.Ordinal);
+        Assert.Contains("CreateRuleFromMessageCommand.NotifyCanExecuteChanged()", body, StringComparison.Ordinal);
     }
 
     private static string RepoRoot()

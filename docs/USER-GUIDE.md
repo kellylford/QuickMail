@@ -397,7 +397,7 @@ Shared mailboxes are a **Microsoft 365 work or school** feature. You add one thr
 
 **New-mail notifications are off for a shared mailbox by default.** A shared mailbox is often a busy team address, so QuickMail does not pop a notification for every message that lands in it. If you do want notifications for a particular shared mailbox, select it in Account Manager and turn on **Notify me of new mail in this shared mailbox**. The main **Show a Notification When New Mail Arrives** setting still has to be on for any notification to appear.
 
-**Rules.** A shared mailbox's rules are managed in Outlook, not in QuickMail, so a shared mailbox is not in the Rules Manager's **Account** list. QuickMail cannot reach a shared mailbox's server-side rules, and a client-side rule would act, from your computer only, on mail everyone else reads. **Create Rule from Message** is unavailable on a shared mailbox's messages, and a client-side rule saved on a shared mailbox by an earlier version is kept but no longer runs.
+**Rules.** A shared mailbox's rules are managed in Outlook, not in QuickMail, so a shared mailbox is not in the Rules Manager's **Account** list. QuickMail cannot reach a shared mailbox's server-side rules, and a client-side rule would act, from your computer only, on mail everyone else reads. **Create Rule from Message** is not in the context menu for a shared mailbox's messages, and neither **Ctrl+Shift+T** nor the command palette makes a rule from one. In the mailbox's folders, the rule summary on the status bar says its rules are managed in Outlook. A client-side rule saved on a shared mailbox by an earlier version is kept but no longer runs.
 
 **Removing.** Removing the account that a shared mailbox reads through also removes the shared mailbox — you are told which shared mailboxes will go when you delete their parent account. Removing a shared mailbox on its own leaves the account it read through untouched.
 
@@ -1153,7 +1153,7 @@ In the list, **Enter** edits the selected rule, **Space** turns it on or off, an
 
 ### Creating a Rule from a Message
 
-Select a message and choose **Create Rule from Message** from the context menu or the command palette. QuickMail opens a new rule pre-filled from that message: the sender is filled in and its condition is **checked**, so the rule matches everything from that sender. The subject is filled in too, but its condition starts **unchecked** — a rule that has to match one sender *and* one exact subject line matches, in practice, only the conversation you made it from. If you did want the subject as well, check its box; the text is already there.
+Select a message and choose **Create Rule from Message** from the context menu or the command palette. QuickMail opens a new rule pre-filled from that message: the sender is filled in and its condition is **checked**, so the rule matches everything from that sender. The subject is filled in too, but its condition starts **unchecked** — a rule that has to match one sender *and* one exact subject line matches, in practice, only the conversation you made it from. If you did want the subject as well, check its box; the text is already there. This does not work on a message in a shared mailbox, whose rules are managed in Outlook; see [Shared mailboxes](#shared-mailboxes).
 
 ### Microsoft 365: server-side rules
 
