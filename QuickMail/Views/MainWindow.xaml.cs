@@ -6663,7 +6663,8 @@ public partial class MainWindow : Window
         await _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
 
         // Conversations/From: LandOnX waits for the async rebuild before focusing.
-        // Messages view: MessageListFocusRequested in MoveSelectedMessagesToFolderAsync handles it.
+        // Messages view: MoveSelectedMessagesToFolderAsync lands focus before the rows leave (#670), with
+        // MessageListFocusRequested only as its fallback.
         // Filing a whole group empties its row, so land where it was — the row that takes its place,
         // as the group context menus do — rather than jumping the user back to the top of the list.
         if (_vm.IsConversationsView)

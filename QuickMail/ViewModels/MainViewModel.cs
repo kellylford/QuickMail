@@ -6819,8 +6819,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Land focus on the surviving row before the conversation's rows leave, as delete does, so the row
-        // holding keyboard focus is never the one removed (#670; see LandFocusBeforeRemoval).
-        var landed = LandFocusBeforeRemoval(leaving);
+        // holding keyboard focus is never the one removed (#670; see LandFocusBeforeRemoval). Only when the
+        // selection is among them: unwatching from the manager or a message window can remove a conversation
+        // the user is not on, and their place in the list should stay where it is.
+        var selectionLeaving = SelectedMessage == null || leaving.Contains(SelectedMessage);
+        var landed = selectionLeaving ? LandFocusBeforeRemoval(leaving) : null;
 
         _rawMessages.RemoveAll(SameConversation);
         foreach (var m in leaving)
@@ -6839,13 +6842,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         var n = Messages.Count;
-        StatusText = $"{n} watched {(n == 1 ? "message" : "messages")}.";
+        var watchedCount = $"{n} watched {(n == 1 ? "message" : "messages")}.";
+        if (landed != null)
+            SetStatusSilently(watchedCount);   // the row just landed on is being read; don't talk over it (#667)
+        else
+            StatusText = watchedCount;
 
         if (ViewMode == ViewMode.Messages)
         {
             // Only when LandFocusBeforeRemoval could not land. When it did, focus is on that row already,
             // and asking again would queue a second focus move that reads the row out twice (see there).
-            if (landed == null || !Messages.Contains(landed))
+            if (selectionLeaving && (landed == null || !Messages.Contains(landed)))
             {
                 SelectedMessage = Messages[Math.Min(firstIndex, Messages.Count - 1)];
                 MessageListFocusRequested?.Invoke();
@@ -9128,7 +9135,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
-        StatusText = $"Moving {label}…";
+        // A single move is silent, as a single delete is (#667): it would talk over the message being read.
+        SetStatus($"Moving {label}…",
+            messages.Count == 1 ? AnnouncementCategory.Silent : AnnouncementCategory.MessageAction);
         IsBusy     = true;
         try
         {
@@ -9154,9 +9163,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 foreach (var acctId in messages.Select(m => m.AccountId).Distinct())
                     ScheduleFolderCountRefresh(acctId);
 
+            // The open message may be one of those leaving: clear the reading pane first, as delete, archive
+            // and unwatch do, or it keeps showing a message that is no longer in the list.
+            var selectionLeaving = SelectedMessage != null && messages.Contains(SelectedMessage);
+            if (selectionLeaving)
+            {
+                MessageDetail = null;
+                IsMessageOpen = false;
+            }
+
             // Land focus on the surviving row before the moved rows leave, as delete does (#670): removing the
-            // row that holds keyboard focus is what a screen reader describes as "unavailable".
-            var landed = LandFocusBeforeRemoval(messages);
+            // row that holds keyboard focus is what a screen reader describes as "unavailable". Only when the
+            // selection is among them: this runs after the server move, and the user may have moved on.
+            var landed = selectionLeaving ? LandFocusBeforeRemoval(messages) : null;
             foreach (var msg in messages)
                 Messages.Remove(msg);
 
@@ -9165,8 +9184,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             RememberMessageDestination(destination, copy: false);
 
-            StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} moved to {destination.DisplayName}.";
-            Announce(StatusText);
+            var moved = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} moved to {destination.DisplayName}.";
+            if (messages.Count == 1 && landed != null)
+                // Self-evident, as a single delete is (#667): the row has gone and the next one has just
+                // been read, and the destination was the user's own choice a moment ago. Status bar only.
+                SetStatusSilently(moved);
+            else
+                SetStatus(moved, AnnouncementCategory.MessageAction);
             // Conversations/From: LandOnX in the view handles focus after rebuild. In the flat list, only
             // when LandFocusBeforeRemoval could not land (a second focus move reads the row out twice).
             if (ViewMode == ViewMode.Messages && Messages.Count > 0 && (landed == null || !Messages.Contains(landed)))
