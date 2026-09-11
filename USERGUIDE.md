@@ -586,7 +586,7 @@ The **View → Sort** submenu controls the order in which messages or groups are
 
 Mail rules act on messages automatically: moving newsletters to a folder, marking a mailing list as read, deleting something you never want to see.
 
-A **client-side** rule is run by QuickMail on this computer, on Inbox mail as it arrives, while QuickMail is open. A **work or school** account added with the **Microsoft 365 (Graph)** connection method can also have **server-side** rules, which Microsoft runs for you whether QuickMail is open or not. Every other account has client-side rules only. The [online user guide](https://kellylford.github.io/QuickMail/) covers rules in full.
+A **client-side** rule is run by QuickMail on this computer, on Inbox mail as it arrives, while QuickMail is open. A **work or school** account added with the **Microsoft 365 (Graph)** connection method can also have **server-side** rules, which Microsoft runs for you whether QuickMail is open or not. Every other account has client-side rules only. A shared mailbox is not in the Rules Manager at all: its rules are managed in Outlook. The [online user guide](https://kellylford.github.io/QuickMail/) covers rules in full.
 
 ### Opening the Rules Manager
 
@@ -612,6 +612,8 @@ A **Move to folder** or **Delete** rule needs at least one condition, because a 
 2. Press **Shift+F10** or the Applications key and choose **Create Rule from Message…**, or press **Ctrl+Shift+T**.
 3. The rule editor opens with the sender filled in and its condition checked, and the subject filled in but unchecked. The rule belongs to that message's account. Choose an action and save.
 
+Create Rule from Message is not in the context menu for a message in a shared mailbox, whose rules are managed in Outlook. **Ctrl+Shift+T** and the command palette say so on the status bar instead of making a rule.
+
 ### Testing a rule
 
 Select a client-side rule and activate **Test**. QuickMail runs it against the messages that were in the message list when you opened the Rules Manager, and the status line says how many of them would match, for example "Rule would match 3 of 50 messages in the list." **Test** is turned off for server-side rules, which run on the server.
@@ -626,7 +628,7 @@ Select a rule in the list and activate **Delete**, or press the **Delete** key. 
 
 ### Rules status bar
 
-The status bar shows a summary of your rules — how many are active, how many are disabled, and when they last ran. Press **Enter** or **Space** on the Rules button in the status bar to open the Rules Manager.
+The status bar shows a summary of your client-side rules across every account — how many are active, how many are disabled, and when they last ran. Server-side rules are not included. In a shared mailbox's folders it says instead that the mailbox's rules are managed in Outlook. Press **Enter** or **Space** on the Rules button in the status bar to open the Rules Manager.
 
 ### Status bar navigation
 

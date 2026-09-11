@@ -331,6 +331,18 @@ public partial class MainWindow : Window
         FilterFlaggedItem.SubmenuOpened += (_, _) => UpdateFlagSubmenuChecks();
 
         ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => RebuildMessageContextFlagsSubmenu();
+        var messageMenu = (ContextMenu)FindResource("MessageContextMenu");
+        _createRuleSeparator = messageMenu.Items.OfType<Separator>().FirstOrDefault(s => Equals(s.Tag, "CreateRuleSeparator"));
+        _createRuleItem      = messageMenu.Items.OfType<MenuItem>().FirstOrDefault(m => Equals(m.Tag, "CreateRuleItem"));
+        _createRuleIndex     = _createRuleSeparator is null ? 0 : messageMenu.Items.IndexOf(_createRuleSeparator);
+        messageMenu.Opened += (_, _) => OfferCreateRuleItem();
+        // Decide as the selection moves too, so the menu is already right before it opens. Opened may well
+        // suffice on its own, running on the UI thread as the menu opens; this is insurance. Opened also
+        // stays the backstop for anything that changes the answer without raising CanExecuteChanged.
+        vm.CreateRuleFromMessageCommand.CanExecuteChanged += (_, _) =>
+        {
+            if (Dispatcher.CheckAccess()) ApplyCreateRuleOffer();
+        };
         ((ContextMenu)FindResource("ConversationGroupContextMenu")).Opened += (_, _) => RebuildConversationContextFlagsSubmenu();
         ((ContextMenu)FindResource("SenderGroupContextMenu")).Opened       += (_, _) => RebuildSenderContextFlagsSubmenu();
         ((ContextMenu)FindResource("ToGroupContextMenu")).Opened           += (_, _) => RebuildToContextFlagsSubmenu();
@@ -6842,9 +6854,11 @@ public partial class MainWindow : Window
         // to the open window rather than silently dropping it.
         if (_rulesWindow is { IsLoaded: true } existing)
         {
+            // Forward first: the rule editor the template opens then keeps focus, instead of the owner taking
+            // activation back, and anything the window announces comes from the active window.
+            existing.Activate();
             if (template != null && existing is UnifiedRulesWindow urw)
                 urw.PrefillFromTemplate(template);
-            existing.Activate();
             return;
         }
 
@@ -6871,6 +6885,8 @@ public partial class MainWindow : Window
             foreach (var (accountId, folders) in _vm.CachedFolders)
             {
                 if (accountScope is { } scope && accountId != scope) continue;
+                // Client-side rules do not run on a shared mailbox (#678).
+                if (_vm.ResolveAccountById(accountId) is { IsShared: true }) continue;
                 // Since #516 the folder cache is restored from disk at launch, so an entry here no
                 // longer implies the account connected. The fail-closed rule below depends on
                 // "couldn't resolve an Inbox" meaning "not connected", so ask directly.
@@ -6885,7 +6901,7 @@ public partial class MainWindow : Window
             // yet) is skipped by the rule service rather than guessed at. Log which ones so a "my rules
             // didn't run on account X" report is diagnosable — the run is otherwise silent about it.
             var skipped = _vm.Accounts
-                .Where(a => (accountScope is null || a.Id == accountScope) && !inboxByAccount.ContainsKey(a.Id))
+                .Where(a => (accountScope is null || a.Id == accountScope) && !a.IsShared && !inboxByAccount.ContainsKey(a.Id))
                 .ToList();
             if (skipped.Count > 0)
                 LogService.Log($"Run on Existing Mail: skipping {skipped.Count} account(s) with no resolved Inbox: " +
@@ -7073,6 +7089,50 @@ public partial class MainWindow : Window
     }
 
     // ── Context-menu Flags submenus ──────────────────────────────────────────
+
+    /// <summary>
+    /// Puts Create Rule from Message, and the separator above it, into the menu or takes them out. Taken
+    /// out on a shared mailbox's message (#678), not grayed or collapsed: WPF skips a disabled menu item
+    /// when arrowing, so a grayed one could be seen but never reached; and a collapsed one stays in the
+    /// accessibility tree and in every item's position and set size (a screen reader heard 9 items with 8
+    /// reachable). Out of the menu, it is simply not there, and WPF's own counting is right.
+    /// <paramref name="index"/> is where the separator sits when both are in.
+    /// </summary>
+    internal static void ShowCreateRuleItem(ContextMenu menu, int index, Separator separator, MenuItem item, bool offered)
+    {
+        if (offered == menu.Items.Contains(item)) return;
+        if (offered)
+        {
+            var at = Math.Min(index, menu.Items.Count);
+            menu.Items.Insert(at, separator);
+            menu.Items.Insert(at + 1, item);
+        }
+        else
+        {
+            menu.Items.Remove(item);
+            menu.Items.Remove(separator);
+        }
+    }
+
+    // Held here because they leave the menu's Items while withdrawn; found by their tags at construction.
+    private Separator? _createRuleSeparator;
+    private MenuItem? _createRuleItem;
+    private int _createRuleIndex;
+
+    private void ApplyCreateRuleOffer()
+    {
+        if (_createRuleSeparator is null || _createRuleItem is null) return;
+        ShowCreateRuleItem((ContextMenu)FindResource("MessageContextMenu"), _createRuleIndex,
+                           _createRuleSeparator, _createRuleItem, _vm.CanCreateRuleFromMessage());
+    }
+
+    private void OfferCreateRuleItem()
+    {
+        // Re-check the enabled state too, which otherwise updates only as the selection moves, so an item
+        // in the menu is never a grayed one (an account list reload can change the answer under a selection).
+        _vm.CreateRuleFromMessageCommand.NotifyCanExecuteChanged();
+        ApplyCreateRuleOffer();
+    }
 
     private static MenuItem? FindFlagsSubmenu(ContextMenu menu)
     {

@@ -217,6 +217,26 @@ public class SyncServiceRuleApplicationTests : IDisposable
     }
 
     [Fact]
+    public async Task ASharedMailbox_RunsNoClientRules()   // #678
+    {
+        // The same arrival that reaches the engine for a normal account (the test below) must not reach
+        // it for a shared mailbox: its rules belong in Outlook, and a client rule there would act from
+        // one person's machine on mail everyone reads.
+        var arrival = Message("s1", read: false);
+        var imap = new FetchStubMailService([arrival])
+        {
+            PersistOnFetch = batch => _store.UpsertSummariesAsync(batch),
+        };
+        var rules = new CapturingRuleService();
+        var shared = Account();
+        shared.IsShared = true;
+
+        await Build(imap, rules).SyncFolderFullAsync(shared, _inbox, CancellationToken.None);
+
+        Assert.Empty(rules.Calls);
+    }
+
+    [Fact]
     public async Task Pop3ShapedSweep_FirstSyncOfAnEmptyFolder_TreatsTheWholeFetchAsArrivals()
     {
         var arrival = Message("p1", read: false);

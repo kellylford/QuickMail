@@ -242,8 +242,10 @@
             <MenuItem Header="Flag_s"
                       Tag="FlagsSubmenu"
                       AutomationProperties.Name="Flags"/>
-            <Separator/>
-            <MenuItem Header="Create _Rule from Message…"
+            <!-- Taken out of the menu, with its separator, on a shared mailbox's message (#678): see ShowCreateRuleItem. -->
+            <Separator Tag="CreateRuleSeparator"/>
+            <MenuItem Header="Crea_te Rule from Message…"
+                      Tag="CreateRuleItem"
                       InputGestureText="Ctrl+Shift+T"
                       AutomationProperties.Name="Create Rule from Message"
                       AutomationProperties.AcceleratorKey="Ctrl+Shift+T"
@@ -2124,7 +2126,7 @@
                         Style="{StaticResource StatusBarButtonStyle}"
                         Content="{Binding RulesStatusText, Mode=OneWay}"
                         Click="RulesStatusButton_Click"
-                        AutomationProperties.Name="{Binding RulesStatusText, StringFormat='Rules — {0}'}"
+                        AutomationProperties.Name="{Binding RulesStatusText, Mode=OneWay}"
                         ToolTip="Open Rules Manager (Ctrl+Shift+L)"/>
             </StatusBarItem>
 

@@ -86,7 +86,9 @@ public class RuleService : IRuleService
         // non-Graph) — the drop path only fires when there is real account context. (Review of #364.)
         if (accounts.Count == 0) return;
 
-        var targets = accounts.Where(a => a.BackendKind != BackendKind.MicrosoftGraph).ToList();
+        // Never onto a shared mailbox either (#678): its rules are managed in Outlook, and a client-side
+        // rule there would be kept but never run.
+        var targets = accounts.Where(a => a.BackendKind != BackendKind.MicrosoftGraph && !a.IsShared).ToList();
 
         var migrated = new List<MailRule>(_cache.Count);
         int converted = 0, dropped = 0;

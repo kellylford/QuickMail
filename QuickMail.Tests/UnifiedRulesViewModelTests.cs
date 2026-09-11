@@ -1209,4 +1209,137 @@ public class UnifiedRulesViewModelTests
         Assert.Equal(expected, vm.StatusText);
         Assert.Equal((expected, AnnouncementCategory.Result), announced[^1]);
     }
+
+    // ── Shared mailboxes are left out (#678) ─────────────────────────────────
+    // QuickMail cannot reach a shared mailbox's server-side rules, and a client-side rule there would
+    // act from one person's machine on mail everyone reads. Its rules belong in Outlook.
+
+    private static AccountModel Shared(Guid id, Guid parent) => new()
+    {
+        Id = id, BackendKind = BackendKind.MicrosoftGraph, IsShared = true, ParentAccountId = parent,
+        SharedAddress = "team@x.com", Username = "team@x.com", AccountName = "Team",
+    };
+
+    [Fact]
+    public void ASharedMailbox_IsNotInTheAccountList()
+    {
+        var work = Guid.NewGuid();
+        var team = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Graph(work), Shared(team, work)], preferredAccountId: work);
+
+        Assert.DoesNotContain(vm.AccountOptions, o => o.Id == team);
+        Assert.False(vm.ShowAccountSelector);   // one account left, so there is no choice to offer
+    }
+
+    [Fact]
+    public async Task OpenedFromASharedMailbox_ShowsTheDefault_AndSaysWhy()
+    {
+        var home = Guid.NewGuid();
+        var work = Guid.NewGuid();
+        var team = Guid.NewGuid();
+        var dflt = Imap(home); dflt.IsDefault = true;
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Graph(work), dflt, Shared(team, work)], preferredAccountId: team);
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(home, vm.SelectedAccount!.Id);
+        Assert.Equal("Rules for the shared mailbox Team are managed in Outlook. Showing Home instead. "
+                     + UnifiedRulesViewModel.NoRulesStatus(false), vm.StatusText);
+    }
+
+    [Fact]
+    public async Task ChoosingAnAccount_DropsTheSharedMailboxNotice()
+    {
+        var home = Guid.NewGuid();
+        var work = Guid.NewGuid();
+        var team = Guid.NewGuid();
+        var dflt = Imap(home); dflt.IsDefault = true;
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Graph(work), dflt, Shared(team, work)], preferredAccountId: team);
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
+
+        Assert.Equal(UnifiedRulesViewModel.NoRulesStatus(false), vm.StatusText);
+    }
+
+    [Fact]
+    public async Task ATemplateForASharedMailbox_OpensNoEditor()
+    {
+        // Create Rule from Message is unavailable there, but the window must not act on such a template
+        // either: opening the editor would file the rule under whichever account the picker shows.
+        var work = Guid.NewGuid();
+        var team = Guid.NewGuid();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, serverRules: null,
+            [Graph(work), Shared(team, work)], preferredAccountId: work);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+
+        vm.NewRuleFromTemplate(new MailRule { Name = "Rule for x", FromContains = "x@y.com", AccountId = team });
+
+        Assert.Null(editor);
+        Assert.Equal(work, vm.SelectedAccount!.Id);
+        Assert.Empty(client.LoadedRules);
+        Assert.Equal("Rules for the shared mailbox Team are managed in Outlook.", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task ATemplateForAnAccountTheWindowDoesNotList_SaysSo()
+    {
+        // The window's account list is taken when it opens, so an account added while it is open is not in
+        // it. Coming forward with no editor and no word would look like the command did nothing.
+        var work = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null, [Graph(work)], preferredAccountId: work);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+
+        var announced = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (t, c) => announced.Add((t, c));
+
+        vm.NewRuleFromTemplate(new MailRule { Name = "Rule for x", FromContains = "x@y.com", AccountId = Guid.NewGuid() });
+
+        const string expected = "The Rules Manager does not list that message's account. Close it and open it again to make a rule there.";
+        Assert.Null(editor);
+        Assert.Equal(expected, vm.StatusText);
+        Assert.Equal((expected, AnnouncementCategory.Result), Assert.Single(announced));
+    }
+
+    [Fact]
+    public void OpenedFromASharedMailbox_TheTitleNamesTheAccountShown()
+    {
+        // With one account there is no Account list, and focus lands on that account's first rule; the
+        // title is what says whose rules these are as the window opens.
+        var work = Guid.NewGuid();
+        var team = Guid.NewGuid();
+        var fromShared = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Graph(work), Shared(team, work)], preferredAccountId: team);
+        var fromWork = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Graph(work), Shared(team, work)], preferredAccountId: work);
+
+        Assert.Equal($"Rules Manager — {fromShared.SelectedAccount!.DisplayName}", fromShared.WindowTitle);
+        Assert.Equal("Rules Manager", fromWork.WindowTitle);
+    }
+
+    [Fact]
+    public void OpenedFromASharedMailbox_TheTitleFollowsTheAccountChosen()
+    {
+        var home = Guid.NewGuid();
+        var work = Guid.NewGuid();
+        var team = Guid.NewGuid();
+        var dflt = Imap(home); dflt.IsDefault = true;
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Graph(work), dflt, Shared(team, work)], preferredAccountId: team);
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
+
+        Assert.Contains(nameof(UnifiedRulesViewModel.WindowTitle), changed);
+        Assert.Equal($"Rules Manager — {vm.SelectedAccount!.DisplayName}", vm.WindowTitle);
+    }
 }

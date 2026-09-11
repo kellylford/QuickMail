@@ -1122,13 +1122,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // Selecting the calendar folder (or leaving it) swaps the View Mode menu between the mail
     // groupings and the calendar slices — see RebuildViewModeOptions and issue #663.
-    partial void OnSelectedFolderChanged(MailFolderModel? value) => RebuildViewModeOptions();
+    partial void OnSelectedFolderChanged(MailFolderModel? value)
+    {
+        RebuildViewModeOptions();
+        UpdateRulesStatusText();   // the rule summary shows what applies in a shared mailbox's folders (#678)
+    }
+
+    partial void OnSelectedAccountChanged(AccountModel? value) => UpdateRulesStatusText();
 
     [ObservableProperty]
     private BatchObservableCollection<MailMessageSummary> _messages = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedMessage))]
+    [NotifyCanExecuteChangedFor(nameof(CreateRuleFromMessageCommand))]
     private MailMessageSummary? _selectedMessage;
 
     [ObservableProperty]
@@ -2069,6 +2076,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // so its verification loop would otherwise keep probing a mailbox the user has removed.
         _truthProbe?.RetainOnly(accounts.Select(a => a.Id));
 
+        // The status bar's rule count leaves out rules on shared mailboxes (#678), which it can only tell
+        // apart once the accounts are known; the count made in the constructor ran before they loaded.
+        UpdateRulesStatusText();
+        // Whether Create Rule from Message is offered can change under an unmoved selection too.
+        CreateRuleFromMessageCommand.NotifyCanExecuteChanged();
+
         if (previous.Count > 0)
         {
             var carriedCount = carried;
@@ -2119,6 +2132,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SavedViews = new ObservableCollection<SavedView>(views);
         RegisterViewCommands();
         BuildFolderTree();
+        // An edited view can now cover only a shared mailbox, or no longer (#678).
+        UpdateRulesStatusText();
         SavedViewsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -2825,8 +2840,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         registry.Register(new CommandDefinition(
             id: "mail.createRuleFromMessage", category: "Mail", title: "Create Rule from Message",
-            execute: () => CreateRuleFromMessageCommand.Execute(null),
+            execute: CreateRuleFromMessageOrSayWhy,
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            // Available on any selection, even a shared mailbox's message where execute does nothing (#678):
+            // the registry hands a key to the first AVAILABLE command bound to it, and Ctrl+Shift+T is also
+            // Focus Tab Strip's default, so an unavailable Create Rule would pass the key on to the tab strip.
             isAvailable: CanActOnSelection));
 
         registry.Register(new CommandDefinition(
@@ -4218,15 +4236,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UpdateRulesStatusText();
     }
 
+    /// <summary>What the status bar's rule summary says in a shared mailbox's folders (#678).</summary>
+    internal const string SharedMailboxRulesStatus = "Rules for this shared mailbox are managed in Outlook";
+
     public void UpdateRulesStatusText()
     {
-        var rules = _ruleService.LoadRules();
+        // The count below covers every account, so in a shared mailbox's folder it would read as if those
+        // rules ran there. Say where that mailbox's rules are instead (#678).
+        if (RulesAccountContext is Guid context && ResolveAccountById(context) is { IsShared: true })
+        {
+            RulesStatusText = SharedMailboxRulesStatus;
+            return;
+        }
+
+        // A rule saved against a shared mailbox is kept but does not run (#678), so it is not "active".
+        var rules = _ruleService.LoadRules()
+            .Where(r => r.AccountId is not Guid id || ResolveAccountById(id) is not { IsShared: true })
+            .ToList();
         int active = rules.Count(r => r.IsEnabled);
         int disabled = rules.Count(r => !r.IsEnabled);
 
         if (active == 0)
         {
-            RulesStatusText = "No active rules";
+            RulesStatusText = "No active client-side rules";
             return;
         }
 
@@ -4235,8 +4267,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : _lastRulesRunTime.ToString("h:mm tt");
 
         RulesStatusText = _lastRulesMatchCount > 0
-            ? $"Rules: {active} active, {disabled} disabled — Last run: {_lastRulesMatchCount} matched ({timeStr})"
-            : $"Rules: {active} active, {disabled} disabled — Last run: {timeStr}";
+            ? $"Client-side rules: {active} active, {disabled} disabled — Last run: {_lastRulesMatchCount} matched ({timeStr})"
+            : $"Client-side rules: {active} active, {disabled} disabled — Last run: {timeStr}";
     }
 
     // Stores raw messages and applies all active filters.
@@ -6566,7 +6598,66 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _hasMessageTarget;
 
     /// <summary>Recomputes <see cref="HasMessageTarget"/> from the View's resolver.</summary>
-    public void RefreshMessageTarget() => HasMessageTarget = CanActOnSelection();
+    public void RefreshMessageTarget()
+    {
+        HasMessageTarget = CanActOnSelection();
+        // A header selection changes the target without changing SelectedMessage, and with it the
+        // account a new rule would be for (#678).
+        CreateRuleFromMessageCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Create Rule from Message is unavailable on a message in a shared mailbox (#678): QuickMail does not
+    /// manage a shared mailbox's rules, which belong in Outlook. Judged on the message the command would
+    /// use: a group header's newest message, as <see cref="RetargetToGroupNewest"/> picks, else the
+    /// selected one.
+    /// </summary>
+    public bool CanCreateRuleFromMessage()
+    {
+        var target = SelectedGroupMessages() is { } group ? group[0] : SelectedMessage;
+        return target is not null && ResolveAccountById(target.AccountId) is not { IsShared: true };
+    }
+
+    /// <summary>
+    /// Ctrl+Shift+T and the command palette. On a shared mailbox's message the command declines (#678), and a
+    /// command that declines to act has to say so: the palette lists it on every message, and the key is
+    /// kept here rather than falling through to Focus Tab Strip. Shown on the status bar, announced as a
+    /// result. With nothing selected, which only the palette can reach, it says to select a message.
+    /// (<c>RelayCommand.Execute</c> does not check CanExecute, so this does.)
+    /// </summary>
+    private void CreateRuleFromMessageOrSayWhy()
+    {
+        if (CreateRuleFromMessageCommand.CanExecute(null))
+        {
+            CreateRuleFromMessageCommand.Execute(null);
+            return;
+        }
+        // Declined for one of two reasons. With nothing selected only the palette gets here, as it runs a
+        // command without consulting IsAvailable.
+        var target = SelectedGroupMessages() is { } group ? group[0] : SelectedMessage;
+        SetStatusEvenIfUnchanged(
+            target is not null && ResolveAccountById(target.AccountId) is { IsShared: true } shared
+                ? $"Rules for the shared mailbox {shared.AccountLabel} are managed in Outlook."
+                : "Select a message to create a rule from.",
+            AnnouncementCategory.Result);
+    }
+
+    /// <summary>
+    /// <see cref="SetStatus"/>, but said again when that text is already showing. The window announces a
+    /// change of <see cref="StatusText"/>, and assigning the text it already holds raises none, so pressing
+    /// the same key twice would be silent the second time.
+    /// </summary>
+    private void SetStatusEvenIfUnchanged(string text, AnnouncementCategory category)
+    {
+        if (StatusText != text)
+        {
+            SetStatus(text, category);
+            return;
+        }
+        StatusAnnouncementCategory = category;
+        OnPropertyChanged(nameof(StatusText));
+        StatusAnnouncementCategory = AnnouncementCategory.Status;
+    }
 
     /// <summary>
     /// Points Reply, Reply All and Forward at the newest message of a selected group: one reply to
@@ -8172,7 +8263,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RulesManagerRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanCreateRuleFromMessage))]
     private void CreateRuleFromMessage()
     {
         // On a group header the rule comes from its newest message, the same one Reply answers.

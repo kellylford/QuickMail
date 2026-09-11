@@ -112,6 +112,19 @@ public class RuleMigrationTests : IDisposable
     }
 
     [Fact]
+    public void Unscoped_IsNeverCopiedOntoASharedMailbox()   // #678
+    {
+        var a = Imap("A");
+        var team = Imap("Team");
+        team.IsShared = true;
+        SeedRules(Unscoped("Newsletters"));
+
+        var rules = ServiceWith(a, team).LoadRules();
+
+        Assert.Equal(a.Id, Assert.Single(rules).AccountId);
+    }
+
+    [Fact]
     public void Migration_IsIdempotent_SecondLoadDoesNotDuplicateAgain()
     {
         var a = Imap("A");
