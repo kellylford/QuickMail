@@ -184,19 +184,52 @@ public class MessageRemovalFocusTests
 
         Assert.Equal(1, f.QueuedFocusCalls);
         Assert.Equal("c", f.Vm.SelectedMessage?.MessageId);
+        // Still a single move: not spoken, as a single delete is not, whether or not landing worked.
+        Assert.DoesNotContain(f.Announced.Announced, a => a.Category != AnnouncementCategory.Silent);
     }
 
     [Fact]
     public async Task MoveLeavesTheSelectionAlone_WhenItIsNotAmongTheMoved() // #670
     {
-        // The landing runs after the server move, and by then the user may be somewhere else in the list.
+        // The landing runs after the server move, and by then the user may be somewhere else: on another row,
+        // reading it. Neither focus nor the reading pane is taken from them.
         var f = await Fixture.CreateAsync();
         f.Vm.SelectedMessage = f.Row("e");
+        f.Vm.IsMessageOpen = true;
 
         await f.Vm.MoveSelectedMessagesToFolderAsync([f.Row("b")], Folder("Archive", SpecialFolderKind.Archive));
 
         Assert.Empty(f.FocusNowCalls);
+        Assert.Equal(0, f.QueuedFocusCalls);
         Assert.Equal("e", f.Vm.SelectedMessage?.MessageId);
+        Assert.True(f.Vm.IsMessageOpen);
+    }
+
+    [Fact]
+    public async Task MovingInAGroupView_ClearsTheMovedSelection() // #670, as delete does
+    {
+        // In the trees, focus is the view's business after the rebuild. A selection left on a moved message
+        // keeps the per-message hotkeys live against a message that has gone.
+        var f = await Fixture.CreateAsync();
+        f.Vm.ViewMode = ViewMode.Conversations;
+        f.Vm.SelectedMessage = f.Row("b");
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([f.Row("b")], Folder("Archive", SpecialFolderKind.Archive));
+
+        Assert.Null(f.Vm.SelectedMessage);
+        Assert.Equal(0, f.QueuedFocusCalls);
+    }
+
+    [Fact]
+    public async Task MovingTheLastMessageSaysTheFolderIsNowEmpty() // #670, as delete says it
+    {
+        var f = await Fixture.CreateAsync(messageCount: 1);
+        f.Vm.SelectedMessage = f.Row("a");
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([f.Row("a")], Folder("Archive", SpecialFolderKind.Archive));
+
+        Assert.Equal(("1 message moved to Archive. Folder is now empty.", AnnouncementCategory.MessageAction),
+            f.Announced.Last);
     }
 
     [Fact]

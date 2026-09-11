@@ -191,7 +191,7 @@ public class ConfigModel
     public bool AnnounceResults { get; set; } = true;
 
     /// <summary>
-    /// Announce the outcome of common message commands — delete and archive (issue #317). Split out
+    /// Announce the outcome of common message commands — delete, archive (issue #317) and move (#670). Split out
     /// from <see cref="AnnounceStatus"/> so users can silence this frequent chatter (it can interrupt
     /// the screen reader reading the next message) without muting sync/loading progress. On by default.
     /// </summary>
