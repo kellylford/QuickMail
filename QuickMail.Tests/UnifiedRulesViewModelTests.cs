@@ -560,6 +560,21 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public void FailedLoads_CountAHalfOnlyWhenItAloneFailed_OnAnAccountWithBoth() // #679
+    {
+        // Both halves failed: nothing loaded, so nothing is counted. Counting a "loaded" half here would put
+        // "No client-side rules." straight after "Couldn't load client-side rules".
+        Assert.Equal("Couldn't load server rules: E1. Couldn't load client-side rules: E2. " + UnifiedRulesViewModel.ModeClause(true),
+                     UnifiedRulesViewModel.BuildStatus([], ["Couldn't load server rules: E1", "Couldn't load client-side rules: E2"],
+                         supportsServerRules: true, serverLoadFailed: true, clientLoadFailed: true));
+        // A client-only account has no server half, so a failed client load has no other half to count, and
+        // must not report "No server-side rules." for rules it never tried to load.
+        Assert.Equal("Couldn't load client-side rules: E. " + UnifiedRulesViewModel.ModeClause(false),
+                     UnifiedRulesViewModel.BuildStatus([], ["Couldn't load client-side rules: E"],
+                         supportsServerRules: false, clientLoadFailed: true));
+    }
+
+    [Fact]
     public async Task AFailedClientLoad_IsFlaggedByTheRefresh() // #679
     {
         // Through a real load, so dropping the flag in RefreshCoreAsync is caught, not only BuildStatus.
@@ -816,6 +831,39 @@ public class UnifiedRulesViewModelTests
 
         Assert.Equal("Rule would match the only message in the list for the Work account.", vm.StatusText);
     }
+
+    [Fact]
+    public async Task TestRule_OneMessageThatDoesNotMatch_SaysSo() // #687
+    {
+        // Real RuleService: the stub matches everything, so it could never reach the "not" branch.
+        var a = Guid.NewGuid();
+        var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            var rules = new RuleService(new StubImapMailService(), new StubLocalStoreService(), dir);
+            rules.SaveRules([new MailRule { Name = "From Alice", AccountId = a, FromContains = "alice", Action = RuleAction.MarkAsRead }]);
+            var bob = Msg("1", "bob@example.com");
+            bob.AccountId = a;
+            var vm = new UnifiedRulesViewModel(rules, new FakeServerRules(), [Graph(a)],
+                preferredAccountId: a, selectedMessagesForTest: [bob]);
+            await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+            vm.SelectedRule = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+
+            vm.TestRuleCommand.Execute(null);
+
+            Assert.Equal("Rule would not match the only message in the list for the Work account.", vm.StatusText);
+        }
+        finally { try { System.IO.Directory.Delete(dir, true); } catch { } }
+    }
+
+    [Theory]
+    [InlineData("Work", "the Work account")]
+    [InlineData("Work Account", "the Work Account")]   // not "the Work Account account"
+    [InlineData("me@example.com", "the me@example.com account")]
+    [InlineData("  ", "this account")]
+    [InlineData(null, "this account")]
+    public void TestRule_NamesTheAccountOnce(string? label, string expected) // #687
+        => Assert.Equal(expected, UnifiedRulesViewModel.AccountPhrase(label));
 
     // ── Field labels (#493 Gap 1: honor RuleListShowFieldLabels in the unified list) ──────────
 
