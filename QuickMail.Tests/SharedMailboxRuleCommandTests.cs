@@ -262,12 +262,33 @@ public class SharedMailboxRuleCommandTests
         MainWindow.ShowCreateRuleItem(menu, offered: true);
         Assert.Equal((1, 3), PositionAndSize(reply));
         Assert.Equal((3, 3), PositionAndSize(item));
+
+        // Not only when the hidden item is last: an item after it has to move up, which WPF would not do.
+        var first = new MenuItem { Header = "First" };
+        var hidden = new MenuItem { Header = "Create Rule from Message", Tag = "CreateRuleItem" };
+        var after = new MenuItem { Header = "After" };
+        var middle = new ContextMenu();
+        foreach (var element in new Control[] { first, new Separator { Tag = "CreateRuleSeparator" }, hidden, after })
+            middle.Items.Add(element);
+
+        MainWindow.ShowCreateRuleItem(middle, offered: false);
+        Assert.Equal((2, 2), PositionAndSize(after));
     }
 
     private static (int Position, int Size) PositionAndSize(MenuItem item)
     {
         var peer = UIElementAutomationPeer.CreatePeerForElement(item);
         return (peer.GetPositionInSet(), peer.GetSizeOfSet());
+    }
+
+    [Fact]
+    public void TheRulesStatusButton_IsNamedByItsTextAlone()
+    {
+        // Every status string says what it is about; a "Rules — " prefix made the name say "Rules" twice.
+        var xaml = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "Views", "MainWindow.xaml"));
+
+        Assert.Contains("AutomationProperties.Name=\"{Binding RulesStatusText, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("StringFormat='Rules", xaml, StringComparison.Ordinal);
     }
 
     [Fact]

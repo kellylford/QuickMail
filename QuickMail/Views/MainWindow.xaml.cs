@@ -332,9 +332,9 @@ public partial class MainWindow : Window
 
         ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => RebuildMessageContextFlagsSubmenu();
         ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => OfferCreateRuleItem();
-        // Decide as the selection moves too, so the menu is already right when it opens and its first
-        // item is spoken with the right count. Opened stays the backstop for an account list reload,
-        // which changes the answer without moving the selection.
+        // Decide as the selection moves too, so the menu is already right before it opens. Opened may well
+        // suffice on its own, running on the UI thread as the menu opens; this is insurance. Opened also
+        // stays the backstop for an account list reload, which changes the answer without moving the selection.
         vm.CreateRuleFromMessageCommand.CanExecuteChanged += (_, _) =>
         {
             if (Dispatcher.CheckAccess())

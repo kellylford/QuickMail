@@ -2126,7 +2126,7 @@
                         Style="{StaticResource StatusBarButtonStyle}"
                         Content="{Binding RulesStatusText, Mode=OneWay}"
                         Click="RulesStatusButton_Click"
-                        AutomationProperties.Name="{Binding RulesStatusText, StringFormat='Rules — {0}'}"
+                        AutomationProperties.Name="{Binding RulesStatusText, Mode=OneWay}"
                         ToolTip="Open Rules Manager (Ctrl+Shift+L)"/>
             </StatusBarItem>
 
