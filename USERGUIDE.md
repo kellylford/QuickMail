@@ -616,7 +616,7 @@ Create Rule from Message is not in the context menu for a message in a shared ma
 
 ### Testing a rule
 
-Select a client-side rule and activate **Test**. QuickMail runs it against the messages that were in the message list when you opened the Rules Manager, and the status line says how many of them would match, for example "Rule would match 3 of 50 messages in the list." **Test** is turned off for server-side rules, which run on the server.
+Select a client-side rule and activate **Test**. QuickMail runs it against the messages from that rule's account that were in the message list when you opened the Rules Manager, and the status line says how many of them would match, for example "Rule would match 3 of the 50 messages from Work in the list." Messages from other accounts aren't counted, because the rule never acts on them. **Test** is turned off for server-side rules, which run on the server.
 
 ### Enabling and disabling rules
 

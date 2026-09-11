@@ -322,16 +322,29 @@ public partial class UnifiedRulesViewModel : ObservableObject
     {
         if (SelectedRule is not { RunsWhere: RuleRunsWhere.Client } row) return;   // defensive; CanExecute gates it
 
-        var messages = _selectedMessagesForTest?.ToList() ?? [];
-        if (messages.Count == 0)
+        var list = _selectedMessagesForTest?.ToList() ?? [];
+        if (list.Count == 0)
         {
             StatusText = "The message list is empty, so there is nothing to test the rule against.";
             Announce(StatusText, AnnouncementCategory.Result);
             return;
         }
 
+        // A client rule acts only on its own account's mail, so it is tested only against that (#687). The
+        // list can hold several accounts' messages: All Inboxes, or a shared mailbox's folder, which opens
+        // this window on another account (#678).
+        var accountId = row.Client!.AccountId ?? SelectedAccount?.Id;
+        var accountName = SelectedAccount?.DisplayName ?? "this account";
+        var messages = list.Where(m => m.AccountId == accountId).ToList();
+        if (messages.Count == 0)
+        {
+            StatusText = $"The message list has no messages from {accountName}, so there is nothing to test the rule against.";
+            Announce(StatusText, AnnouncementCategory.Result);
+            return;
+        }
+
         var matched = _clientRules.TestRule(row.Client!, messages);
-        StatusText = $"Rule would match {matched.Count} of {messages.Count} messages in the list.";
+        StatusText = $"Rule would match {matched.Count} of the {messages.Count} messages from {accountName} in the list.";
         Announce(StatusText, AnnouncementCategory.Result);
     }
 
@@ -581,6 +594,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
         {
             var rows = new List<UnifiedRuleRow>();
             var failures = new List<string>();
+            // Which half failed, so the status line counts only what actually loaded (#679).
+            var serverFailed = false;
+            var clientFailed = false;
 
             // Server rules — Graph accounts only. Isolated so a Graph/network failure still lets the
             // client rules below load.
@@ -604,6 +620,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 catch (OperationCanceledException) { return; }   // superseded — leave state untouched
                 catch (Exception ex)
                 {
+                    serverFailed = true;
                     failures.Add($"Couldn't load server rules: {ex.Message}");
                     LogService.Log("UnifiedRules: server load failed", ex);
                 }
@@ -626,6 +643,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             }
             catch (Exception ex)
             {
+                clientFailed = true;
                 failures.Add($"Couldn't load client-side rules: {ex.Message}");
                 LogService.Log("UnifiedRules: client load failed", ex);
             }
@@ -647,7 +665,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
             // A load failure must survive to the status line — otherwise "couldn't reach Graph" reads
             // as "this account has no server rules", which invites the wrong next action.
-            StatusText = SharedMailboxPreamble() + BuildStatus(rows, failures, AccountSupportsServerRules);
+            StatusText = SharedMailboxPreamble()
+                + BuildStatus(rows, failures, AccountSupportsServerRules, serverFailed, clientFailed);
         }
         finally
         {
@@ -727,7 +746,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
         return t.Length == 0 || t[^1] is '.' or '!' or '?' ? t : t + ".";
     }
 
-    internal static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures, bool supportsServerRules)
+    internal static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures, bool supportsServerRules,
+        bool serverLoadFailed = false, bool clientLoadFailed = false)
     {
         if (failures.Count > 0)
         {
@@ -739,10 +759,23 @@ public partial class UnifiedRulesViewModel : ObservableObject
             // one run-on with no break to read.
             var loaded = rows.Count == 0
                 ? " " + ModeClause(supportsServerRules)
-                : " " + Counts(rows, supportsServerRules);
+                : " " + (serverLoadFailed || clientLoadFailed
+                    ? LoadedCount(rows, supportsServerRules, serverLoadFailed)
+                    : Counts(rows, supportsServerRules));
             return string.Join(" ", failures.Select(Terminated)) + loaded;
         }
         return rows.Count == 0 ? NoRulesStatus(supportsServerRules) : Counts(rows, supportsServerRules);
+
+        // After one half failed to load, count only the half that did (#679). "0 on server" straight after
+        // "Couldn't load server rules" reads as "this account has none" — the very misreading the failure
+        // text is there to prevent.
+        static string LoadedCount(List<UnifiedRuleRow> r, bool supportsServer, bool serverFailed)
+        {
+            var kind = serverFailed ? RuleRunsWhere.Client : RuleRunsWhere.Server;
+            var n = r.Count(x => x.RunsWhere == kind);
+            var noun = kind == RuleRunsWhere.Client ? "client-side" : "server-side";
+            return $"{n} {noun} rule{(n == 1 ? "" : "s")}. " + ModeClause(supportsServer);
+        }
 
         static string Counts(List<UnifiedRuleRow> r, bool supportsServer)
         {

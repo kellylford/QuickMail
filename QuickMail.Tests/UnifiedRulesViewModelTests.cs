@@ -532,6 +532,32 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task AFailedServerLoad_CountsOnlyTheClientRulesThatLoaded() // #679
+    {
+        // "0 on server" straight after "Couldn't load server rules" reads as "this account has none" — the
+        // misreading the failure text is there to prevent.
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules { ThrowOnList = new Exception("Graph unreachable") };
+        var client = new StubRuleService { LoadedRules = [Client("C1", a), Client("C2", a)] };
+        var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
+
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("Couldn't load server rules: Graph unreachable. 2 client-side rules. " + UnifiedRulesViewModel.ModeClause(true),
+                     vm.StatusText);
+    }
+
+    [Fact]
+    public void AFailedClientLoad_CountsOnlyTheServerRulesThatLoaded() // #679
+    {
+        var rows = new List<UnifiedRuleRow> { UnifiedRuleRow.ForServer(Server("S1"), false) };
+
+        Assert.Equal("Couldn't load client-side rules: disk full. 1 server-side rule. " + UnifiedRulesViewModel.ModeClause(true),
+                     UnifiedRulesViewModel.BuildStatus(rows, ["Couldn't load client-side rules: disk full"],
+                         supportsServerRules: true, clientLoadFailed: true));
+    }
+
+    [Fact]
     public async Task EveryStatusLine_SaysWhatKindsTheAccountCanHold()
     {
         // The guide promises this unconditionally, and the mode used to be spoken on every load. All four
@@ -683,7 +709,11 @@ public class UnifiedRulesViewModelTests
             var rules = new RuleService(new StubImapMailService(), new StubLocalStoreService(), dir);
             rules.SaveRules([new MailRule { Name = "From Alice", AccountId = a, FromContains = "alice", Action = RuleAction.MarkAsRead }]);
 
-            var messages = new[] { Msg("1", "alice@example.com"), Msg("2", "bob@example.com") };
+            // A third message, from another account, matches the rule's condition but is not counted (#687).
+            var messages = new[] { Msg("1", "alice@example.com"), Msg("2", "bob@example.com"), Msg("3", "alice@example.com") };
+            messages[0].AccountId = a;
+            messages[1].AccountId = a;
+            messages[2].AccountId = Guid.NewGuid();
             var vm = new UnifiedRulesViewModel(rules, new FakeServerRules(), [Graph(a)],
                 preferredAccountId: a, selectedMessagesForTest: messages);
             await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
@@ -694,7 +724,7 @@ public class UnifiedRulesViewModelTests
 
             vm.TestRuleCommand.Execute(null);
 
-            Assert.Equal("Rule would match 1 of 2 messages in the list.", vm.StatusText);
+            Assert.Equal("Rule would match 1 of the 2 messages from Work in the list.", vm.StatusText);
             Assert.NotNull(announced);
             Assert.Equal(AnnouncementCategory.Result, announced!.Value.Cat);
         }
@@ -731,6 +761,25 @@ public class UnifiedRulesViewModelTests
         vm.TestRuleCommand.Execute(null);
 
         Assert.Equal("The message list is empty, so there is nothing to test the rule against.", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task TestRule_ListHoldsNoneOfTheRulesAccount_SaysSo() // #687
+    {
+        // Opened from a shared mailbox (#678) or from another account's folder, the list can hold only other
+        // accounts' mail. "0 of 3" would count messages the rule can never act on.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
+        var others = new[] { Msg("1"), Msg("2"), Msg("3") };
+        foreach (var m in others) m.AccountId = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Graph(a)],
+            preferredAccountId: a, selectedMessagesForTest: others);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+        vm.SelectedRule = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+
+        vm.TestRuleCommand.Execute(null);
+
+        Assert.Equal("The message list has no messages from Work, so there is nothing to test the rule against.", vm.StatusText);
     }
 
     // ── Field labels (#493 Gap 1: honor RuleListShowFieldLabels in the unified list) ──────────
