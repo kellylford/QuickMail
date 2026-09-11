@@ -58,7 +58,9 @@
                      KeyDown="RulesListBox_KeyDown"
                      VirtualizingPanel.IsVirtualizing="False">
                 <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
+                    <!-- Built on the themed row style, or the selected row falls back to WPF's own highlight
+                         under the theme's text colour: near-white on near-white in the dark theme (#690). -->
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                         <Setter Property="Padding" Value="6,4"/>
                         <Setter Property="AutomationProperties.Name" Value="{Binding RowText}"/>
                     </Style>

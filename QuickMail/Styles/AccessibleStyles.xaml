@@ -142,6 +142,10 @@
         <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
         <Setter Property="BorderThickness"  Value="0"/>
         <Setter Property="Background"       Value="Transparent"/>
+        <!-- The status bar's own themed text colour, stated here because a Button's default style sets the
+             system control-text colour, which beats the colour the StatusBar passes down: the text was
+             black in every theme, 1.56:1 on the dark status bar (#689). -->
+        <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
         <Setter Property="Padding"          Value="0"/>
         <Setter Property="Cursor"           Value="Hand"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
