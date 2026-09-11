@@ -154,6 +154,7 @@ public class SharedMailboxRuleCommandTests
         command.Execute();
 
         Assert.Equal(new[] { AnnouncementCategory.Result, AnnouncementCategory.Result }, said);
+        Assert.Equal(AnnouncementCategory.Status, vm.StatusAnnouncementCategory);   // reset, so sync chatter stays Status
     }
 
     [Fact]
@@ -162,10 +163,16 @@ public class SharedMailboxRuleCommandTests
         // The palette runs a command without consulting IsAvailable; declining must not be silent.
         var (vm, registry) = VmWithRegistry();
         vm.SelectedMessage = null;
+        AnnouncementCategory? category = null;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.StatusText)) category = vm.StatusAnnouncementCategory;
+        };
 
         registry.FindById("mail.createRuleFromMessage")!.Execute();
 
         Assert.Equal("Select a message to create a rule from.", vm.StatusText);
+        Assert.Equal(AnnouncementCategory.Result, category);
     }
 
     [Fact]

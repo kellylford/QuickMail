@@ -6622,7 +6622,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// Ctrl+Shift+T and the command palette. On a shared mailbox's message the command declines (#678), and a
     /// command that declines to act has to say so: the palette lists it on every message, and the key is
     /// kept here rather than falling through to Focus Tab Strip. Shown on the status bar, announced as a
-    /// result. (<c>RelayCommand.Execute</c> does not check CanExecute, so this does.)
+    /// result. With nothing selected, which only the palette can reach, it says to select a message.
+    /// (<c>RelayCommand.Execute</c> does not check CanExecute, so this does.)
     /// </summary>
     private void CreateRuleFromMessageOrSayWhy()
     {
