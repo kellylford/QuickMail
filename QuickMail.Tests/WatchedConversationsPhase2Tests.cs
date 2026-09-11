@@ -444,6 +444,40 @@ public class WatchedConversationsPhase2Tests
         Assert.Equal(["2"], vm.Messages.Select(m => m.MessageId).ToArray());
     }
 
+    [Fact]
+    public async Task UnwatchingInTheWatchedFolder_LandsFocusBeforeTheRowsLeave() // #670
+    {
+        // Removing the row that holds keyboard focus is what a screen reader describes as "unavailable", so
+        // focus has to land on the survivor while the conversation's rows are still in the list.
+        var (vm, watch) = MakeVm(
+        [
+            Msg("1", "Budget Review",  daysAgo: 1),
+            Msg("2", "Trip to Dublin", daysAgo: 0),
+        ]);
+        watch.Watch("Budget Review");
+        watch.Watch("Trip to Dublin");
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllWatchedFolder);
+        var leaving = vm.Messages.Single(m => m.MessageId == "1");
+        vm.SelectedMessage = leaving;
+
+        var calls = new System.Collections.Generic.List<(string? Selected, bool LeavingStillListed)>();
+        vm.MessageListFocusNowRequested += () =>
+        {
+            calls.Add((vm.SelectedMessage?.MessageId, vm.Messages.Contains(leaving)));
+            return true;
+        };
+        var queued = 0;
+        vm.MessageListFocusRequested += () => queued++;
+
+        vm.ToggleWatchConversationFor("Budget Review");   // unwatch
+
+        var call = Assert.Single(calls);
+        Assert.True(call.LeavingStillListed);   // asked for while the row was still there …
+        Assert.Equal("2", call.Selected);       // … with the selection already on the survivor
+        Assert.Equal(0, queued);                // landed, so no second focus move afterwards
+        Assert.Equal(["2"], vm.Messages.Select(m => m.MessageId).ToArray());
+    }
+
     // ── Notifications: the ordering contract ─────────────────────────────────
     //
     // MaybeNotifyWatchedMail and MaybeNotifyNewMail share _notifiedMessageKeys, and

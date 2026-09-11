@@ -6818,6 +6818,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             IsMessageOpen = false;
         }
 
+        // Land focus on the surviving row before the conversation's rows leave, as delete does, so the row
+        // holding keyboard focus is never the one removed (#670; see LandFocusBeforeRemoval).
+        var landed = LandFocusBeforeRemoval(leaving);
+
         _rawMessages.RemoveAll(SameConversation);
         foreach (var m in leaving)
             Messages.Remove(m);
@@ -6839,10 +6843,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (ViewMode == ViewMode.Messages)
         {
-            // The row that had keyboard focus was just removed from the ListView, so focus has to be
-            // asked back explicitly — same as archive.
-            SelectedMessage = Messages[Math.Min(firstIndex, Messages.Count - 1)];
-            MessageListFocusRequested?.Invoke();
+            // Only when LandFocusBeforeRemoval could not land. When it did, focus is on that row already,
+            // and asking again would queue a second focus move that reads the row out twice (see there).
+            if (landed == null || !Messages.Contains(landed))
+            {
+                SelectedMessage = Messages[Math.Min(firstIndex, Messages.Count - 1)];
+                MessageListFocusRequested?.Invoke();
+            }
         }
         else
         {
@@ -9147,6 +9154,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 foreach (var acctId in messages.Select(m => m.AccountId).Distinct())
                     ScheduleFolderCountRefresh(acctId);
 
+            // Land focus on the surviving row before the moved rows leave, as delete does (#670): removing the
+            // row that holds keyboard focus is what a screen reader describes as "unavailable".
+            var landed = LandFocusBeforeRemoval(messages);
             foreach (var msg in messages)
                 Messages.Remove(msg);
 
@@ -9157,8 +9167,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} moved to {destination.DisplayName}.";
             Announce(StatusText);
-            // Conversations/From: LandOnX in the view handles focus after rebuild.
-            if (ViewMode == ViewMode.Messages && Messages.Count > 0)
+            // Conversations/From: LandOnX in the view handles focus after rebuild. In the flat list, only
+            // when LandFocusBeforeRemoval could not land (a second focus move reads the row out twice).
+            if (ViewMode == ViewMode.Messages && Messages.Count > 0 && (landed == null || !Messages.Contains(landed)))
                 MessageListFocusRequested?.Invoke();
         }
         catch (OperationCanceledException) { StatusText = "Move cancelled."; }

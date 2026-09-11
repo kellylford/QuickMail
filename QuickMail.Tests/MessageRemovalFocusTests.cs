@@ -158,6 +158,21 @@ public class MessageRemovalFocusTests
     }
 
     [Fact]
+    public async Task MoveAsksForFocusWhileTheMovedRowIsStillInTheList() // #670
+    {
+        var f = await Fixture.CreateAsync();
+        var moving = f.Row("b");
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([moving], Folder("Archive", SpecialFolderKind.Archive));
+
+        var call = Assert.Single(f.FocusNowCalls);
+        Assert.Contains(moving, call.Rows);                  // asked for while the row was still there …
+        Assert.Equal("c", call.Selected?.MessageId);         // … with the selection already on the survivor
+        Assert.Equal(0, f.QueuedFocusCalls);                 // landed, so no second focus move afterwards
+        Assert.DoesNotContain(moving, f.Vm.Messages);
+    }
+
+    [Fact]
     public async Task DeleteLandsOnTheRowAfterTheDeletedBlock()
     {
         var f = await Fixture.CreateAsync();
