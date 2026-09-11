@@ -344,6 +344,110 @@ public class UnifiedRulesViewModelTests
         Assert.Equal(original.Id, client.LoadedRules[0].Id);   // same rule, not a new one
     }
 
+    // ── A new rule belongs to the account its editor opened on (#683) ───────────
+    // The editor is modeless, so the Account list stays usable while it is open. Classifying by whatever
+    // the list shows at save time saved a rule to one account as the other account's kind.
+
+    [Fact]
+    public async Task NewRule_OpenedOnAClientOnlyAccount_StaysClientSide_AfterSwitchingToAServerOne() // #683
+    {
+        var home = Guid.NewGuid();
+        var work = Guid.NewGuid();
+        var server = new FakeServerRules();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, server, [Imap(home), Graph(work)], preferredAccountId: home);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain("create", server.Calls);                     // never created on Graph for Home
+        Assert.Equal(home, Assert.Single(client.LoadedRules).AccountId);   // a client rule, on Home
+    }
+
+    [Fact]
+    public async Task NewRule_OpenedOnAServerAccount_StaysServerSide_AfterSwitchingToAClientOnlyOne() // #683
+    {
+        var home = Guid.NewGuid();
+        var work = Guid.NewGuid();
+        var server = new FakeServerRules();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, server, [Imap(home), Graph(work)], preferredAccountId: work);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == home);
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Contains("create", server.Calls);   // a server rule on Work, as it would have been
+        Assert.Empty(client.LoadedRules);
+    }
+
+    [Fact]
+    public void TheEditorsFolderPicker_UsesTheAccountTheEditorOpenedOn() // #683
+    {
+        // Folder targets chosen after an account switch came from the other mailbox.
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "QuickMail", "Views")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        var code = System.IO.File.ReadAllText(System.IO.Path.Combine(dir!.FullName, "QuickMail", "Views", "UnifiedRulesWindow.xaml.cs"));
+
+        Assert.Contains("var accountId = _vm.SelectedAccount?.Id;", code, StringComparison.Ordinal);
+        Assert.Contains("_cachedFolders, () => accountId, _folderCreation", code, StringComparison.Ordinal);
+    }
+
+    // ── Editing keeps a server rule a server rule (#684) ─────────────────────────
+
+    private static async Task<(UnifiedRulesViewModel Vm, FakeServerRules Server, ServerRuleEditorViewModel Editor)>
+        EditTheServerRuleAsync()
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules { Stored = [Server("S1")] };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.SelectedRule = vm.Rules.Single();
+        vm.EditRuleCommand.Execute(null);
+        return (vm, server, editor!);
+    }
+
+    [Fact]
+    public async Task EditServerRule_TickingMarkAsUnread_IsRefused_NotSilentlyDropped() // #684
+    {
+        // The server has no "mark as unread", so sending the rule dropped the tick and closed the editor as
+        // if it had saved. Refuse, and say what to remove.
+        var (_, server, editor) = await EditTheServerRuleAsync();
+        var closed = false;
+        editor.CloseRequested += () => closed = true;
+
+        editor.MarkAsRead = false;
+        editor.MarkAsUnread = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(closed);
+        Assert.Equal("Mark as unread only works in a client-side rule, and this rule runs on the server. Remove it to save.",
+                     editor.SaveError);
+        Assert.DoesNotContain("update", server.Calls);
+    }
+
+    [Fact]
+    public async Task EditServerRule_WithoutClientOnlyActions_StillSaves() // #684
+    {
+        var (_, server, editor) = await EditTheServerRuleAsync();
+        var closed = false;
+        editor.CloseRequested += () => closed = true;
+
+        editor.Name = "S1 renamed";
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.True(closed);
+        Assert.Contains("update", server.Calls);
+        Assert.Equal("S1 renamed", Assert.Single(server.Stored).DisplayName);
+    }
+
     // ── Failure paths (review: writes must not announce success on failure; a load failure must
     //    survive to the status line; create must re-select the new rule) ──────────────────────
 

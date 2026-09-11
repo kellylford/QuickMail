@@ -190,7 +190,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private void OpenNewEditor(ServerRuleEditorViewModel editor)
     {
         if (SelectedAccount?.Id is not Guid accountId) return;
-        editor.Saved += _ => SaveNewAsync(accountId, editor);
+        // Everything the save depends on comes from the account the editor opened on (#683). The editor is
+        // modeless, so the Account list stays usable while it is open; classifying by whatever the list
+        // showed at save time saved a rule to one account as the other account's kind.
+        var supportsServerRules = AccountSupportsServerRules;
+        editor.Saved += _ => SaveNewAsync(accountId, supportsServerRules, editor);
         editor.AnnouncementRequested += (t, c) => AnnouncementRequested?.Invoke(t, c);
         EditorRequested?.Invoke(editor);
     }
@@ -337,9 +341,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
     // ── Save routing ────────────────────────────────────────────────────────
 
-    private async Task<string?> SaveNewAsync(Guid accountId, ServerRuleEditorViewModel editor)
+    private async Task<string?> SaveNewAsync(Guid accountId, bool supportsServerRules, ServerRuleEditorViewModel editor)
     {
-        var kind = editor.Classify(AccountSupportsServerRules);
+        var kind = editor.Classify(supportsServerRules);
         if (kind.IsConflict) return kind.ConflictError;   // editor shows it and stays open
 
         if (kind.Kind == RuleRunsWhere.Server)
@@ -364,15 +368,21 @@ public partial class UnifiedRulesViewModel : ObservableObject
         //    there are none — so a per-save notice would just be chatter. Stay silent.
         var rule = editor.ToClientRule(accountId);
         AddClientRule(rule);
-        if (AccountSupportsServerRules)
+        if (supportsServerRules)
             Announce("Saving as a client-side rule.", AnnouncementCategory.Result);
         await ReloadAndReselectAsync(clientId: rule.Id);
         return null;
     }
 
     private async Task<string?> SaveEditedServerAsync(Guid accountId, ServerRuleModel original, ServerRuleEditorViewModel editor)
-        => await RunServerWriteAsync(
+    {
+        // Editing preserves the kind: a server rule stays a server rule (spec §20.6). The server has no way
+        // to express a client-only action, and sending the rule anyway dropped it without a word (#684), so
+        // refuse the save and name what to remove — the mirror of the client-side check below.
+        if (editor.ServerEditError is { } error) return error;
+        return await RunServerWriteAsync(
             () => _serverRules!.UpdateAsync(accountId, editor.ToModel()), reloadOnSuccess: true, selectServerId: original.Id);
+    }
 
     private async Task<string?> SaveEditedClientAsync(Guid accountId, MailRule original, ServerRuleEditorViewModel editor)
     {

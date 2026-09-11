@@ -293,4 +293,29 @@ public class ClientRulesOnGraphTests : IDisposable
         Assert.Empty(h.Graph.Actions);
         Assert.Empty(removed);
     }
+
+    [Fact]
+    public async Task RunOnExisting_AMessageAnEarlierRuleMoved_IsOutOfTheRunningForLaterRules() // #685
+    {
+        // Two rules match the same Inbox message: the first moves it, the second would delete it. On
+        // arriving mail the second never sees it. Run on Existing Mail acted on it twice (a delete aimed at
+        // a message no longer in the Inbox) and counted it twice.
+        var deleteRule = new MailRule
+        {
+            Name = "Bin invoices",
+            AccountId = _graphAccountId,
+            UseSubjectCondition = true,
+            SubjectContains = "invoice",
+            Action = RuleAction.Delete,
+        };
+        var h = Build(MoveRule(_graphAccountId), deleteRule);
+        await _store.UpsertSummariesAsync([Cached("in-1", "INBOX")]);
+
+        var removed = await h.Rules.ApplyRulesToExistingAsync(
+            _store, new Dictionary<Guid, string> { [_graphAccountId] = "INBOX" }, CancellationToken.None);
+
+        var action = Assert.Single(h.Graph.Actions);   // moved once, and never also sent to Trash
+        Assert.Equal("Move", action.Method);
+        Assert.Equal(["in-1"], removed.Select(m => m.MessageId).ToList());   // counted once
+    }
 }

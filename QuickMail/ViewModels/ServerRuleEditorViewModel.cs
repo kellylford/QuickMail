@@ -499,6 +499,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>True when the rule uses no client-only capability, so the server can express it.</summary>
     public bool IsServerRepresentable => ClientOnlyFeaturesUsed().Count == 0;
 
+    /// <summary>Why an edited server rule can't be saved as it stands, or null when it can. Editing keeps a
+    /// rule's kind, and a server rule can't carry a client-only action (#684).</summary>
+    public string? ServerEditError => IsServerRepresentable
+        ? null
+        : $"{Join(ClientOnlyFeaturesUsed())} only works in a client-side rule, and this rule runs on the server. Remove it to save.";
+
     /// <summary>
     /// True when every condition and action fits the client rule model (a near-subset of the server
     /// model): no server-only condition/action, single From/To value, exactly one action.

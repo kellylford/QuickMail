@@ -411,6 +411,12 @@ public class RuleService : IRuleService
                             group.Select(m => m.MessageId));
                     }
                     removedMessages.AddRange(matched);
+
+                    // Out of the running for the rules after this one, as arriving mail is in
+                    // ApplyRulesAsync (#685): a later rule would otherwise act again on a message that is
+                    // already moved or deleted, and it would be counted twice.
+                    var gone = new HashSet<MailMessageSummary>(matched);
+                    inboxMessages.RemoveAll(gone.Contains);
                 }
             }
             catch (OperationCanceledException) { throw; }
