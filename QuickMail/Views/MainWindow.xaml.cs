@@ -331,14 +331,17 @@ public partial class MainWindow : Window
         FilterFlaggedItem.SubmenuOpened += (_, _) => UpdateFlagSubmenuChecks();
 
         ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => RebuildMessageContextFlagsSubmenu();
-        ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => OfferCreateRuleItem();
+        var messageMenu = (ContextMenu)FindResource("MessageContextMenu");
+        _createRuleSeparator = messageMenu.Items.OfType<Separator>().FirstOrDefault(s => Equals(s.Tag, "CreateRuleSeparator"));
+        _createRuleItem      = messageMenu.Items.OfType<MenuItem>().FirstOrDefault(m => Equals(m.Tag, "CreateRuleItem"));
+        _createRuleIndex     = _createRuleSeparator is null ? 0 : messageMenu.Items.IndexOf(_createRuleSeparator);
+        messageMenu.Opened += (_, _) => OfferCreateRuleItem();
         // Decide as the selection moves too, so the menu is already right before it opens. Opened may well
         // suffice on its own, running on the UI thread as the menu opens; this is insurance. Opened also
-        // stays the backstop for an account list reload, which changes the answer without moving the selection.
+        // stays the backstop for anything that changes the answer without raising CanExecuteChanged.
         vm.CreateRuleFromMessageCommand.CanExecuteChanged += (_, _) =>
         {
-            if (Dispatcher.CheckAccess())
-                ShowCreateRuleItem((ContextMenu)FindResource("MessageContextMenu"), vm.CanCreateRuleFromMessage());
+            if (Dispatcher.CheckAccess()) ApplyCreateRuleOffer();
         };
         ((ContextMenu)FindResource("ConversationGroupContextMenu")).Opened += (_, _) => RebuildConversationContextFlagsSubmenu();
         ((ContextMenu)FindResource("SenderGroupContextMenu")).Opened       += (_, _) => RebuildSenderContextFlagsSubmenu();
@@ -7086,42 +7089,47 @@ public partial class MainWindow : Window
     // ── Context-menu Flags submenus ──────────────────────────────────────────
 
     /// <summary>
-    /// Shows or hides Create Rule from Message and the separator above it. Hidden rather than grayed on a
-    /// shared mailbox's message (#678): WPF skips a disabled menu item when arrowing through a menu, so a
-    /// grayed item could be seen but never reached from the keyboard. WPF still counts a collapsed item in
-    /// every item's position and set size (a screen reader heard 9 items in an eight-item menu), so while
-    /// anything is hidden the visible items carry their own.
+    /// Puts Create Rule from Message, and the separator above it, into the menu or takes them out. Taken
+    /// out on a shared mailbox's message (#678), not grayed or collapsed: WPF skips a disabled menu item
+    /// when arrowing, so a grayed one could be seen but never reached; and a collapsed one stays in the
+    /// accessibility tree and in every item's position and set size (a screen reader heard 9 items with 8
+    /// reachable). Out of the menu, it is simply not there, and WPF's own counting is right.
+    /// <paramref name="index"/> is where the separator sits when both are in.
     /// </summary>
-    internal static void ShowCreateRuleItem(ContextMenu menu, bool offered)
+    internal static void ShowCreateRuleItem(ContextMenu menu, int index, Separator separator, MenuItem item, bool offered)
     {
-        var visibility = offered ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var item in menu.Items)
-            if (item is FrameworkElement { Tag: "CreateRuleItem" or "CreateRuleSeparator" } element)
-                element.Visibility = visibility;
-
-        var items = menu.Items.OfType<MenuItem>().ToList();
-        var shown = items.Where(i => i.Visibility == Visibility.Visible).ToList();
-        foreach (var item in items)
+        if (offered == menu.Items.Contains(item)) return;
+        if (offered)
         {
-            if (shown.Count == items.Count || item.Visibility != Visibility.Visible)
-            {
-                item.ClearValue(System.Windows.Automation.AutomationProperties.PositionInSetProperty);
-                item.ClearValue(System.Windows.Automation.AutomationProperties.SizeOfSetProperty);
-            }
-            else
-            {
-                System.Windows.Automation.AutomationProperties.SetPositionInSet(item, shown.IndexOf(item) + 1);
-                System.Windows.Automation.AutomationProperties.SetSizeOfSet(item, shown.Count);
-            }
+            var at = Math.Min(index, menu.Items.Count);
+            menu.Items.Insert(at, separator);
+            menu.Items.Insert(at + 1, item);
         }
+        else
+        {
+            menu.Items.Remove(item);
+            menu.Items.Remove(separator);
+        }
+    }
+
+    // Held here because they leave the menu's Items while withdrawn; found by their tags at construction.
+    private Separator? _createRuleSeparator;
+    private MenuItem? _createRuleItem;
+    private int _createRuleIndex;
+
+    private void ApplyCreateRuleOffer()
+    {
+        if (_createRuleSeparator is null || _createRuleItem is null) return;
+        ShowCreateRuleItem((ContextMenu)FindResource("MessageContextMenu"), _createRuleIndex,
+                           _createRuleSeparator, _createRuleItem, _vm.CanCreateRuleFromMessage());
     }
 
     private void OfferCreateRuleItem()
     {
-        // Re-check the enabled state too, which otherwise updates only as the selection moves, so a shown
-        // item is never a grayed one (an account list reload can change the answer under a selection).
+        // Re-check the enabled state too, which otherwise updates only as the selection moves, so an item
+        // in the menu is never a grayed one (an account list reload can change the answer under a selection).
         _vm.CreateRuleFromMessageCommand.NotifyCanExecuteChanged();
-        ShowCreateRuleItem((ContextMenu)FindResource("MessageContextMenu"), _vm.CanCreateRuleFromMessage());
+        ApplyCreateRuleOffer();
     }
 
     private static MenuItem? FindFlagsSubmenu(ContextMenu menu)

@@ -612,7 +612,7 @@ A **Move to folder** or **Delete** rule needs at least one condition, because a 
 2. Press **Shift+F10** or the Applications key and choose **Create Rule from Message…**, or press **Ctrl+Shift+T**.
 3. The rule editor opens with the sender filled in and its condition checked, and the subject filled in but unchecked. The rule belongs to that message's account. Choose an action and save.
 
-Create Rule from Message is not in the context menu for a message in a shared mailbox, whose rules are managed in Outlook, and **Ctrl+Shift+T** does nothing there.
+Create Rule from Message is not in the context menu for a message in a shared mailbox, whose rules are managed in Outlook. **Ctrl+Shift+T** and the command palette say so on the status bar instead of making a rule.
 
 ### Testing a rule
 

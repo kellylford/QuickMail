@@ -123,9 +123,10 @@ on a shared mailbox used to ask you to get an administrator to grant a permissio
 granted, and that would not have helped if granted again.
 
 A shared mailbox is no longer in the Rules Manager's **Account** list. If you open the Rules Manager from
-one, the status line says its rules are managed in Outlook and the window shows your default account
-instead. **Create Rule from Message** is not in the context menu for a shared mailbox's messages, and in
-the mailbox's folders the rule summary on the status bar says its rules are managed in Outlook instead of
+one, the window shows your default account instead, names it in the title, and says on its status line
+that the shared mailbox's rules are managed in Outlook. **Create Rule from Message** is not in the context
+menu for a shared mailbox's messages, and **Ctrl+Shift+T** and the command palette say why instead of
+making a rule. In the mailbox's folders the rule summary on the status bar says its rules are managed in Outlook instead of
 counting rules. Everywhere else the summary now says it counts client-side rules, because server-side
 rules were never in its count. And a client-side rule saved on a shared mailbox by an earlier version is kept
 but no longer runs: it acted, from one person's computer only, on mail everyone with access to the mailbox reads.

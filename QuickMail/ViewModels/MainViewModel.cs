@@ -2079,6 +2079,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // The status bar's rule count leaves out rules on shared mailboxes (#678), which it can only tell
         // apart once the accounts are known; the count made in the constructor ran before they loaded.
         UpdateRulesStatusText();
+        // Whether Create Rule from Message is offered can change under an unmoved selection too.
+        CreateRuleFromMessageCommand.NotifyCanExecuteChanged();
 
         if (previous.Count > 0)
         {
@@ -2838,9 +2840,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         registry.Register(new CommandDefinition(
             id: "mail.createRuleFromMessage", category: "Mail", title: "Create Rule from Message",
-            execute: () => { if (CreateRuleFromMessageCommand.CanExecute(null)) CreateRuleFromMessageCommand.Execute(null); },
+            execute: CreateRuleFromMessageOrSayWhy,
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: () => CanActOnSelection() && CanCreateRuleFromMessage()));
+            // Available on any selection, even a shared mailbox's message where execute does nothing (#678):
+            // the registry hands a key to the first AVAILABLE command bound to it, and Ctrl+Shift+T is also
+            // Focus Tab Strip's default, so an unavailable Create Rule would pass the key on to the tab strip.
+            isAvailable: CanActOnSelection));
 
         registry.Register(new CommandDefinition(
             id: "mail.acceptInvite", category: "Mail", title: "Accept Invitation",
@@ -6611,6 +6616,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var target = SelectedGroupMessages() is { } group ? group[0] : SelectedMessage;
         return target is not null && ResolveAccountById(target.AccountId) is not { IsShared: true };
+    }
+
+    /// <summary>
+    /// Ctrl+Shift+T and the command palette. On a shared mailbox's message the command declines (#678), and a
+    /// command that declines to act has to say so: the palette lists it on every message, and the key is
+    /// kept here rather than falling through to Focus Tab Strip. Shown on the status bar, announced as a
+    /// result. (<c>RelayCommand.Execute</c> does not check CanExecute, so this does.)
+    /// </summary>
+    private void CreateRuleFromMessageOrSayWhy()
+    {
+        if (CreateRuleFromMessageCommand.CanExecute(null))
+        {
+            CreateRuleFromMessageCommand.Execute(null);
+            return;
+        }
+        var target = SelectedGroupMessages() is { } group ? group[0] : SelectedMessage;
+        if (target is not null && ResolveAccountById(target.AccountId) is { IsShared: true } shared)
+            SetStatus($"Rules for the shared mailbox {shared.AccountLabel} are managed in Outlook.", AnnouncementCategory.Result);
     }
 
     /// <summary>

@@ -1298,10 +1298,48 @@ public class UnifiedRulesViewModelTests
         ServerRuleEditorViewModel? editor = null;
         vm.EditorRequested += e => editor = e;
 
+        var announced = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (t, c) => announced.Add((t, c));
+
         vm.NewRuleFromTemplate(new MailRule { Name = "Rule for x", FromContains = "x@y.com", AccountId = Guid.NewGuid() });
 
+        const string expected = "The Rules Manager does not list that message's account. Close it and open it again to make a rule there.";
         Assert.Null(editor);
-        Assert.Equal("The Rules Manager does not list that message's account. Close it and open it again to make a rule there.",
-                     vm.StatusText);
+        Assert.Equal(expected, vm.StatusText);
+        Assert.Equal((expected, AnnouncementCategory.Result), Assert.Single(announced));
+    }
+
+    [Fact]
+    public void OpenedFromASharedMailbox_TheTitleNamesTheAccountShown()
+    {
+        // With one account there is no Account list, and focus lands on that account's first rule; the
+        // title is what says whose rules these are as the window opens.
+        var work = Guid.NewGuid();
+        var team = Guid.NewGuid();
+        var fromShared = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Graph(work), Shared(team, work)], preferredAccountId: team);
+        var fromWork = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Graph(work), Shared(team, work)], preferredAccountId: work);
+
+        Assert.Equal($"Rules Manager — {fromShared.SelectedAccount!.DisplayName}", fromShared.WindowTitle);
+        Assert.Equal("Rules Manager", fromWork.WindowTitle);
+    }
+
+    [Fact]
+    public void OpenedFromASharedMailbox_TheTitleFollowsTheAccountChosen()
+    {
+        var home = Guid.NewGuid();
+        var work = Guid.NewGuid();
+        var team = Guid.NewGuid();
+        var dflt = Imap(home); dflt.IsDefault = true;
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null,
+            [Graph(work), dflt, Shared(team, work)], preferredAccountId: team);
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
+
+        Assert.Contains(nameof(UnifiedRulesViewModel.WindowTitle), changed);
+        Assert.Equal($"Rules Manager — {vm.SelectedAccount!.DisplayName}", vm.WindowTitle);
     }
 }

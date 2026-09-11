@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
+using System.Windows.Input;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -80,15 +82,85 @@ public class SharedMailboxRuleCommandTests
     }
 
     [Fact]
-    public void CtrlShiftT_RespectsTheCheck()
+    public void CtrlShiftT_StaysWithCreateRule_OnASharedMailboxsMessage()
     {
-        // The registered command calls the RelayCommand directly, and RelayCommand.Execute does not check
-        // CanExecute itself, so the registration has to. Read from source, as the rules-window wiring is.
-        var source = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "ViewModels", "MainViewModel.cs"));
+        // Ctrl+Shift+T is also Focus Tab Strip's default, registered after this one, as the main window does.
+        // The registry hands a key to the first AVAILABLE command bound to it, so an unavailable Create Rule
+        // would pass the key on and move focus to the tab strip.
+        var registry = new CommandRegistry();
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(), new StubConfigService(),
+            registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+        vm.Accounts = new ObservableCollection<AccountModel>([Home, Team]);
+        registry.Register(new CommandDefinition(
+            id: "view.focusTabStrip", category: "View", title: "Focus Tab Strip", execute: () => { },
+            defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift, isAvailable: () => true));
 
-        Assert.Contains("if (CreateRuleFromMessageCommand.CanExecute(null)) CreateRuleFromMessageCommand.Execute(null);",
-                        source, StringComparison.Ordinal);
-        Assert.Contains("isAvailable: () => CanActOnSelection() && CanCreateRuleFromMessage()", source, StringComparison.Ordinal);
+        vm.SelectedMessage = MessageIn(Team);
+
+        Assert.Equal("mail.createRuleFromMessage",
+                     registry.FindByGesture(Key.T, ModifierKeys.Control | ModifierKeys.Shift)?.Id);
+    }
+
+    private static (MainViewModel Vm, StubCommandRegistry Registry) VmWithRegistry()
+    {
+        var registry = new StubCommandRegistry();
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(), new StubConfigService(),
+            registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+        vm.Accounts = new ObservableCollection<AccountModel>([Home, Team]);
+        return (vm, registry);
+    }
+
+    [Fact]
+    public void CtrlShiftT_OnASharedMailboxsMessage_SaysWhy_AsAResult()
+    {
+        // A command that declines to act has to say so: the palette lists it on every message, and the key no
+        // longer falls through to the tab strip. The status bar shows it; the window announces it as a result.
+        var (vm, registry) = VmWithRegistry();
+        vm.SelectedMessage = MessageIn(Team);
+        var requested = false;
+        vm.CreateRuleFromMessageRequested += (_, _) => requested = true;
+        AnnouncementCategory? category = null;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.StatusText)) category = vm.StatusAnnouncementCategory;
+        };
+
+        registry.FindById("mail.createRuleFromMessage")!.Execute();
+
+        Assert.False(requested);
+        Assert.Equal("Rules for the shared mailbox Team are managed in Outlook.", vm.StatusText);
+        Assert.Equal(AnnouncementCategory.Result, category);
+    }
+
+    [Fact]
+    public void CtrlShiftT_OnAnOrdinaryMessage_MakesTheRule()
+    {
+        var (vm, registry) = VmWithRegistry();
+        vm.SelectedMessage = MessageIn(Home);
+        var requested = false;
+        vm.CreateRuleFromMessageRequested += (_, _) => requested = true;
+
+        registry.FindById("mail.createRuleFromMessage")!.Execute();
+
+        Assert.True(requested);
+    }
+
+    [Fact]
+    public void LoadingAccounts_TellsTheMenuToRecheck()
+    {
+        // Whether a message's account is a shared mailbox can change under an unmoved selection.
+        var vm = Vm();
+        vm.SelectedMessage = MessageIn(Home);
+        var told = 0;
+        vm.CreateRuleFromMessageCommand.CanExecuteChanged += (_, _) => told++;
+
+        vm.LoadAccountList([Home, Team]);
+
+        Assert.True(told > 0, "Create Rule from Message was not told to re-check when accounts loaded.");
     }
 
     [Fact]
@@ -222,57 +294,54 @@ public class SharedMailboxRuleCommandTests
     }
 
     [StaFact]
-    public void CreateRuleItem_AndItsSeparator_AreHiddenWhenNotOffered()
+    public void AWithdrawnItem_IsOutOfTheMenu_AndOutOfTheCount()
     {
-        // Hidden, not grayed: WPF skips a disabled menu item when arrowing, so a grayed one is never reached.
+        // Out of the menu, not grayed or collapsed: WPF skips a disabled item when arrowing, and a collapsed
+        // one stays in the accessibility tree and in its siblings' position and set size (a screen reader
+        // heard 9 items with 8 reachable). What a screen reader is told comes from the automation peer.
+        var reply = new MenuItem { Header = "Reply" };
+        var between = new Separator();
         var flags = new MenuItem { Header = "Flags" };
         var separator = new Separator { Tag = "CreateRuleSeparator" };
         var item = new MenuItem { Header = "Create Rule from Message", Tag = "CreateRuleItem" };
-        var menu = new ContextMenu();
-        menu.Items.Add(flags);
-        menu.Items.Add(separator);
-        menu.Items.Add(item);
+        var menu = Menu(reply, between, flags, separator, item);
 
-        MainWindow.ShowCreateRuleItem(menu, offered: false);
-        Assert.Equal(Visibility.Collapsed, item.Visibility);
-        Assert.Equal(Visibility.Collapsed, separator.Visibility);
-        Assert.Equal(Visibility.Visible, flags.Visibility);
-
-        MainWindow.ShowCreateRuleItem(menu, offered: true);
-        Assert.Equal(Visibility.Visible, item.Visibility);
-        Assert.Equal(Visibility.Visible, separator.Visibility);
-    }
-
-    [StaFact]
-    public void HidingTheItem_TakesItOutOfTheCount()
-    {
-        // WPF counts a collapsed menu item in its siblings' position and set size: a screen reader heard
-        // 9 items in a menu with 8 reachable. What a screen reader is told comes from the automation peer.
-        var reply = new MenuItem { Header = "Reply" };
-        var flags = new MenuItem { Header = "Flags" };
-        var item = new MenuItem { Header = "Create Rule from Message", Tag = "CreateRuleItem" };
-        var menu = new ContextMenu();
-        foreach (var element in new Control[] { reply, new Separator(), flags, new Separator { Tag = "CreateRuleSeparator" }, item })
-            menu.Items.Add(element);
-
-        MainWindow.ShowCreateRuleItem(menu, offered: false);
+        MainWindow.ShowCreateRuleItem(menu, 3, separator, item, offered: false);
+        Assert.Equal(new object[] { reply, between, flags }, menu.Items.Cast<object>());
         Assert.Equal((1, 2), PositionAndSize(reply));
         Assert.Equal((2, 2), PositionAndSize(flags));
 
-        MainWindow.ShowCreateRuleItem(menu, offered: true);
-        Assert.Equal((1, 3), PositionAndSize(reply));
+        MainWindow.ShowCreateRuleItem(menu, 3, separator, item, offered: true);
+        Assert.Equal(new object[] { reply, between, flags, separator, item }, menu.Items.Cast<object>());
         Assert.Equal((3, 3), PositionAndSize(item));
 
-        // Not only when the hidden item is last: an item after it has to move up, which WPF would not do.
-        var first = new MenuItem { Header = "First" };
-        var hidden = new MenuItem { Header = "Create Rule from Message", Tag = "CreateRuleItem" };
-        var after = new MenuItem { Header = "After" };
-        var middle = new ContextMenu();
-        foreach (var element in new Control[] { first, new Separator { Tag = "CreateRuleSeparator" }, hidden, after })
-            middle.Items.Add(element);
+        MainWindow.ShowCreateRuleItem(menu, 3, separator, item, offered: true);   // offering twice adds nothing
+        Assert.Equal(5, menu.Items.Count);
+    }
 
-        MainWindow.ShowCreateRuleItem(middle, offered: false);
+    [StaFact]
+    public void AWithdrawnItem_ComesBackWhereItWas()
+    {
+        var first = new MenuItem { Header = "First" };
+        var separator = new Separator { Tag = "CreateRuleSeparator" };
+        var item = new MenuItem { Header = "Create Rule from Message", Tag = "CreateRuleItem" };
+        var after = new MenuItem { Header = "After" };
+        var menu = Menu(first, separator, item, after);
+
+        MainWindow.ShowCreateRuleItem(menu, 1, separator, item, offered: false);
+        Assert.Equal(new object[] { first, after }, menu.Items.Cast<object>());
         Assert.Equal((2, 2), PositionAndSize(after));
+
+        MainWindow.ShowCreateRuleItem(menu, 1, separator, item, offered: true);
+        Assert.Equal(new object[] { first, separator, item, after }, menu.Items.Cast<object>());
+    }
+
+    private static ContextMenu Menu(params Control[] elements)
+    {
+        var menu = new ContextMenu();
+        foreach (var element in elements)
+            menu.Items.Add(element);
+        return menu;
     }
 
     private static (int Position, int Size) PositionAndSize(MenuItem item)
@@ -292,26 +361,30 @@ public class SharedMailboxRuleCommandTests
     }
 
     [Fact]
-    public void TheMessageMenu_DecidesAsItOpens()
+    public void TheMessageMenu_DecidesAsItOpens_AndAsTheSelectionMoves()
     {
-        // The helper above only acts on items carrying these tags, and only if the menu calls it as it opens.
+        // The helper above acts on the items the window finds by these tags, and only if the window calls it.
         var root = RepoRoot();
         var xaml = File.ReadAllText(Path.Combine(root, "QuickMail", "Views", "MainWindow.xaml"));
         var code = File.ReadAllText(Path.Combine(root, "QuickMail", "Views", "MainWindow.xaml.cs"));
 
         Assert.Contains("<Separator Tag=\"CreateRuleSeparator\"/>", xaml, StringComparison.Ordinal);
         Assert.Contains("Tag=\"CreateRuleItem\"", xaml, StringComparison.Ordinal);
-        Assert.Matches(@"FindResource\(""MessageContextMenu""\)\)\.Opened\s*\+=\s*\(_, _\) => OfferCreateRuleItem\(\);", code);
+        Assert.Contains("Header=\"Crea_te Rule from Message…\"", xaml, StringComparison.Ordinal);   // R is Reply's
+        Assert.Contains("messageMenu.Opened += (_, _) => OfferCreateRuleItem();", code, StringComparison.Ordinal);
+        Assert.Matches(@"vm\.CreateRuleFromMessageCommand\.CanExecuteChanged \+= \(_, _\) =>\s*\{\s*if \(Dispatcher\.CheckAccess\(\)\) ApplyCreateRuleOffer\(\);", code);
 
-        var start = code.IndexOf("private void OfferCreateRuleItem()", StringComparison.Ordinal);
-        Assert.True(start >= 0, "OfferCreateRuleItem is gone.");
-        var body = code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
-        Assert.Contains("ShowCreateRuleItem((ContextMenu)FindResource(\"MessageContextMenu\"), _vm.CanCreateRuleFromMessage())",
-                        body, StringComparison.Ordinal);
-        Assert.Contains("CreateRuleFromMessageCommand.NotifyCanExecuteChanged()", body, StringComparison.Ordinal);
+        var offer = Body(code, "private void OfferCreateRuleItem()");
+        Assert.Contains("CreateRuleFromMessageCommand.NotifyCanExecuteChanged()", offer, StringComparison.Ordinal);
+        Assert.Contains("ApplyCreateRuleOffer();", offer, StringComparison.Ordinal);
+        Assert.Contains("_vm.CanCreateRuleFromMessage()", Body(code, "private void ApplyCreateRuleOffer()"), StringComparison.Ordinal);
+    }
 
-        // And as the selection moves, so the menu is right before it opens.
-        Assert.Matches(@"vm\.CreateRuleFromMessageCommand\.CanExecuteChanged \+= \(_, _\) =>\s*\{\s*if \(Dispatcher\.CheckAccess\(\)\)\s*ShowCreateRuleItem\(\(ContextMenu\)FindResource\(""MessageContextMenu""\), vm\.CanCreateRuleFromMessage\(\)\);", code);
+    private static string Body(string code, string signature)
+    {
+        var start = code.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"{signature} is gone.");
+        return code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
     }
 
     private static string RepoRoot()

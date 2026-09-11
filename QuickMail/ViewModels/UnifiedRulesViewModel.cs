@@ -40,6 +40,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
     // (#678). The status line says so until the user chooses an account themselves.
     private string? _sharedMailboxLabel;
 
+    // Opened from a shared mailbox, the title names the account shown for the life of the window.
+    private readonly bool _openedFromSharedMailbox;
+
     // Every shared mailbox's label, so a rule template for one can say why it gets no rule.
     private readonly Dictionary<Guid, string> _sharedAccountLabels;
 
@@ -66,7 +69,10 @@ public partial class UnifiedRulesViewModel : ObservableObject
             .GroupBy(a => a.Id).ToDictionary(g => g.Key, g => g.First().AccountLabel);
         if (preferredAccountId is Guid opened
             && everyAccount.FirstOrDefault(a => a.Id == opened) is { IsShared: true } shared)
+        {
             _sharedMailboxLabel = shared.AccountLabel;
+            _openedFromSharedMailbox = true;
+        }
 
         AccountOptions = _allAccounts
             .Select(a => new AccountOption { Id = a.Id, DisplayName = a.AccountLabel })
@@ -89,6 +95,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AccountSupportsServerRules))]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private AccountOption? _selectedAccount;
 
     public ObservableCollection<UnifiedRuleRow> Rules { get; } = [];
@@ -170,6 +177,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 StatusText = _sharedAccountLabels.TryGetValue(tid, out var shared)
                     ? $"Rules for the shared mailbox {shared} are managed in Outlook."
                     : "The Rules Manager does not list that message's account. Close it and open it again to make a rule there.";
+                // Paired with a result announcement, as Test and Run on Existing are: the window comes forward
+                // with focus where it was, so nothing else would tell anyone who hears results.
+                Announce(StatusText, AnnouncementCategory.Result);
                 return;
             }
             SelectedAccount = opt;
@@ -695,6 +705,15 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// (#678): its rules are managed in Outlook, and the window is showing another account instead.
     /// Empty otherwise, and once the user has chosen an account.
     /// </summary>
+    /// <summary>
+    /// The window's title. Opened from a shared mailbox it names the account shown (#678): with one account
+    /// there is no Account list to focus, and focus lands on that account's first rule, so the title is
+    /// what says whose rules these are as the window opens.
+    /// </summary>
+    public string WindowTitle => _openedFromSharedMailbox && SelectedAccount is { } shown
+        ? $"Rules Manager — {shown.DisplayName}"
+        : "Rules Manager";
+
     internal string SharedMailboxPreamble()
         => _sharedMailboxLabel is { } label
             ? $"Rules for the shared mailbox {label} are managed in Outlook. Showing {SelectedAccount?.DisplayName} instead. "

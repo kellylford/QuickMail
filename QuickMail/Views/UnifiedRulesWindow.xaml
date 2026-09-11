@@ -1,7 +1,7 @@
 <Window x:Class="QuickMail.Views.UnifiedRulesWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Rules Manager"
+        Title="{Binding WindowTitle, Mode=OneWay}"
         Width="780" Height="560"
         MinWidth="620" MinHeight="440"
         WindowStartupLocation="CenterOwner"
