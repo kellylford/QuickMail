@@ -4253,7 +4253,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (active == 0)
         {
-            RulesStatusText = "No active rules";
+            RulesStatusText = "No active client-side rules";
             return;
         }
 
@@ -4262,8 +4262,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : _lastRulesRunTime.ToString("h:mm tt");
 
         RulesStatusText = _lastRulesMatchCount > 0
-            ? $"Rules: {active} active, {disabled} disabled — Last run: {_lastRulesMatchCount} matched ({timeStr})"
-            : $"Rules: {active} active, {disabled} disabled — Last run: {timeStr}";
+            ? $"Client-side rules: {active} active, {disabled} disabled — Last run: {_lastRulesMatchCount} matched ({timeStr})"
+            : $"Client-side rules: {active} active, {disabled} disabled — Last run: {timeStr}";
     }
 
     // Stores raw messages and applies all active filters.

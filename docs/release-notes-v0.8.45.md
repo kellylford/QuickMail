@@ -126,8 +126,9 @@ A shared mailbox is no longer in the Rules Manager's **Account** list. If you op
 one, the status line says its rules are managed in Outlook and the window shows your default account
 instead. **Create Rule from Message** is not in the context menu for a shared mailbox's messages, and in
 the mailbox's folders the rule summary on the status bar says its rules are managed in Outlook instead of
-counting rules. And a client-side rule saved on a shared mailbox by an earlier version is kept but no
-longer runs: it acted, from one person's computer only, on mail everyone with access to the mailbox reads.
+counting rules. Everywhere else the summary now reads **Client-side rules**, because server-side rules
+were never in its count. And a client-side rule saved on a shared mailbox by an earlier version is kept
+but no longer runs: it acted, from one person's computer only, on mail everyone with access to the mailbox reads.
 ([#678](https://github.com/kellylford/QuickMail/issues/678))
 
 ---

@@ -332,6 +332,14 @@ public partial class MainWindow : Window
 
         ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => RebuildMessageContextFlagsSubmenu();
         ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => OfferCreateRuleItem();
+        // Decide as the selection moves too, so the menu is already right when it opens and its first
+        // item is spoken with the right count. Opened stays the backstop for an account list reload,
+        // which changes the answer without moving the selection.
+        vm.CreateRuleFromMessageCommand.CanExecuteChanged += (_, _) =>
+        {
+            if (Dispatcher.CheckAccess())
+                ShowCreateRuleItem((ContextMenu)FindResource("MessageContextMenu"), vm.CanCreateRuleFromMessage());
+        };
         ((ContextMenu)FindResource("ConversationGroupContextMenu")).Opened += (_, _) => RebuildConversationContextFlagsSubmenu();
         ((ContextMenu)FindResource("SenderGroupContextMenu")).Opened       += (_, _) => RebuildSenderContextFlagsSubmenu();
         ((ContextMenu)FindResource("ToGroupContextMenu")).Opened           += (_, _) => RebuildToContextFlagsSubmenu();
@@ -7080,7 +7088,9 @@ public partial class MainWindow : Window
     /// <summary>
     /// Shows or hides Create Rule from Message and the separator above it. Hidden rather than grayed on a
     /// shared mailbox's message (#678): WPF skips a disabled menu item when arrowing through a menu, so a
-    /// grayed item could be seen but never reached from the keyboard.
+    /// grayed item could be seen but never reached from the keyboard. WPF still counts a collapsed item in
+    /// every item's position and set size (a screen reader heard 9 items in an eight-item menu), so while
+    /// anything is hidden the visible items carry their own.
     /// </summary>
     internal static void ShowCreateRuleItem(ContextMenu menu, bool offered)
     {
@@ -7088,6 +7098,22 @@ public partial class MainWindow : Window
         foreach (var item in menu.Items)
             if (item is FrameworkElement { Tag: "CreateRuleItem" or "CreateRuleSeparator" } element)
                 element.Visibility = visibility;
+
+        var items = menu.Items.OfType<MenuItem>().ToList();
+        var shown = items.Where(i => i.Visibility == Visibility.Visible).ToList();
+        foreach (var item in items)
+        {
+            if (shown.Count == items.Count || item.Visibility != Visibility.Visible)
+            {
+                item.ClearValue(System.Windows.Automation.AutomationProperties.PositionInSetProperty);
+                item.ClearValue(System.Windows.Automation.AutomationProperties.SizeOfSetProperty);
+            }
+            else
+            {
+                System.Windows.Automation.AutomationProperties.SetPositionInSet(item, shown.IndexOf(item) + 1);
+                System.Windows.Automation.AutomationProperties.SetSizeOfSet(item, shown.Count);
+            }
+        }
     }
 
     private void OfferCreateRuleItem()

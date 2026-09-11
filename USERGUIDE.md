@@ -628,7 +628,7 @@ Select a rule in the list and activate **Delete**, or press the **Delete** key. 
 
 ### Rules status bar
 
-The status bar shows a summary of your rules — how many are active, how many are disabled, and when they last ran. The count covers every account. In a shared mailbox's folders it says instead that the mailbox's rules are managed in Outlook. Press **Enter** or **Space** on the Rules button in the status bar to open the Rules Manager.
+The status bar shows a summary of your client-side rules across every account — how many are active, how many are disabled, and when they last ran. Server-side rules are not included. In a shared mailbox's folders it says instead that the mailbox's rules are managed in Outlook. Press **Enter** or **Space** on the Rules button in the status bar to open the Rules Manager.
 
 ### Status bar navigation
 

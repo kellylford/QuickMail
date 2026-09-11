@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using QuickMail.Models;
 using QuickMail.Services;
@@ -105,7 +106,7 @@ public class SharedMailboxRuleCommandTests
 
         vm.UpdateRulesStatusText();
 
-        Assert.StartsWith("Rules: 1 active, 0 disabled", vm.RulesStatusText);
+        Assert.StartsWith("Client-side rules: 1 active, 0 disabled", vm.RulesStatusText);
     }
 
     [Fact]
@@ -149,11 +150,11 @@ public class SharedMailboxRuleCommandTests
             new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(), new StubConfigService(),
             new StubCommandRegistry(), new StubViewService(), rules, new StubSmtpService());
-        Assert.StartsWith("Rules: 1 active", vm.RulesStatusText);   // before accounts: cannot tell
+        Assert.StartsWith("Client-side rules: 1 active", vm.RulesStatusText);   // before accounts: cannot tell
 
         vm.LoadAccountList([Home, Team]);
 
-        Assert.Equal("No active rules", vm.RulesStatusText);
+        Assert.Equal("No active client-side rules", vm.RulesStatusText);
     }
 
     [Fact]
@@ -170,7 +171,7 @@ public class SharedMailboxRuleCommandTests
         Assert.Equal("Rules for this shared mailbox are managed in Outlook", vm.RulesStatusText);
 
         vm.SelectedFolder = new MailFolderModel { AccountId = Home.Id, FullName = "INBOX", DisplayName = "Inbox" };
-        Assert.Equal("Rules: 1 active, 0 disabled — Last run: not yet run", vm.RulesStatusText);
+        Assert.Equal("Client-side rules: 1 active, 0 disabled — Last run: not yet run", vm.RulesStatusText);
     }
 
     [Fact]
@@ -178,7 +179,7 @@ public class SharedMailboxRuleCommandTests
     {
         // With no folder selected the view's account is the selected account, so choosing one must recount.
         var vm = Vm();
-        Assert.Equal("No active rules", vm.RulesStatusText);
+        Assert.Equal("No active client-side rules", vm.RulesStatusText);
 
         vm.SelectedAccount = Team;
 
@@ -209,7 +210,7 @@ public class SharedMailboxRuleCommandTests
         vm.Accounts = new ObservableCollection<AccountModel>([Home, Team]);
         vm.UpdateSavedViews();
         vm.SelectedFolder = new MailFolderModel { FullName = MainViewModel.ViewPrefix + view.Id, DisplayName = "Mine" };
-        Assert.Equal("Rules: 1 active, 0 disabled — Last run: not yet run", vm.RulesStatusText);
+        Assert.Equal("Client-side rules: 1 active, 0 disabled — Last run: not yet run", vm.RulesStatusText);
 
         views.View = new SavedView
         {
@@ -242,6 +243,33 @@ public class SharedMailboxRuleCommandTests
         Assert.Equal(Visibility.Visible, separator.Visibility);
     }
 
+    [StaFact]
+    public void HidingTheItem_TakesItOutOfTheCount()
+    {
+        // WPF counts a collapsed menu item in its siblings' position and set size: a screen reader heard
+        // 9 items in a menu with 8 reachable. What a screen reader is told comes from the automation peer.
+        var reply = new MenuItem { Header = "Reply" };
+        var flags = new MenuItem { Header = "Flags" };
+        var item = new MenuItem { Header = "Create Rule from Message", Tag = "CreateRuleItem" };
+        var menu = new ContextMenu();
+        foreach (var element in new Control[] { reply, new Separator(), flags, new Separator { Tag = "CreateRuleSeparator" }, item })
+            menu.Items.Add(element);
+
+        MainWindow.ShowCreateRuleItem(menu, offered: false);
+        Assert.Equal((1, 2), PositionAndSize(reply));
+        Assert.Equal((2, 2), PositionAndSize(flags));
+
+        MainWindow.ShowCreateRuleItem(menu, offered: true);
+        Assert.Equal((1, 3), PositionAndSize(reply));
+        Assert.Equal((3, 3), PositionAndSize(item));
+    }
+
+    private static (int Position, int Size) PositionAndSize(MenuItem item)
+    {
+        var peer = UIElementAutomationPeer.CreatePeerForElement(item);
+        return (peer.GetPositionInSet(), peer.GetSizeOfSet());
+    }
+
     [Fact]
     public void TheMessageMenu_DecidesAsItOpens()
     {
@@ -260,6 +288,9 @@ public class SharedMailboxRuleCommandTests
         Assert.Contains("ShowCreateRuleItem((ContextMenu)FindResource(\"MessageContextMenu\"), _vm.CanCreateRuleFromMessage())",
                         body, StringComparison.Ordinal);
         Assert.Contains("CreateRuleFromMessageCommand.NotifyCanExecuteChanged()", body, StringComparison.Ordinal);
+
+        // And as the selection moves, so the menu is right before it opens.
+        Assert.Matches(@"vm\.CreateRuleFromMessageCommand\.CanExecuteChanged \+= \(_, _\) =>\s*\{\s*if \(Dispatcher\.CheckAccess\(\)\)\s*ShowCreateRuleItem\(\(ContextMenu\)FindResource\(""MessageContextMenu""\), vm\.CanCreateRuleFromMessage\(\)\);", code);
     }
 
     private static string RepoRoot()
