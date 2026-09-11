@@ -3397,6 +3397,9 @@ public partial class MainWindow : Window
                 // Watching a thread while reading it is the most natural moment to do so, and focus
                 // is inside this WebView2 then. Note the key is 'W' (upper case) with Shift held.
                 +"else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}"
+                // The command palette, as the message window already relays it (#676): focus is inside this
+                // document for as long as the user is reading, so the window's own key handling never sees it.
+                +"else if(e.ctrlKey&&e.shiftKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-shift-p');e.preventDefault();}"
                 +"});"
                 // The live region the link menu writes outcomes into (issues #671, #329).
                 + LinkContextMenuSupport.StatusRegionScript);
@@ -3429,6 +3432,8 @@ public partial class MainWindow : Window
                         () => _registry.FindByGesture(Key.W, ModifierKeys.Control | ModifierKeys.Shift)
                                        ?.Execute(),
                         DispatcherPriority.Input);
+                else if (msg == "ctrl-shift-p")
+                    Dispatcher.InvokeAsync(OpenCommandPalette, DispatcherPriority.Input);
             };
 
             MessageBody.CoreWebView2.NavigationStarting += (_, args) =>
