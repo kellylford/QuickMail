@@ -1928,13 +1928,20 @@ public partial class MainWindow : Window
     private void OpenCommandPalette()
     {
         // Remember what had focus so we can restore it if the user dismisses without running a command.
+        // Inside the message body WPF reports nothing focused (#672), so note that separately: otherwise
+        // closing a palette opened while reading (#676) dropped the user on the message list.
         var previousFocus = Keyboard.FocusedElement as IInputElement;
+        var fromMessageBody = IsMessageBodyFocused;
 
         var palette = new CommandPaletteWindow(_registry) { Owner = this };
         palette.ShowDialog();
 
-        // Restore focus. Fall back to the message list if nothing was previously focused.
-        (previousFocus ?? MessageList).Focus();
+        // Restore focus: back into the message if that is where it was and it is still open; otherwise to
+        // what had focus, falling back to the message list.
+        if (fromMessageBody && _vm.IsMessageOpen)
+            FocusMessageBodyHost();
+        else
+            (previousFocus ?? MessageList).Focus();
     }
 
     private void ViewModeButton_Click(object sender, RoutedEventArgs e) => OpenViewMenu();
@@ -3393,7 +3400,9 @@ public partial class MainWindow : Window
                 +"else if(e.ctrlKey&&(e.key==='2'||e.key==='y'||e.key==='Y')){window.chrome.webview.postMessage('focus-folders');e.preventDefault();}"
                 +"else if(e.key==='Tab'&&e.shiftKey){window.chrome.webview.postMessage('shift-tab');e.preventDefault();}"
                 +"else if(e.altKey&&(e.key==='a'||e.key==='A')){window.chrome.webview.postMessage('focus-attachments');e.preventDefault();}"
-                +"else if(e.ctrlKey&&e.key==='w'){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}"
+                // Not with Shift held: this branch runs before Ctrl+Shift+W's, and with Caps Lock on that key
+                // arrives as a lowercase w, so it closed the message instead of watching the conversation.
+                +"else if(e.ctrlKey&&!e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}"
                 // Watching a thread while reading it is the most natural moment to do so, and focus
                 // is inside this WebView2 then. Note the key is 'W' (upper case) with Shift held.
                 +"else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}"

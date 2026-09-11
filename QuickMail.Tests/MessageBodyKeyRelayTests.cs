@@ -45,6 +45,21 @@ public class MessageBodyKeyRelayTests
                         $"{file} relays '{gesture}' but nothing handles it.");
     }
 
+    [Fact]
+    public void ClosingThePaletteFromTheReadingPane_ReturnsToTheMessage()
+    {
+        // WPF reports nothing focused inside the message body (#672), so the palette's own "restore what had
+        // focus" fell back to the message list, and closing it read as the message having closed itself.
+        var code = Source("MainWindow.xaml.cs");
+        var start = code.IndexOf("private void OpenCommandPalette()", StringComparison.Ordinal);
+        Assert.True(start >= 0, "OpenCommandPalette is gone.");
+        var body = code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
+
+        Assert.Contains("var fromMessageBody = IsMessageBodyFocused;", body, StringComparison.Ordinal);
+        Assert.Contains("if (fromMessageBody && _vm.IsMessageOpen)", body, StringComparison.Ordinal);
+        Assert.Contains("FocusMessageBodyHost();", body, StringComparison.Ordinal);
+    }
+
     /// <summary>Every name the file's injected scripts pass to <c>postMessage</c>.</summary>
     private static HashSet<string> Posted(string code)
         => Regex.Matches(code, @"postMessage\(([^)]*)\)")

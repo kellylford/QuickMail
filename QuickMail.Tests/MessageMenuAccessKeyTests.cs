@@ -2,59 +2,77 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Xunit;
 
 namespace QuickMail.Tests;
 
 /// <summary>
-/// With two menu items on one access key, pressing it moves between them instead of choosing either. The
-/// message menus have had two such clashes: Reply and Create Rule from Message on R (fixed in #688), and
-/// Reply All and Move to Archive on A (#692), in both the message context menu and the menu bar's
-/// Message menu.
+/// With two items in one menu on the same access key, pressing it moves between them instead of choosing
+/// either. The message menus have had several: Reply and Create Rule from Message on R (fixed in #688);
+/// Reply All with Move to Archive and with Grab Addresses on A, and Reply with the group menus' Archive
+/// items on R (#692). The main window's XAML is read as XML, so only a menu's direct items are compared.
 /// </summary>
 public class MessageMenuAccessKeyTests
 {
-    [Fact]
-    public void NoTwoItemsInTheMessageContextMenuShareAnAccessKey()
-    {
-        var xaml = MainWindowXaml();
-        var start = xaml.IndexOf("x:Key=\"MessageContextMenu\"", StringComparison.Ordinal);
-        Assert.True(start >= 0, "MessageContextMenu is gone.");
-        var menu = xaml[start..xaml.IndexOf("</ContextMenu>", start, StringComparison.Ordinal)];
+    private static readonly XNamespace Wpf = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-        var headers = Regex.Matches(menu, "Header=\"([^\"]*)\"").Select(m => m.Groups[1].Value).ToList();
-        Assert.All(headers, h => Assert.True(h.Contains('_'), $"'{h}' has no access key."));
-        Assert.Empty(Clashes(headers));
+    public static TheoryData<string> ContextMenuKeys()
+    {
+        var data = new TheoryData<string>();
+        foreach (var key in MainWindow().Descendants(Wpf + "ContextMenu")
+                     .Select(m => (string?)m.Attribute(Xaml + "Key")).OfType<string>())
+            data.Add(key);
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(ContextMenuKeys))]
+    public void NoTwoItemsInAContextMenuShareAnAccessKey(string key)
+    {
+        var menu = MainWindow().Descendants(Wpf + "ContextMenu").Single(m => (string?)m.Attribute(Xaml + "Key") == key);
+
+        Assert.Empty(Clashes(menu));
     }
 
     [Fact]
     public void NoTwoItemsInTheMenuBarsMessageMenuShareAnAccessKey()
     {
-        // The menu bar's Message menu and its siblings are indented 12 spaces and their direct items 16, so
-        // the items of the Message menu are the 16-space headers before the next 12-space one.
-        var xaml = MainWindowXaml();
-        var start = xaml.IndexOf("<MenuItem Header=\"_Message\"", StringComparison.Ordinal);
-        Assert.True(start >= 0, "The Message menu is gone.");
-        var next = Regex.Match(xaml[(start + 1)..], @"\n {12}<MenuItem Header=");
-        var menu = next.Success ? xaml.Substring(start, next.Index + 1) : xaml[start..];
+        var menu = MainWindow().Descendants(Wpf + "MenuItem").Single(m => (string?)m.Attribute("Header") == "_Message");
 
-        var headers = Regex.Matches(menu, "\n {16}<MenuItem Header=\"([^\"]*)\"").Select(m => m.Groups[1].Value).ToList();
-        Assert.Contains("Reply _All", headers);   // the parse found the real items
-        Assert.Empty(Clashes(headers));
+        Assert.Contains("Reply _All", DirectHeaders(menu));   // the parse found the real items
+        Assert.Empty(Clashes(menu));
     }
 
-    /// <summary>Each access key used by more than one of <paramref name="headers"/>, with the items that share it.</summary>
-    private static List<string> Clashes(IEnumerable<string> headers)
-        => headers
+    [Fact]
+    public void EveryItemInTheMessageContextMenuHasAnAccessKey()
+    {
+        var menu = MainWindow().Descendants(Wpf + "ContextMenu")
+            .Single(m => (string?)m.Attribute(Xaml + "Key") == "MessageContextMenu");
+
+        Assert.All(DirectHeaders(menu), h => Assert.True(h.Contains('_'), $"'{h}' has no access key."));
+    }
+
+    /// <summary>The literal headers of a menu's own items: not nested submenus, and not bound headers.</summary>
+    private static List<string> DirectHeaders(XElement menu)
+        => menu.Elements(Wpf + "MenuItem")
+            .Select(m => (string?)m.Attribute("Header"))
+            .OfType<string>()
+            .Where(h => !h.StartsWith('{'))
+            .ToList();
+
+    /// <summary>Each access key used by more than one of the menu's items, with the items that share it.</summary>
+    private static List<string> Clashes(XElement menu)
+        => DirectHeaders(menu)
             .Where(h => h.Contains('_'))
             .GroupBy(h => char.ToLowerInvariant(h[h.IndexOf('_') + 1]))
             .Where(g => g.Count() > 1)
             .Select(g => $"{g.Key}: {string.Join(", ", g)}")
             .ToList();
 
-    private static string MainWindowXaml()
-        => File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "Views", "MainWindow.xaml"));
+    private static XDocument MainWindow()
+        => XDocument.Load(Path.Combine(RepoRoot(), "QuickMail", "Views", "MainWindow.xaml"));
 
     private static string RepoRoot()
     {
