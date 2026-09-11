@@ -55,9 +55,44 @@ public class MessageBodyKeyRelayTests
         Assert.True(start >= 0, "OpenCommandPalette is gone.");
         var body = code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
 
-        Assert.Contains("var fromMessageBody = IsMessageBodyFocused;", body, StringComparison.Ordinal);
-        Assert.Contains("if (fromMessageBody && _vm.IsMessageOpen)", body, StringComparison.Ordinal);
-        Assert.Contains("FocusMessageBodyHost();", body, StringComparison.Ordinal);
+        // Where focus was is read before the palette opens, since afterwards it is on the palette's owner.
+        var captured = body.IndexOf("var fromMessageBody = IsMessageBodyFocused;", StringComparison.Ordinal);
+        var shown = body.IndexOf("palette.ShowDialog()", StringComparison.Ordinal);
+        Assert.True(captured >= 0 && shown > captured, "fromMessageBody must be read before the palette is shown.");
+        Assert.Contains("if (!(fromMessageBody && _vm.IsMessageOpen))", body, StringComparison.Ordinal);
+        Assert.Contains("FocusMessageBodyHost();", body[shown..], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AfterAPaletteCommand_FocusReturnsToTheMessageOnlyOnceItHasRun()
+    {
+        // The palette queues the chosen command at Input priority. Putting focus into the WebView2 before it
+        // runs would open a dialog with a text box over a focused message body. So with a command chosen, the
+        // return is queued behind it, and only taken while this window is active with the message still open.
+        var code = Source("MainWindow.xaml.cs");
+        var start = code.IndexOf("private void OpenCommandPalette()", StringComparison.Ordinal);
+        Assert.True(start >= 0, "OpenCommandPalette is gone.");
+        var body = code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
+
+        Assert.Contains("var commandChosen = palette.ShowDialog() == true;", body, StringComparison.Ordinal);
+        var chosen = body.IndexOf("else if (!commandChosen)", StringComparison.Ordinal);
+        Assert.True(chosen >= 0, "Returning straight into the message must be only for a dismissed palette.");
+        var queued = body[chosen..];
+        Assert.Contains("Dispatcher.InvokeAsync(", queued, StringComparison.Ordinal);
+        Assert.Contains("DispatcherPriority.Input", queued, StringComparison.Ordinal);
+        Assert.Contains("IsActive && _vm.IsMessageOpen", queued, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("MainWindow.xaml.cs")]
+    [InlineData("MessageWindow.xaml.cs")]
+    public void CtrlW_IsRelayedOnlyWithShiftUp_InEitherCase(string file)
+    {
+        // With Caps Lock on, Ctrl+W arrives as 'W' and Ctrl+Shift+W as 'w', so the case says nothing about
+        // Shift. Ctrl+W's branch has to check Shift itself and accept both cases, or one gesture is lost or
+        // taken by the other.
+        Assert.Contains("e.ctrlKey&&!e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-w')",
+                        Source(file), StringComparison.Ordinal);
     }
 
     /// <summary>Every name the file's injected scripts pass to <c>postMessage</c>.</summary>

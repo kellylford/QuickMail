@@ -1927,21 +1927,41 @@ public partial class MainWindow : Window
 
     private void OpenCommandPalette()
     {
-        // Remember what had focus so we can restore it if the user dismisses without running a command.
-        // Inside the message body WPF reports nothing focused (#672), so note that separately: otherwise
-        // closing a palette opened while reading (#676) dropped the user on the message list.
+        // Remember what had focus so it can be restored. Inside the message body WPF reports nothing focused
+        // (#672), so note that separately: otherwise closing a palette opened while reading (#676) dropped
+        // the user on the message list.
         var previousFocus = Keyboard.FocusedElement as IInputElement;
         var fromMessageBody = IsMessageBodyFocused;
 
         var palette = new CommandPaletteWindow(_registry) { Owner = this };
-        palette.ShowDialog();
+        var commandChosen = palette.ShowDialog() == true;
 
-        // Restore focus: back into the message if that is where it was and it is still open; otherwise to
-        // what had focus, falling back to the message list.
-        if (fromMessageBody && _vm.IsMessageOpen)
-            FocusMessageBodyHost();
-        else
+        if (!(fromMessageBody && _vm.IsMessageOpen))
+        {
+            // Restore what had focus, falling back to the message list. A chosen command runs after this, so
+            // one that moves focus still ends where it put it.
             (previousFocus ?? MessageList).Focus();
+        }
+        else if (!commandChosen)
+        {
+            FocusMessageBodyHost();
+        }
+        else
+        {
+            // The palette queued the chosen command at Input priority. Go back into the message only after it
+            // has run, never before: focusing the WebView2 first would open a dialog with a text box (Go to
+            // Folder, New Folder, Save View) straight over a focused message body, close to the nested-modal
+            // freeze in CLAUDE.md. Queued at the same priority, this runs after the command. While a dialog the
+            // command opened is up this window is not active, so it does nothing; and it leaves focus alone if
+            // the command closed the message or put focus somewhere of its own.
+            Dispatcher.InvokeAsync(() =>
+            {
+                var focused = Keyboard.FocusedElement;
+                if (IsActive && _vm.IsMessageOpen
+                    && (focused is null || ReferenceEquals(focused, this) || ReferenceEquals(focused, previousFocus) || IsMessageBodyFocused))
+                    FocusMessageBodyHost();
+            }, DispatcherPriority.Input);
+        }
     }
 
     private void ViewModeButton_Click(object sender, RoutedEventArgs e) => OpenViewMenu();
@@ -3404,7 +3424,7 @@ public partial class MainWindow : Window
                 // arrives as a lowercase w, so it closed the message instead of watching the conversation.
                 +"else if(e.ctrlKey&&!e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}"
                 // Watching a thread while reading it is the most natural moment to do so, and focus
-                // is inside this WebView2 then. Note the key is 'W' (upper case) with Shift held.
+                // is inside this WebView2 then. Either case is accepted: Caps Lock makes it lowercase with Shift held.
                 +"else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}"
                 // The command palette, as the message window already relays it (#676): focus is inside this
                 // document for as long as the user is reading, so the window's own key handling never sees it.

@@ -77,7 +77,7 @@
                       AutomationProperties.Name="Delete All from Sender"
                       Command="{Binding DeleteSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Arc_hiveAll from Sender"
+            <MenuItem Header="Arc_hive All from Sender"
                       AutomationProperties.Name="Archive All from Sender"
                       Command="{Binding ArchiveSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
@@ -130,7 +130,7 @@
                       AutomationProperties.Name="Delete All to Recipient"
                       Command="{Binding DeleteToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Arc_hiveAll to Recipient"
+            <MenuItem Header="Arc_hive All to Recipient"
                       AutomationProperties.Name="Archive All to Recipient"
                       Command="{Binding ArchiveToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
@@ -184,7 +184,7 @@
                       AutomationProperties.Name="Delete Conversation"
                       Command="{Binding DeleteConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Arc_hiveConversation"
+            <MenuItem Header="Arc_hive Conversation"
                       AutomationProperties.Name="Archive Conversation"
                       Command="{Binding ArchiveConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
