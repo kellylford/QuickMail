@@ -40,6 +40,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
     // (#678). The status line says so until the user chooses an account themselves.
     private string? _sharedMailboxLabel;
 
+    // Set when a save put the Account list back on the rule's own account (#683), so the status line can say
+    // where the rule went: nothing else does, and the list moved without the user choosing it. Shown by that
+    // save's reload only.
+    private string? _savedToAccountLabel;
+
     // Opened from a shared mailbox, the title names the account shown for the life of the window.
     private readonly bool _openedFromSharedMailbox;
 
@@ -419,7 +424,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private void ReturnToAccount(Guid accountId)
     {
         if (SelectedAccount?.Id != accountId && AccountOptions.FirstOrDefault(o => o.Id == accountId) is { } option)
+        {
             SelectedAccount = option;
+            // After the switch, whose change handler clears it: this change is the save's, not the user's.
+            _savedToAccountLabel = option.DisplayName;
+        }
     }
 
     private async Task<string?> SaveEditedClientAsync(Guid accountId, MailRule original, ServerRuleEditorViewModel editor)
@@ -538,6 +547,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         string? serverId = null, Guid? clientId = null, int? fallbackIndex = null, CancellationToken ct = default)
     {
         await RefreshCoreAsync(ct);
+        _savedToAccountLabel = null;   // said once, by the save's own reload; a later reload has nothing to add
         SelectedRule = Rules.FirstOrDefault(r =>
             (serverId != null && r.Server?.Id == serverId) ||
             (clientId != null && r.Client?.Id == clientId));
@@ -591,6 +601,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     {
         // Choosing an account answers the shared-mailbox notice: it was about where the window opened.
         _sharedMailboxLabel = null;
+        _savedToAccountLabel = null;
         RefreshCommand.ExecuteAsync(null).LogFaults("UnifiedRules: account-change refresh");
     }
 
@@ -698,7 +709,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
             // A load failure must survive to the status line — otherwise "couldn't reach Graph" reads
             // as "this account has no server rules", which invites the wrong next action.
-            StatusText = SharedMailboxPreamble() + BuildStatus(rows, failures, AccountSupportsServerRules);
+            StatusText = (_savedToAccountLabel is { } savedTo ? $"Rule saved to {savedTo}. " : string.Empty)
+                         + SharedMailboxPreamble() + BuildStatus(rows, failures, AccountSupportsServerRules);
         }
         finally
         {

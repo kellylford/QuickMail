@@ -373,6 +373,27 @@ public class UnifiedRulesViewModelTests
         Assert.Equal(home, Assert.Single(client.LoadedRules).AccountId);   // a client rule, on Home
         Assert.Equal(home, vm.SelectedAccount!.Id);                        // the list went back to Home …
         Assert.Equal("Digests", vm.SelectedRule?.Name);                    // … and selected the new rule
+        // The list moved without the user choosing it, and nothing else says where the rule went.
+        Assert.StartsWith("Rule saved to Home. ", vm.StatusText, StringComparison.Ordinal);
+
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+        Assert.DoesNotContain("Rule saved", vm.StatusText, StringComparison.Ordinal);   // said once, not on every reload
+    }
+
+    [Fact]
+    public async Task SavingOnTheListedAccount_AddsNothingToTheStatusLine() // #683
+    {
+        // Only a save that moved the Account list says where the rule went; otherwise the user is already there.
+        var home = Guid.NewGuid();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(home), Graph(Guid.NewGuid())], preferredAccountId: home);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal("Digests", vm.SelectedRule?.Name);
+        Assert.DoesNotContain("Rule saved", vm.StatusText, StringComparison.Ordinal);
     }
 
     [Fact]
