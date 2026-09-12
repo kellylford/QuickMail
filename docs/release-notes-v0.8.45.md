@@ -110,7 +110,8 @@ no Microsoft 365 account got a window that gave every new rule your default acco
 one got a window that opened on whichever account you had last visited or read a message from.
 
 In the rules list, **Space** on a rule reliably turns it on or off. And **Test**, which checks a rule
-against the messages in the message list, now says so instead of calling them your selected messages.
+against its own account's messages in the message list, now says so instead of calling them your
+selected messages.
 ([#550](https://github.com/kellylford/QuickMail/issues/550))
 
 ---
@@ -155,8 +156,8 @@ What still speaks is anything you could not otherwise know: a count when you act
 once ("3 messages deleted"), "Folder is now empty" when the last one goes, and every failure. All
 of it still appears in the status bar, and `Ctrl+9` reads the status bar on demand.
 
-This is not the announcement setting doing its job — **Settings → Accessibility → Announce delete
-and archive actions** is still on by default and still controls the announcements that remain.
+This is not the announcement setting doing its job — **Settings → Accessibility → Announce delete,
+archive and move actions** is still on by default and still controls the announcements that remain.
 Nothing to turn off, and nothing to turn back on.
 ([#667](https://github.com/kellylford/QuickMail/issues/667))
 
@@ -253,6 +254,71 @@ Both now use the same test, and it is one that works while you are reading.
   message was counted twice. A moved or deleted message is now out of the running for the rules after
   it, as it already was for mail as it arrives.
   ([#685](https://github.com/kellylford/QuickMail/issues/685))
+
+---
+
+## Fixed: the Rules Manager's status line and Test count what they say
+
+- **After a failed load, the status line counts only what loaded.** When the server-side rules
+  couldn't be loaded but the client-side ones could, the status line said the account had "0 on
+  server", straight after saying the server rules couldn't be loaded. It now counts only the kind it
+  loaded, for example "2 client-side rules."
+  ([#679](https://github.com/kellylford/QuickMail/issues/679))
+- **Test counts only the rule's own account.** **Test** counted a client-side rule's matches across
+  every message in the list, whatever account each came from, though the rule only ever acts on its
+  own account's mail. It now counts only that account's messages, names the account, and says so when
+  the list holds none of them.
+  ([#687](https://github.com/kellylford/QuickMail/issues/687))
+
+---
+
+## Fixed: two dark-theme readability problems
+
+- **The status bar's Rules and update buttons** drew their text in black in every theme, which was
+  nearly invisible on the dark theme's status bar. They now use the theme's text colour.
+  ([#689](https://github.com/kellylford/QuickMail/issues/689))
+- **The selected rule in the Rules Manager** was near-white text on a near-white highlight in the dark
+  theme. It now uses the theme's selection colours.
+  ([#690](https://github.com/kellylford/QuickMail/issues/690))
+
+---
+
+## Fixed: keyboard access in the message menus and the reading pane
+
+- **Ctrl+Shift+P opens the command palette while you read a message** in the reading pane, as it
+  already did in a message window. Before, you had to leave the message first. Closing the palette
+  puts you back where you were reading, and a command you choose from it runs before focus goes back
+  to the message.
+  ([#676](https://github.com/kellylford/QuickMail/issues/676))
+- **Each item in the message menus has its own access key.** In the message context menu and the
+  Message menu, **Reply All** and **Move to Archive** both used A, so pressing A only moved between
+  them. **Move to Archive** now uses H, and **Grab Addresses from Message** uses G. In the From, To and
+  Conversations menus, **Reply** and the archive item both used R; the archive items now use H too. In
+  the context menu, **Create Rule from Message** uses T, because R is **Reply**'s.
+  ([#692](https://github.com/kellylford/QuickMail/issues/692))
+- **Caps Lock no longer mixes up Ctrl+W and Ctrl+Shift+W in a message.** With Caps Lock on,
+  Ctrl+Shift+W in the reading pane closed the message instead of watching its conversation, and Ctrl+W
+  in a message window did nothing. Both now work whether Caps Lock is on or off.
+  ([#697](https://github.com/kellylford/QuickMail/pull/697))
+
+---
+
+## Fixed: no "unavailable" after moving or unwatching
+
+Moving messages to another folder, or unwatching a conversation while the **Watched Conversations**
+folder is open, could make a screen reader say "unavailable" before the next message, as deleting did
+before 0.8.45. Focus now lands on the next message before the moved or unwatched ones leave the list.
+When the last message goes, focus goes to the empty list, instead of staying in a message that is no
+longer there. Unwatching a conversation from a message window, or from the Watched Conversations
+manager, no longer pulls focus into the main window.
+
+Moving now speaks as deleting does. A single move says nothing, since the next message is being read,
+while moving several says the count, and emptying the folder says so. The setting that controls
+these is renamed **Settings → Accessibility → Announce delete, archive and move actions**. A move
+that fails is announced as a result, so you hear it even with that setting off. If you had turned that
+setting off but left **Announce action results** on, you will no longer hear how many messages a move
+moved: those counts used to be results.
+([#670](https://github.com/kellylford/QuickMail/issues/670))
 
 ---
 
