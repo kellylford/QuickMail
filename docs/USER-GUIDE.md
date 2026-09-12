@@ -1149,7 +1149,7 @@ The list shows one account at a time, so a row does not repeat the account: it s
 
 In the list, **Enter** edits the selected rule, **Space** turns it on or off, and **Delete** deletes it after asking. The buttons below the list are **New**, **Edit**, **Delete**, **Enable** or **Disable**, **Move Up**, **Move Down**, **Test**, **Run on Existing Mail**, and **Close**; most are on the list's context menu as well, and every one is in the command palette (`Ctrl+Shift+P`). **Escape** closes the window.
 
-**Test** runs the selected client-side rule against the messages from its account that were in the message list when you opened the Rules Manager, and says how many of them it would match — messages from other accounts aren't counted, because the rule never acts on them — so you can check a rule before letting it loose.
+**Test** runs the selected client-side rule against the messages that were in the message list when you opened the Rules Manager, and says how many of them it would match, so you can check a rule before letting it loose. Only messages in the rule's own account are counted, because the rule never acts on any others.
 
 ### Creating a Rule from a Message
 

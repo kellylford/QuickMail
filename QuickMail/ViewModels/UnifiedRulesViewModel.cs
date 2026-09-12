@@ -635,7 +635,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 catch (Exception ex)
                 {
                     serverFailed = true;
-                    failures.Add($"Couldn't load server rules: {ex.Message}");
+                    failures.Add($"Couldn't load server-side rules: {ex.Message}");
                     LogService.Log("UnifiedRules: server load failed", ex);
                 }
             }
@@ -721,7 +721,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// </para>
     /// </summary>
     /// <remarks>Names its subject rather than opening with "It": the clause is appended to a count and
-    /// to a load failure, and after "Couldn't load server rules: …" the nearest noun an "It" could attach
+    /// to a load failure, and after "Couldn't load server-side rules: …" the nearest noun an "It" could attach
     /// to is <em>server rules</em>.</remarks>
     internal static string ModeClause(bool supportsServerRules)
         => supportsServerRules
@@ -786,7 +786,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         return rows.Count == 0 ? NoRulesStatus(supportsServerRules) : Counts(rows, supportsServerRules);
 
         // After one half failed to load, count only the half that did (#679). "0 on server" straight after
-        // "Couldn't load server rules" reads as "this account has none" — the very misreading the failure
+        // "Couldn't load server-side rules" reads as "this account has none" — the very misreading the failure
         // text is there to prevent.
         static string LoadedCount(List<UnifiedRuleRow> r, bool supportsServer, bool serverFailed)
         {

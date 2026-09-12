@@ -594,7 +594,7 @@ A **client-side** rule is run by QuickMail on this computer, on Inbox mail as it
 - Press **Ctrl+Shift+L**, or
 - Open the command palette (`Ctrl+Shift+P`) and type "Manage Rules".
 
-The Rules Manager lists one account's rules at a time; choose the account in the **Account** list at the top. It opens on the account you were in, and from a view that spans accounts, such as All Inboxes, on your default account. Beside the list, the **Rule detail** pane reads out the selected rule, and the status line below the account list says how many rules the account has, where they run, and which kinds the account can have. **F6** cycles through the account list, the rules, the details, and the status line.
+The Rules Manager lists one account's rules at a time; choose the account in the **Account** list at the top. It opens on the account you were in, and from a view that spans accounts, such as All Inboxes, on your default account. Beside the list, the **Rule detail** pane reads out the selected rule, and the status line below the account list says how many rules the account has, where they run, and which kinds the account can have. If one kind can't be loaded, the status line says so and counts only the kind that did. **F6** cycles through the account list, the rules, the details, and the status line.
 
 ### Creating a rule
 
@@ -616,7 +616,7 @@ Create Rule from Message is not in the context menu for a message in a shared ma
 
 ### Testing a rule
 
-Select a client-side rule and activate **Test**. QuickMail runs it against the messages from that rule's account that were in the message list when you opened the Rules Manager, and the status line says how many of them would match, for example "Rule would match 3 of the 50 messages in the list for the Work account." Messages from other accounts aren't counted, because the rule never acts on them. **Test** is turned off for server-side rules, which run on the server.
+Select a client-side rule and activate **Test**. QuickMail runs it against the messages that were in the message list when you opened the Rules Manager, counting only those in the rule's own account, and the status line says how many would match, for example "Rule would match 3 of the 50 messages in the list for the Work account." Messages in other accounts aren't counted, because the rule never acts on them. **Test** is turned off for server-side rules, which run on the server.
 
 ### Enabling and disabling rules
 

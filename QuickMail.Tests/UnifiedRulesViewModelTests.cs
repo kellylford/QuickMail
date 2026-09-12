@@ -406,7 +406,7 @@ public class UnifiedRulesViewModelTests
 
         await vm.RefreshCommand.ExecuteAsync(null);
 
-        Assert.Contains("Couldn't load server rules", vm.StatusText);   // the evidence survives …
+        Assert.Contains("Couldn't load server-side rules", vm.StatusText);   // the evidence survives …
         Assert.Contains("Graph unreachable", vm.StatusText);
         Assert.DoesNotContain("No rules yet", vm.StatusText);              // … not overwritten by BuildStatus
     }
@@ -514,7 +514,7 @@ public class UnifiedRulesViewModelTests
         // the failure and the clause, which every substring assertion passed straight over.
         // The client half loaded and is empty, and says so (#679): otherwise nothing tells that apart from
         // a client half that was never read.
-        Assert.Equal("Couldn't load server rules: Graph unreachable. No client-side rules. " + UnifiedRulesViewModel.ModeClause(true),
+        Assert.Equal("Couldn't load server-side rules: Graph unreachable. No client-side rules. " + UnifiedRulesViewModel.ModeClause(true),
                      vm.StatusText);
     }
 
@@ -536,7 +536,7 @@ public class UnifiedRulesViewModelTests
     [Fact]
     public async Task AFailedServerLoad_CountsOnlyTheClientRulesThatLoaded() // #679
     {
-        // "0 on server" straight after "Couldn't load server rules" reads as "this account has none" — the
+        // "0 on server" straight after "Couldn't load server-side rules" reads as "this account has none" — the
         // misreading the failure text is there to prevent.
         var a = Guid.NewGuid();
         var server = new FakeServerRules { ThrowOnList = new Exception("Graph unreachable") };
@@ -545,7 +545,7 @@ public class UnifiedRulesViewModelTests
 
         await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("Couldn't load server rules: Graph unreachable. 2 client-side rules. " + UnifiedRulesViewModel.ModeClause(true),
+        Assert.Equal("Couldn't load server-side rules: Graph unreachable. 2 client-side rules. " + UnifiedRulesViewModel.ModeClause(true),
                      vm.StatusText);
     }
 
@@ -564,8 +564,8 @@ public class UnifiedRulesViewModelTests
     {
         // Both halves failed: nothing loaded, so nothing is counted. Counting a "loaded" half here would put
         // "No client-side rules." straight after "Couldn't load client-side rules".
-        Assert.Equal("Couldn't load server rules: E1. Couldn't load client-side rules: E2. " + UnifiedRulesViewModel.ModeClause(true),
-                     UnifiedRulesViewModel.BuildStatus([], ["Couldn't load server rules: E1", "Couldn't load client-side rules: E2"],
+        Assert.Equal("Couldn't load server-side rules: E1. Couldn't load client-side rules: E2. " + UnifiedRulesViewModel.ModeClause(true),
+                     UnifiedRulesViewModel.BuildStatus([], ["Couldn't load server-side rules: E1", "Couldn't load client-side rules: E2"],
                          supportsServerRules: true, serverLoadFailed: true, clientLoadFailed: true));
         // A client-only account has no server half, so a failed client load has no other half to count, and
         // must not report "No server-side rules." for rules it never tried to load.
