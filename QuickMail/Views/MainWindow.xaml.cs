@@ -139,6 +139,10 @@ public partial class MainWindow : Window
     // so we can restore focus on re-activation.  -1 = not yet deactivated / unknown.
     private int _paneIndexBeforeDeactivation = -1;
 
+    // Set while OpenCommandPalette puts focus back into the message body itself, so that OnActivated, which
+    // otherwise sends focus that was in the message body to the list, stands aside (#676).
+    private bool _paletteRestoresFocus;
+
     // Debounces StatusText announcements so rapid per-folder sync updates ("5 messages",
     // "12 messages", …) coalesce into a single final reading by the screen reader.
     private DispatcherTimer? _statusAnnounceTimer;
@@ -1934,6 +1938,10 @@ public partial class MainWindow : Window
         var fromMessageBody = IsMessageBodyFocused;
 
         var palette = new CommandPaletteWindow(_registry) { Owner = this };
+        // Closing the palette reactivates this window, and OnActivated would then queue focus that was in the
+        // message body over to the list, undoing the return below. Set before the palette opens, since the
+        // activation comes while it closes.
+        _paletteRestoresFocus = fromMessageBody && _vm.IsMessageOpen;
         var commandChosen = palette.ShowDialog() == true;
 
         if (!(fromMessageBody && _vm.IsMessageOpen))
@@ -1953,15 +1961,21 @@ public partial class MainWindow : Window
             // Folder, New Folder, Save View) straight over a focused message body, close to the nested-modal
             // freeze in CLAUDE.md. Queued at the same priority, this runs after the command. While a dialog the
             // command opened is up this window is not active, so it does nothing; and it leaves focus alone if
-            // the command closed the message or put focus somewhere of its own.
+            // the command put focus somewhere of its own. A command that closed the message without placing
+            // focus gets the message list, as OnActivated would have given it.
             Dispatcher.InvokeAsync(() =>
             {
                 var focused = Keyboard.FocusedElement;
-                if (IsActive && _vm.IsMessageOpen
-                    && (focused is null || ReferenceEquals(focused, this) || ReferenceEquals(focused, previousFocus) || IsMessageBodyFocused))
-                    FocusMessageBodyHost();
+                var untouched = focused is null || ReferenceEquals(focused, this)
+                                || ReferenceEquals(focused, previousFocus) || IsMessageBodyFocused;
+                if (!IsActive || !untouched) return;
+                if (_vm.IsMessageOpen) FocusMessageBodyHost();
+                else ReturnFocusToMessageList();
             }, DispatcherPriority.Input);
         }
+
+        // Cleared behind the returns queued above, so an activation that arrives late is covered too.
+        Dispatcher.InvokeAsync(() => _paletteRestoresFocus = false, DispatcherPriority.Input);
     }
 
     private void ViewModeButton_Click(object sender, RoutedEventArgs e) => OpenViewMenu();
@@ -4035,6 +4049,7 @@ public partial class MainWindow : Window
     private void OnActivated(object? sender, EventArgs e)
     {
         LogService.Debug($"[FOCUS] Activated lastPane={_paneIndexBeforeDeactivation} {FocusInfo()}");
+        if (_paletteRestoresFocus) return;   // OpenCommandPalette is putting focus back into the message (#676)
         if (_paneIndexBeforeDeactivation == 3 || _paneIndexBeforeDeactivation == 4)
             // Re-check IsActive at callback time: a transient activation (e.g. a modeless child of the
             // Rules Manager closing and briefly bouncing foreground through here) must NOT pull focus

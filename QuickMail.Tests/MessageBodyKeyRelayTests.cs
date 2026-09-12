@@ -80,7 +80,33 @@ public class MessageBodyKeyRelayTests
         var queued = body[chosen..];
         Assert.Contains("Dispatcher.InvokeAsync(", queued, StringComparison.Ordinal);
         Assert.Contains("DispatcherPriority.Input", queued, StringComparison.Ordinal);
-        Assert.Contains("IsActive && _vm.IsMessageOpen", queued, StringComparison.Ordinal);
+        Assert.Contains("if (!IsActive || !untouched) return;", queued, StringComparison.Ordinal);
+        // A command that closed the message without placing focus still ends on the list, as it did when
+        // OnActivated sent it there.
+        Assert.Contains("else ReturnFocusToMessageList();", queued, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReactivatingAfterThePalette_LeavesTheReturnToTheMessageAlone()
+    {
+        // Closing the palette reactivates the main window, and OnActivated sends focus that was in the message
+        // body to the list. Unless it stands aside while the palette puts focus back, the list wins every time.
+        var code = Source("MainWindow.xaml.cs");
+        var start = code.IndexOf("private void OpenCommandPalette()", StringComparison.Ordinal);
+        Assert.True(start >= 0, "OpenCommandPalette is gone.");
+        var palette = code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
+        var set = palette.IndexOf("_paletteRestoresFocus = fromMessageBody && _vm.IsMessageOpen;", StringComparison.Ordinal);
+        var shown = palette.IndexOf("palette.ShowDialog()", StringComparison.Ordinal);
+        Assert.True(set >= 0 && shown > set, "The flag must be set before the palette opens: the activation comes while it closes.");
+        Assert.Contains("Dispatcher.InvokeAsync(() => _paletteRestoresFocus = false, DispatcherPriority.Input);",
+                        palette[shown..], StringComparison.Ordinal);
+
+        var activated = code.IndexOf("private void OnActivated(", StringComparison.Ordinal);
+        Assert.True(activated >= 0, "OnActivated is gone.");
+        var body = code[activated..code.IndexOf("\n    }", activated, StringComparison.Ordinal)];
+        var skip = body.IndexOf("if (_paletteRestoresFocus) return;", StringComparison.Ordinal);
+        var restore = body.IndexOf("ReturnFocusToMessageList()", StringComparison.Ordinal);
+        Assert.True(skip >= 0 && restore > skip, "OnActivated must check the flag before sending focus to the list.");
     }
 
     [Theory]
