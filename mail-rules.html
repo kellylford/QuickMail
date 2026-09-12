@@ -32,50 +32,130 @@ you describe — filing newsletters into a folder, marking a mailing list
 as read, deleting something you never want to see.</p>
 <p>Open the <strong>Rules Manager</strong> from the
 <strong>Tools</strong> menu (<code>Ctrl+Shift+L</code>) or the command
-palette. It opens with the list of rules on the left and the selected
-rule’s settings on the right.</p>
+palette. It lists the selected account’s rules, and beside the list a
+<strong>Rule detail</strong> pane reads out the selected rule in full:
+what it applies to, and what it does. Rules are written in a separate
+editor window. <strong>New</strong> (<code>Ctrl+N</code>) opens it for a
+new rule, and <strong>Edit</strong> — or <strong>Enter</strong> on a
+rule in the list — opens it for the selected one. It is the same window
+whatever kind of account you have; it shows what the selected account
+supports.</p>
+<p><strong>Client-side and server-side.</strong> A rule QuickMail runs
+itself is a <strong>client-side</strong> rule: it is stored on this
+computer and it acts on your mail while QuickMail is open. A
+<strong>work or school</strong> account added with the <strong>Microsoft
+365 (Graph)</strong> connection method can also carry
+<strong>server-side</strong> rules, which your mail provider runs for
+you whether QuickMail is open or not — see <a
+href="#microsoft-365-server-side-rules">Microsoft 365: server-side
+rules</a>. Every other account has client-side rules only, including a
+work or school account you added over Standard IMAP/SMTP. Each row in
+the rules list is marked <strong>on client</strong> or <strong>on
+server</strong>, and the status line says which kinds the selected
+account can have, so neither is ever a guess.</p>
+<p><strong>One account at a time.</strong> When you have more than one
+account, the Rules Manager opens on a single account chosen in an
+<strong>Account</strong> list at the top, rather than listing every
+account’s rules together. Choose the account whose rules you want, and
+the list below shows just that mailbox’s rules. If you have only one
+account there is no picker. It opens on the account you were in; see <a
+href="#rules-belong-to-one-account">Rules belong to one account</a>.
+This is the first thing to notice if you are used to seeing every
+account’s rules in one list: your rules are not gone, they are behind
+the account picker. The <strong>status line</strong> just below the
+picker says how many rules the account has, where they run, and which
+kinds that account can have — so an empty list is never a mystery.
+<strong>F6</strong> cycles the panes — account list, rules, details,
+status line — so it reaches the status line and reads it back at any
+time.</p>
 <h3 id="what-a-rule-is-made-of">What a rule is made of</h3>
+<p>The editor has the same parts whichever kind of rule you are
+writing.</p>
 <ul>
-<li><strong>Rule name</strong> — how you recognize it in the list.</li>
+<li><strong>Rule name</strong> — how you recognize it in the list. A
+rule must have one.</li>
 <li><strong>Enabled</strong> — turn a rule off without deleting it.</li>
-<li><strong>Account</strong> — which mailbox the rule watches. Every
-rule belongs to exactly one account; see <a
-href="#rules-belong-to-one-account">Rules belong to one
-account</a>.</li>
-<li><strong>Conditions</strong> — <strong>From</strong>,
-<strong>To</strong>, <strong>Subject</strong>, <strong>Body</strong>,
-and <strong>Has attachments</strong>. Check the ones you want and type
-the text to look for; the match is not case sensitive and looks for your
-text anywhere in the field. A message must satisfy
-<strong>every</strong> condition you checked, so leaving a condition
-unchecked is how you say “don’t care”.</li>
-<li><strong>Action</strong> — one of <strong>Mark as read</strong>,
-<strong>Mark as unread</strong>, <strong>Move to folder</strong>, or
-<strong>Delete</strong>. Choosing Move to folder adds a <strong>Choose
-Folder…</strong> button; the button then shows the folder you picked.
-The picker is the same folder tree used everywhere else you choose a
-destination, showing the folders of the rule’s own account — a rule
-files mail within one mailbox. It opens on the folder the rule already
-files into, or on the first folder for a new rule. If the folder you
-want to file into does not exist yet, activate <strong>New
-Folder</strong> (or <strong>Alt+N</strong>) in the picker to create one
-under the selected folder and target it without leaving the rule you are
-writing. The button is not offered for a POP3 account, which has no
-server folders to create, nor for a rule QuickMail cannot tie to one
-account — a rule that has no account of its own, or an account whose
-folders have not been read yet. The picker then falls back to showing
-every account, where a folder created under the selected node could land
-in a different mailbox from the one the rule files in; you can still
-pick an existing folder there.</li>
+<li><strong>Apply when a message matches</strong> — <strong>From
+addresses</strong> and <strong>Subject contains</strong>. Each condition
+is switched on by the checkbox in front of it: check the ones you want
+and type the text to look for. A message must satisfy
+<strong>every</strong> condition you checked, so leaving one unchecked
+is how you say “don’t care”. Matching ignores case. The
+<em>contains</em> conditions look for your text anywhere in the field;
+<strong>From addresses</strong> and <strong>Sent to addresses</strong>
+are for email addresses. A client-side rule’s <strong>Body
+contains</strong> looks at the start of the message that QuickMail keeps
+as its preview, not the whole message. Clearing a checkbox leaves the
+text sitting in its box, now read-only and skipped by Tab, so a
+condition you turned off is one keystroke from being turned back on
+rather than something you have to retype.</li>
+<li><strong>Then do this</strong> — <strong>Move to folder</strong>,
+<strong>Mark as read</strong>, <strong>Delete</strong>, and <strong>Stop
+processing more rules</strong>. <strong>Delete</strong> moves the
+message to the account’s Trash, which Microsoft 365 calls Deleted Items.
+Choosing Move to folder adds a <strong>Choose folder…</strong> button;
+the button then shows the folder you picked. The picker is the same
+folder tree used everywhere else you choose a destination, showing the
+folders of the rule’s own account — a rule files mail within one
+mailbox. It opens on the folder the rule already files into, or on the
+first folder for a new rule. If the folder you want to file into does
+not exist yet, activate <strong>New Folder</strong> (or
+<strong>Alt+N</strong>) in the picker to create one under the selected
+folder and target it without leaving the rule you are writing. The
+button is not offered for a POP3 account, which has no server folders to
+create, nor for a rule QuickMail cannot tie to one account — a rule that
+has no account of its own, or an account whose folders have not been
+read yet. The picker then falls back to showing every account, where a
+folder created under the selected node could land in a different mailbox
+from the one the rule files in; you can still pick an existing folder
+there.</li>
+<li><strong>Advanced conditions &amp; actions</strong> — more conditions
+(<strong>Sender contains</strong>, <strong>Sent to addresses</strong>,
+<strong>Subject or body contains</strong>, <strong>Body
+contains</strong>, <strong>Sent to me</strong>, <strong>Sent only to
+me</strong>, <strong>Has attachments</strong>, and <strong>Importance
+is</strong>) and more actions (<strong>Mark as unread</strong>,
+<strong>Copy to folder</strong>, <strong>Set importance to</strong>, and
+<strong>Forward to</strong>). The section starts collapsed for a new
+rule, and opens by itself when you edit a rule that uses anything in it,
+so editing never hides a field that is in use.</li>
 </ul>
-<p><strong>Test Rule</strong> runs the rule against the messages
-currently in your list and tells you how many it would match, so you can
-check a rule before letting it loose. <strong>Save</strong> stores the
-rule; <strong>New Rule</strong> and <strong>Delete</strong> manage the
-list.</p>
-<p>Every enabled rule for the account is tried, in list order, and each
-one that matches acts. A rule that moves or deletes a message takes it
-out of the running for the rest of the list.</p>
+<p><strong>Save</strong> stores the rule and closes the editor;
+<strong>Cancel</strong> closes it without saving. A <strong>Move to
+folder</strong> or <strong>Delete</strong> rule needs at least one
+condition — with none it would act on every message — so QuickMail will
+not save it until you add one. <strong>Mark as read</strong> and
+<strong>Mark as unread</strong> rules can have none.</p>
+<p><strong>What a client-side rule can use.</strong> A client-side rule
+does exactly one thing. It can test <strong>From addresses</strong> (one
+address), <strong>Subject contains</strong>, <strong>Sender
+contains</strong> (but not together with From addresses), <strong>Sent
+to addresses</strong> (one address), <strong>Body contains</strong>, and
+<strong>Has attachments</strong>, and it can <strong>Move to
+folder</strong>, <strong>Mark as read</strong>, <strong>Mark as
+unread</strong>, or <strong>Delete</strong>. Everything else in the
+editor needs a server-side rule: the other conditions and actions, more
+than one address in a field, and more than one action. <strong>Mark as
+unread</strong> is the reverse — only a client-side rule can do it,
+which is why its label says so. Editing never changes a rule’s kind, so
+a client-side rule stays client-side. The editor offers the server-side
+options even where they cannot be used — on an account with client-side
+rules only, and when you edit a client-side rule — and
+<strong>Save</strong> refuses a rule that uses one. For a new rule it
+names the option to remove; for an edited one it asks you to remove what
+a client-side rule cannot do. While you edit a server-side rule,
+<strong>Mark as unread</strong> is unavailable, because the server has
+no way to do it.</p>
+<p><strong>The order rules run in.</strong> Every enabled rule for the
+account is tried, and each one that matches acts. Server-side rules run
+on the server as mail is delivered, in the order the list shows;
+<strong>Move Up</strong> and <strong>Move Down</strong> change it, and
+<strong>Stop processing more rules</strong> tells the server to skip the
+server-side rules after it. Client-side rules run when QuickMail sees
+the mail, in the order they were created, and cannot be reordered. A
+client-side rule that moves or deletes a message takes it out of the
+running for the client-side rules after it, both on mail as it arrives
+and when you use <strong>Run on Existing Mail</strong>.</p>
 <h3 id="when-rules-run">When rules run</h3>
 <p>Rules run <strong>on your Inbox, on mail as it arrives</strong> —
 including mail that arrives while QuickMail is sitting open, not only at
@@ -85,91 +165,125 @@ nothing you deliberately put somewhere is moved or deleted behind your
 back. Mail already in the mailbox before a rule existed is left alone
 too.</p>
 <p>To apply your rules to mail that is already there, use <strong>Run on
-Existing Mail</strong>. It runs every enabled rule over the Inbox of
-each account — again, the Inbox only — across the mail QuickMail has
-stored locally, and tells you how many messages were moved or deleted.
-(Mark as read and mark as unread still happen; they are not counted.) An
-account whose Inbox QuickMail has not read yet in this session is
-skipped rather than guessed at, and the skip is noted in the log.</p>
+Existing Mail</strong>. It runs the selected account’s enabled
+client-side rules over that account’s Inbox — again, the Inbox only —
+across the mail QuickMail has stored locally, and tells you how many
+messages were moved or deleted. (Mark as read and mark as unread still
+happen; they are not counted.) An account whose Inbox QuickMail has not
+read yet in this session is skipped rather than guessed at, and the skip
+is noted in the log.</p>
 <h3 id="rules-belong-to-one-account">Rules belong to one account</h3>
-<p>Each rule watches one account. Choose it in the
-<strong>Account</strong> list in the rule’s settings; a new rule starts
-on your default account. The account each rule belongs to is shown
-beside its name in the rules list.</p>
+<p>Each rule watches one account: the one chosen in the Rules Manager’s
+<strong>Account</strong> list when you create it. The editor has no
+account field of its own, so to write a rule for another account, choose
+that account in the list first. Changing the list while the editor is
+open doesn’t move the rule: when you save, the list goes back to the
+rule’s account and selects it, and the status line starts by saying so,
+for example “Rule saved to Home.” The Rules Manager opens on the account
+you were in. From a view that spans accounts, such as <strong>All
+Inboxes</strong>, it opens on your default account — the one marked with
+<strong>Set Default</strong> in Account Manager. A rule made with <a
+href="#creating-a-rule-from-a-message">Create Rule from Message</a>
+belongs to that message’s account. Shared mailboxes are not in the list,
+because their rules are managed in Outlook; if you open the Rules
+Manager from one, it shows your default account instead, names that
+account in its title, and says why on its status line. See <a
+href="#shared-mailboxes">Shared mailboxes</a>.</p>
 <p>If you had rules from an earlier version that applied to <strong>all
-accounts</strong>, QuickMail converts each one into a separate rule per
-account the first time it starts, so they keep doing what they did. The
-one exception is a profile whose only accounts connect through Microsoft
-365 directly: those mailboxes have no client-side rule to convert to, so
-an old all-accounts rule is dropped and the reason is written to the
-log.</p>
+accounts</strong>, QuickMail converts each one into a separate rule for
+every account that is not connected through Microsoft 365 directly, the
+first time it starts, so they keep doing what they did there. An old
+rule is never copied onto a Microsoft 365 mailbox, so it cannot start
+acting on one without your say-so; in a profile whose only accounts are
+Microsoft 365, it is dropped and the reason is written to the log.</p>
 <h3 id="reading-the-rules-list">Reading the rules list</h3>
-<p>Each row in the rules list says the rule’s name and the account it
-belongs to. Turn on <strong>Show field labels in the rules list</strong>
-in <strong>Settings → General → Screen Reader Announcements</strong> to
-hear those pieces named (“Name … account …”) rather than run
+<p>The list shows one account at a time, so a row does not repeat the
+account: it says the rule’s name, where it runs, and whether it is
+enabled. Turn on <strong>Show field labels in the rules list</strong> in
+<strong>Settings → General → Screen Reader Announcements</strong> to
+hear those pieces named (“Rule … runs … status …”) rather than run
 together.</p>
+<p>In the list, <strong>Enter</strong> edits the selected rule,
+<strong>Space</strong> turns it on or off, and <strong>Delete</strong>
+deletes it after asking. The buttons below the list are
+<strong>New</strong>, <strong>Edit</strong>, <strong>Delete</strong>,
+<strong>Enable</strong> or <strong>Disable</strong>, <strong>Move
+Up</strong>, <strong>Move Down</strong>, <strong>Test</strong>,
+<strong>Run on Existing Mail</strong>, and <strong>Close</strong>; most
+are on the list’s context menu as well, and every one is in the command
+palette (<code>Ctrl+Shift+P</code>). <strong>Escape</strong> closes the
+window.</p>
+<p><strong>Test</strong> runs the selected client-side rule against the
+messages that were in the message list when you opened the Rules
+Manager, and says how many of them it would match, so you can check a
+rule before letting it loose. Only messages in the rule’s own account
+are counted, because the rule never acts on any others.</p>
 <h3 id="creating-a-rule-from-a-message">Creating a Rule from a
 Message</h3>
 <p>Select a message and choose <strong>Create Rule from Message</strong>
 from the context menu or the command palette. QuickMail opens a new rule
-pre-filled with a condition matching the sender and, if present, the
-subject — a quick starting point you can adjust before saving.</p>
+pre-filled from that message: the sender is filled in and its condition
+is <strong>checked</strong>, so the rule matches everything from that
+sender. The subject is filled in too, but its condition starts
+<strong>unchecked</strong> — a rule that has to match one sender
+<em>and</em> one exact subject line matches, in practice, only the
+conversation you made it from. If you did want the subject as well,
+check its box; the text is already there. This does not work on a
+message in a shared mailbox, whose rules are managed in Outlook; see <a
+href="#shared-mailboxes">Shared mailboxes</a>.</p>
 <h3 id="microsoft-365-server-side-rules">Microsoft 365: server-side
 rules</h3>
 <p>If you have a <strong>work or school</strong> Microsoft 365
-(Exchange) account, the Rules Manager does a little more. Alongside the
-rules that run inside QuickMail, it shows the <strong>server-side
-rules</strong> on your Exchange mailbox — the same rules Outlook calls
-“Inbox rules.” A server rule runs on Microsoft’s servers, so it acts on
-your mail <strong>even when QuickMail is closed</strong>, and it applies
-wherever you read that mailbox.</p>
+(Exchange) account, the Rules Manager does a little more. Alongside your
+client-side rules, it shows the <strong>server-side rules</strong> on
+your Exchange mailbox — the same rules Outlook calls “Inbox rules.” A
+server rule runs on Microsoft’s servers, so it acts on your mail
+<strong>even when QuickMail is closed</strong>, and it applies wherever
+you read that mailbox.</p>
 <p>Server-side rules are an organization feature, so <strong>personal
 Outlook.com, Hotmail, and Live.com accounts do not have them</strong> —
 even when connected through Microsoft 365 directly. For a personal
-account the Rules Manager shows only the rules that run inside
-QuickMail, the same as any other non-Exchange account.</p>
-<p><strong>One account at a time.</strong> With a Microsoft 365 account
-present, the Rules Manager opens on a single account chosen in an
-<strong>Account</strong> list at the top, rather than listing every
-account’s rules together. Choose the account whose rules you want, and
-the list below shows just that mailbox’s rules. If you have only one
-account there is no picker. This is the first thing to notice if you are
-used to seeing every account’s rules in one list: your rules are not
-gone, they are behind the account picker.</p>
-<p><strong>One list, marked where each rule runs.</strong> Server rules
-and QuickMail rules appear together in a single list. Each row says
-where the rule runs — <strong>on server</strong> or <strong>in
-QuickMail</strong> — along with its name and whether it is enabled.
-Creating, editing, enabling or disabling, reordering, and deleting all
-work the same way whichever kind a rule is. When you open the Rules
-Manager, or switch to another account with the account picker, QuickMail
-announces that account’s rule mode — that its rules run in QuickMail
-while it is open, or that the account also supports server-side rules —
-so an empty list is never a mystery about which kind the account can
-have.</p>
+account the Rules Manager shows only client-side rules, the same as any
+other non-Exchange account.</p>
+<p><strong>One list, marked where each rule runs.</strong> For a work or
+school account, server-side and client-side rules appear together in a
+single list. Each row says where the rule runs — <strong>on
+server</strong> or <strong>on client</strong> — along with its name and
+whether it is enabled. Creating, editing, enabling or disabling, and
+deleting all work the same way whichever kind a rule is; only
+server-side rules can be reordered. The status line counts them the same
+way — “4 rules: 3 on server, 1 on client” — so which kinds an account is
+holding is on screen, and <strong>F6</strong> cycles round to read it
+back. If one kind can’t be loaded, the status line says so and counts
+only the kind that did.</p>
 <p><strong>QuickMail chooses where a new rule lives.</strong> When you
 create a rule, QuickMail saves it as a server rule whenever it can, so
 it keeps working while QuickMail is closed. A rule that needs something
 only QuickMail can do — today that is <strong>Mark as unread</strong> —
-is saved as a QuickMail rule instead, and QuickMail tells you why.</p>
-<p><strong>Some server rules are read-only.</strong> A rule you built in
-Outlook may use conditions or actions QuickMail cannot yet represent
-exactly. Rather than risk turning it into something you did not intend,
-QuickMail shows that rule as <strong>read-only</strong>: you can read
-it, but Edit, Delete, and Move are turned off. Change that rule in
-Outlook.</p>
-<p><strong>Testing.</strong> <strong>Test</strong> runs a rule against
-the messages in your list and reports how many it would match. It works
-on <strong>QuickMail rules only</strong>; for a <strong>server
+is saved as a client-side rule instead. On a work or school account,
+which <em>does</em> also do server rules, QuickMail announces that when
+it happens; the saved rule’s own row says <strong>on client</strong>
+either way, so where it went is there to read whether or not you have
+announcements turned on.</p>
+<p><strong>Some server rules cannot be edited here.</strong> A rule you
+built in Outlook may use conditions or actions QuickMail cannot yet
+represent exactly. Rather than risk turning it into something you did
+not intend, QuickMail turns <strong>Edit</strong> off for that rule, and
+the detail pane says why. You can still read it, turn it on or off,
+reorder it, and delete it; change the rule itself in Outlook. A rule the
+server marks <strong>read-only</strong> is different: it cannot be
+changed here at all, so Edit, Delete, Enable or Disable, and Move are
+all turned off.</p>
+<p><strong>Testing.</strong> <strong>Test</strong> works on
+<strong>client-side rules only</strong>; for a <strong>server
 rule</strong> the Test control is turned off, the same way Edit and
 Delete are for a read-only rule — a server rule runs in Exchange, so
 there is nothing local to test it against.</p>
 <p><strong>Run on Existing Mail.</strong> This applies <strong>the
-selected account’s</strong> QuickMail rules to the mail already in its
+selected account’s</strong> client-side rules to the mail already in its
 Inbox — matching the one-account-at-a-time layout, so it never acts on
 rules for an account you are not looking at. It is available only when
-that account has at least one enabled QuickMail rule; a Microsoft 365
+that account has at least one enabled client-side rule; a Microsoft 365
 account whose rules are all server-side has nothing for it to do (server
 rules run in Exchange and cannot be applied to existing mail from here),
 so the control is turned off in that case.</p>

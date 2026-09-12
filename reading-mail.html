@@ -36,6 +36,33 @@ regardless of the Reading Mode setting.</p>
 <h3 id="reading-pane">Reading Pane</h3>
 <p>The reading pane renders HTML messages with WebView2. Links open in
 your default browser.</p>
+<p><strong>Links have a context menu.</strong> With a link focused,
+press <strong>Shift+F10</strong> or the Applications key (or right-click
+it) for <strong>Open</strong>, <strong>Copy Address</strong>, and — when
+the link’s text is not simply its address again — <strong>Copy
+Text</strong>. On an email address link a <strong>New Message to This
+Address</strong> entry (last in the menu) opens a new message in
+QuickMail, instead of handing the address to whichever mail client
+Windows has registered. A copy that works says nothing — it did what you
+asked, and it clears any earlier failure notice. A copy that fails
+writes a line at the end of the message, starting
+<strong>QuickMail:</strong>, saying what could not be copied. Read to
+the end of the message to find it. In the reading pane and in a tab it
+also goes to the status bar, so <strong>Ctrl+9</strong> reads back the
+most recent one.</p>
+<p>That line is not usually spoken as it appears: it is written just as
+the menu closes, while your screen reader is announcing its way back
+into the message, so it arrives in the middle of that and is passed
+over. It is there to be found rather than to interrupt — which is the
+right trade for something that only happens when the clipboard is
+briefly held by another program. Copying the address is how you check
+where a link actually goes before following it, and comparing it with
+the link’s text is how you spot one that does not go where it says it
+does. Closing the menu returns you to the link you opened it on, not to
+the top of the message. The menu is offered for ordinary web and email
+links; it does not appear on the <strong>Accept</strong> /
+<strong>Tentative</strong> / <strong>Decline</strong> buttons of a
+meeting invitation, which are internal to QuickMail.</p>
 <p>Images from remote sources are not loaded — fetching them tells the
 sender your address is live, which is what a tracking pixel in a
 newsletter is for. Where the sender wrote a description for a picture,

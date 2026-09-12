@@ -98,13 +98,24 @@ only</a>.</td>
 update your calendar.</td>
 </tr>
 <tr class="odd">
-<td><strong>Mail rules</strong></td>
+<td><strong>Client-side mail rules</strong></td>
 <td>This computer only</td>
-<td>Rules run inside QuickMail as mail arrives. They are not server
+<td>They run inside QuickMail as mail arrives. They are not server-side
 rules — your provider does not know about them, and they do nothing
 while QuickMail is closed.</td>
 </tr>
 <tr class="even">
+<td><strong>Server-side mail rules</strong></td>
+<td>Two-way</td>
+<td>Only on a work or school Microsoft 365 account, and not on a shared
+mailbox, whose rules are managed in Outlook. They live on your Exchange
+mailbox, so they run while QuickMail is closed and apply wherever you
+read that mailbox. Your organization may need to allow QuickMail to
+manage them, and a rule the server marks read-only cannot be changed
+here. See <a href="#microsoft-365-server-side-rules">Microsoft 365:
+server-side rules</a>.</td>
+</tr>
+<tr class="odd">
 <td><strong>The Outbox</strong></td>
 <td>This computer only, until sent</td>
 <td>Messages and drafts queued while the server was unreachable wait in
@@ -113,7 +124,7 @@ connects. No other program sees them until then. See <a
 href="#working-offline-drafts-and-the-outbox">Working Offline: Drafts
 and the Outbox</a>.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><strong>Everything else in QuickMail</strong></td>
 <td>This computer only</td>
 <td>Settings, themes, keyboard customizations, signatures, message
@@ -133,9 +144,9 @@ book, <strong>F5</strong> in the calendar).</p>
 <h3 id="moving-to-a-new-computer">Moving to a new computer</h3>
 <p>Your mail, your contacts, and your connected calendars come back on
 their own once you add your accounts again, because they live on the
-server. The <strong>This computer only</strong> row above does not:
-rules, flags you named, templates, signatures, saved views, and your
-settings are stored in QuickMail’s data folder
+server. The <strong>This computer only</strong> rows above do not:
+client-side rules, flags you named, templates, signatures, saved views,
+and your settings are stored in QuickMail’s data folder
 (<code>%APPDATA%\QuickMail</code>) and need to be copied across if you
 want them.</p>
 <p><strong>A <a href="#pop3-accounts">POP3 account</a> is the exception
