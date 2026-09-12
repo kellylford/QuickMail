@@ -444,6 +444,148 @@ public class WatchedConversationsPhase2Tests
         Assert.Equal(["2"], vm.Messages.Select(m => m.MessageId).ToArray());
     }
 
+    [Fact]
+    public async Task UnwatchingInTheWatchedFolder_LandsFocusBeforeTheRowsLeave() // #670
+    {
+        // Removing the row that holds keyboard focus is what a screen reader describes as "unavailable", so
+        // focus has to land on the survivor while the conversation's rows are still in the list.
+        var (vm, watch) = MakeVm(
+        [
+            Msg("1", "Budget Review",  daysAgo: 1),
+            Msg("2", "Trip to Dublin", daysAgo: 0),
+        ]);
+        watch.Watch("Budget Review");
+        watch.Watch("Trip to Dublin");
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllWatchedFolder);
+        var leaving = vm.Messages.Single(m => m.MessageId == "1");
+        vm.SelectedMessage = leaving;
+
+        var calls = new System.Collections.Generic.List<(string? Selected, bool LeavingStillListed)>();
+        vm.MessageListFocusNowRequested += () =>
+        {
+            calls.Add((vm.SelectedMessage?.MessageId, vm.Messages.Contains(leaving)));
+            return true;
+        };
+        var queued = 0;
+        vm.MessageListFocusRequested += () => queued++;
+
+        vm.ToggleWatchConversationFor("Budget Review");   // unwatch
+
+        var call = Assert.Single(calls);
+        Assert.True(call.LeavingStillListed);   // asked for while the row was still there …
+        Assert.Equal("2", call.Selected);       // … with the selection already on the survivor
+        Assert.Equal(0, queued);                // landed, so no second focus move afterwards
+        Assert.Equal(["2"], vm.Messages.Select(m => m.MessageId).ToArray());
+    }
+
+    [Fact]
+    public async Task UnwatchingAConversationTheUserIsNotOn_LeavesTheirPlaceAlone() // #670
+    {
+        // From the manager, the conversation unwatched need not be the one selected in the list.
+        var (vm, watch) = MakeVm(
+        [
+            Msg("1", "Budget Review",  daysAgo: 2),
+            Msg("2", "Trip to Dublin", daysAgo: 1),
+            Msg("3", "Offsite Plans",  daysAgo: 0),
+        ]);
+        watch.Watch("Budget Review");
+        watch.Watch("Trip to Dublin");
+        watch.Watch("Offsite Plans");
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllWatchedFolder);
+        vm.SelectedMessage = vm.Messages.Single(m => m.MessageId == "3");
+        vm.IsMessageOpen = true;
+
+        var focusNow = 0;
+        vm.MessageListFocusNowRequested += () => { focusNow++; return true; };
+        var queued = 0;
+        vm.MessageListFocusRequested += () => queued++;
+
+        vm.ToggleWatchConversationFor("Budget Review");   // unwatch
+
+        Assert.Equal(0, focusNow);
+        Assert.Equal(0, queued);
+        Assert.Equal("3", vm.SelectedMessage?.MessageId);
+        Assert.True(vm.IsMessageOpen);
+        Assert.DoesNotContain(vm.Messages, m => m.MessageId == "1");
+    }
+
+    [Fact]
+    public async Task UnwatchingTheLastConversation_PutsFocusOnTheList() // #670
+    {
+        // Found by ear: unwatching the only watched conversation from inside it emptied the folder and left focus in
+        // the cleared reading pane, a blank page. Focus goes to the list itself while the rows are still there.
+        var (vm, watch) = MakeVm(
+        [
+            Msg("1", "Budget Review", daysAgo: 0),
+        ]);
+        watch.Watch("Budget Review");
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllWatchedFolder);
+        var only = vm.Messages.Single();
+        vm.SelectedMessage = only;
+        vm.IsMessageOpen = true;
+
+        var calls = new System.Collections.Generic.List<(string? Selected, bool StillListed)>();
+        vm.MessageListFocusNowRequested += () =>
+        {
+            calls.Add((vm.SelectedMessage?.MessageId, vm.Messages.Contains(only)));
+            return true;
+        };
+
+        vm.ToggleWatchConversationFor("Budget Review");   // unwatch
+
+        var call = Assert.Single(calls);
+        Assert.Null(call.Selected);      // nothing left to select: the list itself takes focus
+        Assert.True(call.StillListed);   // asked for while the row was still there
+        Assert.Empty(vm.Messages);
+        Assert.False(vm.IsMessageOpen);
+    }
+
+    [Fact]
+    public async Task UnwatchingAConversationTheUserIsNotOn_InAGroupView_KeepsTheirSelection() // #670
+    {
+        // In the trees too: clearing a selection that isn't leaving turns off the per-message shortcuts on a
+        // message that is still there, and still open in the reading pane.
+        var (vm, watch) = MakeVm(
+        [
+            Msg("1", "Budget Review",  daysAgo: 2),
+            Msg("2", "Trip to Dublin", daysAgo: 1),
+            Msg("3", "Offsite Plans",  daysAgo: 0),
+        ]);
+        watch.Watch("Budget Review");
+        watch.Watch("Trip to Dublin");
+        watch.Watch("Offsite Plans");
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllWatchedFolder);
+        vm.ViewMode = ViewMode.Conversations;
+        vm.SelectedMessage = vm.Messages.Single(m => m.MessageId == "3");
+
+        vm.ToggleWatchConversationFor("Budget Review");   // unwatch
+
+        Assert.Equal("3", vm.SelectedMessage?.MessageId);
+        Assert.DoesNotContain(vm.Messages, m => m.MessageId == "1");
+    }
+
+    [Theory]
+    [InlineData(true,  AnnouncementCategory.Silent)]   // landed: the row is being read, so don't talk over it
+    [InlineData(false, AnnouncementCategory.Status)]   // didn't land: nothing is being read, so the count is said
+    public async Task TheWatchedCountAfterUnwatching_IsSilentOnlyWhenFocusLanded(bool lands, AnnouncementCategory expected) // #670
+    {
+        var (vm, watch) = MakeVm(
+        [
+            Msg("1", "Budget Review",  daysAgo: 1),
+            Msg("2", "Trip to Dublin", daysAgo: 0),
+        ]);
+        watch.Watch("Budget Review");
+        watch.Watch("Trip to Dublin");
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllWatchedFolder);
+        vm.SelectedMessage = vm.Messages.Single(m => m.MessageId == "1");
+        vm.MessageListFocusNowRequested += () => lands;
+        var status = StatusAnnouncementRecorder.Watch(vm);
+
+        vm.ToggleWatchConversationFor("Budget Review");   // unwatch
+
+        Assert.Contains(("1 watched message.", expected), status.Announced);
+    }
+
     // ── Notifications: the ordering contract ─────────────────────────────────
     //
     // MaybeNotifyWatchedMail and MaybeNotifyNewMail share _notifiedMessageKeys, and

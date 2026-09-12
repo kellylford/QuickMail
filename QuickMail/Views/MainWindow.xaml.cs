@@ -3972,12 +3972,23 @@ public partial class MainWindow : Window
         // does not mean MessageList is visible; ReturnFocusToMessageList tests the same pair.
         if (_vm.IsCalendarView || _vm.ViewMode != ViewMode.Messages) return false;
 
+        // Not while another window is active: a message window or the Watched Conversations manager that
+        // unwatched a conversation, or wherever the user went during a slow move (#670). Focusing a row here
+        // would pull them back. Reported as landed, so no queued focus move follows either; OnActivated puts
+        // focus on the list's selection, the survivor, when they come back.
+        if (!IsActive) return true;
+
         // From the ViewModel's own selection, not MessageList.SelectedIndex: the caller set
         // SelectedMessage a statement ago and the two-way binding is what would have to have
         // propagated for SelectedIndex to be right. Reading the source removes the assumption —
         // and a stale index here would focus the row that is about to be removed, which is the
         // whole bug.
-        if (_vm.SelectedMessage is not { } target) return false;
+        //
+        // Nothing selected means every row is leaving (move or unwatch, #670): there is no survivor, so focus goes
+        // to the list itself, about to be empty, rather than staying on a row that has gone or in a message the
+        // reading pane has just cleared.
+        if (_vm.SelectedMessage is not { } target)
+            return MessageList.Focus();
 
         var idx = MessageList.Items.IndexOf(target);
         if (idx < 0) return false;
@@ -6717,7 +6728,8 @@ public partial class MainWindow : Window
         await _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
 
         // Conversations/From: LandOnX waits for the async rebuild before focusing.
-        // Messages view: MessageListFocusRequested in MoveSelectedMessagesToFolderAsync handles it.
+        // Messages view: MoveSelectedMessagesToFolderAsync lands focus before the rows leave (#670), with
+        // MessageListFocusRequested only as its fallback.
         // Filing a whole group empties its row, so land where it was — the row that takes its place,
         // as the group context menus do — rather than jumping the user back to the top of the list.
         if (_vm.IsConversationsView)
