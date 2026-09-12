@@ -48,7 +48,21 @@ public partial class CommandPaletteWindow : Window
     /// The mechanism in force. A field rather than a constant so the tests can exercise the
     /// announcement path without a second build — change the initializer to change the default.
     /// </summary>
-    internal static ReportMode Reporting { get; set; } = ReportMode.Automation;
+    /// <summary>
+    /// The mechanism in force.
+    ///
+    /// <para><see cref="ReportMode.Announce"/> is the default because it is the only one that is
+    /// guaranteed to say anything. The two Automation modes hand the job to the platform, and
+    /// whether the platform does it — and when — cannot be observed from inside the process
+    /// (<c>AutomationPeer.ListenerExists</c> is false with no UIA client attached), so shipping
+    /// one of those as the default risks a palette that narrows the list in total silence: the
+    /// user has no way to know what Enter would run. Announce is also the mode whose timing is
+    /// ours, so the debounce and the unchanged-match suppression actually apply.</para>
+    ///
+    /// <para>A field rather than a constant so the tests can drive each mode; change the
+    /// initializer to change the default.</para>
+    /// </summary>
+    internal static ReportMode Reporting { get; set; } = ReportMode.Announce;
 
     // Shown without a nested message loop (see ShowModeless), and whether it has already been closed.
     private bool _modeless;

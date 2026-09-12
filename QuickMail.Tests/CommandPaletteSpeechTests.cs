@@ -313,10 +313,12 @@ public class CommandPaletteSpeechTests
         var heard = new List<(string Text, AnnouncementCategory Category)>();
         AccessibilityHelper.AnnouncementObserver = (text, category) => heard.Add((text, category));
 
+        var previous = CommandPaletteWindow.Reporting;
+        CommandPaletteWindow.Reporting = CommandPaletteWindow.ReportMode.Automation;
+
         var (window, box, _) = Open();
         try
         {
-            Assert.Equal(CommandPaletteWindow.ReportMode.Automation, CommandPaletteWindow.Reporting);
             heard.Clear();
 
             box.Text = "zzzzz";
@@ -328,6 +330,7 @@ public class CommandPaletteSpeechTests
         finally
         {
             AccessibilityHelper.AnnouncementObserver = null;
+            CommandPaletteWindow.Reporting = previous;
             window.Close();
         }
     }
@@ -371,10 +374,12 @@ public class CommandPaletteSpeechTests
         var heard = new List<(string Text, AnnouncementCategory Category)>();
         AccessibilityHelper.AnnouncementObserver = (text, category) => heard.Add((text, category));
 
+        var previous = CommandPaletteWindow.Reporting;
+        CommandPaletteWindow.Reporting = CommandPaletteWindow.ReportMode.Automation;
+
         var (window, box, _) = Open();
         try
         {
-            Assert.Equal(CommandPaletteWindow.ReportMode.Automation, CommandPaletteWindow.Reporting);
             heard.Clear();
 
             box.Text = "go to";
@@ -387,8 +392,18 @@ public class CommandPaletteSpeechTests
         finally
         {
             AccessibilityHelper.AnnouncementObserver = null;
+            CommandPaletteWindow.Reporting = previous;
             window.Close();
         }
+    }
+
+    [Fact]
+    public void TheDefaultMode_IsTheOneThatIsGuaranteedToSpeak()
+    {
+        // Pinned so moving it is a decision, not a drift. The Automation modes hand reporting to
+        // the platform, and whether that reaches a screen reader cannot be checked from in here —
+        // shipping one by default risks a palette that narrows the list in silence.
+        Assert.Equal(CommandPaletteWindow.ReportMode.Announce, CommandPaletteWindow.Reporting);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
