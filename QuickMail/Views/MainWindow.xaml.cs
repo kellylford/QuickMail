@@ -139,6 +139,10 @@ public partial class MainWindow : Window
     // so we can restore focus on re-activation.  -1 = not yet deactivated / unknown.
     private int _paneIndexBeforeDeactivation = -1;
 
+    // Set while OpenCommandPalette puts focus back into the message body itself, so that OnActivated, which
+    // otherwise sends focus that was in the message body to the list, stands aside (#676).
+    private bool _paletteRestoresFocus;
+
     // Debounces StatusText announcements so rapid per-folder sync updates ("5 messages",
     // "12 messages", …) coalesce into a single final reading by the screen reader.
     private DispatcherTimer? _statusAnnounceTimer;
@@ -1927,14 +1931,56 @@ public partial class MainWindow : Window
 
     private void OpenCommandPalette()
     {
-        // Remember what had focus so we can restore it if the user dismisses without running a command.
+        // Remember what had focus so it can be restored. Inside the message body WPF reports nothing focused
+        // (#672), so note that separately: otherwise closing a palette opened while reading (#676) dropped
+        // the user on the message list.
         var previousFocus = Keyboard.FocusedElement as IInputElement;
+        var fromMessageBody = IsMessageBodyFocused;
 
         var palette = new CommandPaletteWindow(_registry) { Owner = this };
-        palette.ShowDialog();
 
-        // Restore focus. Fall back to the message list if nothing was previously focused.
-        (previousFocus ?? MessageList).Focus();
+        if (!(fromMessageBody && _vm.IsMessageOpen))
+        {
+            // Restore what had focus, falling back to the message list. A chosen command runs after this, so
+            // one that moves focus still ends where it put it.
+            palette.ShowDialog();
+            (previousFocus ?? MessageList).Focus();
+            return;
+        }
+
+        // From inside the message body the palette is modeless. Opened modally from there it crashed a screen
+        // reader, where opened from the message list it did not (#676, found by ear): the modal loop + WebView2 +
+        // assistive technology combination CLAUDE.md describes for GrabAddresses, with the same fix.
+        //
+        // Closing it reactivates this window, and OnActivated would then queue focus that was in the message body
+        // over to the list, undoing the return below. The flag makes it stand aside until that return has run.
+        _paletteRestoresFocus = true;
+        palette.Closed += (_, _) =>
+        {
+            // Queued at Input priority, behind a chosen command, which the palette queues before it closes. Going
+            // back into the WebView2 first would open a dialog with a text box (Go to Folder, New Folder, Save
+            // View) straight over a focused message body. While a dialog the command opened is up this window is
+            // not active, so this does nothing; and after a command it leaves focus alone if the command put focus
+            // somewhere of its own. A message the command closed without placing focus gets the message list, as
+            // OnActivated would have given it.
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (!IsActive) return;
+                if (palette.CommandChosen)
+                {
+                    var focused = Keyboard.FocusedElement;
+                    var untouched = focused is null || ReferenceEquals(focused, this)
+                                    || ReferenceEquals(focused, previousFocus) || IsMessageBodyFocused;
+                    if (!untouched) return;
+                }
+                if (_vm.IsMessageOpen) FocusMessageBodyHost();
+                else ReturnFocusToMessageList();
+            }, DispatcherPriority.Input);
+
+            // Cleared behind that return, so an activation that arrives late is covered too.
+            Dispatcher.InvokeAsync(() => _paletteRestoresFocus = false, DispatcherPriority.Input);
+        };
+        palette.ShowModeless();
     }
 
     private void ViewModeButton_Click(object sender, RoutedEventArgs e) => OpenViewMenu();
@@ -3393,10 +3439,15 @@ public partial class MainWindow : Window
                 +"else if(e.ctrlKey&&(e.key==='2'||e.key==='y'||e.key==='Y')){window.chrome.webview.postMessage('focus-folders');e.preventDefault();}"
                 +"else if(e.key==='Tab'&&e.shiftKey){window.chrome.webview.postMessage('shift-tab');e.preventDefault();}"
                 +"else if(e.altKey&&(e.key==='a'||e.key==='A')){window.chrome.webview.postMessage('focus-attachments');e.preventDefault();}"
-                +"else if(e.ctrlKey&&e.key==='w'){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}"
+                // Not with Shift held: this branch runs before Ctrl+Shift+W's, and with Caps Lock on that key
+                // arrives as a lowercase w, so it closed the message instead of watching the conversation.
+                +"else if(e.ctrlKey&&!e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}"
                 // Watching a thread while reading it is the most natural moment to do so, and focus
-                // is inside this WebView2 then. Note the key is 'W' (upper case) with Shift held.
+                // is inside this WebView2 then. Either case is accepted: Caps Lock makes it lowercase with Shift held.
                 +"else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}"
+                // The command palette, as the message window already relays it (#676): focus is inside this
+                // document for as long as the user is reading, so the window's own key handling never sees it.
+                +"else if(e.ctrlKey&&e.shiftKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-shift-p');e.preventDefault();}"
                 +"});"
                 // The live region the link menu writes outcomes into (issues #671, #329).
                 + LinkContextMenuSupport.StatusRegionScript);
@@ -3429,6 +3480,8 @@ public partial class MainWindow : Window
                         () => _registry.FindByGesture(Key.W, ModifierKeys.Control | ModifierKeys.Shift)
                                        ?.Execute(),
                         DispatcherPriority.Input);
+                else if (msg == "ctrl-shift-p")
+                    Dispatcher.InvokeAsync(OpenCommandPalette, DispatcherPriority.Input);
             };
 
             MessageBody.CoreWebView2.NavigationStarting += (_, args) =>
@@ -4012,6 +4065,7 @@ public partial class MainWindow : Window
     private void OnActivated(object? sender, EventArgs e)
     {
         LogService.Debug($"[FOCUS] Activated lastPane={_paneIndexBeforeDeactivation} {FocusInfo()}");
+        if (_paletteRestoresFocus) return;   // OpenCommandPalette is putting focus back into the message (#676)
         if (_paneIndexBeforeDeactivation == 3 || _paneIndexBeforeDeactivation == 4)
             // Re-check IsActive at callback time: a transient activation (e.g. a modeless child of the
             // Rules Manager closing and briefly bouncing foreground through here) must NOT pull focus

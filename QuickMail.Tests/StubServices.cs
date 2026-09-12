@@ -571,7 +571,10 @@ sealed class StubRuleService : IRuleService
     public int ApplyRulesReturnValue { get; set; } = 0;
     public List<MailMessageSummary> ApplyRulesRemovedMessages { get; set; } = [];
 
-    public List<MailRule> LoadRules() => LoadedRules;
+    /// <summary>Set to make <see cref="LoadRules"/> throw, so a failed client-rule load can be exercised.</summary>
+    public Exception? ThrowOnLoad { get; set; }
+
+    public List<MailRule> LoadRules() => ThrowOnLoad is { } ex ? throw ex : LoadedRules;
     public void SaveRules(List<MailRule> rules) => LoadedRules = rules;
 
     public Task<(int MatchedCount, List<MailMessageSummary> RemovedMessages)> ApplyRulesAsync(
