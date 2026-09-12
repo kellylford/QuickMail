@@ -251,6 +251,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>True while editing an existing server-side rule. Editing never changes a rule's kind.</summary>
     public bool IsEditingServerRule { get; private set; }
 
+    /// <summary>The account the rule belongs to, set by the owner when it opens the editor. The editor's folder
+    /// picker scopes to it, whatever the list behind it has moved on to since (#683).</summary>
+    public Guid? AccountId { get; set; }
+
     /// <summary>Mark as unread can't run in a server-side rule, so it is turned off while editing one (#684).
     /// A new rule keeps it: ticking it there makes the rule client-side.</summary>
     public bool CanMarkAsUnread => !IsEditingServerRule;

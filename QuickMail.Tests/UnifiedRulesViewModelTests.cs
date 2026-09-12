@@ -24,8 +24,15 @@ public class UnifiedRulesViewModelTests
         public Exception? ThrowOnSetEnabled { get; set; }
         public Exception? ThrowOnDelete { get; set; }
 
+        // Set to hold every list call open, as a slow server does, until the test completes it.
+        public TaskCompletionSource<IReadOnlyList<ServerRuleModel>>? PendingList { get; set; }
+
         public Task<IReadOnlyList<ServerRuleModel>> ListAsync(Guid a, CancellationToken ct = default)
-        { if (ThrowOnList != null) throw ThrowOnList; return Task.FromResult<IReadOnlyList<ServerRuleModel>>(Stored.ToList()); }
+        {
+            if (ThrowOnList != null) throw ThrowOnList;
+            if (PendingList != null) return PendingList.Task;
+            return Task.FromResult<IReadOnlyList<ServerRuleModel>>(Stored.ToList());
+        }
         public Task<ServerRuleModel> CreateAsync(Guid a, ServerRuleModel r, CancellationToken ct = default)
         { Calls.Add("create"); if (ThrowOnCreate != null) throw ThrowOnCreate; r.Id = "srv-" + Stored.Count; Stored.Add(r); return Task.FromResult(r); }
         public Task UpdateAsync(Guid a, ServerRuleModel r, CancellationToken ct = default)
@@ -409,6 +416,38 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task ARuleEditedWhileTheNextAccountLoads_StaysOnTheAccountItWasListedUnder() // #683
+    {
+        // Choosing another account leaves the last one's rules listed until the new ones arrive, which for a
+        // Microsoft 365 account waits on the server. An edit made in that moment was saved to the new account.
+        var home = Guid.NewGuid();
+        var work = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("H1", home)] };
+        var server = new FakeServerRules();
+        var vm = new UnifiedRulesViewModel(client, server, [Imap(home), Graph(work)], preferredAccountId: home);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+        vm.SelectedRule = vm.Rules.Single();
+        server.PendingList = new TaskCompletionSource<IReadOnlyList<ServerRuleModel>>();
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+
+        vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);   // Work's rules are still loading
+        Assert.Equal("H1", vm.SelectedRule?.Name);                           // Home's rule is still listed
+        vm.EditRuleCommand.Execute(null);
+        editor!.Name = "H1 renamed";
+        // Let Work's load finish before awaiting the save, and only for so long: a save that waited on that
+        // load would otherwise hang the run instead of failing.
+        var save = editor.SaveCommand.ExecuteAsync(null);
+        server.PendingList.SetResult([]);
+        await save.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        Assert.Equal(home, editor.AccountId);                               // the folder picker's account
+        var saved = Assert.Single(client.LoadedRules);
+        Assert.Equal("H1 renamed", saved.Name);
+        Assert.Equal(home, saved.AccountId);                                // still Home's rule
+    }
+
+    [Fact]
     public void TheEditorsFolderPicker_UsesTheAccountTheEditorOpenedOn() // #683
     {
         // Folder targets chosen after an account switch came from the other mailbox.
@@ -418,7 +457,7 @@ public class UnifiedRulesViewModelTests
         Assert.NotNull(dir);
         var code = System.IO.File.ReadAllText(System.IO.Path.Combine(dir!.FullName, "QuickMail", "Views", "UnifiedRulesWindow.xaml.cs"));
 
-        Assert.Contains("var accountId = _vm.SelectedAccount?.Id;", code, StringComparison.Ordinal);
+        Assert.Contains("var accountId = editorVm.AccountId ?? _vm.SelectedAccount?.Id;", code, StringComparison.Ordinal);
         Assert.Contains("_cachedFolders, () => accountId, _folderCreation", code, StringComparison.Ordinal);
     }
 

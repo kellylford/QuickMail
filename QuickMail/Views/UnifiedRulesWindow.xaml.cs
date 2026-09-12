@@ -137,7 +137,7 @@ public partial class UnifiedRulesWindow : Window
         // The list is account-scoped, so the editor's folder picker scopes to the account the editor opened
         // on. Captured, not read live: the editor is modeless, so the Account list stays usable while it is
         // open, and the save uses the account the editor opened on too (#683).
-        var accountId = _vm.SelectedAccount?.Id;
+        var accountId = editorVm.AccountId ?? _vm.SelectedAccount?.Id;
         var editor = new ServerRuleEditorWindow(
             editorVm, _accounts, _cachedFolders, () => accountId, _folderCreation) { Owner = this };
         editor.Show();
