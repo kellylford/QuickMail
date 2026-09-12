@@ -10,11 +10,13 @@ The command palette (**Ctrl+Shift+P**) opens with a filter box, and typing narro
 
 You do not have to know how a command's name begins. Typing `arch` finds **Move to Archive**; `gtf` finds **Go to Folder** from its initials; `mail` lists the Mail commands by category; and `arch mail` finds the Mail category's Archive command with the words in either order. The best match is always at the top and is what **Enter** runs.
 
-Focus stays in the filter box the whole time. Your screen reader reports the top command as it changes — after a short pause, so it does not speak over you mid-word — and reports each command as you arrow **Up** and **Down** through the list. **Escape** clears the filter if you have typed something and closes the palette if the box is already empty; **Page Up** and **Page Down** move ten at a time; and when nothing matches you hear "No matching commands".
+Focus stays in the filter box the whole time, so you can keep typing to narrow further without moving anywhere first. The command at the top is reported as it changes, and so is each command you reach with **Up** and **Down** — by Windows itself, from the list, rather than by QuickMail announcing over the top of it, so no announcement setting can silence it. When a keystroke narrows the list without changing the command at the top, you hear the new count on its own — "3 commands" — since nothing else would tell you the list had moved under you.
+
+**Escape** clears the filter if you have typed something and closes the palette if the box is already empty. **Page Up** and **Page Down** move ten at a time. When nothing matches you hear "No matching commands", and Enter says so rather than doing nothing silently.
 
 This applies to every palette in the app, not just the main window's — the compose window, an open message, the address book, the rules window and the rest all get it.
 
-A search box shipped here once before and was taken out again, because it moved focus onto the list on every keystroke and announced a new top match on every character. This one does neither: focus never leaves the box, and an unchanged top match says nothing.
+A search box shipped here once before and was taken out again, because it moved focus onto the list on every keystroke and announced a new top match on every character. This one does neither: focus never leaves the box, and nothing is announced that Windows already reports.
 
 ---
 

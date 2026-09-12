@@ -676,9 +676,11 @@ Press **Ctrl+Shift+P** to open the command palette. It opens with focus in a fil
 - **The category.** Typing `mail` lists the Mail commands.
 - **Several words, in any order.** Typing `arch mail` finds the Mail category's Archive command.
 
-The best match is always at the top of the list and is the one **Enter** runs. Your screen reader reports that top command as it changes — after a short pause, so it does not talk over you while you are still typing — and arrowing **Up** and **Down** through the list reports each command as you reach it. Focus stays in the filter box the whole time, so you can keep typing to narrow further without moving anywhere first.
+The best match is always at the top of the list and is the one **Enter** runs. The command at the top is reported as it changes, and so is each command you reach by arrowing **Up** and **Down** — reported by Windows from the list itself, not announced by QuickMail over the top of it, so no announcement setting can switch it off. When a keystroke narrows the list without changing the command at the top, you hear the new count on its own — "3 commands" — because nothing else would tell you the list had moved.
 
-**Escape** clears the filter if you have typed anything, and closes the palette if the box is already empty. **Page Up** and **Page Down** move through the list ten at a time. If nothing matches what you have typed, you hear "No matching commands" and Enter does nothing.
+Focus stays in the filter box the whole time, so you can keep typing to narrow further without moving anywhere first.
+
+**Escape** clears the filter if you have typed anything, and closes the palette if the box is already empty. **Page Up** and **Page Down** move through the list ten at a time. If nothing matches what you have typed, you hear "No matching commands", and Enter says so too rather than doing nothing silently.
 
 The palette opens from anywhere in the main window, including while you are reading a message in the reading pane. Closing it puts you back where you were reading, and a command you choose runs before focus returns to the message.
 
