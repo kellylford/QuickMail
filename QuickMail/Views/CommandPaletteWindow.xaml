@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:QuickMail.Controls"
         xmlns:vm="clr-namespace:QuickMail.ViewModels"
         mc:Ignorable="d"
         Title="Command Palette"
@@ -20,66 +21,130 @@
         FontFamily="{DynamicResource Theme.FontFamily}"
         FontSize="{DynamicResource Theme.FontSizeBase}">
 
+    <!-- TabNavigation="None": the filter box is the only thing that may hold focus, so Tab has
+         nowhere to go. Without this Tab cycles onto the list, which breaks the whole model. -->
     <Border Background="{DynamicResource Theme.WindowBackground}"
             BorderBrush="{DynamicResource Theme.Border}"
             BorderThickness="1"
-            CornerRadius="4">
+            CornerRadius="4"
+            KeyboardNavigation.TabNavigation="None">
         <Border.Effect>
             <DropShadowEffect BlurRadius="12" ShadowDepth="3" Opacity="0.35" Direction="270"/>
         </Border.Effect>
 
-        <!-- Command list — plain arrow-navigable list, no search box -->
-        <ListBox x:Name="CommandList"
-                 Margin="4"
-                 MaxHeight="440"
-                 BorderThickness="0"
-                 Background="Transparent"
-                 ItemsSource="{Binding Commands}"
-                 SelectedItem="{Binding SelectedCommand}"
-                 TextSearch.TextPath="Title"
-                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 VirtualizingPanel.IsVirtualizing="True"
-                 VirtualizingPanel.VirtualizationMode="Recycling"
-                 AutomationProperties.Name="Commands. Arrow keys to navigate, Enter to run, Escape to close."
-                 MouseDoubleClick="CommandList_MouseDoubleClick">
-            <ListBox.ItemContainerStyle>
-                <Style TargetType="ListBoxItem">
-                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                    <Setter Property="Padding" Value="8,5"/>
-                    <Setter Property="IsTabStop" Value="False"/>
-                    <Setter Property="AutomationProperties.Name"
-                            Value="{Binding Title}"/>
-                    <Setter Property="AutomationProperties.HelpText"
-                            Value="{Binding GestureText}"/>
-                </Style>
-            </ListBox.ItemContainerStyle>
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
+        <Grid Margin="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding Title}"
-                                       TextTrimming="CharacterEllipsis"/>
-                            <TextBlock Text="{Binding Category}"
+            <!-- The only focusable thing in the window. Focus lands here on open and never
+                 moves: arrowing changes the list's selection while the caret stays put, which
+                 is what lets typing keep working without forwarding keystrokes about. The
+                 box declares (ControllerFor) that it drives CommandList, so a screen reader
+                 knows where to read the active command from. -->
+            <!-- Style is set by hand because WPF keys implicit styles on the exact type: the
+                 implicit TextBox style does NOT reach a subclass, and without this the box
+                 renders default light chrome in every dark theme.
+                 ContextMenu is nulled because the palette can be modeless (#676), where the
+                 default Cut/Copy/Paste menu deactivates the window and dismisses it. -->
+            <controls:ControllingTextBox x:Name="FilterBox"
+                                         Grid.Row="0"
+                                         Style="{DynamicResource {x:Type TextBox}}"
+                                         Margin="4,4,4,6"
+                                         Padding="6,4"
+                                         ContextMenu="{x:Null}"
+                                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Filter commands"/>
+
+            <ListBox x:Name="CommandList"
+                     Grid.Row="1"
+                     MaxHeight="400"
+                     BorderThickness="0"
+                     Background="Transparent"
+                     Focusable="False"
+                     IsTabStop="False"
+                     ItemsSource="{Binding FilteredCommands}"
+                     SelectedItem="{Binding SelectedCommand}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     VirtualizingPanel.IsVirtualizing="True"
+                     VirtualizingPanel.VirtualizationMode="Recycling"
+                     AutomationProperties.Name="Commands"
+                     PreviewMouseDown="CommandList_PreviewMouseDown"
+                     MouseDoubleClick="CommandList_MouseDoubleClick">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Padding" Value="8,5"/>
+                        <Setter Property="IsTabStop" Value="False"/>
+                        <!-- Not focusable at all: a mouse click on a row would otherwise pull
+                             keyboard focus out of the filter box, which silently breaks typing
+                             and the reporting of the active command for anyone using a mouse. -->
+                        <Setter Property="Focusable" Value="False"/>
+                        <Setter Property="AutomationProperties.Name"
+                                Value="{Binding Title}"/>
+                        <Setter Property="AutomationProperties.HelpText"
+                                Value="{Binding GestureText}"/>
+                        <!-- The palette's own row template. The shared themed one dims a
+                             selected row whenever Selector.IsSelectionActive is false — and
+                             here it is ALWAYS false, because focus is deliberately parked in
+                             the filter box. Without this the command Enter would run is drawn
+                             as though it were not selected at all. -->
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="border"
+                                            Background="Transparent"
+                                            Padding="{TemplateBinding Padding}"
+                                            SnapsToDevicePixels="True">
+                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="border" Property="Background"
+                                                    Value="{DynamicResource Theme.AccentSubtle}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="border" Property="Background"
+                                                    Value="{DynamicResource Theme.SelectionBackground}"/>
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource Theme.SelectionText}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Category}"
+                                           FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                           Opacity="0.6"
+                                           Margin="0,1,0,0"/>
+                            </StackPanel>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding GestureText}"
                                        FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                       FontFamily="{DynamicResource Theme.FontFamilyMono}"
                                        Opacity="0.6"
-                                       Margin="0,1,0,0"/>
-                        </StackPanel>
-
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding GestureText}"
-                                   FontSize="{DynamicResource Theme.FontSizeSmall}"
-                                   FontFamily="{DynamicResource Theme.FontFamilyMono}"
-                                   Opacity="0.6"
-                                   VerticalAlignment="Center"
-                                   Margin="12,0,0,0"/>
+                                       VerticalAlignment="Center"
+                                       Margin="12,0,0,0"/>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
-        </ListBox>
+            </ListBox>
+        </Grid>
     </Border>
 </Window>

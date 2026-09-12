@@ -667,9 +667,22 @@ Press **F5** to manually refresh the current folder.
 
 ### Command Palette
 
-Press **Ctrl+Shift+P** to open the command palette: one list of every command, sorted by category and then by name, with each command's shortcut key where it has one. Arrow to a command, or type the first letters of its name to jump to it, and press Enter to run it; Escape closes the palette. This is the fastest way to discover and run any action in the app, including the many that have no shortcut key.
+Press **Ctrl+Shift+P** to open the command palette. It opens with focus in a filter box, and below it every command, sorted by category and then by name, with each command's shortcut key where it has one. This is the fastest way to discover and run any action in the app, including the many that have no shortcut key.
+
+**Start typing and the list narrows to what matches.** You do not have to type the start of a command's name, or even whole words:
+
+- **Any part of the name.** Typing `arch` finds **Move to Archive**.
+- **The initials.** Typing `gtf` finds **Go to Folder**.
+- **The category.** Typing `mail` lists the Mail commands.
+- **Several words, in any order.** Typing `arch mail` finds the Mail category's Archive command.
+
+The best match is always at the top of the list and is the one **Enter** runs. Your screen reader reports that top command as it changes — after a short pause, so it does not talk over you while you are still typing — and arrowing **Up** and **Down** through the list reports each command as you reach it. Focus stays in the filter box the whole time, so you can keep typing to narrow further without moving anywhere first.
+
+**Escape** clears the filter if you have typed anything, and closes the palette if the box is already empty. **Page Up** and **Page Down** move through the list ten at a time. If nothing matches what you have typed, you hear "No matching commands" and Enter does nothing.
 
 The palette opens from anywhere in the main window, including while you are reading a message in the reading pane. Closing it puts you back where you were reading, and a command you choose runs before focus returns to the message.
+
+Other windows have their own palettes on the same key — the compose window, an open message, the address book, the rules window and more — listing the commands that belong to that window.
 
 ### Keyboard Customization
 
