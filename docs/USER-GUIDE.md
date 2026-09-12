@@ -1149,7 +1149,7 @@ The list shows one account at a time, so a row does not repeat the account: it s
 
 In the list, **Enter** edits the selected rule, **Space** turns it on or off, and **Delete** deletes it after asking. The buttons below the list are **New**, **Edit**, **Delete**, **Enable** or **Disable**, **Move Up**, **Move Down**, **Test**, **Run on Existing Mail**, and **Close**; most are on the list's context menu as well, and every one is in the command palette (`Ctrl+Shift+P`). **Escape** closes the window.
 
-**Test** runs the selected client-side rule against the messages that were in the message list when you opened the Rules Manager, and says how many of them it would match, so you can check a rule before letting it loose.
+**Test** runs the selected client-side rule against the messages that were in the message list when you opened the Rules Manager, and says how many of them it would match, so you can check a rule before letting it loose. Only messages in the rule's own account are counted, because the rule never acts on any others.
 
 ### Creating a Rule from a Message
 
@@ -1161,7 +1161,7 @@ If you have a **work or school** Microsoft 365 (Exchange) account, the Rules Man
 
 Server-side rules are an organization feature, so **personal Outlook.com, Hotmail, and Live.com accounts do not have them** — even when connected through Microsoft 365 directly. For a personal account the Rules Manager shows only client-side rules, the same as any other non-Exchange account.
 
-**One list, marked where each rule runs.** For a work or school account, server-side and client-side rules appear together in a single list. Each row says where the rule runs — **on server** or **on client** — along with its name and whether it is enabled. Creating, editing, enabling or disabling, and deleting all work the same way whichever kind a rule is; only server-side rules can be reordered. The status line counts them the same way — "4 rules: 3 on server, 1 on client" — so which kinds an account is holding is on screen, and **F6** cycles round to read it back.
+**One list, marked where each rule runs.** For a work or school account, server-side and client-side rules appear together in a single list. Each row says where the rule runs — **on server** or **on client** — along with its name and whether it is enabled. Creating, editing, enabling or disabling, and deleting all work the same way whichever kind a rule is; only server-side rules can be reordered. The status line counts them the same way — "4 rules: 3 on server, 1 on client" — so which kinds an account is holding is on screen, and **F6** cycles round to read it back. If one kind can't be loaded, the status line says so and counts only the kind that did.
 
 **QuickMail chooses where a new rule lives.** When you create a rule, QuickMail saves it as a server rule whenever it can, so it keeps working while QuickMail is closed. A rule that needs something only QuickMail can do — today that is **Mark as unread** — is saved as a client-side rule instead. On a work or school account, which *does* also do server rules, QuickMail announces that when it happens; the saved rule's own row says **on client** either way, so where it went is there to read whether or not you have announcements turned on.
 
