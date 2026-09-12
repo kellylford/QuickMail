@@ -1938,44 +1938,49 @@ public partial class MainWindow : Window
         var fromMessageBody = IsMessageBodyFocused;
 
         var palette = new CommandPaletteWindow(_registry) { Owner = this };
-        // Closing the palette reactivates this window, and OnActivated would then queue focus that was in the
-        // message body over to the list, undoing the return below. Set before the palette opens, since the
-        // activation comes while it closes.
-        _paletteRestoresFocus = fromMessageBody && _vm.IsMessageOpen;
-        var commandChosen = palette.ShowDialog() == true;
 
         if (!(fromMessageBody && _vm.IsMessageOpen))
         {
             // Restore what had focus, falling back to the message list. A chosen command runs after this, so
             // one that moves focus still ends where it put it.
+            palette.ShowDialog();
             (previousFocus ?? MessageList).Focus();
+            return;
         }
-        else if (!commandChosen)
+
+        // From inside the message body the palette is modeless. Opened modally from there it crashed a screen
+        // reader, where opened from the message list it did not (#676, found by ear): the modal loop + WebView2 +
+        // assistive technology combination CLAUDE.md describes for GrabAddresses, with the same fix.
+        //
+        // Closing it reactivates this window, and OnActivated would then queue focus that was in the message body
+        // over to the list, undoing the return below. The flag makes it stand aside until that return has run.
+        _paletteRestoresFocus = true;
+        palette.Closed += (_, _) =>
         {
-            FocusMessageBodyHost();
-        }
-        else
-        {
-            // The palette queued the chosen command at Input priority. Go back into the message only after it
-            // has run, never before: focusing the WebView2 first would open a dialog with a text box (Go to
-            // Folder, New Folder, Save View) straight over a focused message body, close to the nested-modal
-            // freeze in CLAUDE.md. Queued at the same priority, this runs after the command. While a dialog the
-            // command opened is up this window is not active, so it does nothing; and it leaves focus alone if
-            // the command put focus somewhere of its own. A command that closed the message without placing
-            // focus gets the message list, as OnActivated would have given it.
+            // Queued at Input priority, behind a chosen command, which the palette queues before it closes. Going
+            // back into the WebView2 first would open a dialog with a text box (Go to Folder, New Folder, Save
+            // View) straight over a focused message body. While a dialog the command opened is up this window is
+            // not active, so this does nothing; and after a command it leaves focus alone if the command put focus
+            // somewhere of its own. A message the command closed without placing focus gets the message list, as
+            // OnActivated would have given it.
             Dispatcher.InvokeAsync(() =>
             {
-                var focused = Keyboard.FocusedElement;
-                var untouched = focused is null || ReferenceEquals(focused, this)
-                                || ReferenceEquals(focused, previousFocus) || IsMessageBodyFocused;
-                if (!IsActive || !untouched) return;
+                if (!IsActive) return;
+                if (palette.CommandChosen)
+                {
+                    var focused = Keyboard.FocusedElement;
+                    var untouched = focused is null || ReferenceEquals(focused, this)
+                                    || ReferenceEquals(focused, previousFocus) || IsMessageBodyFocused;
+                    if (!untouched) return;
+                }
                 if (_vm.IsMessageOpen) FocusMessageBodyHost();
                 else ReturnFocusToMessageList();
             }, DispatcherPriority.Input);
-        }
 
-        // Cleared behind the returns queued above, so an activation that arrives late is covered too.
-        Dispatcher.InvokeAsync(() => _paletteRestoresFocus = false, DispatcherPriority.Input);
+            // Cleared behind that return, so an activation that arrives late is covered too.
+            Dispatcher.InvokeAsync(() => _paletteRestoresFocus = false, DispatcherPriority.Input);
+        };
+        palette.ShowModeless();
     }
 
     private void ViewModeButton_Click(object sender, RoutedEventArgs e) => OpenViewMenu();

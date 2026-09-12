@@ -57,10 +57,37 @@ public class MessageBodyKeyRelayTests
 
         // Where focus was is read before the palette opens, since afterwards it is on the palette's owner.
         var captured = body.IndexOf("var fromMessageBody = IsMessageBodyFocused;", StringComparison.Ordinal);
-        var shown = body.IndexOf("palette.ShowDialog()", StringComparison.Ordinal);
+        var shown = body.IndexOf("palette.ShowModeless();", StringComparison.Ordinal);
         Assert.True(captured >= 0 && shown > captured, "fromMessageBody must be read before the palette is shown.");
         Assert.Contains("if (!(fromMessageBody && _vm.IsMessageOpen))", body, StringComparison.Ordinal);
-        Assert.Contains("FocusMessageBodyHost();", body[shown..], StringComparison.Ordinal);
+        var closed = body.IndexOf("palette.Closed +=", StringComparison.Ordinal);
+        Assert.True(closed >= 0 && closed < shown, "The return must be wired to the palette closing, before it is shown.");
+        Assert.Contains("if (_vm.IsMessageOpen) FocusMessageBodyHost();", body[closed..shown], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FromInsideAMessage_ThePaletteIsModeless()
+    {
+        // Opened modally from inside a reading-pane message, the palette crashed a screen reader, where opened from
+        // the message list it did not (#676, found by ear). That is the modal loop + WebView2 combination CLAUDE.md
+        // describes for GrabAddresses, and the fix is the same: no ShowDialog on the path from the message body.
+        var code = Source("MainWindow.xaml.cs");
+        var start = code.IndexOf("private void OpenCommandPalette()", StringComparison.Ordinal);
+        Assert.True(start >= 0, "OpenCommandPalette is gone.");
+        var body = code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
+        var branch = body.IndexOf("if (!(fromMessageBody && _vm.IsMessageOpen))", StringComparison.Ordinal);
+        Assert.True(branch >= 0, "The branch for a palette opened outside the message body is gone.");
+        var ret = body.IndexOf("return;", branch, StringComparison.Ordinal);
+        Assert.True(ret > branch, "The branch for a palette opened outside the message body must return.");
+        var fromBody = body[ret..];
+        Assert.Contains("palette.ShowModeless();", fromBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShowDialog", fromBody, StringComparison.Ordinal);
+
+        // A modeless palette closes itself rather than setting DialogResult, which throws outside ShowDialog, and
+        // closes when the user moves to another window, since nothing else would.
+        var palette = Source("CommandPaletteWindow.xaml.cs");
+        Assert.Contains("if (_modeless) Close();", palette, StringComparison.Ordinal);
+        Assert.Contains("if (_modeless) Dismiss(chosen: false);", palette, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -74,16 +101,25 @@ public class MessageBodyKeyRelayTests
         Assert.True(start >= 0, "OpenCommandPalette is gone.");
         var body = code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
 
-        Assert.Contains("var commandChosen = palette.ShowDialog() == true;", body, StringComparison.Ordinal);
-        var chosen = body.IndexOf("else if (!commandChosen)", StringComparison.Ordinal);
-        Assert.True(chosen >= 0, "Returning straight into the message must be only for a dismissed palette.");
-        var queued = body[chosen..];
-        Assert.Contains("Dispatcher.InvokeAsync(", queued, StringComparison.Ordinal);
-        Assert.Contains("DispatcherPriority.Input", queued, StringComparison.Ordinal);
-        Assert.Contains("if (!IsActive || !untouched) return;", queued, StringComparison.Ordinal);
+        var closed = body.IndexOf("palette.Closed +=", StringComparison.Ordinal);
+        Assert.True(closed >= 0, "The return to the message must be wired to the palette closing.");
+        var handler = body[closed..];
+        Assert.Contains("Dispatcher.InvokeAsync(", handler, StringComparison.Ordinal);
+        Assert.Contains("DispatcherPriority.Input", handler, StringComparison.Ordinal);
+        Assert.Contains("if (!IsActive) return;", handler, StringComparison.Ordinal);
+        Assert.Contains("if (!untouched) return;", handler, StringComparison.Ordinal);
         // A command that closed the message without placing focus still ends on the list, as it did when
         // OnActivated sent it there.
-        Assert.Contains("else ReturnFocusToMessageList();", queued, StringComparison.Ordinal);
+        Assert.Contains("else ReturnFocusToMessageList();", handler, StringComparison.Ordinal);
+
+        // The palette queues the command before it closes, so the return queued on close runs after it.
+        var palette = Source("CommandPaletteWindow.xaml.cs");
+        var run = palette.IndexOf("private void RunSelected()", StringComparison.Ordinal);
+        Assert.True(run >= 0, "RunSelected is gone.");
+        var runBody = palette[run..palette.IndexOf("\n    }", run, StringComparison.Ordinal)];
+        var queue = runBody.IndexOf("InvokeAsync(() => cmd.Execute()", StringComparison.Ordinal);
+        var dismiss = runBody.IndexOf("Dismiss(chosen: true);", StringComparison.Ordinal);
+        Assert.True(queue >= 0 && dismiss > queue, "The command must be queued before the palette closes.");
     }
 
     [Fact]
@@ -95,11 +131,11 @@ public class MessageBodyKeyRelayTests
         var start = code.IndexOf("private void OpenCommandPalette()", StringComparison.Ordinal);
         Assert.True(start >= 0, "OpenCommandPalette is gone.");
         var palette = code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
-        var set = palette.IndexOf("_paletteRestoresFocus = fromMessageBody && _vm.IsMessageOpen;", StringComparison.Ordinal);
-        var shown = palette.IndexOf("palette.ShowDialog()", StringComparison.Ordinal);
+        var set = palette.IndexOf("_paletteRestoresFocus = true;", StringComparison.Ordinal);
+        var shown = palette.IndexOf("palette.ShowModeless();", StringComparison.Ordinal);
         Assert.True(set >= 0 && shown > set, "The flag must be set before the palette opens: the activation comes while it closes.");
         Assert.Contains("Dispatcher.InvokeAsync(() => _paletteRestoresFocus = false, DispatcherPriority.Input);",
-                        palette[shown..], StringComparison.Ordinal);
+                        palette, StringComparison.Ordinal);
 
         var activated = code.IndexOf("private void OnActivated(", StringComparison.Ordinal);
         Assert.True(activated >= 0, "OnActivated is gone.");
