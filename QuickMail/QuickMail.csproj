@@ -84,25 +84,33 @@
 
   <ItemGroup>
     <PackageReference Include="AdysTech.CredentialManager" Version="3.1.0" />
-    <PackageReference Include="Google.Apis.Auth" Version="1.75.0" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.76.0" />
     <PackageReference Include="Markdig" Version="1.3.2" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
-    <!-- Transitive-vulnerability overrides. SQLitePCLRaw.bundle_e_sqlite3: Microsoft.Data.Sqlite
-         still pins 2.1.11, whose bundled SQLite is vulnerable (GHSA-2m69-gcr7-jv3q); 2.1.12 ships
-         the fixed SQLite. System.Drawing.Common: Microsoft.Toolkit.Uwp.Notifications 7.1.3 (its
-         final release) pins 4.7.0, vulnerable to GHSA-rxg9-xrhp-64gj; 4.7.2 is the patched build. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <!-- Transitive-vulnerability overrides. SQLitePCLRaw.bundle_e_sqlite3: pinned to 2.1.12 for
+         the fixed bundled SQLite (GHSA-2m69-gcr7-jv3q). Microsoft.Data.Sqlite 10.0.12 now asks
+         for 2.1.12 itself, so the pin is a floor rather than a bump — keep it so a future
+         Microsoft.Data.Sqlite cannot quietly drag the bundle back down. Deliberately NOT moved to
+         3.0.5: that is a major rewrite of the provider bundle and Microsoft.Data.Sqlite still
+         resolves SQLitePCLRaw.core 2.1.12 alongside it, which would mix 2.x and 3.x assemblies.
+         System.Drawing.Common: Microsoft.Toolkit.Uwp.Notifications 7.1.3 (its final release) pins
+         4.7.0, vulnerable to GHSA-rxg9-xrhp-64gj. Held at the 8.0.x band to match the net8.0
+         runtime this app targets and ships self-contained; 9.x/10.x are the out-of-band packages
+         for later runtimes. At run time the WindowsDesktop shared framework supplies these types
+         anyway (UseWindowsForms) — the reference exists so NuGetAuditMode=all sees a patched
+         version rather than the vulnerable transitive one. -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
-    <PackageReference Include="System.Drawing.Common" Version="4.7.2" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.31" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="MailKit" Version="4.17.0" />
-    <PackageReference Include="Microsoft.Identity.Client" Version="4.85.2" />
-    <PackageReference Include="Microsoft.Identity.Client.Desktop" Version="4.85.2" />
-    <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.85.2" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.89.0" />
+    <PackageReference Include="Microsoft.Identity.Client.Desktop" Version="4.89.0" />
+    <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.89.0" />
     <!-- Windows toast (app) notifications for unpackaged Win32 apps: ToastNotificationManagerCompat
          auto-registers the AppUserModelID + COM activator, no MSIX manifest required. -->
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
-    <PackageReference Include="Roslynator.Analyzers" Version="4.15.0">
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+    <PackageReference Include="Roslynator.Analyzers" Version="5.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

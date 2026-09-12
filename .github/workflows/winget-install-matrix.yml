@@ -50,7 +50,7 @@ jobs:
             rid: win-arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Before the six-minute publish, not after it. The probe script is the last step in
       # this job, so a syntax error in it costs a full build to discover otherwise — which
