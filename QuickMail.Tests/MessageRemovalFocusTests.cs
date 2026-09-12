@@ -221,6 +221,26 @@ public class MessageRemovalFocusTests
     }
 
     [Fact]
+    public async Task MovingEveryMessage_PutsFocusOnTheListBeforeTheRowsLeave() // #670
+    {
+        // With no survivor to land on, focus would stay on a row that has gone, or in a message the reading pane has
+        // just cleared: a blank page a screen reader user could leave only with Alt+Tab. The list itself takes it,
+        // asked for while the row is still there.
+        var f = await Fixture.CreateAsync(messageCount: 1);
+        var only = f.Row("a");
+        f.Vm.SelectedMessage = only;
+        f.Vm.IsMessageOpen = true;
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([only], Folder("Archive", SpecialFolderKind.Archive));
+
+        var call = Assert.Single(f.FocusNowCalls);
+        Assert.Null(call.Selected);            // nothing left to select: the list itself takes focus
+        Assert.Contains(only, call.Rows);      // asked for while the row was still listed
+        Assert.Equal(0, f.QueuedFocusCalls);
+        Assert.Empty(f.Vm.Messages);
+    }
+
+    [Fact]
     public async Task MovingTheLastMessageSaysTheFolderIsNowEmpty() // #670, as delete says it
     {
         var f = await Fixture.CreateAsync(messageCount: 1);

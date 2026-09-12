@@ -510,6 +510,37 @@ public class WatchedConversationsPhase2Tests
     }
 
     [Fact]
+    public async Task UnwatchingTheLastConversation_PutsFocusOnTheList() // #670
+    {
+        // Found by ear: unwatching the only watched conversation from inside it emptied the folder and left focus in
+        // the cleared reading pane, a blank page. Focus goes to the list itself while the rows are still there.
+        var (vm, watch) = MakeVm(
+        [
+            Msg("1", "Budget Review", daysAgo: 0),
+        ]);
+        watch.Watch("Budget Review");
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllWatchedFolder);
+        var only = vm.Messages.Single();
+        vm.SelectedMessage = only;
+        vm.IsMessageOpen = true;
+
+        var calls = new System.Collections.Generic.List<(string? Selected, bool StillListed)>();
+        vm.MessageListFocusNowRequested += () =>
+        {
+            calls.Add((vm.SelectedMessage?.MessageId, vm.Messages.Contains(only)));
+            return true;
+        };
+
+        vm.ToggleWatchConversationFor("Budget Review");   // unwatch
+
+        var call = Assert.Single(calls);
+        Assert.Null(call.Selected);      // nothing left to select: the list itself takes focus
+        Assert.True(call.StillListed);   // asked for while the row was still there
+        Assert.Empty(vm.Messages);
+        Assert.False(vm.IsMessageOpen);
+    }
+
+    [Fact]
     public async Task UnwatchingAConversationTheUserIsNotOn_InAGroupView_KeepsTheirSelection() // #670
     {
         // In the trees too: clearing a selection that isn't leaving turns off the per-message shortcuts on a

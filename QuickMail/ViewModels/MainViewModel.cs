@@ -6824,7 +6824,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // user is not on, and their place in the list should stay where it is. Unwatching from a message window
         // usually does count as leaving, since the list's selection stays on the message the window came from.
         var selectionLeaving = SelectedMessage == null || leaving.Contains(SelectedMessage);
-        var landed = selectionLeaving ? LandFocusBeforeRemoval(leaving) : null;
+        var landed = selectionLeaving ? LandFocusBeforeRemoval(leaving, parkOnEmptyList: true) : null;
 
         _rawMessages.RemoveAll(SameConversation);
         foreach (var m in leaving)
@@ -7365,7 +7365,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// the last survivor before it — the same row the caller's post-removal index arithmetic picks,
     /// so what the user lands on does not change.</para>
     /// </summary>
-    private MailMessageSummary? LandFocusBeforeRemoval(IReadOnlyList<MailMessageSummary> leaving)
+    /// <param name="parkOnEmptyList">When every row is leaving, clear the selection and ask for focus on the list
+    /// itself, before the rows go (#670, move and unwatch). Delete leaves it false.</param>
+    private MailMessageSummary? LandFocusBeforeRemoval(IReadOnlyList<MailMessageSummary> leaving, bool parkOnEmptyList = false)
     {
         // The group trees own their own focus after RebuildActiveGroupView replaces their items;
         // this is the flat list's business only.
@@ -7387,7 +7389,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         for (var i = first - 1; i >= 0 && landing == null; i--)
             if (!doomed.Contains(Messages[i])) landing = Messages[i];
 
-        if (landing == null) return null;         // the whole list is leaving
+        if (landing == null)
+        {
+            // The whole list is leaving, so there is no survivor to land on. Move and unwatch put focus on the list
+            // itself (#670): otherwise it stays on a row that is about to go, or inside a message the reading pane
+            // has just cleared, which left a screen reader user in a blank page with no way back but Alt+Tab.
+            // Delete does not ask, by the choice DeletingEveryRowAsksForNoFocusMoveAtAll pins.
+            if (parkOnEmptyList)
+            {
+                SelectedMessage = null;
+                MessageListFocusNowRequested?.Invoke();
+            }
+            return null;
+        }
 
         SelectedMessage = landing;
 
@@ -9177,7 +9191,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Land focus on the surviving row before the moved rows leave, as delete does (#670): removing the
             // row that holds keyboard focus is what a screen reader describes as "unavailable". Only when the
             // selection is among them: this runs after the server move, and the user may have moved on.
-            var landed = selectionLeaving ? LandFocusBeforeRemoval(messages) : null;
+            var landed = selectionLeaving ? LandFocusBeforeRemoval(messages, parkOnEmptyList: true) : null;
             foreach (var msg in messages)
                 Messages.Remove(msg);
 

@@ -27,6 +27,23 @@ public class FocusLandingGuardTests
         Assert.True(focus < 0 || guard < focus, "The active-window check must come before a row is focused.");
     }
 
+    [Fact]
+    public void WithEveryRowLeaving_FocusGoesToTheListItself() // #670
+    {
+        // Moving or unwatching the last row leaves nothing selected. Focus goes to the list, which is about to be
+        // empty, instead of staying on a row that has gone or in a message the reading pane has just cleared. The
+        // active-window check still comes first, so this never pulls focus out of another window either.
+        var code = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "Views", "MainWindow.xaml.cs"));
+        var start = code.IndexOf("private bool FocusSelectedMessageRowNow()", StringComparison.Ordinal);
+        Assert.True(start >= 0, "FocusSelectedMessageRowNow is gone.");
+        var body = code[start..code.IndexOf("\n    }", start, StringComparison.Ordinal)];
+
+        var guard = body.IndexOf("if (!IsActive) return true;", StringComparison.Ordinal);
+        var park = body.IndexOf("return MessageList.Focus();", StringComparison.Ordinal);
+        Assert.True(park >= 0, "With nothing selected, FocusSelectedMessageRowNow no longer puts focus on the list.");
+        Assert.True(guard >= 0 && guard < park, "The active-window check must still come first.");
+    }
+
     private static string RepoRoot()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)

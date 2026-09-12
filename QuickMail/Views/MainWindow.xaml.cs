@@ -3930,7 +3930,12 @@ public partial class MainWindow : Window
         // propagated for SelectedIndex to be right. Reading the source removes the assumption —
         // and a stale index here would focus the row that is about to be removed, which is the
         // whole bug.
-        if (_vm.SelectedMessage is not { } target) return false;
+        //
+        // Nothing selected means every row is leaving (move or unwatch, #670): there is no survivor, so focus goes
+        // to the list itself, about to be empty, rather than staying on a row that has gone or in a message the
+        // reading pane has just cleared.
+        if (_vm.SelectedMessage is not { } target)
+            return MessageList.Focus();
 
         var idx = MessageList.Items.IndexOf(target);
         if (idx < 0) return false;
