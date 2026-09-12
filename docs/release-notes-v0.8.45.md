@@ -235,6 +235,27 @@ Both now use the same test, and it is one that works while you are reading.
 
 ---
 
+## Fixed: rules are saved, edited and run as you set them up
+
+- **A new rule belongs to the account its editor opened on.** The Rules Manager's **Account** list
+  stays usable while a rule's editor is open. If you changed it before saving, the rule was saved to
+  the first account but made server-side or client-side according to the second, and the folder list
+  offered the second account's folders. The editor now uses the account it opened on throughout, and when you
+  save, the list goes back to that account and selects the rule, and the status line says where it was
+  saved.
+  ([#683](https://github.com/kellylford/QuickMail/issues/683))
+- **Editing a server-side rule no longer drops Mark as unread without a word.** A server-side rule
+  can't mark mail unread, so ticking it and saving closed the editor as if it had worked and saved the
+  rule without it. **Mark as unread** is now unavailable while you edit a server-side rule.
+  ([#684](https://github.com/kellylford/QuickMail/issues/684))
+- **Run on Existing Mail acts on each message once.** When two rules matched the same message, a
+  later rule could act again on a message an earlier rule had already moved or deleted, and the
+  message was counted twice. A moved or deleted message is now out of the running for the rules after
+  it, as it already was for mail as it arrives.
+  ([#685](https://github.com/kellylford/QuickMail/issues/685))
+
+---
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

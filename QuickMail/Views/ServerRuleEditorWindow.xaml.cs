@@ -28,10 +28,9 @@ public partial class ServerRuleEditorWindow : Window
 
     // The account whose rule this is. The folder picker scopes to it: a rule files mail within one
     // mailbox, so another account's "Archive" is the wrong folder, not a second option.
-    // Asked for at pick time rather than captured at construction: this window is modeless, and the
-    // list behind it owns the account selection, so the account can move while the editor is open.
-    // The save path reads that selection when it saves, so the picker must read it when it picks —
-    // capturing here would let a rule be saved to one account with a folder chosen from another.
+    // The owner captures that account when it opens the editor (#683): this window is modeless and the
+    // list behind it stays usable, so the list's selection can move while the editor is open, but the
+    // rule still belongs to — and is saved to — the account it was opened on.
     private readonly Func<Guid?>? _ruleAccountId;
 
     // How the folder picker creates a folder without this window reaching a mail service itself

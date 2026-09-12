@@ -160,7 +160,9 @@
                              Content — qualifier included — is the accessible name: the save-time notice
                              is a Result announcement a user may have turned off, which would leave this
                              qualifier the only place a screen-reader user learns it. See Delete above. -->
+                        <!-- Turned off while editing a server-side rule, which can't mark mail unread (#684). -->
                         <CheckBox Content="Mark as unread (client-side only)" IsChecked="{Binding MarkAsUnread}"
+                                  IsEnabled="{Binding CanMarkAsUnread}"
                                   Style="{StaticResource EditorCheckBox}"/>
 
                         <CheckBox Content="Copy to folder" IsChecked="{Binding CopyToFolder}"

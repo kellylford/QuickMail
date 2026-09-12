@@ -81,6 +81,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         var vm = new ServerRuleEditorViewModel
         {
             IsNew = false,
+            IsEditingServerRule = true,
             _ruleId = rule.Id,
             _sequence = rule.Sequence,
             _rawConditions = rule.RawConditions,
@@ -246,6 +247,17 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [ObservableProperty] private bool _markAsRead;
     /// <summary>Client-only action — Microsoft 365 server rules have no "mark as unread" (spec §20.2).</summary>
     [ObservableProperty] private bool _markAsUnread;
+
+    /// <summary>True while editing an existing server-side rule. Editing never changes a rule's kind.</summary>
+    public bool IsEditingServerRule { get; private set; }
+
+    /// <summary>The account the rule belongs to, set by the owner when it opens the editor. The editor's folder
+    /// picker scopes to it, whatever the list behind it has moved on to since (#683).</summary>
+    public Guid? AccountId { get; set; }
+
+    /// <summary>Mark as unread can't run in a server-side rule, so it is turned off while editing one (#684).
+    /// A new rule keeps it: ticking it there makes the rule client-side.</summary>
+    public bool CanMarkAsUnread => !IsEditingServerRule;
     [ObservableProperty] private ImportanceOption _selectedMarkImportance = ImportanceOptions[0];
     [ObservableProperty] private bool _delete;
     [ObservableProperty] private string _forwardTo = string.Empty;
@@ -498,6 +510,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     /// <summary>True when the rule uses no client-only capability, so the server can express it.</summary>
     public bool IsServerRepresentable => ClientOnlyFeaturesUsed().Count == 0;
+
+    /// <summary>Why an edited server rule can't be saved as it stands, or null when it can. Editing keeps a
+    /// rule's kind, and a server rule can't carry a client-only action (#684).</summary>
+    public string? ServerEditError => IsServerRepresentable
+        ? null
+        : $"{Join(ClientOnlyFeaturesUsed())} only works in a client-side rule, and this rule runs on the server. Remove it to save.";
 
     /// <summary>
     /// True when every condition and action fits the client rule model (a near-subset of the server

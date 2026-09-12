@@ -40,11 +40,21 @@ public partial class UnifiedRulesViewModel : ObservableObject
     // (#678). The status line says so until the user chooses an account themselves.
     private string? _sharedMailboxLabel;
 
+    // Set when a save put the Account list back on the rule's own account (#683), so the status line can say
+    // where the rule went: nothing else does, and the list moved without the user choosing it. Shown by that
+    // save's reload only.
+    private string? _savedToAccountLabel;
+
     // Opened from a shared mailbox, the title names the account shown for the life of the window.
     private readonly bool _openedFromSharedMailbox;
 
     // Every shared mailbox's label, so a rule template for one can say why it gets no rule.
     private readonly Dictionary<Guid, string> _sharedAccountLabels;
+
+    // The account whose rules the list is showing. It lags the Account list while a switch loads (a
+    // Microsoft 365 account's rules come from the server), so an action on a listed rule uses this rather
+    // than the selection: a rule acted on in that moment belongs to the account it is listed under.
+    private Guid? _rulesAccountId;
 
     public UnifiedRulesViewModel(
         IRuleService clientRules,
@@ -190,7 +200,12 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private void OpenNewEditor(ServerRuleEditorViewModel editor)
     {
         if (SelectedAccount?.Id is not Guid accountId) return;
-        editor.Saved += _ => SaveNewAsync(accountId, editor);
+        // Everything the save depends on comes from the account the editor opened on (#683). The editor is
+        // modeless, so the Account list stays usable while it is open; classifying by whatever the list
+        // showed at save time saved a rule to one account as the other account's kind.
+        var supportsServerRules = AccountSupportsServerRules;
+        editor.AccountId = accountId;
+        editor.Saved += _ => SaveNewAsync(accountId, supportsServerRules, editor);
         editor.AnnouncementRequested += (t, c) => AnnouncementRequested?.Invoke(t, c);
         EditorRequested?.Invoke(editor);
     }
@@ -212,7 +227,10 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRunOnExisting))]
     private async Task RunOnExistingAsync()
     {
-        if (RunOnExistingRequested is null || SelectedAccount is not { } account) return;
+        // The account whose rules are listed, which is what CanRunOnExisting judged; the selected account
+        // until a list has loaded.
+        if (RunOnExistingRequested is null || (_rulesAccountId ?? SelectedAccount?.Id) is not Guid listed
+            || AccountOptions.FirstOrDefault(o => o.Id == listed) is not { } account) return;
         // Set StatusText as well as announcing: the status line is a visible, F6-reachable surface, so a
         // user running with announcements off still gets the outcome — error included — rather than a
         // button that appears to do nothing.
@@ -238,11 +256,12 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanEditSelected))]
     private void EditRule()
     {
-        if (SelectedAccount?.Id is not Guid accountId || SelectedRule is not { } row) return;
+        if (_rulesAccountId is not Guid accountId || SelectedRule is not { } row) return;
 
         var editor = row.RunsWhere == RuleRunsWhere.Server
             ? ServerRuleEditorViewModel.ForEdit(row.Server!)
             : ServerRuleEditorViewModel.ForEditClient(row.Client!);
+        editor.AccountId = accountId;
         editor.AnnouncementRequested += (t, c) => AnnouncementRequested?.Invoke(t, c);
         editor.Saved += _ => row.RunsWhere == RuleRunsWhere.Server
             ? SaveEditedServerAsync(accountId, row.Server!, editor)
@@ -253,7 +272,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanModifySelected))]
     private async Task ToggleEnabledAsync(CancellationToken ct)
     {
-        if (SelectedAccount?.Id is not Guid accountId || SelectedRule is not { } row) return;
+        if (_rulesAccountId is not Guid accountId || SelectedRule is not { } row) return;
 
         bool newState;
         string? error = null;
@@ -281,7 +300,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanModifySelected))]
     private async Task DeleteRuleAsync(CancellationToken ct)
     {
-        if (SelectedAccount?.Id is not Guid accountId || SelectedRule is not { } row) return;
+        if (_rulesAccountId is not Guid accountId || SelectedRule is not { } row) return;
 
         var confirmed = ConfirmDeleteRequested?.Invoke(
             $"Delete rule '{row.Name}'? It will stop running.", "Delete Rule") ?? false;
@@ -364,19 +383,30 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
     // ── Save routing ────────────────────────────────────────────────────────
 
-    private async Task<string?> SaveNewAsync(Guid accountId, ServerRuleEditorViewModel editor)
+    private async Task<string?> SaveNewAsync(Guid accountId, bool supportsServerRules, ServerRuleEditorViewModel editor)
     {
-        var kind = editor.Classify(AccountSupportsServerRules);
+        var kind = editor.Classify(supportsServerRules);
         if (kind.IsConflict) return kind.ConflictError;   // editor shows it and stays open
 
         if (kind.Kind == RuleRunsWhere.Server)
         {
             var model = editor.ToModel();
-            model.Sequence = ServerRows().Count + 1;       // Graph rejects sequence 0
             // Re-select the created rule — its id only exists on CreateAsync's return, so route
             // through the value-returning overload (otherwise nothing is selected and focus strands).
             return await RunServerWriteAsync(
-                () => _serverRules!.CreateAsync(accountId, model),
+                async () =>
+                {
+                    // After every rule already on the account it is created for (#683). Once the Account list
+                    // has moved on, the rows on screen are another account's, and a count of those could put the
+                    // rule ahead of ones that stop processing. Graph rejects sequence 0.
+                    var existing = SelectedAccount?.Id == accountId
+                        ? ServerRows().Select(r => r.Server!).ToList()
+                        : (await _serverRules!.ListAsync(accountId)).ToList();
+                    model.Sequence = existing.Select(r => r.Sequence).DefaultIfEmpty(0).Max() + 1;
+                    var created = await _serverRules!.CreateAsync(accountId, model);
+                    ReturnToAccount(accountId);
+                    return created;
+                },
                 created => created.Id, reloadOnSuccess: true);
         }
 
@@ -391,15 +421,42 @@ public partial class UnifiedRulesViewModel : ObservableObject
         //    there are none — so a per-save notice would just be chatter. Stay silent.
         var rule = editor.ToClientRule(accountId);
         AddClientRule(rule);
-        if (AccountSupportsServerRules)
+        if (supportsServerRules)
             Announce("Saving as a client-side rule.", AnnouncementCategory.Result);
+        ReturnToAccount(accountId);
         await ReloadAndReselectAsync(clientId: rule.Id);
         return null;
     }
 
     private async Task<string?> SaveEditedServerAsync(Guid accountId, ServerRuleModel original, ServerRuleEditorViewModel editor)
-        => await RunServerWriteAsync(
-            () => _serverRules!.UpdateAsync(accountId, editor.ToModel()), reloadOnSuccess: true, selectServerId: original.Id);
+    {
+        // Editing preserves the kind: a server rule stays a server rule (spec §20.6). The server has no way
+        // to express a client-only action, and sending the rule anyway dropped it without a word (#684), so
+        // refuse the save and name what to remove — the mirror of the client-side check below.
+        if (editor.ServerEditError is { } error) return error;
+        return await RunServerWriteAsync(
+            async () =>
+            {
+                await _serverRules!.UpdateAsync(accountId, editor.ToModel());
+                ReturnToAccount(accountId);
+            },
+            reloadOnSuccess: true, selectServerId: original.Id);
+    }
+
+    /// <summary>
+    /// Puts the Account list back on the account a saved rule belongs to, so the reload that follows shows
+    /// it and selects it. The editor is modeless and the list stays usable while it is open; without this, a
+    /// rule saved after the list moved on appeared nowhere and left nothing selected (#683).
+    /// </summary>
+    private void ReturnToAccount(Guid accountId)
+    {
+        if (SelectedAccount?.Id != accountId && AccountOptions.FirstOrDefault(o => o.Id == accountId) is { } option)
+        {
+            SelectedAccount = option;
+            // After the switch, whose change handler clears it: this change is the save's, not the user's.
+            _savedToAccountLabel = option.DisplayName;
+        }
+    }
 
     private async Task<string?> SaveEditedClientAsync(Guid accountId, MailRule original, ServerRuleEditorViewModel editor)
     {
@@ -411,13 +468,14 @@ public partial class UnifiedRulesViewModel : ObservableObject
         var updated = editor.ToClientRule(accountId);
         updated.Id = original.Id;                          // preserve identity
         UpdateClientRule(updated);
+        ReturnToAccount(accountId);
         await ReloadAndReselectAsync(clientId: updated.Id);
         return null;
     }
 
     private async Task MoveServerAsync(int delta, CancellationToken ct)
     {
-        if (SelectedAccount?.Id is not Guid accountId || SelectedRule?.Server is not { } rule) return;
+        if (_rulesAccountId is not Guid accountId || SelectedRule?.Server is not { } rule) return;
 
         var order = ServerRows().Select(r => r.Server!).ToList();
         var from = order.FindIndex(r => ReferenceEquals(r, rule));
@@ -516,6 +574,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         string? serverId = null, Guid? clientId = null, int? fallbackIndex = null, CancellationToken ct = default)
     {
         await RefreshCoreAsync(ct);
+        _savedToAccountLabel = null;   // said once, by the save's own reload; a later reload has nothing to add
         SelectedRule = Rules.FirstOrDefault(r =>
             (serverId != null && r.Server?.Id == serverId) ||
             (clientId != null && r.Client?.Id == clientId));
@@ -569,6 +628,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     {
         // Choosing an account answers the shared-mailbox notice: it was about where the window opened.
         _sharedMailboxLabel = null;
+        _savedToAccountLabel = null;
         RefreshCommand.ExecuteAsync(null).LogFaults("UnifiedRules: account-change refresh");
     }
 
@@ -588,6 +648,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         if (SelectedAccount?.Id is not Guid accountId)
         {
             Rules.Clear();
+            _rulesAccountId = null;
             StatusText = string.Empty;
             OnPropertyChanged(nameof(CanRunOnExisting));
             RunOnExistingCommand.NotifyCanExecuteChanged();
@@ -666,6 +727,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
             Rules.Clear();
             foreach (var row in rows) Rules.Add(row);
+            _rulesAccountId = accountId;
 
             // Run on Existing enables/disables with the account's enabled client-rule set, which just
             // changed. (Every write path — toggle, add, delete, account switch — routes through here.)
@@ -679,8 +741,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
             // A load failure must survive to the status line — otherwise "couldn't reach Graph" reads
             // as "this account has no server rules", which invites the wrong next action.
-            StatusText = SharedMailboxPreamble()
-                + BuildStatus(rows, failures, AccountSupportsServerRules, serverFailed, clientFailed);
+            StatusText = (_savedToAccountLabel is { } savedTo ? $"Rule saved to {savedTo}. " : string.Empty)
+                         + SharedMailboxPreamble()
+                         + BuildStatus(rows, failures, AccountSupportsServerRules, serverFailed, clientFailed);
         }
         finally
         {

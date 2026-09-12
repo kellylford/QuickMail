@@ -403,6 +403,13 @@ public class RuleService : IRuleService
 
                 if (rule.Action is RuleAction.MoveToFolder or RuleAction.Delete)
                 {
+                    // Out of the running for the rules after this one, as arriving mail is in
+                    // ApplyRulesAsync (#685): a later rule would otherwise act again on a message that is
+                    // already moved or deleted, and it would be counted twice. Straight after the action, so a
+                    // failure updating the local store below can't leave the message in the running.
+                    var gone = new HashSet<MailMessageSummary>(matched);
+                    inboxMessages.RemoveAll(gone.Contains);
+
                     var byFolder = matched.GroupBy(m => (m.AccountId, m.FolderName));
                     foreach (var group in byFolder)
                     {
