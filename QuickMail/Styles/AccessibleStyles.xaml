@@ -142,6 +142,10 @@
         <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
         <Setter Property="BorderThickness"  Value="0"/>
         <Setter Property="Background"       Value="Transparent"/>
+        <!-- The status bar's own themed text colour, stated here because a Button's default style sets the
+             system control-text colour, which beats the colour the StatusBar passes down: the text was
+             black in every theme, 1.56:1 on the dark status bar (#689). -->
+        <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
         <Setter Property="Padding"          Value="0"/>
         <Setter Property="Cursor"           Value="Hand"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
@@ -167,9 +171,12 @@
                             <Setter TargetName="border" Property="Background"
                                     Value="{DynamicResource Theme.AccentSubtle}"/>
                         </Trigger>
+                        <!-- The selection pair, as the themed Button uses when pressed: the theme's text colour
+                             on Theme.Border measured 3.5-4.0:1, below AA while the button was held. -->
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="border" Property="Background"
-                                    Value="{DynamicResource Theme.Border}"/>
+                                    Value="{DynamicResource Theme.SelectionBackground}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.SelectionText}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
