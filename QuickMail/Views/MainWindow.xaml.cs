@@ -3919,6 +3919,12 @@ public partial class MainWindow : Window
         // does not mean MessageList is visible; ReturnFocusToMessageList tests the same pair.
         if (_vm.IsCalendarView || _vm.ViewMode != ViewMode.Messages) return false;
 
+        // Not while another window is active: a message window or the Watched Conversations manager that
+        // unwatched a conversation, or wherever the user went during a slow move (#670). Focusing a row here
+        // would pull them back. Reported as landed, so no queued focus move follows either; OnActivated puts
+        // focus on the list's selection, the survivor, when they come back.
+        if (!IsActive) return true;
+
         // From the ViewModel's own selection, not MessageList.SelectedIndex: the caller set
         // SelectedMessage a statement ago and the two-way binding is what would have to have
         // propagated for SelectedIndex to be right. Reading the source removes the assumption —

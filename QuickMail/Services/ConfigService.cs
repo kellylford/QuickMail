@@ -550,7 +550,7 @@ public class ConfigService : IConfigService
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceResults = {(config.AnnounceResults ? "on" : "off")}");
-        sb.AppendLine("# Announce action outcomes such as search result counts and move confirmations.");
+        sb.AppendLine("# Announce action outcomes such as search result counts and copy confirmations.");
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 

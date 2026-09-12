@@ -6859,12 +6859,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 MessageListFocusRequested?.Invoke();
             }
         }
-        else
+        else if (selectionLeaving)
         {
             // In the group trees, focus is the tree's business after RebuildActiveGroupView replaces
             // its items. Clearing SelectedMessage keeps HasSelectedMessage false so the global
             // per-message hotkeys don't act on a row the user never selected. (Same rationale as
-            // archive and delete.)
+            // archive and delete.) Only when it is among the rows leaving: unwatching another
+            // conversation from the manager leaves the user's selection, and their shortcuts, alone.
             SelectedMessage = null;
         }
     }

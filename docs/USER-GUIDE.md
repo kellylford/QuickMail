@@ -1803,8 +1803,8 @@ Control which categories of announcements QuickMail makes:
 | Custom Announcements | Master on/off for all programmatic announcements |
 | Announce hints | Instructional tips ("Press Escape to return") |
 | Announce status | Background progress (sync, loading, connection state) |
-| Announce results | Action outcomes (messages moved, addresses saved, flag changes) |
-| Announce delete, archive and move actions | Delete, archive and move outcomes that are worth saying: a count when you acted on several at once ("3 messages deleted"), and "Folder is now empty". Deleting, archiving or moving a single message says nothing either way — the row is gone and the next one is read, so there is nothing left to tell you. Failures are announced as results, so they are heard even with this turned off |
+| Announce results | Action outcomes (messages copied, addresses saved, flag changes) |
+| Announce delete, archive and move actions | Delete, archive and move outcomes that are worth saying: a count when you acted on several at once ("3 messages deleted"), and "Folder is now empty". Deleting, archiving or moving a single message says nothing either way — the row is gone and the next one is read, so there is nothing left to tell you. Failures are announced as results, so they are heard even with this turned off, as long as **Announce action results** is on |
 | Announce formatting while navigating | Block type announced when caret enters a new paragraph type in HTML compose |
 | Announce spelling errors when typing | Misspellings called out as you type them |
 | Announce spelling errors while navigating | Misspellings called out as you move the cursor through the message |

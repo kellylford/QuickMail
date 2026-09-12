@@ -306,7 +306,7 @@
                                 <CheckBox Content="Announce _delete, archive and move actions"
                                           IsChecked="{Binding AnnounceMessageActions, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce delete, archive and move outcomes"/>
+                                          AutomationProperties.Name="Announce delete, archive and move actions"/>
                                 <TextBlock Text="Turn off to stop delete, archive and move announcements from interrupting the next message."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,0,0,8"/>
 

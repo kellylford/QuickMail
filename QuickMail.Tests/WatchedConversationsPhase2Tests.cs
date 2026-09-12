@@ -509,6 +509,30 @@ public class WatchedConversationsPhase2Tests
         Assert.DoesNotContain(vm.Messages, m => m.MessageId == "1");
     }
 
+    [Fact]
+    public async Task UnwatchingAConversationTheUserIsNotOn_InAGroupView_KeepsTheirSelection() // #670
+    {
+        // In the trees too: clearing a selection that isn't leaving turns off the per-message shortcuts on a
+        // message that is still there, and still open in the reading pane.
+        var (vm, watch) = MakeVm(
+        [
+            Msg("1", "Budget Review",  daysAgo: 2),
+            Msg("2", "Trip to Dublin", daysAgo: 1),
+            Msg("3", "Offsite Plans",  daysAgo: 0),
+        ]);
+        watch.Watch("Budget Review");
+        watch.Watch("Trip to Dublin");
+        watch.Watch("Offsite Plans");
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllWatchedFolder);
+        vm.ViewMode = ViewMode.Conversations;
+        vm.SelectedMessage = vm.Messages.Single(m => m.MessageId == "3");
+
+        vm.ToggleWatchConversationFor("Budget Review");   // unwatch
+
+        Assert.Equal("3", vm.SelectedMessage?.MessageId);
+        Assert.DoesNotContain(vm.Messages, m => m.MessageId == "1");
+    }
+
     [Theory]
     [InlineData(true,  AnnouncementCategory.Silent)]   // landed: the row is being read, so don't talk over it
     [InlineData(false, AnnouncementCategory.Status)]   // didn't land: nothing is being read, so the count is said

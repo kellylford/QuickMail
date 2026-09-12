@@ -187,7 +187,8 @@ public class ConfigModel
     /// <summary>Announce background loading and sync progress.</summary>
     public bool AnnounceStatus { get; set; } = true;
 
-    /// <summary>Announce action results (search counts, move/delete confirmations).</summary>
+    /// <summary>Announce action results (search counts, copy confirmations). Delete, archive and move have their own
+    /// setting, <see cref="AnnounceMessageActions"/>.</summary>
     public bool AnnounceResults { get; set; } = true;
 
     /// <summary>

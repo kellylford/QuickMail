@@ -161,7 +161,7 @@ All custom screen reader announcements are user-configurable and governed by `Co
 - `CustomAnnouncements` — Master on/off switch for all programmatic announcements
 - `AnnounceHints` — Instructional tips (e.g. "Press Escape to return")
 - `AnnounceStatus` — Background progress (e.g. "Syncing…", "N messages loaded", connection state)
-- `AnnounceResults` — Action outcomes (e.g. "3 messages moved", "Delete may not have completed")
+- `AnnounceResults` — Action outcomes (e.g. "3 messages copied", "Delete may not have completed")
 - `AnnounceSpellingWhileTyping` — Misspellings during typing (off by default, adds overhead)
 - `AnnounceSpellingWhileNavigating` — Misspellings on navigation
 
