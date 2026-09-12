@@ -461,7 +461,7 @@ The **View → Filter** submenu (and the command palette) let you narrow the mes
 
 **Applying a filter:**
 - Open **View → Filter** and choose an option, or
-- Open the command palette (`Ctrl+Shift+P`) and type the filter name (e.g. "unread").
+- Open the command palette (`Ctrl+Shift+P`) and choose the filter, for example **Show Unread Only**.
 
 **Clearing a filter:**
 - Open **View → Filter → Show All**, or run **Show All Messages** from the command palette.
@@ -691,7 +691,7 @@ Once you have saved views, you can reach them in four ways:
 
 - **View menu** — Open **View → Views** and press the view name. The active view has a checkmark next to it. The current keyboard shortcut (if any) is shown next to each item.
 - **Folder tree** — A **Views** group appears at the top of the folder tree. Expand it and choose a view name to apply it.
-- **Command palette** — Press **Ctrl+Shift+P** and type part of the view's name. Views appear in the **Views** category.
+- **Command palette** — Press **Ctrl+Shift+P** and type the first letters of the view's name to jump to it. Views appear in the **Views** category.
 - **View Manager** — Select a view in the list and press **Apply View** to activate it and close the dialog.
 
 While a view is active:
@@ -882,10 +882,12 @@ Select a group and press **Delete** (or activate the **Delete** button). A confi
 
 ## Command palette
 
-Press **Ctrl+Shift+P** to open the command palette. Type any part of a command name and press **Enter** (or click) to run it — no need to remember every shortcut.
+Press **Ctrl+Shift+P** to open the command palette: one list of every command, sorted by category and then by name, with each command's shortcut key where it has one. No need to remember every shortcut.
 
-- All actions are searchable, including folder navigation, compose, delete, view switching, and account management.
+- Arrow to a command, or type the first letters of its name to jump to it, and press **Enter** to run it.
+- Every action is in it, including folder navigation, compose, delete, view switching, and account management, and the many actions that have no shortcut key.
 - Press **Escape** to close without running a command. Focus returns to where it was before.
+- It opens while you are reading a message in the reading pane too. Closing it puts you back where you were reading, and a command you choose runs before focus returns to the message.
 
 ---
 

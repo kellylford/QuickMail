@@ -667,7 +667,9 @@ Press **F5** to manually refresh the current folder.
 
 ### Command Palette
 
-Press **Ctrl+Shift+P** to open the command palette. Type any part of a command name to find it. Press Enter to run it. This is the fastest way to discover and run any action in the app.
+Press **Ctrl+Shift+P** to open the command palette: one list of every command, sorted by category and then by name, with each command's shortcut key where it has one. Arrow to a command, or type the first letters of its name to jump to it, and press Enter to run it; Escape closes the palette. This is the fastest way to discover and run any action in the app, including the many that have no shortcut key.
+
+The palette opens from anywhere in the main window, including while you are reading a message in the reading pane. Closing it puts you back where you were reading, and a command you choose runs before focus returns to the message.
 
 ### Keyboard Customization
 
