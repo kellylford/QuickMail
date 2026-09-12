@@ -341,17 +341,44 @@ public partial class UnifiedRulesViewModel : ObservableObject
     {
         if (SelectedRule is not { RunsWhere: RuleRunsWhere.Client } row) return;   // defensive; CanExecute gates it
 
-        var messages = _selectedMessagesForTest?.ToList() ?? [];
-        if (messages.Count == 0)
+        var list = _selectedMessagesForTest?.ToList() ?? [];
+        if (list.Count == 0)
         {
             StatusText = "The message list is empty, so there is nothing to test the rule against.";
             Announce(StatusText, AnnouncementCategory.Result);
             return;
         }
 
-        var matched = _clientRules.TestRule(row.Client!, messages);
-        StatusText = $"Rule would match {matched.Count} of {messages.Count} messages in the list.";
+        // A client rule acts only on its own account's mail, so it is tested only against that (#687). The
+        // list can hold several accounts' messages: All Inboxes, or a shared mailbox's folder, which opens
+        // this window on another account (#678).
+        var accountId = row.Client!.AccountId ?? SelectedAccount?.Id;
+        // Named from the account being tested, not the list's selection, which can already be moving to
+        // another account. "for the … account" rather than "from …": an account with no name of its own is
+        // labelled by its address, and "messages from me@example.com" would read as a sender.
+        var account = AccountPhrase(AccountOptions.FirstOrDefault(o => o.Id == accountId)?.DisplayName ?? SelectedAccount?.DisplayName);
+        var messages = list.Where(m => m.AccountId == accountId).ToList();
+        if (messages.Count == 0)
+        {
+            StatusText = $"The message list has no messages for {account}, so there is nothing to test the rule against.";
+            Announce(StatusText, AnnouncementCategory.Result);
+            return;
+        }
+
+        var matched = _clientRules.TestRule(row.Client!, messages).Count;
+        StatusText = messages.Count == 1
+            ? $"Rule would {(matched == 1 ? "" : "not ")}match the only message in the list for {account}."
+            : $"Rule would match {matched} of the {messages.Count} messages in the list for {account}.";
         Announce(StatusText, AnnouncementCategory.Result);
+    }
+
+    /// <summary>"the Work account", for Test's result. A label that already ends in "account" does not get a
+    /// second one: "the Work Account", not "the Work Account account".</summary>
+    internal static string AccountPhrase(string? label)
+    {
+        var name = label?.Trim();
+        if (string.IsNullOrEmpty(name)) return "this account";
+        return name.EndsWith("account", StringComparison.OrdinalIgnoreCase) ? $"the {name}" : $"the {name} account";
     }
 
     // ── Save routing ────────────────────────────────────────────────────────
@@ -642,6 +669,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
         {
             var rows = new List<UnifiedRuleRow>();
             var failures = new List<string>();
+            // Which half failed, so the status line counts only what actually loaded (#679).
+            var serverFailed = false;
+            var clientFailed = false;
 
             // Server rules — Graph accounts only. Isolated so a Graph/network failure still lets the
             // client rules below load.
@@ -665,7 +695,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 catch (OperationCanceledException) { return; }   // superseded — leave state untouched
                 catch (Exception ex)
                 {
-                    failures.Add($"Couldn't load server rules: {ex.Message}");
+                    serverFailed = true;
+                    failures.Add($"Couldn't load server-side rules: {ex.Message}");
                     LogService.Log("UnifiedRules: server load failed", ex);
                 }
             }
@@ -687,6 +718,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             }
             catch (Exception ex)
             {
+                clientFailed = true;
                 failures.Add($"Couldn't load client-side rules: {ex.Message}");
                 LogService.Log("UnifiedRules: client load failed", ex);
             }
@@ -710,7 +742,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
             // A load failure must survive to the status line — otherwise "couldn't reach Graph" reads
             // as "this account has no server rules", which invites the wrong next action.
             StatusText = (_savedToAccountLabel is { } savedTo ? $"Rule saved to {savedTo}. " : string.Empty)
-                         + SharedMailboxPreamble() + BuildStatus(rows, failures, AccountSupportsServerRules);
+                         + SharedMailboxPreamble()
+                         + BuildStatus(rows, failures, AccountSupportsServerRules, serverFailed, clientFailed);
         }
         finally
         {
@@ -751,7 +784,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// </para>
     /// </summary>
     /// <remarks>Names its subject rather than opening with "It": the clause is appended to a count and
-    /// to a load failure, and after "Couldn't load server rules: …" the nearest noun an "It" could attach
+    /// to a load failure, and after "Couldn't load server-side rules: …" the nearest noun an "It" could attach
     /// to is <em>server rules</em>.</remarks>
     internal static string ModeClause(bool supportsServerRules)
         => supportsServerRules
@@ -790,7 +823,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
         return t.Length == 0 || t[^1] is '.' or '!' or '?' ? t : t + ".";
     }
 
-    internal static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures, bool supportsServerRules)
+    internal static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures, bool supportsServerRules,
+        bool serverLoadFailed = false, bool clientLoadFailed = false)
     {
         if (failures.Count > 0)
         {
@@ -800,12 +834,31 @@ public partial class UnifiedRulesViewModel : ObservableObject
             // window has no other surface that tells them apart. Each failure is terminated first: an
             // exception message rarely ends in a full stop, and gluing the next sentence onto it gives
             // one run-on with no break to read.
-            var loaded = rows.Count == 0
-                ? " " + ModeClause(supportsServerRules)
-                : " " + Counts(rows, supportsServerRules);
+            // One half failed on an account that has both: count the half that loaded, even when it holds
+            // none, so its count is stated rather than left to be inferred. "No client-side rules." is only as
+            // sure as the load behind it: RuleService.LoadRules returns an empty list for a rules file it
+            // cannot read, so that case arrives here as loaded and empty.
+            var oneHalfFailed = supportsServerRules && serverLoadFailed != clientLoadFailed;
+            var loaded = oneHalfFailed
+                ? " " + LoadedCount(rows, supportsServerRules, serverLoadFailed)
+                : rows.Count == 0
+                    ? " " + ModeClause(supportsServerRules)
+                    : " " + Counts(rows, supportsServerRules);
             return string.Join(" ", failures.Select(Terminated)) + loaded;
         }
         return rows.Count == 0 ? NoRulesStatus(supportsServerRules) : Counts(rows, supportsServerRules);
+
+        // After one half failed to load, count only the half that did (#679). "0 on server" straight after
+        // "Couldn't load server-side rules" reads as "this account has none" — the very misreading the failure
+        // text is there to prevent.
+        static string LoadedCount(List<UnifiedRuleRow> r, bool supportsServer, bool serverFailed)
+        {
+            var kind = serverFailed ? RuleRunsWhere.Client : RuleRunsWhere.Server;
+            var n = r.Count(x => x.RunsWhere == kind);
+            var noun = kind == RuleRunsWhere.Client ? "client-side" : "server-side";
+            var count = n == 0 ? $"No {noun} rules." : $"{n} {noun} rule{(n == 1 ? "" : "s")}.";
+            return count + " " + ModeClause(supportsServer);
+        }
 
         static string Counts(List<UnifiedRuleRow> r, bool supportsServer)
         {
