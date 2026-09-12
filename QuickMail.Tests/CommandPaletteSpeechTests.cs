@@ -333,6 +333,37 @@ public class CommandPaletteSpeechTests
     }
 
     [StaFact]
+    public void EnterWithNoMatches_SaysSoAgainRatherThanGoingSilent()
+    {
+        // The empty list is announced once as it empties. Enter is a key the user has just
+        // pressed and it does nothing, so it has to be answered — otherwise the palette is
+        // indistinguishable from one that has stopped responding.
+        var heard = new List<(string Text, AnnouncementCategory Category)>();
+        AccessibilityHelper.AnnouncementObserver = (text, category) => heard.Add((text, category));
+
+        var (window, box, _) = Open();
+        try
+        {
+            box.Text = "zzzzz";
+            PumpPast(TimeSpan.FromMilliseconds(400));
+            Assert.Contains(heard, h => h.Text == "No matching commands");
+            heard.Clear();
+
+            Press(window, Key.Enter);
+            Drain();
+
+            Assert.Contains(heard, h => h.Text == "No matching commands"
+                                     && h.Category == AnnouncementCategory.Result);
+            Assert.True(window.IsVisible, "Enter with no match must not close the palette.");
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
+            window.Close();
+        }
+    }
+
+    [StaFact]
     public void InAutomationMode_NothingIsAnnouncedByHand()
     {
         // The default mode leaves the reporting to the platform. If an announcement leaks out

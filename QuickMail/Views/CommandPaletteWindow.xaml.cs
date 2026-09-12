@@ -57,6 +57,12 @@ public partial class CommandPaletteWindow : Window
     // Typing settles before the active command is reported, so the report does not talk over the
     // screen reader echoing what is being typed. Announcing on every keystroke is half of why
     // palette filtering was removed in 2026-05; arrow keys bypass the timer and report at once.
+    //
+    // NOTE this gates only what THIS window says — the Announce mode. It cannot gate the
+    // selection events WPF raises by itself as the filter re-selects, which is what the two
+    // Automation modes rely on; there the timing is WPF's and the screen reader's. If the default
+    // mode turns out to speak on every keystroke, that is the reason, and Announce is the mode
+    // with the timing under our control.
     private DispatcherTimer? _reportTimer;
     private static readonly TimeSpan ReportDebounce = TimeSpan.FromMilliseconds(300);
 
@@ -106,6 +112,19 @@ public partial class CommandPaletteWindow : Window
         CommandChosen = chosen;
         if (_modeless) Close();
         else DialogResult = chosen;
+    }
+
+    /// <summary>
+    /// Stops the report timer however the window went away. <see cref="Dismiss"/> stops it too,
+    /// but a palette can be closed without going through Dismiss at all — WPF closes owned
+    /// windows when the owner shuts down — and a pending tick would then run against a closed
+    /// window, since the timer holds it alive.
+    /// </summary>
+    protected override void OnClosed(EventArgs e)
+    {
+        _dismissed = true;
+        _reportTimer?.Stop();
+        base.OnClosed(e);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -256,7 +275,10 @@ public partial class CommandPaletteWindow : Window
             return;
         }
 
-        // Enter on an empty result set would otherwise look like the palette had stopped responding.
+        // Enter on an empty result set would otherwise look like the palette had stopped
+        // responding. Said again even though the empty list was already announced once as it
+        // emptied: this is the answer to a key the user just pressed, not a repeat of the state.
+        _reportedEmpty = false;
         ReportNow();
     }
 
@@ -309,7 +331,9 @@ public partial class CommandPaletteWindow : Window
         switch (Reporting)
         {
             case ReportMode.Automation:
-                // Setting SelectedIndex already raised the event; nothing further to do.
+                // Setting SelectedIndex already raised the event, so there is nothing to do —
+                // and by the same token nothing here decides WHEN it is spoken. The debounce and
+                // the unchanged-match suppression above apply to the Announce branch only.
                 break;
             case ReportMode.AutomationExplicit:
                 RaiseElementSelected();
@@ -327,8 +351,7 @@ public partial class CommandPaletteWindow : Window
     /// </summary>
     private void RaiseElementSelected()
     {
-        var index = CommandList.SelectedIndex;
-        if (index < 0) return;
+        if (CommandList.SelectedIndex < 0) return;
 
         // The list virtualizes, so the row's container — and therefore its automation peer — may
         // not exist yet. ScrollIntoView realizes it, but only on a later layout pass, so look the
@@ -337,6 +360,12 @@ public partial class CommandPaletteWindow : Window
         Dispatcher.InvokeAsync(() =>
         {
             if (_dismissed) return;
+
+            // Read the index here rather than capturing it: arrowing faster than the dispatcher
+            // drains queues several of these, and a captured index would report a row that has
+            // since been arrowed past — telling the screen reader a command is selected that is not.
+            var index = CommandList.SelectedIndex;
+            if (index < 0) return;
             if (CommandList.ItemContainerGenerator.ContainerFromIndex(index) is not ListBoxItem row) return;
 
             var peer = UIElementAutomationPeer.FromElement(row)
