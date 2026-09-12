@@ -17,9 +17,6 @@ it previously did not.
 It affects QuickMail 0.7.0 and later. It was found by review rather than by anything going wrong,
 and was reported privately rather than published.
 
-Found and reported privately by Timothy Spaulding, with a working proof of concept and a diagnosis
-that named both flaws exactly.
-
 ---
 
 ## Fixed: every rule condition now has a checkbox
