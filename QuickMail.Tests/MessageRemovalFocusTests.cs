@@ -158,6 +158,138 @@ public class MessageRemovalFocusTests
     }
 
     [Fact]
+    public async Task MoveAsksForFocusWhileTheMovedRowIsStillInTheList() // #670
+    {
+        var f = await Fixture.CreateAsync();
+        var moving = f.Row("b");
+        f.Vm.SelectedMessage = moving;
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([moving], Folder("Archive", SpecialFolderKind.Archive));
+
+        var call = Assert.Single(f.FocusNowCalls);
+        Assert.Contains(moving, call.Rows);                  // asked for while the row was still there …
+        Assert.Equal("c", call.Selected?.MessageId);         // … with the selection already on the survivor
+        Assert.Equal(0, f.QueuedFocusCalls);                 // landed, so no second focus move afterwards
+        Assert.DoesNotContain(moving, f.Vm.Messages);
+    }
+
+    [Fact]
+    public async Task MoveFallsBackToTheQueuedFocusWhenLandingFails() // #670
+    {
+        var f = await Fixture.CreateAsync();
+        f.FocusNowSucceeds = false;
+        f.Vm.SelectedMessage = f.Row("b");
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([f.Row("b")], Folder("Archive", SpecialFolderKind.Archive));
+
+        Assert.Equal(1, f.QueuedFocusCalls);
+        Assert.Equal("c", f.Vm.SelectedMessage?.MessageId);
+        // Still a single move: not spoken, as a single delete is not, whether or not landing worked.
+        Assert.DoesNotContain(f.Announced.Announced, a => a.Category != AnnouncementCategory.Silent);
+    }
+
+    [Fact]
+    public async Task MoveLeavesTheSelectionAlone_WhenItIsNotAmongTheMoved() // #670
+    {
+        // The landing runs after the server move, and by then the user may be somewhere else: on another row,
+        // reading it. Neither focus nor the reading pane is taken from them.
+        var f = await Fixture.CreateAsync();
+        f.Vm.SelectedMessage = f.Row("e");
+        f.Vm.IsMessageOpen = true;
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([f.Row("b")], Folder("Archive", SpecialFolderKind.Archive));
+
+        Assert.Empty(f.FocusNowCalls);
+        Assert.Equal(0, f.QueuedFocusCalls);
+        Assert.Equal("e", f.Vm.SelectedMessage?.MessageId);
+        Assert.True(f.Vm.IsMessageOpen);
+    }
+
+    [Fact]
+    public async Task MovingInAGroupView_ClearsTheMovedSelection() // #670, as delete does
+    {
+        // In the trees, focus is the view's business after the rebuild. A selection left on a moved message
+        // keeps the per-message hotkeys live against a message that has gone.
+        var f = await Fixture.CreateAsync();
+        f.Vm.ViewMode = ViewMode.Conversations;
+        f.Vm.SelectedMessage = f.Row("b");
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([f.Row("b")], Folder("Archive", SpecialFolderKind.Archive));
+
+        Assert.Null(f.Vm.SelectedMessage);
+        Assert.Equal(0, f.QueuedFocusCalls);
+    }
+
+    [Fact]
+    public async Task MovingEveryMessage_PutsFocusOnTheListBeforeTheRowsLeave() // #670
+    {
+        // With no survivor to land on, focus would stay on a row that has gone, or in a message the reading pane has
+        // just cleared: a blank page a screen reader user could leave only with Alt+Tab. The list itself takes it,
+        // asked for while the row is still there.
+        var f = await Fixture.CreateAsync(messageCount: 1);
+        var only = f.Row("a");
+        f.Vm.SelectedMessage = only;
+        f.Vm.IsMessageOpen = true;
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([only], Folder("Archive", SpecialFolderKind.Archive));
+
+        var call = Assert.Single(f.FocusNowCalls);
+        Assert.Null(call.Selected);            // nothing left to select: the list itself takes focus
+        Assert.Contains(only, call.Rows);      // asked for while the row was still listed
+        Assert.Equal(0, f.QueuedFocusCalls);
+        Assert.Empty(f.Vm.Messages);
+    }
+
+    [Fact]
+    public async Task MovingTheLastMessageSaysTheFolderIsNowEmpty() // #670, as delete says it
+    {
+        var f = await Fixture.CreateAsync(messageCount: 1);
+        f.Vm.SelectedMessage = f.Row("a");
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([f.Row("a")], Folder("Archive", SpecialFolderKind.Archive));
+
+        Assert.Equal(("1 message moved to Archive. Folder is now empty.", AnnouncementCategory.MessageAction),
+            f.Announced.Last);
+    }
+
+    [Fact]
+    public async Task MovingTheOpenMessage_ClosesTheReadingPane() // #670
+    {
+        // As delete, archive and unwatch do: otherwise the pane keeps showing a message no longer in the list.
+        var f = await Fixture.CreateAsync();
+        f.Vm.SelectedMessage = f.Row("b");
+        f.Vm.IsMessageOpen = true;
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([f.Row("b")], Folder("Archive", SpecialFolderKind.Archive));
+
+        Assert.False(f.Vm.IsMessageOpen);
+    }
+
+    [Fact]
+    public async Task MovingOneMessageIsNeverSpoken() // #670, as #667 for delete
+    {
+        // The next message has just been read out; "1 message moved" would interrupt it.
+        var f = await Fixture.CreateAsync();
+        f.Vm.SelectedMessage = f.Row("b");
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([f.Row("b")], Folder("Archive", SpecialFolderKind.Archive));
+
+        Assert.DoesNotContain(f.Announced.Announced, a => a.Category != AnnouncementCategory.Silent);
+        Assert.Equal(("1 message moved to Archive.", AnnouncementCategory.Silent), f.Announced.Last);
+    }
+
+    [Fact]
+    public async Task MovingSeveralMessagesSaysTheCount() // #670
+    {
+        var f = await Fixture.CreateAsync();
+        f.Vm.SelectedMessage = f.Row("b");
+
+        await f.Vm.MoveSelectedMessagesToFolderAsync([f.Row("b"), f.Row("c")], Folder("Archive", SpecialFolderKind.Archive));
+
+        Assert.Equal(("2 messages moved to Archive.", AnnouncementCategory.MessageAction), f.Announced.Last);
+    }
+
+    [Fact]
     public async Task DeleteLandsOnTheRowAfterTheDeletedBlock()
     {
         var f = await Fixture.CreateAsync();

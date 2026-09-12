@@ -550,12 +550,12 @@ public class ConfigService : IConfigService
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceResults = {(config.AnnounceResults ? "on" : "off")}");
-        sb.AppendLine("# Announce action outcomes such as search result counts and move confirmations.");
+        sb.AppendLine("# Announce action outcomes such as search result counts and copy confirmations.");
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceMessageActions = {(config.AnnounceMessageActions ? "on" : "off")}");
-        sb.AppendLine("# Announce delete and archive outcomes (e.g. \"1 message archived\"). Split from");
+        sb.AppendLine("# Announce delete, archive and move outcomes (e.g. \"3 messages archived\"). Split from");
         sb.AppendLine("# AnnounceStatus so this frequent chatter can be silenced on its own. Values: on, off.");
         sb.AppendLine();
 
