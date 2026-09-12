@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Helpers;
@@ -17,10 +18,12 @@ public partial class CommandPaletteViewModel : ObservableObject
     /// <summary>
     /// What the palette actually shows: <see cref="Commands"/> ranked against <see cref="SearchText"/>.
     ///
-    /// Batched, so refilling it raises one Reset rather than an event per command. Unbatched,
-    /// every keystroke would fire ~200 UIA structure notifications at whatever is listening.
+    /// Deliberately a plain collection updated in place — see <see cref="Reconcile"/>. Batching the
+    /// refill into one Reset, which is the usual way to keep a rebuild quiet, is the wrong trade
+    /// here: a Reset makes the list drop and retake its selection, and a retaken selection is
+    /// spoken.
     /// </summary>
-    public BatchObservableCollection<CommandDefinition> FilteredCommands { get; } = [];
+    public ObservableCollection<CommandDefinition> FilteredCommands { get; } = [];
 
     [ObservableProperty]
     private string _searchText = string.Empty;
@@ -61,16 +64,47 @@ public partial class CommandPaletteViewModel : ObservableObject
 
     private void ApplyFilter()
     {
-        using (FilteredCommands.BeginBatchScope())
-        {
-            FilteredCommands.Clear();
-            foreach (var cmd in CommandMatcher.Rank(_allCommands, SearchText))
-                FilteredCommands.Add(cmd);
-        }
+        var ranked = CommandMatcher.Rank(_allCommands, SearchText);
+
+        // Reconciled in place rather than cleared and refilled. Clear + Add raises a Reset, the
+        // list re-selects off the back of it, and the assignment below then selects again — two
+        // selection changes for one keystroke, which is heard as the command being named twice:
+        //
+        //     Month View
+        //     Month View
+        //     1 of 78
+        //
+        // Updating in place leaves a top match that has not changed sitting in its own container,
+        // untouched, so nothing is reported until what Enter would run actually changes.
+        Reconcile(ranked);
 
         // The top match is always what Enter runs, so the selection follows the filter rather
         // than trying to keep hold of a command that may no longer be in the list.
         SelectedCommand = FilteredCommands.Count > 0 ? FilteredCommands[0] : null;
+    }
+
+    /// <summary>
+    /// Brings <see cref="FilteredCommands"/> to <paramref name="ranked"/> with removals, moves and
+    /// inserts, so items that survive keep their identity — and their list container — instead of
+    /// every keystroke replacing all of them.
+    /// </summary>
+    private void Reconcile(IReadOnlyList<CommandDefinition> ranked)
+    {
+        var wanted = new HashSet<CommandDefinition>(ranked);
+
+        for (var i = FilteredCommands.Count - 1; i >= 0; i--)
+            if (!wanted.Contains(FilteredCommands[i]))
+                FilteredCommands.RemoveAt(i);
+
+        for (var i = 0; i < ranked.Count; i++)
+        {
+            if (i < FilteredCommands.Count && ReferenceEquals(FilteredCommands[i], ranked[i]))
+                continue;
+
+            var existing = FilteredCommands.IndexOf(ranked[i]);
+            if (existing >= 0) FilteredCommands.Move(existing, i);
+            else FilteredCommands.Insert(i, ranked[i]);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelectedCommand))]

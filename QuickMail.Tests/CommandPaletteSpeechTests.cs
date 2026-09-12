@@ -398,12 +398,73 @@ public class CommandPaletteSpeechTests
     }
 
     [Fact]
-    public void TheDefaultMode_IsTheOneThatIsGuaranteedToSpeak()
+    public void TheDefaultMode_LeavesTheCommandNameToThePlatform()
     {
-        // Pinned so moving it is a decision, not a drift. The Automation modes hand reporting to
-        // the platform, and whether that reaches a screen reader cannot be checked from in here —
-        // shipping one by default risks a palette that narrows the list in silence.
-        Assert.Equal(CommandPaletteWindow.ReportMode.Announce, CommandPaletteWindow.Reporting);
+        // Settled by listening: the platform already speaks the row's name and its position, so
+        // announcing on top of it said everything twice. Pinned so moving it is a decision.
+        Assert.Equal(CommandPaletteWindow.ReportMode.Automation, CommandPaletteWindow.Reporting);
+    }
+
+    [StaFact]
+    public void NarrowingThatKeepsTheSameTopMatch_ReportsTheCountAlone()
+    {
+        // The platform reports a row only when the selection changes, so a keystroke that narrows
+        // the list without changing what Enter would run is otherwise silent. The count fills that
+        // in — and must not carry the name, which the platform gives already.
+        var heard = new List<(string Text, AnnouncementCategory Category)>();
+        AccessibilityHelper.AnnouncementObserver = (text, category) => heard.Add((text, category));
+
+        var (window, box, list) = Open();
+        try
+        {
+            box.Text = "go to";                            // Go to Date and Go to Folder
+            PumpPast(TimeSpan.FromMilliseconds(400));
+            var top = list.SelectedItem;
+            Assert.Equal(2, list.Items.Count);
+            Assert.Equal("Go to Date", ((CommandDefinition)top).Title);   // the shorter title wins the tie
+            heard.Clear();
+
+            box.Text = "go to da";                         // drops Folder, keeps the same top match
+            PumpPast(TimeSpan.FromMilliseconds(400));
+
+            Assert.Same(top, list.SelectedItem);
+            Assert.Contains(heard, h => h.Text == "1 command"
+                                     && h.Category == AnnouncementCategory.Result);
+            Assert.DoesNotContain(heard, h => h.Text.Contains("Go to", StringComparison.Ordinal));
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
+            window.Close();
+        }
+    }
+
+    [StaFact]
+    public void AChangedTopMatch_IsLeftEntirelyToThePlatform()
+    {
+        // When the selection does change, the platform speaks the name AND the position, so
+        // nothing may be added — a count here would be the second half said twice.
+        var heard = new List<(string Text, AnnouncementCategory Category)>();
+        AccessibilityHelper.AnnouncementObserver = (text, category) => heard.Add((text, category));
+
+        var (window, box, list) = Open();
+        try
+        {
+            box.Text = "go to";
+            PumpPast(TimeSpan.FromMilliseconds(400));
+            heard.Clear();
+
+            box.Text = "arch";                             // a different command on top
+            PumpPast(TimeSpan.FromMilliseconds(400));
+
+            Assert.Equal("Move to Archive", ((CommandDefinition)list.SelectedItem).Title);
+            Assert.Empty(heard);
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
+            window.Close();
+        }
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

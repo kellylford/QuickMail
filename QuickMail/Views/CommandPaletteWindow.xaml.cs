@@ -51,18 +51,23 @@ public partial class CommandPaletteWindow : Window
     /// <summary>
     /// The mechanism in force.
     ///
-    /// <para><see cref="ReportMode.Announce"/> is the default because it is the only one that is
-    /// guaranteed to say anything. The two Automation modes hand the job to the platform, and
-    /// whether the platform does it — and when — cannot be observed from inside the process
-    /// (<c>AutomationPeer.ListenerExists</c> is false with no UIA client attached), so shipping
-    /// one of those as the default risks a palette that narrows the list in total silence: the
-    /// user has no way to know what Enter would run. Announce is also the mode whose timing is
-    /// ours, so the debounce and the unchanged-match suppression actually apply.</para>
+    /// <para><see cref="ReportMode.Automation"/>, settled by ear rather than by argument. Listening
+    /// to the palette filter showed the platform already reporting the row in full — the command's
+    /// name and its position in the set, as two utterances — so an <see cref="ReportMode.Announce"/>
+    /// on top of it said everything a second time:</para>
+    /// <code>
+    /// Move Tab Right, 2 of 10   &lt;- ours
+    /// Move Tab Right            &lt;- the platform
+    /// 2 of 10                   &lt;- the platform
+    /// </code>
+    /// <para>That also settles the open question this switch existed for: the platform does carry
+    /// it, so nothing here needs to be announced by hand, and no announcement setting can silence
+    /// the palette. Announce remains as the fallback for a surface where it turns out not to.</para>
     ///
     /// <para>A field rather than a constant so the tests can drive each mode; change the
     /// initializer to change the default.</para>
     /// </summary>
-    internal static ReportMode Reporting { get; set; } = ReportMode.Announce;
+    internal static ReportMode Reporting { get; set; } = ReportMode.Automation;
 
     // Shown without a nested message loop (see ShowModeless), and whether it has already been closed.
     private bool _modeless;
@@ -80,8 +85,10 @@ public partial class CommandPaletteWindow : Window
     private DispatcherTimer? _reportTimer;
     private static readonly TimeSpan ReportDebounce = TimeSpan.FromMilliseconds(300);
 
-    // What was last reported, so an unchanged top match stays silent while the user keeps typing.
+    // What was last reported, so an unchanged top match stays silent while the user keeps typing,
+    // and so a narrowing that leaves it in place is still carried by its count.
     private CommandDefinition? _lastReported;
+    private int _lastReportedCount = -1;
     private bool _reportedEmpty;
 
     /// <summary>True when the palette closed because a command was chosen, rather than being dismissed.</summary>
@@ -155,6 +162,17 @@ public partial class CommandPaletteWindow : Window
         FilterBox.Focus();
         Keyboard.Focus(FilterBox);
 
+        // Opening reports nothing of its own. The window and the filter box announce themselves,
+        // and a command named ahead of them lands before the user has been told where they are:
+        //
+        //     Manage Accounts, 1 of 124
+        //     Command Palette dialog
+        //     Filter commands  Edit
+        //
+        // Treating the opening selection as already reported also means the first thing spoken is
+        // the first command the user actually moves to, or types their way to.
+        _lastReported      = _vm.SelectedCommand;
+        _lastReportedCount = _vm.FilteredCommands.Count;
         MoveSelection(0);
     }
 
@@ -337,10 +355,28 @@ public partial class CommandPaletteWindow : Window
         var active = _vm.SelectedCommand;
         if (active is null) return;
 
-        // Typing that narrows the list without changing what Enter would run says nothing new.
-        if (ReferenceEquals(active, _lastReported)) return;
-        _lastReported  = active;
-        _reportedEmpty = false;
+        var count = _vm.FilteredCommands.Count;
+
+        if (ReferenceEquals(active, _lastReported))
+        {
+            // The platform reports a row when the SELECTION changes, so narrowing that leaves the
+            // same command on top is silent — and the user has just pressed a key that did change
+            // the result set. The count on its own fills that in without repeating the name the
+            // platform already gives. VS Code splits it the same way: the command name comes from
+            // the row, the number of results from a notification of its own.
+            //
+            // Not in Announce mode, where the name and the count are already said together.
+            if (count != _lastReportedCount && Reporting != ReportMode.Announce)
+                AccessibilityHelper.Announce(this, CountText(count),
+                    category: AnnouncementCategory.Result);
+
+            _lastReportedCount = count;
+            return;
+        }
+
+        _lastReported      = active;
+        _lastReportedCount = count;
+        _reportedEmpty     = false;
 
         switch (Reporting)
         {
@@ -358,6 +394,9 @@ public partial class CommandPaletteWindow : Window
                 break;
         }
     }
+
+    private static string CountText(int count) =>
+        count == 1 ? "1 command" : $"{count} commands";
 
     /// <summary>
     /// Raises the element-selected event on the selected row, which is what a screen reader
