@@ -51,17 +51,21 @@ public class RuleService : IRuleService
         if (_loaded) return _cache;
 
         List<MailRule> rules;
+        var missing = false;
         try
         {
             var json = File.ReadAllText(_filePath);
             rules = string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<List<MailRule>>(json) ?? [];
         }
-        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        catch (Exception ex) when (ex is FileNotFoundException
+                                   || (ex is DirectoryNotFoundException && DriveIsThere()))
         {
-            // Not there yet, so no rules. Only these two mean that. File.Exists, checked here before, answers false
-            // for any error at all — a permission problem, a drive that dropped for a moment — and that read as no
-            // rules and let the next save replace the file (#700).
+            // Not there yet, so no rules. File.Exists, checked here before, answered false for any error at all — a
+            // permission problem, a drive that had dropped — and that read as no rules and let the next save replace
+            // the file (#700). A missing folder counts as "not there" only on a drive that is there: a profile on a
+            // drive that has disconnected reports the same missing folder, and its rules are not gone.
             rules = [];
+            missing = true;
         }
         catch (Exception ex)
         {
@@ -78,12 +82,21 @@ public class RuleService : IRuleService
         if (_loggedLoadError is not null)
         {
             _loggedLoadError = null;
-            LogService.Log("Client-side rules file can be read again.");
+            LogService.Log(missing
+                ? "Client-side rules file that couldn't be read is no longer there; there are no client-side rules."
+                : "Client-side rules file can be read again.");
         }
         _cache = rules;
         _loaded = true;
         MigrateAllAccountRules();
         return _cache;
+    }
+
+    /// <summary>Whether the drive (or network share) the rules file lives on is reachable at all.</summary>
+    private bool DriveIsThere()
+    {
+        var root = Path.GetPathRoot(Path.GetFullPath(_filePath));
+        return !string.IsNullOrEmpty(root) && Directory.Exists(root);
     }
 
     /// <summary>

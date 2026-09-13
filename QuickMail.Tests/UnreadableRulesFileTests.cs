@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -116,5 +117,34 @@ public sealed class UnreadableRulesFileTests : IDisposable
         Assert.Equal(1, rules.SaveCount);
         Assert.Equal("AQMk-archive", Assert.Single(rules.LoadedRules).TargetFolder);
         Assert.Equal(["File it"], report.RemappedRules);
+    }
+
+    [Fact]
+    public void TheConversion_KeepsItsMarker_WhenTheRulesWereNotRemapped()
+    {
+        // Pinned from the source because the finisher can only be reached through a live sign-in and Inbox sync. It
+        // must return before clearing GraphConversionPending when the remap left the rules out; clear it, and the
+        // rules are never remapped at all.
+        var source = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "ViewModels", "MainViewModel.cs"));
+        var start = source.IndexOf("private async Task FinishGraphConversionCoreAsync", StringComparison.Ordinal);
+        Assert.True(start >= 0, "FinishGraphConversionCoreAsync is gone; move this check to wherever the marker is cleared.");
+        var body = source[start..];
+
+        var guard = Regex.Match(body, @"if \(!RemapFolderReferencesAfterConversion\([^;]*?\)\)\s*\{(?<block>.*?)\n        \}",
+                                RegexOptions.Singleline);
+        Assert.True(guard.Success, "The remap's result no longer guards the rest of the conversion.");
+        Assert.Contains("return;", guard.Groups["block"].Value, StringComparison.Ordinal);
+        Assert.True(guard.Index < body.IndexOf("GraphConversionPending = false", StringComparison.Ordinal),
+                    "The marker is cleared before the remap's result is checked.");
+    }
+
+    private static string RepoRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+        {
+            if (Directory.Exists(Path.Combine(dir.FullName, "QuickMail", "ViewModels")))
+                return dir.FullName;
+        }
+        throw new DirectoryNotFoundException("Couldn't find the repository root above the test output.");
     }
 }

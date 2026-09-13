@@ -2028,7 +2028,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Remap folder-referencing settings now that the Graph folders exist.
         if (!RemapFolderReferencesAfterConversion(accountId, graphFolders, out var report))
-            return;   // the marker stays: the rules still need this remap
+        {
+            // The marker stays: the rules still need this remap, at a later launch once rules.json can be read (#700).
+            // Say what did change — saved views, the startup folder — when it changes. A later launch finds those
+            // already done and has nothing new to say, so this is heard once, not at every launch.
+            var changed = report.Summary();
+            LogService.Log($"Conversion of {account.AccountLabel} to Microsoft 365 is waiting for its client-side rules, which can't be read."
+                           + (changed.Length > 0 ? $" Already updated: {changed}." : string.Empty));
+            if (changed.Length > 0)
+                Announce($"{account.AccountLabel} converted to Microsoft 365, apart from its client-side rules, which can't be read yet. {changed}.",
+                         AnnouncementCategory.Result);
+            return;
+        }
 
         // Clear the marker — resolve the CURRENT instance (a reload may have replaced it) and persist.
         var current = Accounts.FirstOrDefault(a => a.Id == accountId);

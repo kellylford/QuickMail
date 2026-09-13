@@ -103,6 +103,20 @@ public class RuleServiceTests
     }
 
     [Fact]
+    public void LoadRules_OnADriveThatIsntThere_Throws_RatherThanReadingAsNoRules()
+    {
+        // A profile on a drive that has disconnected reports a missing folder, just as a fresh profile does. Only the
+        // fresh profile has no rules: reading the other as none let the next save replace the real file (#700).
+        // (LoadRules_EmptyFile_ReturnsEmptyList pins the fresh-profile side: a missing folder on a drive that is there.)
+        var free = Enumerable.Range('D', 23).Select(c => (char)c).FirstOrDefault(c => !Directory.Exists($"{c}:\\"));
+        if (free == default) Assert.Skip("Every drive letter from D: to Z: is in use.");
+
+        var svc = CreateService($"{free}:\\QuickMailProfile");
+
+        Assert.Throws<RulesFileUnreadableException>(() => svc.LoadRules());
+    }
+
+    [Fact]
     public void LoadRules_WhitespaceOnlyFile_ReturnsEmptyList()
     {
         // Nothing in it means nothing to lose, so it is no rules, not a damaged file.
