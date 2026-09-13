@@ -273,6 +273,33 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task EditorMessages_AreTheEditorWindowsToAnnounce_NotPassedOnByTheRulesManager() // #701
+    {
+        // The editor window announces what its view model raises. The Rules Manager passed the same messages on,
+        // so its window, behind the editor, said each one a second time. Anchored on the editor having raised them,
+        // so the empty list can't just mean nothing was said at all. Covers both ways the editor opens.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
+        var fromEditors = new List<string>();
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => { editor = e; e.AnnouncementRequested += (t, _) => fromEditors.Add(t); };
+        await vm.RefreshCommand.ExecuteAsync(null);
+        var fromManager = new List<string>();
+        vm.AnnouncementRequested += (t, _) => fromManager.Add(t);
+
+        vm.NewRuleCommand.Execute(null);                 // a new rule with no name: refused
+        await editor!.SaveCommand.ExecuteAsync(null);
+        vm.SelectedRule = vm.Rules.Single();
+        vm.EditRuleCommand.Execute(null);                // an existing rule emptied of its name: refused
+        editor!.Name = "";
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, fromEditors.Count);
+        Assert.Empty(fromManager);
+    }
+
+    [Fact]
     public async Task NewRule_DeleteWithNoCondition_IsNotSaved_OnAnImapAccount() // #550
     {
         // The accounts #550 moved onto this editor had this guard in the window they came from. Pinned

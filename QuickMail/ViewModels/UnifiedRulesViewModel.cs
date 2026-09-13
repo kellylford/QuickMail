@@ -207,7 +207,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
         var supportsServerRules = AccountSupportsServerRules;
         editor.AccountId = accountId;
         editor.Saved += _ => SaveNewAsync(accountId, supportsServerRules, editor);
-        editor.AnnouncementRequested += (t, c) => AnnouncementRequested?.Invoke(t, c);
+        // The editor's messages (a validation error, a refused save) are announced by the editor window, the one
+        // the user is in. Passing them on here as well had the Rules Manager behind it say each one again (#701).
         EditorRequested?.Invoke(editor);
     }
 
@@ -263,7 +264,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             ? ServerRuleEditorViewModel.ForEdit(row.Server!)
             : ServerRuleEditorViewModel.ForEditClient(row.Client!);
         editor.AccountId = accountId;
-        editor.AnnouncementRequested += (t, c) => AnnouncementRequested?.Invoke(t, c);
+        // Not passed on: the editor window announces its own messages (#701, see OpenNewEditor).
         editor.Saved += _ => row.RunsWhere == RuleRunsWhere.Server
             ? SaveEditedServerAsync(accountId, row.Server!, editor)
             : SaveEditedClientAsync(accountId, row.Client!, editor);

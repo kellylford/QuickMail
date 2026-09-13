@@ -41,6 +41,14 @@ A client-side rule change that can't be saved for any other reason — a full di
 
 ---
 
+### Messages in the rule editor are said once
+
+When the rule editor refused to save — a rule with no name, say, or one using something a client-side rule can't do — its message was announced twice: once by the editor and again by the Rules Manager behind it. Now only the editor says it.
+
+[#701](https://github.com/kellylford/QuickMail/issues/701)
+
+---
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
