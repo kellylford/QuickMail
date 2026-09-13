@@ -609,13 +609,32 @@ public class UnifiedRulesViewModelTests
     // and a failed write escaped the command.
 
     private const string UnreadableSaveError =
-        "Couldn't save client-side rules: rules.json is damaged and can't be read. The file has been left as it is.";
+        @"Couldn't save client-side rules: rules.json in C:\Profile is damaged and can't be read. The file has been left as it is.";
+
+    [Fact]
+    public async Task NewClientRule_WhenTheWriteIsDenied_IsRefusedWithTheReason()
+    {
+        // Windows reports a write over a file another program holds open as access denied, not IOException;
+        // the refusal must cover it too, or the exception escapes the command and the editor shows nothing.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { ThrowOnSave = new UnauthorizedAccessException("Access to the path is denied.") };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
+        var editor = await OpenNewEditorAsync(vm);
+        var closed = false;
+        editor.CloseRequested += () => closed = true;
+
+        editor.Name = "File it"; editor.SubjectContains = "later"; editor.MarkAsRead = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(closed);
+        Assert.Equal("Couldn't save client-side rules: Access to the path is denied.", editor.SaveError);
+    }
 
     [Fact]
     public async Task NewClientRule_WhenTheRulesFileCantBeRead_IsRefused_AndSavesNothing()
     {
         var a = Guid.NewGuid();
-        var client = new StubRuleService { ThrowOnLoad = new RulesFileUnreadableException(new JsonException()) };
+        var client = new StubRuleService { ThrowOnLoad = RulesFileUnreadableException.For(@"C:\Profile\rules.json", new JsonException()) };
         var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
         var editor = await OpenNewEditorAsync(vm);
         var closed = false;

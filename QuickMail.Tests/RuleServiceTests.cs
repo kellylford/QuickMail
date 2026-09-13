@@ -77,8 +77,27 @@ public class RuleServiceTests
 
             var ex = Assert.Throws<RulesFileUnreadableException>(() => CreateService(dir).LoadRules());
 
-            Assert.Equal("rules.json is damaged and can't be read.", ex.Message);
+            // Names the folder: the user is the one who has to find it and repair or remove it.
+            Assert.Equal($"rules.json in {dir} is damaged and can't be read.", ex.Message);
             Assert.Equal("this is not json {{{", File.ReadAllText(path));
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void LoadRules_APathThatExistsButCantBeReadAsAFile_Throws_RatherThanReadingAsNoRules()
+    {
+        // File.Exists answers false for any error, not only for a missing file, and the load used to trust it: an
+        // unreadable path read as no rules and the next save replaced it. A folder where the file should be is a
+        // path File.Exists says is "not there" but that plainly is.
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(dir, "rules.json"));
+
+            var ex = Assert.Throws<RulesFileUnreadableException>(() => CreateService(dir).LoadRules());
+
+            Assert.StartsWith("rules.json can't be opened.", ex.Message);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }
@@ -133,7 +152,8 @@ public class RuleServiceTests
             using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
             {
                 var ex = Assert.Throws<RulesFileUnreadableException>(() => fresh.LoadRules());
-                Assert.StartsWith("rules.json can't be opened.", ex.Message);
+                // Not the system's message, which repeats the full path for something that fixes itself.
+                Assert.Equal("rules.json is open in another program, so it can't be read right now.", ex.Message);
             }
 
             Assert.Equal("Kept", Assert.Single(fresh.LoadRules()).Name);

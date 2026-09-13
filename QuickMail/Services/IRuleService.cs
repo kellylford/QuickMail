@@ -13,8 +13,9 @@ public interface IRuleService
     /// never an empty list, which a caller could save back over the rules it failed to read.</summary>
     List<MailRule> LoadRules();
 
-    /// <summary>Persist all rules to rules.json. Creates the data directory if needed. Refuses, by throwing
-    /// <see cref="RulesFileUnreadableException"/>, to replace a file that can't be read.</summary>
+    /// <summary>Persist all rules to rules.json, replacing what it holds. Creates the data directory if needed.
+    /// If nothing has been read yet it reads the file first, and throws <see cref="RulesFileUnreadableException"/>
+    /// rather than replace a file it can't read.</summary>
     void SaveRules(List<MailRule> rules);
 
     /// <summary>

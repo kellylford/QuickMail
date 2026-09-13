@@ -1979,6 +1979,32 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// in-session handoff and the startup resume loop cannot both drive the same one (#529 step 4).</summary>
     private readonly HashSet<Guid> _graphConversionsInFlight = [];
 
+    /// <summary>
+    /// Rewrites a converted account's folder references — move-to-folder rules, saved views, the startup folder —
+    /// against its Graph folders, and saves what changed. Returns false when the rules couldn't be read (#700):
+    /// the saved views and settings are remapped and saved anyway, the rules are left alone, and the caller keeps
+    /// the conversion marker so the rules get this remap at a later launch. Reading them as none, as this once
+    /// did, saved that empty list over them whenever a view or setting needed remapping. Running the remap again
+    /// over views already done is harmless (the remapper keeps an already-remapped reference).
+    /// </summary>
+    internal bool RemapFolderReferencesAfterConversion(
+        Guid accountId, IReadOnlyList<MailFolderModel> graphFolders, out FolderReferenceRemapper.Report report)
+    {
+        List<MailRule>? rules;
+        try { rules = _ruleService.LoadRules(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { rules = null; }
+        var views = _viewService.Load();
+        var cfg = _configService.Load();
+        report = FolderReferenceRemapper.Remap(accountId, graphFolders, rules ?? [], views, cfg);
+        if (report.AnythingChanged)
+        {
+            if (rules is not null) _ruleService.SaveRules(rules);
+            _viewService.Save(views);
+            _configService.Save(cfg);
+        }
+        return rules is not null;
+    }
+
     /// <summary>The body of <see cref="FinishGraphConversionAsync"/>, which owns the one-at-a-time guard.</summary>
     private async Task FinishGraphConversionCoreAsync(AccountModel account, Guid accountId, CancellationToken ct)
     {
@@ -2001,19 +2027,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         await _syncService.SyncFolderFullAsync(account, inbox, ct);
 
         // Remap folder-referencing settings now that the Graph folders exist.
-        // LoadRules throws when rules.json can't be read (#700), and that is left to end this: the marker stays
-        // set and the remap runs again next launch. Reading the rules as none, as it once did, saved that empty
-        // list over them here whenever a saved view or setting needed remapping.
-        var rules = _ruleService.LoadRules();
-        var views = _viewService.Load();
-        var cfg = _configService.Load();
-        var report = FolderReferenceRemapper.Remap(accountId, graphFolders, rules, views, cfg);
-        if (report.AnythingChanged)
-        {
-            _ruleService.SaveRules(rules);
-            _viewService.Save(views);
-            _configService.Save(cfg);
-        }
+        if (!RemapFolderReferencesAfterConversion(accountId, graphFolders, out var report))
+            return;   // the marker stays: the rules still need this remap
 
         // Clear the marker — resolve the CURRENT instance (a reload may have replaced it) and persist.
         var current = Accounts.FirstOrDefault(a => a.Id == accountId);
@@ -4257,7 +4272,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Not "No active client-side rules": none are running, but not because there are none (#700).
-            RulesStatusText = "Client-side rules can't be read — none are running";
+            RulesStatusText = "Client-side rules can't be read";
             return;
         }
 

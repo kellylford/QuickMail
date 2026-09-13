@@ -843,9 +843,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
             // exception message rarely ends in a full stop, and gluing the next sentence onto it gives
             // one run-on with no break to read.
             // One half failed on an account that has both: count the half that loaded, even when it holds
-            // none, so its count is stated rather than left to be inferred. "No client-side rules." is only as
-            // sure as the load behind it: RuleService.LoadRules returns an empty list for a rules file it
-            // cannot read, so that case arrives here as loaded and empty.
+            // none, so its count is stated rather than left to be inferred. A rules file that can't be read
+            // arrives here as a failed client-side load, not as loaded and empty (#700).
             var oneHalfFailed = supportsServerRules && serverLoadFailed != clientLoadFailed;
             var loaded = oneHalfFailed
                 ? " " + LoadedCount(rows, supportsServerRules, serverLoadFailed)

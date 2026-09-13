@@ -24,18 +24,18 @@ A search box shipped here once before and was taken out again, because it moved 
 
 ### A rules file QuickMail can't read is no longer replaced
 
-QuickMail keeps your client-side rules in a file called `rules.json`. When that file couldn't be read — damaged, or held open by another program at the wrong moment — QuickMail treated it as holding no rules. The Rules Manager said there were none. Worse, the next client-side rule you saved, edited, turned on or off, or deleted wrote the file back with only that change in it, and every other client-side rule was gone.
+QuickMail keeps your client-side rules in a file called `rules.json`. When that file couldn't be read — damaged, or held open by another program at the wrong moment — QuickMail treated it as holding no rules, and the next client-side rule you saved went into a new file with only that rule in it. Every other client-side rule was gone.
 
-Now QuickMail says what happened and leaves the file alone:
+Now QuickMail never writes over a rules file it couldn't read, and says what happened:
 
-- The Rules Manager's status line says "Couldn't load client-side rules" and why, instead of "No client-side rules".
-- Saving a client-side rule is refused with the same reason, and the editor stays open with what you typed. Turning a rule on or off and deleting one are refused the same way.
-- The status bar says client-side rules can't be read and none are running, instead of "No active client-side rules".
-- Mail keeps arriving and showing as normal. No client-side rule runs on it until the file can be read again, so once it can, use **Run on Existing Mail** for anything that arrived meanwhile.
+- The Rules Manager's status line says "Couldn't load client-side rules" and why, instead of reading as though the account had none. A damaged file is named along with the folder it is in, so you can repair or remove it.
+- Saving a client-side rule is refused with the same reason, and the editor stays open with what you typed.
+- The status bar says "Client-side rules can't be read", instead of "No active client-side rules". It checks again when you change folder or close the Rules Manager.
+- Mail keeps arriving and showing as normal. No client-side rule runs on it until the file can be read, so once it can, use **Run on Existing Mail** on each account for anything that arrived meanwhile.
 
-QuickMail tries the file again every time it needs it, so a file that was only locked for a moment works again by itself. A damaged file stays as it is for you to repair or remove.
+A file that was only held open for a moment is read again the next time QuickMail needs it, so it recovers by itself.
 
-A save that fails for any other reason — a full disk, say — now says so too, where it used to fail without a word.
+A client-side rule change that can't be saved for any other reason — a full disk, say — now says so, where it used to fail without a word. That covers turning a rule on or off and deleting one, as well as saving from the editor.
 
 [#700](https://github.com/kellylford/QuickMail/issues/700)
 

@@ -50,22 +50,22 @@ public class RuleService : IRuleService
     {
         if (_loaded) return _cache;
 
-        if (!File.Exists(_filePath))
-        {
-            _cache = [];
-            _loaded = true;
-            return _cache;
-        }
-
         List<MailRule> rules;
         try
         {
             var json = File.ReadAllText(_filePath);
             rules = string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<List<MailRule>>(json) ?? [];
         }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            // Not there yet, so no rules. Only these two mean that. File.Exists, checked here before, answers false
+            // for any error at all — a permission problem, a drive that dropped for a moment — and that read as no
+            // rules and let the next save replace the file (#700).
+            rules = [];
+        }
         catch (Exception ex)
         {
-            var unreadable = new RulesFileUnreadableException(ex);
+            var unreadable = RulesFileUnreadableException.For(_filePath, ex);
             // Sync reads the rules on every Inbox poll, so log a failure when it starts or changes, not each time.
             if (_loggedLoadError != unreadable.Message)
             {
@@ -169,8 +169,9 @@ public class RuleService : IRuleService
 
     public void SaveRules(List<MailRule> rules)
     {
-        // Never over a file this instance hasn't read (#700). Every writer loads first today; this keeps the
-        // next one that doesn't from replacing a file it never saw. Throws if the file can't be read.
+        // Read the file first if this instance hasn't (#700), so a save made before anything was read throws for a
+        // file that can't be read instead of replacing it. It does not protect a READABLE file from a caller that
+        // saves a list it didn't load: that list replaces the file, as it always has.
         if (!_loaded) LoadRules();
 
         try

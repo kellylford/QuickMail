@@ -296,7 +296,7 @@ public class SyncServiceRuleApplicationTests : IDisposable
         // LoadRules now throws for an unreadable rules file rather than reading as empty. The sync must carry on
         // as it did with no rules: the message is stored and shown, and no rule runs.
         var msg = Message("200");
-        var rules = new CapturingRuleService { ThrowOnLoad = new RulesFileUnreadableException(new IOException("locked")) };
+        var rules = new CapturingRuleService { ThrowOnLoad = RulesFileUnreadableException.For("rules.json", new IOException("locked")) };
         var sync = Build(new FetchStubMailService([msg]), rules);
 
         var forwarded = await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
