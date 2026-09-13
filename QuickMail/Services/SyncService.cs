@@ -268,6 +268,17 @@ public partial class SyncService : ISyncService
     }
 
     /// <summary>
+    /// The client-side rules, or none when rules.json can't be read (#700). Arriving mail still has to be stored
+    /// and shown, so an unreadable rules file must not stop the sync; RuleService has logged why. Mail that arrives
+    /// meanwhile is not filed later by itself — Run on Existing Mail is the way to apply the rules to it.
+    /// </summary>
+    private List<MailRule> RulesOrNone()
+    {
+        try { return _rules.LoadRules(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return []; }
+    }
+
+    /// <summary>
     /// The single point where client mail rules run against freshly fetched messages. Every sync
     /// path — the initial/periodic full sync and the live IDLE/change-notifier syncs — funnels its
     /// batch through here, so a rule fires exactly once per message no matter which path first sees
@@ -288,17 +299,6 @@ public partial class SyncService : ISyncService
     /// returning. Querying after such a fetch reads every arrival as already-known and rules
     /// silently never run, so a caller that snapshotted ids pre-fetch must pass them.</para>
     /// </summary>
-    /// <summary>
-    /// The client-side rules, or none when rules.json can't be read (#700). Arriving mail still has to be stored
-    /// and shown, so an unreadable rules file must not stop the sync; RuleService has logged why. Mail that arrives
-    /// meanwhile is not filed later by itself — Run on Existing Mail is the way to apply the rules to it.
-    /// </summary>
-    private List<MailRule> RulesOrNone()
-    {
-        try { return _rules.LoadRules(); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return []; }
-    }
-
     private async Task<List<MailMessageSummary>> ApplyRulesToArrivalsAsync(
         AccountModel account, MailFolderModel folder,
         List<MailMessageSummary> fetched, bool persisted, bool consumeRebuildBaseline, CancellationToken ct,

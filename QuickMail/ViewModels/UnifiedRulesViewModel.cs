@@ -296,6 +296,10 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 if (all.FirstOrDefault(r => r.Id == rule.Id) is { } stored) stored.IsEnabled = newState;
             });
             if (error is null) await ReloadAndReselectAsync(clientId: rule.Id, ct: ct);
+            // The row holds the cached rule itself, so a write that failed after the change ran left it showing
+            // the new state, and pressing Space again would have "retried" the opposite way. Put it back. (When
+            // the load failed the change never ran, and this sets what was already there.)
+            else rule.IsEnabled = !newState;
         }
         // A failed Graph write returns its message; don't announce success over it.
         Announce(error ?? (newState ? "Rule enabled." : "Rule disabled."), AnnouncementCategory.Result);

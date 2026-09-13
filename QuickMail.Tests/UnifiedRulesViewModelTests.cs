@@ -666,10 +666,15 @@ public class UnifiedRulesViewModelTests
         vm.AnnouncementRequested += (t, _) => announced = t;
         client.ThrowOnSave = new IOException("disk full");
 
+        var before = vm.Rules.Single().IsEnabled;
+
         await vm.ToggleEnabledCommand.ExecuteAsync(null);
 
         Assert.Equal("Couldn't save client-side rules: disk full.", announced);   // not "Rule disabled."
         Assert.Equal(announced, vm.StatusText);
+        // The row shares the rule object the failed change flipped. Left flipped, the row reads the state that was
+        // never saved, and a second press "retries" in the opposite direction.
+        Assert.Equal(before, vm.Rules.Single().IsEnabled);
     }
 
     [Fact]
