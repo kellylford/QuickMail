@@ -9,8 +9,8 @@ namespace QuickMail.Views;
 /// Announces what a rule editor says after its window has closed (#701).
 /// <para>
 /// The editor window announces its own view model's messages while it is open, and the Rules Manager must not
-/// repeat them: it did, and every refusal was heard twice. But a save to a Microsoft 365 account can still be
-/// waiting on the server when the editor is closed, and the editor stops listening as it closes, so a failure
+/// repeat them: it did, and every refusal was heard twice. But saving a server-side rule (a work or school
+/// Microsoft 365 account) can still be waiting on the server when the editor is closed, and the editor stops listening as it closes, so a failure
 /// then was announced by nothing. From the moment an editor closes, its messages are the Rules Manager's to
 /// say — still once.
 /// </para>

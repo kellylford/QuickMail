@@ -11,8 +11,8 @@ namespace QuickMail.Tests;
 
 /// <summary>
 /// #701: a rule editor's messages are said once — by the editor while it is open, and by the Rules Manager once
-/// it has closed. The second half is for a save to a Microsoft 365 account that is still waiting on the server
-/// when the editor is closed: the editor stops listening as it closes, so without the hand-over a failure then
+/// it has closed. The second half is for saving a server-side rule (a work or school Microsoft 365 account), which
+/// can still be waiting on the server when the editor is closed: the editor stops listening as it closes, so without the hand-over a failure then
 /// was announced by nothing. (That the Rules Manager says nothing while the editor is open is pinned in
 /// UnifiedRulesViewModelTests.EditorMessages_AreTheEditorWindowsToAnnounce_NotPassedOnByTheRulesManager.)
 /// </summary>
