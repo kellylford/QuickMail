@@ -74,7 +74,7 @@ public class RuleService : IRuleService
             if (_loggedLoadError != unreadable.Message)
             {
                 _loggedLoadError = unreadable.Message;
-                LogService.Log($"Client-side rules file {_filePath} can't be read; it is left as it is, and no client-side rules run until it can be.", ex);
+                LogService.Log($"Client-side rules file {_filePath} can't be read; it is left as it is, and no client-side rules run until it can be", ex);
             }
             throw unreadable;
         }
