@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -287,6 +288,17 @@ public partial class SyncService : ISyncService
     /// returning. Querying after such a fetch reads every arrival as already-known and rules
     /// silently never run, so a caller that snapshotted ids pre-fetch must pass them.</para>
     /// </summary>
+    /// <summary>
+    /// The client-side rules, or none when rules.json can't be read (#700). Arriving mail still has to be stored
+    /// and shown, so an unreadable rules file must not stop the sync; RuleService has logged why. Mail that arrives
+    /// meanwhile is not filed later by itself — Run on Existing Mail is the way to apply the rules to it.
+    /// </summary>
+    private List<MailRule> RulesOrNone()
+    {
+        try { return _rules.LoadRules(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return []; }
+    }
+
     private async Task<List<MailMessageSummary>> ApplyRulesToArrivalsAsync(
         AccountModel account, MailFolderModel folder,
         List<MailMessageSummary> fetched, bool persisted, bool consumeRebuildBaseline, CancellationToken ct,
@@ -304,7 +316,7 @@ public partial class SyncService : ISyncService
 
         // No enabled rules → no id scan, no guard bookkeeping; a rule-less profile pays nothing.
         // (LoadRules() is cached after first load.) Still persist so the cache/UI reflect the fetch.
-        var hasEnabledRules = _rules.LoadRules().Any(r => r.IsEnabled);
+        var hasEnabledRules = RulesOrNone().Any(r => r.IsEnabled);
 
         // Persisted dedupe authority is the store — the caller's pre-fetch snapshot when it has one
         // (mandatory for backends that persist inside the fetch), otherwise queried here, which is
@@ -388,7 +400,7 @@ public partial class SyncService : ISyncService
         if (account.IsShared)
         {
             if (_sharedRulesSkipLogged.TryAdd(account.Id, 0)
-                && _rules.LoadRules().Any(r => r.AccountId == account.Id && r.IsEnabled))
+                && RulesOrNone().Any(r => r.AccountId == account.Id && r.IsEnabled))
                 LogService.Log($"Client-side rules saved for the shared mailbox {account.AccountLabel} are kept but not run: a shared mailbox's rules are managed in Outlook (#678).");
             return fetched;
         }

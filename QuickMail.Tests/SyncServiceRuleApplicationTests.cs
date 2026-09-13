@@ -79,7 +79,10 @@ public class SyncServiceRuleApplicationTests : IDisposable
             return Task.FromResult((incoming.Count, removed));
         }
 
-        public List<MailRule> LoadRules() => OneEnabledRule;
+        /// <summary>Set to make <see cref="LoadRules"/> throw, as it does for a rules file that can't be read (#700).</summary>
+        public Exception? ThrowOnLoad { get; set; }
+
+        public List<MailRule> LoadRules() => ThrowOnLoad is { } ex ? throw ex : OneEnabledRule;
         public void SaveRules(List<MailRule> rules) { }
         public List<MailMessageSummary> TestRule(MailRule rule, IEnumerable<MailMessageSummary> messages) => [];
         public Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(ILocalStoreService store, IReadOnlyDictionary<Guid, string> inboxFolderByAccount, CancellationToken ct)
@@ -285,6 +288,22 @@ public class SyncServiceRuleApplicationTests : IDisposable
         var batch = Assert.Single(rules.Calls);          // the rule engine WAS invoked …
         Assert.Equal("100", Assert.Single(batch).MessageId);   // … with the new message
         Assert.False(Assert.Single(forwarded).IsRead);   // rule's mark-unread reached the UI batch
+    }
+
+    [Fact]
+    public async Task LiveIdleSync_WhenTheRulesFileCantBeRead_StillStoresAndShowsTheArrival() // #700
+    {
+        // LoadRules now throws for an unreadable rules file rather than reading as empty. The sync must carry on
+        // as it did with no rules: the message is stored and shown, and no rule runs.
+        var msg = Message("200");
+        var rules = new CapturingRuleService { ThrowOnLoad = new RulesFileUnreadableException(new IOException("locked")) };
+        var sync = Build(new FetchStubMailService([msg]), rules);
+
+        var forwarded = await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
+
+        Assert.Equal("200", Assert.Single(forwarded).MessageId);
+        Assert.Empty(rules.Calls);
+        Assert.Contains("200", await _store.GetAllMessageIdsAsync(_accountId, "INBOX"));
     }
 
     [Fact]

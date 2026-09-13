@@ -8,10 +8,13 @@ namespace QuickMail.Services;
 
 public interface IRuleService
 {
-    /// <summary>Load all rules from rules.json. Returns empty list if file is missing or corrupted.</summary>
+    /// <summary>Load all rules from rules.json. Returns an empty list if the file is missing or empty, and
+    /// throws <see cref="RulesFileUnreadableException"/> if it is there but can't be read or parsed (#700) —
+    /// never an empty list, which a caller could save back over the rules it failed to read.</summary>
     List<MailRule> LoadRules();
 
-    /// <summary>Persist all rules to rules.json. Creates the data directory if needed.</summary>
+    /// <summary>Persist all rules to rules.json. Creates the data directory if needed. Refuses, by throwing
+    /// <see cref="RulesFileUnreadableException"/>, to replace a file that can't be read.</summary>
     void SaveRules(List<MailRule> rules);
 
     /// <summary>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -290,8 +291,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
         {
             var rule = row.Client!;
             newState = !rule.IsEnabled;
-            SetClientEnabled(rule.Id, newState);
-            await ReloadAndReselectAsync(clientId: rule.Id, ct: ct);
+            error = ChangeClientRules(all =>
+            {
+                if (all.FirstOrDefault(r => r.Id == rule.Id) is { } stored) stored.IsEnabled = newState;
+            });
+            if (error is null) await ReloadAndReselectAsync(clientId: rule.Id, ct: ct);
         }
         // A failed Graph write returns its message; don't announce success over it.
         Announce(error ?? (newState ? "Rule enabled." : "Rule disabled."), AnnouncementCategory.Result);
@@ -316,7 +320,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             error = await RunServerWriteAsync(
                 () => _serverRules!.DeleteAsync(accountId, row.Server!.Id, ct), reloadOnSuccess: false);
         else
-            DeleteClientRule(row.Client!.Id);
+            error = ChangeClientRules(all => all.RemoveAll(r => r.Id == row.Client!.Id));
 
         if (error is null) await ReloadAndReselectAsync(fallbackIndex: index, ct: ct);
         Announce(error ?? "Rule deleted.", AnnouncementCategory.Result);
@@ -420,7 +424,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         //    status line says so on every load — "N rules, client-side only", or the mode outright when
         //    there are none — so a per-save notice would just be chatter. Stay silent.
         var rule = editor.ToClientRule(accountId);
-        AddClientRule(rule);
+        if (ChangeClientRules(all => all.Add(rule)) is { } error) return error;   // editor shows it and stays open
         if (supportsServerRules)
             Announce("Saving as a client-side rule.", AnnouncementCategory.Result);
         ReturnToAccount(accountId);
@@ -467,7 +471,12 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
         var updated = editor.ToClientRule(accountId);
         updated.Id = original.Id;                          // preserve identity
-        UpdateClientRule(updated);
+        var error = ChangeClientRules(all =>
+        {
+            var i = all.FindIndex(r => r.Id == updated.Id);
+            if (i >= 0) all[i] = updated; else all.Add(updated);
+        });
+        if (error is not null) return error;               // editor shows it and stays open
         ReturnToAccount(accountId);
         await ReloadAndReselectAsync(clientId: updated.Id);
         return null;
@@ -491,35 +500,30 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
     // ── Client-rule persistence (rules.json via IRuleService) ────────────────
 
-    private void AddClientRule(MailRule rule)
+    /// <summary>
+    /// Loads every client-side rule, applies <paramref name="change"/> and saves them back. Returns null on
+    /// success, or why it couldn't — also put on the status line, for anyone who doesn't hear results.
+    /// <para>
+    /// A rules file that can't be read is left as it is (#700). The save is refused rather than made over
+    /// an empty list, which would have replaced every rule in the file with this one change.
+    /// </para>
+    /// </summary>
+    private string? ChangeClientRules(Action<List<MailRule>> change)
     {
-        var all = _clientRules.LoadRules();
-        all.Add(rule);
-        _clientRules.SaveRules(all);
-    }
-
-    private void UpdateClientRule(MailRule rule)
-    {
-        var all = _clientRules.LoadRules();
-        var i = all.FindIndex(r => r.Id == rule.Id);
-        if (i >= 0) all[i] = rule; else all.Add(rule);
-        _clientRules.SaveRules(all);
-    }
-
-    private void DeleteClientRule(Guid id)
-    {
-        var all = _clientRules.LoadRules();
-        all.RemoveAll(r => r.Id == id);
-        _clientRules.SaveRules(all);
-    }
-
-    private void SetClientEnabled(Guid id, bool enabled)
-    {
-        var all = _clientRules.LoadRules();
-        var rule = all.FirstOrDefault(r => r.Id == id);
-        if (rule is null) return;
-        rule.IsEnabled = enabled;
-        _clientRules.SaveRules(all);
+        try
+        {
+            var all = _clientRules.LoadRules();
+            change(all);
+            _clientRules.SaveRules(all);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("UnifiedRules: client rule write failed", ex);
+            StatusText = $"Couldn't save client-side rules: {Terminated(ex.Message)}"
+                         + (ex is RulesFileUnreadableException ? " The file has been left as it is." : string.Empty);
+            return StatusText;
+        }
     }
 
     // ── Server-write plumbing ───────────────────────────────────────────────

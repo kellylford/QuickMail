@@ -2001,6 +2001,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         await _syncService.SyncFolderFullAsync(account, inbox, ct);
 
         // Remap folder-referencing settings now that the Graph folders exist.
+        // LoadRules throws when rules.json can't be read (#700), and that is left to end this: the marker stays
+        // set and the remap runs again next launch. Reading the rules as none, as it once did, saved that empty
+        // list over them here whenever a saved view or setting needed remapping.
         var rules = _ruleService.LoadRules();
         var views = _viewService.Load();
         var cfg = _configService.Load();
@@ -4249,8 +4252,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        List<MailRule> all;
+        try { all = _ruleService.LoadRules(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Not "No active client-side rules": none are running, but not because there are none (#700).
+            RulesStatusText = "Client-side rules can't be read — none are running";
+            return;
+        }
+
         // A rule saved against a shared mailbox is kept but does not run (#678), so it is not "active".
-        var rules = _ruleService.LoadRules()
+        var rules = all
             .Where(r => r.AccountId is not Guid id || ResolveAccountById(id) is not { IsShared: true })
             .ToList();
         int active = rules.Count(r => r.IsEnabled);

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using QuickMail.Models;
@@ -600,6 +602,94 @@ public class UnifiedRulesViewModelTests
 
         Assert.Equal("nope", announced);            // not "Rule deleted."
         Assert.Single(vm.Rules);                    // rule stays — the reload is skipped on failure
+    }
+
+    // ── Client-side writes that can't be made (#700) ─────────────────────────
+    // Each one was a load-change-save with nothing caught: an unreadable file read as empty and was saved over,
+    // and a failed write escaped the command.
+
+    private const string UnreadableSaveError =
+        "Couldn't save client-side rules: rules.json is damaged and can't be read. The file has been left as it is.";
+
+    [Fact]
+    public async Task NewClientRule_WhenTheRulesFileCantBeRead_IsRefused_AndSavesNothing()
+    {
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { ThrowOnLoad = new RulesFileUnreadableException(new JsonException()) };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
+        var editor = await OpenNewEditorAsync(vm);
+        var closed = false;
+        editor.CloseRequested += () => closed = true;
+
+        editor.Name = "File it"; editor.SubjectContains = "later"; editor.MarkAsRead = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, client.SaveCount);
+        Assert.False(closed);                                 // the form and what was typed stay put
+        Assert.Equal(UnreadableSaveError, editor.SaveError);
+        Assert.Equal(UnreadableSaveError, vm.StatusText);     // for anyone who doesn't hear results
+    }
+
+    [Fact]
+    public async Task EditedClientRule_WhenTheSaveFails_KeepsTheEditorOpenWithTheError()
+    {
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.SelectedRule = vm.Rules.Single();
+        vm.EditRuleCommand.Execute(null);
+        var closed = false;
+        editor!.CloseRequested += () => closed = true;
+        client.ThrowOnSave = new IOException("disk full");
+
+        editor.Name = "Renamed";
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        // What the file holds afterwards is RuleService's to guarantee (it re-reads after a failed write), and is
+        // pinned in RuleServiceTests; this stub hands back one list, so it would only show the in-place change.
+        Assert.False(closed);
+        Assert.Equal("Couldn't save client-side rules: disk full.", editor.SaveError);
+    }
+
+    [Fact]
+    public async Task ToggleEnabled_ClientSaveFails_ReportsTheError_NotSuccess()
+    {
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.SelectedRule = vm.Rules.Single();
+        string? announced = null;
+        vm.AnnouncementRequested += (t, _) => announced = t;
+        client.ThrowOnSave = new IOException("disk full");
+
+        await vm.ToggleEnabledCommand.ExecuteAsync(null);
+
+        Assert.Equal("Couldn't save client-side rules: disk full.", announced);   // not "Rule disabled."
+        Assert.Equal(announced, vm.StatusText);
+    }
+
+    [Fact]
+    public async Task DeleteRule_ClientSaveFails_ReportsTheError_AndKeepsTheRule()
+    {
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], preferredAccountId: a);
+        vm.ConfirmDeleteRequested += (_, _) => true;
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.SelectedRule = vm.Rules.Single();
+        string? announced = null;
+        vm.AnnouncementRequested += (t, _) => announced = t;
+        client.ThrowOnSave = new IOException("disk full");
+
+        await vm.DeleteRuleCommand.ExecuteAsync(null);
+
+        Assert.Equal("Couldn't save client-side rules: disk full.", announced);   // not "Rule deleted."
+        Assert.Equal(announced, vm.StatusText);
+        Assert.Single(vm.Rules);
     }
 
     [Fact]

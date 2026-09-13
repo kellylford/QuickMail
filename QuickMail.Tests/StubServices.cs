@@ -574,8 +574,18 @@ sealed class StubRuleService : IRuleService
     /// <summary>Set to make <see cref="LoadRules"/> throw, so a failed client-rule load can be exercised.</summary>
     public Exception? ThrowOnLoad { get; set; }
 
+    /// <summary>Set to make <see cref="SaveRules"/> throw, as a failed write does, leaving <see cref="LoadedRules"/> as it was.</summary>
+    public Exception? ThrowOnSave { get; set; }
+
+    public int SaveCount { get; private set; }
+
     public List<MailRule> LoadRules() => ThrowOnLoad is { } ex ? throw ex : LoadedRules;
-    public void SaveRules(List<MailRule> rules) => LoadedRules = rules;
+    public void SaveRules(List<MailRule> rules)
+    {
+        if (ThrowOnSave is { } ex) throw ex;
+        SaveCount++;
+        LoadedRules = rules;
+    }
 
     public Task<(int MatchedCount, List<MailMessageSummary> RemovedMessages)> ApplyRulesAsync(
         List<MailMessageSummary> incoming, Guid accountId, CancellationToken ct)

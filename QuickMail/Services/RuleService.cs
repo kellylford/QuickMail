@@ -17,6 +17,7 @@ public class RuleService : IRuleService
     private readonly IAccountService? _accountService;
     private List<MailRule> _cache = [];
     private bool _loaded;
+    private string? _loggedLoadError;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
@@ -35,6 +36,16 @@ public class RuleService : IRuleService
 
     // ── Load / Save ─────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The rules in rules.json, cached after the first successful read. A missing file, or one holding
+    /// nothing, is no rules.
+    /// <para>
+    /// A file that is there but can't be read or parsed throws <see cref="RulesFileUnreadableException"/>
+    /// instead of reading as empty (#700). Every writer loads the whole list, changes it and saves it back,
+    /// so an empty read turned the next save into one that replaced every rule in the file. The failure is
+    /// not cached: a file that was only locked for a moment reads normally on the next call.
+    /// </para>
+    /// </summary>
     public List<MailRule> LoadRules()
     {
         if (_loaded) return _cache;
@@ -46,15 +57,30 @@ public class RuleService : IRuleService
             return _cache;
         }
 
+        List<MailRule> rules;
         try
         {
             var json = File.ReadAllText(_filePath);
-            _cache = JsonSerializer.Deserialize<List<MailRule>>(json) ?? [];
+            rules = string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<List<MailRule>>(json) ?? [];
         }
-        catch
+        catch (Exception ex)
         {
-            _cache = [];
+            var unreadable = new RulesFileUnreadableException(ex);
+            // Sync reads the rules on every Inbox poll, so log a failure when it starts or changes, not each time.
+            if (_loggedLoadError != unreadable.Message)
+            {
+                _loggedLoadError = unreadable.Message;
+                LogService.Log($"Client-side rules file {_filePath} can't be read; it is left as it is, and no client-side rules run until it can be.", ex);
+            }
+            throw unreadable;
         }
+
+        if (_loggedLoadError is not null)
+        {
+            _loggedLoadError = null;
+            LogService.Log("Client-side rules file can be read again.");
+        }
+        _cache = rules;
         _loaded = true;
         MigrateAllAccountRules();
         return _cache;
@@ -143,11 +169,23 @@ public class RuleService : IRuleService
 
     public void SaveRules(List<MailRule> rules)
     {
-        _cache = rules;
-        var dir = Path.GetDirectoryName(_filePath)!;
-        Directory.CreateDirectory(dir);
+        // Never over a file this instance hasn't read (#700). Every writer loads first today; this keeps the
+        // next one that doesn't from replacing a file it never saw. Throws if the file can't be read.
+        if (!_loaded) LoadRules();
 
-        Helpers.AtomicFile.WriteAllText(_filePath, JsonSerializer.Serialize(rules, JsonOptions));
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
+            Helpers.AtomicFile.WriteAllText(_filePath, JsonSerializer.Serialize(rules, JsonOptions));
+        }
+        catch
+        {
+            // Callers change the cached list in place before saving it, so after a failed write the cache holds
+            // a change the file doesn't. Read the file again next time rather than go on reporting that change.
+            _loaded = false;
+            throw;
+        }
+        _cache = rules;
         _loaded = true;
     }
 
