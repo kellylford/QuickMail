@@ -43,7 +43,9 @@ A client-side rule change that can't be saved for any other reason — a full di
 
 ### Messages in the rule editor are said once
 
-When the rule editor refused to save — a rule with no name, say, or one using something a client-side rule can't do — its message was announced twice: once by the editor and again by the Rules Manager behind it. Now only the editor says it.
+When the rule editor refused to save — a rule with no name, say, or one using something a client-side rule can't do — its message was announced twice: once by the editor and again by the Rules Manager behind it. Now it is said once: by the editor while it is open, or by the Rules Manager if you have already closed the editor when a save to your Microsoft 365 account fails.
+
+A rule change refused because QuickMail doesn't have a permission it needs was also said twice, as a hint and as a result, even from the Rules Manager alone. It is now said once, as a result, and still shown on the Rules Manager's status line.
 
 [#701](https://github.com/kellylford/QuickMail/issues/701)
 

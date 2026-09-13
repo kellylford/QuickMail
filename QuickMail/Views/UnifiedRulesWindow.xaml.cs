@@ -34,6 +34,9 @@ public partial class UnifiedRulesWindow : Window
     // create a folder (issue #645). This window opens no picker of its own.
     private readonly FolderCreationSupport? _folderCreation;
 
+    // Announces the messages of rule editors that have closed while this window is open (#701).
+    private readonly ClosedEditorAnnouncements _closedEditors;
+
     public UnifiedRulesWindow(
         UnifiedRulesViewModel vm,
         IEnumerable<AccountModel> accounts,
@@ -52,8 +55,8 @@ public partial class UnifiedRulesWindow : Window
         vm.EditorRequested += OnEditorRequested;
         vm.ConfirmDeleteRequested += OnConfirmDelete;
         vm.AnnouncementRequested += OnAnnouncement;
-        vm.WriteBlockedByPermission += OnPermissionMessage;
         vm.FocusSelectedRuleRequested += OnFocusSelectedRule;
+        _closedEditors = new ClosedEditorAnnouncements(OnAnnouncement);
 
         RegisterCommands();
 
@@ -140,6 +143,8 @@ public partial class UnifiedRulesWindow : Window
         var accountId = editorVm.AccountId ?? _vm.SelectedAccount?.Id;
         var editor = new ServerRuleEditorWindow(
             editorVm, _accounts, _cachedFolders, () => accountId, _folderCreation) { Owner = this };
+        // Once the editor has closed, its messages are this window's to say (#701): see ClosedEditorAnnouncements.
+        editor.Closed += (_, _) => _closedEditors.EditorClosed(editorVm);
         editor.Show();
         editor.Activate();
     }
@@ -154,9 +159,6 @@ public partial class UnifiedRulesWindow : Window
         // lives in the status line (#550) — but the policy is per-category, not per-call-site, so it
         // stays correct for the next one rather than being a branch about one deleted announcement.
         => AccessibilityHelper.Announce(this, text, interrupt: category != AnnouncementCategory.Hint, category: category);
-
-    private void OnPermissionMessage(string message)
-        => AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Hint);
 
     // Enter = edit, Space = enable/disable, Delete = delete. Each honours the command's CanExecute, so
     // a key does nothing where the button/menu item is disabled (e.g. Move on a client rule).
@@ -288,8 +290,8 @@ public partial class UnifiedRulesWindow : Window
         _vm.EditorRequested -= OnEditorRequested;
         _vm.ConfirmDeleteRequested -= OnConfirmDelete;
         _vm.AnnouncementRequested -= OnAnnouncement;
-        _vm.WriteBlockedByPermission -= OnPermissionMessage;
         _vm.FocusSelectedRuleRequested -= OnFocusSelectedRule;
+        _closedEditors.Stop();
         base.OnClosed(e);
     }
 }

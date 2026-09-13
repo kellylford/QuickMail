@@ -143,7 +143,6 @@ public partial class UnifiedRulesViewModel : ObservableObject
     public event Func<string, string, bool>? ConfirmDeleteRequested;
 
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
-    public event Action<string>? WriteBlockedByPermission;
     public event Action? FocusSelectedRuleRequested;
 
     // ── Gating ──────────────────────────────────────────────────────────────
@@ -561,8 +560,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
         }
         catch (ServerRuleConsentRequiredException ex)
         {
+            // Returned, so the caller says it as a Result — the action's outcome. It was also raised for the window to
+            // speak as a Hint, so every refusal was heard twice (#701).
             StatusText = ex.Message;
-            WriteBlockedByPermission?.Invoke(ex.Message);
             LogService.Log("UnifiedRules: blocked by missing permission");
             return ex.Message;
         }
