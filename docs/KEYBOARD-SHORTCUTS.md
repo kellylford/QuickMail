@@ -79,6 +79,33 @@ in-control navigation — the same kind as the arrow keys inside a list box — 
 commands. The four `folder.expand*` / `folder.collapse*` commands above are the bulk equivalents
 (#590): they act on the whole branch, or on the whole tree.
 
+## Inside the Command Palette
+
+`Ctrl+Shift+P` opens the palette itself (hardcoded — it cannot be dispatched through the palette
+it opens). The keys **inside** the palette are in-window navigation, not registered commands, for
+the same reason the folder tree's arrow keys are not: they have no meaning outside it and no
+command title. All of them are handled in `CommandPaletteWindow.OnPreviewKeyDown`.
+
+| Key | Action |
+|-----|--------|
+| *(typing)* | Filters the list. Matches any part of a name, its initials (`gtf` → Go to Folder), its category, or several words in any order |
+| `Enter` | Run the top match — or the command arrowed to |
+| `Up` / `Down` | Move the selection. Focus stays in the filter box |
+| `Page Up` / `Page Down` | Move the selection ten at a time |
+| `Escape` | Clear the filter; close the palette when the box is already empty |
+| `Tab` | Swallowed — the filter box is the only focusable control in the window |
+
+The filter box holds keyboard focus for the whole life of the window and never gives it up. That
+is deliberate and is the constraint the design turns on: an earlier version moved focus onto the
+list to make a screen reader speak the row, and typing then had to be forwarded back to the box
+by hand. The list is `Focusable="False"`, its rows are not focusable either (so a mouse click
+cannot steal focus), and the box declares through UI Automation that it controls the list, which
+is what lets a screen reader report the active command without focus moving.
+
+Because the list never receives a keystroke, it declares **no** `TextSearch.TextPath` —
+`TypeAheadWiringTests.TheCommandPaletteList_DeclaresNoTextSearchTextPath` keeps an inert one from
+drifting back in.
+
 ## Message List Fields Window
 
 Opened from **View → Message List Fields…** or the command palette (`view.rowFields`). Left
