@@ -12,30 +12,50 @@ namespace QuickMail.Tests;
 /// With two items in one menu on the same access key, pressing it moves between them instead of choosing
 /// either. The message menus have had several: Reply and Create Rule from Message on R (fixed in #688);
 /// Reply All with Move to Archive and with Grab Addresses on A, and Reply with the group menus' Archive
-/// items on R (#692). The main window's XAML is read as XML, so only a menu's direct items are compared.
+/// items on R (#692). The menu bar had three more (#695): Sync Range with Search Folders on S, Newest
+/// First with Fewest Messages on F, and Get the ARM Version with About QuickMail on A. The sweep covers
+/// every menu in the window — bar, submenu and context menu alike — since each of those three sat in a
+/// menu no earlier test looked at. The main window's XAML is read as XML, so only a menu's direct items
+/// are compared; a conditionally hidden item still counts, because the clash is what the user meets on
+/// the occasions it is shown.
 /// </summary>
 public class MessageMenuAccessKeyTests
 {
     private static readonly XNamespace Wpf = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-    /// <summary>Every context menu in the main window, keyed or not: the sync range, account actions and
+    /// <summary>Every menu in the main window that carries items of its own: the menu bar's menus and
+    /// their submenus, and every context menu keyed or not — the sync range, account actions and
     /// attachment menus have no <c>x:Key</c>, and were once left out.</summary>
-    public static TheoryData<string> ContextMenus()
+    public static TheoryData<string> Menus()
     {
         var data = new TheoryData<string>();
-        foreach (var menu in MainWindow().Descendants(Wpf + "ContextMenu"))
+        foreach (var menu in AllMenus(MainWindow()))
             data.Add(MenuId(menu));
         return data;
     }
 
     [Theory]
-    [MemberData(nameof(ContextMenus))]
-    public void NoTwoItemsInAContextMenuShareAnAccessKey(string menuId)
+    [MemberData(nameof(Menus))]
+    public void NoTwoItemsInAMenuShareAnAccessKey(string menuId)
     {
-        var menu = MainWindow().Descendants(Wpf + "ContextMenu").Single(m => MenuId(m) == menuId);
+        var menu = AllMenus(MainWindow()).Single(m => MenuId(m) == menuId);
 
-        Assert.Empty(Clashes(menu));
+        var clashes = Clashes(menu);
+        Assert.True(clashes.Count == 0, $"{menuId} — {string.Join("; ", clashes)}");
+    }
+
+    [Fact]
+    public void TheSweepReachesTheMenuBarsOwnMenusAndTheirSubmenus()
+    {
+        // Guards the theory above against quietly narrowing: with no menu bar menus in the data it still
+        // passes, which is how the three #695 clashes survived a suite that already had this test.
+        var menus = AllMenus(MainWindow()).Select(MenuId).ToList();
+
+        Assert.Contains("MainMenuBar > _View", menus);
+        Assert.Contains("MainMenuBar > _View > S_ort", menus);
+        Assert.Contains("MainMenuBar > _Help", menus);
+        Assert.Contains("MessageContextMenu", menus);
     }
 
     [Fact]
@@ -76,9 +96,24 @@ public class MessageMenuAccessKeyTests
         Assert.Empty(squashed);
     }
 
-    /// <summary>A menu's name for test output: its key, else its name, else its line in the file.</summary>
+    /// <summary>Every element in the window that owns menu items directly.</summary>
+    private static List<XElement> AllMenus(XDocument window)
+        => window.Descendants()
+            .Where(IsMenu)
+            .Where(e => e.Elements(Wpf + "MenuItem").Any())
+            .ToList();
+
+    private static bool IsMenu(XElement e)
+        => e.Name == Wpf + "Menu" || e.Name == Wpf + "ContextMenu" || e.Name == Wpf + "MenuItem";
+
+    /// <summary>A menu's name for test output: its own label, prefixed by the menus it sits in, so a
+    /// failure names the submenu rather than a line number that moves with every edit above it.</summary>
     private static string MenuId(XElement menu)
+        => string.Join(" > ", menu.AncestorsAndSelf().TakeWhile(IsMenu).Select(Label).Reverse());
+
+    private static string Label(XElement menu)
         => (string?)menu.Attribute(Xaml + "Key")
+           ?? (string?)menu.Attribute("Header")
            ?? (string?)menu.Attribute(Xaml + "Name")
            ?? (string?)menu.Attribute("Name")
            ?? $"line {((IXmlLineInfo)menu).LineNumber}";

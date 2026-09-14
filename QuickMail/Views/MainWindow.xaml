@@ -614,7 +614,7 @@
                               IsEnabled="{Binding IsCountSortAvailable}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="countDesc"/>
-                    <MenuItem Header="_Fewest Messages"
+                    <MenuItem Header="Fe_west Messages"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortCountAsc, Mode=OneWay}"
                               IsEnabled="{Binding IsCountSortAvailable}"
@@ -637,7 +637,7 @@
                               Command="{Binding ResetFolderViewCommand}"
                               AutomationProperties.Name="Reset Folder View"/>
                 </MenuItem>
-                <MenuItem Header="_Sync Range">
+                <MenuItem Header="S_ync Range">
                     <MenuItem Header="Last _7 Days"
                               IsCheckable="True"
                               IsChecked="{Binding IsSyncDays7, Mode=OneWay}"
@@ -711,7 +711,7 @@
                 <!-- Only on an ARM64 PC running the x64 build: nothing migrates an install
                      across architectures, so this entry is how those users find the native
                      build. Hidden everywhere else. -->
-                <MenuItem Header="Get the _ARM Version"
+                <MenuItem Header="Get the ARM _Version"
                           AutomationProperties.Name="Get the ARM Version"
                           Visibility="{Binding IsNativeArmAvailable, Converter={StaticResource BoolToVisibilityConverter}}"
                           Command="{Binding OpenArmDownloadPageCommand}"/>

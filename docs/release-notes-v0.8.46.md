@@ -51,6 +51,20 @@ A rule change refused because QuickMail doesn't have a permission it needs was a
 
 ---
 
+### Each item in the View, Sort and Help menus has its own access key
+
+Three more pairs of menu items shared an access key, so pressing it moved between the two instead of choosing either — the same fault fixed in the message menus in 0.8.45.
+
+- **View** menu: **Sync Range** and **Search Folders** were both on S. **Sync Range** now uses Y; **Search Folders** keeps S.
+- **View → Sort**: **Newest First** and **Fewest Messages** were both on F. **Fewest Messages** now uses W; **Newest First** keeps F.
+- **Help** menu: **Get the ARM Version** and **About QuickMail** were both on A. **Get the ARM Version** now uses V; **About QuickMail** keeps A.
+
+Nothing about what the menus say has changed — only which letter each item answers to.
+
+[#695](https://github.com/kellylford/QuickMail/issues/695)
+
+---
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
