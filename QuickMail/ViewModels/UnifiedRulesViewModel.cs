@@ -262,6 +262,14 @@ public partial class UnifiedRulesViewModel : ObservableObject
         var editor = row.RunsWhere == RuleRunsWhere.Server
             ? ServerRuleEditorViewModel.ForEdit(row.Server!)
             : ServerRuleEditorViewModel.ForEditClient(row.Client!);
+        if (row.RunsWhere == RuleRunsWhere.Client && IsGraphAccount(accountId))
+        {
+            // A Graph client rule keeps folder ids, and the editor's folder buttons show the name. Before #682 no such
+            // rule could move or copy, so nothing needed it. (An IMAP rule's folder is already its readable path; see
+            // the client-row builder for why it isn't looked up.)
+            editor.MoveToFolderName = GraphFolderButtonName(accountId, editor.MoveToFolderId);
+            editor.CopyToFolderName = GraphFolderButtonName(accountId, editor.CopyToFolderId);
+        }
         editor.AccountId = accountId;
         // Not passed on: the editor window announces its own messages (#701, see OpenNewEditor).
         editor.Saved += _ => row.RunsWhere == RuleRunsWhere.Server
@@ -428,6 +436,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         //    status line says so on every load — "N rules, client-side only", or the mode outright when
         //    there are none — so a per-save notice would just be chatter. Stay silent.
         var rule = editor.ToClientRule(accountId);
+        if (CopyingIntoTheInbox(accountId, rule) is { } loop) return loop;        // editor shows it and stays open
         if (ChangeClientRules(all => all.Add(rule)) is { } error) return error;   // editor shows it and stays open
         if (supportsServerRules)
             Announce("Saving as a client-side rule.", AnnouncementCategory.Result);
@@ -475,6 +484,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
         var updated = editor.ToClientRule(accountId);
         updated.Id = original.Id;                          // preserve identity
+        if (CopyingIntoTheInbox(accountId, updated) is { } loop) return loop;
         var error = ChangeClientRules(all =>
         {
             var i = all.FindIndex(r => r.Id == updated.Id);
@@ -718,12 +728,13 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 // An IMAP TargetFolder is already the readable folder path, and resolving it would return
                 // the leaf DisplayName — collapsing "Work/Archive" and "Personal/Archive" to the same
                 // "Archive" — so leave IMAP rules to render their raw path (the ForClient fallback).
-                var isGraphAccount =
-                    _allAccounts.FirstOrDefault(a => a.Id == accountId)?.BackendKind == BackendKind.MicrosoftGraph;
+                var isGraphAccount = IsGraphAccount(accountId);
                 rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels,
-                    isGraphAccount && r.Action == RuleAction.MoveToFolder
+                    isGraphAccount && r.Does(RuleAction.MoveToFolder)
                         ? ResolveFolderName(accountId, r.TargetFolder) : null,
-                    targetIsOpaque: isGraphAccount)));
+                    folderIsOpaque: isGraphAccount,
+                    copyFolderDisplay: isGraphAccount && r.Does(RuleAction.CopyToFolder)
+                        ? ResolveFolderName(accountId, r.CopyTargetFolder) : null)));
             }
             catch (Exception ex)
             {
@@ -782,6 +793,38 @@ public partial class UnifiedRulesViewModel : ObservableObject
         var match = folders.FirstOrDefault(f => f.FullName == folderId);
         return string.IsNullOrWhiteSpace(match?.DisplayName) ? null : match.DisplayName;
     }
+
+    /// <summary>
+    /// What a Graph client rule's folder button says: the folder's name; "another folder" when the id can't be
+    /// resolved — not synced yet, or drifted (#366) — which is what the rules list says for the same folder, and
+    /// never the raw "AQMkAD…"; and null, so the button reads "Choose folder…", when the rule names no folder.
+    /// </summary>
+    private string? GraphFolderButtonName(Guid accountId, string? folderId)
+        => string.IsNullOrWhiteSpace(folderId) ? null : ResolveFolderName(accountId, folderId) ?? "another folder";
+
+    /// <summary>
+    /// Why a client-side rule that copies into the account's own Inbox can't be saved, or null when it doesn't do
+    /// that. Client rules run on the Inbox, so the copy lands exactly where the rule looks: the next sync reads it as
+    /// new mail, the same rule matches it and copies it again, and the mailbox fills (#682). A server-side rule is
+    /// unaffected — the server doesn't re-run its rules over what they produce — which is why this is checked here,
+    /// where the rule is known to be a client one, rather than in the shared editor. The rule engine skips such a copy
+    /// as well, for a rule that acquires the target afterwards.
+    /// </summary>
+    private string? CopyingIntoTheInbox(Guid accountId, MailRule rule)
+    {
+        if (!rule.Does(RuleAction.CopyToFolder) || string.IsNullOrWhiteSpace(rule.CopyTargetFolder)) return null;
+        if (_foldersByAccount is null || !_foldersByAccount.TryGetValue(accountId, out var folders)) return null;
+
+        var inbox = folders.FirstOrDefault(f => f.Kind == SpecialFolderKind.Inbox
+                                                || f.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase));
+        if (inbox is null || !string.Equals(inbox.FullName, rule.CopyTargetFolder, StringComparison.Ordinal)) return null;
+
+        return "A client-side rule can't copy to the Inbox: it runs on the Inbox, so each copy would be copied again. Choose another folder.";
+    }
+
+    /// <summary>Whether the account is a Microsoft 365 (Graph) one, whose client rules name folders by id.</summary>
+    private bool IsGraphAccount(Guid accountId)
+        => _allAccounts.FirstOrDefault(a => a.Id == accountId)?.BackendKind == BackendKind.MicrosoftGraph;
 
     /// <summary>
     /// What kinds of rule this account can hold, said outright.

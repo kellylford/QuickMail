@@ -85,7 +85,7 @@
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Move to folder"/>
                 <Button Content="{Binding MoveToFolderName, TargetNullValue=Choose folder…, FallbackValue=Choose folder…}"
                         Command="{Binding PickFolderCommand}" HorizontalAlignment="Left"
-                        Padding="8,3" Margin="0,0,0,8" AutomationProperties.Name="Choose move-to folder"/>
+                        Padding="8,3" Margin="0,0,0,8" AutomationProperties.Name="{Binding MoveToFolderButtonName}"/>
 
                 <CheckBox Content="Mark as read" IsChecked="{Binding MarkAsRead}"
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Mark as read"/>
@@ -169,7 +169,7 @@
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Copy to folder"/>
                         <Button Content="{Binding CopyToFolderName, TargetNullValue=Choose folder…, FallbackValue=Choose folder…}"
                                 Command="{Binding PickCopyFolderCommand}" HorizontalAlignment="Left"
-                                Padding="8,3" Margin="0,0,0,8" AutomationProperties.Name="Choose copy-to folder"/>
+                                Padding="8,3" Margin="0,0,0,8" AutomationProperties.Name="{Binding CopyToFolderButtonName}"/>
 
                         <TextBlock Text="Set importance to"/>
                         <ComboBox ItemsSource="{Binding ImportanceOptions}"

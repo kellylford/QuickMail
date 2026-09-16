@@ -1300,6 +1300,121 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task EditingAGraphClientRule_ShowsItsFolderNames_NotTheirIds() // #682
+    {
+        // Once a client rule on a Microsoft 365 account could move and copy as well as mark unread, its editor opened
+        // with the folder buttons naming "AQMkAD…" ids rather than the folders.
+        var a = Guid.NewGuid();
+        var rule = new MailRule
+        {
+            Name = "Keep and file", AccountId = a, SubjectContains = "x",
+            Action = RuleAction.MoveToFolder,
+            Actions = [RuleAction.MarkAsRead, RuleAction.CopyToFolder, RuleAction.MoveToFolder],
+            TargetFolder = "AQMkAD-move", CopyTargetFolder = "AQMkAD-copy",
+        };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] =
+            [
+                new MailFolderModel { FullName = "AQMkAD-move", DisplayName = "Filed" },
+                new MailFolderModel { FullName = "AQMkAD-copy", DisplayName = "Kept" },
+            ],
+        };
+        var vm = new UnifiedRulesViewModel(new StubRuleService { LoadedRules = [rule] }, new FakeServerRules(), [Graph(a)], folders, preferredAccountId: a);
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        vm.SelectedRule = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        vm.EditRuleCommand.Execute(null);
+
+        Assert.NotNull(editor);
+        Assert.Equal("Filed", editor.MoveToFolderName);
+        Assert.Equal("Kept", editor.CopyToFolderName);
+        Assert.Equal("AQMkAD-move", editor.MoveToFolderId);   // the id is still what gets saved
+        Assert.Equal("AQMkAD-copy", editor.CopyToFolderId);
+    }
+
+    [Fact]
+    public async Task EditingAGraphClientRule_WhoseFolderIsntCached_SaysAnotherFolder_NotTheId() // #682
+    {
+        // The same folder the rules list calls "another folder" (#366: not synced yet, or the id drifted). The button
+        // must not be the one place the raw id is spoken.
+        var a = Guid.NewGuid();
+        var rule = new MailRule
+        {
+            Name = "File", AccountId = a, UseSubjectCondition = true, SubjectContains = "x",
+            Action = RuleAction.MoveToFolder, TargetFolder = "AQMkAD-not-cached",
+        };
+        var folders = new Dictionary<Guid, List<MailFolderModel>> { [a] = [] };
+        var vm = new UnifiedRulesViewModel(new StubRuleService { LoadedRules = [rule] }, new FakeServerRules(), [Graph(a)], folders, preferredAccountId: a);
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        vm.SelectedRule = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        vm.EditRuleCommand.Execute(null);
+
+        Assert.NotNull(editor);
+        Assert.Equal("another folder", editor.MoveToFolderName);
+        Assert.Equal("AQMkAD-not-cached", editor.MoveToFolderId);   // and the rule still files where it always did
+        Assert.Null(editor.CopyToFolderName);                       // no copy folder, so that button reads "Choose folder…"
+    }
+
+    [Fact]
+    public async Task ANewClientRuleThatCopiesToTheInbox_IsRefused() // #682
+    {
+        // Client rules run on the Inbox, so the copy would land where the rule is looking, be read as new mail on the
+        // next check, and be copied again — filling the mailbox. Server-side rules are unaffected, which is why the
+        // check lives on the save path rather than in the shared editor.
+        var a = Guid.NewGuid();
+        var client = new StubRuleService();
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] = [new MailFolderModel { AccountId = a, FullName = "INBOX", DisplayName = "Inbox", Kind = SpecialFolderKind.Inbox }],
+        };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(a)], folders, preferredAccountId: a);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Keep a copy";
+        editor.SubjectContains = "digest";
+        editor.CopyToFolder = true;
+        editor.CopyToFolderId = "INBOX";
+        editor.CopyToFolderName = "Inbox";
+        await editor.SaveCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(client.LoadedRules);                             // nothing saved
+        Assert.Contains("can't copy to the Inbox", editor.SaveError);  // and the editor stays open saying why
+    }
+
+    [Fact]
+    public async Task EditingAnImapClientRule_KeepsItsFolderPath() // #682
+    {
+        // An IMAP rule's folder is already readable, and looking it up would collapse "Work/Archive" to "Archive" —
+        // the same reason the client row builder leaves IMAP folders alone.
+        var a = Guid.NewGuid();
+        var rule = new MailRule
+        {
+            Name = "File", AccountId = a, UseSubjectCondition = true, SubjectContains = "x",
+            Action = RuleAction.MoveToFolder, TargetFolder = "Work/Archive",
+        };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] = [new MailFolderModel { FullName = "Work/Archive", DisplayName = "Archive" }],
+        };
+        var vm = new UnifiedRulesViewModel(new StubRuleService { LoadedRules = [rule] }, new FakeServerRules(), [Imap(a)], folders, preferredAccountId: a);
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        vm.SelectedRule = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        vm.EditRuleCommand.Execute(null);
+
+        Assert.NotNull(editor);
+        Assert.Equal("Work/Archive", editor.MoveToFolderName);
+    }
+
+    [Fact]
     public async Task ServerRuleDetail_ResolvesCopyFolderIdToName_WhenNameMissing() // #550 review: copy-to path
     {
         var a = Guid.NewGuid();

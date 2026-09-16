@@ -126,8 +126,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>
     /// Populates the editor from a client-side <see cref="MailRule"/> (the inverse of
     /// <see cref="ToClientRule"/>), so a client rule can be edited in the same unified editor. The
-    /// client model's single-value substring conditions map to the corresponding fields; its one
-    /// action maps to that action. Editing preserves the rule's kind (client stays client) — the
+    /// client model's single-value substring conditions map to the corresponding fields, and its
+    /// actions to theirs. Editing preserves the rule's kind (client stays client) — the
     /// caller re-persists via the client rule service, it is not re-classified (spec §20.6).
     /// </summary>
     public static ServerRuleEditorViewModel ForEditClient(MailRule rule)
@@ -151,16 +151,24 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             HasAttachments = rule.MustHaveAttachments,
         };
 
-        switch (rule.Action)
+        foreach (var action in rule.AllActions())
         {
-            case RuleAction.MarkAsRead: vm.MarkAsRead = true; break;
-            case RuleAction.MarkAsUnread: vm.MarkAsUnread = true; break;
-            case RuleAction.MoveToFolder:
-                vm.MoveToFolder = true;
-                vm.MoveToFolderId = rule.TargetFolder;
-                vm.MoveToFolderName = rule.TargetFolder;   // display name resolved by the owner if available
-                break;
-            case RuleAction.Delete: vm.Delete = true; break;
+            switch (action)
+            {
+                case RuleAction.MarkAsRead: vm.MarkAsRead = true; break;
+                case RuleAction.MarkAsUnread: vm.MarkAsUnread = true; break;
+                case RuleAction.CopyToFolder:
+                    vm.CopyToFolder = true;
+                    vm.CopyToFolderId = rule.CopyTargetFolder;
+                    vm.CopyToFolderName = rule.CopyTargetFolder;   // display name resolved by the owner if available
+                    break;
+                case RuleAction.MoveToFolder:
+                    vm.MoveToFolder = true;
+                    vm.MoveToFolderId = rule.TargetFolder;
+                    vm.MoveToFolderName = rule.TargetFolder;   // display name resolved by the owner if available
+                    break;
+                case RuleAction.Delete: vm.Delete = true; break;
+            }
         }
 
         vm.SyncConditionSwitchesToContent();
@@ -238,12 +246,16 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsMoveToFolderSelected))]
     private bool _moveToFolder;
     [ObservableProperty] private string? _moveToFolderId;
-    [ObservableProperty] private string? _moveToFolderName;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MoveToFolderButtonName))]
+    private string? _moveToFolderName;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsCopyToFolderSelected))]
     private bool _copyToFolder;
     [ObservableProperty] private string? _copyToFolderId;
-    [ObservableProperty] private string? _copyToFolderName;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CopyToFolderButtonName))]
+    private string? _copyToFolderName;
     [ObservableProperty] private bool _markAsRead;
     /// <summary>Client-only action — Microsoft 365 server rules have no "mark as unread" (spec §20.2).</summary>
     [ObservableProperty] private bool _markAsUnread;
@@ -265,6 +277,22 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     public bool IsMoveToFolderSelected => MoveToFolder;
     public bool IsCopyToFolderSelected => CopyToFolder;
+
+    /// <summary>
+    /// What the move-to folder button is called. It has to carry the folder itself: a fixed
+    /// <c>AutomationProperties.Name</c> overrides the button's text, so the button was announced as "Choose
+    /// move-to folder" whether or not a folder was chosen, and a saved rule read as though its folder had been
+    /// lost — while the text beside it said otherwise, which is why sighted review never caught it. The purpose
+    /// stays in the name because the folder alone ("Kept") would not say which of the two folder buttons it is.
+    /// </summary>
+    public string MoveToFolderButtonName => string.IsNullOrWhiteSpace(MoveToFolderName)
+        ? "Choose move-to folder"
+        : $"Move to folder: {MoveToFolderName}";
+
+    /// <summary>The copy-to folder button's name, composed as <see cref="MoveToFolderButtonName"/> is.</summary>
+    public string CopyToFolderButtonName => string.IsNullOrWhiteSpace(CopyToFolderName)
+        ? "Choose copy-to folder"
+        : $"Copy to folder: {CopyToFolderName}";
 
     // Validation surfaces
     [ObservableProperty] private string _nameError = string.Empty;
@@ -367,7 +395,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>
     /// Assembles a client-side <see cref="MailRule"/> from the client-representable subset of the
     /// form (spec §20.4). Only valid when <see cref="IsClientRepresentable"/> holds — the caller
-    /// guarantees a single From/To value and exactly one action, so the mapping is lossless. The
+    /// guarantees a single From/To value and only actions a client rule can do, so the mapping is lossless. The
     /// client engine treats a condition as active only when its flag is set AND it has a value, so
     /// empty conditions are simply switched off.
     /// </summary>
@@ -400,6 +428,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         subject ??= OffText(UseSubjectContains, SubjectContains);
         body ??= OffText(UseBodyContains, BodyContains);
 
+        var actions = ClientActions();
+
         return new MailRule
         {
             Name = Name.Trim(),
@@ -412,23 +442,57 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             UseBodyCondition = useBody, BodyContains = body,
             MustHaveAttachments = HasAttachments,
 
-            Action = ClientAction(),
+            Action = MainAction(actions),
+            Actions = actions.Count > 1 ? actions : null,
             TargetFolder = MoveToFolder ? MoveToFolderId : null,
+            CopyTargetFolder = CopyToFolder ? CopyToFolderId : null,
         };
     }
 
-    /// <summary>The single client action in use (IsClientRepresentable guarantees exactly one).</summary>
-    private RuleAction ClientAction()
+    /// <summary>
+    /// The rule's main action: what a QuickMail from before #682 does, since it reads that field alone. The last to
+    /// run, so the move where there is one — but never Copy, which such a build doesn't have and would perform as
+    /// nothing at all, dropping the marking or filing it could have done instead.
+    /// <para>
+    /// Nor Delete, when the rule also copies. Binning the message while never making the copy keeps the destructive
+    /// half of a "keep a copy, then delete" rule and drops the half it exists for — the same loss the running engine
+    /// refuses to allow when a copy fails. Such a rule names the copy, so an older build does nothing with it.
+    /// </para>
+    /// </summary>
+    private static RuleAction MainAction(List<RuleAction> actions)
     {
-        if (MoveToFolder) return RuleAction.MoveToFolder;
-        if (Delete) return RuleAction.Delete;
-        if (MarkAsUnread) return RuleAction.MarkAsUnread;
-        return RuleAction.MarkAsRead;
+        var copies = actions.Contains(RuleAction.CopyToFolder);
+        var understood = actions
+            .Where(a => a != RuleAction.CopyToFolder && !(copies && a == RuleAction.Delete))
+            .ToList();
+        if (understood.Count > 0) return understood[^1];
+        return copies ? RuleAction.CopyToFolder
+             : actions.Count > 0 ? actions[^1]
+             : RuleAction.MarkAsRead;
     }
 
-    /// <summary>Shown when a Move or Delete rule tests nothing. Public so tests can pin the whole string.</summary>
+    /// <summary>The client actions in use, in the order a client rule runs them (<see cref="MailRule.AllActions"/>).</summary>
+    private List<RuleAction> ClientActions()
+    {
+        var actions = new List<RuleAction>();
+        if (MarkAsRead) actions.Add(RuleAction.MarkAsRead);
+        if (MarkAsUnread) actions.Add(RuleAction.MarkAsUnread);
+        if (CopyToFolder) actions.Add(RuleAction.CopyToFolder);
+        if (MoveToFolder) actions.Add(RuleAction.MoveToFolder);
+        if (Delete) actions.Add(RuleAction.Delete);
+        return actions;
+    }
+
+    /// <summary>Shown when a Move, Copy or Delete rule tests nothing. Public so tests can pin the whole string.</summary>
     public const string NoConditionError =
-        "Move and Delete need at least one condition, or the rule acts on every message.";
+        "Move, Copy and Delete need at least one condition, or the rule acts on every message.";
+
+    /// <summary>Shown when a rule would mark a message both read and unread. Public so tests can pin it.</summary>
+    public const string ReadAndUnreadError = "Choose Mark as read or Mark as unread, not both.";
+
+    /// <summary>Shown when a rule would mark a message unread and then move or delete it. Public so tests can pin it.</summary>
+    public const string UnreadWithMoveError =
+        "Mark as unread only changes this computer's copy of the message, so it can't be combined with Move to folder or Delete.";
 
     public bool Validate()
     {
@@ -459,12 +523,37 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             valid = false;
         }
 
+        // Opposites, which a client rule could carry together once it could have more than one action (#682).
+        // Only a client rule can mark unread, so no server-side rule is refused here that wasn't before.
+        if (MarkAsRead && MarkAsUnread)
+        {
+            ActionsError = string.IsNullOrEmpty(ActionsError)
+                ? ReadAndUnreadError
+                : ActionsError + " " + ReadAndUnreadError;
+            valid = false;
+        }
+
+        // Marking unread happens only in QuickMail's own copy of the message — there is no server call for it — so a
+        // rule that then moves or deletes the message throws that copy away, and the mark with it. The rule would
+        // appear to do something and do nothing, so it is refused rather than saved (#682 review).
+        //
+        // Deliberately "else": every error is spoken as one sentence, and once the unread tick has been called wrong
+        // above, saying so a second way in the same breath adds nothing but length.
+        else if (MarkAsUnread && (MoveToFolder || Delete))
+        {
+            ActionsError = string.IsNullOrEmpty(ActionsError)
+                ? UnreadWithMoveError
+                : ActionsError + " " + UnreadWithMoveError;
+            valid = false;
+        }
+
         // A rule that tests nothing matches every message, and rules run on Inbox mail as it arrives
         // and through Run on Existing Mail — so a condition-less Move or Delete empties the Inbox. The
         // client-only rules window refused this; the check did not come with it when every account
         // moved onto this editor (#412 for Microsoft 365, #550 for the rest). Server rules too:
-        // Exchange applies a condition-less rule to every message just the same.
-        if ((MoveToFolder || Delete) && !HasAnyCondition())
+        // Exchange applies a condition-less rule to every message just the same. Copy joined them with #682:
+        // it would copy every message that arrives, and every run of Run on Existing Mail would copy the lot again.
+        if ((MoveToFolder || CopyToFolder || Delete) && !HasAnyCondition())
         {
             ActionsError = string.IsNullOrEmpty(ActionsError)
                 ? NoConditionError
@@ -502,9 +591,27 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         // or a server-only feature on a non-Graph account.
         var serverOnly = ServerOnlyFeaturesUsed();
         var clientOnly = ClientOnlyFeaturesUsed();
-        var conflict = accountSupportsServerRules && clientOnly.Count > 0
-            ? $"{Join(clientOnly)} only works in a client-side rule, but {Join(serverOnly)} only works in a server-side rule. Remove one to save."
-            : $"This account only supports client-side rules, but {Join(serverOnly)} isn't available in a client-side rule. Remove it to save.";
+        var runsOnClientBecause = accountSupportsServerRules && clientOnly.Count > 0
+            ? $"{Join(clientOnly)} only works in a client-side rule"
+            : "This account only supports client-side rules";
+
+        string conflict;
+        if (serverOnly.Count > 0)
+        {
+            conflict = accountSupportsServerRules && clientOnly.Count > 0
+                ? $"{Join(clientOnly)} only works in a client-side rule, but {Join(serverOnly)} only works in a server-side rule. Remove one to save."
+                : $"This account only supports client-side rules, but {Join(serverOnly)} isn't available in a client-side rule. Remove it to save.";
+        }
+        else
+        {
+            // Nothing here is a server feature the user could go and find: the client rule model itself can't hold
+            // the combination, so the message says what a client-side rule can't do rather than where it lives.
+            //
+            // With move+delete the only limit, the "Mark as unread only works in a client-side rule, which …" form is
+            // currently unreachable — Validate refuses unread with move or delete before a save gets this far. The
+            // composition stands for the limits that follow; don't read the one test here as covering both forms.
+            conflict = $"{runsOnClientBecause}, which {Join(ClientModelLimits())}. Change one to save.";
+        }
         return new RuleClassification { ConflictError = conflict };
     }
 
@@ -519,10 +626,23 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     /// <summary>
     /// True when every condition and action fits the client rule model (a near-subset of the server
-    /// model): no server-only condition/action, single From/To value, exactly one action.
+    /// model): no server-only condition/action, single From/To value, a combination the client model can
+    /// hold, and at least one action a client rule can do.
     /// </summary>
     public bool IsClientRepresentable
-        => ServerOnlyFeaturesUsed().Count == 0 && ClientEligibleActionCount() == 1;
+        => ServerOnlyFeaturesUsed().Count == 0 && ClientModelLimits().Count == 0 && ClientActions().Count > 0;
+
+    /// <summary>
+    /// What the client rule model can't express, phrased to follow "a client-side rule, which …". Unlike
+    /// <see cref="ServerOnlyFeaturesUsed"/> these are not features the server has and the client lacks — a server rule
+    /// can carry both a move and a delete — so the message must not send the user looking for a setting (#682).
+    /// </summary>
+    private List<string> ClientModelLimits()
+    {
+        var f = new List<string>();
+        if (MoveToFolder && Delete) f.Add("can't both move and delete a message");
+        return f;
+    }
 
     /// <summary>Client-only capabilities in use — the server has no equivalent (spec §20.2). Extend
     /// as more client-only options are added (play sound, notify, …).</summary>
@@ -535,8 +655,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     /// <summary>
     /// Features only a server rule can express, so any of them blocks representing the rule as a
-    /// client rule: conditions with no client equivalent, the client's single-value From/To limits,
-    /// server-only actions, and the client's one-action limit.
+    /// client rule: conditions with no client equivalent, the client's single-value From/To limits, and
+    /// server-only actions. A combination the client model can't hold is <see cref="ClientModelLimits"/> instead.
     /// </summary>
     private List<string> ServerOnlyFeaturesUsed()
     {
@@ -556,26 +676,11 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         if (SplitAddresses(EffectiveSentToAddresses).Count > 1) f.Add("multiple Sent-to addresses");
 
         // Actions with no client equivalent.
-        if (CopyToFolder) f.Add("Copy to folder");
         if (SelectedMarkImportance?.Value is not null) f.Add("Set importance");
         if (SplitAddresses(ForwardTo).Count > 0) f.Add("Forward");
         if (StopProcessingRules) f.Add("Stop processing more rules");
 
-        // A client rule performs exactly one action.
-        if (ClientEligibleActionCount() > 1) f.Add("more than one action");
-
         return f;
-    }
-
-    /// <summary>Count of actions that a client rule could carry (it allows exactly one).</summary>
-    private int ClientEligibleActionCount()
-    {
-        var n = 0;
-        if (MarkAsRead) n++;
-        if (MarkAsUnread) n++;
-        if (MoveToFolder) n++;
-        if (Delete) n++;
-        return n;
     }
 
     private static string Join(List<string> items) => string.Join(", ", items);

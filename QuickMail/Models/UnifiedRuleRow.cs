@@ -25,26 +25,30 @@ public sealed class UnifiedRuleRow
     // the cache.
     private readonly string? _targetFolderDisplay;
 
-    // Whether the raw MailRule.TargetFolder is an opaque id (a Graph account) rather than a readable
-    // path (IMAP). When true and no display name resolved — the folder isn't cached, or its id drifted
-    // (#366) — the summary must NOT fall back to the raw id; it says "another folder", as server rules
-    // already do. False leaves the raw TargetFolder as the fallback, which reads fine for IMAP.
-    private readonly bool _targetIsOpaque;
+    // Whether the rule's folders (the one it moves to, the one it copies to) are opaque ids (a Graph account)
+    // rather than readable paths (IMAP). When true and no display name resolved — the folder isn't cached, or its
+    // id drifted (#366) — the summary must NOT fall back to the raw id; it says "another folder", as server rules
+    // already do. False leaves the raw folder as the fallback, which reads fine for IMAP.
+    private readonly bool _folderIsOpaque;
 
-    private UnifiedRuleRow(RuleRunsWhere runsWhere, ServerRuleModel? server, MailRule? client, bool showFieldLabels, string? targetFolderDisplay, bool targetIsOpaque)
+    // The copy-to target's human name, resolved the same way as the move-to target above (#682).
+    private readonly string? _copyFolderDisplay;
+
+    private UnifiedRuleRow(RuleRunsWhere runsWhere, ServerRuleModel? server, MailRule? client, bool showFieldLabels, string? targetFolderDisplay, bool folderIsOpaque, string? copyFolderDisplay)
     {
         RunsWhere = runsWhere;
         Server = server;
         Client = client;
         _showFieldLabels = showFieldLabels;
         _targetFolderDisplay = targetFolderDisplay;
-        _targetIsOpaque = targetIsOpaque;
+        _folderIsOpaque = folderIsOpaque;
+        _copyFolderDisplay = copyFolderDisplay;
     }
 
     public static UnifiedRuleRow ForServer(ServerRuleModel rule, bool showFieldLabels = false)
-        => new(RuleRunsWhere.Server, rule, null, showFieldLabels, targetFolderDisplay: null, targetIsOpaque: false);
-    public static UnifiedRuleRow ForClient(MailRule rule, bool showFieldLabels = false, string? targetFolderDisplay = null, bool targetIsOpaque = false)
-        => new(RuleRunsWhere.Client, null, rule, showFieldLabels, targetFolderDisplay, targetIsOpaque);
+        => new(RuleRunsWhere.Server, rule, null, showFieldLabels, targetFolderDisplay: null, folderIsOpaque: false, copyFolderDisplay: null);
+    public static UnifiedRuleRow ForClient(MailRule rule, bool showFieldLabels = false, string? targetFolderDisplay = null, bool folderIsOpaque = false, string? copyFolderDisplay = null)
+        => new(RuleRunsWhere.Client, null, rule, showFieldLabels, targetFolderDisplay, folderIsOpaque, copyFolderDisplay);
 
     public RuleRunsWhere RunsWhere { get; }
 
@@ -75,7 +79,7 @@ public sealed class UnifiedRuleRow
             var head = _showFieldLabels
                 ? $"Rule {name}, runs {where}, status {state}"
                 : $"{name}, {where}, {state}";
-            var summary = RunsWhere == RuleRunsWhere.Server ? Server!.OneLineSummary() : ClientSummary(Client!, _targetFolderDisplay, _targetIsOpaque);
+            var summary = RunsWhere == RuleRunsWhere.Server ? Server!.OneLineSummary() : ClientSummary();
             return string.IsNullOrEmpty(summary) ? head : $"{head}. {summary}";
         }
     }
@@ -96,17 +100,17 @@ public sealed class UnifiedRuleRow
             var sb = new StringBuilder();
             sb.AppendLine($"{name} ({(IsEnabled ? "enabled" : "disabled")})");
             AppendSection(sb, "Applies when:", ClientConditions(Client!), "all messages");
-            AppendSection(sb, "Does:", ClientActions(Client!, _targetFolderDisplay, _targetIsOpaque), "nothing");
+            AppendSection(sb, "Does:", ClientActions(), "nothing");
             return sb.ToString().TrimEnd();
         }
     }
 
     /// <summary>"If subject contains 'x' → move to Archive" for a client rule — the one-line list-row
     /// summary, mirroring <see cref="ServerRuleModel.OneLineSummary"/> so both kinds read the same way.</summary>
-    private static string ClientSummary(MailRule r, string? targetFolderDisplay, bool targetIsOpaque)
+    private string ClientSummary()
     {
-        var conditions = ClientConditions(r);
-        var actions = ClientActions(r, targetFolderDisplay, targetIsOpaque);
+        var conditions = ClientConditions(Client!);
+        var actions = ClientActions();
         var lhs = conditions.Count == 0 ? "All messages" : "If " + string.Join(" and ", conditions);
         var rhs = actions.Count == 0 ? "do nothing" : string.Join(", ", actions);
         return $"{lhs} → {rhs}";
@@ -123,25 +127,29 @@ public sealed class UnifiedRuleRow
         return conditions;
     }
 
-    private static List<string> ClientActions(MailRule r, string? targetFolderDisplay, bool targetIsOpaque)
+    /// <summary>What the rule does, in the order it does it.</summary>
+    private List<string> ClientActions()
     {
-        // Prefer the VM-resolved folder name. Fall back to the raw TargetFolder only when it is readable
-        // (IMAP, whose TargetFolder is the folder path); an opaque Graph id that didn't resolve (folder
-        // not cached, or its id drifted per #366) reads "another folder" rather than the "AQMkAD…" blob,
-        // matching how a server rule renders an unresolved move target.
-        var target = !string.IsNullOrWhiteSpace(targetFolderDisplay) ? targetFolderDisplay
-                   : targetIsOpaque ? "another folder"
-                   : !string.IsNullOrWhiteSpace(r.TargetFolder) ? r.TargetFolder
-                   : "a folder";
-        var action = r.Action switch
+        var r = Client!;
+        return r.AllActions().Select(action => action switch
         {
             RuleAction.MarkAsRead => "mark as read",
             RuleAction.MarkAsUnread => "mark as unread",
-            RuleAction.MoveToFolder => $"move to {target}",
+            RuleAction.CopyToFolder => $"copy to {Folder(_copyFolderDisplay, r.CopyTargetFolder)}",
+            RuleAction.MoveToFolder => $"move to {Folder(_targetFolderDisplay, r.TargetFolder)}",
             RuleAction.Delete => "move to Trash",
-            _ => r.Action.ToString(),
-        };
-        return [action];
+            _ => action.ToString(),
+        }).ToList();
+
+        // Prefer the VM-resolved folder name. Fall back to the raw folder only when it is readable (IMAP,
+        // whose folder is the folder path); an opaque Graph id that didn't resolve (folder not cached, or its
+        // id drifted per #366) reads "another folder" rather than the "AQMkAD…" blob, matching how a server
+        // rule renders an unresolved target.
+        string Folder(string? display, string? raw)
+            => !string.IsNullOrWhiteSpace(display) ? display
+             : _folderIsOpaque ? "another folder"
+             : !string.IsNullOrWhiteSpace(raw) ? raw
+             : "a folder";
     }
 
     // Mirrors ServerRuleModel.AppendSection so the client detail pane reads with the same shape: a

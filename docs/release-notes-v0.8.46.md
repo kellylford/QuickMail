@@ -20,7 +20,35 @@ A search box shipped here once before and was taken out again, because it moved 
 
 ---
 
+### Client-side rules can copy, and can do more than one thing
+
+A client-side rule used to do exactly one thing — move, delete, mark as read, or mark as unread — and **Save** refused one that used **Copy to folder**. Now a client-side rule can copy, and can combine its actions: mark a mailing list read and file it, say, or keep a copy in one folder and move the message to another. It always does them in the same order: marking read or unread first, then copying, then moving or deleting, since after that the message is no longer in the Inbox.
+
+Some combinations are refused, with Save saying why: marking a message both read and unread; in a client-side rule, both moving and deleting it; and **Mark as unread** together with moving or deleting, because marking unread changes only this computer's copy of the message, which the move then throws away.
+
+A rule that copies now needs at least one condition, as moving and deleting already did. Without one it would copy every message that arrives, and copy your whole Inbox again on every **Run on Existing Mail**. This covers server-side copy rules as well, so an existing one with no conditions has to be given one before it can be saved again.
+
+A client-side rule also cannot copy into the Inbox. It runs on the Inbox, so each copy would land where the rule is looking and be copied again on the next check.
+
+If a copy cannot be made — the folder is gone, say — the rule stops there, leaving the message in the Inbox rather than filing it with no copy kept anywhere. Whatever the rule did before the copy, such as marking the message read, has already happened, and the reason the copy failed is in the log.
+
+An earlier version of QuickMail reading a rule with more than one action does the one action it understands best: the move, or the marking. A rule that only copies — or that copies and then deletes — does nothing there, rather than deleting the message without keeping the copy. If that earlier version then saves your rules, the extra actions are dropped from them.
+
+[#682](https://github.com/kellylford/QuickMail/issues/682)
+
+---
+
 ## Fixed
+
+### The rule editor's folder buttons say which folder is chosen
+
+A rule that moves or copies to a folder shows that folder on the button beside the action — but the button was still reported as "Choose move-to folder" whichever folder was chosen, so a rule that already had one sounded as though it had none. That happened both right after choosing a folder and when reopening a saved rule; activating the button did land on the right folder.
+
+The button is now reported as "Move to folder: Digests" (and "Copy to folder: Kept"), and says "Choose move-to folder" only while no folder is chosen.
+
+[#713](https://github.com/kellylford/QuickMail/issues/713)
+
+---
 
 ### A rules file QuickMail can't read is no longer replaced
 

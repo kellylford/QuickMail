@@ -20,9 +20,9 @@ public static class FolderReferenceRemapper
 {
     public sealed class Report
     {
-        /// <summary>Move-to-folder rules whose target was rewritten to the matching Graph folder.</summary>
+        /// <summary>Rules whose move-to or copy-to folder was rewritten to the matching Graph folder.</summary>
         public List<string> RemappedRules { get; } = [];
-        /// <summary>Move-to-folder rules disabled because their target could not be matched.</summary>
+        /// <summary>Rules disabled because a folder they move or copy to could not be matched.</summary>
         public List<string> DisabledRules { get; } = [];
         /// <summary>Saved views a real-folder entry was remapped or dropped from.</summary>
         public List<string> AffectedViews { get; } = [];
@@ -89,20 +89,35 @@ public static class FolderReferenceRemapper
             return byLeaf.Count == 1 ? byLeaf[0].FullName : null;
         }
 
-        // Move-to-folder rules for this account.
-        foreach (var rule in allRules.Where(r =>
-                     r.AccountId == accountId && r.Action == RuleAction.MoveToFolder && !string.IsNullOrEmpty(r.TargetFolder)))
+        // Rules for this account that name a folder: the one they move to, the one they copy to, or both (#682).
+        foreach (var rule in allRules.Where(r => r.AccountId == accountId))
         {
-            var match = Match(rule.TargetFolder);
-            if (match == null)
+            var unmatched = false;
+            var rewritten = false;
+
+            string? Remapped(string? reference)
             {
+                var match = Match(reference);
+                if (match == null) { unmatched = true; return reference; }
+                // Already equal to the match is an idempotent re-run, not a rewrite — do not report one.
+                if (!string.Equals(reference, match, StringComparison.Ordinal)) rewritten = true;
+                return match;
+            }
+
+            if (rule.Does(RuleAction.MoveToFolder) && !string.IsNullOrEmpty(rule.TargetFolder))
+                rule.TargetFolder = Remapped(rule.TargetFolder);
+            if (rule.Does(RuleAction.CopyToFolder) && !string.IsNullOrEmpty(rule.CopyTargetFolder))
+                rule.CopyTargetFolder = Remapped(rule.CopyTargetFolder);
+
+            if (unmatched)
+            {
+                // A rule whose move folder matched but whose copy folder didn't keeps the rewrite and is still turned
+                // off, and is reported only as disabled: that is the part the user has to act on.
                 rule.IsEnabled = false;   // disabled, not deleted — the user can set a folder to re-enable
                 report.DisabledRules.Add(rule.Name);
             }
-            // Already equal to the match is an idempotent re-run, not a rewrite — do not report one.
-            else if (!string.Equals(rule.TargetFolder, match, StringComparison.Ordinal))
+            else if (rewritten)
             {
-                rule.TargetFolder = match;
                 report.RemappedRules.Add(rule.Name);
             }
         }

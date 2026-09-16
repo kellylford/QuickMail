@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json.Serialization;
 
 namespace QuickMail.Models;
 
@@ -57,17 +60,53 @@ public class MailRule
     /// </summary>
     public Guid? AccountId { get; set; }
 
-    // ── Action ──────────────────────────────────────────────────────────────
+    // ── Actions ─────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The rule's main action, and its only one unless <see cref="Actions"/> lists more. With several, it is
+    /// the one that runs last (see <see cref="AllActions"/>) — moving or deleting, where the rule does
+    /// either — so a QuickMail from before #682, which reads only this field, still does what matters most.
+    /// </summary>
     public RuleAction Action { get; set; } = RuleAction.MarkAsRead;
 
     /// <summary>
-    /// Destination folder full name (e.g. "INBOX/Priority"). Required when
-    /// Action == MoveToFolder; ignored otherwise.
+    /// Every action, when the rule has more than one (#682); null when <see cref="Action"/> is all it does.
+    /// Read the rule's actions through <see cref="AllActions"/>, which covers both.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<RuleAction>? Actions { get; set; }
+
+    /// <summary>
+    /// Destination folder full name (e.g. "INBOX/Priority") for MoveToFolder; ignored when the rule
+    /// doesn't move. A Graph account stores the folder's id instead.
     /// </summary>
     public string? TargetFolder { get; set; }
+
+    /// <summary>Destination folder for CopyToFolder, stored the same way as <see cref="TargetFolder"/>.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CopyTargetFolder { get; set; }
+
+    /// <summary>
+    /// What the rule does, in the order it does it: marking read or unread first, then copying, then moving
+    /// or deleting. Once a message is moved or deleted it is no longer in the folder the others act on.
+    /// </summary>
+    public IReadOnlyList<RuleAction> AllActions()
+        => (Actions is { Count: > 0 } ? Actions : [Action]).Distinct().OrderBy(RunOrder).ToList();
+
+    public bool Does(RuleAction action) => AllActions().Contains(action);
+
+    /// <summary>True when the rule takes matching mail out of the folder: it moves or deletes it.</summary>
+    public bool RemovesFromFolder() => Does(RuleAction.MoveToFolder) || Does(RuleAction.Delete);
+
+    private static int RunOrder(RuleAction action) => action switch
+    {
+        RuleAction.MarkAsRead or RuleAction.MarkAsUnread => 0,
+        RuleAction.CopyToFolder => 1,
+        _ => 2,
+    };
 }
 
+/// <summary>A client-side rule's action. Stored in rules.json by number, so a new one goes on the end.</summary>
 public enum RuleAction
 {
     /// <summary>Mark the message as read (IMAP \Seen flag).</summary>
@@ -81,4 +120,7 @@ public enum RuleAction
 
     /// <summary>Move the message to the Trash folder.</summary>
     Delete,
+
+    /// <summary>Copy the message to CopyTargetFolder, leaving it where it is.</summary>
+    CopyToFolder,
 }

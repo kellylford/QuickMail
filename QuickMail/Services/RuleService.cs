@@ -178,6 +178,8 @@ public class RuleService : IRuleService
         AccountId = accountId,
         Action = source.Action,
         TargetFolder = source.TargetFolder,
+        Actions = source.Actions is null ? null : [.. source.Actions],
+        CopyTargetFolder = source.CopyTargetFolder,
     };
 
     public void SaveRules(List<MailRule> rules)
@@ -230,7 +232,7 @@ public class RuleService : IRuleService
             }
 
             var matched = incoming.Where(m => MatchesRule(rule, m)).ToList();
-            LogService.Debug($"  Rule '{rule.Name}': {matched.Count} matched (action={rule.Action}, from='{rule.FromContains}', subject='{rule.SubjectContains}')");
+            LogService.Debug($"  Rule '{rule.Name}': {matched.Count} matched (actions={string.Join(", ", rule.AllActions())}, from='{rule.FromContains}', subject='{rule.SubjectContains}')");
             if (matched.Count > 0)
             {
                 foreach (var m in matched.Take(3))
@@ -243,11 +245,11 @@ public class RuleService : IRuleService
 
             try
             {
-                await ExecuteActionAsync(rule, matched, accountId, ct);
+                await ExecuteActionsAsync(rule, matched, accountId, ct);
 
                 // Remove messages from incoming that were moved or deleted so the
                 // UI doesn't show them in the original folder after FolderSynced fires.
-                if (rule.Action is RuleAction.MoveToFolder or RuleAction.Delete)
+                if (rule.RemovesFromFolder())
                 {
                     var matchedKeys = new HashSet<(string MessageId, Guid AccountId, string FolderName)>();
                     foreach (var m in matched)
@@ -303,30 +305,87 @@ public class RuleService : IRuleService
 
     // ── Action Execution ────────────────────────────────────────────────────
 
-    private async Task ExecuteActionAsync(
+    /// <summary>Runs each of the rule's actions in turn, in the order <see cref="MailRule.AllActions"/> gives:
+    /// moving or deleting comes last, because after either the message is no longer where the others look.</summary>
+    private async Task ExecuteActionsAsync(
         MailRule rule,
         List<MailMessageSummary> matched,
         Guid accountId,
         CancellationToken ct)
     {
-        switch (rule.Action)
+        foreach (var action in rule.AllActions())
         {
-            case RuleAction.MarkAsRead:
-                await MarkAsReadAsync(matched, ct);
-                break;
+            switch (action)
+            {
+                case RuleAction.MarkAsRead:
+                    await MarkAsReadAsync(matched, ct);
+                    break;
 
-            case RuleAction.MarkAsUnread:
-                await MarkAsUnreadAsync(matched, ct);
-                break;
+                case RuleAction.MarkAsUnread:
+                    await MarkAsUnreadAsync(matched, ct);
+                    break;
 
-            case RuleAction.MoveToFolder:
-                if (string.IsNullOrEmpty(rule.TargetFolder)) break;
-                await MoveToFolderAsync(matched, rule.TargetFolder, ct);
-                break;
+                case RuleAction.CopyToFolder:
+                    if (string.IsNullOrEmpty(rule.CopyTargetFolder)) break;
+                    await CopyToFolderAsync(matched, rule.CopyTargetFolder, ct);
+                    break;
 
-            case RuleAction.Delete:
-                await DeleteAsync(matched, ct);
-                break;
+                case RuleAction.MoveToFolder:
+                    if (string.IsNullOrEmpty(rule.TargetFolder)) break;
+                    await MoveToFolderAsync(matched, rule.TargetFolder, ct);
+                    break;
+
+                case RuleAction.Delete:
+                    await DeleteAsync(matched, ct);
+                    break;
+            }
+        }
+    }
+
+    private async Task CopyToFolderAsync(
+        List<MailMessageSummary> messages, string targetFolder, CancellationToken ct)
+    {
+        // One COPY per source folder, as for a move. A failure here is deliberately NOT swallowed the way the other
+        // actions' are: copying runs before moving and deleting, and a rule that keeps a copy and then files the
+        // message must not file it when no copy was made — that loses the message from the Inbox with nothing kept
+        // anywhere. Throwing leaves it where it is and skips the rule's remaining actions. Messages from more than one
+        // source folder are copied group by group, so a failure part-way through leaves the earlier groups copied; the
+        // rule's later actions are then skipped for every group, not only the one that failed.
+        var groups = messages.GroupBy(m => (m.AccountId, m.FolderName));
+        foreach (var group in groups)
+        {
+            ct.ThrowIfCancellationRequested();
+            var uids = group.Select(m => m.MessageId).ToList();
+
+            // Copying into the folder the message is already in makes a second copy that the next sync reads as new
+            // mail, which this same rule matches and copies again, and so on until the mailbox fills. Client rules run
+            // on the Inbox, so this is a rule that copies to the Inbox. The Rules Manager refuses to save one; this is
+            // the backstop for a rule that acquires such a target afterwards (a folder rename, a Graph conversion).
+            if (string.Equals(group.Key.FolderName, targetFolder, StringComparison.Ordinal))
+            {
+                LogService.Log($"Rule copy skipped: '{targetFolder}' is the folder the {uids.Count} message(s) are already in.");
+                continue;
+            }
+
+            try
+            {
+                await _imap.CopyMessagesAsync(
+                    group.Key.AccountId, group.Key.FolderName, uids, targetFolder, ct);
+            }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+            {
+                // A request that timed out arrives as TaskCanceledException even though nothing asked us to stop. Left
+                // as a cancellation it would travel past every later rule — the callers rethrow those untouched — and
+                // abort the whole pass. It is a failed copy, and only this rule should stop.
+                LogService.Log($"Rule copy to '{targetFolder}' timed out for {uids.Count} message(s); the rule's remaining actions were skipped", ex);
+                throw new IOException($"Copying {uids.Count} message(s) to '{targetFolder}' timed out.", ex);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                LogService.Log($"Rule copy to '{targetFolder}' failed for {uids.Count} message(s); the rule's remaining actions were skipped", ex);
+                throw;
+            }
         }
     }
 
@@ -446,14 +505,14 @@ public class RuleService : IRuleService
                 return MatchesRule(rule, m);
             }).ToList();
 
-            LogService.Debug($"  Rule '{rule.Name}': {matched.Count} matched in existing mail (action={rule.Action})");
+            LogService.Debug($"  Rule '{rule.Name}': {matched.Count} matched in existing mail (actions={string.Join(", ", rule.AllActions())})");
             if (matched.Count == 0) continue;
 
             try
             {
-                await ExecuteActionAsync(rule, matched, matched[0].AccountId, ct);
+                await ExecuteActionsAsync(rule, matched, matched[0].AccountId, ct);
 
-                if (rule.Action is RuleAction.MoveToFolder or RuleAction.Delete)
+                if (rule.RemovesFromFolder())
                 {
                     // Out of the running for the rules after this one, as arriving mail is in
                     // ApplyRulesAsync (#685): a later rule would otherwise act again on a message that is
