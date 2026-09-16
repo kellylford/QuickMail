@@ -138,10 +138,10 @@ public partial class MainViewModel
             // cached since the last search — off the UI thread, or typing would stall on it.
             var (positive, negative) = await Task.Run(async () =>
             {
-                var p = wanted == null ? null : await _localStore.FindMessagesAsync(wanted, scope, ct);
+                var p = wanted == null ? null : await _localStore.FindMessagesAsync(wanted, scope, ct: ct);
                 // The first call already indexed what was waiting; the second need not wait again.
-                var n = unwanted == null ? null : await _localStore.FindMessagesAsync(unwanted, scope, ct,
-                    indexPendingFirst: wanted == null);
+                var n = unwanted == null ? null : await _localStore.FindMessagesAsync(unwanted, scope,
+                    indexPendingFirst: wanted == null, ct: ct);
                 return (p, n);
             }, ct);
 

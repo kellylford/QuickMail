@@ -417,8 +417,8 @@ public partial class LocalStoreService
     public async Task<List<SearchHit>> FindMessagesAsync(
         string match,
         IReadOnlyCollection<(Guid AccountId, string FolderName)>? folders,
-        CancellationToken ct = default,
-        bool indexPendingFirst = true)
+        bool indexPendingFirst = true,
+        CancellationToken ct = default)
     {
         if (!_searchIndexAvailable) return [];
         if (indexPendingFirst)
