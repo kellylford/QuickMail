@@ -343,6 +343,6 @@ public interface ILocalStoreService
     Task<List<SearchHit>> FindMessagesAsync(
         string match,
         IReadOnlyCollection<(Guid AccountId, string FolderName)>? folders,
-        System.Threading.CancellationToken ct = default,
-        bool indexPendingFirst = true);
+        bool indexPendingFirst = true,
+        System.Threading.CancellationToken ct = default);
 }

@@ -444,7 +444,7 @@ class StubLocalStoreService : ILocalStoreService
     /// default) reports the index unavailable, so existing tests keep matching rows in memory only.</summary>
     public Dictionary<string, List<SearchHit>>? SearchHits { get; set; }
     public List<string> SearchMatchesAsked { get; } = [];
-    public virtual Task<List<SearchHit>> FindMessagesAsync(string match, IReadOnlyCollection<(Guid AccountId, string FolderName)>? folders, CancellationToken ct = default, bool indexPendingFirst = true)
+    public virtual Task<List<SearchHit>> FindMessagesAsync(string match, IReadOnlyCollection<(Guid AccountId, string FolderName)>? folders, bool indexPendingFirst = true, CancellationToken ct = default)
     {
         SearchMatchesAsked.Add(match);
         return Task.FromResult(SearchHits != null && SearchHits.TryGetValue(match, out var hits) ? hits : new List<SearchHit>());
