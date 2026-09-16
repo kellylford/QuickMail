@@ -126,6 +126,37 @@ public sealed class MessageSearchQuery
         return query;
     }
 
+    /// <summary>
+    /// The words of one field's text, all tied to <paramref name="field"/> — for Advanced Search, whose From box
+    /// means the sender whatever is typed in it. Quotes keep a phrase and a leading minus excludes, as in the
+    /// search box, but nothing else is special: <c>is:unread</c> typed into From is a word to find in the
+    /// sender, not a condition.
+    /// </summary>
+    public static List<SearchTerm> ParseFieldWords(string? text, SearchField field)
+    {
+        var terms = new List<SearchTerm>();
+        if (string.IsNullOrWhiteSpace(text)) return terms;
+        foreach (var token in Tokenize(text))
+        {
+            if (token.Quoted)
+            {
+                if (token.Text.Trim().Length > 0)
+                    terms.Add(new SearchTerm(field, token.Text.Trim(), IsPhrase: true, Negated: token.Negated));
+                continue;
+            }
+            var word = token.Text;
+            var negated = word.Length > 1 && word[0] == '-';
+            if (negated) word = word[1..];
+            if (word.Length > 0) terms.Add(new SearchTerm(field, word, IsPhrase: false, Negated: negated));
+        }
+        return terms;
+    }
+
+    /// <summary>Writes field words back as <see cref="ParseFieldWords"/> reads them.</summary>
+    public static string FieldWordsToText(IEnumerable<SearchTerm> terms)
+        => string.Join(' ', terms.Select(t => (t.Negated ? "-" : string.Empty)
+            + (t.IsPhrase || t.Text.Any(char.IsWhiteSpace) ? Quote(t.Text) : t.Text)));
+
     private static void AddTerm(MessageSearchQuery query, SearchField field, string text, bool isPhrase, bool negated)
     {
         text = text.Trim();

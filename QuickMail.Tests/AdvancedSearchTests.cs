@@ -127,6 +127,29 @@ public class AdvancedSearchViewModelTests
     }
 
     [Fact]
+    public void WhatIsTypedInAFieldIsWordsOfThatField_EvenIfItLooksLikeACondition()
+    {
+        var vm = Vm();
+        vm.From = "is:unread -spam \"Sam Smith\"";
+        Assert.Equal(
+            [new SearchTerm(SearchField.From, "is:unread"), new SearchTerm(SearchField.From, "spam", Negated: true),
+             new SearchTerm(SearchField.From, "Sam Smith", IsPhrase: true)],
+            vm.BuildQuery().Terms);
+    }
+
+    [Fact]
+    public void AReopenedFieldReadsBackAsTyped()
+    {
+        var vm = Vm();
+        vm.From = "a:b";
+        vm.Words = "budget -has:attachment";
+        var reopened = Vm(previous: new AdvancedSearchRequest(vm.BuildQuery().ToQueryString(), InCurrentFolder: true, []));
+        Assert.Equal("a:b", reopened.From);
+        Assert.Contains("-has:attachment", reopened.Words);
+        Assert.Equal(vm.BuildQuery().ToQueryString(), reopened.BuildQuery().ToQueryString());
+    }
+
+    [Fact]
     public void ClearKeepsWhereToLook()
     {
         var vm = Vm();
@@ -216,6 +239,18 @@ public class SearchSummariesStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task FolderMatchesTheFolderName_NotAMicrosoft365FolderId()
+    {
+        await _store.SaveFoldersAsync(_work, [new MailFolderModel { AccountId = _work, FullName = "AAMkADY3Zjk", DisplayName = "Archive" }]);
+        await _store.UpsertSummariesAsync([Row(_work, "1", folder: "AAMkADY3Zjk"), Row(_work, "2", folder: "Unlisted")]);
+
+        Assert.Empty(await Search("folder:aamk"));
+        Assert.Equal(["1"], await Search("folder:arch"));
+        // A folder the stored list does not know is matched by the name it is stored under.
+        Assert.Equal(["2"], await Search("folder:unlist"));
+    }
+
+    [Fact]
     public async Task LikeWildcardsInAWordAreLiteral()
     {
         // A lone % or _ has no letters for the index, so only the row match answers — and it must not read
@@ -281,9 +316,9 @@ public class SearchResultsFolderTests
         var (vm, store, work, _) = await MakeVmAsync();
         var before = vm.SelectedFolder;
 
-        var n = await vm.RunAdvancedSearchAsync(new AdvancedSearchRequest("budget", InCurrentFolder: false, [work]));
+        var outcome = await vm.RunAdvancedSearchAsync(new AdvancedSearchRequest("budget", InCurrentFolder: false, [work]));
 
-        Assert.Equal(1, n);
+        Assert.Equal(new MainViewModel.AdvancedSearchOutcome(1, Failed: false), outcome);
         Assert.True(vm.IsSearchResultsView);
         Assert.Equal("budget", vm.SearchResultsQuery);
         Assert.Equal(["w1"], vm.Messages.Select(m => m.MessageId));
@@ -311,13 +346,27 @@ public class SearchResultsFolderTests
     }
 
     [Fact]
+    public async Task NothingFoundAcrossAccounts_StaysInTheFolderTheUserWasIn()
+    {
+        var (vm, _, work, home) = await MakeVmAsync();
+        var before = vm.SelectedFolder?.FullName;
+
+        var outcome = await vm.RunAdvancedSearchAsync(new AdvancedSearchRequest("zebra", InCurrentFolder: false, [work, home]));
+
+        Assert.Equal(0, outcome.Found);
+        Assert.False(outcome.Failed);
+        Assert.False(vm.IsSearchResultsView);
+        Assert.Equal(before, vm.SelectedFolder?.FullName);
+    }
+
+    [Fact]
     public async Task InTheCurrentFolder_ItIsTheSearchBox()
     {
         var (vm, store, _, _) = await MakeVmAsync();
 
-        var n = await vm.RunAdvancedSearchAsync(new AdvancedSearchRequest("lunch", InCurrentFolder: true, []));
+        var outcome = await vm.RunAdvancedSearchAsync(new AdvancedSearchRequest("lunch", InCurrentFolder: true, []));
 
-        Assert.Equal(1, n);
+        Assert.Equal(1, outcome.Found);
         Assert.True(vm.IsSearchActive);
         Assert.Equal("lunch", vm.SearchText);
         Assert.False(vm.IsSearchResultsView);

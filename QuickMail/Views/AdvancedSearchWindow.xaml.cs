@@ -25,8 +25,8 @@ public partial class AdvancedSearchWindow : Window
     private readonly CommandRegistry _registry = new();
     private bool _searching;
 
-    /// <summary>Runs a request and returns how many messages it found. Set by the owner before showing.</summary>
-    public Func<AdvancedSearchRequest, Task<int>>? SearchRunner { get; set; }
+    /// <summary>Runs a request and says what it found. Set by the owner before showing.</summary>
+    public Func<AdvancedSearchRequest, Task<MainViewModel.AdvancedSearchOutcome>>? SearchRunner { get; set; }
 
     /// <summary>True once a search found something and the window closed for it.</summary>
     public bool ClosedWithResults { get; private set; }
@@ -83,14 +83,16 @@ public partial class AdvancedSearchWindow : Window
         SearchButton.IsEnabled = false;
         try
         {
-            var found = await SearchRunner(request);
-            if (found > 0)
+            var outcome = await SearchRunner(request);
+            if (outcome.Found > 0 && !outcome.Failed)
             {
                 ClosedWithResults = true;
+                _searching = false;
                 Close();
                 return;
             }
-            AccessibilityHelper.Announce(this, "No messages found.", interrupt: true, category: AnnouncementCategory.Result);
+            AccessibilityHelper.Announce(this, outcome.Failed ? "Could not search." : "No messages found.",
+                interrupt: true, category: AnnouncementCategory.Result);
             WordsBox.Focus();
         }
         catch (Exception ex)
@@ -181,6 +183,16 @@ public partial class AdvancedSearchWindow : Window
             if (FindChild<T>(child) is { } deeper) return deeper;
         }
         return null;
+    }
+
+    /// <summary>
+    /// A search that is running holds the window open: closing it then would leave the result with nowhere to
+    /// report to and focus with nowhere to go. Escape and Close work again as soon as it finishes.
+    /// </summary>
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (_searching) e.Cancel = true;
+        base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)

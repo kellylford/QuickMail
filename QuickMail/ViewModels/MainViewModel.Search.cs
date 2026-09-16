@@ -209,18 +209,40 @@ public partial class MainViewModel
     // Where closing the results returns to; null when the search began before any folder was open.
     private MailFolderModel? _searchResultsReturnFolder;
 
+    /// <summary>What running an Advanced Search request came to.</summary>
+    /// <param name="Found">How many messages the list now shows.</param>
+    /// <param name="Failed">The search could not run (the store failed); the list shows nothing new.</param>
+    public sealed record AdvancedSearchOutcome(int Found, bool Failed);
+
+    // Set by FetchSearchResultsAsync when it could not search, for RunAdvancedSearchAsync to report.
+    private bool _searchResultsFailed;
+
     /// <summary>
-    /// Runs an Advanced Search request and returns how many messages it found. In the current folder it is
-    /// the search box's query; across accounts it opens a Search Results folder.
+    /// Runs an Advanced Search request. In the current folder it is the search box's query; across accounts it
+    /// opens a Search Results folder — and when that finds nothing or fails, goes straight back to the folder
+    /// the user was in, so the form's "this folder" still means that folder and closing it lands somewhere
+    /// real rather than in an empty results list.
     /// </summary>
-    public async Task<int> RunAdvancedSearchAsync(AdvancedSearchRequest request)
+    public async Task<AdvancedSearchOutcome> RunAdvancedSearchAsync(AdvancedSearchRequest request)
     {
         if (request.InCurrentFolder)
-            return await ApplySearchTextAsync(request.Query);
+            return new AdvancedSearchOutcome(await ApplySearchTextAsync(request.Query), Failed: false);
 
-        if (!IsSearchResultsView && !IsContactMailView) _searchResultsReturnFolder = SelectedFolder;
+        var previous = SelectedFolder;
+        var previousReturn = _searchResultsReturnFolder;
+        if (IsContactMailView) _searchResultsReturnFolder = _contactMailReturnFolder;
+        else if (!IsSearchResultsView) _searchResultsReturnFolder = SelectedFolder;
+
+        _searchResultsFailed = false;
         await SelectFolderAsync(CreateSearchResultsFolder(request.Query, request.AccountIds));
-        return Messages.Count;
+        var found = Messages.Count;
+        var failed = _searchResultsFailed;
+        if (found == 0 || failed)
+        {
+            _searchResultsReturnFolder = previousReturn;
+            await SelectFolderAsync(previous ?? AllMailFolder);
+        }
+        return new AdvancedSearchOutcome(found, failed);
     }
 
     /// <summary>Puts <paramref name="query"/> in the search box and waits for the list to reflect it.</summary>
@@ -285,7 +307,8 @@ public partial class MainViewModel
                     if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
                     foreach (var folder in folders)
                     {
-                        if (folder.ExcludeFromAllMail || string.IsNullOrEmpty(folder.FullName)) continue;
+                        // Every folder, Sent and Trash included, as the cached search covers them.
+                        if (folder.IsHeader || string.IsNullOrEmpty(folder.FullName)) continue;
                         ct.ThrowIfCancellationRequested();
                         try
                         {
@@ -317,11 +340,15 @@ public partial class MainViewModel
         catch (OperationCanceledException)
         {
             if (loadVersion == _folderLoadVersion)
+            {
+                _searchResultsFailed = true;
                 StatusText = "Search cancelled.";
+            }
         }
         catch (Exception ex)
         {
             LogService.Log("Search results failed", ex);
+            _searchResultsFailed = true;
             StatusText = "Could not search.";
         }
         finally
@@ -331,11 +358,23 @@ public partial class MainViewModel
         }
     }
 
-    /// <summary>Whether a message arriving while Search Results is open belongs in it, judged from its row.</summary>
+    private (string Text, List<Guid> Accounts, MessageSearchMatcher Matcher)? _arrivalMatcher;
+
+    /// <summary>
+    /// Whether a message arriving while Search Results is open belongs in it, judged from its row. The parsed
+    /// query is kept between arrivals of the same search rather than rebuilt for every message.
+    /// </summary>
     private bool BelongsInSearchResults(MailMessageSummary msg, string text, IReadOnlyCollection<Guid> chosen)
     {
-        var (query, accounts) = ResolveSearchAccounts(text, chosen);
-        if (!accounts.Contains(msg.AccountId)) return false;
-        return new MessageSearchMatcher(query, SearchFolderNameFor, _ => string.Empty).Matches(msg);
+        if (_arrivalMatcher is not { } cached || cached.Text != text || !cached.Accounts.SequenceEqual(chosen))
+        {
+            var (query, accounts) = ResolveSearchAccounts(text, chosen);
+            cached = (text, [.. chosen], new MessageSearchMatcher(query, SearchFolderNameFor, _ => string.Empty));
+            _arrivalMatcher = cached;
+            _arrivalAccounts = accounts;
+        }
+        return _arrivalAccounts.Contains(msg.AccountId) && cached.Matcher.Matches(msg);
     }
+
+    private List<Guid> _arrivalAccounts = [];
 }
