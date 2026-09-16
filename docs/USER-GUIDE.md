@@ -693,6 +693,21 @@ Anything else with a colon in it — `Re:`, a time such as `10:30`, a web addres
 
 Everything combines: `from:sam budget -draft is:unread after:2026-01-01` finds unread messages from Sam since the start of the year that mention the budget and don't mention a draft.
 
+### Advanced Search
+
+Press **Ctrl+/**, or choose **View → Advanced Search…**, to search with a form instead of typing the syntax. You can assign a different shortcut in **File → Settings → Keyboard Shortcuts**.
+
+The form has a field for each part of a message — **Words anywhere**, **From**, **To**, **Cc**, **Subject**, **Body** and **Attachment name** — and for the conditions: **Has attachments**, **Read state**, **Flag**, **Received from** and **Received up to** (both days included). Every word in a field is looked for in that part of the message, so **From** `Sam Smith` finds a sender with both words in the name or address. **Words anywhere** also takes everything the search box understands, such as `folder:projects`.
+
+Under **Look in**, choose where to search:
+
+- **This folder** searches the folder you were in, exactly as the search box does: the search box opens showing the search, so you can see how it is written and change it there.
+- **Every folder of these accounts** searches all of your mail in the accounts you leave checked — every account, unless you uncheck some. The results open as a **Search results** folder.
+
+Press **Enter** to search. When something is found the form closes, focus moves to the first result, and the number found is announced. When nothing is found the form stays open with focus back in **Words anywhere**, so you can change the search and try again. **Clear** empties the fields but keeps your choice of where to look, and **Escape** closes the form. **F6** moves between the fields, **Look in**, the list of accounts and the buttons.
+
+The **Search results** folder works like any other folder: every view, sort, filter and message command applies, and the search box searches within the results. Above the list, a bar shows how many were found and for what, with **Change Search** — or **Ctrl+/** — to reopen the form with this search filled in, and **Close** — or **Escape** — to go back to the folder you started from. New mail that arrives while the results are open joins them if its sender, recipients, subject or preview match; a message that matches only in its text appears the next time the results are refreshed with **F5**.
+
 The first time you start a version of QuickMail with this search, it builds its index of the mail it already has, in the background, newest mail first. Until that finishes, older messages are found by their sender, recipients, subject and preview only. When QuickMail runs in online mode (`--online`) there is no copy on this computer, so search matches the sender, recipients, subject and preview of the messages in the list, and `cc:` and `attachment:` find nothing.
 
 ### Searching Folders

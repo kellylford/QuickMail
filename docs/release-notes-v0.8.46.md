@@ -68,6 +68,18 @@ The user guide's Searching section lists everything search understands.
 
 ---
 
+### Advanced Search, and searching every account at once
+
+**Ctrl+/** (or **View → Advanced Search…**) opens a form for searching without learning the syntax: a field each for the words anywhere, the sender, To, Cc, subject, body and attachment name, plus whether the message has attachments, is read, is flagged, and when it arrived. The shortcut can be changed in **Settings → Keyboard Shortcuts**.
+
+The form can search the folder you are in — it fills in the search box, so you can see how the search is written — or every folder of the accounts you choose. Searching accounts opens a **Search results** folder that works like any other: views, sorting, filters and message commands all apply. A bar above the list says how many were found and for what, with **Change Search** (or **Ctrl+/** again) to adjust it and **Close** (or **Escape**) to go back where you started.
+
+When a search finds nothing, the form stays open with focus back in the first field, so trying again takes one keystroke.
+
+[#717](https://github.com/kellylford/QuickMail/issues/717)
+
+---
+
 ## Fixed
 
 ### Client-side rules no longer miss mail that arrives while the Inbox is open

@@ -16,6 +16,7 @@
 | F6 / Shift+F6 | *(hardcoded)* | Cycle panes |
 | Escape | *(hardcoded)* | Close reading pane |
 | Escape | `view.closeContactMail` | Close Contact Mail Results — dispatched only when no earlier Escape case claims the key (reading pane, calendar, tab mode) and the search box does not have focus |
+| Escape | `view.closeSearchResults` | Close Search Results — the same conditions as Close Contact Mail Results; the two share Escape and never apply at once (#717) |
 | Ctrl+Shift+P | *(hardcoded)* | Command Palette |
 | Ctrl+N | `mail.new` | New Message |
 | Ctrl+R | `mail.reply` | Reply |
@@ -33,6 +34,7 @@
 | Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
 | Ctrl+Shift+F | `view.searchFolders` | Search Folders… |
 | Ctrl+Shift+S | `view.search` | Search Messages… |
+| Ctrl+/ | `mail.advancedSearch` | Advanced Search… (#717). `/` alone still opens the search box from the lists; those handlers take it only with no modifier. Not relayed from inside the reading pane, like Ctrl+Shift+S |
 | Ctrl+Shift+G | `contacts.grabAddresses` | Grab Addresses from Message |
 | Ctrl+Shift+B | `contacts.openAddressBook` | Address Book |
 | F1 | `help.userGuide` | Open User Guide |
@@ -133,6 +135,24 @@ carries a second copy of the row's name (see `Views/FieldCheckList.cs`); the cos
 that control. First-letter uses QuickMail's own accumulator (`TypeAheadPrefixTracker`), not WPF
 `TextSearch`, which only works on a `Selector` — so this list is **not** a `TypeAheadWiringTests`
 site.
+
+## Advanced Search Window
+
+Opened with **Ctrl+/**, **View → Advanced Search…**, the command palette, or **Change Search** on
+the Search Results bar (#717). Modeless, per the modal dialog rules: it has text fields and opens
+over the reading pane.
+
+| Key | Action |
+|---|---|
+| `Enter` | Search (the default button) |
+| `F6` / `Shift+F6` | Cycle: Fields → Look in → Accounts (when searching accounts) → Buttons |
+| `Up` / `Down` in Look in | Choose This folder or Every folder of these accounts (selection follows focus) |
+| `Ctrl+Shift+P` | Window-local command palette (Search, Clear Fields, Close Advanced Search) |
+| `Escape` | Close — unless a drop-down is open, which Escape closes instead |
+
+Access keys: Words anywhere (W), From (F), To (T), Cc (C), Subject (S), Body (B), Attachment name
+(N), Has attachments (A), Read state (R), Flag (L), Received from (V), Received up to (U), This
+folder (I), Every folder of these accounts (E).
 
 ## Watched Conversations Window
 

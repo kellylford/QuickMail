@@ -218,8 +218,11 @@ public class SearchSummariesStoreTests : IDisposable
     [Fact]
     public async Task LikeWildcardsInAWordAreLiteral()
     {
-        await _store.UpsertSummariesAsync([Row(_work, "1", "100% done"), Row(_work, "2", "100 done")]);
-        Assert.Equal(["1"], await Search("100%"));
+        // A lone % or _ has no letters for the index, so only the row match answers — and it must not read
+        // them as LIKE wildcards, which would match every message.
+        await _store.UpsertSummariesAsync([Row(_work, "1", "100% done"), Row(_work, "2", "a_b"), Row(_work, "3", "axb")]);
+        Assert.Equal(["1"], await Search("%"));
+        Assert.Equal(["2"], await Search("_"));
     }
 
     [Fact]
@@ -267,6 +270,7 @@ public class SearchResultsFolderTests
         {
             SearchIndexDelay = TimeSpan.Zero,
         };
+        vm.LoadAccountList();
         await vm.InitialLoadAsync();
         return (vm, store, work.Id, home.Id);
     }
