@@ -655,7 +655,45 @@ Density changes spacing only. What a row says, and what a screen reader reports 
 
 ### Searching
 
-Press `Ctrl+Shift+S` to open the search box. Type your query and press Enter. Results appear in the message list. Press Escape to clear the search and return to the full folder.
+Press `Ctrl+Shift+S`, or `/` in the message list, to open the search box. The list narrows as you type to the matching messages in the folder you are in — an ordinary folder, or a combined one such as **All Inboxes** or **All Mail** — and the number found is announced when you pause. Press **Down** or **Tab** to move into the results, and **Escape** to clear the search and return to the whole folder.
+
+Search reads the whole message, not only what the list shows: the sender, the recipients and Cc, the subject, the text of the message, and the names of its attachments. It searches the copy QuickMail keeps on this computer, so the text of a message is searchable once it has been downloaded — because you opened it, because QuickMail fetched it ahead of time, or because it is inside **Download messages for offline reading** (see [Reading messages without a connection](#reading-messages-without-a-connection)). The sender, recipients, subject and preview are always searchable, and there a match can be part of a word.
+
+**Words.** Every word you type has to be in the message, in any order. A word finds the words that begin with it, so `budg` finds "budget", and capitals and accents don't matter.
+
+- Put words in quotes to find them together, in that order: `"quarterly report"`.
+- Put a minus sign in front of a word or quoted phrase to leave out the messages that contain it: `budget -draft`.
+
+**Where a word is.** Put one of these in front of a word, or of a quoted phrase, to look for it in one place only:
+
+| Type | To find it in |
+|------|---------------|
+| `from:sam` | the sender's name or address |
+| `to:ann` | the recipients |
+| `cc:lee` | the Cc recipients |
+| `subject:invoice` | the subject |
+| `body:agenda` | the text of the message |
+| `attachment:report` | the names of attached files |
+
+**Which messages.** These narrow the results without looking for any text:
+
+| Type | Finds messages |
+|------|----------------|
+| `has:attachment` | with attachments |
+| `is:unread`, `is:read` | not yet read, or read |
+| `is:flagged`, `is:unflagged` | flagged, or not |
+| `after:2026-01-15` | received on that day or later |
+| `before:2026-02-01` | received before that day |
+| `folder:projects` | in a folder whose name contains "projects" — useful in All Mail |
+| `account:work` | in an account whose name or address contains "work" |
+
+A minus sign in front of `has:` or `is:` reverses it: `-has:attachment` finds messages with none. Write dates as year, month and day, or the way Windows shows a short date on your computer.
+
+Anything else with a colon in it — `Re:`, a time such as `10:30`, a web address — is searched for as ordinary text, so pasting a subject line works.
+
+Everything combines: `from:sam budget -draft is:unread after:2026-01-01` finds unread messages from Sam since the start of the year that mention the budget and don't mention a draft.
+
+The first time you start a version of QuickMail with this search, it builds its index of the mail it already has, in the background, newest mail first. Until that finishes, older messages are found by their sender, recipients, subject and preview only. When QuickMail runs in online mode (`--online`) there is no copy on this computer, so search matches the sender, recipients, subject and preview of the messages in the list.
 
 ### Searching Folders
 

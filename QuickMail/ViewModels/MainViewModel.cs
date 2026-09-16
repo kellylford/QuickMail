@@ -174,6 +174,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         DrainCts(ref _connectCts);
         DrainCts(ref _folderCts);
         DrainCts(ref _messageLoadCts);
+        DrainCts(ref _searchIndexCts);
         try { _messageActionShutdownCts.Cancel(); _messageActionShutdownCts.Dispose(); } catch { /* best effort at shutdown */ }
         DrainCts(ref _flagActionCts);
         DrainCts(ref _prefetchCts);
@@ -1183,7 +1184,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnSearchTextChanged(string value)
     {
-        if (!_suppressFilterRebuild) ApplyFiltersAndSearch();
+        // Any index query still out is for the old text (#717); a rebuild it triggered would show the
+        // wrong results.
+        if (_suppressFilterRebuild)
+        {
+            DrainCts(ref _searchIndexCts);
+            return;
+        }
+        if (!StartSearchIndexQuery()) ApplyFiltersAndSearch();
     }
 
     [ObservableProperty]
@@ -4493,15 +4501,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ? "No messages found"
                 : $"{n} {(n == 1 ? "message" : "messages")} found";
         }
-    }
-
-    private bool MatchesSearch(MailMessageSummary msg)
-    {
-        var q = SearchText;
-        return msg.From.Contains(q, StringComparison.OrdinalIgnoreCase)
-            || msg.To.Contains(q, StringComparison.OrdinalIgnoreCase)
-            || msg.Subject.Contains(q, StringComparison.OrdinalIgnoreCase)
-            || msg.Preview.Contains(q, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool MatchesFilter(MailMessageSummary msg) => ActiveFilter switch

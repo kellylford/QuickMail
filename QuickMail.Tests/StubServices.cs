@@ -434,6 +434,21 @@ class StubLocalStoreService : ILocalStoreService
     public virtual Task ReplaceGraphCalendarEventsAsync(Guid accountId, IReadOnlyList<CalendarEvent> events) => Task.CompletedTask;
     public virtual Task<string?> GetDeltaTokenAsync(Guid accountId, string folderId) => Task.FromResult<string?>(null);
     public virtual Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken) => Task.CompletedTask;
+
+    // ── Full-text search (#717) ──
+    public virtual bool IsSearchIndexAvailable => SearchHits != null;
+    public virtual void StartBackgroundSearchIndexing() { }
+    public virtual Task<int> IndexPendingSearchAsync(int maxRows, CancellationToken ct = default) => Task.FromResult(0);
+
+    /// <summary>What <see cref="FindMessagesAsync"/> answers, keyed by the FTS5 expression it is asked. Null (the
+    /// default) reports the index unavailable, so existing tests keep matching rows in memory only.</summary>
+    public Dictionary<string, List<SearchHit>>? SearchHits { get; set; }
+    public List<string> SearchMatchesAsked { get; } = [];
+    public virtual Task<List<SearchHit>> FindMessagesAsync(string match, IReadOnlyCollection<(Guid AccountId, string FolderName)>? folders, CancellationToken ct = default)
+    {
+        SearchMatchesAsked.Add(match);
+        return Task.FromResult(SearchHits != null && SearchHits.TryGetValue(match, out var hits) ? hits : new List<SearchHit>());
+    }
 }
 
 sealed class StubContactService : IContactService

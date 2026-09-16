@@ -323,4 +323,25 @@ public interface ILocalStoreService
     Task DeleteOutboxItemAsync(string id);
 
     Task<int> CountOutboxItemsAsync();
+
+    // ── Full-text search (#717) ──────────────────────────────────────────────────
+
+    /// <summary>False when the SQLite build lacks FTS5 or the index could not be created; search then
+    /// matches only what the message list holds.</summary>
+    bool IsSearchIndexAvailable { get; }
+
+    /// <summary>Starts indexing pending messages in the background, now and after each write that adds work.</summary>
+    void StartBackgroundSearchIndexing();
+
+    /// <summary>Indexes up to <paramref name="maxRows"/> pending messages, newest first; returns how many.</summary>
+    Task<int> IndexPendingSearchAsync(int maxRows, System.Threading.CancellationToken ct = default);
+
+    /// <summary>
+    /// Cached messages matching an FTS5 expression, limited to the given folders when not null. Throws
+    /// for an expression FTS5 rejects.
+    /// </summary>
+    Task<List<SearchHit>> FindMessagesAsync(
+        string match,
+        IReadOnlyCollection<(Guid AccountId, string FolderName)>? folders,
+        System.Threading.CancellationToken ct = default);
 }

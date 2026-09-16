@@ -277,7 +277,12 @@ public partial class App : Application
             // cache of the account but the account itself.
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)
+            {
                 localStore.Initialize();
+                // Full-text search (#717): index whatever is waiting — every cached message, the first
+                // launch after upgrading — without holding up startup.
+                localStore.StartBackgroundSearchIndexing();
+            }
 
             _pop3Backend          = new Pop3MailService(localStore, onlineMode);
             var pop3Backend       = _pop3Backend;

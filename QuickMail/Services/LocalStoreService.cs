@@ -309,6 +309,10 @@ public partial class LocalStoreService : ILocalStoreService
                 watermark.ExecuteNonQuery();
             }
         }
+
+        // Full-text search (#717). Last, after every table it indexes has its final shape: the 1→2 rebuild
+        // above drops and recreates the message tables, which would take the index's triggers with them.
+        InitializeSearchIndex(conn);
     }
 
     // SQLite's PRAGMA user_version stores a single integer per database. We use it as a
@@ -556,6 +560,7 @@ public partial class LocalStoreService : ILocalStoreService
             await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();
+        KickSearchIndexer();
     }
 
     public async Task<List<MailMessageSummary>> LoadAllSummariesAsync()
@@ -1033,6 +1038,7 @@ public partial class LocalStoreService : ILocalStoreService
         await cmd2.ExecuteNonQueryAsync();
 
         await tx.CommitAsync();
+        KickSearchIndexer();
     }
 
     public async Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId)
@@ -1560,6 +1566,7 @@ public partial class LocalStoreService : ILocalStoreService
         }
 
         await tx.CommitAsync();
+        KickSearchIndexer();
         return refiled;
     }
 

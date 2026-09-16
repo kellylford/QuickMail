@@ -50,6 +50,24 @@ In `config.ini`, **All mail** is saved as `OfflineBodyDays = -1`, since `0` alre
 
 ---
 
+### Search reads the whole message
+
+The search box (**Ctrl+Shift+S**, or `/` in the message list) used to look only at what the message list shows: the sender, the recipients, the subject and the first line or so of the preview. It now searches the whole message — its text, its Cc recipients and the names of its attachments — for every message in the folder you are in, including combined folders such as **All Inboxes** and **All Mail**. It still narrows the list as you type.
+
+A search can also say where to look and which messages to keep:
+
+- Words must all be there, in any order, and a word finds the words that begin with it. Quotes keep a phrase together, and a minus sign leaves out messages containing a word: `"quarterly report" -draft`.
+- `from:`, `to:`, `cc:`, `subject:`, `body:` and `attachment:` look for a word in one place.
+- `has:attachment`, `is:unread`, `is:read`, `is:flagged`, `is:unflagged`, `after:`, `before:`, `folder:` and `account:` narrow the results.
+
+Search looks at the copy of your mail kept on this computer, so a message's text is found once it has been downloaded — opened, fetched ahead of time, or inside **Download messages for offline reading**. The first time you start this version, QuickMail indexes the mail it already has in the background, newest first; until it finishes, older messages are found by their sender, recipients, subject and preview, as before.
+
+The user guide's Searching section lists everything search understands.
+
+[#717](https://github.com/kellylford/QuickMail/issues/717)
+
+---
+
 ## Fixed
 
 ### Client-side rules no longer miss mail that arrives while the Inbox is open

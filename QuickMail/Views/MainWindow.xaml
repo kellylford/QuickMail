@@ -1295,7 +1295,7 @@
                             <TextBox x:Name="SearchBox"
                                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.Name="Search messages"
-                                     ToolTip="Search by sender, subject, or preview. Escape to clear."
+                                     ToolTip="Search the messages in this folder. Escape to clear."
                                      PreviewKeyDown="SearchBox_PreviewKeyDown"/>
                         </DockPanel>
                     </Border>
