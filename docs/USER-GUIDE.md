@@ -1568,7 +1568,7 @@ When you open a folder offline the status bar reads "Offline — showing 12 cach
 
 ### Reading recent messages without a connection
 
-By default QuickMail keeps the full text of a message only once you have opened it, or when it fetched a few ahead of time. To have more ready before the connection drops, choose a window under **Settings → General → Sync → Download messages for offline reading**: **Off** (the default), or the last **7**, **30** or **90** days.
+By default QuickMail keeps the full text of a message only once you have opened it, or when it fetched a few ahead of time. To have more ready before the connection drops, choose a window under **Settings → General → Sync → Download messages for offline reading**: **Off** (the default); the last **7**, **30** or **90** days; the last **6 months** or **year**; or **All mail**.
 
 With a window set, the sync at launch and each background check (**Check for new mail every**) finish by downloading the text of each Inbox message in that window that QuickMail does not have yet, newest first, a few hundred at a time; new mail arriving in the Inbox gets its text straight away. When a pass completes you hear "Downloaded 120 messages for offline reading." once. A few things to know:
 
@@ -1576,7 +1576,8 @@ With a window set, the sync at launch and each background check (**Check for new
 - Never wider than the **Sync range** above it, since QuickMail cannot keep what it has not synced.
 - Attachments are not included. Opening one still needs a connection.
 - POP3 accounts already keep every message whole, so the setting does not apply to them.
-- The text lives in `mail.db` in QuickMail's data folder, which grows accordingly — roughly tens of megabytes for a month of a busy Inbox.
+- The text lives in `mail.db` in QuickMail's data folder, which grows accordingly — roughly tens of megabytes for a month of a busy Inbox, so a year or all mail can run to hundreds of megabytes or more.
+- A large window fills in gradually. Each pass downloads a few hundred messages, newest first, so a big Inbox set to a year or all mail takes many background checks to finish.
 
 ### Getting back online
 

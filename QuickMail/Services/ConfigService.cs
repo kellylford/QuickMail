@@ -245,7 +245,7 @@ public class ConfigService : IConfigService
                             config.MailSyncPollMinutes = msp <= 0 ? 0 : Math.Clamp(msp, 1, 120);
                         break;
                     case "offlinebodydays":
-                        if (int.TryParse(value, out var obd)) config.OfflineBodyDays = Math.Max(0, obd);
+                        if (int.TryParse(value, out var obd)) config.OfflineBodyDays = obd < 0 ? ConfigModel.OfflineBodyDaysAll : obd;
                         break;
                     case "appearancethemeid":
                         if (!string.IsNullOrWhiteSpace(value)) config.AppearanceThemeId = value;
@@ -459,9 +459,10 @@ public class ConfigService : IConfigService
         sb.AppendLine();
 
         sb.AppendLine($"MailSyncPollMinutes = {(config.MailSyncPollMinutes <= 0 ? 0 : Math.Clamp(config.MailSyncPollMinutes, 1, 120))}");
-        sb.AppendLine($"OfflineBodyDays = {Math.Max(0, config.OfflineBodyDays)}");
+        sb.AppendLine($"OfflineBodyDays = {(config.OfflineBodyDays < 0 ? ConfigModel.OfflineBodyDaysAll : config.OfflineBodyDays)}");
         sb.AppendLine("# Days of recent Inbox mail whose full text is downloaded for reading offline.");
-        sb.AppendLine("# 0 (default) is off; 7, 30 or 90 keep that many days. Never wider than SyncDays.");
+        sb.AppendLine("# 0 (default) is off; 7, 30, 90, 180 or 365 keep that many days; -1 keeps all.");
+        sb.AppendLine("# Never wider than SyncDays.");
         sb.AppendLine("# Attachments are not included.");
         sb.AppendLine("# Fallback mail-sync interval (minutes) behind IMAP IDLE.");
         sb.AppendLine("# Periodically re-syncs inboxes so new mail still arrives if the server never");

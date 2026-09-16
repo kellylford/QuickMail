@@ -174,8 +174,11 @@
                                         <ComboBoxItem Tag="7" Content="Last 7 days"/>
                                         <ComboBoxItem Tag="30" Content="Last 30 days"/>
                                         <ComboBoxItem Tag="90" Content="Last 90 days"/>
+                                        <ComboBoxItem Tag="180" Content="Last 6 months"/>
+                                        <ComboBoxItem Tag="365" Content="Last year"/>
+                                        <ComboBoxItem Tag="-1" Content="All mail"/>
                                     </ComboBox>
-                                    <TextBlock Text="Keeps the full text of recent Inbox messages on this computer so you can read them without a connection. Never wider than the sync range above. Attachments are fetched when you open them and need a connection."
+                                    <TextBlock Text="Keeps the full text of Inbox messages on this computer so you can read them without a connection. Never wider than the sync range above. Attachments are fetched when you open them and need a connection."
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
                                                TextWrapping="Wrap" Margin="0,3,0,0"/>
                                 </StackPanel>

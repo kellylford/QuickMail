@@ -339,5 +339,10 @@ public class ConfigServiceSaveTests
         service.Save(config);
 
         Assert.Equal(30, new ConfigService(profile).Load().OfflineBodyDays);
+
+        // "All mail" is its own value, not 0 (which is off here).
+        config.OfflineBodyDays = ConfigModel.OfflineBodyDaysAll;
+        service.Save(config);
+        Assert.Equal(ConfigModel.OfflineBodyDaysAll, new ConfigService(profile).Load().OfflineBodyDays);
     }
 }

@@ -136,14 +136,40 @@ public class ConfigModel
     /// <summary>
     /// Days of recent Inbox mail whose full bodies sync downloads for offline reading (#637).
     /// 0 (the default) is off: bodies are cached only as messages are opened or prefetched.
-    /// Offered as 0, 7, 30 or 90; never wider than <see cref="SyncDays"/> when that is set.
+    /// Offered as 0, 7, 30, 90, 180, 365 or <see cref="OfflineBodyDaysAll"/>; never wider than
+    /// <see cref="SyncDays"/> when that is set.
     /// Attachments are not included — they are fetched when opened and need a connection.
     /// </summary>
     public int OfflineBodyDays { get; set; } = 0;
 
-    /// <summary>The offline-bodies window actually used: <see cref="OfflineBodyDays"/> capped by <see cref="SyncDays"/>.</summary>
-    public int EffectiveOfflineBodyDays =>
-        OfflineBodyDays <= 0 ? 0 : SyncDays <= 0 ? OfflineBodyDays : Math.Min(OfflineBodyDays, SyncDays);
+    /// <summary>
+    /// <see cref="OfflineBodyDays"/> value for every message, however old. Not 0, which is "off"
+    /// here — unlike <see cref="SyncDays"/>, where 0 is "all mail".
+    /// </summary>
+    public const int OfflineBodyDaysAll = -1;
+
+    /// <summary>
+    /// The offline-bodies window actually used: <see cref="OfflineBodyDays"/> capped by
+    /// <see cref="SyncDays"/>. 0 is off; <see cref="int.MaxValue"/> is unbounded, so a wider
+    /// window always compares greater.
+    /// </summary>
+    public int EffectiveOfflineBodyDays
+    {
+        get
+        {
+            if (OfflineBodyDays == 0) return 0;
+            var wanted = OfflineBodyDays < 0 ? int.MaxValue : OfflineBodyDays;
+            return SyncDays <= 0 ? wanted : Math.Min(wanted, SyncDays);
+        }
+    }
+
+    /// <summary>
+    /// The oldest date inside an effective offline-bodies window of <paramref name="effectiveDays"/>
+    /// (a positive <see cref="EffectiveOfflineBodyDays"/>); the unbounded window starts at the
+    /// beginning of time.
+    /// </summary>
+    public static DateTimeOffset OfflineBodyWindowStart(int effectiveDays, DateTimeOffset now)
+        => effectiveDays == int.MaxValue ? DateTimeOffset.MinValue : now.AddDays(-effectiveDays);
 
     // ── Appearance ────────────────────────────────────────────────────────────────
 

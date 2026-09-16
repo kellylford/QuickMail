@@ -67,7 +67,7 @@ public partial class SyncService
         }
         try
         {
-            await RunPassAsync(accounts, cachedFolders, DateTimeOffset.UtcNow.AddDays(-days), ct);
+            await RunPassAsync(accounts, cachedFolders, ConfigModel.OfflineBodyWindowStart(days, DateTimeOffset.UtcNow), ct);
         }
         finally
         {
@@ -173,7 +173,7 @@ public partial class SyncService
         var days = _config.Load().EffectiveOfflineBodyDays;
         if (days <= 0) return;
 
-        var since = DateTimeOffset.UtcNow.AddDays(-days);
+        var since = ConfigModel.OfflineBodyWindowStart(days, DateTimeOffset.UtcNow);
         var ids = arrivals.Where(m => m.Date >= since).Select(m => m.MessageId).ToList();
         if (ids.Count == 0) return;
 
