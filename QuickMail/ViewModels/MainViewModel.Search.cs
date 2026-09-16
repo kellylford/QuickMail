@@ -22,6 +22,7 @@ public partial class MainViewModel
     private MessageSearchMatcher? _searchMatcher;
     private string? _searchMatcherText;
     private CancellationTokenSource? _searchIndexCts;
+    private Dictionary<(Guid, string), string>? _searchFolderNames;
 
     /// <summary>Pause after a keystroke before the index is asked, so a word typed quickly is one query,
     /// not one per letter. Settable so tests do not wait.</summary>
@@ -37,21 +38,39 @@ public partial class MainViewModel
             _searchMatcher = new MessageSearchMatcher(
                 MessageSearchQuery.Parse(SearchText), SearchFolderNameFor, SearchAccountNameFor);
             _searchMatcherText = SearchText;
+            _searchFolderNames = null;
         }
         return _searchMatcher;
     }
 
     private bool MatchesSearch(MailMessageSummary msg) => CurrentSearchMatcher().Matches(msg);
 
+    /// <summary>
+    /// Called when the folder's messages are replaced — a load finishing, a refresh — while a search is in the
+    /// box. The index's answer was for the messages that were there before (and if the search was typed before
+    /// the folder had loaded, there was nothing to ask about), so it is asked again for these.
+    /// </summary>
+    private void RefreshSearchIndexForNewMessages()
+    {
+        if (_suppressFilterRebuild || string.IsNullOrWhiteSpace(SearchText)) return;
+        // A new matcher for the same text, so the old answer is not applied to the new messages.
+        _searchMatcher = null;
+        StartSearchIndexQuery();
+    }
+
     private string SearchFolderNameFor(MailMessageSummary msg)
     {
         if (!string.IsNullOrEmpty(msg.FolderDisplayName)) return msg.FolderDisplayName;
-        if (_cachedFolders.TryGetValue(msg.AccountId, out var folders))
+        // Built once per query, on first use: a folder: condition asks for every message on screen.
+        if (_searchFolderNames == null)
         {
-            var folder = folders.FirstOrDefault(f => string.Equals(f.FullName, msg.FolderName, StringComparison.Ordinal));
-            if (folder != null && !string.IsNullOrEmpty(folder.DisplayName)) return folder.DisplayName;
+            _searchFolderNames = [];
+            foreach (var (accountId, folders) in _cachedFolders)
+                foreach (var f in folders)
+                    if (!string.IsNullOrEmpty(f.DisplayName))
+                        _searchFolderNames[(accountId, f.FullName)] = f.DisplayName;
         }
-        return msg.FolderName;
+        return _searchFolderNames.TryGetValue((msg.AccountId, msg.FolderName), out var name) ? name : msg.FolderName;
     }
 
     private string SearchAccountNameFor(MailMessageSummary msg)
@@ -120,7 +139,9 @@ public partial class MainViewModel
             var (positive, negative) = await Task.Run(async () =>
             {
                 var p = wanted == null ? null : await _localStore.FindMessagesAsync(wanted, scope, ct);
-                var n = unwanted == null ? null : await _localStore.FindMessagesAsync(unwanted, scope, ct);
+                // The first call already indexed what was waiting; the second need not wait again.
+                var n = unwanted == null ? null : await _localStore.FindMessagesAsync(unwanted, scope, ct,
+                    indexPendingFirst: wanted == null);
                 return (p, n);
             }, ct);
 

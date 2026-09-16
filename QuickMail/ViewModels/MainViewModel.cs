@@ -4356,6 +4356,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         else
             foreach (var m in _rawMessages) m.Preview = TruncatePreview(m.Preview, _previewLines);
         ApplyFiltersAndSearch();
+        RefreshSearchIndexForNewMessages();
     }
 
     /// <summary>
