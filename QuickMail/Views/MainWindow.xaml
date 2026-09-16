@@ -678,6 +678,9 @@
                 <MenuItem Header="_Search Folders…"
                           Click="MenuSearchFolders_Click"
                           InputGestureText="Ctrl+Shift+F"/>
+                <MenuItem Header="_Advanced Search…"
+                          Click="MenuAdvancedSearch_Click"
+                          InputGestureText="Ctrl+/"/>
             </MenuItem>
 
             <!-- Tools — always available (mirrors the Compose window's Tools menu).
@@ -1260,6 +1263,38 @@
                                        Margin="0,0,6,0"
                                        Focusable="False"
                                        Text="{Binding Messages.Count, StringFormat='{}{0} found'}"/>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Search Results bar (#717) — visible only while the message list shows Advanced Search's
+                         results across accounts. Like the contact-mail bar above: the query, the count, a way
+                         back to Advanced Search to change it, and a Close that returns to where the search
+                         started. Escape closes too. -->
+                    <Border DockPanel.Dock="Top"
+                            Padding="6,4"
+                            BorderThickness="0,0,0,1"
+                            BorderBrush="{DynamicResource Theme.Border}"
+                            Visibility="{Binding IsSearchResultsView, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right"
+                                    Content="Close"
+                                    Click="CloseSearchResults_Click"
+                                    AutomationProperties.Name="Close search results"
+                                    ToolTip="Close these results and go back (Escape)"
+                                    Margin="6,0,0,0"
+                                    IsTabStop="True"/>
+                            <Button DockPanel.Dock="Right"
+                                    Content="Change Search"
+                                    Click="ChangeSearch_Click"
+                                    ToolTip="Open Advanced Search with this search (Ctrl+/)"
+                                    IsTabStop="True"/>
+                            <TextBlock VerticalAlignment="Center"
+                                       Margin="0,0,6,0"
+                                       Focusable="False"
+                                       TextTrimming="CharacterEllipsis">
+                                <Run Text="{Binding Messages.Count, Mode=OneWay, StringFormat='{}{0} found for'}"/>
+                                <Run Text="{Binding SearchResultsQuery, Mode=OneWay}"/>
+                            </TextBlock>
                         </DockPanel>
                     </Border>
 

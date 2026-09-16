@@ -449,6 +449,20 @@ class StubLocalStoreService : ILocalStoreService
         SearchMatchesAsked.Add(match);
         return Task.FromResult(SearchHits != null && SearchHits.TryGetValue(match, out var hits) ? hits : new List<SearchHit>());
     }
+
+    /// <summary>The queries <see cref="SearchSummariesAsync"/> was asked, with their accounts.</summary>
+    public List<(string Query, IReadOnlyCollection<Guid> Accounts)> SummarySearchesAsked { get; } = [];
+
+    /// <summary>Answers a Search Results fetch from the seeded rows, matching them the way the search box does
+    /// without an index. Override for anything else.</summary>
+    public virtual async Task<List<MailMessageSummary>> SearchSummariesAsync(MessageSearchQuery query, IReadOnlyCollection<Guid> accountIds, CancellationToken ct = default)
+    {
+        SummarySearchesAsked.Add((query.ToQueryString(), accountIds));
+        var withoutAccounts = MessageSearchQuery.Parse(query.ToQueryString());
+        withoutAccounts.Accounts.Clear();
+        var matcher = new QuickMail.Helpers.MessageSearchMatcher(withoutAccounts, m => m.FolderName, _ => string.Empty);
+        return [.. (await LoadAllSummariesAsync()).Where(m => accountIds.Contains(m.AccountId) && matcher.Matches(m))];
+    }
 }
 
 sealed class StubContactService : IContactService

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Input;
 using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
@@ -139,5 +140,181 @@ public partial class MainViewModel
 
         if (!ReferenceEquals(matcher, _searchMatcher) || ct.IsCancellationRequested) return;
         ApplyFiltersAndSearch();
+    }
+
+    // ── Search Results folder (#717, phase 2) ────────────────────────────────────
+
+    // Sentinel for Advanced Search's results across accounts: SearchResultsPrefix + escaped account ids
+    // (comma-separated) + "|" + escaped query. The request lives in the folder name, like the contact-mail
+    // sentinel, so a refresh or a sync arrival can rebuild the results from the folder alone.
+    internal const string SearchResultsPrefix = "\u0000Search:";
+
+    public static MailFolderModel CreateSearchResultsFolder(string query, IEnumerable<Guid> accountIds) => new()
+    {
+        FullName = SearchResultsPrefix
+            + Uri.EscapeDataString(string.Join(",", accountIds))
+            + "|" + Uri.EscapeDataString(query),
+        DisplayName = $"Search results: {query}",
+    };
+
+    internal static bool TryGetSearchResultsFromSentinel(string? fullName, out string query, out List<Guid> accountIds)
+    {
+        query = string.Empty;
+        accountIds = [];
+        if (fullName == null || !fullName.StartsWith(SearchResultsPrefix, StringComparison.Ordinal)) return false;
+        var tail = fullName[SearchResultsPrefix.Length..];
+        var sep = tail.IndexOf('|', StringComparison.Ordinal);
+        if (sep < 0) return false;
+        foreach (var part in Uri.UnescapeDataString(tail[..sep]).Split(',', StringSplitOptions.RemoveEmptyEntries))
+            if (Guid.TryParse(part, out var id)) accountIds.Add(id);
+        query = Uri.UnescapeDataString(tail[(sep + 1)..]);
+        return true;
+    }
+
+    /// <summary>True while the message list is showing Advanced Search's results.</summary>
+    public bool IsSearchResultsView =>
+        SelectedFolder != null && TryGetSearchResultsFromSentinel(SelectedFolder.FullName, out _, out _);
+
+    /// <summary>The query the Search Results folder on screen was built from; empty elsewhere.</summary>
+    public string SearchResultsQuery =>
+        SelectedFolder != null && TryGetSearchResultsFromSentinel(SelectedFolder.FullName, out var q, out _) ? q : string.Empty;
+
+    /// <summary>The search on screen, as a request Advanced Search can reopen with; null outside Search Results.</summary>
+    public AdvancedSearchRequest? CurrentSearchResultsRequest =>
+        SelectedFolder != null && TryGetSearchResultsFromSentinel(SelectedFolder.FullName, out var q, out var ids)
+            ? new AdvancedSearchRequest(q, InCurrentFolder: false, ids)
+            : null;
+
+    // Where closing the results returns to; null when the search began before any folder was open.
+    private MailFolderModel? _searchResultsReturnFolder;
+
+    /// <summary>
+    /// Runs an Advanced Search request and returns how many messages it found. In the current folder it is
+    /// the search box's query; across accounts it opens a Search Results folder.
+    /// </summary>
+    public async Task<int> RunAdvancedSearchAsync(AdvancedSearchRequest request)
+    {
+        if (request.InCurrentFolder)
+            return await ApplySearchTextAsync(request.Query);
+
+        if (!IsSearchResultsView && !IsContactMailView) _searchResultsReturnFolder = SelectedFolder;
+        await SelectFolderAsync(CreateSearchResultsFolder(request.Query, request.AccountIds));
+        return Messages.Count;
+    }
+
+    /// <summary>Puts <paramref name="query"/> in the search box and waits for the list to reflect it.</summary>
+    public async Task<int> ApplySearchTextAsync(string query)
+    {
+        IsSearchActive = true;
+        SearchText = query;
+        if (PendingSearchIndexQuery != null) await PendingSearchIndexQuery;
+        return Messages.Count;
+    }
+
+    /// <summary>Closes Search Results and goes back to the folder the search started from (All Mail if none).</summary>
+    [RelayCommand]
+    public async Task CloseSearchResultsAsync()
+    {
+        if (!IsSearchResultsView) return;
+        var back = _searchResultsReturnFolder ?? AllMailFolder;
+        _searchResultsReturnFolder = null;
+        await SelectFolderAsync(back);
+    }
+
+    /// <summary>
+    /// The query with <c>account:</c> turned into the account list it narrows, which is how the store takes
+    /// it: the chosen accounts whose name or address contains any <c>account:</c> value. Shared mailboxes are
+    /// left out, as every aggregate view leaves them out (#31).
+    /// </summary>
+    private (MessageSearchQuery Query, List<Guid> Accounts) ResolveSearchAccounts(string text, IReadOnlyCollection<Guid> chosen)
+    {
+        var query = MessageSearchQuery.Parse(text);
+        var accounts = Accounts
+            .Where(a => chosen.Contains(a.Id) && !a.IsShared)
+            .Where(a => query.Accounts.Count == 0 || query.Accounts.Any(v =>
+                (a.AccountLabel + " " + a.Username).Contains(v, StringComparison.OrdinalIgnoreCase)))
+            .Select(a => a.Id)
+            .ToList();
+        query.Accounts.Clear();
+        return (query, accounts);
+    }
+
+    private async Task FetchSearchResultsAsync(string text, IReadOnlyCollection<Guid> chosen)
+    {
+        var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
+        var expectedFolder = SelectedFolder;
+        Messages.Clear();
+        StatusText = "Searching…";
+        IsBusy = true;
+
+        _folderCts?.Cancel();
+        ReplaceCts(ref _folderCts, out var ct);
+
+        try
+        {
+            var (query, accounts) = ResolveSearchAccounts(text, chosen);
+            List<MailMessageSummary> found;
+            if (OnlineMode)
+            {
+                // No cache: read every folder of the chosen accounts and match the rows, as contact mail does.
+                var matcher = new MessageSearchMatcher(query, SearchFolderNameFor, _ => string.Empty);
+                found = [];
+                foreach (var account in Accounts.Where(a => accounts.Contains(a.Id)))
+                {
+                    if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+                    foreach (var folder in folders)
+                    {
+                        if (folder.ExcludeFromAllMail || string.IsNullOrEmpty(folder.FullName)) continue;
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            var msgs = _syncDays > 0
+                                ? await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+                                : await _imap.GetMessageSummariesAsync(account.Id, folder.FullName, 50000, ct);
+                            found.AddRange(msgs.Where(matcher.Matches));
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex)
+                        {
+                            LogService.Log($"Search results online {account.AccountLabel}/{folder.DisplayName}", ex);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Off the UI thread: the store indexes pending work first, and its async calls run synchronously.
+                found = await Task.Run(() => _localStore.SearchSummariesAsync(query, accounts, ct), ct);
+            }
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            await ResolveFlagNamesAsync(found);
+            SetMessages(found);
+            var n = Messages.Count;
+            StatusText = n == 0 ? "No messages found." : $"{n} {(n == 1 ? "message" : "messages")} found.";
+        }
+        catch (OperationCanceledException)
+        {
+            if (loadVersion == _folderLoadVersion)
+                StatusText = "Search cancelled.";
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Search results failed", ex);
+            StatusText = "Could not search.";
+        }
+        finally
+        {
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
+        }
+    }
+
+    /// <summary>Whether a message arriving while Search Results is open belongs in it, judged from its row.</summary>
+    private bool BelongsInSearchResults(MailMessageSummary msg, string text, IReadOnlyCollection<Guid> chosen)
+    {
+        var (query, accounts) = ResolveSearchAccounts(text, chosen);
+        if (!accounts.Contains(msg.AccountId)) return false;
+        return new MessageSearchMatcher(query, SearchFolderNameFor, _ => string.Empty).Matches(msg);
     }
 }

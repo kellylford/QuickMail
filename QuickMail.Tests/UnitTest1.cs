@@ -422,6 +422,19 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void AdvancedSearchWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var vm = new AdvancedSearchViewModel([(Guid.NewGuid(), "Work"), (Guid.NewGuid(), "Home")], "Inbox");
+        var window = new AdvancedSearchWindow(vm);
+        Assert.NotNull(window.FindName("WordsBox") as System.Windows.Controls.TextBox);
+        Assert.NotNull(window.FindName("FromDateField") as DateTimeField);
+        Assert.NotNull(window.FindName("AccountsList") as System.Windows.Controls.ItemsControl);
+        Assert.NotNull(window.FindName("CurrentFolderRadio") as System.Windows.Controls.RadioButton);
+        window.Close();
+    }
+
+    [StaFact]
     public void GoToDateWindow_XamlParsesWithoutException()
     {
         EnsureApplication();

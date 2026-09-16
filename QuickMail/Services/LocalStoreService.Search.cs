@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using QuickMail.Helpers;
+using QuickMail.Models;
 
 namespace QuickMail.Services;
 
@@ -391,4 +392,121 @@ public partial class LocalStoreService
         }
         return hits;
     }
+    /// <summary>
+    /// Every cached message in <paramref name="accountIds"/> matching <paramref name="query"/>, newest first —
+    /// what a Search Results folder shows (#717). The same rules as the search box: a message has the words
+    /// if the index finds them or its row contains them, and loses them if either finds an excluded word.
+    /// Conditions are SQL. <c>account:</c> is not applied here: account names live with the caller, which
+    /// narrows <paramref name="accountIds"/> instead. Works, on the rows alone, when the index is unavailable.
+    /// </summary>
+    public async Task<List<MailMessageSummary>> SearchSummariesAsync(
+        MessageSearchQuery query, IReadOnlyCollection<Guid> accountIds, CancellationToken ct = default)
+    {
+        if (accountIds.Count == 0) return [];
+        if (_searchIndexAvailable)
+            await IndexPendingSearchAsync(SearchFlushBeforeQuery, ct);
+
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        var sql = new StringBuilder(
+            "SELECT s.unique_id, s.account_id, s.folder_name, s.from_disp, s.to_addr, s.subject, s.date_ticks, s.is_read, " +
+            "s.preview_text, s.is_replied, s.is_forwarded, s.has_attachments, s.is_mailing_list, s.flag_id, s.internet_message_id " +
+            "FROM MessageSummary s WHERE s.account_id IN (SELECT value FROM json_each($accounts))");
+        cmd.Parameters.AddWithValue("$accounts", JsonSerializer.Serialize(accountIds.Select(a => a.ToString())));
+
+        if (query.HasAttachment.HasValue) sql.Append(query.HasAttachment.Value ? " AND s.has_attachments = 1" : " AND s.has_attachments = 0");
+        if (query.IsRead.HasValue)        sql.Append(query.IsRead.Value ? " AND s.is_read = 1" : " AND s.is_read = 0");
+        if (query.IsFlagged.HasValue)     sql.Append(query.IsFlagged.Value ? " AND s.flag_id IS NOT NULL" : " AND s.flag_id IS NULL");
+        if (query.After.HasValue)
+        {
+            sql.Append(" AND s.date_ticks >= $after");
+            cmd.Parameters.AddWithValue("$after", new DateTimeOffset(query.After.Value).UtcTicks);
+        }
+        if (query.Before.HasValue)
+        {
+            sql.Append(" AND s.date_ticks < $before");
+            cmd.Parameters.AddWithValue("$before", new DateTimeOffset(query.Before.Value).UtcTicks);
+        }
+        if (query.Folders.Count > 0)
+        {
+            var any = new List<string>();
+            for (int i = 0; i < query.Folders.Count; i++)
+            {
+                any.Add($"s.folder_name LIKE $folder{i} ESCAPE '!' OR EXISTS (SELECT 1 FROM Folder f WHERE f.account_id = s.account_id " +
+                        $"AND f.full_name = s.folder_name AND f.display_name LIKE $folder{i} ESCAPE '!')");
+                cmd.Parameters.AddWithValue($"$folder{i}", LikeContains(query.Folders[i]));
+            }
+            sql.Append(" AND (").Append(string.Join(" OR ", any)).Append(')');
+        }
+
+        const string keyInIndex =
+            "(s.account_id, s.folder_name, s.unique_id) IN (SELECT k.account_id, k.folder_name, k.unique_id " +
+            "FROM MessageSearch m JOIN SearchKey k ON k.id = m.rowid WHERE MessageSearch MATCH {0})";
+        var likeIndex = 0;
+
+        var wanted = query.Terms.Where(t => !t.Negated).ToList();
+        if (wanted.Count > 0)
+        {
+            var either = new List<string>();
+            var match = _searchIndexAvailable ? SearchMatchExpression.AllOf(wanted) : null;
+            if (match != null)
+            {
+                either.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, keyInIndex, "$wanted"));
+                cmd.Parameters.AddWithValue("$wanted", match);
+            }
+            var rowTerms = wanted.Select(t => RowLike(cmd, t, ref likeIndex)).ToList();
+            if (rowTerms.All(t => t != null))
+                either.Add("(" + string.Join(" AND ", rowTerms) + ")");
+            // A Cc or attachment word with no index to ask: nothing can have it.
+            if (either.Count == 0) return [];
+            sql.Append(" AND (").Append(string.Join(" OR ", either)).Append(')');
+        }
+
+        var unwanted = query.Terms.Where(t => t.Negated).ToList();
+        if (unwanted.Count > 0)
+        {
+            var match = _searchIndexAvailable ? SearchMatchExpression.AnyOf(unwanted) : null;
+            if (match != null)
+            {
+                sql.Append(" AND NOT ").Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, keyInIndex, "$unwanted"));
+                cmd.Parameters.AddWithValue("$unwanted", match);
+            }
+            foreach (var t in unwanted)
+            {
+                var like = RowLike(cmd, t, ref likeIndex);
+                if (like != null) sql.Append(" AND NOT ").Append(like);
+            }
+        }
+
+        sql.Append(" ORDER BY s.date_ticks DESC;");
+        cmd.CommandText = sql.ToString();
+        return await ReadSummariesAsync(cmd);
+    }
+
+    /// <summary>The row columns a field's word can be found in without the index.</summary>
+    private static string[] RowColumnsFor(SearchField field) => field switch
+    {
+        SearchField.Any     => ["s.from_disp", "s.to_addr", "s.subject", "s.preview_text"],
+        SearchField.From    => ["s.from_disp"],
+        SearchField.To      => ["s.to_addr"],
+        SearchField.Subject => ["s.subject"],
+        SearchField.Body    => ["s.preview_text"],
+        _                   => [],
+    };
+
+    /// <summary>"The row contains this word" as SQL, or null when the row has no column that could.</summary>
+    private static string? RowLike(SqliteCommand cmd, SearchTerm term, ref int index)
+    {
+        var columns = RowColumnsFor(term.Field);
+        if (columns.Length == 0) return null;
+        var name = $"$like{index++}";
+        cmd.Parameters.AddWithValue(name, LikeContains(term.Text));
+        return "(" + string.Join(" OR ", columns.Select(c => $"{c} LIKE {name} ESCAPE '!'")) + ")";
+    }
+
+    /// <summary>A LIKE pattern for "contains <paramref name="text"/>", with <c>!</c> as the escape character.</summary>
+    private static string LikeContains(string text)
+        => "%" + text.Replace("!", "!!", StringComparison.Ordinal)
+                     .Replace("%", "!%", StringComparison.Ordinal)
+                     .Replace("_", "!_", StringComparison.Ordinal) + "%";
 }

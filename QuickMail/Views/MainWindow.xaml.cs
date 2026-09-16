@@ -1226,6 +1226,22 @@ public partial class MainWindow : Window
             defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None,
             isAvailable: () => _vm.IsContactMailView && !SearchBox.IsKeyboardFocusWithin));
 
+        // Advanced Search (#717). Ctrl+/ is free everywhere: / alone opens the search box from the lists,
+        // and those handlers only take it with no modifier.
+        _registry.Register(new CommandDefinition(
+            id: "mail.advancedSearch", category: "Mail", title: "Advanced Search…",
+            execute: OpenAdvancedSearch,
+            defaultKey: Key.Oem2, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => !_vm.IsCalendarView));
+
+        // Close Search Results, the way Escape closes contact mail results above; the two share Escape and
+        // the registry picks whichever is available.
+        _registry.Register(new CommandDefinition(
+            id: "view.closeSearchResults", category: "View", title: "Close Search Results",
+            execute: () => CloseSearchResultsAsync().LogFaults("close search results"),
+            defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => _vm.IsSearchResultsView && !SearchBox.IsKeyboardFocusWithin));
+
         // ── Tab & Window Management commands ─────────────────────────────────────
         _registry.Register(new CommandDefinition(
             id: "tabs.next", category: "View", title: "Next Tab",
@@ -6564,6 +6580,72 @@ public partial class MainWindow : Window
 
     private void CloseContactMailResults_Click(object sender, RoutedEventArgs e)
         => CloseContactMailResultsAsync().LogFaults("close contact mail results");
+
+    // ── Advanced Search (#717) ────────────────────────────────────────────────
+
+    private AdvancedSearchWindow? _advancedSearchWindow;
+
+    private void MenuAdvancedSearch_Click(object sender, RoutedEventArgs e) => OpenAdvancedSearch();
+    private void ChangeSearch_Click(object sender, RoutedEventArgs e) => OpenAdvancedSearch();
+    private void CloseSearchResults_Click(object sender, RoutedEventArgs e)
+        => CloseSearchResultsAsync().LogFaults("close search results");
+
+    /// <summary>
+    /// Opens Advanced Search, filled in with the search already on screen — the Search Results folder's, or
+    /// the search box's — so it can be changed rather than retyped. One window at a time: a second Ctrl+/
+    /// brings the open one forward.
+    /// </summary>
+    private void OpenAdvancedSearch()
+    {
+        if (_vm.IsCalendarView) return;
+        if (_advancedSearchWindow != null)
+        {
+            _advancedSearchWindow.Activate();
+            return;
+        }
+
+        var returnFocus = Keyboard.FocusedElement as IInputElement;
+        var previous = _vm.CurrentSearchResultsRequest
+            ?? (_vm.IsSearchActive && !string.IsNullOrWhiteSpace(_vm.SearchText)
+                ? new AdvancedSearchRequest(_vm.SearchText, InCurrentFolder: true, [])
+                : null);
+        var folder = _vm.SelectedFolder is { IsHeader: false } f && !_vm.IsSearchResultsView ? f.DisplayName : null;
+        var accounts = _vm.Accounts.Where(a => !a.IsShared).Select(a => (a.Id, a.AccountLabel));
+        var vm = new AdvancedSearchViewModel(accounts, folder, previous);
+
+        var window = new AdvancedSearchWindow(vm) { Owner = this };
+        window.SearchRunner = _vm.RunAdvancedSearchAsync;
+        window.Closed += (_, _) =>
+        {
+            _advancedSearchWindow = null;
+            if (window.ClosedWithResults)
+            {
+                ReturnFocusToMessageList();
+                var n = _vm.Messages.Count;
+                AccessibilityHelper.Announce(this, $"{n} {(n == 1 ? "message" : "messages")} found.",
+                    interrupt: true, category: AnnouncementCategory.Result);
+            }
+            else
+            {
+                returnFocus?.Focus();
+            }
+        };
+        _advancedSearchWindow = window;
+        window.Show();
+    }
+
+    /// <summary>Leaves Search Results for the folder the search started from, announcing where focus landed.</summary>
+    private async Task CloseSearchResultsAsync()
+    {
+        if (!_vm.IsSearchResultsView) return;
+        await _vm.CloseSearchResultsCommand.ExecuteAsync(null);
+        ReturnFocusToMessageList();
+        var n     = _vm.Messages.Count;
+        var where = _vm.SelectedFolder?.DisplayName ?? "Mail";
+        AccessibilityHelper.Announce(this,
+            $"Search closed. {where}, {n} {(n == 1 ? "message" : "messages")}.",
+            interrupt: true, category: AnnouncementCategory.Result);
+    }
 
     /// <summary>
     /// Leaves the contact-mail results view: back to the folder the search started from, focus

@@ -170,6 +170,11 @@ public class SelectorItemAccessibilityTests
         Assert.Contains("connect-failed", evt.ToString());
         Assert.Contains("account=Kelly", evt.ToString());
         Assert.Contains("SocketError=TimedOut", evt.ToString());
+
+        // Advanced Search (#717): the Read state and Flag drop-downs, and the account check boxes.
+        Assert.Equal("Unread", AdvancedSearchViewModel.ReadChoices[1].ToString());
+        Assert.Equal("Flagged", AdvancedSearchViewModel.FlagChoices[1].ToString());
+        Assert.Equal("Work", new AdvancedSearchAccount(Guid.NewGuid(), "Work", isChosen: true).ToString());
     }
 
     // End-to-end against the REAL UnifiedRulesWindow, the only rules window since #550. Asserts that
@@ -389,6 +394,8 @@ public class SelectorItemAccessibilityTests
             new GroupModel { Name = "Alpha" }.ToString(),
             new ContactModel { DisplayName = "Alpha", EmailAddress = "alpha@example.com" }.ToString(),
             new ProviderCatalog().Other.ToString(),
+            AdvancedSearchViewModel.ReadChoices[0].ToString(),
+            new AdvancedSearchAccount(Guid.NewGuid(), "Alpha", isChosen: true).ToString(),
             new ConnectionAccountRow
             {
                 Id = Guid.NewGuid(), Label = "Alpha", Host = "h",

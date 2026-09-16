@@ -801,6 +801,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Address-book "mail from / to this contact" results (#370).
         if (TryGetContactMailFromSentinel(folder.FullName, out _, out _)) return true;
 
+        // Advanced Search results across accounts (#717).
+        if (TryGetSearchResultsFromSentinel(folder.FullName, out _, out _)) return true;
+
         if (folder.AccountId != Guid.Empty) return false;
 
         return string.Equals(folder.FullName, AllMailFolder.FullName, StringComparison.Ordinal) ||
@@ -1119,6 +1122,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
     [NotifyPropertyChangedFor(nameof(IsCalendarView))]
     [NotifyPropertyChangedFor(nameof(IsContactMailView))]
+    [NotifyPropertyChangedFor(nameof(IsSearchResultsView))]
+    [NotifyPropertyChangedFor(nameof(SearchResultsQuery))]
     private MailFolderModel? _selectedFolder;
 
     // Selecting the calendar folder (or leaving it) swaps the View Mode menu between the mail
@@ -3840,6 +3845,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             relevant = incoming.Where(m =>
                 MatchesContactAddress(m, contactAddress, contactDirection) && !IsSharedAccountId(m.AccountId));
         }
+        else if (TryGetSearchResultsFromSentinel(selected.FullName, out var searchQuery, out var searchAccounts))
+        {
+            // Search Results (#717): an arrival joins if its row matches. A word only in its body is not
+            // known yet — the index has not read it — so such a message joins on the next refresh.
+            relevant = incoming.Where(m => BelongsInSearchResults(m, searchQuery, searchAccounts));
+        }
         else if (!selected.IsHeader && selected.AccountId != Guid.Empty)
         {
             // Regular folder — only accept messages for this specific folder.
@@ -6330,6 +6341,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
         if (TryGetContactMailFromSentinel(folder.FullName, out var contactAddress, out var contactDirection))
             return FetchContactMailAsync(contactAddress, contactDirection);
+        if (TryGetSearchResultsFromSentinel(folder.FullName, out var searchQuery, out var searchAccounts))
+            return FetchSearchResultsAsync(searchQuery, searchAccounts);
 
         // Saved-view sentinels — re-fetch without resetting mode/filter/sort
         if (TryGetViewIdFromSentinel(folder.FullName, out var viewId) ||

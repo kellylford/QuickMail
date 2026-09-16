@@ -1,0 +1,173 @@
+<Window x:Class="QuickMail.Views.AdvancedSearchWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:QuickMail.Controls"
+        xmlns:helpers="clr-namespace:QuickMail.Helpers"
+        xmlns:vm="clr-namespace:QuickMail.ViewModels"
+        Title="Advanced Search"
+        Width="560"
+        SizeToContent="Height"
+        MaxHeight="760"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
+
+    <!-- Advanced Search (#717, phase 2). Modeless: it has text fields and opens over the reading pane's
+         WebView2 (CLAUDE.md modal dialog rules), so Escape and Close are wired by hand. Access keys are
+         unique across the whole window: W F T C S B N A R L V U I E. -->
+    <DockPanel Margin="14">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="SearchButton"
+                    Content="Search"
+                    IsDefault="True"
+                    MinWidth="90"
+                    Click="Search_Click"/>
+            <Button x:Name="ClearButton"
+                    Content="Clear"
+                    MinWidth="90" Margin="8,0,0,0"
+                    Click="Clear_Click"/>
+            <Button x:Name="CloseButton"
+                    Content="Close"
+                    MinWidth="90" Margin="8,0,0,0"
+                    Click="Close_Click"/>
+        </StackPanel>
+
+        <TextBlock DockPanel.Dock="Bottom"
+                   x:Name="ProblemText"
+                   Text="{Binding Problem}"
+                   TextWrapping="Wrap"
+                   Margin="0,8,0,0"
+                   Foreground="{DynamicResource Theme.TextPrimary}"
+                   FontWeight="SemiBold"/>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+            <StackPanel>
+                <Grid x:Name="FieldsPanel">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Label Grid.Row="0" Grid.Column="0" Content="_Words anywhere:" Target="{Binding ElementName=WordsBox}" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="WordsBox" Margin="0,2"
+                             Text="{Binding Words, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Words anywhere"/>
+
+                    <Label Grid.Row="1" Grid.Column="0" Content="_From:" Target="{Binding ElementName=FromBox}" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="FromBox" Margin="0,2"
+                             Text="{Binding From, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="From"/>
+
+                    <Label Grid.Row="2" Grid.Column="0" Content="_To:" Target="{Binding ElementName=ToBox}" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="ToBox" Margin="0,2"
+                             Text="{Binding To, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="To"/>
+
+                    <Label Grid.Row="3" Grid.Column="0" Content="_Cc:" Target="{Binding ElementName=CcBox}" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="CcBox" Margin="0,2"
+                             Text="{Binding Cc, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Cc"/>
+
+                    <Label Grid.Row="4" Grid.Column="0" Content="_Subject:" Target="{Binding ElementName=SubjectBox}" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="4" Grid.Column="1" x:Name="SubjectBox" Margin="0,2"
+                             Text="{Binding Subject, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Subject"/>
+
+                    <Label Grid.Row="5" Grid.Column="0" Content="_Body:" Target="{Binding ElementName=BodyBox}" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="5" Grid.Column="1" x:Name="BodyBox" Margin="0,2"
+                             Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Body"/>
+
+                    <Label Grid.Row="6" Grid.Column="0" Content="Attachment _name:" Target="{Binding ElementName=AttachmentBox}" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="6" Grid.Column="1" x:Name="AttachmentBox" Margin="0,2"
+                             Text="{Binding Attachment, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Attachment name"/>
+
+                    <CheckBox Grid.Row="7" Grid.Column="1" Margin="0,6,0,4"
+                              Content="Has _attachments"
+                              IsChecked="{Binding HasAttachments}"/>
+
+                    <Label Grid.Row="8" Grid.Column="0" Content="_Read state:" Target="{Binding ElementName=ReadCombo}" VerticalAlignment="Center"/>
+                    <ComboBox Grid.Row="8" Grid.Column="1" x:Name="ReadCombo" Margin="0,2"
+                              ItemsSource="{x:Static vm:AdvancedSearchViewModel.ReadChoices}"
+                              SelectedItem="{Binding ReadState}"
+                              DisplayMemberPath="Label"
+                              AutomationProperties.Name="Read state"/>
+
+                    <Label Grid.Row="9" Grid.Column="0" Content="F_lag:" Target="{Binding ElementName=FlagCombo}" VerticalAlignment="Center"/>
+                    <ComboBox Grid.Row="9" Grid.Column="1" x:Name="FlagCombo" Margin="0,2"
+                              ItemsSource="{x:Static vm:AdvancedSearchViewModel.FlagChoices}"
+                              SelectedItem="{Binding FlagState}"
+                              DisplayMemberPath="Label"
+                              AutomationProperties.Name="Flag"/>
+
+                    <Label Grid.Row="10" Grid.Column="0" Content="Recei_ved from:" Target="{Binding ElementName=FromDateField}" VerticalAlignment="Center"/>
+                    <controls:DateTimeField Grid.Row="10" Grid.Column="1" x:Name="FromDateField" Margin="0,2"
+                                            Kind="Date" AllowEmpty="True"
+                                            Value="{Binding ReceivedFrom}"
+                                            AutomationProperties.Name="Received from"/>
+
+                    <Label Grid.Row="11" Grid.Column="0" Content="Received _up to:" Target="{Binding ElementName=ToDateField}" VerticalAlignment="Center"/>
+                    <controls:DateTimeField Grid.Row="11" Grid.Column="1" x:Name="ToDateField" Margin="0,2"
+                                            Kind="Date" AllowEmpty="True"
+                                            Value="{Binding ReceivedTo}"
+                                            AutomationProperties.Name="Received up to"/>
+                </Grid>
+
+                <GroupBox Header="Look in" Margin="0,12,0,0" Padding="8">
+                    <StackPanel>
+                        <StackPanel x:Name="LookInGroup"
+                                    KeyboardNavigation.TabNavigation="Once"
+                                    KeyboardNavigation.DirectionalNavigation="Cycle"
+                                    helpers:RadioGroupNavigation.SelectionFollowsFocus="True">
+                            <RadioButton x:Name="CurrentFolderRadio"
+                                         GroupName="AdvancedSearchLookIn"
+                                         IsChecked="{Binding SearchInCurrentFolder}"
+                                         IsEnabled="{Binding CanSearchCurrentFolder}">
+                                <AccessText Text="{Binding CurrentFolderChoiceLabel}"/>
+                            </RadioButton>
+                            <RadioButton x:Name="AccountsRadio"
+                                         GroupName="AdvancedSearchLookIn"
+                                         Margin="0,4,0,0"
+                                         Content="_Every folder of these accounts"
+                                         IsChecked="{Binding SearchInAccounts}"/>
+                        </StackPanel>
+
+                        <ItemsControl x:Name="AccountsList"
+                                      ItemsSource="{Binding Accounts}"
+                                      Margin="20,6,0,0"
+                                      Focusable="False"
+                                      IsEnabled="{Binding SearchInAccounts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:AdvancedSearchAccount}">
+                                    <CheckBox Content="{Binding Name}"
+                                              IsChecked="{Binding IsChosen}"
+                                              AutomationProperties.Name="{Binding Name}"
+                                              Margin="0,2"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </GroupBox>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
