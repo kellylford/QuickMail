@@ -706,6 +706,16 @@ Under **Look in**, choose where to search:
 
 Press **Enter** to search. When something is found the form closes, focus moves to the first result, and the number found is announced. When nothing is found the form stays open with focus back in **Words anywhere**, and the folder you were in stays as it was, so you can change the search and try again. While a search is running, **Escape** waits for it to finish. **Clear** empties the fields but keeps your choice of where to look, and **Escape** closes the form. **F6** moves between the fields, **Look in**, the list of accounts and the buttons.
 
+#### Searching the server too
+
+Search looks at the mail on this computer. To also find mail that isn't here — older than the **Sync range**, or whose text was never downloaded — choose **Search the Server** on the Search results bar, or **Search the Server Too** in the command palette. QuickMail asks each account's mail server for the same search and adds what it finds that the results don't already have; you hear how many more were found, or that there were none. An account the server couldn't be reached for is named, and the others still count.
+
+What each server can search for differs. Gmail and Microsoft 365 search the whole mailbox at once. Other mail servers are asked one folder at a time, which takes longer on a large account, and some search the text of a message more thoroughly than others. Messages found this way are shown but not kept: they stay in the results until you refresh or close them.
+
+#### Saving a search
+
+While a **Search results** folder is open, **View → Views → Save View…** — or **Save Search as View…** in the command palette — saves it as a view, with a name and, if you like, a keyboard shortcut. Choosing the view later runs the search again, so it always shows what matches now.
+
 The **Search results** folder works like any other folder: every view, sort, filter and message command applies, and the search box searches within the results. Above the list, a bar shows how many were found and for what, with **Change Search** — or **Ctrl+/** — to reopen the form with this search filled in, and **Close** — or **Escape** — to go back to the folder you started from. New mail that arrives while the results are open joins them if its sender, recipients, subject or preview match; a message that matches only in its text appears the next time the results are refreshed with **F5**.
 
 The first time you start a version of QuickMail with this search, it builds its index of the mail it already has, in the background, newest mail first. Until that finishes, older messages are found by their sender, recipients, subject and preview only. When QuickMail runs in online mode (`--online`) there is no copy on this computer, so search matches the sender, recipients, subject and preview of the messages in the list, and `cc:` and `attachment:` find nothing.
@@ -1625,7 +1635,7 @@ By default QuickMail keeps the full text of a message only once you have opened 
 
 With a window set, the sync at launch and each background check (**Check for new mail every**) finish by downloading the text of each Inbox message in that window that QuickMail does not have yet, newest first, a few hundred at a time; new mail arriving in the Inbox gets its text straight away. When a pass completes you hear "Downloaded 120 messages for offline reading." once. A few things to know:
 
-- Inbox only. Other folders keep working the way they always have: a message is kept once you open it.
+- Inbox only, unless you also check **Include other folders, not just the Inbox**. Then Sent, Archive and your other folders are downloaded too — everything except Trash, Junk and Drafts — Inbox first. Search finds words in the text of those messages only once they are downloaded, so this is what makes searching your sent and archived mail work without opening each message. It can download a great deal more, so it is off by default. Without it, other folders keep working the way they always have: a message is kept once you open it.
 - Never wider than the **Sync range** above it, since QuickMail cannot keep what it has not synced.
 - Attachments are not included. Opening one still needs a connection.
 - POP3 accounts already keep every message whole, so the setting does not apply to them.

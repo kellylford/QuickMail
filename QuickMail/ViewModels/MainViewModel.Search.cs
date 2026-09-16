@@ -391,7 +391,8 @@ public partial class MainViewModel
 
         var targets = Accounts
             .Where(a => accountIds.Contains(a.Id) && a.BackendKind != BackendKind.Pop3Smtp)
-            .Where(a => OnlineMode || _connectedAccountIds.Contains(a.Id))
+            // An account known to be unreachable is not asked; any other is, and says so if it fails.
+            .Where(a => _connectivity?.IsAccountOnline(a.Id) ?? true)
             .ToList();
         if (targets.Count == 0) return new ServerSearchOutcome(0, failed, 0);
 

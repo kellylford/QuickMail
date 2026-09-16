@@ -34,6 +34,8 @@
 | Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
 | Ctrl+Shift+F | `view.searchFolders` | Search Folders… |
 | Ctrl+Shift+S | `view.search` | Search Messages… |
+| *(unassigned)* | `mail.searchServer` | Search the Server Too — in Search Results, asks each account's server for the same search and adds what it finds (#717) |
+| *(unassigned)* | `mail.saveSearch` | Save Search as View… — in Search Results, opens the view manager to save the search (#717) |
 | Ctrl+/ | `mail.advancedSearch` | Advanced Search… (#717). `/` alone still opens the search box from the lists; those handlers take it only with no modifier. Not relayed from inside the reading pane, like Ctrl+Shift+S |
 | Ctrl+Shift+G | `contacts.grabAddresses` | Grab Addresses from Message |
 | Ctrl+Shift+B | `contacts.openAddressBook` | Address Book |

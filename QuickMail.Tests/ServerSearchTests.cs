@@ -89,15 +89,20 @@ public class SearchServerTooTests
     private static readonly AccountModel Work = new() { AccountName = "Work", Username = "k@work.example" };
     private static readonly AccountModel Home = new() { AccountName = "Home", Username = "k@home.example" };
 
-    private static async Task<(MainViewModel Vm, SearchingMail Mail)> OpenResultsAsync(string query, params MailMessageSummary[] cached)
+    /// <summary>Opens Search Results for <paramref name="query"/> over one cached message that matches it, so the folder
+    /// opens (a search that finds nothing goes back where it started).</summary>
+    private static async Task<(MainViewModel Vm, SearchingMail Mail)> OpenResultsAsync(string query)
     {
+        var cached = new[] { new MailMessageSummary
+        {
+            MessageId = "cached", AccountId = Work.Id, FolderName = "INBOX", From = "Sam <sam@example.com>",
+            To = "kelly@example.com", Subject = "Budget (cached)", Date = DateTimeOffset.Now,
+        } };
         var mail = new SearchingMail();
         var vm = new MainViewModel(
             mail, new FixedAccounts([Work, Home]), new StubCredentialService(),
             new RowsStore(cached), new StubOAuthService(), new StubSyncService(), new StubConfigService(),
-            new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService(),
-            // Online mode counts every account as reachable, which is all these tests need from it.
-            onlineMode: true)
+            new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService())
         {
             SearchIndexDelay = TimeSpan.Zero,
         };
@@ -119,7 +124,7 @@ public class SearchServerTooTests
 
         Assert.Equal(2, outcome.Added);
         Assert.Empty(outcome.FailedAccounts);
-        Assert.Equal(["old-1", "old-2"], vm.Messages.Select(m => m.MessageId).Order());
+        Assert.Equal(["cached", "old-1", "old-2"], vm.Messages.Select(m => m.MessageId).Order());
         Assert.All(mail.Asked, a => Assert.Equal("budget", a.Query));
     }
 
@@ -139,7 +144,9 @@ public class SearchServerTooTests
 
         Assert.Equal(1, first.Added);
         Assert.Equal(0, second.Added);
-        Assert.Single(vm.Messages);
+        // One of the two copies of <a@x>, and not the read message.
+        Assert.Equal(2, vm.Messages.Count);
+        Assert.DoesNotContain(vm.Messages, m => m.MessageId == "read");
     }
 
     [Fact]
@@ -163,7 +170,7 @@ public class SearchServerTooTests
         var vm = new MainViewModel(
             mail, new FixedAccounts([Work]), new StubCredentialService(), new RowsStore([]),
             new StubOAuthService(), new StubSyncService(), new StubConfigService(), new StubCommandRegistry(),
-            new StubViewService(), new StubRuleService(), new StubSmtpService(), onlineMode: true);
+            new StubViewService(), new StubRuleService(), new StubSmtpService());
         vm.LoadAccountList();
         await vm.InitialLoadAsync();
 
@@ -188,7 +195,7 @@ public class SavedSearchTests
         var key = vm.SelectedView!.VirtualFolderKey;
         Assert.NotNull(key);
         Assert.Empty(vm.SelectedView.Folders);
-        Assert.True(MainViewModel.TryGetSearchResultsFromSentinel(" " + key, out var query, out var ids));
+        Assert.True(MainViewModel.TryGetSearchResultsFromSentinel("\u0000" + key, out var query, out var ids));
         Assert.Equal("from:sam budget", query);
         Assert.Equal(accounts, ids);
     }

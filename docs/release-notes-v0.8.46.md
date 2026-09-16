@@ -80,6 +80,18 @@ When a search finds nothing, the form stays open with focus back in the first fi
 
 ---
 
+### Search the server, save a search, and download more folders for offline reading
+
+Three additions that take search past the mail already on this computer:
+
+- **Search the Server** on the Search results bar asks each account's mail server for the same search, and adds what it finds that the results don't already have — mail older than the sync range, or whose text was never downloaded. Gmail and Microsoft 365 search the whole mailbox at once; other servers are asked folder by folder. You hear how many more were found, and which accounts couldn't be asked. Messages found this way are shown but not kept.
+- **Saving a search.** With Search results open, **Save View…** (or **Save Search as View…** in the command palette) keeps the search as a view with its own name and optional shortcut. Choosing it runs the search again.
+- **Include other folders, not just the Inbox**, under **Download messages for offline reading**, also downloads the text of Sent, Archive and your other folders — everything except Trash, Junk and Drafts. That is what lets search find words in your sent and archived mail without opening each message first. It is off by default, since it can download a great deal more.
+
+[#717](https://github.com/kellylford/QuickMail/issues/717)
+
+---
+
 ## Fixed
 
 ### Client-side rules no longer miss mail that arrives while the Inbox is open
