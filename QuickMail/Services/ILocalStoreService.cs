@@ -337,11 +337,12 @@ public interface ILocalStoreService
     Task<int> IndexPendingSearchAsync(int maxRows, System.Threading.CancellationToken ct = default);
 
     /// <summary>
-    /// Cached messages matching an FTS5 expression, limited to the given folders when not null. Throws
-    /// for an expression FTS5 rejects.
+    /// Cached messages matching an FTS5 expression, limited to the given folders when not null. Indexes one
+    /// batch of pending work first unless told not to. Throws for an expression FTS5 rejects.
     /// </summary>
     Task<List<SearchHit>> FindMessagesAsync(
         string match,
         IReadOnlyCollection<(Guid AccountId, string FolderName)>? folders,
-        System.Threading.CancellationToken ct = default);
+        System.Threading.CancellationToken ct = default,
+        bool indexPendingFirst = true);
 }

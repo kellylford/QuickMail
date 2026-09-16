@@ -693,7 +693,7 @@ Anything else with a colon in it — `Re:`, a time such as `10:30`, a web addres
 
 Everything combines: `from:sam budget -draft is:unread after:2026-01-01` finds unread messages from Sam since the start of the year that mention the budget and don't mention a draft.
 
-The first time you start a version of QuickMail with this search, it builds its index of the mail it already has, in the background, newest mail first. Until that finishes, older messages are found by their sender, recipients, subject and preview only. When QuickMail runs in online mode (`--online`) there is no copy on this computer, so search matches the sender, recipients, subject and preview of the messages in the list.
+The first time you start a version of QuickMail with this search, it builds its index of the mail it already has, in the background, newest mail first. Until that finishes, older messages are found by their sender, recipients, subject and preview only. When QuickMail runs in online mode (`--online`) there is no copy on this computer, so search matches the sender, recipients, subject and preview of the messages in the list, and `cc:` and `attachment:` find nothing.
 
 ### Searching Folders
 

@@ -665,6 +665,7 @@ public partial class LocalStoreService : ILocalStoreService
         await using var tx   = await conn.BeginTransactionAsync();
         await using var cmd  = conn.CreateCommand();
         cmd.CommandText =
+            SearchIndexAccountPurgeSql +
             "DELETE FROM MessageDetail     WHERE account_id = $aid;" +
             "DELETE FROM MessageSummary    WHERE account_id = $aid;" +
             "DELETE FROM CalendarEvent     WHERE account_id = $aid;" +
@@ -700,6 +701,7 @@ public partial class LocalStoreService : ILocalStoreService
         {
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
+                SearchIndexAccountPurgeSql +
                 "DELETE FROM MessageDetail  WHERE account_id = $aid;" +
                 "DELETE FROM MessageSummary WHERE account_id = $aid;" +
                 "DELETE FROM DeltaToken     WHERE account_id = $aid;" +

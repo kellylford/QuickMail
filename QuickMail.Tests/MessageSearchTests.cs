@@ -375,6 +375,34 @@ public class SearchIndexStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task RemovingAnAccountEmptiesItsIndex_AndLeavesOthers()
+    {
+        var other = Guid.NewGuid();
+        await _store.UpsertSummariesAsync([Summary("1"), new MailMessageSummary
+        {
+            MessageId = "2", AccountId = other, FolderName = "INBOX", Subject = "budget", Date = DateTimeOffset.UtcNow,
+        }]);
+        await Body("1", plain: "budget");
+        Assert.Equal(2, (await Find("budget")).Count);
+
+        await _store.DeleteAccountDataAsync(_account);
+
+        Assert.Equal(["INBOX/2"], await Find("budget"));
+    }
+
+    [Fact]
+    public async Task AMessageWaitingToBeReindexedIsNotMatchedOnItsOldText()
+    {
+        await _store.UpsertSummariesAsync([Summary("1")]);
+        await Body("1", plain: "old words");
+        Assert.Equal(["INBOX/1"], await Find("old"));
+
+        await Body("1", plain: "new words");
+        var match = SearchMatchExpression.AllOf(MessageSearchQuery.Parse("old").Terms)!;
+        Assert.Empty(await _store.FindMessagesAsync(match, null, TestContext.Current.CancellationToken, indexPendingFirst: false));
+    }
+
+    [Fact]
     public async Task TheScopeLimitsToTheGivenFolders()
     {
         await _store.UpsertSummariesAsync([Summary("1"), Summary("2", folder: "Archive")]);
