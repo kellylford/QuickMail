@@ -460,7 +460,7 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"MailSyncPollMinutes = {(config.MailSyncPollMinutes <= 0 ? 0 : Math.Clamp(config.MailSyncPollMinutes, 1, 120))}");
         sb.AppendLine($"OfflineBodyDays = {(config.OfflineBodyDays < 0 ? ConfigModel.OfflineBodyDaysAll : config.OfflineBodyDays)}");
-        sb.AppendLine("# Days of recent Inbox mail whose full text is downloaded for reading offline.");
+        sb.AppendLine("# Days of Inbox mail whose full text is downloaded for reading offline.");
         sb.AppendLine("# 0 (default) is off; 7, 30, 90, 180 or 365 keep that many days; -1 keeps all.");
         sb.AppendLine("# Never wider than SyncDays.");
         sb.AppendLine("# Attachments are not included.");

@@ -349,6 +349,19 @@ public class SyncServiceOfflineBodiesTests : IDisposable
     }
 
     [Fact]
+    public async Task AllMailTakesAnArrivalOfAnyAge()
+    {
+        var (sync, mail, _) = Build(offlineBodyDays: ConfigModel.OfflineBodyDaysAll, syncDays: 0);
+        mail.Arrivals.Add(Summary("ancient", "INBOX", 3650));
+        await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (mail.Prefetched.Count == 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(25);
+        Assert.Equal(["ancient"], mail.Prefetched);
+    }
+
+    [Fact]
     public async Task TheSweepPathDoesNotHook_ThePassCoversIt()
     {
         // SyncFolderFullAsync (the periodic sweep) and the startup sync run the pass themselves;

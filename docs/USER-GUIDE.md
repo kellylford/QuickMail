@@ -1553,7 +1553,7 @@ QuickMail keeps a copy of your recent mail on this computer, and when the connec
 
 ### What works offline
 
-- Reading any message you have opened before, or that QuickMail fetched ahead of time (it keeps the newest messages of each folder you open, and the ones around any message you read). To keep more, see [Reading recent messages without a connection](#reading-recent-messages-without-a-connection).
+- Reading any message you have opened before, or that QuickMail fetched ahead of time (it keeps the newest messages of each folder you open, and the ones around any message you read). To keep more, see [Reading messages without a connection](#reading-messages-without-a-connection).
 - The message list of every folder you have opened, with its unread state and flags.
 - Searching and filtering what is on this computer, the calendar, and the address book.
 - Composing. Saving a draft keeps it on this computer, and Send queues the message; both go to your account the moment the connection returns. See [Working Offline: Drafts and the Outbox](#working-offline-drafts-and-the-outbox).
@@ -1566,7 +1566,7 @@ When you open a folder offline the status bar reads "Offline — showing 12 cach
 - Attachments: "Attachments are not available offline."
 - New mail, folder changes, and everything else a server has to do. Marking read, flagging, moving and deleting are not queued: offline they fail with a message, and the next sync after the connection returns puts the message back the way the server has it. Only composing waits for you.
 
-### Reading recent messages without a connection
+### Reading messages without a connection
 
 By default QuickMail keeps the full text of a message only once you have opened it, or when it fetched a few ahead of time. To have more ready before the connection drops, choose a window under **Settings → General → Sync → Download messages for offline reading**: **Off** (the default); the last **7**, **30** or **90** days; the last **6 months** or **year**; or **All mail**.
 
@@ -1577,7 +1577,7 @@ With a window set, the sync at launch and each background check (**Check for new
 - Attachments are not included. Opening one still needs a connection.
 - POP3 accounts already keep every message whole, so the setting does not apply to them.
 - The text lives in `mail.db` in QuickMail's data folder, which grows accordingly — roughly tens of megabytes for a month of a busy Inbox, so a year or all mail can run to hundreds of megabytes or more.
-- A large window fills in gradually. Each pass downloads a few hundred messages, newest first, so a big Inbox set to a year or all mail takes many background checks to finish.
+- A large window fills in gradually. Each pass downloads up to 500 messages per Inbox, newest first, so a big Inbox set to a year or all mail takes many background checks to finish.
 
 ### Getting back online
 

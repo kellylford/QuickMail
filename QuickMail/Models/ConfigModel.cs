@@ -134,7 +134,7 @@ public class ConfigModel
     public int MailSyncPollMinutes { get; set; } = 5;
 
     /// <summary>
-    /// Days of recent Inbox mail whose full bodies sync downloads for offline reading (#637).
+    /// Days of Inbox mail whose full bodies sync downloads for offline reading (#637).
     /// 0 (the default) is off: bodies are cached only as messages are opened or prefetched.
     /// Offered as 0, 7, 30, 90, 180, 365 or <see cref="OfflineBodyDaysAll"/>; never wider than
     /// <see cref="SyncDays"/> when that is set.

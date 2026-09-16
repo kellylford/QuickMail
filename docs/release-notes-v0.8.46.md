@@ -40,9 +40,9 @@ An earlier version of QuickMail reading a rule with more than one action does th
 
 ### Download a year, or all of your Inbox, for offline reading
 
-**Settings → General → Sync → Download messages for offline reading** used to stop at the last 90 days. It now also offers the last **6 months**, the last **year**, and **All mail** — the same choices as the **Sync range** above it.
+**Settings → General → Sync → Download messages for offline reading** used to stop at the last 90 days. It now also offers the last **6 months**, the last **year**, and **All mail**, matching the longer choices of the **Sync range** above it.
 
-As before, it only downloads the text of Inbox messages, and never reaches further back than the Sync range, so **All mail** under a one-year Sync range keeps a year. A large Inbox fills in gradually: each pass downloads a few hundred messages, newest first, so a year or all mail can take many background checks to finish, and the data file grows to match — hundreds of megabytes or more for a busy Inbox.
+As before, it only downloads the text of Inbox messages, and never reaches further back than the Sync range, so **All mail** under a one-year Sync range keeps a year. A large Inbox fills in gradually: each pass downloads up to 500 messages per Inbox, newest first, so a year or all mail can take many background checks to finish, and the data file grows to match — hundreds of megabytes or more for a busy Inbox.
 
 In `config.ini`, **All mail** is saved as `OfflineBodyDays = -1`, since `0` already means off.
 
