@@ -212,6 +212,6 @@ public class OfflineBodiesFolderChoiceTests
         => Assert.Equal(["INBOX"], SyncService.FoldersForBodies(Folders, allFolders: false).Select(f => f.FullName));
 
     [Fact]
-    public void AllFolders_InboxFirst_LeavingOutTrashJunkDraftsAllMailAndExcluded()
-        => Assert.Equal(["INBOX", "Projects", "Sent"], SyncService.FoldersForBodies(Folders, allFolders: true).Select(f => f.FullName));
+    public void AllFolders_InboxFirst_SentIncluded_LeavingOutTrashJunkDraftsAndAllMail()
+        => Assert.Equal(["INBOX", "Projects", "Sent", "Hidden"], SyncService.FoldersForBodies(Folders, allFolders: true).Select(f => f.FullName));
 }

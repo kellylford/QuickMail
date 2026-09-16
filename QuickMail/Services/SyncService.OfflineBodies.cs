@@ -48,15 +48,14 @@ public partial class SyncService
 
     /// <summary>
     /// The folders a pass downloads from: the Inbox, and with <see cref="ConfigModel.OfflineBodyAllFolders"/>
-    /// every other folder that holds mail someone would search for — not Trash, Junk, Drafts or the Outbox,
-    /// not a folder left out of All Mail, and not Gmail's All Mail, whose messages are all copies of ones in
-    /// other folders. Inbox first, so a pass that runs out of time has done the mail most likely to be read.
+    /// every other folder that holds mail someone would search for — Sent included, but not Trash, Junk, Drafts
+    /// or the Outbox, and not Gmail's All Mail, whose messages are all copies of ones in other folders. Inbox first, so a pass that runs out of time has done the mail most likely to be read.
     /// </summary>
     internal static IEnumerable<MailFolderModel> FoldersForBodies(IEnumerable<MailFolderModel> folders, bool allFolders)
         => folders
             .Where(f => !f.IsHeader && !string.IsNullOrEmpty(f.FullName))
             .Where(f => f.Kind == SpecialFolderKind.Inbox
-                     || (allFolders && !f.ExcludeFromAllMail && f.Kind is not (SpecialFolderKind.Trash
+                     || (allFolders && f.Kind is not (SpecialFolderKind.Trash
                          or SpecialFolderKind.Junk or SpecialFolderKind.Drafts or SpecialFolderKind.Outbox
                          or SpecialFolderKind.AllMail)))
             .OrderBy(f => f.Kind == SpecialFolderKind.Inbox ? 0 : 1);

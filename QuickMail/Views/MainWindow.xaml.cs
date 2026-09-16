@@ -6644,7 +6644,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var returnFocus = Keyboard.FocusedElement as IInputElement;
+        var returnFocus = Keyboard.FocusedElement as UIElement;
+        var openedIn = _vm.SelectedFolder?.FullName;
         var previous = _vm.CurrentSearchResultsRequest
             ?? (_vm.IsSearchActive && !string.IsNullOrWhiteSpace(_vm.SearchText)
                 ? new AdvancedSearchRequest(_vm.SearchText, InCurrentFolder: true, [])
@@ -6654,7 +6655,13 @@ public partial class MainWindow : Window
         var vm = new AdvancedSearchViewModel(accounts, folder, previous);
 
         var window = new AdvancedSearchWindow(vm) { Owner = this };
-        window.SearchRunner = _vm.RunAdvancedSearchAsync;
+        window.SearchRunner = async request =>
+        {
+            var outcome = await _vm.RunAdvancedSearchAsync(request);
+            // The list's own count and status announcements would repeat what the form or the close says next.
+            CancelPendingListAnnouncements();
+            return outcome;
+        };
         window.Closed += (_, _) =>
         {
             _advancedSearchWindow = null;
@@ -6665,13 +6672,30 @@ public partial class MainWindow : Window
                 AccessibilityHelper.Announce(this, $"{n} {(n == 1 ? "message" : "messages")} found.",
                     interrupt: true, category: AnnouncementCategory.Result);
             }
+            else if (returnFocus is { IsVisible: true } element
+                     && element is not MenuItem
+                     && PresentationSource.FromVisual(element) != null
+                     && string.Equals(openedIn, _vm.SelectedFolder?.FullName, StringComparison.Ordinal))
+            {
+                element.Focus();
+            }
             else
             {
-                returnFocus?.Focus();
+                // Opened from the menu (whose item is gone), or the list under it was rebuilt meanwhile.
+                ReturnFocusToMessageList();
             }
         };
         _advancedSearchWindow = window;
         window.Show();
+    }
+
+    /// <summary>Drops a list count or status announcement that is still waiting to be spoken.</summary>
+    private void CancelPendingListAnnouncements()
+    {
+        _statusAnnounceTimer?.Stop();
+        _pendingStatusText = null;
+        _searchAnnounceTimer?.Stop();
+        _pendingSearchAnnounceText = null;
     }
 
     /// <summary>Leaves Search Results for the folder the search started from, announcing where focus landed.</summary>

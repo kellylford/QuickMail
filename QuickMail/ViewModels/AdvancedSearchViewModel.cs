@@ -149,15 +149,11 @@ public sealed partial class AdvancedSearchViewModel : ObservableObject
 
     /// <summary>
     /// A field's words each go to that field: "Sam Smith" in From finds a sender with both words in it,
-    /// and a quoted phrase stays a phrase. Anything typed there that is not a plain word (a condition,
-    /// another field's prefix) is taken as the words of this field too, so the field means what it says.
+    /// and a quoted phrase stays a phrase. Anything else typed there — <c>is:unread</c>, another field's
+    /// prefix — is taken as words of this field too, so the field means what it says.
     /// </summary>
     private static void AddField(MessageSearchQuery query, string text, SearchField field)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return;
-        foreach (var term in MessageSearchQuery.Parse(text).Terms)
-            query.Terms.Add(term with { Field = field });
-    }
+        => query.Terms.AddRange(MessageSearchQuery.ParseFieldWords(text, field));
 
     /// <summary>Spreads a query over the fields — the reverse of <see cref="BuildQuery"/>, for reopening a search.</summary>
     private void Load(MessageSearchQuery query, bool inCurrentFolder)
@@ -176,6 +172,8 @@ public sealed partial class AdvancedSearchViewModel : ObservableObject
             if (!byField.TryGetValue(term.Field, out var q)) byField[term.Field] = q = new MessageSearchQuery();
             q.Terms.Add(term with { Field = SearchField.Any });
         }
+        // A condition with no box of its own goes back into Words anywhere, rather than being lost.
+        if (query.HasAttachment == false) words.HasAttachment = false;
         Words = words.ToQueryString();
         From = FieldText(byField, SearchField.From);
         To = FieldText(byField, SearchField.To);
@@ -192,7 +190,7 @@ public sealed partial class AdvancedSearchViewModel : ObservableObject
     }
 
     private static string FieldText(Dictionary<SearchField, MessageSearchQuery> byField, SearchField field)
-        => byField.TryGetValue(field, out var q) ? q.ToQueryString() : string.Empty;
+        => byField.TryGetValue(field, out var q) ? MessageSearchQuery.FieldWordsToText(q.Terms) : string.Empty;
 
     [RelayCommand]
     private void Search()

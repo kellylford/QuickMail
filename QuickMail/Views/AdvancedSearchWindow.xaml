@@ -160,7 +160,6 @@
                                 <DataTemplate DataType="{x:Type vm:AdvancedSearchAccount}">
                                     <CheckBox Content="{Binding Name}"
                                               IsChecked="{Binding IsChosen}"
-                                              AutomationProperties.Name="{Binding Name}"
                                               Margin="0,2"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

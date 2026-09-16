@@ -269,7 +269,7 @@ public class SearchIndexStoreTests : IDisposable
     private async Task<List<string>> Find(string text, IReadOnlyCollection<(Guid, string)>? folders = null)
     {
         var match = SearchMatchExpression.AllOf(MessageSearchQuery.Parse(text).Terms)!;
-        var hits = await _store.FindMessagesAsync(match, folders, TestContext.Current.CancellationToken);
+        var hits = await _store.FindMessagesAsync(match, folders, ct: TestContext.Current.CancellationToken);
         return [.. hits.Select(h => h.FolderName + "/" + h.MessageId).Order()];
     }
 
@@ -399,7 +399,7 @@ public class SearchIndexStoreTests : IDisposable
 
         await Body("1", plain: "new words");
         var match = SearchMatchExpression.AllOf(MessageSearchQuery.Parse("old").Terms)!;
-        Assert.Empty(await _store.FindMessagesAsync(match, null, TestContext.Current.CancellationToken, indexPendingFirst: false));
+        Assert.Empty(await _store.FindMessagesAsync(match, null, indexPendingFirst: false, ct: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -437,7 +437,7 @@ public class SearchIndexStoreTests : IDisposable
         var upgraded = new LocalStoreService(new ProfileContext(_dir));
         upgraded.Initialize();
         var match = SearchMatchExpression.AllOf(MessageSearchQuery.Parse("legacy").Terms)!;
-        var hits = await upgraded.FindMessagesAsync(match, null, TestContext.Current.CancellationToken);
+        var hits = await upgraded.FindMessagesAsync(match, null, ct: TestContext.Current.CancellationToken);
         Assert.Equal("1", Assert.Single(hits).MessageId);
     }
 
@@ -458,7 +458,7 @@ public class SearchIndexStoreTests : IDisposable
     {
         await _store.UpsertSummariesAsync([Summary("1")]);
         await Assert.ThrowsAsync<SqliteException>(() =>
-            _store.FindMessagesAsync("AND AND \"x", null, TestContext.Current.CancellationToken));
+            _store.FindMessagesAsync("AND AND \"x", null, ct: TestContext.Current.CancellationToken));
     }
 }
 

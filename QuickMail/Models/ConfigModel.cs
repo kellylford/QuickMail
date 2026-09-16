@@ -144,9 +144,9 @@ public class ConfigModel
 
     /// <summary>
     /// When true, the offline-bodies pass also downloads the text of messages in folders other than the Inbox
-    /// (#717, phase 3) — every folder except Trash, Junk, Drafts and the Outbox, and any folder left out of All
-    /// Mail — so full-message search covers Sent and archived mail without opening each message first. Off by
-    /// default: it can multiply what is downloaded.
+    /// (#717, phase 3) — every folder except Trash, Junk, Drafts and the Outbox, Sent included — so full-message
+    /// search covers Sent and archived mail without opening each message first. Off by default: it can multiply
+    /// what is downloaded.
     /// </summary>
     public bool OfflineBodyAllFolders { get; set; } = false;
 

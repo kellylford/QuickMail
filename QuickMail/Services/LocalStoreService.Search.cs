@@ -417,8 +417,8 @@ public partial class LocalStoreService
     public async Task<List<SearchHit>> FindMessagesAsync(
         string match,
         IReadOnlyCollection<(Guid AccountId, string FolderName)>? folders,
-        CancellationToken ct = default,
-        bool indexPendingFirst = true)
+        bool indexPendingFirst = true,
+        CancellationToken ct = default)
     {
         if (!_searchIndexAvailable) return [];
         if (indexPendingFirst)
@@ -495,8 +495,13 @@ public partial class LocalStoreService
             var any = new List<string>();
             for (int i = 0; i < query.Folders.Count; i++)
             {
-                any.Add($"s.folder_name LIKE $folder{i} ESCAPE '!' OR EXISTS (SELECT 1 FROM Folder f WHERE f.account_id = s.account_id " +
-                        $"AND f.full_name = s.folder_name AND f.display_name LIKE $folder{i} ESCAPE '!')");
+                // The folder's display name, as the search box matches it. Its stored name only when the folder
+                // list has no row for it — a Microsoft 365 folder's stored name is an opaque id, and a short
+                // value would match every one of them.
+                any.Add($"EXISTS (SELECT 1 FROM Folder f WHERE f.account_id = s.account_id " +
+                        $"AND f.full_name = s.folder_name AND f.display_name LIKE $folder{i} ESCAPE '!') " +
+                        $"OR (s.folder_name LIKE $folder{i} ESCAPE '!' AND NOT EXISTS (SELECT 1 FROM Folder f " +
+                        $"WHERE f.account_id = s.account_id AND f.full_name = s.folder_name))");
                 cmd.Parameters.AddWithValue($"$folder{i}", LikeContains(query.Folders[i]));
             }
             sql.Append(" AND (").Append(string.Join(" OR ", any)).Append(')');
