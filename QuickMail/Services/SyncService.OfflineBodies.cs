@@ -46,6 +46,21 @@ public partial class SyncService
         CancellationToken ct)
         => DownloadOfflineBodiesAsync(accounts.ToList(), cachedFolders, ct);
 
+    /// <summary>
+    /// The folders a pass downloads from: the Inbox, and with <see cref="ConfigModel.OfflineBodyAllFolders"/>
+    /// every other folder that holds mail someone would search for — not Trash, Junk, Drafts or the Outbox,
+    /// not a folder left out of All Mail, and not Gmail's All Mail, whose messages are all copies of ones in
+    /// other folders. Inbox first, so a pass that runs out of time has done the mail most likely to be read.
+    /// </summary>
+    internal static IEnumerable<MailFolderModel> FoldersForBodies(IEnumerable<MailFolderModel> folders, bool allFolders)
+        => folders
+            .Where(f => !f.IsHeader && !string.IsNullOrEmpty(f.FullName))
+            .Where(f => f.Kind == SpecialFolderKind.Inbox
+                     || (allFolders && !f.ExcludeFromAllMail && f.Kind is not (SpecialFolderKind.Trash
+                         or SpecialFolderKind.Junk or SpecialFolderKind.Drafts or SpecialFolderKind.Outbox
+                         or SpecialFolderKind.AllMail)))
+            .OrderBy(f => f.Kind == SpecialFolderKind.Inbox ? 0 : 1);
+
     private static bool EligibleForBodies(AccountModel account)
         // POP3 downloads whole messages already; a shared mailbox reads through its parent and gets
         // no background work of its own (#31).
@@ -57,7 +72,8 @@ public partial class SyncService
         CancellationToken ct)
     {
         if (_probeMode) return;
-        var days = _config.Load().EffectiveOfflineBodyDays;
+        var cfg = _config.Load();
+        var days = cfg.EffectiveOfflineBodyDays;
         if (days <= 0) return;
 
         if (Interlocked.CompareExchange(ref _bodiesPassRunning, 1, 0) != 0)
@@ -67,7 +83,8 @@ public partial class SyncService
         }
         try
         {
-            await RunPassAsync(accounts, cachedFolders, ConfigModel.OfflineBodyWindowStart(days, DateTimeOffset.UtcNow), ct);
+            await RunPassAsync(accounts, cachedFolders, ConfigModel.OfflineBodyWindowStart(days, DateTimeOffset.UtcNow),
+                cfg.OfflineBodyAllFolders, ct);
         }
         finally
         {
@@ -79,6 +96,7 @@ public partial class SyncService
         List<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
         DateTimeOffset since,
+        bool allFolders,
         CancellationToken ct)
     {
         // Plan first so the progress total is the whole pass, not one account at a time.
@@ -87,7 +105,7 @@ public partial class SyncService
         {
             if (_connectivity != null && !_connectivity.IsAccountOnline(account.Id)) continue;
             if (!cachedFolders.TryGetValue(account.Id, out var folders)) continue;
-            foreach (var folder in folders.Where(f => f.Kind == SpecialFolderKind.Inbox))
+            foreach (var folder in FoldersForBodies(folders, allFolders))
             {
                 ct.ThrowIfCancellationRequested();
                 var ids = await _store.GetMessageIdsMissingDetailAsync(account.Id, folder.FullName, since, MaxBodiesPerPass);
@@ -169,8 +187,10 @@ public partial class SyncService
     private void QueueArrivalBodies(AccountModel account, MailFolderModel folder, List<MailMessageSummary> arrivals, CancellationToken ct)
     {
         if (_probeMode || arrivals.Count == 0) return;
-        if (folder.Kind != SpecialFolderKind.Inbox || !EligibleForBodies(account)) return;
-        var days = _config.Load().EffectiveOfflineBodyDays;
+        if (!EligibleForBodies(account)) return;
+        var cfg = _config.Load();
+        if (!FoldersForBodies([folder], cfg.OfflineBodyAllFolders).Any()) return;
+        var days = cfg.EffectiveOfflineBodyDays;
         if (days <= 0) return;
 
         var since = ConfigModel.OfflineBodyWindowStart(days, DateTimeOffset.UtcNow);

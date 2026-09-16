@@ -331,6 +331,123 @@ public partial class MainViewModel
         }
     }
 
+    // ── Search the server too (#717, phase 3) ────────────────────────────────────
+
+    /// <summary>At most this many server results per account: enough to find the message, few enough to list.</summary>
+    internal const int ServerSearchMaxResults = 200;
+
+    /// <summary>What asking the servers added to a Search Results folder.</summary>
+    /// <param name="Added">Messages that were not already in the results.</param>
+    /// <param name="FailedAccounts">Accounts whose server could not be asked.</param>
+    /// <param name="Asked">Accounts whose server was asked (connected, with a server that searches).</param>
+    public sealed record ServerSearchOutcome(int Added, IReadOnlyList<string> FailedAccounts, int Asked);
+
+    /// <summary>True while Search Results is on screen, where asking the servers adds to it.</summary>
+    public bool CanSearchServer => IsSearchResultsView;
+
+    /// <summary>
+    /// Asks each chosen account's server for the search on screen and adds what it finds that the results do
+    /// not already have — mail older than the sync range, or whose text was never downloaded. Server results are
+    /// shown, not cached: caching old mail would make it wait for client rules as though it had just arrived
+    /// (#712), and the sync would drop it again. So they last until the results are refreshed or closed.
+    /// </summary>
+    public async Task<ServerSearchOutcome> SearchServerTooAsync()
+    {
+        var failed = new List<string>();
+        if (SelectedFolder == null || !TryGetSearchResultsFromSentinel(SelectedFolder.FullName, out var text, out var chosen))
+            return new ServerSearchOutcome(0, failed, 0);
+
+        var expectedFolder = SelectedFolder;
+        var loadVersion = _folderLoadVersion;
+        var ct = _folderCts?.Token ?? CancellationToken.None;
+        var (query, accountIds) = ResolveSearchAccounts(text, chosen);
+
+        var targets = Accounts
+            .Where(a => accountIds.Contains(a.Id) && a.BackendKind != BackendKind.Pop3Smtp)
+            .Where(a => OnlineMode || _connectedAccountIds.Contains(a.Id))
+            .ToList();
+        if (targets.Count == 0) return new ServerSearchOutcome(0, failed, 0);
+
+        IsBusy = true;
+        StatusText = "Searching the server…";
+        var found = new List<MailMessageSummary>();
+        try
+        {
+            foreach (var account in targets)
+            {
+                ct.ThrowIfCancellationRequested();
+                var folders = _cachedFolders.TryGetValue(account.Id, out var cached)
+                    ? cached.Where(f => !f.IsHeader && !string.IsNullOrEmpty(f.FullName) && !f.ExcludeFromAllMail)
+                            .Where(f => query.Folders.Count == 0
+                                || query.Folders.Any(n => f.DisplayName.Contains(n, StringComparison.OrdinalIgnoreCase)))
+                            .Select(f => f.FullName)
+                            .ToList()
+                    : [];
+                try
+                {
+                    var hits = await _imap.SearchServerAsync(account.Id, query, folders, ServerSearchMaxResults, ct);
+                    // IMAP summaries never carry attachments, so has:attachment can only be judged where the
+                    // server reports it (Microsoft 365); elsewhere the server's own answer stands.
+                    var check = account.BackendKind == BackendKind.MicrosoftGraph
+                        ? query
+                        : WithoutAttachmentCondition(query);
+                    var matcher = new MessageSearchMatcher(check, SearchFolderNameFor, _ => string.Empty);
+                    foreach (var m in hits)
+                    {
+                        if (m.IsServerFlagged && m.FlagId == null)
+                            m.FlagId = FlagDefinition.BuiltInFlagId.ToString();
+                        if (matcher.MatchesConditions(m)) found.Add(m);
+                    }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    LogService.Log($"Search the server: {account.AccountLabel}", ex);
+                    failed.Add(account.AccountLabel);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return new ServerSearchOutcome(0, failed, targets.Count);
+        }
+        finally
+        {
+            if (loadVersion == _folderLoadVersion) IsBusy = false;
+        }
+
+        if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return new ServerSearchOutcome(0, failed, targets.Count);
+
+        var have = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var m in _rawMessages)
+        {
+            have.Add(MessageDeduplicator.PerFolderKeyFor(m));
+            if (!string.IsNullOrWhiteSpace(m.InternetMessageId)) have.Add(MessageDeduplicator.CollapseKeyFor(m));
+        }
+        var added = found
+            .Where(m => !have.Contains(MessageDeduplicator.PerFolderKeyFor(m))
+                     && (string.IsNullOrWhiteSpace(m.InternetMessageId) || !have.Contains(MessageDeduplicator.CollapseKeyFor(m))))
+            .ToList();
+        // One copy of each message the servers returned in several folders.
+        added = MessageDeduplicator.CollapseForAggregate(added, ResolveFolderKind);
+
+        if (added.Count > 0)
+        {
+            await ResolveFlagNamesAsync(added);
+            SetMessages([.. _rawMessages, .. added]);
+        }
+        var n = Messages.Count;
+        StatusText = $"{n} {(n == 1 ? "message" : "messages")} found.";
+        return new ServerSearchOutcome(added.Count, failed, targets.Count);
+    }
+
+    private static MessageSearchQuery WithoutAttachmentCondition(MessageSearchQuery query)
+    {
+        var copy = MessageSearchQuery.Parse(query.ToQueryString());
+        copy.HasAttachment = null;
+        return copy;
+    }
+
     /// <summary>Whether a message arriving while Search Results is open belongs in it, judged from its row.</summary>
     private bool BelongsInSearchResults(MailMessageSummary msg, string text, IReadOnlyCollection<Guid> chosen)
     {

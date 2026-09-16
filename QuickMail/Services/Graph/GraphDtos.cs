@@ -124,6 +124,9 @@ internal sealed class GraphMessage
     [JsonPropertyName("attachments")] public List<GraphAttachment>? Attachments { get; set; }
     [JsonPropertyName("flag")] public GraphFollowUpFlag? Flag { get; set; }
 
+    /// <summary>The folder a message is in. Only selected by server search (#717), whose results span folders.</summary>
+    [JsonPropertyName("parentFolderId")] public string? ParentFolderId { get; set; }
+
     /// <summary>
     /// Present on a delta-query entry when the message was removed from the tracked folder — deleted,
     /// or moved out (a server-side rule or manual move counts as a removal from the source folder).

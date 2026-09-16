@@ -41,6 +41,9 @@ public partial class SettingsViewModel : ObservableObject
     private int _offlineBodyDays;
 
     [ObservableProperty]
+    private bool _offlineBodyAllFolders;
+
+    [ObservableProperty]
     private bool _customAnnouncements;
 
     [ObservableProperty]
@@ -454,6 +457,7 @@ public partial class SettingsViewModel : ObservableObject
         InitialSyncCount = cfg.InitialSyncCount;
         MailSyncPollMinutes = cfg.MailSyncPollMinutes;
         OfflineBodyDays = cfg.OfflineBodyDays;
+        OfflineBodyAllFolders = cfg.OfflineBodyAllFolders;
         CustomAnnouncements = cfg.CustomAnnouncements;
         AnnounceHints       = cfg.AnnounceHints;
         AnnounceStatus      = cfg.AnnounceStatus;
@@ -538,6 +542,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.InitialSyncCount = InitialSyncCount;
         cfg.MailSyncPollMinutes = MailSyncPollMinutes;
         cfg.OfflineBodyDays = OfflineBodyDays;
+        cfg.OfflineBodyAllFolders = OfflineBodyAllFolders;
         cfg.CustomAnnouncements = CustomAnnouncements;
         cfg.AnnounceHints       = AnnounceHints;
         cfg.AnnounceStatus      = AnnounceStatus;

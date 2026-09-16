@@ -247,6 +247,9 @@ public class ConfigService : IConfigService
                     case "offlinebodydays":
                         if (int.TryParse(value, out var obd)) config.OfflineBodyDays = obd < 0 ? ConfigModel.OfflineBodyDaysAll : obd;
                         break;
+                    case "offlinebodyallfolders":
+                        config.OfflineBodyAllFolders = ParseBool(value);
+                        break;
                     case "appearancethemeid":
                         if (!string.IsNullOrWhiteSpace(value)) config.AppearanceThemeId = value;
                         break;
@@ -464,6 +467,8 @@ public class ConfigService : IConfigService
         sb.AppendLine("# 0 (default) is off; 7, 30, 90, 180 or 365 keep that many days; -1 keeps all.");
         sb.AppendLine("# Never wider than SyncDays.");
         sb.AppendLine("# Attachments are not included.");
+        sb.AppendLine($"OfflineBodyAllFolders = {config.OfflineBodyAllFolders.ToString().ToLowerInvariant()}");
+        sb.AppendLine("# true: also download from folders other than the Inbox (not Trash, Junk, Drafts). Default false.");
         sb.AppendLine("# Fallback mail-sync interval (minutes) behind IMAP IDLE.");
         sb.AppendLine("# Periodically re-syncs inboxes so new mail still arrives if the server never");
         sb.AppendLine("# pushes or the IDLE connection dies, and read/flag changes from other clients");

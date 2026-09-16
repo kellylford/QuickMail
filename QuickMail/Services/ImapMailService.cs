@@ -281,6 +281,72 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    /// <summary>
+    /// Server search (#717, phase 3). Gmail searches its whole mailbox in one request with its own syntax
+    /// (X-GM-RAW, against All Mail); any other server is asked one folder at a time with SEARCH. Each folder
+    /// contributes at most <paramref name="maxResults"/> of its newest matches, and the whole is cut to that.
+    /// A folder that has gone or refuses the search is skipped; losing the connection is not.
+    /// </summary>
+    public async Task<List<MailMessageSummary>> SearchServerAsync(
+        Guid accountId, MessageSearchQuery query, IReadOnlyList<string> folderNames, int maxResults, CancellationToken ct = default)
+    {
+        var results = new List<MailMessageSummary>();
+        if (maxResults <= 0) return results;
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+        var client = lease.Client;
+        var items = MessageSummaryItems.UniqueId
+                  | MessageSummaryItems.Envelope
+                  | MessageSummaryItems.Flags
+                  | MessageSummaryItems.PreviewText;
+
+        async Task SearchFolderAsync(IMailFolder folder, SearchQuery criteria)
+        {
+            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+            try
+            {
+                var uids = await folder.SearchAsync(criteria, ct);
+                if (uids.Count == 0) return;
+                var newest = uids.OrderByDescending(u => u.Id).Take(maxResults).ToList();
+                var summaries = await folder.FetchAsync(newest, items, _mailingListHeaders, ct);
+                results.AddRange(summaries.Select(s => SummaryToModel(s, accountId, folder.FullName)));
+            }
+            finally { await folder.CloseAsync(false, ct); }
+        }
+
+        if (client.Capabilities.HasFlag(ImapCapabilities.GMailExt1)
+            && Helpers.ServerSearchQuery.ToGmailRaw(query) is { } raw)
+        {
+            IMailFolder? allMail = null;
+            try { allMail = client.GetFolder(SpecialFolder.All); }
+            catch (NotSupportedException) { /* no special-use folders: fall back to per-folder SEARCH */ }
+            if (allMail != null)
+            {
+                await SearchFolderAsync(allMail, SearchQuery.GMailRawSearch(raw));
+                LogService.Log($"SearchServer (Gmail): {results.Count} found");
+                return [.. results.OrderByDescending(m => m.Date).Take(maxResults)];
+            }
+        }
+
+        var criteria = Helpers.ServerSearchQuery.ToImap(query);
+        if (criteria == null) return results;
+        foreach (var name in folderNames)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var folder = await client.GetFolderAsync(name, ct);
+                await SearchFolderAsync(folder, criteria);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) when (ex is FolderNotFoundException or ImapCommandException or FolderNotOpenException)
+            {
+                LogService.Log($"SearchServer: skipped folder {name}", ex);
+            }
+        }
+        LogService.Log($"SearchServer: {results.Count} found in {folderNames.Count} folders");
+        return [.. results.OrderByDescending(m => m.Date).Take(maxResults)];
+    }
+
     public async Task<List<MailMessageSummary>> GetMessagesSinceAsync(
         Guid accountId, string folderName, string sinceMessageId, int initialCount, CancellationToken ct = default)
     {

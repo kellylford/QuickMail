@@ -1287,6 +1287,12 @@
                                     Content="Change Search"
                                     Click="ChangeSearch_Click"
                                     ToolTip="Open Advanced Search with this search (Ctrl+/)"
+                                    Margin="6,0,0,0"
+                                    IsTabStop="True"/>
+                            <Button DockPanel.Dock="Right"
+                                    Content="Search the Server"
+                                    Click="SearchServer_Click"
+                                    ToolTip="Ask the mail servers too, for mail not on this computer"
                                     IsTabStop="True"/>
                             <TextBlock VerticalAlignment="Center"
                                        Margin="0,0,6,0"

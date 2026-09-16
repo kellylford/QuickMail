@@ -1234,6 +1234,16 @@ public partial class MainWindow : Window
             defaultKey: Key.Oem2, defaultModifiers: ModifierKeys.Control,
             isAvailable: () => !_vm.IsCalendarView));
 
+        // Search Results extras (#717, phase 3): ask the servers too, and keep the search as a saved view.
+        _registry.Register(new CommandDefinition(
+            id: "mail.searchServer", category: "Mail", title: "Search the Server Too",
+            execute: () => SearchServerTooAsync().LogFaults("search the server"),
+            isAvailable: () => _vm.CanSearchServer));
+        _registry.Register(new CommandDefinition(
+            id: "mail.saveSearch", category: "Mail", title: "Save Search as View…",
+            execute: () => OpenViewManager(createMode: true),
+            isAvailable: () => _vm.IsSearchResultsView));
+
         // Close Search Results, the way Escape closes contact mail results above; the two share Escape and
         // the registry picks whichever is available.
         _registry.Register(new CommandDefinition(
@@ -6589,6 +6599,36 @@ public partial class MainWindow : Window
     private void ChangeSearch_Click(object sender, RoutedEventArgs e) => OpenAdvancedSearch();
     private void CloseSearchResults_Click(object sender, RoutedEventArgs e)
         => CloseSearchResultsAsync().LogFaults("close search results");
+    private void SearchServer_Click(object sender, RoutedEventArgs e)
+        => SearchServerTooAsync().LogFaults("search the server");
+
+    /// <summary>
+    /// Asks the servers for the search on screen and says what came of it: how many more were found, that
+    /// none were, or which accounts could not be asked. Focus stays where it is.
+    /// </summary>
+    private async Task SearchServerTooAsync()
+    {
+        if (!_vm.CanSearchServer) return;
+        AccessibilityHelper.Announce(this, "Searching the server…", category: AnnouncementCategory.Status);
+        var outcome = await _vm.SearchServerTooAsync();
+        string text;
+        if (outcome.Asked == 0)
+            text = "No connected account can be searched on the server.";
+        else if (outcome.FailedAccounts.Count == outcome.Asked)
+            text = "Could not search the server.";
+        else
+        {
+            text = outcome.Added switch
+            {
+                0 => "No more messages on the server.",
+                1 => "1 more message from the server.",
+                _ => $"{outcome.Added} more messages from the server.",
+            };
+            if (outcome.FailedAccounts.Count > 0)
+                text += $" Could not search {string.Join(", ", outcome.FailedAccounts)}.";
+        }
+        AccessibilityHelper.Announce(this, text, interrupt: true, category: AnnouncementCategory.Result);
+    }
 
     /// <summary>
     /// Opens Advanced Search, filled in with the search already on screen — the Search Results folder's, or

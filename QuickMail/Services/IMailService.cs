@@ -94,6 +94,18 @@ public interface IMailService : IDisposable
     Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
     /// <summary>
+    /// Asks the server for messages matching <paramref name="query"/> (#717, phase 3), newest first, at most
+    /// <paramref name="maxResults"/>. <paramref name="folderNames"/> are the folders to search where the server
+    /// searches one folder at a time (IMAP); a server that searches the whole mailbox at once (Gmail, Microsoft
+    /// Graph) may ignore them. Results are not cached. The default — POP3, and any backend with no search —
+    /// finds nothing.
+    /// </summary>
+    Task<List<MailMessageSummary>> SearchServerAsync(
+        Guid accountId, MessageSearchQuery query, IReadOnlyList<string> folderNames, int maxResults,
+        CancellationToken ct = default)
+        => Task.FromResult(new List<MailMessageSummary>());
+
+    /// <summary>
     /// Lists every message in a folder as (id, receivedDateUtc, isRead) — the id listing plus each
     /// message's received timestamp and read state, in one server round-trip. The periodic sweep uses it
     /// to decide whether to fetch (#462): a folder's local cache only holds mail inside the SyncDays

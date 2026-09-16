@@ -344,5 +344,11 @@ public class ConfigServiceSaveTests
         config.OfflineBodyDays = ConfigModel.OfflineBodyDaysAll;
         service.Save(config);
         Assert.Equal(ConfigModel.OfflineBodyDaysAll, new ConfigService(profile).Load().OfflineBodyDays);
+
+        // Other folders besides the Inbox (#717): off by default, kept when turned on.
+        Assert.False(new ConfigService(profile).Load().OfflineBodyAllFolders);
+        config.OfflineBodyAllFolders = true;
+        service.Save(config);
+        Assert.True(new ConfigService(profile).Load().OfflineBodyAllFolders);
     }
 }

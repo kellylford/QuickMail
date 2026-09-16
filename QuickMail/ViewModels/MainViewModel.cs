@@ -1833,6 +1833,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
         _offlineBodyDays = cfg.EffectiveOfflineBodyDays;
+        _offlineBodyAllFolders = cfg.OfflineBodyAllFolders;
         _syncService.OfflineBodyPassCompleted += OnOfflineBodyPassCompleted;
         _viewMode = ConfigModel.ParseViewMode(cfg.ViewMode);
         _listDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";

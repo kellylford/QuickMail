@@ -72,7 +72,9 @@ public sealed class MessageSearchMatcher
         return !InIndex(_indexNegative, msg);
     }
 
-    private bool MatchesConditions(MailMessageSummary msg)
+    /// <summary>Whether the message meets the query's conditions — read state, flag, attachments, dates, folder,
+    /// account — ignoring its words.</summary>
+    public bool MatchesConditions(MailMessageSummary msg)
     {
         var q = _query;
         if (q.HasAttachment.HasValue && msg.HasAttachments != q.HasAttachment.Value) return false;

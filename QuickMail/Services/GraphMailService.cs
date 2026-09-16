@@ -257,6 +257,35 @@ public class GraphMailService : IMailService, IConnectionProbe
             .Select(m => MapToSummary(m, account.Id, folderName)).ToList();
     }
 
+    /// <summary>
+    /// Server search (#717, phase 3): Graph's <c>$search</c> over the whole mailbox, following pages until
+    /// <paramref name="maxResults"/>. Graph orders search results by relevance and allows no <c>$orderby</c>
+    /// with <c>$search</c>, so they are sorted newest first here. <paramref name="folderNames"/> is ignored;
+    /// each result carries its own folder.
+    /// </summary>
+    public async Task<List<MailMessageSummary>> SearchServerAsync(
+        Guid accountId, MessageSearchQuery query, IReadOnlyList<string> folderNames, int maxResults, CancellationToken ct = default)
+    {
+        var kql = Helpers.ServerSearchQuery.ToGraphKql(query);
+        if (kql == null || maxResults <= 0) return [];
+        var account = Account(accountId);
+        var top = Math.Min(maxResults, 250);
+        string? path = "/me/messages?$search=" + Uri.EscapeDataString("\"" + kql + "\"") + $"&$top={top}" +
+                       "&$select=id,internetMessageId,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag,parentFolderId";
+        var found = new List<MailMessageSummary>();
+        while (path != null && found.Count < maxResults)
+        {
+            var page = await _client.GetAsync<GraphCollection<GraphMessage>>(account, path, GraphHeaders.ImmutableId, ct);
+            if (page?.Value == null) break;
+            found.AddRange(page.Value
+                .Where(m => !string.IsNullOrEmpty(m.ParentFolderId))
+                .Select(m => MapToSummary(m, accountId, m.ParentFolderId!)));
+            path = page.NextLink;
+        }
+        LogService.Log($"SearchServer (Graph): {found.Count} found");
+        return [.. found.OrderByDescending(m => m.Date).Take(maxResults)];
+    }
+
     // ── Message detail ───────────────────────────────────────────────────────────
     public async Task<MailMessageDetail> GetMessageDetailAsync(
         Guid accountId, string folderName, string messageId, CancellationToken ct = default)

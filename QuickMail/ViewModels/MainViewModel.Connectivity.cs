@@ -143,6 +143,7 @@ public partial class MainViewModel
     // ── Offline bodies (#637) ───────────────────────────────────────────────────
 
     private int _offlineBodyDays;
+    private bool _offlineBodyAllFolders;
 
     /// <summary>
     /// One announcement when a pass finishes, never one per batch — the pass runs behind the
@@ -167,8 +168,12 @@ public partial class MainViewModel
     private void ApplyOfflineBodySetting(ConfigModel cfg)
     {
         var was = _offlineBodyDays;
+        var wasAllFolders = _offlineBodyAllFolders;
         _offlineBodyDays = cfg.EffectiveOfflineBodyDays;
-        if (OnlineMode || _offlineBodyDays <= was) return;
+        _offlineBodyAllFolders = cfg.OfflineBodyAllFolders;
+        var widened = _offlineBodyDays > was
+            || (_offlineBodyDays > 0 && _offlineBodyAllFolders && !wasAllFolders);
+        if (OnlineMode || !widened) return;
         var connected = Accounts.Where(a => _connectedAccountIds.Contains(a.Id)).ToList();
         if (connected.Count == 0) return;
         BackfillOfflineBodiesQuietlyAsync(connected, _bgSyncCts?.Token ?? CancellationToken.None)
