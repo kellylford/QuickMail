@@ -49,7 +49,8 @@ public partial class SyncService
     /// <summary>
     /// The folders a pass downloads from: the Inbox, and with <see cref="ConfigModel.OfflineBodyAllFolders"/>
     /// every other folder that holds mail someone would search for — Sent included, but not Trash, Junk, Drafts
-    /// or the Outbox, and not Gmail's All Mail, whose messages are all copies of ones in other folders. Inbox first, so a pass that runs out of time has done the mail most likely to be read.
+    /// or the Outbox, and not Gmail's All Mail, Important or Starred, whose messages are all copies of ones
+    /// in other folders and would otherwise be downloaded twice. Inbox first, so a pass that runs out of time has done the mail most likely to be read.
     /// </summary>
     internal static IEnumerable<MailFolderModel> FoldersForBodies(IEnumerable<MailFolderModel> folders, bool allFolders)
         => folders
@@ -57,7 +58,7 @@ public partial class SyncService
             .Where(f => f.Kind == SpecialFolderKind.Inbox
                      || (allFolders && f.Kind is not (SpecialFolderKind.Trash
                          or SpecialFolderKind.Junk or SpecialFolderKind.Drafts or SpecialFolderKind.Outbox
-                         or SpecialFolderKind.AllMail)))
+                         or SpecialFolderKind.AllMail or SpecialFolderKind.Important or SpecialFolderKind.Starred)))
             .OrderBy(f => f.Kind == SpecialFolderKind.Inbox ? 0 : 1);
 
     private static bool EligibleForBodies(AccountModel account)
@@ -117,14 +118,19 @@ public partial class SyncService
         ReportProgress(0, total);
 
         var done = 0;
+        // An account whose server went away mid-pass is left alone for the rest of it. Without this the pass
+        // tried every remaining folder of that account in turn, each one waiting for the same dead connection.
+        var lost = new HashSet<Guid>();
         foreach (var (account, folder, ids) in work)
         {
+            if (lost.Contains(account.Id)) continue;
             var timer = Stopwatch.StartNew();
             var before = done;
             // Intermediate progress never reaches the total: the pass reports its own end, once,
             // with the count it actually cached.
             var fetched = await DownloadBodiesForIdsAsync(account, folder, ids, ct,
-                n => { if (before + n < total) ReportProgress(before + n, total); });
+                n => { if (before + n < total) ReportProgress(before + n, total); },
+                () => lost.Add(account.Id));
             done += fetched;
             LogService.Log($"Offline bodies {account.AccountLabel}/{folder.DisplayName}: {fetched} of {ids.Count} downloaded in {timer.ElapsedMilliseconds} ms");
         }
@@ -142,7 +148,7 @@ public partial class SyncService
     /// </summary>
     private async Task<int> DownloadBodiesForIdsAsync(
         AccountModel account, MailFolderModel folder, IReadOnlyList<string> ids,
-        CancellationToken ct, Action<int>? progress = null)
+        CancellationToken ct, Action<int>? progress = null, Action? connectionLost = null)
     {
         var fetched = 0;
         foreach (var id in ids)
@@ -165,6 +171,7 @@ public partial class SyncService
             catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, ct))
             {
                 _connectivity?.NoteAccountUnreachable(account.Id, "offline-bodies");
+                connectionLost?.Invoke();
                 LogService.Log($"Offline bodies {account.AccountLabel}: server unreachable, stopping this pass", ex);
                 break;
             }

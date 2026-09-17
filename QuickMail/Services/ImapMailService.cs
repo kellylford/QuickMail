@@ -290,8 +290,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
     public async Task<List<MailMessageSummary>> SearchServerAsync(
         Guid accountId, MessageSearchQuery query, IReadOnlyList<string> folderNames, int maxResults, CancellationToken ct = default)
     {
-        var results = new List<MailMessageSummary>();
-        if (maxResults <= 0) return results;
+        if (maxResults <= 0) return [];
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var items = MessageSummaryItems.UniqueId
@@ -299,21 +298,10 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                   | MessageSummaryItems.Flags
                   | MessageSummaryItems.PreviewText;
 
-        async Task SearchFolderAsync(IMailFolder folder, SearchQuery criteria)
-        {
-            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-            try
-            {
-                var uids = await folder.SearchAsync(criteria, ct);
-                if (uids.Count == 0) return;
-                var newest = uids.OrderByDescending(u => u.Id).Take(maxResults).ToList();
-                var summaries = await folder.FetchAsync(newest, items, _mailingListHeaders, ct);
-                results.AddRange(summaries.Select(s => SummaryToModel(s, accountId, folder.FullName)));
-            }
-            finally { await folder.CloseAsync(false, ct); }
-        }
-
-        if (client.Capabilities.HasFlag(ImapCapabilities.GMailExt1)
+        // Gmail searches the whole mailbox in one request — but All Mail is one folder as far as the result
+        // is concerned, so a search that names a folder has to go folder by folder like any other server.
+        if (query.Folders.Count == 0
+            && client.Capabilities.HasFlag(ImapCapabilities.GMailExt1)
             && Helpers.ServerSearchQuery.ToGmailRaw(query) is { } raw)
         {
             IMailFolder? allMail = null;
@@ -321,21 +309,48 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             catch (NotSupportedException) { /* no special-use folders: fall back to per-folder SEARCH */ }
             if (allMail != null)
             {
-                await SearchFolderAsync(allMail, SearchQuery.GMailRawSearch(raw));
-                LogService.Log($"SearchServer (Gmail): {results.Count} found");
-                return [.. results.OrderByDescending(m => m.Date).Take(maxResults)];
+                var gmail = new List<MailMessageSummary>();
+                await allMail.OpenAsync(FolderAccess.ReadOnly, ct);
+                try
+                {
+                    var uids = await allMail.SearchAsync(SearchQuery.GMailRawSearch(raw), ct);
+                    if (uids.Count > 0)
+                    {
+                        var newest = uids.OrderByDescending(u => u.Id).Take(maxResults).ToList();
+                        var summaries = await allMail.FetchAsync(newest, items, _mailingListHeaders, ct);
+                        gmail.AddRange(summaries.Select(s => SummaryToModel(s, accountId, allMail.FullName)));
+                    }
+                }
+                finally { await allMail.CloseAsync(false, ct); }
+                LogService.Log($"SearchServer (Gmail): {gmail.Count} found");
+                return [.. gmail.OrderByDescending(m => m.Date).Take(maxResults)];
             }
         }
 
         var criteria = Helpers.ServerSearchQuery.ToImap(query);
-        if (criteria == null) return results;
+        if (criteria == null) return [];
+
+        // Two passes over the matches: first every folder's hits with their dates alone, which is a cheap
+        // fetch, then the envelopes and previews of only the newest maxResults of the whole account. Asking
+        // for the expensive fields per folder would fetch a hundred folders' worth to keep two hundred.
+        var hits = new List<(IMailFolder Folder, UniqueId Uid, DateTimeOffset Date)>();
         foreach (var name in folderNames)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
                 var folder = await client.GetFolderAsync(name, ct);
-                await SearchFolderAsync(folder, criteria);
+                await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+                try
+                {
+                    var uids = await folder.SearchAsync(criteria, ct);
+                    if (uids.Count == 0) continue;
+                    var newest = uids.OrderByDescending(u => u.Id).Take(maxResults).ToList();
+                    var dates = await folder.FetchAsync(newest, MessageSummaryItems.UniqueId | MessageSummaryItems.InternalDate, ct);
+                    foreach (var d in dates)
+                        hits.Add((folder, d.UniqueId, d.InternalDate ?? DateTimeOffset.MinValue));
+                }
+                finally { await folder.CloseAsync(false, ct); }
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) when (ex is FolderNotFoundException or ImapCommandException or FolderNotOpenException)
@@ -343,8 +358,30 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 LogService.Log($"SearchServer: skipped folder {name}", ex);
             }
         }
-        LogService.Log($"SearchServer: {results.Count} found in {folderNames.Count} folders");
-        return [.. results.OrderByDescending(m => m.Date).Take(maxResults)];
+
+        var results = new List<MailMessageSummary>();
+        foreach (var group in hits.OrderByDescending(h => h.Date).Take(maxResults).GroupBy(h => h.Folder))
+        {
+            ct.ThrowIfCancellationRequested();
+            var folder = group.Key;
+            try
+            {
+                await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+                try
+                {
+                    var summaries = await folder.FetchAsync([.. group.Select(h => h.Uid)], items, _mailingListHeaders, ct);
+                    results.AddRange(summaries.Select(s => SummaryToModel(s, accountId, folder.FullName)));
+                }
+                finally { await folder.CloseAsync(false, ct); }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) when (ex is FolderNotFoundException or ImapCommandException or FolderNotOpenException)
+            {
+                LogService.Log($"SearchServer: could not read matches in {folder.FullName}", ex);
+            }
+        }
+        LogService.Log($"SearchServer: {results.Count} of {hits.Count} matches read, from {folderNames.Count} folders");
+        return [.. results.OrderByDescending(m => m.Date)];
     }
 
     public async Task<List<MailMessageSummary>> GetMessagesSinceAsync(

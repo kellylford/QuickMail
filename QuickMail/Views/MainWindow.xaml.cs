@@ -6611,6 +6611,9 @@ public partial class MainWindow : Window
         if (!_vm.CanSearchServer) return;
         AccessibilityHelper.Announce(this, "Searching the server…", category: AnnouncementCategory.Status);
         var outcome = await _vm.SearchServerTooAsync();
+        // The list's own count would be announced behind the outcome.
+        CancelPendingListAnnouncements();
+        if (outcome.Cancelled) return;
         string text;
         if (outcome.Asked == 0)
             text = "No connected account can be searched on the server.";

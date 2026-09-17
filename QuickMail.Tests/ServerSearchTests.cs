@@ -35,6 +35,23 @@ public class ServerSearchQueryTests
             ServerSearchQuery.ToGraphKql(Q("budget -draft from:sam subject:\"quarterly report\" attachment:pdf has:attachment is:unread is:flagged after:2026-01-15 before:2026-02-01")));
 
     [Fact]
+    public void AnExcludedWordTheServerCannotPlaceIsLeftOut_NotWidened()
+    {
+        // Gmail has no body-only operator and IMAP no attachment-name one, so sending these as a plain
+        // exclusion would hide messages that have the word somewhere else. The caller checks them instead.
+        Assert.Equal("budget", ServerSearchQuery.ToGmailRaw(Q("budget -body:draft")));
+        Assert.Null(ServerSearchQuery.ToImap(Q("-attachment:draft")));
+    }
+
+    [Fact]
+    public void WordsThatWouldReadAsSyntaxAreQuoted()
+    {
+        Assert.Equal("\\\"AND\\\" AND subject:\\\"(re) budget\\\"", ServerSearchQuery.ToGraphKql(Q("AND subject:\"(re) budget\"")));
+        // A quote inside a word is dropped rather than closing the one around it.
+        Assert.Equal("sayhi", ServerSearchQuery.ToGmailRaw(MessageSearchQuery.Parse("say\"hi")));
+    }
+
+    [Fact]
     public void Graph_OnlyExclusions_IsNull()
         => Assert.Null(ServerSearchQuery.ToGraphKql(Q("-draft is:unread")));
 
@@ -213,6 +230,14 @@ public class OfflineBodiesFolderChoiceTests
         F("[Gmail]/All Mail", SpecialFolderKind.AllMail), F("Hidden", excluded: true),
         new MailFolderModel { FullName = string.Empty, DisplayName = "Header", IsHeader = true },
     ];
+
+    [Fact]
+    public void GmailLabelFoldersAreLeftOut_TheirMailIsInItsRealFolderToo()
+        => Assert.DoesNotContain(
+            SyncService.FoldersForBodies(
+                [F("INBOX", SpecialFolderKind.Inbox), F("[Gmail]/Important", SpecialFolderKind.Important),
+                 F("[Gmail]/Starred", SpecialFolderKind.Starred)], allFolders: true),
+            f => f.Kind is SpecialFolderKind.Important or SpecialFolderKind.Starred);
 
     [Fact]
     public void InboxOnlyByDefault()

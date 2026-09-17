@@ -367,7 +367,8 @@ public partial class MainViewModel
     /// <param name="Added">Messages that were not already in the results.</param>
     /// <param name="FailedAccounts">Accounts whose server could not be asked.</param>
     /// <param name="Asked">Accounts whose server was asked (connected, with a server that searches).</param>
-    public sealed record ServerSearchOutcome(int Added, IReadOnlyList<string> FailedAccounts, int Asked);
+    /// <param name="Cancelled">The search was abandoned — the folder changed, or another search started.</param>
+    public sealed record ServerSearchOutcome(int Added, IReadOnlyList<string> FailedAccounts, int Asked, bool Cancelled = false);
 
     /// <summary>True while Search Results is on screen, where asking the servers adds to it.</summary>
     public bool CanSearchServer => IsSearchResultsView;
@@ -396,8 +397,12 @@ public partial class MainViewModel
             .ToList();
         if (targets.Count == 0) return new ServerSearchOutcome(0, failed, 0);
 
+        if (Interlocked.CompareExchange(ref _serverSearchRunning, 1, 0) != 0)
+            return new ServerSearchOutcome(0, failed, 0, Cancelled: true);
+
         IsBusy = true;
-        StatusText = "Searching the server…";
+        // No status text of its own: the View says "Searching the server…" once, and a status change would
+        // be announced again behind it.
         var found = new List<MailMessageSummary>();
         try
         {
@@ -437,14 +442,16 @@ public partial class MainViewModel
         }
         catch (OperationCanceledException)
         {
-            return new ServerSearchOutcome(0, failed, targets.Count);
+            return new ServerSearchOutcome(0, failed, targets.Count, Cancelled: true);
         }
         finally
         {
             if (loadVersion == _folderLoadVersion) IsBusy = false;
+            Volatile.Write(ref _serverSearchRunning, 0);
         }
 
-        if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return new ServerSearchOutcome(0, failed, targets.Count);
+        if (!IsCurrentFolderLoad(loadVersion, expectedFolder))
+            return new ServerSearchOutcome(0, failed, targets.Count, Cancelled: true);
 
         var have = new HashSet<string>(StringComparer.Ordinal);
         foreach (var m in _rawMessages)
@@ -462,12 +469,35 @@ public partial class MainViewModel
         if (added.Count > 0)
         {
             await ResolveFlagNamesAsync(added);
-            SetMessages([.. _rawMessages, .. added]);
+            // Added to the list in place, the way live arrivals are, rather than through SetMessages: replacing
+            // the collection moves focus into the list, which would take the user away from wherever they were.
+            ApplyFolderDisplayNames(added);
+            StampWatchedFlags(added);
+            foreach (var m in added)
+                m.Preview = _showPreview ? TruncatePreview(m.Preview, _previewLines) : string.Empty;
+            _rawMessages.AddRange(added);
+
+            var previouslySelected = SelectedMessage;
+            using (Messages.BeginBatchScope())
+            {
+                foreach (var m in added)
+                {
+                    if (!MatchesFilter(m) || !MatchesDayLimit(m)) continue;
+                    if (!string.IsNullOrWhiteSpace(SearchText) && !MatchesSearch(m)) continue;
+                    InsertMessageSorted(m);
+                }
+            }
+            if (previouslySelected != null && SelectedMessage == null && Messages.Contains(previouslySelected))
+                SelectedMessage = previouslySelected;
+            RebuildActiveGroupView();
         }
         var n = Messages.Count;
         StatusText = $"{n} {(n == 1 ? "message" : "messages")} found.";
         return new ServerSearchOutcome(added.Count, failed, targets.Count);
     }
+
+    // One server search at a time: a second one would ask every server again and add the same messages.
+    private int _serverSearchRunning;
 
     private static MessageSearchQuery WithoutAttachmentCondition(MessageSearchQuery query)
     {

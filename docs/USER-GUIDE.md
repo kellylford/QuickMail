@@ -708,9 +708,9 @@ Press **Enter** to search. When something is found the form closes, focus moves 
 
 #### Searching the server too
 
-Search looks at the mail on this computer. To also find mail that isn't here — older than the **Sync range**, or whose text was never downloaded — choose **Search the Server** on the Search results bar, or **Search the Server Too** in the command palette. QuickMail asks each account's mail server for the same search and adds what it finds that the results don't already have; you hear how many more were found, or that there were none. An account the server couldn't be reached for is named, and the others still count.
+Search looks at the mail on this computer. To also find mail that isn't here — older than the **Sync range**, or whose text was never downloaded — choose **Search the Server** on the Search results bar, or **Search the Server Too** in the command palette. QuickMail asks each account's mail server for the same search and adds what it finds that the results don't already have; you hear how many more were found, or that there were none. An account whose server refuses the search is named, and the others still count; one QuickMail already knows is offline is left out quietly.
 
-What each server can search for differs. Gmail and Microsoft 365 search the whole mailbox at once. Other mail servers are asked one folder at a time, which takes longer on a large account, and some search the text of a message more thoroughly than others. Messages found this way are shown but not kept: they stay in the results until you refresh or close them.
+What each server can search for differs. Gmail and Microsoft 365 search the whole mailbox at once — for Gmail that is everything except Spam and Trash, and a search naming a folder goes folder by folder instead. Other mail servers are asked one folder at a time, which takes longer on a large account, and some search the text of a message more thoroughly than others. Messages found this way are shown but not kept: they stay in the results until you refresh or close them.
 
 #### Saving a search
 

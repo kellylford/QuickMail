@@ -181,7 +181,7 @@
                                     <TextBlock Text="Keeps the full text of Inbox messages on this computer so you can read them without a connection. Never wider than the sync range above. Attachments are fetched when you open them and need a connection."
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
                                                TextWrapping="Wrap" Margin="0,3,0,0"/>
-                                    <CheckBox Content="Include other _folders, not just the Inbox"
+                                    <CheckBox Content="Include other folders, not just the Inbo_x"
                                               IsChecked="{Binding OfflineBodyAllFolders, Mode=TwoWay}"
                                               Margin="0,6,0,0"/>
                                     <TextBlock Text="Also keeps the text of messages in Sent, Archive and your other folders, so searching finds words in them too. Trash, Junk and Drafts are left out."

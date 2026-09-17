@@ -27,6 +27,10 @@ public static class ServerSearchQuery
         var parts = new List<SearchQuery>();
         foreach (var t in query.Terms)
         {
+            // An excluded word has to be matched exactly where the query means it, or the server hides
+            // messages that merely mention it somewhere else. IMAP has no attachment-name criterion, so an
+            // excluded attachment word is left to the caller instead of becoming NOT TEXT.
+            if (t.Negated && t.Field == SearchField.Attachment) continue;
             SearchQuery part = t.Field switch
             {
                 SearchField.From       => SearchQuery.FromContains(t.Text),
@@ -56,6 +60,9 @@ public static class ServerSearchQuery
         var parts = new List<string>();
         foreach (var t in query.Terms)
         {
+            // Gmail has no body-only operator, so an excluded body word would exclude messages that have it
+            // in their subject or sender too. Left out; the caller still checks what comes back.
+            if (t.Negated && t.Field == SearchField.Body) continue;
             var value = QuoteIfNeeded(t.Text, t.IsPhrase);
             var part = t.Field switch
             {
@@ -118,9 +125,13 @@ public static class ServerSearchQuery
     /// </summary>
     private static string QuoteIfNeeded(string text, bool isPhrase, string quote = "\"")
     {
-        var clean = text.Replace("\"", string.Empty, StringComparison.Ordinal);
-        return isPhrase || clean.Any(char.IsWhiteSpace) || clean.Contains(':') || clean.StartsWith('-')
-            ? quote + clean + quote
-            : clean;
+        // Backslashes and quotes are what a server would read as syntax of its own; KQL also has AND, OR,
+        // NOT and brackets. Quoting the value makes all of it literal.
+        var clean = text.Replace("\"", string.Empty, StringComparison.Ordinal)
+                        .Replace("\\", string.Empty, StringComparison.Ordinal);
+        var risky = clean.Any(c => char.IsWhiteSpace(c) || c is ':' or '(' or ')' or '"')
+            || clean.StartsWith('-')
+            || clean is "AND" or "OR" or "NOT";
+        return isPhrase || risky ? quote + clean + quote : clean;
     }
 }
