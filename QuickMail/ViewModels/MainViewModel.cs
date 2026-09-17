@@ -5625,7 +5625,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// list only briefly, not until the next background check. The pass runs rules on arriving mail only, not on older mail
     /// a wider window brought in. Callers never reach this in online mode, which keeps no store.
     /// </summary>
-    private void CacheAndSettleRules(IReadOnlyCollection<MailMessageSummary> messages, string writeContext = "local store: upsert summaries")
+    private void CacheAndSettleRules(List<MailMessageSummary> messages, string writeContext = "local store: upsert summaries")
     {
         if (messages.Count == 0) return;
 
@@ -5644,7 +5644,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // The write starts here, on the caller's thread, as the plain write this replaced did. The store runs it through
         // before returning, so a delete or a mark-read made straight afterwards still lands after it, not under it. Only the
         // rules pass, which reads the store, runs rules and writes back, moves off the UI thread.
-        var cached = _localStore.UpsertSummariesAsync([.. messages]);
+        var cached = _localStore.UpsertSummariesAsync(messages);
         cached.LogFaults(writeContext);
         Task.Run(() => SettleRulesAfterCachingAsync(cached, targets)).LogFaults("client-side rules: settle mail a view cached");
     }
