@@ -47,6 +47,7 @@ public class AllArchiveVirtualFolderTests
         public Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult(0);
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
         public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
+        public Task ApplyPendingRulesAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
         public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
     }
 

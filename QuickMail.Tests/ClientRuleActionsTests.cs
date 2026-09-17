@@ -410,6 +410,15 @@ public class ClientRuleActionsTests
     {
         public List<string> Deleted { get; } = [];
 
+        /// <summary>Messages recorded as having had client rules run on them (#712).</summary>
+        public List<string> RulesDone { get; } = [];
+
+        public override Task MarkRulesAppliedAsync(Guid accountId, string folderName, IEnumerable<string> messageIds)
+        {
+            RulesDone.AddRange(messageIds);
+            return Task.CompletedTask;
+        }
+
         public override Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds)
         {
             Deleted.AddRange(messageIds);
@@ -612,6 +621,37 @@ public class ClientRuleActionsTests
             Assert.Equal(["copy 7 to INBOX/Kept"], server.Calls);
             Assert.Empty(removed);          // nothing left the Inbox, so nothing counts as moved or deleted
             Assert.Empty(store.Deleted);    // and the cached row stays
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task RunOnExistingMail_RecordsWhatItRanOn_SoASyncDoesNotRunTheRulesAgain() // #712
+    {
+        // Mail a view cached a moment ago is waiting for a sync pass. Run on Existing Mail runs the rules on it too, and
+        // unless it records that, the pass runs them a second time — with Copy, a second copy.
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            var account = Guid.NewGuid();
+            var store = new RecordingStore();
+            store.SeededSummaries[(account, "INBOX")] =
+            [
+                new MailMessageSummary { MessageId = "7", AccountId = account, FolderName = "INBOX", Subject = "Weekly digest" },
+                new MailMessageSummary { MessageId = "8", AccountId = account, FolderName = "INBOX", Subject = "Something else" },
+            ];
+            var rules = new RuleService(new RecordingMailService(), store, dir);
+            rules.SaveRules([new MailRule
+            {
+                Name = "Keep", AccountId = account, SubjectContains = "digest",
+                Action = RuleAction.CopyToFolder, CopyTargetFolder = "INBOX/Kept",
+            }]);
+
+            await rules.ApplyRulesToExistingAsync(
+                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
+
+            // Both: a message the rules looked at and didn't match has still had them run on it.
+            Assert.Equal(["7", "8"], store.RulesDone.Order());
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }

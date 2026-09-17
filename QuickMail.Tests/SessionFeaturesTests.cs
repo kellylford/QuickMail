@@ -267,6 +267,7 @@ public class IdleNewMailTests
             => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
 
         public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
+        public Task ApplyPendingRulesAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
         public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
     }

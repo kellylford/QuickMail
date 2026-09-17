@@ -52,6 +52,20 @@ In `config.ini`, **All mail** is saved as `OfflineBodyDays = -1`, since `0` alre
 
 ## Fixed
 
+### Client-side rules no longer miss mail that arrives while the Inbox is open
+
+A client-side rule could silently skip a message. If the message reached QuickMail first by another route — most often opening or returning to the Inbox just as it arrived, but also All Inboxes, All Mail or a saved view — the next background check found it already stored, took it for mail it had already handled, and no rule ever ran on it. Nothing was logged, and the message was never looked at again: **Run on Existing Mail** was the only way to apply your rules to it.
+
+QuickMail now keeps track of which messages your rules have run on separately from which messages it has stored, so a rule runs on each message that arrives in your Inbox, however QuickMail first picked it up. If the Inbox is open when a matching message lands, the message can appear in the list for a moment before the rule files it.
+
+Rules still leave older mail alone. That includes mail QuickMail shows you for the first time because you widened the **Sync range**, and, on a Microsoft 365 account, a message moved into the Inbox from another program: it keeps the time it first arrived, so rules leave it alone unless that was within about an hour of your newest mail. Mail already in your mailbox when you update counts as already handled.
+
+Microsoft 365 and POP3 messages QuickMail lists from its cache now show whether they have attachments, and are included when you filter for messages with attachments, without having to be opened first.
+
+[#712](https://github.com/kellylford/QuickMail/issues/712)
+
+---
+
 ### The rule editor's folder buttons say which folder is chosen
 
 A rule that moves or copies to a folder shows that folder on the button beside the action — but the button was still reported as "Choose move-to folder" whichever folder was chosen, so a rule that already had one sounded as though it had none. That happened both right after choosing a folder and when reopening a saved rule; activating the button did land on the right folder.

@@ -494,6 +494,13 @@ public class RuleService : IRuleService
             string.Equals(m.FolderName, inbox, StringComparison.Ordinal)).ToList();
         LogService.Debug($"ApplyRulesToExisting: {allMessages.Count} cached, {inboxMessages.Count} in Inbox, {enabledRules.Count} enabled rules");
 
+        // Everything this pass looks at has now had the rules run on it, so record it. A message a view cached a moment
+        // ago is still waiting for a sync pass (#712), and that pass would otherwise run the rules on it again — with
+        // Copy, a second copy. Recorded before acting, as the sync pass does. That closes the gap for a pass that comes
+        // later, not for one already acting on the same message as this loads the store; that race was always there.
+        foreach (var group in inboxMessages.GroupBy(m => (m.AccountId, m.FolderName)))
+            await store.MarkRulesAppliedAsync(group.Key.AccountId, group.Key.FolderName, group.Select(m => m.MessageId));
+
         foreach (var rule in enabledRules)
         {
             ct.ThrowIfCancellationRequested();

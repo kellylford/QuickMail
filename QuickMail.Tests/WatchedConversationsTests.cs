@@ -61,6 +61,7 @@ public class WatchedConversationsTests
         public Task<int> ReconcileFolderAsync(AccountModel a, MailFolderModel f, CancellationToken ct) => Task.FromResult(0);
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
         public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
+        public Task ApplyPendingRulesAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
         public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
     }
 

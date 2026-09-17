@@ -745,14 +745,14 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
-    // NOTE: not on any live path today. The sweep only routes a folder here when its numeric high-water
-    // mark is "0", which for IMAP means an empty cache — and that case short-circuits to the initial
-    // fetch before this listing is reached (IMAP UIDs are numeric, so a populated folder always has a
-    // real high-water mark and takes the incremental branch). It exists to satisfy the interface. Two
-    // things to know if anything ever does route here: (1) FetchAsync(0, -1) pulls every message in the
-    // folder — not cheap on a large folder, and nothing currently guards it; (2) INTERNALDATE is
-    // date-granular the same way IMAP SEARCH SINCE is, so unlike Graph the gate's full-precision
-    // ReceivedUtc comparison and GetMessagesSinceDateAsync's SEARCH SINCE would not agree at the edge.
+    // The sweep never routes an IMAP folder here: it only lists when a folder's numeric high-water mark is
+    // "0", which for IMAP means an empty cache, and that case short-circuits to the initial fetch (IMAP UIDs
+    // are numeric, so a populated folder always takes the incremental branch). Client rules call it once per
+    // Inbox, to draw that Inbox's first arrival line (#712 — SyncService.DrawFirstLineAsync), which reads
+    // only the UIDs. Two things to know: (1) FetchAsync(0, -1) pulls every message in the folder — not cheap
+    // on a large folder, which is why rules ask only once; (2) INTERNALDATE is date-granular the same way
+    // IMAP SEARCH SINCE is, so unlike Graph the gate's full-precision ReceivedUtc comparison and
+    // GetMessagesSinceDateAsync's SEARCH SINCE would not agree at the edge.
     public async Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(
         Guid accountId, string folderName, CancellationToken ct = default)
     {

@@ -279,134 +279,72 @@ public partial class SyncService : ISyncService
     }
 
     /// <summary>
-    /// The single point where client mail rules run against freshly fetched messages. Every sync
-    /// path — the initial/periodic full sync and the live IDLE/change-notifier syncs — funnels its
-    /// batch through here, so a rule fires exactly once per message no matter which path first sees
-    /// it. (Previously only the full sync applied rules, so mail arriving while the app was running
-    /// slipped past every client rule.)
+    /// Where client mail rules run on mail as it arrives. The sync paths — the initial and periodic full sync, and
+    /// the live IDLE/change-notifier syncs — hand their fetched batch here: it is cached, and rules then run on every
+    /// Inbox message that is cached, not yet run through them, and arriving — whichever path cached it.
     ///
-    /// Determines genuinely-new arrivals — persisted paths dedupe against the local store; the
-    /// store-less online path uses an in-session guard, and treats its first fetch per folder as a
-    /// baseline (marked seen, never run) so rules can't fire retroactively on the reconciliation
-    /// batch. Persists the batch, runs rules on the new arrivals, deletes any rule-moved/deleted
-    /// messages from the store, raises <see cref="RulesApplied"/> / <see cref="MessagesRemoved"/>,
-    /// and returns the batch with those messages stripped so the UI never shows them in the origin
-    /// folder. Callers own <see cref="FolderSynced"/>.
+    /// <para>That last part is #712. This used to decide what was new by asking whether the store already held a
+    /// message, believing every path funnelled its batch through here. They do not: opening a folder, All Mail, All
+    /// Inboxes and saved views fetch from the server and cache what they get, without running rules. A message one of
+    /// those cached first read as already known here, and no rule ever ran on it — with nothing in the log to say so.
+    /// So being cached and having had rules run are now separate facts: the store holds each message it caches as
+    /// waiting for rules, and <see cref="SettlePendingRulesAsync"/> records them done as it runs them. The view paths
+    /// ask for a pass straight after caching, through <see cref="ApplyPendingRulesAsync"/>.</para>
     ///
-    /// <para><paramref name="preFetchKnownIds"/>: the folder's cached-id set as it stood BEFORE the
-    /// fetch, when the caller has one. The store query below assumes fetching does not persist —
-    /// true for IMAP and Graph, violated by POP3, whose fetch stores every download before
-    /// returning. Querying after such a fetch reads every arrival as already-known and rules
-    /// silently never run, so a caller that snapshotted ids pre-fetch must pass them.</para>
+    /// <para>The store-less online path keeps its in-session guard, and treats its first fetch per folder as a
+    /// baseline (marked seen, never run) so rules can't fire retroactively on the reconciliation batch.</para>
+    ///
+    /// Persists the batch, runs rules, deletes rule-moved/deleted messages from the store, raises
+    /// <see cref="RulesApplied"/> / <see cref="MessagesRemoved"/>, and returns the batch with those messages stripped
+    /// so the UI never shows them in the origin folder. Callers own <see cref="FolderSynced"/>.
     /// </summary>
     private async Task<List<MailMessageSummary>> ApplyRulesToArrivalsAsync(
         AccountModel account, MailFolderModel folder,
-        List<MailMessageSummary> fetched, bool persisted, bool consumeRebuildBaseline, CancellationToken ct,
-        IReadOnlyCollection<string>? preFetchKnownIds = null)
+        List<MailMessageSummary> fetched, bool persisted, bool consumeRebuildBaseline, CancellationToken ct)
     {
-        if (fetched.Count == 0)
+        if (persisted)
         {
-            // F4: an empty folder at upgrade has no pre-existing mail to baseline, but still consume the
-            // baseline on the full sync so a later genuinely-new message runs rules normally rather than
-            // being swallowed by a baseline deferred to it.
-            if (consumeRebuildBaseline && _rebuildAccounts.ContainsKey(account.Id))
-                _rebuildBaselined.TryAdd((account.Id, folder.FullName), 0);
-            return fetched;
+            if (fetched.Count > 0)
+                await _store.UpsertSummariesAsync(fetched);
+
+            // Even for an empty batch: mail another path cached is waiting whether or not this fetch found anything,
+            // and an empty batch still consumes a pending #366 rebuild baseline (F4).
+            var (settledMatched, settledRemoved) =
+                await SettlePendingRulesAsync(account, folder, fetched, consumeRebuildBaseline, ct);
+            return StripAndRaise(fetched, settledMatched, settledRemoved);
         }
 
-        // No enabled rules → no id scan, no guard bookkeeping; a rule-less profile pays nothing.
-        // (LoadRules() is cached after first load.) Still persist so the cache/UI reflect the fetch.
-        var hasEnabledRules = RulesOrNone().Any(r => r.IsEnabled);
+        // ── Store-less (online) ──────────────────────────────────────────────────────────────────────────────
+        if (fetched.Count == 0) return fetched;
 
-        // Persisted dedupe authority is the store — the caller's pre-fetch snapshot when it has one
-        // (mandatory for backends that persist inside the fetch), otherwise queried here, which is
-        // still BEFORE the upsert so IMAP/Graph fetches read as new. A bounded IN over the
-        // batch avoids scanning every id in a large cached folder; the full scan is only cheaper for
-        // an unusually large batch (a fresh account's first sync, where the store is empty anyway).
-        var knownInStore = !(persisted && hasEnabledRules) ? []
-            : preFetchKnownIds is not null
-                ? new HashSet<string>(preFetchKnownIds)
-            : fetched.Count <= 500
-                ? await _store.GetExistingMessageIdsAsync(account.Id, folder.FullName, fetched.Select(m => m.MessageId))
-                : await _store.GetAllMessageIdsAsync(account.Id, folder.FullName);
+        // No enabled rules → no guard bookkeeping; a rule-less profile pays nothing.
+        if (!RulesOrNone().Any(r => r.IsEnabled)) return fetched;
 
-        if (persisted)
-            await _store.UpsertSummariesAsync(fetched);
+        if (!IsInbox(folder)) return fetched;
 
-        if (!hasEnabledRules) return fetched;
-
-        // #336: client rules fire ONLY on the Inbox. Non-Inbox folders are still fetched and cached
-        // above — we just don't run rules against them. This is the classic mail-rules model (rules
-        // process mail as it arrives in the Inbox) and it prevents double-processing: a server-side
-        // rule (or a manual move) that files a message into another folder must not then be re-acted
-        // on by a matching client rule when QuickMail syncs that folder, and a rule must never yank
-        // back mail the user manually filed elsewhere. Matches the Inbox test used across the VM.
-        //
-        // IMPORTANT (review L5): for Graph accounts, folder.FullName is an opaque id that never equals
-        // "INBOX", so folder.Kind == Inbox is the ONLY thing keeping client rules alive on a Graph
-        // inbox. Every current caller resolves the inbox model from _cachedFolders (where Kind is set),
-        // so this holds — but any new sync entry point that hands this method a Graph inbox with
-        // Kind == None would silently stop running rules on it. Keep Kind set on the inbox model, or
-        // route inbox resolution through the shared predicate. Pinned by GraphInbox_ByKind_RunsRules.
-        if (folder.Kind != SpecialFolderKind.Inbox &&
-            !string.Equals(folder.FullName, "INBOX", StringComparison.OrdinalIgnoreCase))
-            return fetched;
-
-        // Store-less (online) baseline: the first fetch per folder is the last-50 reconciliation
-        // batch, not new mail. Mark it seen WITHOUT running rules, so a move/delete/mark-read rule
-        // never rewrites up-to-50 pre-existing messages on a delete or archive reconciliation.
-        // Retroactive application has its own user-invoked home in ApplyRulesToExistingAsync.
-        if (!persisted && _onlineBaselined.TryAdd((account.Id, folder.FullName), 0))
+        // The first fetch per folder is the last-50 reconciliation batch, not new mail. Mark it seen WITHOUT running
+        // rules, so a move/delete/mark-read rule never rewrites up-to-50 pre-existing messages on a delete or archive
+        // reconciliation. Retroactive application has its own user-invoked home in ApplyRulesToExistingAsync.
+        if (_onlineBaselined.TryAdd((account.Id, folder.FullName), 0))
         {
             foreach (var m in fetched)
                 _rulesApplied.TryAdd((account.Id, folder.FullName, m.MessageId), 0);
             return fetched;
         }
 
-        // Persisted rebuild baseline (#366/N5): after the one-time immutable-id cache wipe, the store is
-        // empty, so a re-fetch reads every pre-existing message as "new" and would re-run rules over old
-        // mail on upgrade day (move/delete/mark-read). While a wiped account's folder is not yet
-        // baselined, skip rules on its re-fetched mail.
-        //
-        // F2 (race): the delta poll's IDLE last-50 fetch runs concurrently with the full sync's larger
-        // window on upgrade launches, and nothing serializes them. Only the FULL sync consumes (marks
-        // the folder baselined); the IDLE path skips rules WITHOUT consuming. So if IDLE wins the race it
-        // can't burn the baseline on 50 messages and leave the full sync's larger remainder — read as new
-        // against the just-upserted 50 — to re-fire. The full sync always finds the folder un-baselined
-        // and skips its whole batch. Once the full sync consumes, rules resume normally on both paths.
-        if (persisted && _rebuildAccounts.ContainsKey(account.Id)
-            && !_rebuildBaselined.ContainsKey((account.Id, folder.FullName)))
-        {
-            if (consumeRebuildBaseline)
-                _rebuildBaselined.TryAdd((account.Id, folder.FullName), 0);
-            return fetched;
-        }
-
-        var newArrivals = new List<MailMessageSummary>();
-        foreach (var m in fetched)
-        {
-            var isNew = persisted
-                ? !knownInStore.Contains(m.MessageId)
-                : _rulesApplied.TryAdd((account.Id, folder.FullName, m.MessageId), 0);
-            if (isNew) newArrivals.Add(m);
-        }
-
+        var newArrivals = fetched
+            .Where(m => _rulesApplied.TryAdd((account.Id, folder.FullName, m.MessageId), 0))
+            .ToList();
         if (newArrivals.Count == 0) return fetched;
 
-        // Client-side rules do not run on a shared mailbox (#678). Its rules belong in Outlook, and a client
-        // rule there would move or delete, from one person's machine, mail everyone else reads. A rule
-        // saved against one by an earlier version is kept, not run; the first skip each session is logged
-        // when there is such a rule.
         if (account.IsShared)
         {
-            if (_sharedRulesSkipLogged.TryAdd(account.Id, 0)
-                && RulesOrNone().Any(r => r.AccountId == account.Id && r.IsEnabled))
-                LogService.Log($"Client-side rules saved for the shared mailbox {account.AccountLabel} are kept but not run: a shared mailbox's rules are managed in Outlook (#678).");
+            LogSharedMailboxSkipOnce(account);
             return fetched;
         }
 
-        int matchedCount = 0;
-        List<MailMessageSummary> removedMessages = [];
+        int matchedCount;
+        List<MailMessageSummary> removedMessages;
         try
         {
             LogService.Debug($"ApplyRules: {account.AccountLabel}/{folder.FullName} — {newArrivals.Count} new of {fetched.Count} fetched");
@@ -417,19 +355,156 @@ public partial class SyncService : ISyncService
         catch (Exception ex)
         {
             LogService.Log($"Applying rules for {account.AccountLabel}/{folder.FullName} failed", ex);
-            // Un-mark the store-less guard so the next poll retries instead of skipping these
-            // forever. (The persisted path is store-guarded; the upsert already recorded them, and
-            // rolling the store back on a transient rule failure would be worse than a retry.)
-            if (!persisted)
-                foreach (var m in newArrivals)
-                    _rulesApplied.TryRemove((account.Id, folder.FullName, m.MessageId), out _);
+            // Un-mark the guard so the next poll retries instead of skipping these forever.
+            foreach (var m in newArrivals)
+                _rulesApplied.TryRemove((account.Id, folder.FullName, m.MessageId), out _);
             return fetched;
         }
 
-        // Delete rule-moved/deleted messages from the store so they don't reappear on cache load.
-        if (persisted && removedMessages.Count > 0)
+        return StripAndRaise(fetched, matchedCount, removedMessages);
+    }
+
+    /// <inheritdoc />
+    public async Task ApplyPendingRulesAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+    {
+        var (matched, removed) = await SettlePendingRulesAsync(account, folder, [], consumeRebuildBaseline: false, ct);
+        RaiseRuleOutcome(matched, removed);
+    }
+
+    // One rules pass at a time per folder. Two paths can finish caching the same message moments apart — opening the
+    // Inbox and the new-mail sync — and each would otherwise find it waiting and run the rules on it twice: two
+    // copies, or a second move of a message that has already gone.
+    private readonly ConcurrentDictionary<(Guid Account, string Folder), SemaphoreSlim> _rulePassGates = new();
+
+    // Messages client rules have run on this session. A view's write can land after a rule has already moved a message
+    // and its row been deleted, caching it again as waiting; without this, the next pass would run the rules on mail that
+    // has gone. Only arrivals go in, so it grows by the mail that arrives while QuickMail is open.
+    private readonly ConcurrentDictionary<(Guid Account, string Folder, string Id), byte> _rulesRanThisSession = new();
+
+    /// <summary>
+    /// Runs client rules on the folder's cached mail that is waiting for them, and records it done (#712). Only an
+    /// Inbox's mail goes through rules (#336); any other folder's waiting mail is simply recorded done, which also
+    /// keeps the store's index of waiting mail down to the Inboxes.
+    /// <para><paramref name="justFetched"/> is the batch the caller has in hand. Where a waiting message is one of
+    /// those, that instance is what the rules act on, so a rule's effect on it (marking it read) reaches the batch
+    /// the caller goes on to show. A waiting message the caller did not fetch is already on screen, cached by another
+    /// path: its read-state change is raised through <see cref="FolderReadStatesReconciled"/>, and a move or delete
+    /// comes back with the rest to be raised as <see cref="MessagesRemoved"/>.</para>
+    /// </summary>
+    private async Task<(int Matched, List<MailMessageSummary> Removed)> SettlePendingRulesAsync(
+        AccountModel account, MailFolderModel folder, IReadOnlyList<MailMessageSummary> justFetched,
+        bool consumeRebuildBaseline, CancellationToken ct)
+    {
+        if (!IsInbox(folder))
         {
-            foreach (var group in removedMessages.GroupBy(m => (m.AccountId, m.FolderName)))
+            await _store.MarkFolderRulesAppliedAsync(account.Id, folder.FullName);
+            return (0, []);
+        }
+
+        var gate = _rulePassGates.GetOrAdd((account.Id, folder.FullName), static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
+        {
+            // Persisted rebuild baseline (#366/N5): after the one-time immutable-id cache wipe the store is empty, so
+            // everything re-fetched is cached as waiting — pre-existing mail that rules already ran on when it first
+            // arrived. While a wiped account's folder is not yet baselined, run no rules on it.
+            //
+            // F2 (race): the delta poll's IDLE last-50 fetch runs concurrently with the full sync's larger window on
+            // upgrade launches, and nothing serializes them. Only the FULL sync consumes the baseline, recording every
+            // waiting message done; the IDLE path leaves them waiting. If IDLE could consume, it would baseline the
+            // folder on 50 messages, and the full sync's larger remainder, cached afterwards, would go through rules.
+            // Once the full sync consumes, rules resume normally on both paths.
+            if (_rebuildAccounts.ContainsKey(account.Id)
+                && !_rebuildBaselined.ContainsKey((account.Id, folder.FullName)))
+            {
+                if (consumeRebuildBaseline)
+                {
+                    await _store.MarkFolderRulesAppliedAsync(account.Id, folder.FullName);
+                    _rebuildBaselined.TryAdd((account.Id, folder.FullName), 0);
+                }
+                return (0, []);
+            }
+
+            // Client-side rules do not run on a shared mailbox (#678): its rules belong in Outlook, and a client rule
+            // there would move or delete, from one person's machine, mail everyone else reads. Its mail is recorded
+            // done rather than left waiting, so no rule acts on it later either.
+            if (account.IsShared)
+            {
+                LogSharedMailboxSkipOnce(account);
+                await _store.MarkFolderRulesAppliedAsync(account.Id, folder.FullName);
+                return (0, []);
+            }
+
+            // No enabled rules — none written yet, or rules.json can't be read (#700). The waiting mail is still
+            // recorded done: a rule written later acts on mail that arrives after it, not on what was already here.
+            // For an unreadable file that keeps #700's promise as written — mail that arrived meanwhile is left to
+            // Run on Existing Mail.
+            if (!RulesOrNone().Any(r => r.IsEnabled))
+            {
+                await _store.MarkFolderRulesAppliedAsync(account.Id, folder.FullName);
+                return (0, []);
+            }
+
+            var waiting = await _store.LoadRulesPendingSummariesAsync(account.Id, folder.FullName);
+            if (waiting.Count == 0) return (0, []);
+
+            var inHand = new Dictionary<string, MailMessageSummary>(StringComparer.Ordinal);
+            foreach (var m in justFetched) inHand.TryAdd(m.MessageId, m);
+
+            // Waiting means cached for the first time, which is not the same as arriving: a view that fetches a wider
+            // window than the sync has cached — the sync range just widened, or All on IMAP — caches older mail too.
+            // Rules act on the arrivals only; the rest is recorded done without them.
+            var boundary = await _store.GetRulesSettledBoundaryAsync(account.Id, folder.FullName);
+            if (boundary.MaxDateTicks is null && waiting.Any(m => !inHand.ContainsKey(m.MessageId)))
+            {
+                // No line yet, and mail waits that the caller didn't fetch itself, so the caller's batch can't stand in for
+                // one: draw it from the server. If the server can't be asked, leave everything waiting for the next pass.
+                if (await DrawFirstLineAsync(account, folder, waiting, ct) is not { } drawn) return (0, []);
+                boundary = drawn;
+            }
+            var batch = new List<MailMessageSummary>();
+            var notArriving = new List<string>();
+            foreach (var m in waiting)
+            {
+                if (_rulesRanThisSession.ContainsKey((account.Id, folder.FullName, m.MessageId))
+                    || !IsArrival(account, m, boundary, inHand))
+                    notArriving.Add(m.MessageId);
+                else
+                    batch.Add(inHand.TryGetValue(m.MessageId, out var held) ? held : m);
+            }
+            if (notArriving.Count > 0)
+            {
+                await _store.MarkRulesAppliedAsync(account.Id, folder.FullName, notArriving);
+                LogService.Debug($"ApplyRules: {account.AccountLabel}/{folder.FullName} — {notArriving.Count} cached but not arriving, recorded done without rules");
+            }
+            if (batch.Count == 0) return (0, []);
+
+            var cachedElsewhere = batch.Where(m => !inHand.ContainsKey(m.MessageId)).ToList();
+            var readBefore = cachedElsewhere.ToDictionary(m => m.MessageId, m => m.IsRead, StringComparer.Ordinal);
+
+            // Recorded done BEFORE the rules act, as caching the batch used to be: a message whose rules fail part way
+            // is not retried by the next pass, where running a copy or a move again could act on it twice.
+            await _store.MarkRulesAppliedAsync(account.Id, folder.FullName, batch.Select(m => m.MessageId));
+            foreach (var m in batch)
+                _rulesRanThisSession.TryAdd((account.Id, folder.FullName, m.MessageId), 0);
+
+            int matched;
+            List<MailMessageSummary> removed;
+            try
+            {
+                LogService.Debug($"ApplyRules: {account.AccountLabel}/{folder.FullName} — {batch.Count} waiting ({batch.Count - cachedElsewhere.Count} from this fetch, {cachedElsewhere.Count} cached by another path)");
+                (matched, removed) = await _rules.ApplyRulesAsync(batch, account.Id, ct);
+                LogService.Debug($"ApplyRules: done — {matched} matched, {removed.Count} removed");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                LogService.Log($"Applying rules for {account.AccountLabel}/{folder.FullName} failed", ex);
+                return (0, []);
+            }
+
+            // Delete rule-moved/deleted messages from the store so they don't reappear on cache load.
+            foreach (var group in removed.GroupBy(m => (m.AccountId, m.FolderName)))
             {
                 try
                 {
@@ -441,26 +516,163 @@ public partial class SyncService : ISyncService
                     LogService.Log($"Rule cleanup: failed to delete {group.Count()} summaries from {group.Key.FolderName}", ex);
                 }
             }
+
+            var removedIds = removed.Select(m => m.MessageId).ToHashSet(StringComparer.Ordinal);
+            var readChanged = cachedElsewhere
+                .Where(m => !removedIds.Contains(m.MessageId) && m.IsRead != readBefore[m.MessageId])
+                .ToList();
+            if (readChanged.Count > 0)
+                _ui.Post(() => FolderReadStatesReconciled?.Invoke(readChanged));
+
+            return (matched, removed);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Draws an Inbox's first arrival line when rules settle it with mail waiting that the caller didn't fetch itself — a
+    /// view cached it — and it has no line yet: a new account, or an Inbox empty when this version first ran or after its
+    /// cache was wiped (#712 second review). Everything the server holds in the Inbox apart from the mail waiting here was
+    /// there before it, so the line sits at the newest of that. Null when the server can't be asked: guessing would either
+    /// run rules over older mail or skip mail arriving.
+    /// <para>Nothing newer than the newest waiting message counts, though. A folder with no line has nothing in the store
+    /// recorded done — recording mail done draws the line — so server mail that isn't waiting isn't cached at all, and the
+    /// view that cached the waiting mail fetched the newest. Mail past that reached the server after the view fetched, and
+    /// may be cached by a sync while the listing is still coming back: it is arriving, not already there.</para>
+    /// <para>POP3 has no server listing, and its first collection brings a mailbox's whole backlog. What the account has already
+    /// collected tells the two apart: mail it recorded collecting besides what is waiting now, or any downloaded mail of
+    /// its recorded done (an account that deletes from the server forgets a message's collection once the server stops
+    /// listing it, but a rule that filed it keeps it cached). Mail the user wrote — Sent, Drafts — doesn't count. Either way what it downloads is arriving, so the line is drawn at the start;
+    /// otherwise no line yet, and only the caller's own batch counts.</para>
+    /// </summary>
+    private async Task<(long? MaxNumericId, long? MaxDateTicks)?> DrawFirstLineAsync(
+        AccountModel account, MailFolderModel folder, List<MailMessageSummary> waiting, CancellationToken ct)
+    {
+        var waitingIds = waiting.Select(m => m.MessageId).ToHashSet(StringComparer.Ordinal);
+
+        if (account.BackendKind == BackendKind.Pop3Smtp)
+        {
+            var collected = await _store.LoadPop3CollectedUidlsAsync(account.Id);
+            if (!collected.Any(id => !waitingIds.Contains(id)) && !await _store.AccountHasRulesSettledMailAsync(account.Id, Pop3MailService.LocalIdPrefix))
+                return (null, null);
+            await _store.EnsureRulesWatermarkAsync(account.Id, folder.FullName, 0, 0);
+            return await _store.GetRulesSettledBoundaryAsync(account.Id, folder.FullName);
         }
 
-        // Strip moved/deleted from the batch so the UI doesn't show them in the origin folder.
+        IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)> listing;
+        try
+        {
+            listing = await _imap.GetFolderMessageIdDatesAsync(account.Id, folder.FullName, ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            LogService.Log($"ApplyRules: couldn't list {account.AccountLabel}/{folder.FullName} to tell arriving mail from older mail; its waiting mail is left for the next pass", ex);
+            return null;
+        }
+
+        var newestWaitingUid = waiting.Select(m => long.TryParse(m.MessageId, out var u) ? u : 0).DefaultIfEmpty().Max();
+        // On IMAP the dates compared are the server's receive date against the Date header, but only the UID part of an IMAP
+        // line is ever read.
+        var newestWaitingTicks = waiting.Select(m => m.Date.UtcTicks).DefaultIfEmpty().Max();
+        long maxNumeric = 0, maxTicks = 0;
+        foreach (var (id, received, _) in listing)
+        {
+            if (waitingIds.Contains(id)) continue;
+            if (long.TryParse(id, out var uid) && uid > maxNumeric && uid < newestWaitingUid) maxNumeric = uid;
+            if (received.UtcTicks > maxTicks && received.UtcTicks < newestWaitingTicks) maxTicks = received.UtcTicks;
+        }
+        await _store.EnsureRulesWatermarkAsync(account.Id, folder.FullName, maxNumeric, maxTicks);
+        return await _store.GetRulesSettledBoundaryAsync(account.Id, folder.FullName);   // what stands, if another pass drew it first
+    }
+
+    // How far before the newest settled receive time a Microsoft 365 message can still be arriving. Exchange stamps the
+    // receive time as mail comes in, but scanning can keep a message out of the mailbox for minutes after that, so it can
+    // show up after mail stamped later has already been settled. Mail a wider window brings in is days older, and mail
+    // from the hour before the newest settled message is already cached, so this lets no older mail through.
+    private static readonly long GraphArrivalToleranceTicks = TimeSpan.FromHours(1).Ticks;
+
+    /// <summary>
+    /// Whether a message waiting for rules is arriving mail, or older mail cached for the first time by a view that
+    /// fetched a wider window than the sync — the sync range widened, say, or All on IMAP. Measured against the folder's
+    /// stored arrival line, in the order that account's server gives arrivals:
+    /// <list type="bullet">
+    /// <item>IMAP: a higher UID. UIDs follow arrival; the Date header does not, and mail delivered late carries an old one.</item>
+    /// <item>Microsoft 365: a receive time no more than an hour before the newest. Graph's date is when the server
+    /// received the message. A message moved into the Inbox from another program keeps its receive time, so rules don't
+    /// run on it — as Outlook's own Inbox rules don't.</item>
+    /// <item>POP3: always. Everything a POP3 account caches is mail it has just downloaded; there is no wider window.</item>
+    /// </list>
+    /// A folder reaches here without a line only when all its waiting mail is the caller's own batch — a sync settling a
+    /// folder for the first time — or on a POP3 account's first collection. Then the caller's batch counts, as it always has.
+    /// </summary>
+    private static bool IsArrival(
+        AccountModel account, MailMessageSummary message,
+        (long? MaxNumericId, long? MaxDateTicks) boundary, Dictionary<string, MailMessageSummary> inHand)
+    {
+        if (boundary.MaxDateTicks is not long newestSettled)
+            return inHand.ContainsKey(message.MessageId);
+
+        return account.BackendKind switch
+        {
+            BackendKind.Pop3Smtp => true,
+            BackendKind.MicrosoftGraph => message.Date.UtcTicks >= newestSettled - GraphArrivalToleranceTicks,
+            _ => long.TryParse(message.MessageId, out var uid)
+                ? uid > (boundary.MaxNumericId ?? 0)
+                : message.Date.UtcTicks >= newestSettled,
+        };
+    }
+
+    /// <summary>
+    /// Whether client rules act on this folder. #336: client rules fire ONLY on the Inbox. Other folders are still
+    /// fetched and cached — rules just don't run against them. This is the classic mail-rules model (rules process
+    /// mail as it arrives in the Inbox) and it prevents double-processing: a server-side rule (or a manual move) that
+    /// files a message into another folder must not then be re-acted on by a matching client rule when QuickMail
+    /// syncs that folder, and a rule must never yank back mail the user filed elsewhere.
+    /// <para>IMPORTANT (review L5): for Graph accounts folder.FullName is an opaque id that never equals "INBOX", so
+    /// folder.Kind == Inbox is the ONLY thing keeping client rules alive on a Graph inbox. Every current caller
+    /// resolves the inbox model from _cachedFolders (where Kind is set), so this holds — but any new entry point that
+    /// hands this a Graph inbox with Kind == None would silently stop running rules on it. Pinned by
+    /// GraphInbox_ByKind_RunsRules.</para>
+    /// </summary>
+    private static bool IsInbox(MailFolderModel folder)
+        => folder.Kind == SpecialFolderKind.Inbox
+           || string.Equals(folder.FullName, "INBOX", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Logs, once a session per account, that a shared mailbox's saved client rules are kept but not run (#678).</summary>
+    private void LogSharedMailboxSkipOnce(AccountModel account)
+    {
+        if (_sharedRulesSkipLogged.TryAdd(account.Id, 0)
+            && RulesOrNone().Any(r => r.AccountId == account.Id && r.IsEnabled))
+            LogService.Log($"Client-side rules saved for the shared mailbox {account.AccountLabel} are kept but not run: a shared mailbox's rules are managed in Outlook (#678).");
+    }
+
+    /// <summary>Strips rule-moved/deleted messages from a fetched batch, so the UI doesn't show them in the origin
+    /// folder, and raises what the rules did.</summary>
+    private List<MailMessageSummary> StripAndRaise(
+        List<MailMessageSummary> fetched, int matchedCount, List<MailMessageSummary> removedMessages)
+    {
         if (removedMessages.Count > 0)
         {
             var removedKeys = removedMessages
                 .Select(m => (m.MessageId, m.AccountId, m.FolderName)).ToHashSet();
             fetched.RemoveAll(m => removedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
         }
-
-        if (matchedCount > 0 || removedMessages.Count > 0)
-        {
-            _ui.Post(() =>
-            {
-                if (matchedCount > 0) RulesApplied?.Invoke(matchedCount);
-                if (removedMessages.Count > 0) MessagesRemoved?.Invoke(removedMessages);
-            });
-        }
-
+        RaiseRuleOutcome(matchedCount, removedMessages);
         return fetched;
+    }
+
+    private void RaiseRuleOutcome(int matchedCount, List<MailMessageSummary> removedMessages)
+    {
+        if (matchedCount == 0 && removedMessages.Count == 0) return;
+        _ui.Post(() =>
+        {
+            if (matchedCount > 0) RulesApplied?.Invoke(matchedCount);
+            if (removedMessages.Count > 0) MessagesRemoved?.Invoke(removedMessages);
+        });
     }
 
     public async Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
@@ -483,13 +695,9 @@ public partial class SyncService : ISyncService
         if (incoming.Count > 0)
         {
             // Upsert + client rules happen inside the shared chokepoint so live-arriving mail is
-            // subject to rules exactly like the full sync. POP3's incremental fetch returns ONLY the
-            // messages it just downloaded (and persisted before returning), so for that backend the
-            // whole batch is new by construction — pass an empty pre-fetch snapshot, or the store
-            // query would read every arrival as already-known and skip rules.
-            IReadOnlyCollection<string>? preFetch = account.BackendKind == BackendKind.Pop3Smtp
-                ? Array.Empty<string>() : null;
-            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: false, ct, preFetch);
+            // subject to rules exactly like the full sync. POP3 caches its downloads inside the fetch;
+            // they are cached as waiting for rules, so the chokepoint still runs rules on them (#712).
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: false, ct);
             QueueArrivalBodies(account, folder, incoming, ct);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
@@ -542,15 +750,14 @@ public partial class SyncService : ISyncService
         var incoming = await _imap.GetMessagesSinceAsync(
             account.Id, folder.FullName, maxKey, cfg.InitialSyncCount, ct);
 
+        // Upsert + client rules run inside the shared chokepoint (the same path the live IDLE
+        // syncs use). It strips rule-moved/deleted messages from the batch and raises
+        // RulesApplied / MessagesRemoved; here we just surface the survivors to the UI —
+        // immediately, without waiting for body preview fetches. Called even when nothing new came
+        // back, so Inbox mail another path cached and left waiting for rules is settled (#712).
+        incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: true, ct);
         if (incoming.Count > 0)
-        {
-            // Upsert + client rules run inside the shared chokepoint (the same path the live IDLE
-            // syncs use). It strips rule-moved/deleted messages from the batch and raises
-            // RulesApplied / MessagesRemoved; here we just surface the survivors to the UI —
-            // immediately, without waiting for body preview fetches.
-            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: true, ct);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
-        }
 
         // ── Remote deletions ─────────────────────────────────────────────────────
         await ReconcileFolderAsync(account, folder, ct);
@@ -603,10 +810,7 @@ public partial class SyncService : ISyncService
         if (cacheReadStates.Count == 0)
         {
             var initial = await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, windowStart, ct);
-            // Empty pre-fetch snapshot: the folder held nothing before this fetch, so everything
-            // fetched is an arrival — including for POP3, whose fetch persists before returning
-            // and would otherwise read its own downloads as already-known and skip rules.
-            return await SurfaceArrivalsAsync(account, folder, initial, ct, preFetchKnownIds: Array.Empty<string>());
+            return await SurfaceArrivalsAsync(account, folder, initial, ct);
         }
 
         var serverIdDates = await _imap.GetFolderMessageIdDatesAsync(account.Id, folder.FullName, ct);
@@ -619,12 +823,11 @@ public partial class SyncService : ISyncService
             ? await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, windowStart, ct)
             : new List<MailMessageSummary>();
 
-        // Always run the (possibly empty) batch through the chokepoint. An empty batch is a no-op except
-        // that it consumes a pending #366 rebuild baseline (F4) — preserving the pre-#462 behavior where
-        // every sweep passed through ApplyRulesToArrivalsAsync. The pre-fetch cached-id set is passed as
-        // the rules dedupe snapshot: it was taken before the fetch, so arrivals a backend persisted
-        // inside the fetch (POP3) still read as new.
-        var incoming = await SurfaceArrivalsAsync(account, folder, fetched, ct, cacheReadStates.Keys);
+        // Always run the (possibly empty) batch through the chokepoint. Even an empty batch settles Inbox mail
+        // another path cached that is still waiting for rules (#712), and consumes a pending #366 rebuild
+        // baseline (F4) — preserving the pre-#462 behavior where every sweep passed through
+        // ApplyRulesToArrivalsAsync.
+        var incoming = await SurfaceArrivalsAsync(account, folder, fetched, ct);
 
         // ── Read/unread reconcile ── the old full-window re-fetch refreshed read state from the server as
         // a side effect (UpsertSummariesAsync carries is_read = excluded.is_read); with the fetch now
@@ -694,10 +897,9 @@ public partial class SyncService : ISyncService
     /// consuming a pending rebuild baseline).
     /// </summary>
     private async Task<List<MailMessageSummary>> SurfaceArrivalsAsync(
-        AccountModel account, MailFolderModel folder, List<MailMessageSummary> fetched, CancellationToken ct,
-        IReadOnlyCollection<string>? preFetchKnownIds = null)
+        AccountModel account, MailFolderModel folder, List<MailMessageSummary> fetched, CancellationToken ct)
     {
-        var incoming = await ApplyRulesToArrivalsAsync(account, folder, fetched, persisted: true, consumeRebuildBaseline: true, ct, preFetchKnownIds);
+        var incoming = await ApplyRulesToArrivalsAsync(account, folder, fetched, persisted: true, consumeRebuildBaseline: true, ct);
         if (incoming.Count > 0)
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         return incoming;

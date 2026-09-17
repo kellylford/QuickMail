@@ -391,7 +391,12 @@ class StubLocalStoreService : ILocalStoreService
         }
         return Task.FromResult(moving.Count);
     }
-    public virtual Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.FromResult(new HashSet<string>());
+    public virtual Task<List<MailMessageSummary>> LoadRulesPendingSummariesAsync(Guid accountId, string folderName) => Task.FromResult(new List<MailMessageSummary>());
+    public virtual Task MarkRulesAppliedAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
+    public virtual Task MarkFolderRulesAppliedAsync(Guid accountId, string folderName) => Task.CompletedTask;
+    public virtual Task<(long? MaxNumericId, long? MaxDateTicks)> GetRulesSettledBoundaryAsync(Guid accountId, string folderName) => Task.FromResult<(long?, long?)>((null, null));
+    public virtual Task EnsureRulesWatermarkAsync(Guid accountId, string folderName, long maxNumericId, long maxDateTicks) => Task.CompletedTask;
+    public virtual Task<bool> AccountHasRulesSettledMailAsync(Guid accountId, string exceptIdsStartingWith) => Task.FromResult(false);
     public virtual Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
     public virtual Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId) => Task.FromResult(new Dictionary<string, int>());
     public virtual Task<Dictionary<string, (int Total, int Unread)>> CountMessagesByFolderAsync(Guid accountId)
@@ -739,6 +744,7 @@ sealed class StubSyncService : ISyncService
     public Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult(0);
     public Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
     public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
+    public Task ApplyPendingRulesAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
     public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
 }
 

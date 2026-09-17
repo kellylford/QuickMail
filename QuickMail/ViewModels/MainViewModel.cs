@@ -2555,7 +2555,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
             if (!OnlineMode && newMessages.Count > 0)
-                _localStore.UpsertSummariesAsync(newMessages).LogFaults("local store: upsert summaries");
+                CacheAndSettleRules(newMessages);
 
             var count = Messages.Count;
             StatusText = count == 0
@@ -5618,6 +5618,63 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private static readonly TimeSpan FolderRefreshTimeout = TimeSpan.FromSeconds(45);
 
+    /// <summary>
+    /// Caches messages a view fetched from the server, then has the sync settle client rules for them (#712). Opening a
+    /// folder, All Mail, All Inboxes and saved views all fetch from the server and can cache mail before any sync has seen
+    /// it; the store holds that mail as waiting for rules, so asking for a pass now means a message a rule moves is in the
+    /// list only briefly, not until the next background check. The pass runs rules on arriving mail only, not on older mail
+    /// a wider window brought in. Callers never reach this in online mode, which keeps no store.
+    /// </summary>
+    private void CacheAndSettleRules(IReadOnlyCollection<MailMessageSummary> messages, string writeContext = "local store: upsert summaries")
+    {
+        if (messages.Count == 0) return;
+
+        // Accounts and _cachedFolders are UI-thread-owned, so resolve the folders here, before leaving the UI thread.
+        var targets = new List<(AccountModel Account, MailFolderModel Folder)>();
+        foreach (var (accountId, folderName) in messages.Select(m => (m.AccountId, m.FolderName)).Distinct())
+        {
+            var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+            var folder = _cachedFolders.TryGetValue(accountId, out var folders)
+                ? folders.FirstOrDefault(f => string.Equals(f.FullName, folderName, StringComparison.Ordinal))
+                : null;
+            if (account is not null && folder is not null)
+                targets.Add((account, folder));
+        }
+
+        // The write starts here, on the caller's thread, as the plain write this replaced did. The store runs it through
+        // before returning, so a delete or a mark-read made straight afterwards still lands after it, not under it. Only the
+        // rules pass, which reads the store, runs rules and writes back, moves off the UI thread.
+        var cached = _localStore.UpsertSummariesAsync([.. messages]);
+        cached.LogFaults(writeContext);
+        Task.Run(() => SettleRulesAfterCachingAsync(cached, targets)).LogFaults("client-side rules: settle mail a view cached");
+    }
+
+    internal async Task SettleRulesAfterCachingAsync(Task cached, List<(AccountModel Account, MailFolderModel Folder)> targets)
+    {
+        try
+        {
+            await cached;
+        }
+        catch (Exception)
+        {
+            // Logged where the write was made. With nothing cached, nothing waits to be settled.
+            return;
+        }
+
+        foreach (var (account, folder) in targets)
+        {
+            // One folder's failure mustn't keep the others waiting: its mail stays waiting for the next sync to settle.
+            try
+            {
+                await _syncService.ApplyPendingRulesAsync(account, folder, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                LogService.Log($"Client-side rules on mail just cached for {account.AccountLabel}/{folder.DisplayName} did not run; the next sync will try", ex);
+            }
+        }
+    }
+
     private async Task RefreshFolderFromServerAsync(
         Guid accountId, MailFolderModel folder, int version, CancellationToken ct)
     {
@@ -5638,7 +5695,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             SetMessages(list);
             StatusText = list.Count == 0 ? "No messages" : $"{list.Count} messages loaded.";
             if (!OnlineMode)
-                _localStore.UpsertSummariesAsync(list).LogFaults("local store: upsert summaries");
+                CacheAndSettleRules(list);
 
             if (IsConversationsView)
                 ScheduleConversationRebuild();
@@ -6112,7 +6169,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                 SetMessages(repaired);
                 if (!OnlineMode)
-                    _localStore.UpsertSummariesAsync(repaired).LogFaults("local store: upsert repaired summaries");
+                    CacheAndSettleRules(repaired, "local store: upsert repaired summaries");
 
                 var totalCount = Messages.Count;
                 StatusText = totalCount == 0
@@ -6167,7 +6224,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return;
 
             if (newMessages.Count > 0)
-                _localStore.UpsertSummariesAsync(newMessages).LogFaults("local store: upsert summaries");
+                CacheAndSettleRules(newMessages);
 
             var count = Messages.Count;
             StatusText = count == 0
@@ -7135,7 +7192,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
             if (newMessages.Count > 0)
-                _localStore.UpsertSummariesAsync(newMessages).LogFaults("local store: upsert summaries");
+                CacheAndSettleRules(newMessages);
 
             var count = Messages.Count;
             StatusText = count == 0
@@ -7294,7 +7351,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ? $"No messages in {displayName}."
                 : $"{sorted.Count} {(sorted.Count == 1 ? "message" : "messages")} in {displayName}.";
             if (!OnlineMode)
-                _localStore.UpsertSummariesAsync(sorted).LogFaults("local store: upsert summaries");
+                CacheAndSettleRules(sorted);
         }
         catch (OperationCanceledException)
         {

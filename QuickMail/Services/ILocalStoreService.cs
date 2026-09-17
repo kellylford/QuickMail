@@ -136,8 +136,42 @@ public interface ILocalStoreService
     Task<IReadOnlyList<(string Id, DateTimeOffset Date, bool IsRead)>> LoadFolderMessageStatesAsync(
         Guid accountId, string folderName);
 
-    /// <summary>Which of <paramref name="messageIds"/> already exist in the folder (bounded lookup).</summary>
-    Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
+    /// <summary>
+    /// The folder's cached messages that client rules have not yet run on, oldest first (#712). Every message
+    /// <see cref="UpsertSummariesAsync"/> adds starts out waiting, whichever path cached it; mail already cached
+    /// when this was introduced counts as done, so upgrading never runs rules over old mail.
+    /// </summary>
+    Task<List<MailMessageSummary>> LoadRulesPendingSummariesAsync(Guid accountId, string folderName);
+
+    /// <summary>Records that client rules have run on these messages, so no later pass runs them again.</summary>
+    Task MarkRulesAppliedAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
+
+    /// <summary>
+    /// Records every waiting message in the folder as done without running rules — for a folder rules don't act on,
+    /// an account whose rules don't run, or mail that must not be treated as new (a rebuild baseline).
+    /// </summary>
+    Task MarkFolderRulesAppliedAsync(Guid accountId, string folderName);
+
+    /// <summary>
+    /// Where arriving mail begins, for a folder whose rules have run before (#712): the highest numeric id and the newest
+    /// date client rules have settled there. Both null for a folder rules have never settled. A view that fetches a wider
+    /// window than the sync caches older mail for the first time, and this is what tells that mail apart from mail that
+    /// has just arrived. It never goes down: mail a rule has since moved out, taking its row with it, still counts.
+    /// </summary>
+    Task<(long? MaxNumericId, long? MaxDateTicks)> GetRulesSettledBoundaryAsync(Guid accountId, string folderName);
+
+    /// <summary>
+    /// Draws a folder's first arrival line, unless it already has one — two passes can draw it at once, and the first line
+    /// written stands (#712).
+    /// </summary>
+    Task EnsureRulesWatermarkAsync(Guid accountId, string folderName, long maxNumericId, long maxDateTicks);
+
+    /// <summary>
+    /// Whether any of the account's cached mail, in any folder, is recorded done with rules, leaving out ids that start
+    /// with <paramref name="exceptIdsStartingWith"/>. POP3 asks this, leaving out the mail it wrote itself (Sent, Drafts),
+    /// to tell whether the account has collected mail before — a first collection's backlog from new mail (#712).
+    /// </summary>
+    Task<bool> AccountHasRulesSettledMailAsync(Guid accountId, string exceptIdsStartingWith);
 
     /// <summary>
     /// Ids of summaries in the folder dated <paramref name="since"/> or later that have no

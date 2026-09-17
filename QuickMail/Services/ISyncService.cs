@@ -87,6 +87,13 @@ public interface ISyncService
     void SeedRebuildBaseline(IEnumerable<Guid> accountIds);
 
     /// <summary>
+    /// Runs client rules on arriving Inbox mail that has been cached but not yet run through them — mail stored by a path
+    /// that does not run rules itself, such as opening a folder (#712) — and raises what they did, as a sync does.
+    /// For any other folder it only records the folder's cached mail as needing no rules. Cheap when nothing waits.
+    /// </summary>
+    Task ApplyPendingRulesAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
+
+    /// <summary>
     /// Fired on the UI thread as the offline-bodies pass (#637) downloads message bodies:
     /// (done, total), where total is what this pass set out to fetch. Intermediate only; done is
     /// always below total here.

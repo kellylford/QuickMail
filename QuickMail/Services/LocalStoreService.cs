@@ -263,6 +263,52 @@ public partial class LocalStoreService : ILocalStoreService
         // from_disp for them, and MainViewModel re-fetches from the server on open so the row
         // repairs itself. AFTER RunDataMigrations for the same reason as mime_bytes above.
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN from_addr TEXT NOT NULL DEFAULT '';");
+
+        // Whether client rules have run on a cached message (#712). Being cached used to stand in for it: the
+        // rules step treated any message the store already held as already processed. But several paths cache
+        // mail without running rules — opening a folder, All Mail, All Inboxes, saved views — so a message one of
+        // those cached first never had a rule run on it. UpsertSummariesAsync writes 0, waiting, for every message
+        // it adds, and the rules step records 1 as it runs them. The default of 1 is what rows already here get
+        // when the column is added, so upgrading never runs rules over mail that was already in the mailbox.
+        //
+        // AFTER RunDataMigrations for the same reason as mime_bytes above: the 1→2 migration rebuilds
+        // MessageSummary against a fixed column list, which would drop a column added before it.
+        RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN rules_applied INTEGER NOT NULL DEFAULT 1;");
+        // Covers only the waiting rows, which settle within a sync or two, so it stays tiny while keeping the
+        // "anything waiting in this folder?" check that every sync pass makes cheap on a folder of any size.
+        RunMigration(conn, "CREATE INDEX IF NOT EXISTS idx_summary_rules_waiting ON MessageSummary(account_id, folder_name) WHERE rules_applied = 0;");
+
+        // Where arriving mail begins, per folder (#712): the highest id and the newest date client rules have settled.
+        // Kept apart from MessageSummary so it can't go backwards. A rule that moves mail out deletes those rows, and a
+        // line worked out from the rows left would drop with them — for someone who files everything by rule, to
+        // nothing — after which a message a view caches would read as older mail and its rules would never run.
+        using (var watermark = conn.CreateCommand())
+        {
+            watermark.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='RulesWatermark';";
+            var existed = Convert.ToInt64(watermark.ExecuteScalar()) > 0;
+            watermark.CommandText = """
+                CREATE TABLE IF NOT EXISTS RulesWatermark (
+                    account_id     TEXT    NOT NULL,
+                    folder_name    TEXT    NOT NULL,
+                    max_numeric_id INTEGER NOT NULL,
+                    max_date_ticks INTEGER NOT NULL,
+                    PRIMARY KEY (account_id, folder_name)
+                );
+                """;
+            watermark.ExecuteNonQuery();
+            if (!existed)
+            {
+                // Everything cached before this version counts as done (rules_applied defaults to 1), so each folder's
+                // line starts at the newest of it.
+                watermark.CommandText = """
+                    INSERT OR IGNORE INTO RulesWatermark(account_id, folder_name, max_numeric_id, max_date_ticks)
+                    SELECT account_id, folder_name, MAX(CAST(unique_id AS INTEGER)), MAX(date_ticks)
+                    FROM MessageSummary WHERE rules_applied = 1
+                    GROUP BY account_id, folder_name;
+                    """;
+                watermark.ExecuteNonQuery();
+            }
+        }
     }
 
     // SQLite's PRAGMA user_version stores a single integer per database. We use it as a
@@ -442,9 +488,14 @@ public partial class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
+        // rules_applied: a message this adds waits for client rules (#712), whichever path is caching it; the
+        // DO UPDATE below deliberately leaves it alone, so re-caching a message never makes it wait again.
+        // has_attachments: written from the summary (Graph and POP3 set it; IMAP summaries don't carry it) and never
+        // cleared by a later summary once true, since the detail may have found attachments the summary didn't know
+        // of. Rules test it on waiting mail read back from here, not only on mail a sync has in hand.
         cmd.CommandText = """
-            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id)
-            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid)
+            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id, has_attachments, rules_applied)
+            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid, $att, 0)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
                 from_disp       = excluded.from_disp,
                 to_addr         = excluded.to_addr,
@@ -454,6 +505,7 @@ public partial class LocalStoreService : ILocalStoreService
                 is_replied      = excluded.is_replied,
                 is_forwarded    = excluded.is_forwarded,
                 is_mailing_list = excluded.is_mailing_list,
+                has_attachments = MAX(has_attachments, excluded.has_attachments),
                 internet_message_id = CASE WHEN excluded.internet_message_id = '' THEN internet_message_id ELSE excluded.internet_message_id END,
                 preview_text    = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END,
                 flag_id         = CASE
@@ -480,6 +532,7 @@ public partial class LocalStoreService : ILocalStoreService
         var pMl        = cmd.Parameters.Add("$ml",        SqliteType.Integer);
         var pFlagId    = cmd.Parameters.Add("$flag_id",   SqliteType.Text);
         var pImid      = cmd.Parameters.Add("$imid",      SqliteType.Text);
+        var pAtt       = cmd.Parameters.Add("$att",       SqliteType.Integer);
 
         foreach (var s in summaries)
         {
@@ -499,6 +552,7 @@ public partial class LocalStoreService : ILocalStoreService
                 ? (object)FlagDefinition.BuiltInFlagId.ToString()
                 : DBNull.Value;
             pImid.Value      = s.InternetMessageId ?? string.Empty;
+            pAtt.Value       = s.HasAttachments   ? 1 : 0;
             await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();
@@ -611,6 +665,7 @@ public partial class LocalStoreService : ILocalStoreService
             "DELETE FROM CalendarEvent     WHERE account_id = $aid;" +
             "DELETE FROM Folder            WHERE account_id = $aid;" +
             "DELETE FROM Pop3CollectedUidl WHERE account_id = $aid;" +
+            "DELETE FROM RulesWatermark    WHERE account_id = $aid;" +
             "DELETE FROM CalendarSource    WHERE account_id = $aid;" +
             "DELETE FROM OutboxAttachment WHERE outbox_id IN (SELECT id FROM Outbox WHERE account_id = $aid);" +
             "DELETE FROM Outbox            WHERE account_id = $aid;";
@@ -624,6 +679,10 @@ public partial class LocalStoreService : ILocalStoreService
     /// the one-time Graph immutable-id rebuild (#366). Scoped to Graph accounts by the caller so IMAP
     /// bodies (and the IMAP calendar-invite source links that depend on them) are left intact.
     /// Calendar events are NOT touched. No-op for an empty set.
+    /// <para>The accounts' rules arrival lines go too (#712). Every caller also seeds a rebuild baseline, which keeps rules
+    /// off the re-fetched mail until the full sync has settled it and drawn the line again from the mail the account now
+    /// has. A line kept across the wipe could be wrong for good: an IMAP account's dates come from Date headers, which
+    /// can be set in the future, and after a conversion to Microsoft 365 no arrival would reach such a line.</para>
     /// </summary>
     public async Task ClearCachedMailAsync(IEnumerable<Guid> accountIds)
     {
@@ -638,7 +697,8 @@ public partial class LocalStoreService : ILocalStoreService
             cmd.CommandText =
                 "DELETE FROM MessageDetail  WHERE account_id = $aid;" +
                 "DELETE FROM MessageSummary WHERE account_id = $aid;" +
-                "DELETE FROM DeltaToken     WHERE account_id = $aid;";
+                "DELETE FROM DeltaToken     WHERE account_id = $aid;" +
+                "DELETE FROM RulesWatermark WHERE account_id = $aid;";
             cmd.Parameters.AddWithValue("$aid", id.ToString());
             await cmd.ExecuteNonQueryAsync();
         }
@@ -1192,31 +1252,163 @@ public partial class LocalStoreService : ILocalStoreService
         return result;
     }
 
-    /// <summary>
-    /// Which of <paramref name="messageIds"/> already exist in the folder — a bounded
-    /// <c>WHERE unique_id IN (…)</c> so a live sync can dedupe its small fetched batch without
-    /// scanning (and materialising a HashSet of) every id in a large cached folder.
-    /// </summary>
-    public async Task<HashSet<string>> GetExistingMessageIdsAsync(
-        Guid accountId, string folderName, IEnumerable<string> messageIds)
+    public async Task<List<MailMessageSummary>> LoadRulesPendingSummariesAsync(Guid accountId, string folderName)
     {
-        var ids = messageIds as IReadOnlyList<string> ?? messageIds.ToList();
-        var result = new HashSet<string>();
-        if (ids.Count == 0) return result;
-
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
-        var placeholders = string.Join(",", ids.Select((_, i) => "$id" + i));
         cmd.CommandText =
-            $"SELECT unique_id FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND unique_id IN ({placeholders});";
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
+            "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND rules_applied=0 ORDER BY date_ticks ASC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
-        for (var i = 0; i < ids.Count; i++)
-            cmd.Parameters.AddWithValue("$id" + i, ids[i]);
+        return await ReadSummariesAsync(cmd);
+    }
+
+    public async Task MarkRulesAppliedAsync(Guid accountId, string folderName, IEnumerable<string> messageIds)
+    {
+        var ids = messageIds as IReadOnlyList<string> ?? messageIds.ToList();
+        if (ids.Count == 0) return;
+
+        await using var conn = await OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+        var sqlTx = (Microsoft.Data.Sqlite.SqliteTransaction)tx;
+        await using var mark = conn.CreateCommand();
+        mark.Transaction = sqlTx;
+        mark.CommandText =
+            "UPDATE MessageSummary SET rules_applied=1 WHERE account_id=$aid AND folder_name=$fn AND unique_id=$uid AND rules_applied=0;";
+        mark.Parameters.AddWithValue("$aid", accountId.ToString());
+        mark.Parameters.AddWithValue("$fn",  folderName);
+        var markUid = mark.Parameters.Add("$uid", SqliteType.Text);
+
+        // The line only needs the newest of what is recorded here, so read just those rows back (a key lookup each)
+        // rather than working it out again over the whole table.
+        await using var read = conn.CreateCommand();
+        read.Transaction = sqlTx;
+        read.CommandText =
+            "SELECT CAST(unique_id AS INTEGER), date_ticks FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND unique_id=$uid;";
+        read.Parameters.AddWithValue("$aid", accountId.ToString());
+        read.Parameters.AddWithValue("$fn",  folderName);
+        var readUid = read.Parameters.Add("$uid", SqliteType.Text);
+
+        long? maxNumeric = null, maxTicks = null;
+        foreach (var id in ids)
+        {
+            markUid.Value = id;
+            if (await mark.ExecuteNonQueryAsync() == 0) continue;
+            readUid.Value = id;
+            await using var r = await read.ExecuteReaderAsync();
+            if (!await r.ReadAsync()) continue;
+            maxNumeric = Math.Max(maxNumeric ?? 0, r.GetInt64(0));
+            maxTicks = Math.Max(maxTicks ?? 0, r.GetInt64(1));
+        }
+        if (maxTicks is long ticks)
+            await RaiseRulesWatermarkAsync(conn, sqlTx, accountId, folderName, maxNumeric ?? 0, ticks);
+        await tx.CommitAsync();
+    }
+
+    public async Task MarkFolderRulesAppliedAsync(Guid accountId, string folderName)
+    {
+        await using var conn = await OpenAsync();
+        // This runs on every sweep of every folder and almost always finds nothing waiting, so ask the waiting-rows index
+        // before taking the write lock. What it does find sets the line, in the same transaction as recording it done.
+        await using (var probe = conn.CreateCommand())
+        {
+            probe.CommandText =
+                "SELECT EXISTS(SELECT 1 FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND rules_applied=0);";
+            probe.Parameters.AddWithValue("$aid", accountId.ToString());
+            probe.Parameters.AddWithValue("$fn",  folderName);
+            if (Convert.ToInt64(await probe.ExecuteScalarAsync(), CultureInfo.InvariantCulture) == 0) return;
+        }
+
+        await using var tx = await conn.BeginTransactionAsync();
+        var sqlTx = (Microsoft.Data.Sqlite.SqliteTransaction)tx;
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = sqlTx;
+        cmd.CommandText =
+            "SELECT COUNT(*), MAX(CAST(unique_id AS INTEGER)), MAX(date_ticks) FROM MessageSummary " +
+            "WHERE account_id=$aid AND folder_name=$fn AND rules_applied=0;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        long waiting, maxNumeric = 0, maxTicks = 0;
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            await r.ReadAsync();
+            waiting = r.GetInt64(0);
+            if (waiting > 0)
+            {
+                maxNumeric = r.GetInt64(1);
+                maxTicks = r.GetInt64(2);
+            }
+        }
+        if (waiting == 0) return;
+
+        cmd.CommandText =
+            "UPDATE MessageSummary SET rules_applied=1 WHERE account_id=$aid AND folder_name=$fn AND rules_applied=0;";
+        await cmd.ExecuteNonQueryAsync();
+        await RaiseRulesWatermarkAsync(conn, sqlTx, accountId, folderName, maxNumeric, maxTicks);
+        await tx.CommitAsync();
+    }
+
+    /// <summary>
+    /// Raises the folder's arrival line to at least the given id and date — never lowers it, so mail a rule has since moved
+    /// out still counts (#712).
+    /// </summary>
+    private static async Task RaiseRulesWatermarkAsync(
+        SqliteConnection conn, Microsoft.Data.Sqlite.SqliteTransaction tx, Guid accountId, string folderName,
+        long maxNumericId, long maxDateTicks)
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            INSERT INTO RulesWatermark(account_id, folder_name, max_numeric_id, max_date_ticks)
+            VALUES($aid, $fn, $num, $ticks)
+            ON CONFLICT(account_id, folder_name) DO UPDATE SET
+                max_numeric_id = MAX(max_numeric_id, excluded.max_numeric_id),
+                max_date_ticks = MAX(max_date_ticks, excluded.max_date_ticks);
+            """;
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        cmd.Parameters.AddWithValue("$num", maxNumericId);
+        cmd.Parameters.AddWithValue("$ticks", maxDateTicks);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<bool> AccountHasRulesSettledMailAsync(Guid accountId, string exceptIdsStartingWith)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT EXISTS(SELECT 1 FROM MessageSummary WHERE account_id=$aid AND rules_applied=1 " +
+            "AND substr(unique_id, 1, length($prefix)) <> $prefix);";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$prefix", exceptIdsStartingWith);
+        return Convert.ToInt64(await cmd.ExecuteScalarAsync(), CultureInfo.InvariantCulture) != 0;
+    }
+
+    public async Task EnsureRulesWatermarkAsync(Guid accountId, string folderName, long maxNumericId, long maxDateTicks)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "INSERT OR IGNORE INTO RulesWatermark(account_id, folder_name, max_numeric_id, max_date_ticks) VALUES($aid, $fn, $num, $ticks);";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        cmd.Parameters.AddWithValue("$num", maxNumericId);
+        cmd.Parameters.AddWithValue("$ticks", maxDateTicks);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<(long? MaxNumericId, long? MaxDateTicks)> GetRulesSettledBoundaryAsync(Guid accountId, string folderName)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT max_numeric_id, max_date_ticks FROM RulesWatermark WHERE account_id=$aid AND folder_name=$fn;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
         await using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
-            result.Add(r.GetString(0));
-        return result;
+        if (!await r.ReadAsync()) return (null, null);
+        return (r.GetInt64(0), r.GetInt64(1));
     }
 
     public async Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName)
