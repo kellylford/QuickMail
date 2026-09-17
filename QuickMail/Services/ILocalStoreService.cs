@@ -347,6 +347,14 @@ public interface ILocalStoreService
         System.Threading.CancellationToken ct = default);
 
     /// <summary>
+    /// How many cached messages in the given folders are dated <paramref name="since"/> or later, and how many
+    /// of those have their full text — what the status bar reports about offline reading (#717).
+    /// </summary>
+    Task<(int Total, int Downloaded)> CountOfflineBodiesAsync(
+        IReadOnlyCollection<(Guid AccountId, string FolderName)> folders, DateTimeOffset since,
+        System.Threading.CancellationToken ct = default);
+
+    /// <summary>
     /// Every cached message in the given accounts matching the query, newest first — a Search Results
     /// folder. <c>account:</c> conditions are left to the caller, which narrows the account list instead.
     /// </summary>

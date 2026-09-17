@@ -2171,7 +2171,18 @@
                         ToolTip="Open Rules Manager (Ctrl+Shift+L)"/>
             </StatusBarItem>
 
-            <!-- Region 4: Sync progress (informational, visible only when busy) -->
+            <!-- Region 4: Offline reading (#717) — how many messages have their full text, and whether more
+                 are coming down. Hidden when the setting is off, so it never says nothing at length. -->
+            <StatusBarItem x:Name="OfflineStatusItem"
+                           HorizontalAlignment="Right"
+                           KeyboardNavigation.IsTabStop="True"
+                           Visibility="{Binding OfflineBodyStatusText, Converter={StaticResource StringToVisibilityConverter}}">
+                <TextBlock x:Name="OfflineStatusTextBox"
+                           Style="{StaticResource StatusTextBlockStyle}"
+                           Text="{Binding OfflineBodyStatusText, Mode=OneWay}"/>
+            </StatusBarItem>
+
+            <!-- Region 5: Sync progress (informational, visible only when busy) -->
             <StatusBarItem x:Name="StatusProgressItem"
                            HorizontalAlignment="Right"
                            KeyboardNavigation.IsTabStop="True"

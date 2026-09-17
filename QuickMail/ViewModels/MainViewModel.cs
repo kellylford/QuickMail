@@ -166,6 +166,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UnsubscribeConnectivity();
         DrainCts(ref _offlineRetryCts);
         _syncService.OfflineBodyPassCompleted -= OnOfflineBodyPassCompleted;
+        _syncService.OfflineBodyProgressChanged -= OnOfflineBodyProgress;
+        DrainCts(ref _offlineBodyStatusCts);
         if (_rowLayoutService != null && _onRowLayoutsChanged != null)
         {
             _rowLayoutService.LayoutsChanged -= _onRowLayoutsChanged;
@@ -1835,6 +1837,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _offlineBodyDays = cfg.EffectiveOfflineBodyDays;
         _offlineBodyAllFolders = cfg.OfflineBodyAllFolders;
         _syncService.OfflineBodyPassCompleted += OnOfflineBodyPassCompleted;
+        _syncService.OfflineBodyProgressChanged += OnOfflineBodyProgress;
         _viewMode = ConfigModel.ParseViewMode(cfg.ViewMode);
         _listDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
         MessageOpenMode = cfg.Windowing.MessageOpenMode;

@@ -4151,7 +4151,8 @@ public partial class MainWindow : Window
         if (StatusTextBox.IsKeyboardFocused)          return 1;
         if (ConnectionStatusTextBox.IsKeyboardFocused) return 2;
         if (RulesStatusButton.IsKeyboardFocused)       return 3;
-        if (StatusProgressBar.IsKeyboardFocused)       return 4;
+        if (OfflineStatusTextBox.IsKeyboardFocused)    return 4;
+        if (StatusProgressBar.IsKeyboardFocused)       return 5;
 
         return 0;
     }
@@ -4174,6 +4175,12 @@ public partial class MainWindow : Window
                 RulesStatusButton.Focus();
                 break;
             case 4:
+                if (OfflineStatusItem.Visibility == Visibility.Visible)
+                    OfflineStatusTextBox.Focus();
+                else
+                    FocusStatusBarRegion(1); // fallback: wrap to first
+                break;
+            case 5:
                 if (StatusProgressItem.Visibility == Visibility.Visible)
                     StatusProgressBar.Focus();
                 else
@@ -4193,8 +4200,10 @@ public partial class MainWindow : Window
 
         // Build the ordered list of visible region indices.
         var visible = new List<int> { 1, 2, 3 };
-        if (StatusProgressItem.Visibility == Visibility.Visible)
+        if (OfflineStatusItem.Visibility == Visibility.Visible)
             visible.Add(4);
+        if (StatusProgressItem.Visibility == Visibility.Visible)
+            visible.Add(5);
 
         int pos = visible.IndexOf(current);
         if (pos < 0) { FocusStatusBarRegion(visible[0]); return; }

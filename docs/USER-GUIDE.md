@@ -1642,6 +1642,7 @@ With a window set, the sync at launch and each background check (**Check for new
 - Attachments are not included. Opening one still needs a connection.
 - POP3 accounts already keep every message whole, so the setting does not apply to them.
 - The text lives in `mail.db` in QuickMail's data folder, which grows accordingly — roughly tens of megabytes for a month of a busy Inbox, so a year or all mail can run to hundreds of megabytes or more.
+- The status bar says how it is going: "Offline: 1,240 of 2,000 messages downloaded", and "Offline: downloading 120 of 500" while a batch is coming down. Press **Ctrl+9** to reach the status bar and **Right** to move along it. Nothing is said aloud as it changes; it is there to be read when you want it.
 - A large window fills in gradually. Each pass downloads up to 500 messages per Inbox, newest first, so a big Inbox set to a year or all mail takes many background checks to finish.
 
 ### Getting back online

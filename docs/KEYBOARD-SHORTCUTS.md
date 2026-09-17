@@ -9,7 +9,7 @@
 | Ctrl+2 / Ctrl+Y | `view.focusFolders` | Focus Folder Tree (or tab 2 when tabs are open) |
 | Ctrl+3 | *(hardcoded)* | Focus message list (or tab 3 when tabs are open) |
 | Ctrl+4–8 | *(hardcoded)* | Jump to tab 4–8 (when tabs are open) |
-| Ctrl+9 | *(hardcoded/registry)* | Jump to last tab (tabs open) or `view.focusStatusBar` (no tabs) |
+| Ctrl+9 | *(hardcoded/registry)* | Jump to last tab (tabs open) or `view.focusStatusBar` (no tabs). Left/Right move between the status bar regions: status, connection, rules, offline reading (when downloading is switched on, #717), sync progress |
 | Ctrl+Alt+1 | `view.focusAccounts` | Focus Account List (always) |
 | Ctrl+Alt+2 | *(hardcoded)* | Focus Folder Tree (always) |
 | Ctrl+Alt+3 | `view.focusMessages` | Focus Message List (always) |

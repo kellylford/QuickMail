@@ -450,6 +450,11 @@ class StubLocalStoreService : ILocalStoreService
         return Task.FromResult(SearchHits != null && SearchHits.TryGetValue(match, out var hits) ? hits : new List<SearchHit>());
     }
 
+    /// <summary>What <see cref="CountOfflineBodiesAsync"/> answers; the seeded rows otherwise.</summary>
+    public (int Total, int Downloaded)? OfflineBodyCounts { get; set; }
+    public virtual Task<(int Total, int Downloaded)> CountOfflineBodiesAsync(IReadOnlyCollection<(Guid AccountId, string FolderName)> folders, DateTimeOffset since, CancellationToken ct = default)
+        => Task.FromResult(OfflineBodyCounts ?? (0, 0));
+
     /// <summary>The queries <see cref="SearchSummariesAsync"/> was asked, with their accounts.</summary>
     public List<(string Query, IReadOnlyCollection<Guid> Accounts)> SummarySearchesAsked { get; } = [];
 
