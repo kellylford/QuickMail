@@ -704,6 +704,8 @@ Under **Look in**, choose where to search:
 - **This folder** searches the folder you were in, exactly as the search box does: the search box opens showing the search, so you can see how it is written and change it there.
 - **Every folder of these accounts** searches all of your mail in the accounts you leave checked — every account, unless you uncheck some — including Sent and Trash. The results open as a **Search results** folder.
 
+The accounts are a single list: **Tab** reaches it, **Up** and **Down** move between accounts, and **Space** checks or unchecks the one you are on.
+
 Press **Enter** to search. When something is found the form closes, focus moves to the first result, and the number found is announced. When nothing is found the form stays open with focus back in **Words anywhere**, and the folder you were in stays as it was, so you can change the search and try again. While a search is running, **Escape** waits for it to finish. **Clear** empties the fields but keeps your choice of where to look, and **Escape** closes the form. **F6** moves between the fields, **Look in**, the list of accounts and the buttons.
 
 The **Search results** folder works like any other folder: every view, sort, filter and message command applies, and the search box searches within the results. Above the list, a bar shows how many were found and for what, with **Change Search** — or **Ctrl+/** — to reopen the form with this search filled in, and **Close** — or **Escape** — to go back to the folder you started from. New mail that arrives while the results are open joins them if its sender, recipients, subject or preview match; a message that matches only in its text appears the next time the results are refreshed with **F5**.

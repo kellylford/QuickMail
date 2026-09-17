@@ -3,9 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Media;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -165,25 +163,8 @@ public partial class AdvancedSearchWindow : Window
         else AccountsRadio.Focus();
     }
 
-    private void FocusFirstAccount()
-    {
-        if (AccountsList.ItemContainerGenerator.ContainerFromIndex(0) is DependencyObject container)
-        {
-            var box = FindChild<CheckBox>(container);
-            box?.Focus();
-        }
-    }
-
-    private static T? FindChild<T>(DependencyObject parent) where T : DependencyObject
-    {
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is T hit) return hit;
-            if (FindChild<T>(child) is { } deeper) return deeper;
-        }
-        return null;
-    }
+    // The list puts focus on a row itself, and remembers which row it was on.
+    private void FocusFirstAccount() => AccountsList.Focus();
 
     /// <summary>
     /// A search that is running holds the window open: closing it then would leave the result with nowhere to

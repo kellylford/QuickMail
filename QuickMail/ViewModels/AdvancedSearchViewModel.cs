@@ -89,12 +89,13 @@ public sealed partial class AdvancedSearchViewModel : ObservableObject
     public bool CanSearchCurrentFolder { get; }
 
     /// <summary>
-    /// The "this folder" choice's text, naming the folder, with its access key (I). Underscores in the folder
-    /// name are doubled so they show as themselves rather than as a second access key.
+    /// The "this folder" choice's text, naming the folder. No access key: one written into the text is read
+    /// out as the underscore it is (and shown as one) when the text is a binding rather than literal markup.
+    /// Underscores in the folder name are doubled so they show as themselves.
     /// </summary>
     public string CurrentFolderChoiceLabel => CanSearchCurrentFolder
-        ? $"Th_is folder ({CurrentFolderName.Replace("_", "__", StringComparison.Ordinal)})"
-        : "Th_is folder";
+        ? $"This folder ({CurrentFolderName.Replace("_", "__", StringComparison.Ordinal)})"
+        : "This folder";
 
     [ObservableProperty] private string _words = string.Empty;
     [ObservableProperty] private string _from = string.Empty;

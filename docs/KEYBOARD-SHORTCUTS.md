@@ -147,12 +147,16 @@ over the reading pane.
 | `Enter` | Search (the default button) |
 | `F6` / `Shift+F6` | Cycle: Fields → Look in → Accounts (when searching accounts) → Buttons |
 | `Up` / `Down` in Look in | Choose This folder or Every folder of these accounts (selection follows focus) |
+| `Up` / `Down` in Accounts | Move between accounts — the list is one tab stop, and `Space` checks or unchecks the account |
+| `Home` / `End`, *letter* | First / last account; jump to the next account starting with that letter |
 | `Ctrl+Shift+P` | Window-local command palette (Search, Clear Fields, Close Advanced Search) |
 | `Escape` | Close — unless a drop-down is open, which Escape closes instead |
 
 Access keys: Words anywhere (W), From (F), To (T), Cc (C), Subject (S), Body (B), Attachment name
-(N), Has attachments (A), Read state (R), Flag (L), Received from (V), Received up to (U), This
-folder (I), Every folder of these accounts (E).
+(N), Has attachments (A), Read state (R), Flag (L), Received from (V), Received up to (U), Accounts
+to search (H). The two **Look in** choices have none: the first names the current folder through a
+binding, where an underscore is read and shown as an underscore rather than marking a key. Arrow
+keys choose between them.
 
 ## Watched Conversations Window
 

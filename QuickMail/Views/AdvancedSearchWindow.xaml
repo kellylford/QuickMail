@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:QuickMail.Controls"
         xmlns:helpers="clr-namespace:QuickMail.Helpers"
+        xmlns:views="clr-namespace:QuickMail.Views"
         xmlns:vm="clr-namespace:QuickMail.ViewModels"
         Title="Advanced Search"
         Width="560"
@@ -18,7 +19,9 @@
 
     <!-- Advanced Search (#717, phase 2). Modeless: it has text fields and opens over the reading pane's
          WebView2 (CLAUDE.md modal dialog rules), so Escape and Close are wired by hand. Access keys are
-         unique across the whole window: W F T C S B N A R L V U I E. -->
+         unique across the whole window: W F T C S B N A R L V U H. The two Look in choices carry none: the
+         first names the current folder through a binding, and an access key in bound text is not markup —
+         it reads and shows as a literal underscore. Arrow keys choose within the group instead. -->
     <DockPanel Margin="14">
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button x:Name="SearchButton"
@@ -140,30 +143,40 @@
                                     helpers:RadioGroupNavigation.SelectionFollowsFocus="True">
                             <RadioButton x:Name="CurrentFolderRadio"
                                          GroupName="AdvancedSearchLookIn"
+                                         Content="{Binding CurrentFolderChoiceLabel}"
                                          IsChecked="{Binding SearchInCurrentFolder}"
-                                         IsEnabled="{Binding CanSearchCurrentFolder}">
-                                <AccessText Text="{Binding CurrentFolderChoiceLabel}"/>
-                            </RadioButton>
+                                         IsEnabled="{Binding CanSearchCurrentFolder}"/>
                             <RadioButton x:Name="AccountsRadio"
                                          GroupName="AdvancedSearchLookIn"
                                          Margin="0,4,0,0"
-                                         Content="_Every folder of these accounts"
+                                         Content="Every folder of these accounts"
                                          IsChecked="{Binding SearchInAccounts}"/>
                         </StackPanel>
 
-                        <ItemsControl x:Name="AccountsList"
-                                      ItemsSource="{Binding Accounts}"
-                                      Margin="20,6,0,0"
-                                      Focusable="False"
-                                      IsEnabled="{Binding SearchInAccounts}">
-                            <ItemsControl.ItemTemplate>
+                        <!-- One tab stop for the whole list, Up and Down between accounts. Each row IS a
+                             check box and only a check box — see FieldCheckList for why a stock ListBox or
+                             ItemsControl cannot be used (both add a wrapper that repeats the row's name). -->
+                        <Label x:Name="AccountsLabel"
+                               Content="Accounts to searc_h:"
+                               Target="{Binding ElementName=AccountsList}"
+                               Margin="20,8,0,0" Padding="0"
+                               IsEnabled="{Binding SearchInAccounts}"/>
+                        <views:FieldCheckList x:Name="AccountsList"
+                                              ItemsSource="{Binding Accounts}"
+                                              Margin="20,2,0,0"
+                                              KeyboardNavigation.TabNavigation="Once"
+                                              KeyboardNavigation.DirectionalNavigation="Contained"
+                                              IsEnabled="{Binding SearchInAccounts}"
+                                              AutomationProperties.Name="Accounts to search">
+                            <views:FieldCheckList.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:AdvancedSearchAccount}">
                                     <CheckBox Content="{Binding Name}"
-                                              IsChecked="{Binding IsChosen}"
-                                              Margin="0,2"/>
+                                              IsChecked="{Binding IsChosen, Mode=TwoWay}"
+                                              Margin="0,2"
+                                              VerticalAlignment="Center"/>
                                 </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                            </views:FieldCheckList.ItemTemplate>
+                        </views:FieldCheckList>
                     </StackPanel>
                 </GroupBox>
             </StackPanel>
