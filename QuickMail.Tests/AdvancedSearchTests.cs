@@ -161,8 +161,14 @@ public class AdvancedSearchViewModelTests
     }
 
     [Fact]
-    public void TheFolderChoiceNamesTheFolder_WithUnderscoresShownAsThemselves()
-        => Assert.Equal("Th_is folder (my__stuff)", Vm(folder: "my_stuff").CurrentFolderChoiceLabel);
+    public void TheFolderChoiceNamesTheFolder_WithNoAccessKeyAndUnderscoresShownAsThemselves()
+    {
+        // The text is a binding, so an access key written into it is not markup: it is read out and shown
+        // as an underscore ("Th_is folder (All Inboxes)").
+        Assert.Equal("This folder (All Inboxes)", Vm(folder: "All Inboxes").CurrentFolderChoiceLabel);
+        Assert.Equal("This folder (my__stuff)", Vm(folder: "my_stuff").CurrentFolderChoiceLabel);
+        Assert.Equal("This folder", Vm(folder: null).CurrentFolderChoiceLabel);
+    }
 }
 
 /// <summary>The Search Results query on a real store: the index, the rows and the conditions together.</summary>
