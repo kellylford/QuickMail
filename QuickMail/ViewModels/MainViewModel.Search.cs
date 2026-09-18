@@ -203,7 +203,7 @@ public partial class MainViewModel
     /// <summary>The search on screen, as a request Advanced Search can reopen with; null outside Search Results.</summary>
     public AdvancedSearchRequest? CurrentSearchResultsRequest =>
         SelectedFolder != null && TryGetSearchResultsFromSentinel(SelectedFolder.FullName, out var q, out var ids)
-            ? new AdvancedSearchRequest(q, InCurrentFolder: false, ids)
+            ? new AdvancedSearchRequest(q, InCurrentFolder: false, ids, SearchServer: _searchResultsAskedServer)
             : null;
 
     // Where closing the results returns to; null when the search began before any folder was open.
@@ -213,7 +213,11 @@ public partial class MainViewModel
     /// <param name="Found">How many messages the list now shows.</param>
     /// <param name="Failed">The search could not run (the store failed); the list shows nothing new.</param>
     /// <param name="Cancelled">The user moved to another folder before it finished; it was abandoned.</param>
-    public sealed record AdvancedSearchOutcome(int Found, bool Failed, bool Cancelled = false);
+    /// <param name="Server">What asking the mail servers came to, when the request asked them; null otherwise.</param>
+    public sealed record AdvancedSearchOutcome(int Found, bool Failed, bool Cancelled = false, ServerSearchOutcome? Server = null);
+
+    // Whether the Search Results on screen also asked the servers, so Change Search reopens with the box checked.
+    private bool _searchResultsAskedServer;
 
     // Set by FetchSearchResultsAsync when it could not search, for RunAdvancedSearchAsync to report.
     private bool _searchResultsFailed;
@@ -235,19 +239,40 @@ public partial class MainViewModel
         else if (!IsSearchResultsView) _searchResultsReturnFolder = SelectedFolder;
 
         _searchResultsFailed = false;
+        _searchResultsAskedServer = request.SearchServer;
         var results = CreateSearchResultsFolder(request.Query, request.AccountIds);
         await SelectFolderAsync(results);
         // The form is modeless and an online search can take a while: if the user has gone to another folder
         // since, that folder's count is not this search's, and pulling them back would be worse.
         if (!string.Equals(SelectedFolder?.FullName, results.FullName, StringComparison.Ordinal))
+        {
+            _searchResultsReturnFolder = previousReturn;
             return new AdvancedSearchOutcome(0, Failed: false, Cancelled: true);
+        }
 
         var failed = _searchResultsFailed;
+        ServerSearchOutcome? server = null;
         if (!failed && request.SearchServer)
         {
-            var server = await SearchServerTooAsync();
-            if (server.Cancelled && !string.Equals(SelectedFolder?.FullName, results.FullName, StringComparison.Ordinal))
-                return new AdvancedSearchOutcome(0, Failed: false, Cancelled: true);
+            // Replaces the local count in the status bar before its announcement is due: otherwise "No messages
+            // found." is spoken while the servers are still being asked, and then contradicted.
+            StatusText = "Searching the server…";
+            try
+            {
+                server = await SearchServerTooAsync();
+            }
+            catch (Exception ex)
+            {
+                LogService.Log("Advanced search: asking the servers failed", ex);
+                server = new ServerSearchOutcome(0, ["the server"], 1);
+            }
+            // Superseded (the user moved on, or refreshed) or already running from the results bar: this
+            // search's answer is not known, so it is not reported as "nothing found".
+            if (server.Cancelled)
+            {
+                _searchResultsReturnFolder = previousReturn;
+                return new AdvancedSearchOutcome(Messages.Count, Failed: false, Cancelled: true, server);
+            }
         }
 
         var found = Messages.Count;
@@ -256,7 +281,7 @@ public partial class MainViewModel
             _searchResultsReturnFolder = previousReturn;
             await SelectFolderAsync(previous ?? AllMailFolder);
         }
-        return new AdvancedSearchOutcome(found, failed);
+        return new AdvancedSearchOutcome(found, failed, Server: server);
     }
 
     /// <summary>Puts <paramref name="query"/> in the search box and waits for the list to reflect it.</summary>

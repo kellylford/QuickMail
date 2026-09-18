@@ -6681,8 +6681,11 @@ public partial class MainWindow : Window
             {
                 ReturnFocusToMessageList();
                 var n = _vm.Messages.Count;
-                AccessibilityHelper.Announce(this, $"{n} {(n == 1 ? "message" : "messages")} found.",
-                    interrupt: true, category: AnnouncementCategory.Result);
+                var text = $"{n} {(n == 1 ? "message" : "messages")} found.";
+                // Asked the servers and some could not be: say which, as the results bar's button does.
+                if (window.LastOutcome?.Server is { FailedAccounts.Count: > 0 } server)
+                    text += $" Could not search {string.Join(", ", server.FailedAccounts)}.";
+                AccessibilityHelper.Announce(this, text, interrupt: true, category: AnnouncementCategory.Result);
             }
             else if (returnFocus is { IsVisible: true } element
                      && element is not MenuItem

@@ -166,6 +166,23 @@ public class AdvancedSearchViewModelTests
     }
 
     [Fact]
+    public void WhenNothingIsFound_ItSaysWhyTheServerDidNotHelp()
+    {
+        var accounts = new AdvancedSearchRequest("x", InCurrentFolder: false, [Guid.NewGuid()]);
+        var asked = accounts with { SearchServer = true };
+        MainViewModel.AdvancedSearchOutcome None(MainViewModel.ServerSearchOutcome? s = null) => new(0, false, Server: s);
+
+        Assert.Equal("No messages found.", QuickMail.Views.AdvancedSearchWindow.NothingFoundText(accounts with { InCurrentFolder = true }, None()));
+        Assert.Contains("Check Also search the mail server", QuickMail.Views.AdvancedSearchWindow.NothingFoundText(accounts, None()));
+        Assert.Contains("No account's mail server could be searched",
+            QuickMail.Views.AdvancedSearchWindow.NothingFoundText(asked, None(new(0, [], 0))));
+        Assert.Contains("could not search the server",
+            QuickMail.Views.AdvancedSearchWindow.NothingFoundText(asked, None(new(0, ["Work"], 1))));
+        Assert.Equal("No messages found.", QuickMail.Views.AdvancedSearchWindow.NothingFoundText(asked, None(new(0, [], 1))));
+        Assert.Equal("Could not search.", QuickMail.Views.AdvancedSearchWindow.NothingFoundText(asked, new(0, true)));
+    }
+
+    [Fact]
     public void AnAccountNameWithAnUnderscoreIsShownAsWritten()
     {
         var account = new AdvancedSearchAccount(Guid.NewGuid(), "my_work", isChosen: true);

@@ -62,6 +62,23 @@ public partial class LocalStoreService
             cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='MessageSearch';";
             var existed = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
 
+            // A profile opened by the first build of this index has SearchKey without generation, and triggers
+            // that never bump it. CREATE ... IF NOT EXISTS below would keep both, so add the column and drop the
+            // old triggers first; the block below then recreates them.
+            cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='SearchKey';";
+            var keyTableExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+            cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('SearchKey') WHERE name = 'generation';";
+            if (keyTableExists && Convert.ToInt64(cmd.ExecuteScalar()) == 0)
+            {
+                cmd.CommandText = """
+                    ALTER TABLE SearchKey ADD COLUMN generation INTEGER NOT NULL DEFAULT 0;
+                    DROP TRIGGER IF EXISTS trg_search_summary_insert; DROP TRIGGER IF EXISTS trg_search_summary_update;
+                    DROP TRIGGER IF EXISTS trg_search_summary_delete; DROP TRIGGER IF EXISTS trg_search_detail_insert;
+                    DROP TRIGGER IF EXISTS trg_search_detail_update; DROP TRIGGER IF EXISTS trg_search_detail_delete;
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
             cmd.CommandText = """
                 CREATE TABLE IF NOT EXISTS SearchKey (
                     id          INTEGER PRIMARY KEY,
@@ -136,16 +153,6 @@ public partial class LocalStoreService
                 END;
                 """;
             cmd.ExecuteNonQuery();
-
-            // A profile opened by the first build of this index has SearchKey without generation; CREATE TABLE
-            // IF NOT EXISTS leaves it that way. Added here, in the same transaction; "duplicate column" is the
-            // usual answer and means there is nothing to do.
-            try
-            {
-                cmd.CommandText = "ALTER TABLE SearchKey ADD COLUMN generation INTEGER NOT NULL DEFAULT 0;";
-                cmd.ExecuteNonQuery();
-            }
-            catch (SqliteException ex) when (ex.Message.Contains("duplicate column", StringComparison.OrdinalIgnoreCase)) { }
 
             if (!existed)
             {

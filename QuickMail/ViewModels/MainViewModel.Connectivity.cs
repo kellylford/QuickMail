@@ -192,8 +192,8 @@ public partial class MainViewModel
         _offlineBodyStatusCts = cts;
         var ct = cts.Token;
         var since = ConfigModel.OfflineBodyWindowStart(_offlineBodyDays, DateTimeOffset.UtcNow);
-        // The account list and the folder cache belong to the UI thread, and this is also called from a
-        // background sweep.
+        // The account list and the folder cache belong to the UI thread; every caller is on it now, and Invoke
+        // there simply runs the delegate.
         List<(Guid AccountId, string FolderName)> folders = [];
         _ui.Invoke(() => folders = OfflineBodyFolders());
         if (folders.Count == 0)

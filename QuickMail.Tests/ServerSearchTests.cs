@@ -203,6 +203,9 @@ public class SearchServerTooTests
         Assert.Equal(1, outcome.Found);
         Assert.True(vm.IsSearchResultsView);
         Assert.Equal(["ancient"], vm.Messages.Select(m => m.MessageId));
+        Assert.Equal(2, outcome.Server!.Asked);
+        // Change Search reopens with the server box still checked.
+        Assert.True(vm.CurrentSearchResultsRequest!.SearchServer);
     }
 
     [Fact]
