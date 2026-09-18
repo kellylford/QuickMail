@@ -179,6 +179,8 @@ public class AdvancedSearchViewModelTests
         Assert.Contains("could not search the server",
             QuickMail.Views.AdvancedSearchWindow.NothingFoundText(asked, None(new(0, ["Work"], 1))));
         Assert.Equal("No messages found.", QuickMail.Views.AdvancedSearchWindow.NothingFoundText(asked, None(new(0, [], 1))));
+        // The server's part unknown (a search already running from the results bar): no claim about it.
+        Assert.Equal("No messages found.", QuickMail.Views.AdvancedSearchWindow.NothingFoundText(asked, None()));
         Assert.Equal("Could not search.", QuickMail.Views.AdvancedSearchWindow.NothingFoundText(asked, new(0, true)));
     }
 

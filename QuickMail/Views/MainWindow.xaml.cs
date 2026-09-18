@@ -6683,7 +6683,9 @@ public partial class MainWindow : Window
                 var n = _vm.Messages.Count;
                 var text = $"{n} {(n == 1 ? "message" : "messages")} found.";
                 // Asked the servers and some could not be: say which, as the results bar's button does.
-                if (window.LastOutcome?.Server is { FailedAccounts.Count: > 0 } server)
+                if (window.LastOutcome?.Server is { Asked: 0 })
+                    text += " No account's mail server could be searched.";
+                else if (window.LastOutcome?.Server is { FailedAccounts.Count: > 0 } server)
                     text += $" Could not search {string.Join(", ", server.FailedAccounts)}.";
                 AccessibilityHelper.Announce(this, text, interrupt: true, category: AnnouncementCategory.Result);
             }

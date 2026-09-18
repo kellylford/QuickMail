@@ -266,13 +266,22 @@ public partial class MainViewModel
                 LogService.Log("Advanced search: asking the servers failed", ex);
                 server = new ServerSearchOutcome(0, ["the server"], 1);
             }
-            // Superseded (the user moved on, or refreshed) or already running from the results bar: this
-            // search's answer is not known, so it is not reported as "nothing found".
+            // Abandoned only if the user has left the results; otherwise (a refresh, or a search already running
+            // from the results bar) what this computer found is real and is reported, and the server's part is
+            // simply unknown.
             if (server.Cancelled)
             {
-                _searchResultsReturnFolder = previousReturn;
-                return new AdvancedSearchOutcome(Messages.Count, Failed: false, Cancelled: true, server);
+                if (!string.Equals(SelectedFolder?.FullName, results.FullName, StringComparison.Ordinal))
+                {
+                    _searchResultsReturnFolder = previousReturn;
+                    return new AdvancedSearchOutcome(0, Failed: false, Cancelled: true);
+                }
+                server = null;
             }
+            // Whatever the server path left in the status bar ("Searching the server…" when it returned early or
+            // threw), the count is what belongs there now.
+            var shown = Messages.Count;
+            StatusText = shown == 0 ? "No messages found." : $"{shown} {(shown == 1 ? "message" : "messages")} found.";
         }
 
         var found = Messages.Count;
@@ -447,8 +456,8 @@ public partial class MainViewModel
         if (targets.Count == 0) return new ServerSearchOutcome(0, failed, 0);
 
         IsBusy = true;
-        // No status text of its own: the View says "Searching the server…" once, and a status change would
-        // be announced again behind it.
+        // No status text of its own here: from the results bar the View says "Searching the server…", and from
+        // Advanced Search RunAdvancedSearchAsync sets it; either way it is said once.
         var found = new List<MailMessageSummary>();
         try
         {
@@ -538,6 +547,8 @@ public partial class MainViewModel
         }
         var n = Messages.Count;
         StatusText = $"{n} {(n == 1 ? "message" : "messages")} found.";
+        // Change Search should reopen with the server box checked, however the server came to be asked.
+        _searchResultsAskedServer = true;
         return new ServerSearchOutcome(added.Count, failed, targets.Count);
     }
 

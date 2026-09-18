@@ -119,7 +119,8 @@ public partial class AdvancedSearchWindow : Window
         if (!request.SearchServer)
             return "No messages found on this computer. Check Also search the mail server to look there too.";
         var server = outcome.Server;
-        if (server == null || server.Asked == 0)
+        if (server == null) return "No messages found.";
+        if (server.Asked == 0)
             return "No messages found. No account's mail server could be searched.";
         if (server.FailedAccounts.Count == server.Asked)
             return "No messages found on this computer, and could not search the server.";
