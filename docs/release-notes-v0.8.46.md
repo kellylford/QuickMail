@@ -72,7 +72,7 @@ The user guide's Searching section lists everything search understands.
 
 **Ctrl+/** (or **View → Advanced Search…**) opens a form for searching without learning the syntax: a field each for the words anywhere, the sender, To, Cc, subject, body and attachment name, plus whether the message has attachments, is read, is flagged, and when it arrived. The shortcut can be changed in **Settings → Keyboard Shortcuts**.
 
-The form can search the folder you are in — it fills in the search box, so you can see how the search is written — or every folder of the accounts you choose. Searching accounts opens a **Search results** folder that works like any other: views, sorting, filters and message commands all apply. A bar above the list says how many were found and for what, with **Change Search** (or **Ctrl+/** again) to adjust it and **Close** (or **Escape**) to go back where you started.
+The form can search the folder you are in — it fills in the search box, so you can see how the search is written — or every folder of the accounts you choose. The accounts are one list: **Tab** reaches it, **Up** and **Down** move between accounts, and **Space** checks or unchecks one. Searching accounts opens a **Search results** folder that works like any other: views, sorting, filters and message commands all apply. A bar above the list says how many were found and for what, with **Change Search** (or **Ctrl+/** again) to adjust it and **Close** (or **Escape**) to go back where you started.
 
 When a search finds nothing, the form stays open with focus back in the first field, so trying again takes one keystroke.
 
@@ -82,7 +82,7 @@ When a search finds nothing, the form stays open with focus back in the first fi
 
 ### Search the server, save a search, and download more folders for offline reading
 
-Three additions that take search past the mail already on this computer:
+Four additions that take search past the mail already on this computer:
 
 - **Also search the mail server** in Advanced Search, or **Search the Server** on the Search results bar, asks each account's mail server for the same search, and adds what it finds that the results don't already have — mail older than the sync range, or whose text was never downloaded. Gmail and Microsoft 365 search the whole mailbox at once; other servers are asked folder by folder. You hear how many more were found, and which accounts couldn't be asked. Messages found this way are shown but not kept.
 - **Saving a search.** With Search results open, **Save View…** (or **Save Search as View…** in the command palette) keeps the search as a view with its own name and optional shortcut. Choosing it runs the search again.
