@@ -1,6 +1,6 @@
 # Advanced Search — Plan
 
-Status: decided 2026-09-16 (see [Decisions](#decisions)); phases 1–3 in progress.
+Status: decided 2026-09-16 (see [Decisions](#decisions)); phases 1–3 built in [#722](https://github.com/kellylford/QuickMail/pull/722), [#723](https://github.com/kellylford/QuickMail/pull/723) and [#724](https://github.com/kellylford/QuickMail/pull/724), for 0.8.46. Phase 4 is not scheduled.
 Tracking issue: [#717](https://github.com/kellylford/QuickMail/issues/717).
 
 ## Where search is today
