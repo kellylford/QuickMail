@@ -164,11 +164,11 @@ public partial class MainViewModel
     internal static string DescribeOfflineBodies(int downloaded, int total, bool downloading)
     {
         if (downloading)
-            return $"Offline: downloading {downloaded:N0} of {total:N0}";
-        if (total == 0) return "Offline: nothing downloaded yet";
+            return $"Messages: downloading {downloaded:N0} of {total:N0}";
+        if (total == 0) return "Messages: none downloaded yet";
         if (downloaded >= total)
-            return $"Offline: all {total:N0} {(total == 1 ? "message" : "messages")} downloaded";
-        return $"Offline: {downloaded:N0} of {total:N0} messages downloaded";
+            return $"Messages: all {total:N0} downloaded";
+        return $"Messages: {downloaded:N0} of {total:N0} downloaded";
     }
 
     private void OnOfflineBodyProgress(int done, int total)

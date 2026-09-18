@@ -17,12 +17,12 @@ namespace QuickMail.Tests;
 public class OfflineBodyStatusTextTests
 {
     [Theory]
-    [InlineData(0, 0, false, "Offline: nothing downloaded yet")]
-    [InlineData(0, 12, false, "Offline: 0 of 12 messages downloaded")]
-    [InlineData(1240, 2000, false, "Offline: 1,240 of 2,000 messages downloaded")]
-    [InlineData(2000, 2000, false, "Offline: all 2,000 messages downloaded")]
-    [InlineData(1, 1, false, "Offline: all 1 message downloaded")]
-    [InlineData(120, 500, true, "Offline: downloading 120 of 500")]
+    [InlineData(0, 0, false, "Messages: none downloaded yet")]
+    [InlineData(0, 12, false, "Messages: 0 of 12 downloaded")]
+    [InlineData(1240, 2000, false, "Messages: 1,240 of 2,000 downloaded")]
+    [InlineData(2000, 2000, false, "Messages: all 2,000 downloaded")]
+    [InlineData(1, 1, false, "Messages: all 1 downloaded")]
+    [InlineData(120, 500, true, "Messages: downloading 120 of 500")]
     public void ItSaysWhatIsDownloaded(int downloaded, int total, bool downloading, string expected)
         => Assert.Equal(expected, MainViewModel.DescribeOfflineBodies(downloaded, total, downloading));
 }
