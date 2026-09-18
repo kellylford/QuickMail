@@ -268,6 +268,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void SetCachedFolders(Guid accountId, List<MailFolderModel> folders)
     {
         _cachedFolders[accountId] = folders;
+        _searchFolderNames = null;   // folder: looks names up here (#717); a new list may rename or add some
         _connectedAccountIds.Add(accountId);
 
         // Never let an empty result overwrite a good cache. SaveFoldersAsync is replace-all, so
@@ -4359,6 +4360,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var m in _rawMessages) m.Preview = string.Empty;
         else
             foreach (var m in _rawMessages) m.Preview = TruncatePreview(m.Preview, _previewLines);
+        // The index's last answer was about the messages that were here before; drop it so it is not applied
+        // to these, and ask again once the list shows them (#717).
+        if (!string.IsNullOrWhiteSpace(SearchText)) _searchMatcher = null;
         ApplyFiltersAndSearch();
         RefreshSearchIndexForNewMessages();
     }

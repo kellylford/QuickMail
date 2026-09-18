@@ -156,7 +156,7 @@ over the reading pane.
 
 Access keys: Words anywhere (W), From (F), To (T), Cc (C), Subject (S), Body (B), Attachment name
 (N), Has attachments (A), Read state (R), Flag (L), Received from (V), Received up to (U), Accounts
-to search (H). The two **Look in** choices have none: the first names the current folder through a
+to search (H), Also search the mail server (M). The two **Look in** choices have none: the first names the current folder through a
 binding, where an underscore is read and shown as an underscore rather than marking a key. Arrow
 keys choose between them.
 

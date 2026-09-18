@@ -82,6 +82,8 @@ public partial class AdvancedSearchWindow : Window
         try
         {
             var outcome = await SearchRunner(request);
+            // Abandoned because the user moved to another folder meanwhile: nothing to report about it.
+            if (outcome.Cancelled) return;
             if (outcome.Found > 0 && !outcome.Failed)
             {
                 ClosedWithResults = true;
@@ -89,7 +91,11 @@ public partial class AdvancedSearchWindow : Window
                 Close();
                 return;
             }
-            AccessibilityHelper.Announce(this, outcome.Failed ? "Could not search." : "No messages found.",
+            // Nothing on this computer, and the server was not asked: say where else to look.
+            var none = !request.InCurrentFolder && !request.SearchServer
+                ? "No messages found on this computer. Check Also search the mail server to look there too."
+                : "No messages found.";
+            AccessibilityHelper.Announce(this, outcome.Failed ? "Could not search." : none,
                 interrupt: true, category: AnnouncementCategory.Result);
             WordsBox.Focus();
         }

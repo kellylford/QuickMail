@@ -150,6 +150,30 @@ public class AdvancedSearchViewModelTests
     }
 
     [Fact]
+    public void AlsoSearchTheServer_GoesWithAnAccountSearch_NotWithThisFolder()
+    {
+        var vm = Vm();
+        vm.Words = "budget";
+        vm.AlsoSearchServer = true;
+        Assert.False(Run(vm)!.SearchServer);   // This folder is searched on this computer only.
+
+        vm.SearchInAccounts = true;
+        var request = Run(vm)!;
+        Assert.True(request.SearchServer);
+
+        // Reopening keeps the choice.
+        Assert.True(Vm(previous: request).AlsoSearchServer);
+    }
+
+    [Fact]
+    public void AnAccountNameWithAnUnderscoreIsShownAsWritten()
+    {
+        var account = new AdvancedSearchAccount(Guid.NewGuid(), "my_work", isChosen: true);
+        Assert.Equal("my__work", account.DisplayName);   // doubled, so the check box shows one underscore
+        Assert.Equal("my_work", account.ToString());
+    }
+
+    [Fact]
     public void ClearKeepsWhereToLook()
     {
         var vm = Vm();

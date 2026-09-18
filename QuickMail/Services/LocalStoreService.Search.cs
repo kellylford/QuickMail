@@ -137,6 +137,16 @@ public partial class LocalStoreService
                 """;
             cmd.ExecuteNonQuery();
 
+            // A profile opened by the first build of this index has SearchKey without generation; CREATE TABLE
+            // IF NOT EXISTS leaves it that way. Added here, in the same transaction; "duplicate column" is the
+            // usual answer and means there is nothing to do.
+            try
+            {
+                cmd.CommandText = "ALTER TABLE SearchKey ADD COLUMN generation INTEGER NOT NULL DEFAULT 0;";
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException ex) when (ex.Message.Contains("duplicate column", StringComparison.OrdinalIgnoreCase)) { }
+
             if (!existed)
             {
                 // Everything already cached waits to be indexed, oldest first so the ids run newest-last and

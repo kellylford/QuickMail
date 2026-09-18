@@ -181,6 +181,51 @@ public class SearchServerTooTests
     }
 
     [Fact]
+    public async Task NothingOnThisComputer_ButAskingTheServerFromTheForm_OpensItsResults()
+    {
+        // The case phase 3 exists for: mail older than the sync range. Without the form's check box the
+        // results folder would close on an empty local search and leave no way to ask the server.
+        var mail = new SearchingMail();
+        var vm = new MainViewModel(
+            mail, new FixedAccounts([Work, Home]), new StubCredentialService(), new RowsStore([]),
+            new StubOAuthService(), new StubSyncService(), new StubConfigService(), new StubCommandRegistry(),
+            new StubViewService(), new StubRuleService(), new StubSmtpService())
+        {
+            SearchIndexDelay = TimeSpan.Zero,
+        };
+        vm.LoadAccountList();
+        await vm.InitialLoadAsync();
+        mail.Answers[Work.Id] = [Msg(Work.Id, "ancient", "Budget 2019")];
+
+        var outcome = await vm.RunAdvancedSearchAsync(
+            new AdvancedSearchRequest("budget", InCurrentFolder: false, [Work.Id, Home.Id], SearchServer: true));
+
+        Assert.Equal(1, outcome.Found);
+        Assert.True(vm.IsSearchResultsView);
+        Assert.Equal(["ancient"], vm.Messages.Select(m => m.MessageId));
+    }
+
+    [Fact]
+    public async Task NothingAnywhere_GoesBackWhereItStarted_EvenAfterAskingTheServer()
+    {
+        var mail = new SearchingMail();
+        var vm = new MainViewModel(
+            mail, new FixedAccounts([Work]), new StubCredentialService(), new RowsStore([]),
+            new StubOAuthService(), new StubSyncService(), new StubConfigService(), new StubCommandRegistry(),
+            new StubViewService(), new StubRuleService(), new StubSmtpService());
+        vm.LoadAccountList();
+        await vm.InitialLoadAsync();
+        var before = vm.SelectedFolder?.FullName;
+
+        var outcome = await vm.RunAdvancedSearchAsync(
+            new AdvancedSearchRequest("zebra", InCurrentFolder: false, [Work.Id], SearchServer: true));
+
+        Assert.Equal(0, outcome.Found);
+        Assert.Single(mail.Asked);
+        Assert.Equal(before, vm.SelectedFolder?.FullName);
+    }
+
+    [Fact]
     public async Task OutsideSearchResults_ItDoesNothing()
     {
         var mail = new SearchingMail();

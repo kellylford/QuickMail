@@ -29,7 +29,7 @@ public static class ServerSearchQuery
         {
             // An excluded word has to be matched exactly where the query means it, or the server hides
             // messages that merely mention it somewhere else. IMAP has no attachment-name criterion, so an
-            // excluded attachment word is left to the caller instead of becoming NOT TEXT.
+            // excluded attachment word is not sent at all: the server returns more rather than fewer.
             if (t.Negated && t.Field == SearchField.Attachment) continue;
             SearchQuery part = t.Field switch
             {
@@ -61,7 +61,7 @@ public static class ServerSearchQuery
         foreach (var t in query.Terms)
         {
             // Gmail has no body-only operator, so an excluded body word would exclude messages that have it
-            // in their subject or sender too. Left out; the caller still checks what comes back.
+            // in their subject or sender too. Not sent: the server returns more rather than fewer.
             if (t.Negated && t.Field == SearchField.Body) continue;
             var value = QuoteIfNeeded(t.Text, t.IsPhrase);
             var part = t.Field switch

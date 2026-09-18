@@ -212,7 +212,8 @@ public partial class MainViewModel
     /// <summary>What running an Advanced Search request came to.</summary>
     /// <param name="Found">How many messages the list now shows.</param>
     /// <param name="Failed">The search could not run (the store failed); the list shows nothing new.</param>
-    public sealed record AdvancedSearchOutcome(int Found, bool Failed);
+    /// <param name="Cancelled">The user moved to another folder before it finished; it was abandoned.</param>
+    public sealed record AdvancedSearchOutcome(int Found, bool Failed, bool Cancelled = false);
 
     // Set by FetchSearchResultsAsync when it could not search, for RunAdvancedSearchAsync to report.
     private bool _searchResultsFailed;
@@ -234,9 +235,22 @@ public partial class MainViewModel
         else if (!IsSearchResultsView) _searchResultsReturnFolder = SelectedFolder;
 
         _searchResultsFailed = false;
-        await SelectFolderAsync(CreateSearchResultsFolder(request.Query, request.AccountIds));
-        var found = Messages.Count;
+        var results = CreateSearchResultsFolder(request.Query, request.AccountIds);
+        await SelectFolderAsync(results);
+        // The form is modeless and an online search can take a while: if the user has gone to another folder
+        // since, that folder's count is not this search's, and pulling them back would be worse.
+        if (!string.Equals(SelectedFolder?.FullName, results.FullName, StringComparison.Ordinal))
+            return new AdvancedSearchOutcome(0, Failed: false, Cancelled: true);
+
         var failed = _searchResultsFailed;
+        if (!failed && request.SearchServer)
+        {
+            var server = await SearchServerTooAsync();
+            if (server.Cancelled && !string.Equals(SelectedFolder?.FullName, results.FullName, StringComparison.Ordinal))
+                return new AdvancedSearchOutcome(0, Failed: false, Cancelled: true);
+        }
+
+        var found = Messages.Count;
         if (found == 0 || failed)
         {
             _searchResultsReturnFolder = previousReturn;
@@ -381,6 +395,16 @@ public partial class MainViewModel
     /// </summary>
     public async Task<ServerSearchOutcome> SearchServerTooAsync()
     {
+        // One at a time, held until the results are in the list: a second run that started before the first
+        // had inserted its rows would not know about them and add the same messages again.
+        if (Interlocked.CompareExchange(ref _serverSearchRunning, 1, 0) != 0)
+            return new ServerSearchOutcome(0, [], 0, Cancelled: true);
+        try { return await SearchServerTooCoreAsync(); }
+        finally { Volatile.Write(ref _serverSearchRunning, 0); }
+    }
+
+    private async Task<ServerSearchOutcome> SearchServerTooCoreAsync()
+    {
         var failed = new List<string>();
         if (SelectedFolder == null || !TryGetSearchResultsFromSentinel(SelectedFolder.FullName, out var text, out var chosen))
             return new ServerSearchOutcome(0, failed, 0);
@@ -396,9 +420,6 @@ public partial class MainViewModel
             .Where(a => _connectivity?.IsAccountOnline(a.Id) ?? true)
             .ToList();
         if (targets.Count == 0) return new ServerSearchOutcome(0, failed, 0);
-
-        if (Interlocked.CompareExchange(ref _serverSearchRunning, 1, 0) != 0)
-            return new ServerSearchOutcome(0, failed, 0, Cancelled: true);
 
         IsBusy = true;
         // No status text of its own: the View says "Searching the server…" once, and a status change would
@@ -447,7 +468,6 @@ public partial class MainViewModel
         finally
         {
             if (loadVersion == _folderLoadVersion) IsBusy = false;
-            Volatile.Write(ref _serverSearchRunning, 0);
         }
 
         if (!IsCurrentFolderLoad(loadVersion, expectedFolder))

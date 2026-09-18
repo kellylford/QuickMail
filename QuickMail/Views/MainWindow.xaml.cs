@@ -4159,7 +4159,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Moves keyboard focus to the specified status bar region (1-based index).
-    /// Region 4 (ProgressBar) is skipped when not visible.
+    /// Regions 4 (offline reading) and 5 (sync progress) are skipped when not visible.
     /// </summary>
     private void FocusStatusBarRegion(int region)
     {

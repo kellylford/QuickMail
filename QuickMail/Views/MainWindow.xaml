@@ -2159,7 +2159,7 @@
                         ToolTip="Press Enter to open the release page in your browser"/>
             </StatusBarItem>
 
-            <!-- Region 4: Rules status (clickable — opens Rules Manager) -->
+            <!-- Region 3 (focus order): Rules status (clickable — opens Rules Manager) -->
             <StatusBarItem x:Name="RulesStatusItem"
                            HorizontalAlignment="Right"
                            KeyboardNavigation.IsTabStop="True">
@@ -2171,7 +2171,7 @@
                         ToolTip="Open Rules Manager (Ctrl+Shift+L)"/>
             </StatusBarItem>
 
-            <!-- Region 4: Offline reading (#717) — how many messages have their full text, and whether more
+            <!-- Region 4 (focus order): Offline reading (#717) — how many messages have their full text, and whether more
                  are coming down. Hidden when the setting is off, so it never says nothing at length. -->
             <StatusBarItem x:Name="OfflineStatusItem"
                            HorizontalAlignment="Right"

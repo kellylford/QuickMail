@@ -13,7 +13,9 @@ namespace QuickMail.ViewModels;
 /// <param name="InCurrentFolder">True: search the folder on screen, through the search box. False: search
 /// every folder of <paramref name="AccountIds"/> and show a Search Results folder.</param>
 /// <param name="AccountIds">The accounts to search when not searching the current folder.</param>
-public sealed record AdvancedSearchRequest(string Query, bool InCurrentFolder, IReadOnlyList<Guid> AccountIds);
+/// <param name="SearchServer">Across accounts, also ask each account's mail server (#717, phase 3).</param>
+public sealed record AdvancedSearchRequest(string Query, bool InCurrentFolder, IReadOnlyList<Guid> AccountIds,
+    bool SearchServer = false);
 
 /// <summary>An account Advanced Search can look in; the check box's name is the account's.</summary>
 public sealed partial class AdvancedSearchAccount : ObservableObject
@@ -27,6 +29,12 @@ public sealed partial class AdvancedSearchAccount : ObservableObject
 
     public Guid Id { get; }
     public string Name { get; }
+
+    /// <summary>
+    /// The check box's text: the name with its underscores doubled. The check box template reads a single
+    /// underscore as an access key, so "my_work" would otherwise show and read as "mywork" and take Alt+W.
+    /// </summary>
+    public string DisplayName => Name.Replace("_", "__", StringComparison.Ordinal);
 
     [ObservableProperty]
     private bool _isChosen;
@@ -70,6 +78,7 @@ public sealed partial class AdvancedSearchViewModel : ObservableObject
         CanSearchCurrentFolder = !string.IsNullOrEmpty(currentFolderName);
 
         var chosen = previous is { InCurrentFolder: false } ? previous.AccountIds.ToHashSet() : null;
+        _alsoSearchServer = previous?.SearchServer ?? false;
         foreach (var (id, name) in accounts)
             Accounts.Add(new AdvancedSearchAccount(id, name, chosen == null || chosen.Contains(id)));
 
@@ -123,6 +132,12 @@ public sealed partial class AdvancedSearchViewModel : ObservableObject
         get => !SearchInCurrentFolder;
         set => SearchInCurrentFolder = !value;
     }
+
+    /// <summary>
+    /// Also ask each account's mail server, for mail older than the sync range or never downloaded. Only
+    /// across accounts; the current folder is always searched on this computer.
+    /// </summary>
+    [ObservableProperty] private bool _alsoSearchServer;
 
     /// <summary>Why the last Search did nothing; empty when it went ahead.</summary>
     [ObservableProperty] private string _problem = string.Empty;
@@ -215,7 +230,8 @@ public sealed partial class AdvancedSearchViewModel : ObservableObject
             return;
         }
         Problem = string.Empty;
-        SearchRequested?.Invoke(new AdvancedSearchRequest(query.ToQueryString(), inFolder, accounts));
+        SearchRequested?.Invoke(new AdvancedSearchRequest(query.ToQueryString(), inFolder, accounts,
+            SearchServer: !inFolder && AlsoSearchServer));
     }
 
     /// <summary>Empties every field, keeping where to look.</summary>

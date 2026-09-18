@@ -131,6 +131,27 @@ public class AdvancedSearchAccountsListTests
     }
 
     [StaFact]
+    public void AnAccountNameWithAnUnderscoreIsReadAsWritten_AndClaimsNoAccessKey()
+    {
+        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
+        var vm = new AdvancedSearchViewModel([(Guid.NewGuid(), "my_work")], "Inbox");
+        var window = new AdvancedSearchWindow(vm)
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -10000, Top = -10000,
+        };
+        window.Show();
+        try
+        {
+            DrainDispatcher();
+            var box = AccountsList(window).RowCheckBoxes().Single();
+            Assert.Equal("my_work", UIElementAutomationPeer.CreatePeerForElement(box)!.GetName());
+            Assert.Equal(string.Empty, UIElementAutomationPeer.CreatePeerForElement(box)!.GetAccessKey() ?? string.Empty);
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    [StaFact]
     public void TheFolderChoiceReadsWithNoStrayUnderscore()
     {
         var (window, _) = MakeWindow(folder: "All Inboxes");

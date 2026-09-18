@@ -442,6 +442,33 @@ public class SearchIndexStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task AKeyTableFromTheFirstBuildGetsItsGenerationColumn()
+    {
+        await _store.UpsertSummariesAsync([Summary("1")]);
+        await Body("1", plain: "early budget");
+
+        // The first build of the index created SearchKey without generation.
+        await using (var conn = new SqliteConnection($"Data Source={Path.Combine(_dir, "mail.db")}"))
+        {
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                DROP TRIGGER trg_search_summary_insert; DROP TRIGGER trg_search_summary_update;
+                DROP TRIGGER trg_search_summary_delete; DROP TRIGGER trg_search_detail_insert;
+                DROP TRIGGER trg_search_detail_update; DROP TRIGGER trg_search_detail_delete;
+                ALTER TABLE SearchKey DROP COLUMN generation; UPDATE SearchKey SET pending = 1;
+                """;
+            await cmd.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        var reopened = new LocalStoreService(new ProfileContext(_dir));
+        reopened.Initialize();
+        var match = SearchMatchExpression.AllOf(MessageSearchQuery.Parse("early").Terms)!;
+        var hits = await reopened.FindMessagesAsync(match, null, ct: TestContext.Current.CancellationToken);
+        Assert.Equal("1", Assert.Single(hits).MessageId);
+    }
+
+    [Fact]
     public async Task IndexingIsNewestFirst_AndStopsAtTheLimit()
     {
         var old = Summary("old");

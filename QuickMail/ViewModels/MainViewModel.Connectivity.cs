@@ -165,9 +165,9 @@ public partial class MainViewModel
     {
         if (downloading)
             return $"Messages: downloading {downloaded:N0} of {total:N0}";
-        if (total == 0) return "Messages: none downloaded yet";
+        if (total == 0) return "Messages: none to download yet";
         if (downloaded >= total)
-            return $"Messages: all {total:N0} downloaded";
+            return total == 1 ? "Messages: 1 of 1 downloaded" : $"Messages: all {total:N0} downloaded";
         return $"Messages: {downloaded:N0} of {total:N0} downloaded";
     }
 
@@ -175,9 +175,9 @@ public partial class MainViewModel
         => OfflineBodyStatusText = DescribeOfflineBodies(done, total, downloading: true);
 
     /// <summary>
-    /// Recounts what is downloaded, off the UI thread, and puts it in the status bar. Called when the pass
-    /// ends, when the setting changes, and once the first sync has settled. A count that arrives after the
-    /// setting was turned off is dropped.
+    /// Recounts what is downloaded and puts it in the status bar. Call on the UI thread only — it replaces
+    /// <see cref="_offlineBodyStatusCts"/> — and the count itself runs off it. Called when the pass ends, when
+    /// the setting changes, and after each background pass. A count superseded by a newer one is dropped.
     /// </summary>
     private async Task RefreshOfflineBodyStatusAsync()
     {
@@ -286,8 +286,9 @@ public partial class MainViewModel
         {
             await _syncService.BackfillOfflineBodiesAsync(accounts, folders, ct).ConfigureAwait(false);
             // The status bar's count, whether or not the pass had anything to do (it reports only what it
-            // downloaded, and the first pass after launch usually has nothing left).
-            await RefreshOfflineBodyStatusAsync().ConfigureAwait(false);
+            // downloaded, and the first pass after launch usually has nothing left). Posted: the recount owns a
+            // cancellation source that only the UI thread may replace, and this continuation is not on it.
+            _ui.Post(() => RefreshOfflineBodyStatusAsync().LogFaults("offline bodies status"));
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { LogService.Log("Offline bodies pass", ex); }

@@ -19,7 +19,7 @@
 
     <!-- Advanced Search (#717, phase 2). Modeless: it has text fields and opens over the reading pane's
          WebView2 (CLAUDE.md modal dialog rules), so Escape and Close are wired by hand. Access keys are
-         unique across the whole window: W F T C S B N A R L V U H. The two Look in choices carry none: the
+         unique across the whole window: W F T C S B N A R L V U H M. The two Look in choices carry none: the
          first names the current folder through a binding, and an access key in bound text is not markup —
          it reads and shows as a literal underscore. Arrow keys choose within the group instead. -->
     <DockPanel Margin="14">
@@ -170,13 +170,19 @@
                                               AutomationProperties.Name="Accounts to search">
                             <views:FieldCheckList.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:AdvancedSearchAccount}">
-                                    <CheckBox Content="{Binding Name}"
+                                    <CheckBox Content="{Binding DisplayName}"
                                               IsChecked="{Binding IsChosen, Mode=TwoWay}"
                                               Margin="0,2"
                                               VerticalAlignment="Center"/>
                                 </DataTemplate>
                             </views:FieldCheckList.ItemTemplate>
                         </views:FieldCheckList>
+
+                        <CheckBox x:Name="AlsoSearchServerBox"
+                                  Content="Also search the _mail server"
+                                  IsChecked="{Binding AlsoSearchServer}"
+                                  IsEnabled="{Binding SearchInAccounts}"
+                                  Margin="20,8,0,0"/>
                     </StackPanel>
                 </GroupBox>
             </StackPanel>
