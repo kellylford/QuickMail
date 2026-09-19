@@ -47,7 +47,7 @@ public partial class MainViewModel
         catch (OperationCanceledException) { /* app is shutting down */ }
         catch (Exception ex)
         {
-            LogService.Log("SaveMessages", ex);
+            LogService.Log($"SaveMessages: {ex.GetType().Name} (0x{ex.HResult:X8})");
             Report(report, $"Could not save: {ex.Message}", AnnouncementCategory.Result);
         }
     }
@@ -70,7 +70,7 @@ public partial class MainViewModel
         catch (OperationCanceledException) { /* app is shutting down */ }
         catch (Exception ex)
         {
-            LogService.Log("PrintMessage", ex);
+            LogService.Log($"PrintMessage: {ex.GetType().Name} (0x{ex.HResult:X8})");
             Report(report, $"Could not print: {ex.Message}", AnnouncementCategory.Result);
         }
     }

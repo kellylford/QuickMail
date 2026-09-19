@@ -20,7 +20,7 @@ public static class MessageBodyHtmlBuilder
     public const int MaxReaderTextChars     = 140_000;
 
     /// <summary>Rounds of the stripping passes before settling; see <see cref="TryStripHeavyHtml(string, TimeSpan, out string)"/>.</summary>
-    private const int MaxStripRounds = 8;
+    private const int MaxStripRounds = 4;
 
     /// <summary>
     /// An opening or closing tag of any element the stripping passes remove, as the HTML tokenizer
@@ -28,7 +28,7 @@ public static class MessageBodyHtmlBuilder
     /// </summary>
     private const string ResidualForbiddenTag =
         @"<(/?(?:script|style|svg|math|iframe|frame|frameset|object|embed|applet|video|audio|source|track|" +
-        @"canvas|form|img|image|link|base|meta|input|button|portal)(?=[\s/>]|$))";
+        @"canvas|form|img|image|link|base|meta|input|button|portal|title|html|head|body)(?=[\s/>]|$))";
 
     private static readonly Regex AutoLinkUrl = new(
         @"\b((?:https?|mailto):[^\s<>""']+)",
@@ -161,9 +161,10 @@ public static class MessageBodyHtmlBuilder
             fragment = string.Empty;
             return false;
         }
-        body = RemoveTitle(body);
-        body = SafeRegexReplace(body, "</?(html|head|body)\\b[^>]*>", string.Empty,
-                                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        // The sender's title and html/head/body tags are already gone: TryStripHeavyHtml removes them
+        // inside its rounds. Removing them here, after its final escape, is what let "<me<body>ta"
+        // become a live <meta> again (#728 security review, second pass). Nothing below may DELETE
+        // text from the markup — only escape it, which cannot join two pieces into a tag.
         // The host page's own landmarks: a "</main>" in the message would close the box the message
         // is contained in, and a "<header>" would open a second one beside the real details.
         body = SafeRegexReplace(body, @"<(/?(?:main|header)(?=[\s/>]|$))", "&lt;$1",
@@ -215,9 +216,8 @@ public static class MessageBodyHtmlBuilder
         // onto the existing element — so "<body onload=…>" buried in a message would be writing
         // attributes onto the document's real body. The on* handler is stripped above; nothing
         // should depend on that being the only such attribute anyone ever finds.
-        body = RemoveTitle(body);
-        body = SafeRegexReplace(body, "</?(html|head|body)\\b[^>]*>", string.Empty,
-                                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        // (The sender's title and html/head/body tags were removed inside TryStripHeavyHtml's rounds.
+        // Removing them here, after its final escape, rejoined tags — see TryBuildSanitizedBodyFragment.)
 
         return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
                titleTag + cspTag + styleBlock +
@@ -345,6 +345,12 @@ public static class MessageBodyHtmlBuilder
         for (var round = 0; round < MaxStripRounds; round++)
         {
             var before = body;
+            // The sender's own document structure. A stray <html>/<head>/<body> start tag in content
+            // would have its attributes merged onto the host document's real element, and a <title>
+            // would set the document title the reading pane announces. Inside the rounds, like every
+            // other removal, so what a removal joins together is examined again.
+            body = Step(body, "<title[^>]*>.*?" + EndTag("title"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            body = Step(body, "</?(html|head|body)\\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
             // Remove elements hidden via inline display:none (e.g. newsletter preheader padding divs).
             // Must run before style-attribute stripping, which would make these visible.
             body = Step(body,
@@ -373,8 +379,11 @@ public static class MessageBodyHtmlBuilder
             // forgets to handle that event silently opens the link in an in-app popup instead of
             // the user's default browser (issue #483). Hosts handle both events; this keeps the
             // rendered document from depending on that.
-            body = Step(body, "\\s(on\\w+|style|src|srcset|background|target)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            body = Step(body, "\\s(on\\w+|style|src|srcset|background|target|ping|srcdoc|formaction|action|poster)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
             if (!complete || string.Equals(before, body, StringComparison.Ordinal)) break;
+            // Still changing after the last round: markup nested to defeat the rounds. Fail closed —
+            // the caller shows the message as plain text rather than trust what is left.
+            if (round == MaxStripRounds - 1) complete = false;
         }
 
         // Whatever the rounds left, no opener of a removed element survives as markup: its "<" is

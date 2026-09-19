@@ -132,6 +132,9 @@ public partial class MainWindow : Window
     private bool _messageBodyHasFocus;
     private CoreWebView2Environment? _webViewEnvironment;
 
+    /// <summary>Pairs the reading pane's navigations with the links the user activated (#728 review).</summary>
+    private readonly LinkActivationGate _linkGate = new();
+
     private readonly TypeAheadPrefixTracker _typeAhead = new();
     private int _messageBodyRenderVersion;
 
@@ -3590,7 +3593,9 @@ public partial class MainWindow : Window
                 +"else if(e.key==='F12'&&!e.ctrlKey&&!e.shiftKey&&!e.altKey){window.chrome.webview.postMessage('f12');e.preventDefault();}"
                 +"});"
                 // The live region the link menu writes outcomes into (issues #671, #329).
-                + LinkContextMenuSupport.StatusRegionScript);
+                + LinkContextMenuSupport.StatusRegionScript
+                // Which link the user activated, so a navigation can be matched to it (#728 review).
+                + LinkActivationGate.ReportActivationsScript);
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
@@ -3622,6 +3627,8 @@ public partial class MainWindow : Window
                         DispatcherPriority.Input);
                 else if (msg == "ctrl-shift-p")
                     Dispatcher.InvokeAsync(OpenCommandPalette, DispatcherPriority.Input);
+                else if (msg?.StartsWith(LinkActivationGate.ActivationMessagePrefix, StringComparison.Ordinal) == true)
+                    _linkGate.NoteActivated(msg[LinkActivationGate.ActivationMessagePrefix.Length..]);
                 // Save / Print (#728) go through the registry, so a user's rebinding of the command is
                 // what the relayed key runs — the relay carries the default key, the registry decides.
                 else if (msg == "ctrl-s")
@@ -3641,27 +3648,31 @@ public partial class MainWindow : Window
                     return;
                 args.Cancel = true;
                 // Only a navigation the USER started leaves the message: a link they activated. One the
-                // document starts by itself — a <meta> refresh, say — is cancelled and goes nowhere.
-                // Handing those to the browser too meant a crafted message opened a web page (or ran a
-                // quickmail: action) merely by being previewed, with no click. #728 security review.
+                // document starts by itself — a <meta> refresh — is cancelled and goes nowhere. Handing
+                // those on meant a crafted message opened a web page, or answered an invitation, merely
+                // by being read (#728 security review). IsUserInitiated alone is not proof: it is also
+                // true for a refresh that fires within seconds of any keypress in the page, so the
+                // navigation must also match a link the host script saw the user activate.
                 if (!args.IsUserInitiated)
                 {
                     LogService.Debug("Reading pane: cancelled a navigation the document started on its own.");
                     return;
                 }
-                if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
+                _linkGate.Request(uri, () =>
                 {
-                    HandleQuickMailUri(uri);
-                    return;
-                }
-                OpenExternal(uri);
+                    if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
+                        HandleQuickMailUri(uri);
+                    else
+                        OpenExternal(uri);
+                });
             };
             MessageBody.CoreWebView2.NewWindowRequested += (_, args) =>
             {
                 args.Handled = true;
                 // As NavigationStarting: nothing opens that the user did not ask for.
                 if (!args.IsUserInitiated) return;
-                OpenExternal(args.Uri);
+                var target = args.Uri;
+                _linkGate.Request(target, () => OpenExternal(target));
             };
             MessageBody.CoreWebView2.ProcessFailed += (_, args) =>
                 LogService.Log($"[ERROR] WebView2 ProcessFailed kind={args.ProcessFailedKind} exit={args.ExitCode} reason={args.Reason}");
@@ -3904,12 +3915,18 @@ public partial class MainWindow : Window
 
     private void HandleQuickMailUri(string uri)
     {
-        if (uri.StartsWith("quickmail:ics-accept", StringComparison.OrdinalIgnoreCase))
-            _vm.AcceptInviteCommand.Execute(null);
-        else if (uri.StartsWith("quickmail:ics-tentative", StringComparison.OrdinalIgnoreCase))
-            _vm.TentativeInviteCommand.Execute(null);
-        else if (uri.StartsWith("quickmail:ics-decline", StringComparison.OrdinalIgnoreCase))
-            _vm.DeclineInviteCommand.Execute(null);
+        // Only QuickMail's own links, which carry this run's token; one the sender wrote does nothing.
+        if (!QuickMailLinks.TryParse(uri, out var action))
+        {
+            LogService.Log("Reading pane: ignored a quickmail: link that QuickMail did not create.");
+            return;
+        }
+        switch (action)
+        {
+            case "ics-accept":    _vm.AcceptInviteCommand.Execute(null);    break;
+            case "ics-tentative": _vm.TentativeInviteCommand.Execute(null); break;
+            case "ics-decline":   _vm.DeclineInviteCommand.Execute(null);   break;
+        }
     }
 
     /// <summary>

@@ -641,9 +641,19 @@ public class Pop3MailService : IMailService
                 }
 
                 MimeMessage msg;
+                byte[] raw;
                 try
                 {
-                    msg = await client.GetMessageAsync(i, ct);
+                    // The bytes exactly as the server sent them, kept as the message's original (#728),
+                    // and parsed from those same bytes — not parsed first and written back out.
+                    using (var stream = await client.GetStreamAsync(i, false, ct))
+                    using (var buffer = new MemoryStream())
+                    {
+                        await stream.CopyToAsync(buffer, ct);
+                        raw = buffer.ToArray();
+                    }
+                    using var parse = new MemoryStream(raw, writable: false);
+                    msg = await MimeMessage.LoadAsync(parse, ct);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -653,7 +663,7 @@ public class Pop3MailService : IMailService
                     continue;
                 }
 
-                var summary = await StoreMessageAsync(accountId, uidl, msg, InboxFolder, isRead: false, ct);
+                var summary = await StoreMessageAsync(accountId, uidl, msg, InboxFolder, isRead: false, ct, raw);
                 downloaded.Add(summary);
 
                 if (!account.Pop3LeaveMailOnServer)
@@ -736,8 +746,13 @@ public class Pop3MailService : IMailService
     /// attachments could be extracted later (#128); since #728 they are also what Save writes as a
     /// .eml, and once a collected message leaves the server the store holds the only original there is.
     /// </summary>
+    /// <param name="raw">
+    /// The bytes as the server sent them, for a downloaded message. Null for one QuickMail wrote itself
+    /// (a sent copy, a draft), whose original is the message as QuickMail serializes it.
+    /// </param>
     private async Task<MailMessageSummary> StoreMessageAsync(
-        Guid accountId, string messageId, MimeMessage msg, string folderName, bool isRead, CancellationToken ct)
+        Guid accountId, string messageId, MimeMessage msg, string folderName, bool isRead, CancellationToken ct,
+        byte[]? raw = null)
     {
         var summary = BuildSummary(accountId, messageId, msg, folderName, isRead);
         var detail  = BuildDetail(accountId, messageId, msg, folderName, isRead);
@@ -745,9 +760,13 @@ public class Pop3MailService : IMailService
         await _store.UpsertSummariesAsync([summary]);
         await _store.UpsertDetailAsync(detail);
 
-        using var ms = new MemoryStream();
-        await msg.WriteToAsync(ms, ct);
-        await _store.StoreMimeBytesAsync(accountId, folderName, messageId, ms.ToArray());
+        if (raw is null)
+        {
+            using var ms = new MemoryStream();
+            await msg.WriteToAsync(ms, ct);
+            raw = ms.ToArray();
+        }
+        await _store.StoreMimeBytesAsync(accountId, folderName, messageId, raw);
 
         return summary;
     }
@@ -782,7 +801,8 @@ public class Pop3MailService : IMailService
         // What the cached copy says the message is, to check the server hands back the same one: a
         // server may reuse a UIDL (RFC 1939 allows it once the old message is gone), and keeping the
         // wrong message's bytes would make it this message's original — and its attachments — for good.
-        var expectedId = (await _store.LoadDetailAsync(accountId, folderName, messageId))?.InternetMessageId?.Trim('<', '>', ' ');
+        var cached = await _store.LoadDetailAsync(accountId, folderName, messageId);
+        var expectedId = cached?.InternetMessageId?.Trim('<', '>', ' ');
 
         var bytes = await RunMaildropSessionAsync<byte[]?>(accountId, async client =>
         {
@@ -801,12 +821,18 @@ public class Pop3MailService : IMailService
 
         if (bytes is null) throw new MessageOriginalUnavailableException(notKept);
 
-        if (!string.IsNullOrEmpty(expectedId))
+        using (var check = new MemoryStream(bytes, writable: false))
         {
-            using var check = new MemoryStream(bytes, writable: false);
-            var headers = await HeaderList.LoadAsync(check, ct);
-            var actualId = headers[HeaderId.MessageId]?.Trim().Trim('<', '>', ' ');
-            if (!string.Equals(expectedId, actualId, StringComparison.Ordinal))
+            var fetched = await MimeMessage.LoadAsync(check, ct);
+            // The Message-ID when the cached copy has one; otherwise the subject and date together —
+            // weaker, but a reused UIDL landing on a message with the same subject AND the same
+            // Date header is not a coincidence a server produces.
+            var same = !string.IsNullOrEmpty(expectedId)
+                ? string.Equals(expectedId, fetched.MessageId?.Trim('<', '>', ' '), StringComparison.Ordinal)
+                : cached is not null
+                  && string.Equals(cached.Subject ?? string.Empty, fetched.Subject ?? string.Empty, StringComparison.Ordinal)
+                  && cached.Date == fetched.Date;
+            if (!same)
             {
                 LogService.Log($"POP3: UIDL {messageId} now names a different message on the server; not keeping it as the original.");
                 throw new MessageOriginalUnavailableException(notKept);

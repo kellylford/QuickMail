@@ -12,8 +12,9 @@ using Xunit;
 namespace QuickMail.Tests;
 
 /// <summary>
-/// The message bodies send a navigation to the browser only when <c>IsUserInitiated</c> is true (#728
-/// security review): a document-started navigation, such as a meta refresh, must go nowhere. This checks
+/// A navigation leaves a message body only when WebView2 reports it user-initiated AND it matches a link
+/// the user activated (#728 security review; see LinkActivationGate). A document-started navigation,
+/// such as a meta refresh, must go nowhere. This checks
 /// that premise against a real WebView2 both ways round. A meta refresh must NOT count as the user's,
 /// and a link activated by keyboard or mouse MUST, or every link in every message stops opening.
 /// </summary>
@@ -89,6 +90,97 @@ public class WebView2UserInitiatedTests
                 Assert.True(seen.Exists(n => n.Uri.EndsWith("/keyboard", StringComparison.Ordinal) && n.User), report);
                 Assert.True(seen.Exists(n => n.Uri.EndsWith("/mouse", StringComparison.Ordinal) && n.User), report);
             }
+        }
+        finally
+        {
+            controller?.Close();
+            window.Close();
+            try { Directory.Delete(dir, recursive: true); } catch { /* WebView2 may still hold its data folder */ }
+        }
+    }
+
+    /// <summary>
+    /// End to end, wired as the message windows wire it: the host activation script, the gate, and
+    /// NavigationStarting. A link activated with Enter opens. A delayed refresh that fires after the
+    /// reader pressed an arrow key (which WebView2 reports as user-initiated) opens nothing.
+    /// </summary>
+    [StaFact]
+    public void TheGate_OpensAnActivatedLink_ButNotARefreshAfterAKeypress()
+    {
+        WpfTestHost.EnsureApplication();
+        var dir = Path.Combine(Path.GetTempPath(), $"QuickMailGate-{Guid.NewGuid():N}");
+        var window = new Window
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+            Width = 400, Height = 300, Left = -10000, Top = -10000,
+        };
+        window.Show();
+        CoreWebView2Controller? controller = null;
+        try
+        {
+            var opened = new List<string>();
+            var reportedUser = new List<string>();
+            Run(async () =>
+            {
+                var env = await CoreWebView2Environment.CreateAsync(null, dir);
+                controller = await env.CreateCoreWebView2ControllerAsync(new WindowInteropHelper(window).Handle);
+                controller.Bounds = new System.Drawing.Rectangle(0, 0, 400, 300);
+                controller.IsVisible = true;
+                var core = controller.CoreWebView2;
+                var gate = new QuickMail.Helpers.LinkActivationGate();
+                await core.AddScriptToExecuteOnDocumentCreatedAsync(QuickMail.Helpers.LinkActivationGate.ReportActivationsScript);
+                core.WebMessageReceived += (_, e) =>
+                {
+                    var msg = e.TryGetWebMessageAsString();
+                    if (msg.StartsWith(QuickMail.Helpers.LinkActivationGate.ActivationMessagePrefix, StringComparison.Ordinal))
+                        gate.NoteActivated(msg[QuickMail.Helpers.LinkActivationGate.ActivationMessagePrefix.Length..]);
+                };
+                core.NavigationStarting += (_, e) =>
+                {
+                    if (e.Uri.StartsWith("data:", StringComparison.Ordinal) || e.Uri.StartsWith("about:", StringComparison.Ordinal)) return;
+                    e.Cancel = true;
+                    if (!e.IsUserInitiated) return;
+                    reportedUser.Add(e.Uri);
+                    var target = e.Uri;
+                    gate.Request(target, () => opened.Add(target));
+                };
+
+                async Task Load(string html)
+                {
+                    var done = new TaskCompletionSource<bool>();
+                    void OnDone(object? s, CoreWebView2NavigationCompletedEventArgs e) => done.TrySetResult(true);
+                    core.NavigationCompleted += OnDone;
+                    core.NavigateToString(html);
+                    await done.Task;
+                    core.NavigationCompleted -= OnDone;
+                }
+                Task Key(string type, string key, string code, int vk) =>
+                    core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+                        $"{{\"type\":\"{type}\",\"key\":\"{key}\",\"code\":\"{code}\",\"windowsVirtualKeyCode\":{vk}}}");
+
+                // The attack: a refresh 1s out, and the reader arrows through the message meanwhile.
+                await Load("<meta http-equiv=\"refresh\" content=\"1;url=https://example.invalid/refresh\"><p>Line one</p><p>Line two</p>");
+                controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+                await Key("keyDown", "ArrowDown", "ArrowDown", 40);
+                await Key("keyUp", "ArrowDown", "ArrowDown", 40);
+                await WaitFor(() => reportedUser.Exists(u => u.EndsWith("/refresh", StringComparison.Ordinal)), TimeSpan.FromSeconds(6));
+                await Task.Delay(300);
+
+                // A real link, activated with Enter.
+                await Load("<a href=\"https://example.invalid/real\">real link</a>");
+                controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+                await core.ExecuteScriptAsync("document.querySelector('a').focus()");
+                await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+                    "{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"text\":\"\r\"}");
+                await Key("keyUp", "Enter", "Enter", 13);
+                await WaitFor(() => opened.Exists(u => u.EndsWith("/real", StringComparison.Ordinal)), TimeSpan.FromSeconds(6));
+            }, TimeSpan.FromSeconds(60));
+
+            var report = $"reported as user's: [{string.Join(", ", reportedUser)}]; opened: [{string.Join(", ", opened)}]";
+            Assert.True(opened.Exists(u => u.EndsWith("/real", StringComparison.Ordinal)), report);
+            // The premise: WebView2 DID call the refresh the user's, after the arrow key. Only the gate stops it.
+            Assert.True(reportedUser.Exists(u => u.EndsWith("/refresh", StringComparison.Ordinal)), report);
+            Assert.False(opened.Exists(u => u.EndsWith("/refresh", StringComparison.Ordinal)), report);
         }
         finally
         {

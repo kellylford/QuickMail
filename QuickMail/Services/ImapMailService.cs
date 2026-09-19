@@ -1194,8 +1194,9 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
     /// <summary>
     /// The whole message as the server stores it (#728). The folder is opened read-only (EXAMINE) and
     /// MailKit fetches with BODY.PEEK[], so saving a message never marks it read. Fetched through the
-    /// streaming callback, which hands over the literal as it arrives off the socket, so the message
-    /// goes to <paramref name="destination"/> without being held in memory whole.
+    /// streaming callback: MailKit still buffers the literal once before handing it over, but that one
+    /// copy goes straight to <paramref name="destination"/> — where GetStreamAsync plus a MemoryStream
+    /// and ToArray held three.
     /// </summary>
     public async Task CopyOriginalMessageToAsync(
         Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)

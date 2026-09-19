@@ -104,11 +104,11 @@ public static class EventCardHtmlBuilder
             }
 
             sb.Append("<div style=\"margin-top:8px;\">");
-            AppendButton("quickmail:ics-accept", "Accept invitation", "Accept",
+            AppendButton(QuickMailLinks.Build("ics-accept"), "Accept invitation", "Accept",
                 Color("success", "#2E6B3E"), Color("successBackground", "#E9F3EC"));
-            AppendButton("quickmail:ics-tentative", "Tentatively accept invitation", "Tentative",
+            AppendButton(QuickMailLinks.Build("ics-tentative"), "Tentatively accept invitation", "Tentative",
                 Color("warning", "#8A5A00"), Color("warningBackground", "#FBF3E2"));
-            AppendButton("quickmail:ics-decline", "Decline invitation", "Decline",
+            AppendButton(QuickMailLinks.Build("ics-decline"), "Decline invitation", "Decline",
                 Color("error", "#B3261E"), Color("errorBackground", "#FBEAE9"), last: true);
             sb.Append("</div>");
 

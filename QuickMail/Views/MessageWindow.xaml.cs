@@ -44,6 +44,9 @@ public partial class MessageWindow : Window
     // Local command registry for the command palette (issue 53).
     private readonly CommandRegistry _localRegistry = new();
 
+    /// <summary>Pairs this window's navigations with the links the user activated (#728 review).</summary>
+    private readonly LinkActivationGate _linkGate = new();
+
     // F6 focus cycle: 0=Toolbar, 1=Headers, 2=Body
     private int _f6FocusStop;
 
@@ -266,7 +269,9 @@ public partial class MessageWindow : Window
                 "else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='s'||e.key==='S')){window.chrome.webview.postMessage('ctrl-s');e.preventDefault();}" +
                 "else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-p');e.preventDefault();}" +
                 "else if(e.key==='F12'&&!e.ctrlKey&&!e.shiftKey&&!e.altKey){window.chrome.webview.postMessage('f12');e.preventDefault();}" +
-                "});");
+                "});" +
+                // Which link the user activated, so a navigation can be matched to it (#728 review).
+                LinkActivationGate.ReportActivationsScript);
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
@@ -283,6 +288,9 @@ public partial class MessageWindow : Window
                     case "ctrl-s": Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.S, ModifierKeys.Control)?.Execute(), DispatcherPriority.Input); break;
                     case "ctrl-p": Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.P, ModifierKeys.Control)?.Execute(), DispatcherPriority.Input); break;
                     case "f12":    Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.F12, ModifierKeys.None)?.Execute(), DispatcherPriority.Input); break;
+                    case { } activated when activated.StartsWith(LinkActivationGate.ActivationMessagePrefix, StringComparison.Ordinal):
+                        _linkGate.NoteActivated(activated[LinkActivationGate.ActivationMessagePrefix.Length..]);
+                        break;
                     case "shift-tab":  Dispatcher.InvokeAsync(FocusLastHeaderField,  DispatcherPriority.Input); break;
                     case "focus-attachments": Dispatcher.InvokeAsync(FocusAttachmentList, DispatcherPriority.Input); break;
                     case "f6":         Dispatcher.InvokeAsync(() => CycleFocus(true),  DispatcherPriority.Input); break;
@@ -307,12 +315,14 @@ public partial class MessageWindow : Window
                 }
                 // The event card's RSVP buttons are quickmail: links. Cancelling the navigation is
                 // what keeps this document — and its aria-live status region — alive across the reply.
-                if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
+                // Matched to the link the user activated, as in the reading pane.
+                _linkGate.Request(uri, () =>
                 {
-                    HandleQuickMailUri(uri);
-                    return;
-                }
-                OpenExternal(uri);
+                    if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
+                        HandleQuickMailUri(uri);
+                    else
+                        OpenExternal(uri);
+                });
             };
 
             // A link with target="_blank" — or one activated with Ctrl/Shift/middle-click —
@@ -324,7 +334,8 @@ public partial class MessageWindow : Window
             {
                 args.Handled = true;
                 if (!args.IsUserInitiated) return;   // as NavigationStarting above
-                OpenExternal(args.Uri);
+                var target = args.Uri;
+                _linkGate.Request(target, () => OpenExternal(target));
             };
 
             if (_vm.MessageDetail != null)
@@ -444,12 +455,18 @@ public partial class MessageWindow : Window
     /// <summary>Handles quickmail: pseudo-URIs from this window's event card buttons.</summary>
     private void HandleQuickMailUri(string uri)
     {
-        if (uri.StartsWith("quickmail:ics-accept", StringComparison.OrdinalIgnoreCase))
-            RespondToInvite(InviteResponse.Accept);
-        else if (uri.StartsWith("quickmail:ics-tentative", StringComparison.OrdinalIgnoreCase))
-            RespondToInvite(InviteResponse.Tentative);
-        else if (uri.StartsWith("quickmail:ics-decline", StringComparison.OrdinalIgnoreCase))
-            RespondToInvite(InviteResponse.Decline);
+        // Only QuickMail's own links, which carry this run's token; one the sender wrote does nothing.
+        if (!QuickMailLinks.TryParse(uri, out var action))
+        {
+            LogService.Log("MessageWindow: ignored a quickmail: link that QuickMail did not create.");
+            return;
+        }
+        switch (action)
+        {
+            case "ics-accept":    RespondToInvite(InviteResponse.Accept);    break;
+            case "ics-tentative": RespondToInvite(InviteResponse.Tentative); break;
+            case "ics-decline":   RespondToInvite(InviteResponse.Decline);   break;
+        }
     }
 
     private void RespondToInvite(InviteResponse response)
