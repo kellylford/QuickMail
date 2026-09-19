@@ -20,11 +20,13 @@ public sealed class LinkActivationGate
     /// <summary>
     /// Host script (injected with AddScriptToExecuteOnDocumentCreated, so the page's CSP does not
     /// apply to it) that reports each link the user activates: a click — which is also what Enter on a
-    /// focused link, and a screen reader's default action, dispatch — or a middle click. Only trusted
-    /// events count; the page itself runs no script and could not fake one anyway.
+    /// focused link, and a screen reader's default action, dispatch — or a middle click.
+    /// <para>No isTrusted filter, deliberately. The page runs no script (the CSP forbids it), so it
+    /// cannot dispatch a click of its own, and a filter would only add the risk that some assistive
+    /// technology's way of activating a link arrives as an untrusted event and stops opening links.</para>
     /// </summary>
     public const string ReportActivationsScript =
-        "(function(){function r(e){if(!e.isTrusted)return;var t=e.target;" +
+        "(function(){function r(e){var t=e.target;" +
         "var a=t&&t.closest?t.closest('a[href]'):null;" +
         "if(a)window.chrome.webview.postMessage('activate:'+a.href);}" +
         "document.addEventListener('click',r,true);document.addEventListener('auxclick',r,true);})();";
