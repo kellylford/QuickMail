@@ -141,6 +141,18 @@ internal sealed class UiProbeDriver
                     w => w is SettingsDialog, path,
                     prepare: w => SelectTabByHeader((SettingsDialog)w, "tart"));
 
+            // #728. The General tab scrolled to Saving Messages: a combo box, a read-only field and a
+            // button row that sit below the fold of the tab, so no other capture shows them.
+            case "settings-saving":
+                return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
+                    w => w is SettingsDialog, path,
+                    prepare: w =>
+                    {
+                        SelectTabByHeader((SettingsDialog)w, "eneral");
+                        w.UpdateLayout();
+                        (w.FindName("SaveFolderBox") as FrameworkElement)?.BringIntoView();
+                    });
+
             case "command-palette":
                 return await CaptureChildWindowAsync(() => _window.OpenCommandPaletteForProbe(),
                     w => w is CommandPaletteWindow, path);
@@ -154,7 +166,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, rules, saved-views, settings-appearance, settings-startup, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, rules, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }

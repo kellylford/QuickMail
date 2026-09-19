@@ -87,7 +87,7 @@ public sealed class MessageSaver
     /// </summary>
     public async Task<MessageSaveOutcome> SaveAsync(
         IReadOnlyList<MailMessageSummary> messages, bool chooseLocation, IMessageSaveUi ui,
-        CancellationToken ct = default, MessageSaveFormat? formatOverride = null)
+        MessageSaveFormat? formatOverride = null, CancellationToken ct = default)
     {
         if (messages.Count == 0) return new MessageSaveOutcome(null);
 
@@ -169,7 +169,7 @@ public sealed class MessageSaver
             var retry = originalFailed.Select(f => f.Message).ToList();
             if (ui.ConfirmTryAnotherFormat(ExplainOriginalFailure(messages.Count, retry.Count, originalFailed[0].Reason, saved.Count)))
             {
-                var second = await SaveAsync(retry, chooseLocation: true, ui, ct, formatOverride: MessageSaveFormat.Text);
+                var second = await SaveAsync(retry, chooseLocation: true, ui, MessageSaveFormat.Text, ct);
                 // Whatever the retry reports supersedes the first pass's failure line for those messages.
                 return saved.Count == 0 ? second : new MessageSaveOutcome(Join(outcome.Text, second.Text));
             }

@@ -40,7 +40,7 @@ public partial class MainViewModel
 
         try
         {
-            var outcome = await MessageSaver.SaveAsync(toSave, chooseLocation, ui, _messageActionShutdownCts.Token);
+            var outcome = await MessageSaver.SaveAsync(toSave, chooseLocation, ui, ct: _messageActionShutdownCts.Token);
             if (outcome.Text is not null)
                 Report(report, outcome.Text, AnnouncementCategory.Result);
         }

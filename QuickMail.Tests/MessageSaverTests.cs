@@ -128,7 +128,7 @@ public sealed class MessageSaverTests : IDisposable
         var (saver, _, _) = NewSaver();
         var ui = new FakeUi();
 
-        var outcome = await saver.SaveAsync([Summary()], chooseLocation: false, ui, TestContext.Current.CancellationToken);
+        var outcome = await saver.SaveAsync([Summary()], chooseLocation: false, ui, ct: TestContext.Current.CancellationToken);
 
         var file = Assert.Single(Directory.GetFiles(_dir));
         Assert.Equal(Original, File.ReadAllBytes(file));
@@ -144,8 +144,8 @@ public sealed class MessageSaverTests : IDisposable
         var ui = new FakeUi();
         var message = Summary();
 
-        await saver.SaveAsync([message], false, ui, TestContext.Current.CancellationToken);
-        await saver.SaveAsync([message], false, ui, TestContext.Current.CancellationToken);
+        await saver.SaveAsync([message], false, ui, ct: TestContext.Current.CancellationToken);
+        await saver.SaveAsync([message], false, ui, ct: TestContext.Current.CancellationToken);
 
         var names = Directory.GetFiles(_dir).Select(Path.GetFileName).OrderBy(n => n).ToList();
         Assert.Equal(2, names.Count);
@@ -157,7 +157,7 @@ public sealed class MessageSaverTests : IDisposable
     {
         var (saver, _, _) = NewSaver();
         var outcome = await saver.SaveAsync([Summary("1", "One"), Summary("2", "Two"), Summary("3", "Three")],
-            false, new FakeUi(), TestContext.Current.CancellationToken);
+            false, new FakeUi(), ct: TestContext.Current.CancellationToken);
 
         Assert.Equal(3, Directory.GetFiles(_dir).Length);
         Assert.Equal($"Saved 3 messages in {MessageSaver.FolderLabel(_dir)}.", outcome.Text);
@@ -174,7 +174,7 @@ public sealed class MessageSaverTests : IDisposable
         };
         var (saver, mail, _) = NewSaver(format, store);
 
-        await saver.SaveAsync([Summary()], false, new FakeUi(), TestContext.Current.CancellationToken);
+        await saver.SaveAsync([Summary()], false, new FakeUi(), ct: TestContext.Current.CancellationToken);
 
         var file = Assert.Single(Directory.GetFiles(_dir));
         Assert.EndsWith(ext, file);
@@ -188,7 +188,7 @@ public sealed class MessageSaverTests : IDisposable
     {
         var (saver, mail, _) = NewSaver("txt", new StubLocalStoreService());
 
-        await saver.SaveAsync([Summary()], false, new FakeUi(), TestContext.Current.CancellationToken);
+        await saver.SaveAsync([Summary()], false, new FakeUi(), ct: TestContext.Current.CancellationToken);
 
         Assert.Contains("Server body", File.ReadAllText(Assert.Single(Directory.GetFiles(_dir))));
         Assert.Equal(1, mail.PrefetchCalls);
@@ -200,7 +200,7 @@ public sealed class MessageSaverTests : IDisposable
     {
         var store = new StubLocalStoreService { SeededDetail = new MailMessageDetail { PlainTextBody = "Grüße" } };
         var (saver, _, _) = NewSaver("txt", store);
-        await saver.SaveAsync([Summary()], false, new FakeUi(), TestContext.Current.CancellationToken);
+        await saver.SaveAsync([Summary()], false, new FakeUi(), ct: TestContext.Current.CancellationToken);
 
         var bytes = File.ReadAllBytes(Assert.Single(Directory.GetFiles(_dir)));
         Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
@@ -213,7 +213,7 @@ public sealed class MessageSaverTests : IDisposable
         var (saver, _, _) = NewSaver("pdf", store);
         var ui = new FakeUi();
 
-        await saver.SaveAsync([Summary()], false, ui, TestContext.Current.CancellationToken);
+        await saver.SaveAsync([Summary()], false, ui, ct: TestContext.Current.CancellationToken);
 
         Assert.EndsWith(".pdf", Assert.Single(Directory.GetFiles(_dir)));
         Assert.Contains("Content-Security-Policy", Assert.Single(ui.PdfPages));
@@ -228,7 +228,7 @@ public sealed class MessageSaverTests : IDisposable
         File.WriteAllText(blocker, "x");
         config.Load().SaveMessageFolder = Path.Combine(blocker, "sub");
 
-        var outcome = await saver.SaveAsync([Summary()], false, new FakeUi(), TestContext.Current.CancellationToken);
+        var outcome = await saver.SaveAsync([Summary()], false, new FakeUi(), ct: TestContext.Current.CancellationToken);
 
         Assert.StartsWith("The save folder ", outcome.Text);
         Assert.Contains("Save As", outcome.Text);
@@ -244,7 +244,7 @@ public sealed class MessageSaverTests : IDisposable
         var chosen = Path.Combine(_dir, "mine.html");
         var ui = new FakeUi { OnChooseFile = (_, _, _) => new MessageSaveTarget(chosen, MessageSaveFormat.Html) };
 
-        await saver.SaveAsync([Summary()], chooseLocation: true, ui, TestContext.Current.CancellationToken);
+        await saver.SaveAsync([Summary()], chooseLocation: true, ui, ct: TestContext.Current.CancellationToken);
 
         var (suggested, format) = Assert.Single(ui.FileDialogs);
         Assert.StartsWith("Shipped - Jane - ", suggested);
@@ -260,7 +260,7 @@ public sealed class MessageSaverTests : IDisposable
     public async Task SaveAs_Cancelled_DoesNothing_AndSaysNothing()
     {
         var (saver, _, _) = NewSaver();
-        var outcome = await saver.SaveAsync([Summary()], true, new FakeUi(), TestContext.Current.CancellationToken);
+        var outcome = await saver.SaveAsync([Summary()], true, new FakeUi(), ct: TestContext.Current.CancellationToken);
         Assert.Null(outcome.Text);
         Assert.Empty(Directory.GetFiles(_dir));
     }
@@ -277,7 +277,7 @@ public sealed class MessageSaverTests : IDisposable
             OnChooseFolder = (count, _, _) => { askedFor = count; return new MessageSaveTarget(target, MessageSaveFormat.Text); },
         };
 
-        await saver.SaveAsync([Summary("1", "One"), Summary("2", "Two")], true, ui, TestContext.Current.CancellationToken);
+        await saver.SaveAsync([Summary("1", "One"), Summary("2", "Two")], true, ui, ct: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, askedFor);
         Assert.Empty(ui.FileDialogs);
@@ -296,7 +296,7 @@ public sealed class MessageSaverTests : IDisposable
         mail.OriginalFailure = new SocketException((int)SocketError.NetworkUnreachable);
         var ui = new FakeUi { ConfirmAnswer = false };
 
-        var outcome = await saver.SaveAsync([Summary()], false, ui, TestContext.Current.CancellationToken);
+        var outcome = await saver.SaveAsync([Summary()], false, ui, ct: TestContext.Current.CancellationToken);
 
         Assert.Empty(Directory.GetFiles(_dir));   // no substitute written silently
         var explanation = Assert.Single(ui.Explanations);
@@ -318,7 +318,7 @@ public sealed class MessageSaverTests : IDisposable
             OnChooseFile  = (_, format, _) => new MessageSaveTarget(chosen, format),
         };
 
-        var outcome = await saver.SaveAsync([Summary()], false, ui, TestContext.Current.CancellationToken);
+        var outcome = await saver.SaveAsync([Summary()], false, ui, ct: TestContext.Current.CancellationToken);
 
         var (suggested, format) = Assert.Single(ui.FileDialogs);
         Assert.Equal(MessageSaveFormat.Text, format);
@@ -334,7 +334,7 @@ public sealed class MessageSaverTests : IDisposable
         mail.OriginalFailure = new MessageOriginalUnavailableException("QuickMail did not keep the original of this message.");
         var ui = new FakeUi();
 
-        await saver.SaveAsync([Summary()], false, ui, TestContext.Current.CancellationToken);
+        await saver.SaveAsync([Summary()], false, ui, ct: TestContext.Current.CancellationToken);
 
         Assert.Contains("did not keep the original", Assert.Single(ui.Explanations));
     }
@@ -347,7 +347,7 @@ public sealed class MessageSaverTests : IDisposable
         var ui = new FakeUi();
 
         var outcome = await saver.SaveAsync([Summary("1", "One"), Summary("2", "Two"), Summary("3", "Three")],
-            false, ui, TestContext.Current.CancellationToken);
+            false, ui, ct: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, Directory.GetFiles(_dir).Length);
         Assert.Contains("1 of 3", Assert.Single(ui.Explanations));
@@ -361,7 +361,7 @@ public sealed class MessageSaverTests : IDisposable
         mail.OriginalFailure = new UnauthorizedAccessException("Access denied.");
         var ui = new FakeUi();
 
-        var outcome = await saver.SaveAsync([Summary()], false, ui, TestContext.Current.CancellationToken);
+        var outcome = await saver.SaveAsync([Summary()], false, ui, ct: TestContext.Current.CancellationToken);
 
         Assert.Empty(ui.Explanations);   // another format would not get around this
         Assert.Contains("Access denied", outcome.Text);
