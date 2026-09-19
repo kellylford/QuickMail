@@ -66,13 +66,13 @@ public class WebView2UserInitiatedTests
 
                 // Focus the link the way a Tab would land on it; the window here is never activated, so a
                 // synthesized Tab has nowhere to start from. Focusing by script is not a user gesture: the
-                // Enter that follows is the only one, and it is what must count.
-                controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
-                await core.ExecuteScriptAsync("document.querySelector('a').focus()");
-                await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
-                    "{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"text\":\"\\r\"}");
-                await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
-                    "{\"type\":\"keyUp\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13}");
+                // Enter that follows is the only one, and it is what must count. Retried, because on a CI
+                // runner the first Enter can arrive before the focus has landed.
+                for (var attempt = 0; attempt < 5 && !Has(seen, "keyboard"); attempt++)
+                {
+                    await PressEnterOnFirstLink(controller, core);
+                    await WaitFor(() => Has(seen, "keyboard"), TimeSpan.FromSeconds(2));
+                }
                 await WaitFor(() => Has(seen, "keyboard"), TimeSpan.FromSeconds(10));
 
                 // 3. The same with the mouse.
@@ -168,11 +168,11 @@ public class WebView2UserInitiatedTests
 
                 // A real link, activated with Enter.
                 await Load("<a href=\"https://example.invalid/real\">real link</a>");
-                controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
-                await core.ExecuteScriptAsync("document.querySelector('a').focus()");
-                await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
-                    "{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"text\":\"\r\"}");
-                await Key("keyUp", "Enter", "Enter", 13);
+                for (var attempt = 0; attempt < 5 && !opened.Exists(u => u.EndsWith("/real", StringComparison.Ordinal)); attempt++)
+                {
+                    await PressEnterOnFirstLink(controller, core);
+                    await WaitFor(() => opened.Exists(u => u.EndsWith("/real", StringComparison.Ordinal)), TimeSpan.FromSeconds(2));
+                }
                 await WaitFor(() => opened.Exists(u => u.EndsWith("/real", StringComparison.Ordinal)), TimeSpan.FromSeconds(6));
             }, TimeSpan.FromSeconds(60));
 
@@ -188,6 +188,18 @@ public class WebView2UserInitiatedTests
             window.Close();
             try { Directory.Delete(dir, recursive: true); } catch { /* WebView2 may still hold its data folder */ }
         }
+    }
+
+    /// <summary>Focuses the page's first link and presses Enter on it, as a keyboard user would.</summary>
+    private static async Task PressEnterOnFirstLink(CoreWebView2Controller controller, CoreWebView2 core)
+    {
+        controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+        await core.ExecuteScriptAsync("document.querySelector('a').focus()");
+        await Task.Delay(100);
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+            "{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"text\":\"\\r\"}");
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+            "{\"type\":\"keyUp\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13}");
     }
 
     private static bool Has(List<(string Uri, bool User)> seen, string suffix)
