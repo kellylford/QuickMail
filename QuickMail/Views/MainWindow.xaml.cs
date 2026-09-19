@@ -1714,6 +1714,8 @@ public partial class MainWindow : Window
     private IntPtr OnWmKeyMenu(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (!MenuBarAccess.IsKeyboardMenuKey(msg, wParam, lParam, out var letter)) return IntPtr.Zero;
+        // Already in the menus (Alt+F just opened File, say): this is the Alt being released, not a new press.
+        if (MainMenuBar.IsKeyboardFocusWithin) return IntPtr.Zero;
         // Only where WPF could not see the key itself: focus in the message body, or nowhere WPF knows of.
         if (!IsMessageBodyFocused && Keyboard.FocusedElement is not null) return IntPtr.Zero;
 
@@ -1723,9 +1725,26 @@ public partial class MainWindow : Window
         {
             _menuEnteredFromBody = fromBody;
             if (letter == '\0') MenuBarAccess.EnterMenuMode(MainMenuBar);
-            else MenuBarAccess.OpenByAccessKey(MainMenuBar, letter);
+            else if (!MenuBarAccess.OpenByAccessKey(MainMenuBar, letter)) _menuEnteredFromBody = false;
         }, DispatcherPriority.Input);
         return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// Alt+letter pressed in the message body (relayed by <see cref="MenuBarAccess.AltKeyRelayScript"/>):
+    /// a command bound to that gesture runs, as it would from anywhere else in the window; otherwise
+    /// the menu with that access key opens.
+    /// </summary>
+    private void OnAltKeyFromBody(char letter)
+    {
+        if (Enum.TryParse<Key>(char.IsDigit(letter) ? "D" + letter : letter.ToString().ToUpperInvariant(), out var key)
+            && _registry.FindByGesture(key, ModifierKeys.Alt) is { } command)
+        {
+            command.Execute();
+            return;
+        }
+        _menuEnteredFromBody = _vm.IsMessageOpen;
+        if (!MenuBarAccess.OpenByAccessKey(MainMenuBar, letter)) _menuEnteredFromBody = false;
     }
 
     /// <summary>
@@ -3646,7 +3665,9 @@ public partial class MainWindow : Window
                 // The live region the link menu writes outcomes into (issues #671, #329).
                 + LinkContextMenuSupport.StatusRegionScript
                 // Which link the user activated, so a navigation can be matched to it (#728 review).
-                + LinkActivationGate.ReportActivationsScript);
+                + LinkActivationGate.ReportActivationsScript
+                // Alt+letter opens that menu, as it does outside the message.
+                + MenuBarAccess.AltKeyRelayScript);
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
@@ -3678,6 +3699,12 @@ public partial class MainWindow : Window
                         DispatcherPriority.Input);
                 else if (msg == "ctrl-shift-p")
                     Dispatcher.InvokeAsync(OpenCommandPalette, DispatcherPriority.Input);
+                else if (msg?.StartsWith(MenuBarAccess.AltKeyMessagePrefix, StringComparison.Ordinal) == true
+                         && msg.Length == MenuBarAccess.AltKeyMessagePrefix.Length + 1)
+                {
+                    var letter = msg[^1];
+                    Dispatcher.InvokeAsync(() => OnAltKeyFromBody(letter), DispatcherPriority.Input);
+                }
                 else if (msg?.StartsWith(LinkActivationGate.ActivationMessagePrefix, StringComparison.Ordinal) == true)
                     _linkGate.NoteActivated(msg[LinkActivationGate.ActivationMessagePrefix.Length..]);
                 // Save / Print (#728) go through the registry, so a user's rebinding of the command is

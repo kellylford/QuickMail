@@ -16,6 +16,22 @@ namespace QuickMail.Views;
 /// </summary>
 internal static class MenuBarAccess
 {
+    /// <summary>
+    /// Host script for both message bodies: Alt+letter or Alt+digit pressed inside the body, posted to
+    /// the window as <c>alt-key:&lt;letter&gt;</c>. The browser engine keeps these keys — Alt+F opened
+    /// nothing at all — so the window never saw them; relayed, they open the menu with that access key
+    /// as they do from anywhere else. Alt+A is left to the relay that already takes it (the attachment
+    /// list), and AltGr (Ctrl+Alt) is left alone, since on many keyboards it types characters.
+    /// </summary>
+    public const string AltKeyRelayScript =
+        "window.addEventListener('keydown',function(e){" +
+        "if(e.altKey&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey&&e.key&&e.key.length===1&&/^[a-z0-9]$/i.test(e.key)" +
+        "&&e.key.toLowerCase()!=='a'){window.chrome.webview.postMessage('alt-key:'+e.key.toLowerCase());e.preventDefault();}" +
+        "});";
+
+    /// <summary>The web message the script sends, before the letter.</summary>
+    public const string AltKeyMessagePrefix = "alt-key:";
+
     private const int WM_SYSCOMMAND = 0x0112;
     private const int SC_KEYMENU    = 0xF100;
 
@@ -63,17 +79,23 @@ internal static class MenuBarAccess
 
     /// <summary>
     /// Alt+letter: opens the top-level menu whose access key is <paramref name="letter"/>, as it does
-    /// from any other control. A letter that names no menu just enters menu mode.
+    /// from any other control. A letter that names no menu does nothing, as elsewhere. Returns whether
+    /// a menu opened.
     /// </summary>
-    public static void OpenByAccessKey(Menu menu, char letter)
+    public static bool OpenByAccessKey(Menu menu, char letter)
     {
+        var item = FindByAccessKey(menu, letter);
+        if (item is null) return false;
         EnterMenuMode(menu);
-        var item = menu.Items.OfType<MenuItem>()
-            .FirstOrDefault(m => char.ToUpperInvariant(AccessKey(m.Header as string)) == char.ToUpperInvariant(letter));
-        if (item is null) return;
         item.Focus();
         item.IsSubmenuOpen = true;
+        return true;
     }
+
+    /// <summary>The top-level menu whose access key is <paramref name="letter"/>, or null.</summary>
+    internal static MenuItem? FindByAccessKey(Menu menu, char letter) =>
+        menu.Items.OfType<MenuItem>()
+            .FirstOrDefault(m => char.ToUpperInvariant(AccessKey(m.Header as string)) == char.ToUpperInvariant(letter));
 
     /// <summary>The letter after the first single underscore in a header — "_File" is F, "S_ettings" is E.</summary>
     internal static char AccessKey(string? header)

@@ -277,7 +277,9 @@ public partial class MessageWindow : Window
                 "else if(e.key==='F12'&&!e.ctrlKey&&!e.shiftKey&&!e.altKey){window.chrome.webview.postMessage('f12');e.preventDefault();}" +
                 "});" +
                 // Which link the user activated, so a navigation can be matched to it (#728 review).
-                LinkActivationGate.ReportActivationsScript);
+                LinkActivationGate.ReportActivationsScript +
+                // Alt+letter opens that menu, as it does outside the message.
+                MenuBarAccess.AltKeyRelayScript);
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
@@ -294,6 +296,11 @@ public partial class MessageWindow : Window
                     case "ctrl-s": Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.S, ModifierKeys.Control)?.Execute(), DispatcherPriority.Input); break;
                     case "ctrl-p": Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.P, ModifierKeys.Control)?.Execute(), DispatcherPriority.Input); break;
                     case "f12":    Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.F12, ModifierKeys.None)?.Execute(), DispatcherPriority.Input); break;
+                    case { } alt when alt.StartsWith(MenuBarAccess.AltKeyMessagePrefix, StringComparison.Ordinal)
+                                      && alt.Length == MenuBarAccess.AltKeyMessagePrefix.Length + 1:
+                        var altLetter = alt[^1];
+                        Dispatcher.InvokeAsync(() => OnAltKeyFromBody(altLetter), DispatcherPriority.Input);
+                        break;
                     case { } activated when activated.StartsWith(LinkActivationGate.ActivationMessagePrefix, StringComparison.Ordinal):
                         _linkGate.NoteActivated(activated[LinkActivationGate.ActivationMessagePrefix.Length..]);
                         break;
@@ -658,6 +665,8 @@ public partial class MessageWindow : Window
     private IntPtr OnWmKeyMenu(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (!MenuBarAccess.IsKeyboardMenuKey(msg, wParam, lParam, out var letter)) return IntPtr.Zero;
+        // Already in the menus (Alt+F just opened File, say): this is the Alt being released, not a new press.
+        if (MainMenuBar.IsKeyboardFocusWithin) return IntPtr.Zero;
         var focused = Keyboard.FocusedElement;
         var inBody = MessageBody.IsKeyboardFocusWithin || focused is null || ReferenceEquals(focused, this);
         if (!inBody) return IntPtr.Zero;
@@ -667,9 +676,22 @@ public partial class MessageWindow : Window
         {
             _menuEnteredFromBody = true;
             if (letter == '\0') MenuBarAccess.EnterMenuMode(MainMenuBar);
-            else MenuBarAccess.OpenByAccessKey(MainMenuBar, letter);
+            else if (!MenuBarAccess.OpenByAccessKey(MainMenuBar, letter)) _menuEnteredFromBody = false;
         }, DispatcherPriority.Input);
         return IntPtr.Zero;
+    }
+
+    /// <summary>Alt+letter pressed in the message body: that gesture's command, else that menu.</summary>
+    private void OnAltKeyFromBody(char letter)
+    {
+        if (Enum.TryParse<Key>(char.IsDigit(letter) ? "D" + letter : letter.ToString().ToUpperInvariant(), out var key)
+            && _localRegistry.FindByGesture(key, ModifierKeys.Alt) is { } command)
+        {
+            command.Execute();
+            return;
+        }
+        _menuEnteredFromBody = true;
+        if (!MenuBarAccess.OpenByAccessKey(MainMenuBar, letter)) _menuEnteredFromBody = false;
     }
 
     private void OnMenuBarFocusWithinChanged(object sender, DependencyPropertyChangedEventArgs e)

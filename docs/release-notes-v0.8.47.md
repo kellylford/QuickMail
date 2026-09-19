@@ -39,7 +39,7 @@ POP3 accounts now keep the whole original of every message they download. Before
 
 ### Alt in a message opens the menu bar
 
-While reading a message, pressing Alt opened the window's system menu (Restore, Move, Size and so on) instead of the menu bar. It now goes to the menu bar with File selected, exactly as Alt does everywhere else in the window, and Escape returns you to the message. Alt with a letter opens that menu, so Alt+F opens File. This works in the reading pane, tabs and message windows. Alt+Space still opens the system menu.
+While reading a message, pressing Alt opened the window's system menu (Restore, Move, Size and so on) instead of the menu bar. It now goes to the menu bar with File selected, exactly as Alt does everywhere else in the window, and Escape returns you to the message. Alt with a letter opens that menu, so Alt+F opens File, and Alt+A still goes to the attachment list. This works in the reading pane, tabs and message windows. Alt+Space still opens the system menu.
 
 ### A message could open a web page without being clicked
 
