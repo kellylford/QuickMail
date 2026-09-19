@@ -475,6 +475,23 @@ public class GraphMailService : IMailService, IConnectionProbe
         // partSpecifier carries the Graph attachment id (set by MapToDetail).
         => _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/attachments/{partSpecifier}/$value", GraphHeaders.ImmutableId, ct);
 
+    /// <summary>
+    /// The whole message as Exchange stores it (#728) — the same <c>$value</c> MIME download the
+    /// meeting-invite path uses. A GET never changes the read state.
+    /// </summary>
+    public async Task<byte[]> GetOriginalMessageAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/$value", GraphHeaders.ImmutableId, ct);
+        }
+        catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            throw new MessageOriginalUnavailableException(
+                "The message is no longer on the server. It may have been moved or deleted from another device.");
+        }
+    }
+
     public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
         var account = Account(accountId);

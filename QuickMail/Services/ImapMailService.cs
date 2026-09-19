@@ -1191,6 +1191,32 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    /// <summary>
+    /// The whole message as the server stores it (#728). The folder is opened read-only (EXAMINE) and
+    /// MailKit fetches with BODY.PEEK[], so saving a message never marks it read.
+    /// </summary>
+    public async Task<byte[]> GetOriginalMessageAsync(
+        Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            using var source = await folder.GetStreamAsync(ToUid(messageId), ct);
+            using var copy   = new MemoryStream();
+            await source.CopyToAsync(copy, ct);
+            return copy.ToArray();
+        }
+        catch (MessageNotFoundException)
+        {
+            throw new MessageOriginalUnavailableException(
+                "The message is no longer on the server. It may have been moved or deleted from another device.");
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────────
 
     /// <summary>

@@ -239,7 +239,8 @@ public partial class LocalStoreService : ILocalStoreService
 
         RunDataMigrations(conn);
 
-        // Raw RFC 5322 bytes of a POP3 message, stored only when the message has attachments (#128).
+        // Raw RFC 5322 bytes of a POP3 message. Stored only when the message had attachments (#128)
+        // until 0.8.47; stored for every POP3 message since, as the original Save writes (#728).
         // POP3 has no equivalent of IMAP's fetch-one-body-part, so an attachment has to come back out
         // of the message we already downloaded; keeping the bytes is what makes it openable later
         // without a second full download. NULL for every IMAP and Graph row, and for POP3 messages
@@ -1144,7 +1145,8 @@ public partial class LocalStoreService : ILocalStoreService
 
     /// <summary>
     /// Returns the raw message bytes previously stored by <see cref="StoreMimeBytesAsync"/>, or null
-    /// when none were stored (every IMAP/Graph message, and POP3 messages with no attachments).
+    /// when none were stored (every IMAP/Graph message, and POP3 messages collected before 0.8.47
+    /// that had no attachments).
     /// </summary>
     public async Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId)
     {

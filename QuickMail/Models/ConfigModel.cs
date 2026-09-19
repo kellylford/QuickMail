@@ -349,6 +349,23 @@ public class ConfigModel
     /// <summary>Show a confirmation dialog before emptying trash. Default on.</summary>
     public bool ConfirmEmptyTrash { get; set; } = true;
 
+    // ── Saving messages (#728) ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The format Save (Ctrl+S) writes without asking, and the type Save As starts on:
+    /// "eml" (the original message), "txt", "html" or "pdf". See <see cref="MessageSaveFormats"/>.
+    /// </summary>
+    public string SaveMessageFormat { get; set; } = "eml";
+
+    /// <summary>
+    /// The folder Save (Ctrl+S) writes into without asking. Empty means the user's Documents folder,
+    /// resolved at save time rather than stored, so a profile moved between machines still works.
+    /// </summary>
+    public string SaveMessageFolder { get; set; } = string.Empty;
+
+    /// <summary>Where Save As last saved to, so the next Save As starts there. Not shown in Settings.</summary>
+    public string LastSaveAsFolder { get; set; } = string.Empty;
+
     // ── Notifications ─────────────────────────────────────────────────────────────
 
     /// <summary>Show a Windows toast notification when new mail arrives in an inbox. Default off —

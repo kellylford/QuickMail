@@ -72,6 +72,9 @@
             <MenuItem Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Sender Group to Folder"
                       Click="SenderGroupContextMenu_CopyToFolder_Click"/>
+            <MenuItem Header="Sa_ve Messages As…"
+                      AutomationProperties.Name="Save Messages from Sender As"
+                      Click="MenuSaveAs_Click"/>
             <Separator/>
             <MenuItem Header="_Delete All from Sender"
                       AutomationProperties.Name="Delete All from Sender"
@@ -125,6 +128,9 @@
             <MenuItem Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Recipient Group to Folder"
                       Click="ToGroupContextMenu_CopyToFolder_Click"/>
+            <MenuItem Header="Sa_ve Messages As…"
+                      AutomationProperties.Name="Save Messages to Recipient As"
+                      Click="MenuSaveAs_Click"/>
             <Separator/>
             <MenuItem Header="_Delete All to Recipient"
                       AutomationProperties.Name="Delete All to Recipient"
@@ -179,6 +185,9 @@
             <MenuItem Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Conversation to Folder"
                       Click="ConversationContextMenu_CopyToFolder_Click"/>
+            <MenuItem Header="Sa_ve Conversation As…"
+                      AutomationProperties.Name="Save Conversation As"
+                      Click="MenuSaveAs_Click"/>
             <Separator/>
             <MenuItem Header="_Delete Conversation"
                       AutomationProperties.Name="Delete Conversation"
@@ -230,6 +239,14 @@
             <MenuItem Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy to Folder"
                       Click="MessageContextMenu_CopyToFolder_Click"/>
+            <MenuItem Header="Sa_ve As…"
+                      InputGestureText="F12"
+                      AutomationProperties.Name="Save As"
+                      Click="MenuSaveAs_Click"/>
+            <MenuItem Header="_Print…"
+                      InputGestureText="Ctrl+P"
+                      AutomationProperties.Name="Print"
+                      Click="MenuPrint_Click"/>
             <Separator/>
             <MenuItem Header="_Delete"
                       AutomationProperties.Name="Delete"
@@ -358,10 +375,54 @@
               AutomationProperties.Name="Main menu">
 
             <!-- File -->
-            <MenuItem Header="_File">
+            <MenuItem Header="_File" SubmenuOpened="FileMenu_SubmenuOpened">
                 <MenuItem Header="_New Message"
                           Command="{Binding NewMessageCommand}"
                           InputGestureText="Ctrl+N"/>
+                <Separator/>
+                <!-- Save, Save As, Print (#728). Click, not Command: what they act on (a multi-selection,
+                     a group header's messages) is resolved by the window. Dimmed rather than disabled,
+                     like the Message menu's filing items, so they stay keyboard-navigable;
+                     HasMessageTarget is recomputed as this menu opens (FileMenu_SubmenuOpened). -->
+                <MenuItem Header="_Save"
+                          InputGestureText="Ctrl+S"
+                          Click="MenuSave_Click">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasMessageTarget}" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
+                <MenuItem Header="Save _As…"
+                          InputGestureText="F12"
+                          Click="MenuSaveAs_Click">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasMessageTarget}" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
+                <MenuItem Header="_Print…"
+                          InputGestureText="Ctrl+P"
+                          Click="MenuPrint_Click">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasMessageTarget}" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
                 <Separator/>
                 <MenuItem Header="_Manage Accounts…"
                           Command="{Binding ManageAccountsCommand}"/>

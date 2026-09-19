@@ -154,6 +154,17 @@ public interface IMailService : IDisposable
     /// <summary>Downloads and decodes a single attachment by its IMAP body-part specifier.</summary>
     Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default);
 
+    /// <summary>
+    /// The original message — every byte as the server holds it, attachments included — for saving as
+    /// a .eml file (#728). Never a copy rebuilt from the cached parts: a rebuilt message is not the
+    /// original, and a saved file that claims to be one must be. Must not mark the message read.
+    /// <para>Throws <see cref="MessageOriginalUnavailableException"/> when the original exists nowhere
+    /// QuickMail can reach; a connection failure propagates as itself, so the caller can tell
+    /// "offline, try later" from "gone". The default is for backends with no way to get it.</para>
+    /// </summary>
+    Task<byte[]> GetOriginalMessageAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+        => throw new MessageOriginalUnavailableException("This account cannot provide the original message.");
+
     // ── Copy / Move messages ─────────────────────────────────────────────────
     Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default);
     Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default);

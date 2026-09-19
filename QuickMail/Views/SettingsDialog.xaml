@@ -203,6 +203,45 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Saving Messages Group (#728) -->
+                        <GroupBox Header="Saving Messages" Padding="10" Margin="0,10,0,0"
+                                  AutomationProperties.Name="Saving messages">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8"
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                           Text="Save (Ctrl+S) saves the selected messages in this format and folder without asking. Save As (F12) lets you choose each time. An email message file is the original message, attachments included."/>
+                                <Label x:Name="SaveFormatLabel"
+                                       Content="Save _format:"
+                                       Target="{Binding ElementName=SaveFormatCombo}"
+                                       FontWeight="SemiBold"/>
+                                <ComboBox x:Name="SaveFormatCombo"
+                                          ItemsSource="{Binding SaveFormatOptions}"
+                                          DisplayMemberPath="Name"
+                                          SelectedValuePath="Format"
+                                          SelectedValue="{Binding SaveMessageFormat, Mode=TwoWay}"
+                                          AutomationProperties.LabeledBy="{Binding ElementName=SaveFormatLabel}"/>
+                                <Label x:Name="SaveFolderLabel"
+                                       Content="Save folder:"
+                                       Target="{Binding ElementName=SaveFolderBox}"
+                                       FontWeight="SemiBold" Margin="0,8,0,0"/>
+                                <!-- Read-only rather than disabled, so the value stays reachable by Tab. -->
+                                <TextBox x:Name="SaveFolderBox"
+                                         Text="{Binding SaveMessageFolderDisplay, Mode=OneWay}"
+                                         IsReadOnly="True"
+                                         AutomationProperties.LabeledBy="{Binding ElementName=SaveFolderLabel}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="Choose Folder…"
+                                            Command="{Binding ChooseSaveFolderCommand}"
+                                            AutomationProperties.Name="Choose save folder"
+                                            MinWidth="90" Margin="0,0,8,0"/>
+                                    <Button Content="Use Documents"
+                                            Command="{Binding UseDocumentsFolderCommand}"
+                                            AutomationProperties.Name="Use Documents"
+                                            MinWidth="90"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Notifications Group -->
                         <GroupBox Header="_Notifications" Padding="10" Margin="0,10,0,0"
                                   AutomationProperties.Name="Notification settings">

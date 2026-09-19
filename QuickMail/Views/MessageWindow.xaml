@@ -27,6 +27,19 @@
         <!-- Menu bar (Alt / F10 to open) -->
         <Menu DockPanel.Dock="Top" IsMainMenu="True">
             <MenuItem Header="_File">
+                <MenuItem Header="_Save"
+                          AutomationProperties.Name="Save"
+                          Command="{Binding SaveMessageCommand}"
+                          InputGestureText="Ctrl+S"/>
+                <MenuItem Header="Save _As…"
+                          AutomationProperties.Name="Save As"
+                          Command="{Binding SaveMessageAsCommand}"
+                          InputGestureText="F12"/>
+                <MenuItem Header="_Print…"
+                          AutomationProperties.Name="Print"
+                          Command="{Binding PrintMessageCommand}"
+                          InputGestureText="Ctrl+P"/>
+                <Separator/>
                 <MenuItem Header="Close _Window"
                           AutomationProperties.Name="Close Window"
                           Command="{Binding CloseCommand}"

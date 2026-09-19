@@ -290,6 +290,9 @@ public class ConfigService : IConfigService
                         break;
                     case "announceformattingwhilenavigating": config.AnnounceFormattingWhileNavigating = ParseBool(value); break;
                     case "confirmemptytrash":    config.ConfirmEmptyTrash    = ParseBool(value); break;
+                    case "savemessageformat":    config.SaveMessageFormat    = MessageSaveFormats.ToConfigValue(MessageSaveFormats.FromConfigValue(value)); break;
+                    case "savemessagefolder":    config.SaveMessageFolder    = value; break;
+                    case "lastsaveasfolder":     config.LastSaveAsFolder     = value; break;
                     case "notifyonnewmail":      config.NotifyOnNewMail      = ParseBool(value); break;
                 case "notifyonwatchedconversation": config.NotifyOnWatchedConversation = ParseBool(value); break;
                     case "closetotray":          config.CloseToTray          = ParseBool(value); break;
@@ -596,6 +599,19 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ConfirmEmptyTrash = {(config.ConfirmEmptyTrash ? "on" : "off")}");
         sb.AppendLine("# Show a confirmation dialog before permanently deleting all messages in trash.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"SaveMessageFormat = {MessageSaveFormats.ToConfigValue(MessageSaveFormats.FromConfigValue(config.SaveMessageFormat))}");
+        sb.AppendLine("# The format Save (Ctrl+S) writes, and the type Save As starts on.");
+        sb.AppendLine("# Values: eml (the original message), txt, html, pdf. Default eml.");
+        sb.AppendLine();
+
+        sb.AppendLine($"SaveMessageFolder = {config.SaveMessageFolder}");
+        sb.AppendLine("# The folder Save (Ctrl+S) writes into. Empty means your Documents folder.");
+        sb.AppendLine();
+
+        sb.AppendLine($"LastSaveAsFolder = {config.LastSaveAsFolder}");
+        sb.AppendLine("# Where Save As last saved to. Maintained by QuickMail.");
         sb.AppendLine();
 
         sb.AppendLine($"NotifyOnNewMail = {(config.NotifyOnNewMail ? "on" : "off")}");

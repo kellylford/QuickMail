@@ -322,7 +322,7 @@ own web settings, and — for Gmail and Yahoo — an app password rather than yo
 **What is different from IMAP:**
 
 - **Messages are downloaded whole and kept on this computer.** Reading a message, opening its
-  attachments, and searching all work with no network.
+  attachments, searching, and saving the original message all work with no network.
 - **Four folders — Inbox, Sent, Drafts and Trash — and they belong to QuickMail.** A POP3 server has
   no folders to show, so these are QuickMail's own. Creating, renaming, moving and deleting folders
   are not offered for a POP3 account; QuickMail says so rather than failing at the server.
@@ -825,6 +825,9 @@ When Reading Mode is set to **Window**, messages open in a separate window. Each
 | `Ctrl+Shift+G` | Grab Addresses |
 | `Ctrl+Shift+W` | Watch or unwatch this message's conversation |
 | `Alt+A` | Focus the attachment list |
+| `Ctrl+S` | Save |
+| `F12` | Save As |
+| `Ctrl+P` | Print |
 
 Deleting a message from its window closes the window and returns focus to the originating position in the message list.
 
@@ -844,6 +847,37 @@ Once focus is on the list, arrow between attachments and use:
 | `Enter` | Open the selected attachment |
 | `Alt+Enter` | Show the attachment's properties |
 | `Shift+F10` (or the Menu key) | Open the context menu: **Save…**, **Save All…**, **Open** |
+
+### Saving and Printing Messages
+
+You can save a message to a file, or print it. **Save** and **Save As…** act on everything selected: one message, several selected messages, or a whole conversation or sender group when its heading is selected. **Print** acts on one message.
+
+| Shortcut | Command | What it does |
+|----------|---------|--------------|
+| `Ctrl+S` | **Save** | Saves in your default format, into your save folder, without asking. |
+| `F12` | **Save As…** | Asks where to save and in which format. |
+| `Ctrl+P` | **Print…** | Opens the Windows Print dialog. |
+
+All three are on the **File** menu, and Save As and Print are also on a message's context menu. They work the same way in the reading pane, a tab, and a message window, and they are in the command palette.
+
+**Formats.** You can save a message in four formats:
+
+- **Email message (.eml).** The original message exactly as your mail server holds it, attachments included. Any mail program can open it, and so can Windows. This is the default, and it is the only format that keeps everything.
+- **Text file (.txt).** A block of details, then the message's own text. It opens in Notepad or any editor.
+- **Web page (.html).** The same details, then the message with its formatting, headings, tables and links. It opens in any browser.
+- **PDF (.pdf).** The web page as a PDF. The PDF is tagged, so its headings and tables come through to a screen reader.
+
+The text, web page and PDF formats all start with the same details, in words rather than raw headers: subject, sender, reply-to address if it is different, recipients, date, the account and folder the message is in, whether it has been read, flagged, replied to or forwarded, and its attachments by name and size. Meeting invitations also list the meeting, its time and place, and the organizer.
+
+**Pictures.** A saved web page or PDF leaves pictures out, as the reading pane does, and shows each picture's description in its place. Nothing in a saved web page runs or loads from the internet when you open it.
+
+**Where Save puts files.** Save uses the format and folder set in **Settings → General → Saving Messages**. The default is **Email message** in your **Documents** folder. Each file is named from the subject, sender and date, for example *Your order has shipped - Jane Smith - 2026-09-17 1432.eml*. If a file with that name is already there, Save adds a number instead of replacing it. The status bar says what was saved and where.
+
+**Save As.** For one message, Save As opens the standard Save dialog with the file name filled in. Choose a different format with **Save as type**. For several messages, the dialog's title says how many. Choose a folder and a format, and each message is saved under its own name. Save As starts in the folder you used last time, and it does not change your default format or folder.
+
+**When the original is not available.** An email message file has to come from your mail server. When QuickMail cannot reach the server, or the server no longer has the message, Save As does not write something else in its place. It says why and asks whether you want to choose another format. The text file, web page and PDF formats work offline for any message whose text is on this computer.
+
+For POP3 accounts, QuickMail keeps the original of every message it downloads, so it can always save one. Messages downloaded before version 0.8.47 kept their original only if they had attachments. For others, QuickMail downloads the original again if it is still on the server. If it is not, the message can still be saved in the other formats.
 
 ### Message Properties
 
@@ -1807,6 +1841,7 @@ Press **Ctrl+,** to open Settings.
 - **Default compose mode** — Plain Text, Markdown, or HTML
 - **Auto-save drafts** — on/off and interval
 - **Read messages as plain text** — when on, display all messages as plain text instead of HTML
+- **Saving Messages** — the **Save format** and **Save folder** that **Save** (Ctrl+S) uses. **Choose Folder…** picks the folder and **Use Documents** goes back to your Documents folder. See [Saving and Printing Messages](#saving-and-printing-messages).
 - **Notifications** — two checkboxes:
   - **Show a notification when new mail arrives** — enable Windows notifications for new mail in inboxes (requires Windows 10 1809 or later)
   - **Keep running in the notification area when I close the window** — closing the main window hides QuickMail to the tray instead of exiting
@@ -2062,6 +2097,9 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Delete` | Delete |
 | `Ctrl+Shift+M` | Move to Archive (the account's Archive folder) |
 | `Ctrl+Q` | Mark as Read |
+| `Ctrl+S` | Save the selected messages (default format and folder) |
+| `F12` | Save As |
+| `Ctrl+P` | Print |
 | `Ctrl+A` | Select all messages (message list) |
 | `Alt+Enter` | Message properties |
 | `F5` | Refresh |

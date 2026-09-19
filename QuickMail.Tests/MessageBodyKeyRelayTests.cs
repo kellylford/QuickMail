@@ -18,7 +18,9 @@ public class MessageBodyKeyRelayTests
     // Gestures both message bodies must relay. Each surface may relay more of its own (the reading pane
     // also jumps to the folder tree).
     private static readonly string[] Shared =
-        ["escape", "f6", "shift-f6", "shift-tab", "focus-attachments", "ctrl-w", "ctrl-shift-w", "ctrl-shift-p"];
+        ["escape", "f6", "shift-f6", "shift-tab", "focus-attachments", "ctrl-w", "ctrl-shift-w", "ctrl-shift-p",
+         // Save, Print and Save As (#728): focus is in the body while reading, where the window never sees them.
+         "ctrl-s", "ctrl-p", "f12"];
 
     [Theory]
     [InlineData("MainWindow.xaml.cs")]

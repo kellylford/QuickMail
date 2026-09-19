@@ -553,26 +553,7 @@ public partial class FolderPickerWindow : Window
     /// </summary>
     internal static string BuildFolderPath(
         MailFolderModel folder, IReadOnlyDictionary<string, MailFolderModel> byId)
-    {
-        if (folder.ParentId == null)
-            return string.IsNullOrWhiteSpace(folder.FullName) ? folder.DisplayName : folder.FullName;
-
-        var segments = new List<string> { folder.DisplayName };
-        var current = folder;
-        int guard = 0;
-        while (current.ParentId != null && byId.TryGetValue(current.ParentId, out var parent) && guard < 64)
-        {
-            segments.Add(parent.DisplayName);
-            current = parent;
-            guard++;
-        }
-        // The guard only trips on a ParentId cycle (which Graph shouldn't produce). Surface it in
-        // /debug so a subtly-truncated path is discoverable rather than silent.
-        if (guard >= 64)
-            LogService.Debug($"FolderPickerWindow: path for '{folder.DisplayName}' hit the 64-deep guard — possible ParentId cycle.");
-        segments.Reverse();
-        return string.Join('/', segments);
-    }
+        => Helpers.FolderPaths.Build(folder, byId);
 
     private bool FilterItem(object item)
     {

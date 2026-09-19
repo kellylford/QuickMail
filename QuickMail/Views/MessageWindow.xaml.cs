@@ -141,6 +141,25 @@ public partial class MessageWindow : Window
             id: "window.moveToMainWindow", category: "View", title: "Move to Main Window",
             execute: () => _vm.MoveToMainWindowCommand.Execute(null)));
 
+        // Save, Save As and Print (#728) - the same gestures as the main window's. The work is routed
+        // back to MainViewModel (SaveAction and friends), with this window's own dialogs (SaveUi).
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.save", category: "Mail", title: "Save",
+            description: "Save this message in your default format and folder, without asking",
+            execute: () => _vm.SaveMessageCommand.Execute(null),
+            defaultKey: Key.S, defaultModifiers: ModifierKeys.Control));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.saveAs", category: "Mail", title: "Save As…",
+            description: "Choose where to save this message, and in which format",
+            execute: () => _vm.SaveMessageAsCommand.Execute(null),
+            defaultKey: Key.F12, defaultModifiers: ModifierKeys.None));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.print", category: "Mail", title: "Print…",
+            execute: () => _vm.PrintMessageCommand.Execute(null),
+            defaultKey: Key.P, defaultModifiers: ModifierKeys.Control));
+
         // Ctrl+Shift+W here too, so watching a thread works at the moment you are actually reading
         // it. This window owns a separate registry, which is why the main window's registration
         // does not reach it. The work itself is routed back to MainViewModel (see
@@ -243,6 +262,10 @@ public partial class MessageWindow : Window
                 "else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}" +
                 "else if(e.ctrlKey&&!e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}" +
                 "else if(e.ctrlKey&&e.shiftKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-shift-p');e.preventDefault();}" +
+                // Save, Save As and Print (#728); see the reading pane's copy of this script.
+                "else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='s'||e.key==='S')){window.chrome.webview.postMessage('ctrl-s');e.preventDefault();}" +
+                "else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-p');e.preventDefault();}" +
+                "else if(e.key==='F12'&&!e.ctrlKey&&!e.shiftKey&&!e.altKey){window.chrome.webview.postMessage('f12');e.preventDefault();}" +
                 "});");
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
@@ -257,6 +280,9 @@ public partial class MessageWindow : Window
                     case "ctrl-w":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
                     case "ctrl-shift-w": Dispatcher.InvokeAsync(RequestWatchToggle, DispatcherPriority.Input); break;
                     case "ctrl-shift-p": Dispatcher.InvokeAsync(OpenCommandPalette, DispatcherPriority.Input); break;
+                    case "ctrl-s": Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.S, ModifierKeys.Control)?.Execute(), DispatcherPriority.Input); break;
+                    case "ctrl-p": Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.P, ModifierKeys.Control)?.Execute(), DispatcherPriority.Input); break;
+                    case "f12":    Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.F12, ModifierKeys.None)?.Execute(), DispatcherPriority.Input); break;
                     case "shift-tab":  Dispatcher.InvokeAsync(FocusLastHeaderField,  DispatcherPriority.Input); break;
                     case "focus-attachments": Dispatcher.InvokeAsync(FocusAttachmentList, DispatcherPriority.Input); break;
                     case "f6":         Dispatcher.InvokeAsync(() => CycleFocus(true),  DispatcherPriority.Input); break;
@@ -578,6 +604,25 @@ public partial class MessageWindow : Window
             _f6FocusStop = 2; // body is now focused
             AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
         }, DispatcherPriority.Input);
+    }
+
+    private MessageSaveUi? _messageSaveUi;
+
+    /// <summary>This window's Save As / Print dialogs and PDF renderer (#728), owned by this window.</summary>
+    internal MessageSaveUi SaveUi => _messageSaveUi ??= new MessageSaveUi(this, () => _sharedEnv, MoveFocusOutOfMessageBody);
+
+    /// <summary>
+    /// Before a modal dialog, parks focus on the Date header field if it is in the message body (or
+    /// WPF reports nothing focused, which is what focus inside the WebView2 looks like, #672), and
+    /// returns how to put it back. See <see cref="MessageSaveUi"/> for why.
+    /// </summary>
+    private Action? MoveFocusOutOfMessageBody()
+    {
+        var focused = Keyboard.FocusedElement;
+        var inBody = MessageBody.IsKeyboardFocusWithin || focused is null || ReferenceEquals(focused, this);
+        if (!inBody) return null;
+        DateField.Focus();
+        return FocusMessageBodyHost;
     }
 
     private void FocusMessageBodyHost()

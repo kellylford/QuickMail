@@ -25,6 +25,9 @@
 | Delete | `mail.delete` | Delete |
 | Ctrl+Shift+M | `mail.archive` | Move to Archive (the account's Archive folder) |
 | Ctrl+Q | `mail.markRead` | Mark as Read |
+| Ctrl+S | `mail.save` | Save — the selection (or a group header's messages) in the default format, into the save folder, without asking (#728). The message window registers `message.save` on the same key |
+| F12 | `mail.saveAs` | Save As… — the Save dialog, with a type list; several messages ask for a folder and format for all (#728). Message window: `message.saveAs` |
+| Ctrl+P | `mail.print` | Print… — one message, through the Windows Print dialog (#728). Message window: `message.print`. Ctrl+S, Ctrl+P and F12 are relayed out of both message bodies, since focus is there while reading |
 | F5 | `mail.refresh` | Refresh |
 | Ctrl+Shift+E | `mail.emptyTrash` | Empty Trash |
 | *(unassigned)* | `mail.sendOutboxNow` | Send Outbox Now — tries every queued message and draft right away, including ones marked Failed (#637) |

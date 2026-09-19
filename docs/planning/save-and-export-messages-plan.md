@@ -2,9 +2,8 @@
 
 > Tracking issue: #728
 
-> Status: **Draft for Kelly's review.** Not yet a spec. Once the open questions in §8 are
-> answered, the chosen phases get a PM + dev spec with the full keyboard walkthrough,
-> infrastructure changes, and out-of-scope sections CLAUDE.md requires.
+> Status: **Implemented for 0.8.47** (phases 1–4; phase 5, opening .eml files, is not built).
+> Kelly answered the questions in §8 on 2026-09-18; §9 records what was built from those answers.
 
 ---
 
@@ -180,15 +179,56 @@ Offline:
 
 1. **Phases.** Priority order is `.eml`, text, HTML, then print/PDF. Should the first release be
    `.eml` + text, or `.eml` + text + HTML together (they share the dialog and the header block)?
+Kelly: If it makes sense to group morework, then do so.
+
+
 2. **Offline.** When the original cannot be downloaded, should Save As fall back to the text file
    automatically, or refuse `.eml` with an explanation and let you choose?
+Kelly: Refuse with an explanation and let the user choose.
+
 3. **POP3 messages whose original is gone.** Offer a *rebuilt* `.eml` from the cached parts
    (clearly named as rebuilt), offer text only, or refuse? And should POP3 keep the original of
    every message from now on?
+Kelly: Pop should keep the  full message. No rebuilding. Either way have the message or we don't.
+
 4. **Ctrl+S.** Fine as the default key in both the main window and the message window?
+Yes. We should likely also have a save as option.
+
 5. **Text file contents.** Is From / To / Cc / Date / Subject / attachment names the right header
    block, in that order? Anything to add (Reply-To, account, folder)?
+Kelly: Add as much as you can beyond internet headers like message path. Human understandable text.
+
 6. **File name.** Is `date time - sender - subject` the right default, or would you rather it lead
    with the subject?
+Kelly: Start with subjecgt
+
+
 7. **Pictures in saved HTML.** Leave them out, as the reading pane does today, or carry the
    message's own embedded pictures inside the saved file? (Remote images stay blocked either way.)
+
+Kelly: leave them out but find or file an issue that weneed to improve image handling. Longer term, if the images are there, we should save them but I think we have a different work item to give the user the option to download images so that should understand this work also.
+
+
+
+## 9. As built (2026-09-18)
+
+- **Save (Ctrl+S) and Save As (F12) are separate commands** (answer 4). Save writes the default format
+  into the save folder with no dialog; Save As is the Save dialog with a type list. Both act on the
+  whole selection, or a group header's messages. Print (Ctrl+P) acts on one message. All three are on
+  the File menu of both windows, in the palette, and relayed out of both message bodies.
+- **Every format shipped together** (answer 1): .eml, text, web page, and PDF, plus Print.
+- **Offline or gone: refuse, explain, let the user choose** (answer 2). Save As reopens on Text.
+- **POP3 keeps every original; nothing is rebuilt** (answer 3). Older POP3 messages with no kept
+  original are downloaded again by UIDL if the server still has them, and kept from then on.
+- **Details block** (answer 5): subject, from, reply-to (when different), to, cc, date, invitation
+  (summary, when, where, organizer), account, folder path, status (read, flag name, replied,
+  forwarded), attachments with sizes, and when it was saved.
+- **File name leads with the subject** (answer 6): `Subject - Sender - yyyy-MM-dd HHmm.ext`.
+- **Pictures are left out of the web page and PDF** (answer 7). Tracked with remote-image loading in #508.
+- **PDFs are tagged.** WebView2's `PrintToPdfAsync` writes an untagged PDF (measured). The DevTools
+  protocol's `Page.printToPDF` with `generateTaggedPDF` writes a structure tree with H1, Table, TH and P
+  roles. `MessageSavePdfTests` asserts this against a real WebView2.
+- **Several messages in Save As** use the standard Save dialog: its title says how many, and the file-name
+  box reads "Each message is saved under its own name". The folder and type chosen apply to all of them.
+- **Settings → General → Saving Messages**: the format combo, and the save folder with Choose Folder… and
+  Use Documents.

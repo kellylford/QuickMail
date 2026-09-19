@@ -46,6 +46,11 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     public Func<AttachmentModel?, Task>? SaveAttachmentAction   { get; set; }
     public Func<Task>? SaveAllAttachmentsAction { get; set; }
 
+    /// <summary>Save, Save As and Print of this window's message (#728), routed to MainViewModel.</summary>
+    public Func<Task>? SaveAction   { get; set; }
+    public Func<Task>? SaveAsAction { get; set; }
+    public Func<Task>? PrintAction  { get; set; }
+
     public string WindowTitle
     {
         get
@@ -107,6 +112,15 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     [RelayCommand]
     private Task SaveAllAttachments() =>
         SaveAllAttachmentsAction?.Invoke() ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task SaveMessage() => SaveAction?.Invoke() ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task SaveMessageAs() => SaveAsAction?.Invoke() ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task PrintMessage() => PrintAction?.Invoke() ?? Task.CompletedTask;
 
     public bool CanNavigatePrevious =>
         SelectedMessage != null && MessageList.Count > 0

@@ -732,7 +732,9 @@ public class Pop3MailService : IMailService
 
     /// <summary>
     /// Writes one downloaded (or locally authored) message to the store as summary + detail, keeping
-    /// the raw bytes when it has attachments so they can be extracted later.
+    /// the raw bytes of every message. They were once kept only for messages with attachments, so the
+    /// attachments could be extracted later (#128); since #728 they are also what Save writes as a
+    /// .eml, and once a collected message leaves the server the store holds the only original there is.
     /// </summary>
     private async Task<MailMessageSummary> StoreMessageAsync(
         Guid accountId, string messageId, MimeMessage msg, string folderName, bool isRead, CancellationToken ct)
@@ -743,14 +745,53 @@ public class Pop3MailService : IMailService
         await _store.UpsertSummariesAsync([summary]);
         await _store.UpsertDetailAsync(detail);
 
-        if (detail.Attachments.Count > 0)
-        {
-            using var ms = new MemoryStream();
-            await msg.WriteToAsync(ms, ct);
-            await _store.StoreMimeBytesAsync(accountId, folderName, messageId, ms.ToArray());
-        }
+        using var ms = new MemoryStream();
+        await msg.WriteToAsync(ms, ct);
+        await _store.StoreMimeBytesAsync(accountId, folderName, messageId, ms.ToArray());
 
         return summary;
+    }
+
+    /// <summary>
+    /// The original of a POP3 message (#728): the bytes kept when it was collected, or — for a message
+    /// collected before every original was kept, and still on the server — downloaded again by its
+    /// UIDL and kept from then on. Never rebuilt from the cached parts: either the original exists or
+    /// Save says it does not.
+    /// </summary>
+    public async Task<byte[]> GetOriginalMessageAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+    {
+        if (_onlineMode)
+            throw new MessageOriginalUnavailableException(OnlineModeExplanation);
+
+        var stored = await _store.LoadMimeBytesAsync(accountId, folderName, messageId);
+        if (stored is { Length: > 0 }) return stored;
+
+        const string notKept =
+            "QuickMail did not keep the original of this message when it was downloaded, and it is no longer on the server.";
+
+        // A message written here (a sent copy, a draft) never came from the server to be fetched again.
+        if (messageId.StartsWith(LocalIdPrefix, StringComparison.Ordinal))
+            throw new MessageOriginalUnavailableException(notKept);
+
+        var bytes = await RunMaildropSessionAsync<byte[]?>(accountId, async client =>
+        {
+            if (client.Count == 0) return (Result: null, Quit: false);
+            var uidls = await client.GetMessageUidsAsync(ct);
+            var index = uidls.IndexOf(messageId);
+            if (index < 0) return (Result: null, Quit: false);
+
+            var msg = await client.GetMessageAsync(index, ct);
+            using var ms = new MemoryStream();
+            await msg.WriteToAsync(ms, ct);
+            // Nothing was marked for deletion, so there is nothing for a QUIT to commit.
+            return (Result: ms.ToArray(), Quit: false);
+        }, ct);
+
+        if (bytes is null) throw new MessageOriginalUnavailableException(notKept);
+
+        // Keep it, so the next save needs no server and survives the server letting it go.
+        await _store.StoreMimeBytesAsync(accountId, folderName, messageId, bytes);
+        return bytes;
     }
 
     /// <summary>

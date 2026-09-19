@@ -135,6 +135,35 @@ public static class MessageBodyHtmlBuilder
     }
 
     /// <summary>
+    /// The sender's HTML reduced to body content by the same passes the reading pane uses — for a
+    /// document someone else builds around it, the saved web page (#728). Removes the sender's own
+    /// title and structural tags, as <see cref="ComposeSanitizedDocument"/> does, so nothing in the
+    /// fragment can displace the host document's head. Returns false, with an empty fragment, when
+    /// any pass timed out: a partially stripped body is not sanitized and must not be written.
+    /// <para>The same caveat applies as everywhere else: this is defence in depth. The host document
+    /// must still carry the strict CSP.</para>
+    /// </summary>
+    public static bool TryBuildSanitizedBodyFragment(string html, out string fragment)
+    {
+        if (!TryStripHeavyHtml(html, HtmlRegexTimeout, out var body))
+        {
+            fragment = string.Empty;
+            return false;
+        }
+        body = RemoveTitle(body);
+        body = SafeRegexReplace(body, "</?(html|head|body)\\b[^>]*>", string.Empty,
+                                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        fragment = body;
+        return true;
+    }
+
+    /// <summary>The strict policy every saved or displayed message document carries.</summary>
+    public const string StrictCspContent =
+        "default-src 'none'; script-src 'none'; object-src 'none'; " +
+        "frame-src 'none'; img-src 'none'; media-src 'none'; connect-src 'none'; " +
+        "form-action 'none'; base-uri 'none'; style-src 'unsafe-inline';";
+
+    /// <summary>
     /// The theme <c>:root</c> variable block as a style tag, or empty. Emitted
     /// before the default CSS so the <c>var(--qm-*)</c> references resolve.
     /// </summary>
@@ -145,10 +174,7 @@ public static class MessageBodyHtmlBuilder
     {
         var titleTag = $"<title>{WebUtility.HtmlEncode(subject ?? string.Empty)}</title>";
         const string cspTag =
-            "<meta http-equiv=\"Content-Security-Policy\" " +
-            "content=\"default-src 'none'; script-src 'none'; object-src 'none'; " +
-            "frame-src 'none'; img-src 'none'; media-src 'none'; connect-src 'none'; " +
-            "form-action 'none'; base-uri 'none'; style-src 'unsafe-inline';\">";
+            "<meta http-equiv=\"Content-Security-Policy\" content=\"" + StrictCspContent + "\">";
         // Defaults only — sender-styled HTML still wins unless the user opts into
         // force-theme (which arrives inside themeCss as !important rules). The
         // var() fallbacks are the CSS system colors, so with no theme CSS the

@@ -382,6 +382,42 @@ public partial class SettingsViewModel : ObservableObject
         StartupFolderLabel   = string.Empty;
     }
 
+    // ── Saving messages (#728) ────────────────────────────────────────────────
+
+    /// <summary>The formats Save (Ctrl+S) can write, for the Save format combo box.</summary>
+    public IReadOnlyList<MessageSaveFormatOption> SaveFormatOptions { get; } =
+        MessageSaveFormats.All
+            .Select(f => new MessageSaveFormatOption(f, $"{MessageSaveFormats.DisplayName(f)} ({MessageSaveFormats.Extension(f)})"))
+            .ToList();
+
+    [ObservableProperty]
+    private MessageSaveFormat _saveMessageFormat = MessageSaveFormat.Eml;
+
+    /// <summary>The folder Save writes into. Empty means Documents.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveMessageFolderDisplay))]
+    private string _saveMessageFolder = string.Empty;
+
+    public string SaveMessageFolderDisplay =>
+        string.IsNullOrWhiteSpace(SaveMessageFolder) ? "Documents" : SaveMessageFolder;
+
+    /// <summary>
+    /// Asks the View for a folder (the Windows folder dialog), starting at the given one. Returns the
+    /// chosen path, or null when cancelled.
+    /// </summary>
+    public Func<string?, string?>? PickSaveFolderRequested { get; set; }
+
+    [RelayCommand]
+    private void ChooseSaveFolder()
+    {
+        var start = string.IsNullOrWhiteSpace(SaveMessageFolder) ? null : SaveMessageFolder;
+        if (PickSaveFolderRequested?.Invoke(start) is { Length: > 0 } folder)
+            SaveMessageFolder = folder;
+    }
+
+    [RelayCommand]
+    private void UseDocumentsFolder() => SaveMessageFolder = string.Empty;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsStartupSyncScopeStartupFolder))]
     [NotifyPropertyChangedFor(nameof(IsStartupSyncScopeInboxes))]
@@ -475,6 +511,8 @@ public partial class SettingsViewModel : ObservableObject
         CalendarReminders                = cfg.CalendarReminders;
         CalendarReminderMinutes          = cfg.CalendarReminderMinutes;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
+        SaveMessageFormat                = MessageSaveFormats.FromConfigValue(cfg.SaveMessageFormat);
+        SaveMessageFolder                = cfg.SaveMessageFolder;
         NotifyOnNewMail                  = cfg.NotifyOnNewMail;
         NotifyOnWatchedConversation      = cfg.NotifyOnWatchedConversation;
         CloseToTray                      = cfg.CloseToTray;
@@ -560,6 +598,8 @@ public partial class SettingsViewModel : ObservableObject
         cfg.CalendarReminders                = CalendarReminders;
         cfg.CalendarReminderMinutes          = Math.Clamp(CalendarReminderMinutes, 1, 1440);
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
+        cfg.SaveMessageFormat                = MessageSaveFormats.ToConfigValue(SaveMessageFormat);
+        cfg.SaveMessageFolder                = SaveMessageFolder.Trim();
         cfg.NotifyOnNewMail                  = NotifyOnNewMail;
         cfg.NotifyOnWatchedConversation      = NotifyOnWatchedConversation;
         cfg.CloseToTray                      = CloseToTray;

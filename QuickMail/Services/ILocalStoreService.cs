@@ -78,14 +78,15 @@ public interface ILocalStoreService
     /// <summary>
     /// Stores the raw RFC 5322 bytes of a POP3 message so its attachments can be extracted later
     /// without a second download — POP3 has no per-part fetch, so the bytes are the only way back to
-    /// the parts. Pass null to clear. Called only by <c>Pop3MailService</c>, and only after
+    /// the parts — and so Save can write the original as a .eml (#728). Pass null to clear. Called only by <c>Pop3MailService</c>, and only after
     /// <see cref="UpsertDetailAsync"/>; IMAP and Graph messages leave this null.
     /// </summary>
     Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes);
 
     /// <summary>
     /// Returns the bytes previously stored by <see cref="StoreMimeBytesAsync"/>, or null if none
-    /// were stored (IMAP/Graph messages, and POP3 messages with no attachments).
+    /// were stored (IMAP/Graph messages, and POP3 messages collected before 0.8.47 that had no
+    /// attachments — until then only messages with attachments kept their bytes).
     /// </summary>
     Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId);
 
