@@ -43,7 +43,7 @@ public class MessageBodyNavigationSafetyTests
         Assert.Equal("<p>Hello</p>", fragment);
     }
 
-    /// <summary>An attribute join nested <paramref name="depth"/> deep: each round unwraps one level.</summary>
+    /// <summary>An attribute join nested <paramref name="depth"/> deep.</summary>
     private static string NestedStyle(int depth)
     {
         var inner = " style=\"x\"";
@@ -51,23 +51,39 @@ public class MessageBodyNavigationSafetyTests
         return "<p" + inner + ">text</p>";
     }
 
-    [Fact]
-    public void MarkupThatOutlastsTheRounds_FailsClosed()
+    /// <summary>A tag join nested <paramref name="depth"/> deep: each round of removal unwraps one level.</summary>
+    private static string NestedLink(int depth)
     {
-        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(NestedStyle(1), out var shallow));
-        Assert.DoesNotContain("style", shallow);
-
-        Assert.False(MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(NestedStyle(8), out _));
-        Assert.False(MessageBodyHtmlBuilder.TryBuildSanitizedHtmlDocument("s", NestedStyle(8), out _));
+        var inner = "<link>";
+        for (var i = 0; i < depth; i++) inner = "<li" + inner + "nk>";
+        return "<p>text</p>" + inner;
     }
 
     [Fact]
-    public void MarkupThatOutlastsTheRounds_IsSavedAsText_WithNoAttributes()
+    public void NestedAttributeJoins_AreUndoneByReadingAttributesAsTheTokenizerDoes()
     {
-        var detail = new MailMessageDetail { Subject = "s", HtmlBody = NestedStyle(8) };
+        // Rebuilding each tag from its parsed attributes leaves nothing to rejoin, however deep.
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(NestedStyle(8), out var fragment));
+        Assert.DoesNotContain("style=", fragment);
+    }
+
+    [Fact]
+    public void MarkupThatOutlastsTheRounds_FailsClosed()
+    {
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(NestedLink(1), out var shallow));
+        Assert.DoesNotMatch(new Regex(@"<link(?=[\s/>]|$)", RegexOptions.IgnoreCase), shallow);
+
+        Assert.False(MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(NestedLink(8), out _));
+        Assert.False(MessageBodyHtmlBuilder.TryBuildSanitizedHtmlDocument("s", NestedLink(8), out _));
+    }
+
+    [Fact]
+    public void MarkupThatOutlastsTheRounds_IsSavedAsText()
+    {
+        var detail = new MailMessageDetail { Subject = "s", HtmlBody = NestedLink(8) };
         var page = MessageExport.BuildHtmlDocument(detail, new MessageSaveContext("a", "Inbox", null, DateTimeOffset.Now));
         var main = page[page.IndexOf("<main>", StringComparison.Ordinal)..];
-        Assert.DoesNotContain("style=", main);
+        Assert.DoesNotMatch(new Regex(@"<link(?=[\s/>]|$)", RegexOptions.IgnoreCase), main);
         Assert.Contains("could not be kept", main);
     }
 
@@ -79,6 +95,54 @@ public class MessageBodyNavigationSafetyTests
     {
         Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(html, out var fragment));
         Assert.DoesNotContain(attribute, fragment);
+    }
+
+    // ── Third pass: attributes after "/" or a quote, and downloads ──────────
+
+    [Theory]
+    [InlineData("<p/style=\"position:fixed;top:0\">x</p>", "style")]
+    [InlineData("<p id=\"a\"style=\"position:fixed\">x</p>", "style")]
+    [InlineData("<a href=\"https://example.com\"/ping=\"https://t.example/\">x</a>", "ping")]
+    [InlineData("<a href=\"https://example.com\"ping=\"https://t.example/\">x</a>", "ping")]
+    [InlineData("<a href=\"https://example.com\"/target=\"_blank\">x</a>", "target")]
+    [InlineData("<p/onmouseover=\"x()\">x</p>", "onmouseover")]
+    [InlineData("<a download=\"invoice.html\" href=\"data:text/html;base64,PGI+\">Invoice</a>", "download")]
+    [InlineData("<a href=\"https://example.com\"/download>x</a>", "download")]
+    public void AnAttributeTheTokenizerWouldRead_IsStripped_WhateverSeparatesIt(string html, string attribute)
+    {
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(html, out var fragment));
+        Assert.DoesNotContain(attribute, fragment, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("<a href=\"https://example.com/?a=1&amp;b=2\" title='It\"s here'>x</a>",
+                "<a href=\"https://example.com/?a=1&amp;b=2\" title=\"It&quot;s here\">x</a>")]
+    [InlineData("<td align=left valign=top>x</td>", "<td align=\"left\" valign=\"top\">x</td>")]
+    [InlineData("<br/>", "<br />")]
+    public void KeptAttributesAreRewrittenDoubleQuoted(string html, string expected)
+    {
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(html, out var fragment));
+        Assert.Equal(expected, fragment);
+    }
+
+    [Theory]
+    [InlineData("MainWindow.xaml.cs")]
+    [InlineData("MessageWindow.xaml.cs")]
+    [InlineData("MessageSaveUi.cs")]
+    public void EveryMessageHost_RefusesDownloads(string file)
+    {
+        // A download link raises DownloadStarting alone, bypassing every navigation check.
+        var code = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "QuickMail", "Views", file));
+        Assert.Contains("DownloadStarting", code);
+        Assert.Matches(new Regex(@"DownloadStarting\s*\+=[^;]*?Cancel\s*=\s*true", RegexOptions.Singleline), code);
+    }
+
+    private static string RepoRoot()
+    {
+        for (var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+            if (System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "QuickMail", "Views")))
+                return dir.FullName;
+        throw new InvalidOperationException("Repo source tree not found.");
     }
 
     // ── QuickMail's own links ─────────────────────────────────────────────────

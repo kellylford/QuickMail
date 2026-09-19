@@ -3674,6 +3674,16 @@ public partial class MainWindow : Window
                 var target = args.Uri;
                 _linkGate.Request(target, () => OpenExternal(target));
             };
+            // A link carrying a download attribute raises DownloadStarting and nothing else — no
+            // NavigationStarting, so none of the checks above — and WebView2's default is to save the
+            // sender's file, under the sender's name, into Downloads. A message never downloads
+            // anything; attachments are saved through QuickMail's own Save. #728 review, third pass.
+            MessageBody.CoreWebView2.DownloadStarting += (_, args) =>
+            {
+                args.Cancel = true;
+                args.Handled = true;
+                LogService.Debug("Message body: refused a download started from the message.");
+            };
             MessageBody.CoreWebView2.ProcessFailed += (_, args) =>
                 LogService.Log($"[ERROR] WebView2 ProcessFailed kind={args.ProcessFailedKind} exit={args.ExitCode} reason={args.Reason}");
         }

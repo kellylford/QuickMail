@@ -241,6 +241,7 @@ internal sealed class MessageSaveUi : IMessageSaveUi
                 if (Interlocked.Increment(ref navigations) > 1) e.Cancel = true;
             };
             core.NewWindowRequested += (_, e) => e.Handled = true;
+            core.DownloadStarting   += (_, e) => { e.Cancel = true; e.Handled = true; };
             core.NavigationCompleted += (_, e) =>
             {
                 if (e.IsSuccess) loaded.TrySetResult(true);

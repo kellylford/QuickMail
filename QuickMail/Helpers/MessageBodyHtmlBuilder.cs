@@ -30,6 +30,80 @@ public static class MessageBodyHtmlBuilder
         @"<(/?(?:script|style|svg|math|iframe|frame|frameset|object|embed|applet|video|audio|source|track|" +
         @"canvas|form|img|image|link|base|meta|input|button|portal|title|html|head|body)(?=[\s/>]|$))";
 
+    /// <summary>
+    /// A start tag with something after its name: the name, then everything up to the closing
+    /// bracket, where a bracket inside a quoted value does not count — as the tokenizer reads it.
+    /// </summary>
+    private static readonly Regex StartTagWithAttributes = new(
+        @"<([a-zA-Z][^\s/>]*)((?:[\s/](?:[^>""']|""[^""]*""|'[^']*')*))>",
+        RegexOptions.Compiled,
+        HtmlRegexTimeout);
+
+    /// <summary>Attributes no message keeps: script, styling, remote fetches, frames, forms, downloads.</summary>
+    private static readonly System.Collections.Generic.HashSet<string> BlockedAttributes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "style", "src", "srcset", "background", "target", "ping", "srcdoc", "formaction", "action",
+        "poster", "download", "lowsrc", "dynsrc", "xlink:href", "http-equiv",
+    };
+
+    /// <summary>
+    /// Rebuilds a start tag from the attributes it is allowed to keep, reading them the way the HTML
+    /// tokenizer does: a name runs to whitespace, "/", "=" or "&gt;"; a value is quoted, or runs to
+    /// whitespace or "&gt;". Every kept value is written back double-quoted, so nothing the sender
+    /// wrote can end the value early and start a new attribute.
+    /// </summary>
+    private static string RebuildStartTag(Match match)
+    {
+        var name = match.Groups[1].Value;
+        var rest = match.Groups[2].Value;
+        var sb = new System.Text.StringBuilder("<").Append(name);
+        var i = 0;
+        while (i < rest.Length)
+        {
+            var c = rest[i];
+            if (char.IsWhiteSpace(c) || c == '/') { i++; continue; }
+
+            var start = i;
+            // A name may begin with "=" (a tokenizer quirk); it never ends on its first character.
+            i++;
+            while (i < rest.Length && !char.IsWhiteSpace(rest[i]) && rest[i] != '/' && rest[i] != '=' ) i++;
+            var attr = rest[start..i];
+
+            while (i < rest.Length && char.IsWhiteSpace(rest[i])) i++;
+            string? value = null;
+            if (i < rest.Length && rest[i] == '=')
+            {
+                i++;
+                while (i < rest.Length && char.IsWhiteSpace(rest[i])) i++;
+                if (i < rest.Length && (rest[i] == '"' || rest[i] == '\''))
+                {
+                    var quote = rest[i++];
+                    var end = rest.IndexOf(quote, i);
+                    if (end < 0) end = rest.Length;
+                    value = rest[i..end];
+                    i = Math.Min(end + 1, rest.Length);
+                }
+                else
+                {
+                    var vs = i;
+                    while (i < rest.Length && !char.IsWhiteSpace(rest[i])) i++;
+                    value = rest[vs..i];
+                }
+            }
+
+            if (attr.StartsWith("on", StringComparison.OrdinalIgnoreCase) || BlockedAttributes.Contains(attr))
+                continue;
+            // Only ordinary attribute names survive, so no rebuilt name can itself carry markup.
+            if (!Regex.IsMatch(attr, "^[A-Za-z][A-Za-z0-9_:.-]*$")) continue;
+
+            sb.Append(' ').Append(attr);
+            if (value is not null)
+                sb.Append("=\"").Append(value.Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;")).Append('"');
+        }
+        if (rest.TrimEnd().EndsWith('/')) sb.Append(" /");
+        return sb.Append('>').ToString();
+    }
+
     private static readonly Regex AutoLinkUrl = new(
         @"\b((?:https?|mailto):[^\s<>""']+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled,
@@ -379,7 +453,12 @@ public static class MessageBodyHtmlBuilder
             // forgets to handle that event silently opens the link in an in-app popup instead of
             // the user's default browser (issue #483). Hosts handle both events; this keeps the
             // rendered document from depending on that.
-            body = Step(body, "\\s(on\\w+|style|src|srcset|background|target|ping|srcdoc|formaction|action|poster)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            body = Step(body, "\\s(on\\w+|style|src|srcset|background|target|ping|srcdoc|formaction|action|poster|download)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // The pass above finds an attribute only after whitespace, but the HTML tokenizer also
+            // starts one after "/" or straight after a closing quote: <p/style=…>, <a href="x"ping=…>.
+            // So every start tag is also re-read attribute by attribute, as the tokenizer reads it, and
+            // rebuilt from the attributes that are allowed (#728 security review, third pass).
+            body = StepEval(body, StartTagWithAttributes, RebuildStartTag);
             if (!complete || string.Equals(before, body, StringComparison.Ordinal)) break;
             // Still changing after the last round: markup nested to defeat the rounds. Fail closed —
             // the caller shows the message as plain text rather than trust what is left.
