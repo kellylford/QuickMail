@@ -122,6 +122,20 @@ internal sealed class MessageSaveUi : IMessageSaveUi
         return string.IsNullOrEmpty(folder) ? null : new MessageSaveTarget(folder, FormatAt(dlg.FilterIndex));
     }
 
+    public ExistingSaveChoice AskAboutExisting(int existing, int total, string folderName)
+    {
+        var text = $"{existing} of these {total} messages are already saved in {folderName}.\n\n" +
+                   "Replace the saved copies?\n\n" +
+                   "Yes replaces them. No keeps both, saving new copies beside them. Cancel saves nothing.";
+        return Modal(() => MessageBox.Show(_owner, text, "Save", MessageBoxButton.YesNoCancel,
+                                           MessageBoxImage.Question, MessageBoxResult.Cancel)) switch
+        {
+            MessageBoxResult.Yes => ExistingSaveChoice.Replace,
+            MessageBoxResult.No  => ExistingSaveChoice.KeepBoth,
+            _                    => ExistingSaveChoice.Cancel,
+        };
+    }
+
     public bool ConfirmTryAnotherFormat(string explanation) =>
         Modal(() => MessageBox.Show(_owner, explanation, "Save", MessageBoxButton.YesNo, MessageBoxImage.Information))
         == MessageBoxResult.Yes;

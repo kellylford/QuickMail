@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using QuickMail.Helpers;
@@ -218,6 +219,11 @@ public partial class MessageWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         AccessibilityHelper.RegisterDebugInputTrace(this);
+
+        // Alt pressed while reading: see MenuBarAccess.
+        HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(OnWmKeyMenu);
+        MainMenuBar.IsKeyboardFocusWithinChanged += OnMenuBarFocusWithinChanged;
+        Activated += (_, _) => { if (_menuEnteredFromBody) Dispatcher.InvokeAsync(ReturnToBodyAfterMenu, DispatcherPriority.Input); };
 
         try
         {
@@ -639,6 +645,46 @@ public partial class MessageWindow : Window
             _f6FocusStop = 2; // body is now focused
             AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
         }, DispatcherPriority.Input);
+    }
+
+    /// <summary>Set when the menu bar was entered by an Alt pressed in the message body.</summary>
+    private bool _menuEnteredFromBody;
+
+    /// <summary>
+    /// Alt pressed while the message body has focus reaches Windows, not WPF, and came back as the
+    /// system menu. Answer it with the menu bar instead, as the main window does. Alt+Space still
+    /// opens the system menu.
+    /// </summary>
+    private IntPtr OnWmKeyMenu(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (!MenuBarAccess.IsKeyboardMenuKey(msg, wParam, lParam, out var letter)) return IntPtr.Zero;
+        var focused = Keyboard.FocusedElement;
+        var inBody = MessageBody.IsKeyboardFocusWithin || focused is null || ReferenceEquals(focused, this);
+        if (!inBody) return IntPtr.Zero;
+
+        handled = true;
+        Dispatcher.InvokeAsync(() =>
+        {
+            _menuEnteredFromBody = true;
+            if (letter == '\0') MenuBarAccess.EnterMenuMode(MainMenuBar);
+            else MenuBarAccess.OpenByAccessKey(MainMenuBar, letter);
+        }, DispatcherPriority.Input);
+        return IntPtr.Zero;
+    }
+
+    private void OnMenuBarFocusWithinChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if ((bool)e.NewValue || !_menuEnteredFromBody) return;
+        Dispatcher.InvokeAsync(ReturnToBodyAfterMenu, DispatcherPriority.Input);
+    }
+
+    private void ReturnToBodyAfterMenu()
+    {
+        if (!_menuEnteredFromBody || !IsActive) return;
+        _menuEnteredFromBody = false;
+        var focused = Keyboard.FocusedElement;
+        if (focused is null || ReferenceEquals(focused, this))
+            FocusMessageBodyHost();
     }
 
     private MessageSaveUi? _messageSaveUi;

@@ -10,7 +10,7 @@ You can now save a message to a file, or print it. Until now the only thing you 
 - **Save As…** (**F12**) opens the Save dialog, where you choose the folder and the format.
 - **Print…** (**Ctrl+P**) opens the Windows Print dialog.
 
-All three are on the **File** menu and in the command palette, and Save As and Print are on a message's context menu. They work from the message list, the reading pane, a tab, and a message window, including while you are reading inside the message itself. Save and Save As act on everything selected: several messages, or a whole conversation or sender group when its heading is selected. Each message is saved in its own file, named from its subject, sender and date. Saving never replaces an existing file, and never marks a message read.
+All three are on the **File** menu and in the command palette, and Save As and Print are on a message's context menu. They work from the message list, the reading pane, a tab, and a message window, including while you are reading inside the message itself. Save and Save As act on everything selected: several messages, or a whole conversation or sender group when its heading is selected. Each message is saved in its own file, named from its subject, sender and date. Saving never marks a message read, and never replaces or duplicates a file without asking. If a message was saved there before, Save opens the Save As dialog on that name.
 
 There are four formats:
 
@@ -36,6 +36,10 @@ POP3 accounts now keep the whole original of every message they download. Before
 [#728](https://github.com/kellylford/QuickMail/issues/728)
 
 ## Fixed
+
+### Alt in a message opens the menu bar
+
+While reading a message, pressing Alt opened the window's system menu (Restore, Move, Size and so on) instead of the menu bar. It now goes to the menu bar with File selected, exactly as Alt does everywhere else in the window, and Escape returns you to the message. Alt with a letter opens that menu, so Alt+F opens File. This works in the reading pane, tabs and message windows. Alt+Space still opens the system menu.
 
 ### A message could open a web page without being clicked
 

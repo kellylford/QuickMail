@@ -37,12 +37,21 @@ public interface IMessageSaveUi
     /// <summary>Explains why the original could not be saved and asks whether to pick another format.</summary>
     bool ConfirmTryAnotherFormat(string explanation);
 
+    /// <summary>
+    /// Several messages, some already saved in the folder: replace those copies, keep both, or stop.
+    /// (One message goes to the Save As dialog instead, which asks in Windows' own way.)
+    /// </summary>
+    ExistingSaveChoice AskAboutExisting(int existing, int total, string folderName);
+
     /// <summary>Lays <paramref name="html"/> out and returns it as a PDF.</summary>
     Task<byte[]> RenderPdfAsync(string html, CancellationToken ct);
 
     /// <summary>Shows the Print dialog for <paramref name="html"/> and prints it. False when cancelled.</summary>
     Task<bool> PrintAsync(string html, string documentTitle, CancellationToken ct);
 }
+
+/// <summary>What to do about messages that were saved in the folder before.</summary>
+public enum ExistingSaveChoice { Replace, KeepBoth, Cancel }
 
 /// <summary>What happened, for the status bar. <see cref="Text"/> is null when nothing needs saying (cancelled).</summary>
 public sealed record MessageSaveOutcome(string? Text);
@@ -95,9 +104,14 @@ public sealed class MessageSaver
     /// dialog) or Save As (true: the dialog). <paramref name="formatOverride"/> preselects a type in
     /// the dialog — used when retrying in another format after the original was out of reach.
     /// </summary>
-    public async Task<MessageSaveOutcome> SaveAsync(
+    public Task<MessageSaveOutcome> SaveAsync(
         IReadOnlyList<MailMessageSummary> messages, bool chooseLocation, IMessageSaveUi ui,
         MessageSaveFormat? formatOverride = null, CancellationToken ct = default)
+        => SaveCoreAsync(messages, chooseLocation, ui, formatOverride, startFolder: null, ct);
+
+    private async Task<MessageSaveOutcome> SaveCoreAsync(
+        IReadOnlyList<MailMessageSummary> messages, bool chooseLocation, IMessageSaveUi ui,
+        MessageSaveFormat? formatOverride, string? startFolder, CancellationToken ct)
     {
         if (messages.Count == 0) return new MessageSaveOutcome(null);
 
@@ -109,9 +123,10 @@ public sealed class MessageSaver
         string folder;
         if (chooseLocation)
         {
-            var start = !string.IsNullOrWhiteSpace(config.LastSaveAsFolder) && Directory.Exists(config.LastSaveAsFolder)
-                ? config.LastSaveAsFolder
-                : SaveFolder();
+            var start = startFolder
+                ?? (!string.IsNullOrWhiteSpace(config.LastSaveAsFolder) && Directory.Exists(config.LastSaveAsFolder)
+                    ? config.LastSaveAsFolder
+                    : SaveFolder());
 
             var target = messages.Count == 1
                 ? ui.ChooseFile(MessageExport.BuildFileName(messages[0], format), format, start)
@@ -144,6 +159,26 @@ public sealed class MessageSaver
             }
         }
 
+        // Saved here before? Never replace or duplicate it without asking (Windows' own rule for Save).
+        // One message: the Save As dialog, on this folder and name — it asks before replacing, and lets
+        // the user choose another name. Several: ask once for all of them.
+        var replaceExisting = overwriteSingle;
+        if (singleName is null)
+        {
+            var existing = messages.Count(m => Exists(Path.Combine(folder, MessageExport.BuildFileName(m, format))));
+            if (existing > 0)
+            {
+                if (messages.Count == 1 && !chooseLocation)
+                    return await SaveCoreAsync(messages, chooseLocation: true, ui, format, startFolder: folder, ct);
+
+                switch (ui.AskAboutExisting(existing, messages.Count, FolderLabel(folder)))
+                {
+                    case ExistingSaveChoice.Cancel:  return new MessageSaveOutcome(null);
+                    case ExistingSaveChoice.Replace: replaceExisting = true; break;
+                }
+            }
+        }
+
         var saved          = new List<string>();
         var originalFailed = new List<(MailMessageSummary Message, string Reason)>();
         var otherFailed    = new List<string>();
@@ -154,7 +189,9 @@ public sealed class MessageSaver
             var name = singleName ?? MessageExport.BuildFileName(message, format);
             try
             {
-                saved.Add(await WriteOneAsync(message, format, folder, name, overwriteSingle, ui, ct));
+                var replace = singleName is not null ? overwriteSingle
+                            : replaceExisting && Exists(Path.Combine(folder, name));
+                saved.Add(await WriteOneAsync(message, format, folder, name, replace, ui, ct));
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) when (format == MessageSaveFormat.Eml && OriginalOutOfReach(ex, ct) is { } reason)
@@ -182,7 +219,7 @@ public sealed class MessageSaver
             var retry = originalFailed.Select(f => f.Message).ToList();
             if (ui.ConfirmTryAnotherFormat(ExplainOriginalFailure(messages.Count, retry.Count, originalFailed[0].Reason, saved.Count)))
             {
-                var second = await SaveAsync(retry, chooseLocation: true, ui, MessageSaveFormat.Text, ct);
+                var second = await SaveCoreAsync(retry, chooseLocation: true, ui, MessageSaveFormat.Text, startFolder: null, ct);
                 // Whatever the retry reports supersedes the first pass's failure line for those messages.
                 return saved.Count == 0 ? second : new MessageSaveOutcome(Join(outcome.Text, second.Text));
             }
@@ -315,6 +352,8 @@ public sealed class MessageSaver
         }
         throw new IOException("No free file name could be found in the folder.");
     }
+
+    private bool Exists(string path) => _fileExists(path) || File.Exists(path);
 
     private static void Finish(string writing, string final)
     {

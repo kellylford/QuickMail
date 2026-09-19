@@ -1580,6 +1580,9 @@ public partial class MainWindow : Window
         // The hook intercepts WM_CONTEXTMENU first and synchronously parks WPF focus on the
         // active panel, giving WPF a non-null FocusedElement to route ContextMenuOpening from.
         HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(OnWmContextMenu);
+        // Alt pressed while reading: see MenuBarAccess.
+        HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(OnWmKeyMenu);
+        MainMenuBar.IsKeyboardFocusWithinChanged += OnMenuBarFocusWithinChanged;
 
         // Create the WebView2 environment — always needed, shared with MessageWindow instances.
         try
@@ -1698,6 +1701,54 @@ public partial class MainWindow : Window
     // Keyboard.FocusedElement is non-null before WPF routes ContextMenuOpening.
     // Without this, the first Shift+F10 after startup shows the Win32 system menu
     // because WebView2 init steals Win32 focus without WPF tracking it (issue #148).
+    // ── Alt from inside the message body ──────────────────────────────────────
+
+    /// <summary>Set when the menu bar was entered by an Alt pressed in the message body, so leaving it goes back there.</summary>
+    private bool _menuEnteredFromBody;
+
+    /// <summary>
+    /// Alt pressed while the message body has focus reaches Windows, not WPF, and came back as the
+    /// system menu (Restore, Move, Size…). Answer it with the menu bar instead — File selected, as
+    /// Alt does everywhere else in the window. Alt+Space still opens the system menu.
+    /// </summary>
+    private IntPtr OnWmKeyMenu(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (!MenuBarAccess.IsKeyboardMenuKey(msg, wParam, lParam, out var letter)) return IntPtr.Zero;
+        // Only where WPF could not see the key itself: focus in the message body, or nowhere WPF knows of.
+        if (!IsMessageBodyFocused && Keyboard.FocusedElement is not null) return IntPtr.Zero;
+
+        handled = true;
+        var fromBody = _vm.IsMessageOpen && IsMessageBodyFocused;
+        Dispatcher.InvokeAsync(() =>
+        {
+            _menuEnteredFromBody = fromBody;
+            if (letter == '\0') MenuBarAccess.EnterMenuMode(MainMenuBar);
+            else MenuBarAccess.OpenByAccessKey(MainMenuBar, letter);
+        }, DispatcherPriority.Input);
+        return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// Leaving a menu bar that was entered from the message body — Escape, or a command that did not
+    /// put focus anywhere itself — goes back to the message, where WPF's own "restore focus" cannot
+    /// reach: it only knows WPF elements, and the body is not one.
+    /// </summary>
+    private void OnMenuBarFocusWithinChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if ((bool)e.NewValue || !_menuEnteredFromBody) return;
+        Dispatcher.InvokeAsync(ReturnToBodyAfterMenu, DispatcherPriority.Input);
+    }
+
+    private void ReturnToBodyAfterMenu()
+    {
+        if (!_menuEnteredFromBody) return;
+        if (!IsActive) return;              // a dialog opened from the menu; OnActivated finishes this
+        _menuEnteredFromBody = false;
+        var focused = Keyboard.FocusedElement;
+        if (_vm.IsMessageOpen && (focused is null || ReferenceEquals(focused, this)))
+            FocusMessageBodyHost();
+    }
+
     private IntPtr OnWmContextMenu(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         const int WM_CONTEXTMENU = 0x007B;
@@ -4252,6 +4303,12 @@ public partial class MainWindow : Window
     {
         LogService.Debug($"[FOCUS] Activated lastPane={_paneIndexBeforeDeactivation} {FocusInfo()}");
         if (_paletteRestoresFocus) return;   // OpenCommandPalette is putting focus back into the message (#676)
+        if (_menuEnteredFromBody)
+        {
+            // A dialog opened from a menu entered with Alt while reading has closed: back to the message.
+            Dispatcher.InvokeAsync(ReturnToBodyAfterMenu, DispatcherPriority.Input);
+            return;
+        }
         if (_paneIndexBeforeDeactivation == 3 || _paneIndexBeforeDeactivation == 4)
             // Re-check IsActive at callback time: a transient activation (e.g. a modeless child of the
             // Rules Manager closing and briefly bouncing foreground through here) must NOT pull focus

@@ -25,7 +25,7 @@
 
     <DockPanel>
         <!-- Menu bar (Alt / F10 to open) -->
-        <Menu DockPanel.Dock="Top" IsMainMenu="True">
+        <Menu x:Name="MainMenuBar" DockPanel.Dock="Top" IsMainMenu="True">
             <MenuItem Header="_File">
                 <MenuItem Header="_Save"
                           AutomationProperties.Name="Save"

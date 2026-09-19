@@ -89,6 +89,15 @@ public sealed class MessageSaverTests : IDisposable
         public MessageSaveTarget? ChooseFolder(int count, MessageSaveFormat format, string initialFolder) =>
             OnChooseFolder?.Invoke(count, format, initialFolder);
 
+        public ExistingSaveChoice ExistingAnswer = ExistingSaveChoice.KeepBoth;
+        public List<(int Existing, int Total)> ExistingQuestions = [];
+
+        public ExistingSaveChoice AskAboutExisting(int existing, int total, string folderName)
+        {
+            ExistingQuestions.Add((existing, total));
+            return ExistingAnswer;
+        }
+
         public bool ConfirmTryAnotherFormat(string explanation)
         {
             Explanations.Add(explanation);
@@ -148,18 +157,63 @@ public sealed class MessageSaverTests : IDisposable
     }
 
     [Fact]
-    public async Task Save_TwiceKeepsBothCopies()
+    public async Task Save_OfAMessageSavedBefore_OpensSaveAs_OnTheSameFolderAndName()
     {
+        // Windows' rule for Save: never replace, or quietly duplicate, a file without asking.
         var (saver, _, _) = NewSaver();
         var ui = new FakeUi();
         var message = Summary();
-
         await saver.SaveAsync([message], false, ui, ct: TestContext.Current.CancellationToken);
+        Assert.Empty(ui.FileDialogs);
+
+        string? startedIn = null;
+        ui.OnChooseFile = (_, _, folder) => { startedIn = folder; return null; };   // the user cancels
+        var outcome = await saver.SaveAsync([message], false, ui, ct: TestContext.Current.CancellationToken);
+
+        var (suggested, format) = Assert.Single(ui.FileDialogs);
+        Assert.Equal(MessageExport.BuildFileName(message, MessageSaveFormat.Eml), suggested);
+        Assert.Equal(MessageSaveFormat.Eml, format);
+        Assert.Equal(_dir, startedIn);
+        Assert.Null(outcome.Text);
+        Assert.Single(Directory.GetFiles(_dir));
+    }
+
+    [Fact]
+    public async Task Save_OfAMessageSavedBefore_ReplacedThroughTheDialog_IsReplaced()
+    {
+        var (saver, mail, _) = NewSaver();
+        var ui = new FakeUi();
+        var message = Summary();
+        await saver.SaveAsync([message], false, ui, ct: TestContext.Current.CancellationToken);
+        var path = Assert.Single(Directory.GetFiles(_dir));
+
+        var newer = Encoding.ASCII.GetBytes("Subject: newer" + Environment.NewLine + Environment.NewLine + "body" + Environment.NewLine);
+        mail.Original = _ => newer;
+        ui.OnChooseFile = (name, fmt, folder) => new MessageSaveTarget(Path.Combine(folder, name), fmt, OverwriteConfirmed: true);
         await saver.SaveAsync([message], false, ui, ct: TestContext.Current.CancellationToken);
 
-        var names = Directory.GetFiles(_dir).Select(Path.GetFileName).OrderBy(n => n).ToList();
-        Assert.Equal(2, names.Count);
-        Assert.Contains(names, n => n!.EndsWith(" (2).eml", StringComparison.Ordinal));
+        Assert.Equal(newer, File.ReadAllBytes(Assert.Single(Directory.GetFiles(_dir))));
+        Assert.Equal(path, Directory.GetFiles(_dir)[0]);
+    }
+
+    [Theory]
+    [InlineData(ExistingSaveChoice.Replace, 2, "Saved 2 messages")]
+    [InlineData(ExistingSaveChoice.KeepBoth, 3, "Saved 2 messages")]
+    [InlineData(ExistingSaveChoice.Cancel, 1, null)]
+    public async Task Save_SeveralMessages_SomeSavedBefore_AsksOnce(ExistingSaveChoice answer, int filesAfter, string? outcomeStart)
+    {
+        var (saver, _, _) = NewSaver();
+        var ui = new FakeUi();
+        var one = Summary("1", "One");
+        await saver.SaveAsync([one], false, ui, ct: TestContext.Current.CancellationToken);
+
+        ui.ExistingAnswer = answer;
+        var outcome = await saver.SaveAsync([one, Summary("2", "Two")], false, ui, ct: TestContext.Current.CancellationToken);
+
+        Assert.Equal((1, 2), Assert.Single(ui.ExistingQuestions));
+        Assert.Equal(filesAfter, Directory.GetFiles(_dir).Length);
+        if (outcomeStart is null) Assert.Null(outcome.Text);
+        else Assert.StartsWith(outcomeStart, outcome.Text);
     }
 
     [Fact]
@@ -378,23 +432,6 @@ public sealed class MessageSaverTests : IDisposable
     }
 
     // ── Security review follow-ups ──────────────────────────────────────────
-
-    [Fact]
-    public async Task ANameTakenBetweenTheCheckAndTheWrite_IsNotOverwritten()
-    {
-        // The existence check says every name is free, as it would if another save created the file a
-        // moment after the check. The write must still refuse to replace it.
-        var (saver, _, _) = NewSaver(fileExists: _ => false);
-        var ui = new FakeUi();
-        var message = Summary();
-        var name = MessageExport.BuildFileName(message, MessageSaveFormat.Eml);
-        File.WriteAllText(Path.Combine(_dir, name), "someone else's file");
-
-        await saver.SaveAsync([message], false, ui, ct: TestContext.Current.CancellationToken);
-
-        Assert.Equal("someone else's file", File.ReadAllText(Path.Combine(_dir, name)));
-        Assert.Equal(2, Directory.GetFiles(_dir).Length);
-    }
 
     [Fact]
     public async Task SaveAs_AReplacementTheDialogDidNotAskAbout_IsSavedBeside_NotOver()
