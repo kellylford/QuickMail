@@ -88,8 +88,44 @@ internal static class MenuBarAccess
         if (item is null) return false;
         EnterMenuMode(menu);
         item.Focus();
-        item.IsSubmenuOpen = true;
+        OpenWithKeyboard(item);
         return true;
+    }
+
+    /// <summary>
+    /// WPF's own "open this menu from the keyboard": opens the submenu AND puts focus on its first item,
+    /// which is what Alt+F does everywhere in Windows. Setting IsSubmenuOpen alone opens the menu with
+    /// focus left on its header, so the user hears "File" and has to press Down to reach anything.
+    /// </summary>
+    private static readonly MethodInfo? OpenSubmenuWithKeyboard =
+        typeof(MenuItem).GetMethod("OpenSubmenuWithKeyboard", BindingFlags.Instance | BindingFlags.NonPublic,
+                                   binder: null, types: Type.EmptyTypes, modifiers: null);
+
+    private static void OpenWithKeyboard(MenuItem item)
+    {
+        try
+        {
+            if (OpenSubmenuWithKeyboard is not null)
+            {
+                OpenSubmenuWithKeyboard.Invoke(item, null);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"MenuBarAccess: keyboard open failed: {ex.GetType().Name}");
+        }
+        // Fallback: open it, then focus the first item that can take focus once the popup has laid out.
+        item.IsSubmenuOpen = true;
+        item.Dispatcher.InvokeAsync(() =>
+        {
+            for (var i = 0; i < item.Items.Count; i++)
+                if (item.ItemContainerGenerator.ContainerFromIndex(i) is MenuItem { IsEnabled: true, Focusable: true } first)
+                {
+                    first.Focus();
+                    return;
+                }
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     /// <summary>The top-level menu whose access key is <paramref name="letter"/>, or null.</summary>

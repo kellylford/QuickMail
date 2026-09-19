@@ -254,7 +254,7 @@ public class MenuBarAccessTests
     }
 
     [StaFact]
-    public void AltAndALetter_OpensThatMenu()
+    public void AltAndALetter_OpensThatMenu_OnItsFirstItem()
     {
         var (window, menu, _, view) = BuildWindow();
         try
@@ -262,6 +262,10 @@ public class MenuBarAccessTests
             MenuBarAccess.OpenByAccessKey(menu, 'v');
             Drain();
             Assert.True(view.IsSubmenuOpen, "Alt+V should open the View menu.");
+            // As Alt+V does everywhere in Windows: focus on the menu's first item, not on its header.
+            var first = view.ItemContainerGenerator.ContainerFromIndex(0) as MenuItem;
+            Assert.NotNull(first);
+            Assert.Same(first, Keyboard.FocusedElement);
         }
         finally { LeaveMenuMode(menu); window.Close(); }
     }
