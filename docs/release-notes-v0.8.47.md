@@ -35,6 +35,14 @@ POP3 accounts now keep the whole original of every message they download. Before
 
 [#728](https://github.com/kellylford/QuickMail/issues/728)
 
+## Fixed
+
+### A message could open a web page without being clicked
+
+A specially written message could make QuickMail open a web page in your browser just by being previewed. It could also make your browser look up the sender's server as the message was shown, which tells the sender it was read. QuickMail now opens a web page only when you activate a link, and the cleanup applied to every message's formatting now catches the trick these messages used. The problem was found during the security review of saving messages.
+
+[#728](https://github.com/kellylford/QuickMail/issues/728)
+
 ---
 
 ## Reporting Issues

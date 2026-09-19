@@ -42,13 +42,12 @@ public class MessageSavePdfTests
             };
             var html = MessageExport.BuildHtmlDocument(detail,
                 new MessageSaveContext("Kelly", "Inbox", null, DateTimeOffset.Now));
-            var path = Path.Combine(dir, "out.pdf");
             var ui = new MessageSaveUi(window, () => null,
                 beforeModal: null, userDataFolder: Path.Combine(dir, "webview2"));
 
-            Run(() => ui.WritePdfAsync(html, path, CancellationToken.None), TimeSpan.FromSeconds(60));
+            byte[] bytes = [];
+            Run(async () => bytes = await ui.RenderPdfAsync(html, CancellationToken.None), TimeSpan.FromSeconds(60));
 
-            var bytes = File.ReadAllBytes(path);
             Assert.True(bytes.Length > 500, $"PDF is only {bytes.Length} bytes.");
             Assert.Equal("%PDF", Encoding.ASCII.GetString(bytes, 0, 4));
 

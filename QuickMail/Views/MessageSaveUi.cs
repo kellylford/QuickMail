@@ -89,9 +89,16 @@ internal sealed class MessageSaveUi : IMessageSaveUi
         // whatever the list says. Otherwise the type list decides, and its extension is added.
         var chosen = MessageSaveFormats.FromExtension(Path.GetExtension(dlg.FileName)) ?? FormatAt(dlg.FilterIndex);
         var path = dlg.FileName;
+        // The dialog asked about replacing dlg.FileName, and only that. "Invoice 3.2" reads to it as a
+        // file with a ".2" extension; once ".eml" is added this is a different file it never asked
+        // about, so that one is saved beside any existing copy instead of over it.
+        var confirmed = true;
         if (MessageSaveFormats.FromExtension(Path.GetExtension(path)) is null)
+        {
             path += MessageSaveFormats.Extension(chosen);
-        return new MessageSaveTarget(path, chosen);
+            confirmed = false;
+        }
+        return new MessageSaveTarget(path, chosen, OverwriteConfirmed: confirmed);
     }
 
     public MessageSaveTarget? ChooseFolder(int count, MessageSaveFormat format, string initialFolder)
@@ -119,22 +126,25 @@ internal sealed class MessageSaveUi : IMessageSaveUi
         Modal(() => MessageBox.Show(_owner, explanation, "Save", MessageBoxButton.YesNo, MessageBoxImage.Information))
         == MessageBoxResult.Yes;
 
-    public async Task WritePdfAsync(string html, string path, CancellationToken ct)
+    /// <summary>The longest the engine may take to produce a PDF or accept a print job.</summary>
+    private static readonly TimeSpan OutputTimeout = TimeSpan.FromSeconds(60);
+
+    public async Task<byte[]> RenderPdfAsync(string html, CancellationToken ct)
     {
-        await WithDocumentAsync(html, async (core, _) =>
+        return await WithDocumentAsync(html, async (core, _) =>
         {
             // Through the DevTools protocol rather than PrintToPdfAsync, because only this asks for a
             // TAGGED PDF — headings, paragraphs, tables and reading order a screen reader can use.
             // PrintToPdfAsync writes an untagged one: measured, not assumed (no StructTreeRoot).
             // The call works with DevTools itself turned off; that setting only governs the window.
-            var result = await core.CallDevToolsProtocolMethodAsync("Page.printToPDF",
+            var result = await Bounded(core.CallDevToolsProtocolMethodAsync("Page.printToPDF",
                 "{\"generateTaggedPDF\":true,\"generateDocumentOutline\":true," +
-                "\"printBackground\":false,\"displayHeaderFooter\":false,\"preferCSSPageSize\":true}");
+                "\"printBackground\":false,\"displayHeaderFooter\":false,\"preferCSSPageSize\":true}"),
+                "The PDF took too long to make.", ct);
             using var json = System.Text.Json.JsonDocument.Parse(result);
             var data = json.RootElement.GetProperty("data").GetString()
-                ?? throw new IOException("The PDF could not be written.");
-            await File.WriteAllBytesAsync(path, Convert.FromBase64String(data), ct);
-            return true;
+                ?? throw new IOException("The PDF could not be made.");
+            return Convert.FromBase64String(data);
         }, ct);
     }
 
@@ -173,7 +183,7 @@ internal sealed class MessageSaveUi : IMessageSaveUi
             if (dialog.PageRangeSelection == PageRangeSelection.UserPages)
                 settings.PageRanges = $"{dialog.PageRange.PageFrom}-{dialog.PageRange.PageTo}";
 
-            var status = await core.PrintAsync(settings);
+            var status = await Bounded(core.PrintAsync(settings), "The printer took too long to respond.", ct);
             return status switch
             {
                 CoreWebView2PrintStatus.Succeeded          => true,
@@ -181,6 +191,20 @@ internal sealed class MessageSaveUi : IMessageSaveUi
                 _                                          => throw new IOException("The printer reported an error."),
             };
         }, ct);
+    }
+
+    /// <summary>
+    /// Awaits an engine call that takes no cancellation token, giving up after
+    /// <see cref="OutputTimeout"/>. Cancellation is reported as cancellation, not as a timeout.
+    /// </summary>
+    private static async Task<T> Bounded<T>(Task<T> work, string timeoutMessage, CancellationToken ct)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var finished = await Task.WhenAny(work, Task.Delay(OutputTimeout, linked.Token));
+        ct.ThrowIfCancellationRequested();
+        if (finished != work) throw new TimeoutException(timeoutMessage);
+        linked.Cancel();   // stop the delay
+        return await work;
     }
 
     /// <summary>
@@ -234,12 +258,7 @@ internal sealed class MessageSaveUi : IMessageSaveUi
                 core.Navigate(new Uri(tempFile).AbsoluteUri);
             }
 
-            using (ct.Register(() => loaded.TrySetCanceled(ct)))
-            {
-                var finished = await Task.WhenAny(loaded.Task, Task.Delay(TimeSpan.FromSeconds(30), ct));
-                if (finished != loaded.Task) throw new TimeoutException("The page took too long to lay out.");
-                await loaded.Task;
-            }
+            await Bounded(loaded.Task, "The page took too long to lay out.", ct);
 
             return await action(core, env);
         }

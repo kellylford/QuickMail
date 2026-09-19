@@ -479,11 +479,12 @@ public class GraphMailService : IMailService, IConnectionProbe
     /// The whole message as Exchange stores it (#728) — the same <c>$value</c> MIME download the
     /// meeting-invite path uses. A GET never changes the read state.
     /// </summary>
-    public async Task<byte[]> GetOriginalMessageAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+    public async Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
     {
         try
         {
-            return await _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/$value", GraphHeaders.ImmutableId, ct);
+            await _client.CopyToAsync(Account(accountId), $"/me/messages/{messageId}/$value",
+                GraphHeaders.ImmutableId, destination, ct);
         }
         catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {

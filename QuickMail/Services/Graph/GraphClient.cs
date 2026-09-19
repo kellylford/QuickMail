@@ -269,6 +269,19 @@ public sealed class GraphClient : IDisposable
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }
 
+    /// <summary>
+    /// A GET whose body is streamed into <paramref name="destination"/> rather than read into memory
+    /// whole — for a message's MIME, which can be hundreds of megabytes (#728).
+    /// </summary>
+    public async Task CopyToAsync(AccountModel account, string path,
+        IReadOnlyDictionary<string, string>? headers, System.IO.Stream destination, CancellationToken ct = default)
+    {
+        using var resp = await SendAsync(account, HttpMethod.Get, path, null, scopes: null, silentOnly: false, headers, ct);
+        await EnsureSuccessAsync(resp, ct);
+        await using var body = await resp.Content.ReadAsStreamAsync(ct);
+        await body.CopyToAsync(destination, ct);
+    }
+
     private Task<HttpResponseMessage> SendAsync(
         AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, CancellationToken ct)
         => SendAsync(account, method, pathOrUrl, contentFactory, null, silentOnly: false, headers: null, ct);

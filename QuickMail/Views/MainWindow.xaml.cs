@@ -3640,6 +3640,15 @@ public partial class MainWindow : Window
                     uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                     return;
                 args.Cancel = true;
+                // Only a navigation the USER started leaves the message: a link they activated. One the
+                // document starts by itself — a <meta> refresh, say — is cancelled and goes nowhere.
+                // Handing those to the browser too meant a crafted message opened a web page (or ran a
+                // quickmail: action) merely by being previewed, with no click. #728 security review.
+                if (!args.IsUserInitiated)
+                {
+                    LogService.Debug("Reading pane: cancelled a navigation the document started on its own.");
+                    return;
+                }
                 if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
                 {
                     HandleQuickMailUri(uri);
@@ -3650,6 +3659,8 @@ public partial class MainWindow : Window
             MessageBody.CoreWebView2.NewWindowRequested += (_, args) =>
             {
                 args.Handled = true;
+                // As NavigationStarting: nothing opens that the user did not ask for.
+                if (!args.IsUserInitiated) return;
                 OpenExternal(args.Uri);
             };
             MessageBody.CoreWebView2.ProcessFailed += (_, args) =>

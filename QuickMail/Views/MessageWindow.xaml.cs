@@ -298,6 +298,13 @@ public partial class MessageWindow : Window
                     uri.StartsWith("data:",  StringComparison.OrdinalIgnoreCase))
                     return;
                 args.Cancel = true;
+                // Only a navigation the user started leaves the message; one the document starts by
+                // itself (a <meta> refresh) goes nowhere. See the reading pane's handler. #728 review.
+                if (!args.IsUserInitiated)
+                {
+                    LogService.Debug("MessageWindow: cancelled a navigation the document started on its own.");
+                    return;
+                }
                 // The event card's RSVP buttons are quickmail: links. Cancelling the navigation is
                 // what keeps this document — and its aria-live status region — alive across the reply.
                 if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
@@ -316,6 +323,7 @@ public partial class MessageWindow : Window
             MessageBody.CoreWebView2.NewWindowRequested += (_, args) =>
             {
                 args.Handled = true;
+                if (!args.IsUserInitiated) return;   // as NavigationStarting above
                 OpenExternal(args.Uri);
             };
 

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -155,15 +156,18 @@ public interface IMailService : IDisposable
     Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default);
 
     /// <summary>
-    /// The original message — every byte as the server holds it, attachments included — for saving as
-    /// a .eml file (#728). Never a copy rebuilt from the cached parts: a rebuilt message is not the
-    /// original, and a saved file that claims to be one must be. Must not mark the message read.
+    /// Writes the original message — every byte as the server holds it, attachments included — to
+    /// <paramref name="destination"/>, for saving as a .eml file (#728). Streamed, not returned as an
+    /// array: a message can be hundreds of megabytes, and holding copies of it in memory is a
+    /// denial of service a hostile server or sender can aim at. Never a copy rebuilt from the cached
+    /// parts: a saved file that claims to be the original must be. Must not mark the message read.
     /// <para>Throws <see cref="MessageOriginalUnavailableException"/> when the original exists nowhere
     /// QuickMail can reach; a connection failure propagates as itself, so the caller can tell
-    /// "offline, try later" from "gone". The default is for backends with no way to get it.</para>
+    /// "offline, try later" from "gone". On any failure <paramref name="destination"/> may hold part
+    /// of the message; the caller discards it. The default is for backends with no way to get it.</para>
     /// </summary>
-    Task<byte[]> GetOriginalMessageAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
-        => throw new MessageOriginalUnavailableException("This account cannot provide the original message.");
+    Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
+        => Task.FromException(new MessageOriginalUnavailableException("This account cannot provide the original message."));
 
     // ── Copy / Move messages ─────────────────────────────────────────────────
     Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default);

@@ -33,10 +33,22 @@ public static class MessageExport
 
     private static readonly HashSet<string> ReservedDeviceNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "COM\u00B9", "COM\u00B2", "COM\u00B3",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT\u00B9", "LPT\u00B2", "LPT\u00B3",
     };
+
+    /// <summary>
+    /// True when Windows would open a device rather than a file for this name. Windows judges the part
+    /// before the first dot, trimmed — so "NUL.x - Jane.eml" is the NUL device, and a save to it would
+    /// report success and write nothing.
+    /// </summary>
+    internal static bool IsReservedDeviceName(string fileName)
+    {
+        var dot = fileName.IndexOf('.');
+        var head = (dot >= 0 ? fileName[..dot] : fileName).Trim(' ', '.');
+        return ReservedDeviceNames.Contains(head);
+    }
 
     // ── File names ────────────────────────────────────────────────────────────
 
@@ -60,8 +72,8 @@ public static class MessageExport
         if (date.Length > 0)   parts.Add(date);
 
         var stem = string.Join(" - ", parts);
-        if (ReservedDeviceNames.Contains(stem)) stem = "_" + stem;
-        return stem + MessageSaveFormats.Extension(format);
+        var name = stem + MessageSaveFormats.Extension(format);
+        return IsReservedDeviceName(name) ? "_" + name : name;
     }
 
     /// <summary>
@@ -243,9 +255,29 @@ public static class MessageExport
         return (string.Empty, false);
     }
 
-    // A header value with a line break in it would start what looks like a new field.
-    private static string OneLine(string value) =>
-        string.Join(' ', value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()));
+    /// <summary>
+    /// A header value as one line of plain text. Anything that breaks a line in some viewer — CR, LF,
+    /// NEL, the Unicode line and paragraph separators, vertical tab, form feed — would let a header
+    /// start what looks like a detail line of its own ("Date: …" forged inside a subject), and the
+    /// other control characters (ESC among them) have no business in a text file. All become spaces.
+    /// Bidirectional overrides and isolates are dropped: a right-to-left override in a display name
+    /// reorders the address that follows it on screen.
+    /// </summary>
+    internal static string OneLine(string value)
+    {
+        var sb = new StringBuilder(value.Length);
+        foreach (var c in value)
+        {
+            if (IsBidiControl(c)) continue;
+            var category = char.GetUnicodeCategory(c);
+            sb.Append(category is UnicodeCategory.Control or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator
+                ? ' ' : c);
+        }
+        return string.Join(' ', sb.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static bool IsBidiControl(char c) =>
+        c is '\u061C' or '\u200E' or '\u200F' or (>= '\u202A' and <= '\u202E') or (>= '\u2066' and <= '\u2069');
 
     private static string NormalizeNewlines(string text) =>
         text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", "\r\n");
@@ -291,13 +323,14 @@ public static class MessageExport
           .Append("@media print{body{max-width:none;padding:0;}}")
           .Append("</style></head><body>");
 
-        sb.Append("<header><h1>").Append(e(title)).Append("</h1>");
+        sb.Append("<header><h1><bdi>").Append(e(OneLine(title))).Append("</bdi></h1>");
         sb.Append("<table class=\"qm-details\"><caption style=\"position:absolute;left:-10000px\">Message details</caption><tbody>");
         foreach (var (label, value) in BuildDetails(detail, context))
         {
             if (label == "Subject") continue;   // it is the heading
-            sb.Append("<tr><th scope=\"row\">").Append(e(label)).Append("</th><td>")
-              .Append(e(OneLine(value))).Append("</td></tr>");
+            // <bdi>: a value's own text direction cannot spill into the row around it.
+            sb.Append("<tr><th scope=\"row\">").Append(e(label)).Append("</th><td><bdi>")
+              .Append(e(OneLine(value))).Append("</bdi></td></tr>");
         }
         sb.Append("</tbody></table></header><hr><main>");
 

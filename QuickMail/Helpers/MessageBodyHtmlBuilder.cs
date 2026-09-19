@@ -19,6 +19,17 @@ public static class MessageBodyHtmlBuilder
     public const int MaxRichHtmlTableCount  = 500;
     public const int MaxReaderTextChars     = 140_000;
 
+    /// <summary>Rounds of the stripping passes before settling; see <see cref="TryStripHeavyHtml(string, TimeSpan, out string)"/>.</summary>
+    private const int MaxStripRounds = 8;
+
+    /// <summary>
+    /// An opening or closing tag of any element the stripping passes remove, as the HTML tokenizer
+    /// reads a tag name: ended by whitespace, a solidus, a closing bracket, or the end of input.
+    /// </summary>
+    private const string ResidualForbiddenTag =
+        @"<(/?(?:script|style|svg|math|iframe|frame|frameset|object|embed|applet|video|audio|source|track|" +
+        @"canvas|form|img|image|link|base|meta|input|button|portal)(?=[\s/>]|$))";
+
     private static readonly Regex AutoLinkUrl = new(
         @"\b((?:https?|mailto):[^\s<>""']+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled,
@@ -153,6 +164,10 @@ public static class MessageBodyHtmlBuilder
         body = RemoveTitle(body);
         body = SafeRegexReplace(body, "</?(html|head|body)\\b[^>]*>", string.Empty,
                                 RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        // The host page's own landmarks: a "</main>" in the message would close the box the message
+        // is contained in, and a "<header>" would open a second one beside the real details.
+        body = SafeRegexReplace(body, @"<(/?(?:main|header)(?=[\s/>]|$))", "&lt;$1",
+                                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         fragment = body;
         return true;
     }
@@ -320,36 +335,54 @@ public static class MessageBodyHtmlBuilder
             return result;
         }
 
+        // The passes run to a fixed point, not once. Each pass removes text, and removing text can join
+        // the pieces either side of it into a tag an EARLIER pass exists to remove: "<me<link>ta
+        // http-equiv=refresh …>" is a <meta> refresh once the <link> pass has run, and
+        // "<me style=x ta …>" is one once the attribute pass has. A single ordered sweep handed those
+        // straight to the parser: a saved page that redirected when opened, and a reading pane that
+        // launched the URL in the browser on preview. Found by the #728 security review, 2026-09-18.
         var body = html;
-        // Remove elements hidden via inline display:none (e.g. newsletter preheader padding divs).
-        // Must run before style-attribute stripping, which would make these visible.
-        body = Step(body,
-            @"<(div|span|p)\b[^>]*\bstyle\s*=\s*(?:""[^""]*display\s*:\s*none[^""]*""|'[^']*display\s*:\s*none[^']*')[^>]*>.*?" + EndTag("\\1"),
-            RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = Step(body, "<!--.*?-->", RegexOptions.Singleline);
-        // End tags use EndTag() rather than a literal "</script>": the HTML tokenizer closes an
-        // element at "</script >", "</script/>" and "</script foo>" as readily as at "</script>",
-        // and a pattern that accepts only the last of those leaves the other three to be stripped
-        // by nobody and executed by the parser. Reported privately 2026-09-09 with a working
-        // proof of concept; the same asymmetry applied to every rule below.
-        body = Step(body, "<script\\b.*?" + EndTag("script"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = Step(body, "<style\\b.*?" + EndTag("style"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = Step(body, "<svg\\b.*?" + EndTag("svg"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = Step(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?" + EndTag("\\1"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        // Substitute each image's alt text before images are removed (issue #163). Removing the
-        // element outright discards the only name the image has: the CSP blocks the pixels either
-        // way, so what is lost is not the picture but the words describing it. Worst where the
-        // image is the whole content of a link — the anchor is left empty, has no accessible name,
-        // and is announced from its href instead, so a row of social icons reads as whatever the
-        // tracking URLs happen to spell ("redirect", "c/1pfGAI30…") rather than "Facebook".
-        body = StepEval(body, ImgWithAltText, ImageAltReplacement);
-        body = Step(body, "<(img|link|base|input|button|meta)\\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        // target is stripped so that anchors navigate in-place: a target="_blank" link raises
-        // WebView2's NewWindowRequested rather than NavigationStarting, and any host that
-        // forgets to handle that event silently opens the link in an in-app popup instead of
-        // the user's default browser (issue #483). Hosts handle both events; this keeps the
-        // rendered document from depending on that.
-        body = Step(body, "\\s(on\\w+|style|src|srcset|background|target)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        for (var round = 0; round < MaxStripRounds; round++)
+        {
+            var before = body;
+            // Remove elements hidden via inline display:none (e.g. newsletter preheader padding divs).
+            // Must run before style-attribute stripping, which would make these visible.
+            body = Step(body,
+                @"<(div|span|p)\b[^>]*\bstyle\s*=\s*(?:""[^""]*display\s*:\s*none[^""]*""|'[^']*display\s*:\s*none[^']*')[^>]*>.*?" + EndTag("\\1"),
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            body = Step(body, "<!--.*?-->", RegexOptions.Singleline);
+            // End tags use EndTag() rather than a literal "</script>": the HTML tokenizer closes an
+            // element at "</script >", "</script/>" and "</script foo>" as readily as at "</script>",
+            // and a pattern that accepts only the last of those leaves the other three to be stripped
+            // by nobody and executed by the parser. Reported privately 2026-09-09 with a working
+            // proof of concept; the same asymmetry applied to every rule below.
+            body = Step(body, "<script\\b.*?" + EndTag("script"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            body = Step(body, "<style\\b.*?" + EndTag("style"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            body = Step(body, "<svg\\b.*?" + EndTag("svg"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            body = Step(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?" + EndTag("\\1"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // Substitute each image's alt text before images are removed (issue #163). Removing the
+            // element outright discards the only name the image has: the CSP blocks the pixels either
+            // way, so what is lost is not the picture but the words describing it. Worst where the
+            // image is the whole content of a link — the anchor is left empty, has no accessible name,
+            // and is announced from its href instead, so a row of social icons reads as whatever the
+            // tracking URLs happen to spell ("redirect", "c/1pfGAI30…") rather than "Facebook".
+            body = StepEval(body, ImgWithAltText, ImageAltReplacement);
+            body = Step(body, "<(img|link|base|input|button|meta)\\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // target is stripped so that anchors navigate in-place: a target="_blank" link raises
+            // WebView2's NewWindowRequested rather than NavigationStarting, and any host that
+            // forgets to handle that event silently opens the link in an in-app popup instead of
+            // the user's default browser (issue #483). Hosts handle both events; this keeps the
+            // rendered document from depending on that.
+            body = Step(body, "\\s(on\\w+|style|src|srcset|background|target)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            if (!complete || string.Equals(before, body, StringComparison.Ordinal)) break;
+        }
+
+        // Whatever the rounds left, no opener of a removed element survives as markup: its "<" is
+        // escaped, so it renders as text. This also covers a <style> or <script> with NO end tag,
+        // which the paired patterns above never match: an unclosed <style> turns the whole rest of
+        // the document into a stylesheet that can hide and replace everything around the message.
+        // The escape is the guarantee; the rounds are what keep ordinary mail looking as it did.
+        body = Step(body, ResidualForbiddenTag, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, "&lt;$1");
         stripped = body;
         return complete;
     }

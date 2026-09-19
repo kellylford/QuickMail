@@ -279,9 +279,9 @@ public class MessageExportTests
     public void Html_DetailsAreATableWithRowHeaders()
     {
         var html = MessageExport.BuildHtmlDocument(Detail(), Context);
-        Assert.Contains("<h1>Your order has shipped</h1>", html);
+        Assert.Contains("<h1><bdi>Your order has shipped</bdi></h1>", html);
         Assert.Contains("<th scope=\"row\">From</th>", html);
-        Assert.Contains("<th scope=\"row\">Folder</th><td>Inbox/Receipts</td>", html);
+        Assert.Contains("<th scope=\"row\">Folder</th><td><bdi>Inbox/Receipts</bdi></td>", html);
         Assert.DoesNotContain("<th scope=\"row\">Subject</th>", html);   // the heading is the subject
     }
 
@@ -292,6 +292,83 @@ public class MessageExportTests
         Assert.Contains("<div class=\"qm-plain\">", html);
         Assert.Contains("&lt;b&gt;now&lt;/b&gt;", html);
         Assert.Contains("<a href=\"https://example.com\"", html);
+    }
+
+    // ── Security review, 2026-09-18 ──────────────────────────────────────────
+    // Each removal could join the text either side of it into a tag an earlier pass removes. These
+    // are the review's working inputs, and the same sanitizer renders the reading pane.
+
+    [Theory]
+    [InlineData("<p>Hi</p><me<link>ta http-equiv=\"refresh\" content=\"0;url=https://evil.example/\">", "meta")]
+    [InlineData("<p>Hi</p><me style=\"x\"ta http-equiv=\"refresh\" content=\"0;url=https://evil.example/\">", "meta")]
+    [InlineData("<li<img>nk rel=preconnect href=https://tracker.example>", "link")]
+    [InlineData("<sty<link>le>header{display:none}</style>", "style")]
+    [InlineData("<scr<meta>ipt>alert(1)</script>", "script")]
+    [InlineData("<ba<img>se href=\"https://evil.example/\">", "base")]
+    [InlineData("<ifr<link>ame srcdoc=\"x\"></iframe>", "iframe")]
+    [InlineData("<p>Hi</p><style>header{display:none} main::before{content:'From: CEO'}", "style")]
+    public void Sanitizer_ATagJoinedTogetherByARemoval_NeverSurvivesAsMarkup(string hostile, string tag)
+    {
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(hostile, out var fragment));
+        Assert.DoesNotMatch(new System.Text.RegularExpressions.Regex($"<{tag}(?=[\\s/>]|$)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase), fragment);
+
+        // The reading pane's own document, built by the same passes.
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedHtmlDocument("s", hostile, out var document));
+        var body = document[document.IndexOf("<body", StringComparison.Ordinal)..];
+        Assert.DoesNotMatch(new System.Text.RegularExpressions.Regex($"<{tag}(?=[\\s/>]|$)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase), body);
+    }
+
+    [Fact]
+    public void Sanitizer_OrdinaryMailIsUnchangedByTheExtraRounds()
+    {
+        const string html = "<table><tr><td><a href=\"https://example.com\">Link</a></td></tr></table><p>Hello <b>there</b></p>";
+        Assert.True(MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(html, out var fragment));
+        Assert.Equal(html, fragment);
+    }
+
+    [Fact]
+    public void Html_TheBodyCannotCloseOrReopenTheLandmarksAroundIt()
+    {
+        var html = MessageExport.BuildHtmlDocument(Detail(html: "<p>x</p></main><header><h1>Fake</h1></header>"), Context);
+        Assert.Equal(1, CountOf(html, "</main>"));
+        Assert.Equal(1, CountOf(html, "<header>"));
+    }
+
+    [Theory]
+    [InlineData("\u2028")]
+    [InlineData("\u2029")]
+    [InlineData("\u0085")]
+    [InlineData("\v")]
+    [InlineData("\f")]
+    [InlineData("\u001b")]
+    public void Text_NoLineBreakingCharacterCanForgeADetailLine(string separator)
+    {
+        var text = MessageExport.BuildTextDocument(Detail(subject: $"Hi{separator}Date: Monday"), Context);
+        var firstLine = text[..text.IndexOf("\r\n", StringComparison.Ordinal)];
+        Assert.Equal("Subject: Hi Date: Monday", firstLine);
+    }
+
+    [Fact]
+    public void Details_BidiOverridesAreDropped_AndHtmlValuesAreIsolated()
+    {
+        Assert.Equal("Jane moc.live@x", MessageExport.OneLine("Jane \u202Emoc.live@x"));
+        var html = MessageExport.BuildHtmlDocument(Detail(from: "Jane \u202E<x@example.com>"), Context);
+        Assert.DoesNotContain('\u202E', html);
+        Assert.Contains("<td><bdi>", html);
+    }
+
+    [Theory]
+    [InlineData("NUL.x")]
+    [InlineData("con.txt")]
+    [InlineData("CONIN$.y")]
+    [InlineData("COM\u00B9.z")]
+    public void FileName_AReservedDeviceNameBeforeTheFirstDot_IsNotUsedBare(string subject)
+    {
+        var name = MessageExport.BuildFileName(Detail(subject: subject), MessageSaveFormat.Eml);
+        Assert.StartsWith("_", name);
+        Assert.False(MessageExport.IsReservedDeviceName(name));
     }
 
     private static int CountOf(string text, string value)

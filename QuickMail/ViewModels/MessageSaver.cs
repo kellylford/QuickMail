@@ -12,7 +12,11 @@ using QuickMail.Services;
 namespace QuickMail.ViewModels;
 
 /// <summary>Where the user chose to save: a file for one message, a folder for several.</summary>
-public sealed record MessageSaveTarget(string Path, MessageSaveFormat Format);
+/// <param name="OverwriteConfirmed">
+/// True only when the Save dialog itself asked about replacing exactly <paramref name="Path"/> — that
+/// is, the path came back as the dialog returned it. Anything else is never overwritten.
+/// </param>
+public sealed record MessageSaveTarget(string Path, MessageSaveFormat Format, bool OverwriteConfirmed = false);
 
 /// <summary>
 /// The window-side half of saving and printing (#728): the dialogs, and the two things that need a
@@ -33,8 +37,8 @@ public interface IMessageSaveUi
     /// <summary>Explains why the original could not be saved and asks whether to pick another format.</summary>
     bool ConfirmTryAnotherFormat(string explanation);
 
-    /// <summary>Writes <paramref name="html"/> to <paramref name="path"/> as a PDF.</summary>
-    Task WritePdfAsync(string html, string path, CancellationToken ct);
+    /// <summary>Lays <paramref name="html"/> out and returns it as a PDF.</summary>
+    Task<byte[]> RenderPdfAsync(string html, CancellationToken ct);
 
     /// <summary>Shows the Print dialog for <paramref name="html"/> and prints it. False when cancelled.</summary>
     Task<bool> PrintAsync(string html, string documentTitle, CancellationToken ct);
@@ -73,11 +77,17 @@ public sealed class MessageSaver
         _defaultFolder = defaultFolder ?? (() => Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
     }
 
-    /// <summary>The folder Save writes into: the one set in Settings, else Documents.</summary>
+    /// <summary>
+    /// The folder Save writes into: the one set in Settings, else Documents. A relative path (only
+    /// possible by editing config.ini) is ignored: it would resolve against whatever the working
+    /// directory is, which for an installed copy is the folder the next update replaces.
+    /// </summary>
     public string SaveFolder()
     {
-        var configured = _config.Load().SaveMessageFolder;
-        return string.IsNullOrWhiteSpace(configured) ? _defaultFolder() : configured.Trim();
+        var configured = _config.Load().SaveMessageFolder?.Trim();
+        return string.IsNullOrEmpty(configured) || !Path.IsPathFullyQualified(configured)
+            ? _defaultFolder()
+            : configured;
     }
 
     /// <summary>
@@ -94,7 +104,8 @@ public sealed class MessageSaver
         var config = _config.Load();
         var format = formatOverride ?? MessageSaveFormats.FromConfigValue(config.SaveMessageFormat);
 
-        string? singlePath = null;   // Save As on one message: exactly the path the dialog returned
+        string? singleName = null;   // Save As on one message: the name the dialog returned
+        var overwriteSingle = false; // ...and whether the dialog asked about replacing it
         string folder;
         if (chooseLocation)
         {
@@ -110,8 +121,9 @@ public sealed class MessageSaver
             format = target.Format;
             if (messages.Count == 1)
             {
-                singlePath = target.Path;
-                folder     = Path.GetDirectoryName(target.Path) ?? start;
+                singleName      = Path.GetFileName(target.Path);
+                overwriteSingle = target.OverwriteConfirmed;
+                folder          = Path.GetDirectoryName(target.Path) ?? start;
             }
             else
             {
@@ -126,7 +138,7 @@ public sealed class MessageSaver
             try { Directory.CreateDirectory(folder); }
             catch (Exception ex)
             {
-                LogService.Log("MessageSaver: save folder unavailable", ex);
+                LogService.Log($"MessageSaver: save folder unavailable: {ex.GetType().Name} (0x{ex.HResult:X8})");
                 return new MessageSaveOutcome(
                     $"The save folder {folder} is not available. Choose another in Settings, or use Save As.");
             }
@@ -139,11 +151,10 @@ public sealed class MessageSaver
         foreach (var message in messages)
         {
             ct.ThrowIfCancellationRequested();
-            var path = singlePath ?? MessageExport.UniquePath(folder, MessageExport.BuildFileName(message, format), _fileExists);
+            var name = singleName ?? MessageExport.BuildFileName(message, format);
             try
             {
-                await WriteOneAsync(message, format, path, ui, ct);
-                saved.Add(path);
+                saved.Add(await WriteOneAsync(message, format, folder, name, overwriteSingle, ui, ct));
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) when (format == MessageSaveFormat.Eml && OriginalOutOfReach(ex, ct) is { } reason)
@@ -152,7 +163,9 @@ public sealed class MessageSaver
             }
             catch (Exception ex)
             {
-                LogService.Log($"MessageSaver: could not save message {message.MessageId} as {format}", ex);
+                // The type and code only: a file-system exception's message carries the path, and the
+                // path is built from the subject and sender, which the log must not record.
+                LogService.Log($"MessageSaver: could not save a message as {format}: {ex.GetType().Name} (0x{ex.HResult:X8})");
                 otherFailed.Add(ConnectionFailure.IsConnectionFailure(ex, ct)
                     ? "the message is not available offline"
                     : ex.Message);
@@ -184,7 +197,7 @@ public sealed class MessageSaver
         try { detail = await LoadDetailAsync(message, ct); }
         catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
         {
-            LogService.Log("MessageSaver: could not load message to print", ex);
+            LogService.Log($"MessageSaver: could not load a message to print: {ex.GetType().Name} (0x{ex.HResult:X8})");
             return new MessageSaveOutcome(ConnectionFailure.IsConnectionFailure(ex, ct)
                 ? "This message is not available offline, so it cannot be printed."
                 : $"Could not print: {ex.Message}");
@@ -200,41 +213,119 @@ public sealed class MessageSaver
         }
         catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
         {
-            LogService.Log("MessageSaver: print failed", ex);
+            LogService.Log($"MessageSaver: print failed: {ex.GetType().Name} (0x{ex.HResult:X8})");
             return new MessageSaveOutcome($"Could not print: {ex.Message}");
         }
     }
 
-    private async Task WriteOneAsync(MailMessageSummary message, MessageSaveFormat format, string path, IMessageSaveUi ui, CancellationToken ct)
+    /// <summary>Saves one message, and returns the path it was written to.</summary>
+    private async Task<string> WriteOneAsync(
+        MailMessageSummary message, MessageSaveFormat format, string folder, string fileName, bool overwrite,
+        IMessageSaveUi ui, CancellationToken ct)
     {
         if (format == MessageSaveFormat.Eml)
         {
-            var bytes = await _mail.GetOriginalMessageAsync(message.AccountId, message.FolderName, message.MessageId, ct);
-            if (bytes.Length == 0)
-                throw new MessageOriginalUnavailableException("The server returned an empty message.");
-            await File.WriteAllBytesAsync(path, bytes, ct);
-            return;
+            // Streamed from the server straight into the file; never held in memory whole.
+            var (stream, writing, final) = CreateFile(folder, fileName, overwrite);
+            var keep = false;
+            try
+            {
+                await using (stream)
+                {
+                    await _mail.CopyOriginalMessageToAsync(message.AccountId, message.FolderName, message.MessageId, stream, ct);
+                    if (stream.Length == 0)
+                        throw new MessageOriginalUnavailableException("The server returned an empty message.");
+                }
+                Finish(writing, final);
+                keep = true;
+                return final;
+            }
+            finally
+            {
+                // A failed or cancelled download leaves a partial file that is not the original.
+                if (!keep) TryDelete(writing);
+            }
         }
 
         var detail  = await LoadDetailAsync(message, ct);
         var context = _context(detail);
-        switch (format)
+        byte[] bytes = format switch
         {
-            case MessageSaveFormat.Text:
-                var text = await Task.Run(() => MessageExport.BuildTextDocument(detail, context), ct);
-                // UTF-8 with a byte-order mark, so Notepad and every other Windows editor reads a
-                // non-English message correctly instead of guessing a code page.
-                await File.WriteAllTextAsync(path, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true), ct);
-                break;
-            case MessageSaveFormat.Html:
-                var html = await Task.Run(() => MessageExport.BuildHtmlDocument(detail, context), ct);
-                await File.WriteAllTextAsync(path, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), ct);
-                break;
-            case MessageSaveFormat.Pdf:
-                var page = await Task.Run(() => MessageExport.BuildHtmlDocument(detail, context), ct);
-                await ui.WritePdfAsync(page, path, ct);
-                break;
+            // UTF-8 with a byte-order mark, so Notepad and every other Windows editor reads a
+            // non-English message correctly instead of guessing a code page.
+            MessageSaveFormat.Text => WithBom(await Task.Run(() => MessageExport.BuildTextDocument(detail, context), ct)),
+            MessageSaveFormat.Html => Encoding.UTF8.GetBytes(await Task.Run(() => MessageExport.BuildHtmlDocument(detail, context), ct)),
+            _                      => await ui.RenderPdfAsync(await Task.Run(() => MessageExport.BuildHtmlDocument(detail, context), ct), ct),
+        };
+
+        var (file, writingTo, finalPath) = CreateFile(folder, fileName, overwrite);
+        var done = false;
+        try
+        {
+            await using (file) await file.WriteAsync(bytes, ct);
+            Finish(writingTo, finalPath);
+            done = true;
+            return finalPath;
         }
+        finally
+        {
+            if (!done) TryDelete(writingTo);
+        }
+    }
+
+    private static byte[] WithBom(string text)
+    {
+        var body = Encoding.UTF8.GetBytes(text);
+        var bytes = new byte[body.Length + 3];
+        bytes[0] = 0xEF; bytes[1] = 0xBB; bytes[2] = 0xBF;
+        body.CopyTo(bytes, 3);
+        return bytes;
+    }
+
+    /// <summary>
+    /// Creates the file to write. Never replaces an existing file unless <paramref name="overwrite"/>
+    /// says the Save dialog asked about exactly this one: otherwise the file is created with
+    /// <see cref="FileMode.CreateNew"/>, which fails rather than overwrites, and a name that turns out
+    /// to be taken — by another save finishing between the check and the create — moves on to the next
+    /// "(n)". Checking and then writing with an overwriting mode let two saves of look-alike messages
+    /// land on one name and silently keep only the second.
+    /// </summary>
+    /// <para>A confirmed replacement is written beside the old file first and moved over it only once
+    /// complete, so a failed download does not destroy the file the user chose to replace.</para>
+    private (FileStream Stream, string Writing, string Final) CreateFile(string folder, string fileName, bool overwrite)
+    {
+        if (overwrite)
+        {
+            var exact = Path.Combine(folder, fileName);
+            var temp  = Path.Combine(folder, $".{Guid.NewGuid():N}.quickmail-saving");
+            return (new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None), temp, exact);
+        }
+
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            var path = MessageExport.UniquePath(folder, fileName, p => _fileExists(p) || File.Exists(p));
+            try
+            {
+                return (new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None), path, path);
+            }
+            catch (IOException) when (File.Exists(path))
+            {
+                // Taken since UniquePath looked; try the next number.
+            }
+        }
+        throw new IOException("No free file name could be found in the folder.");
+    }
+
+    private static void Finish(string writing, string final)
+    {
+        if (!string.Equals(writing, final, StringComparison.OrdinalIgnoreCase))
+            File.Move(writing, final, overwrite: true);
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception ex) { LogService.Log($"MessageSaver: could not remove a partial file: {ex.GetType().Name}"); }
     }
 
     /// <summary>
@@ -329,6 +420,6 @@ public sealed class MessageSaver
             cfg.LastSaveAsFolder = folder;
             _config.Save(cfg);
         }
-        catch (Exception ex) { LogService.Log("MessageSaver: could not remember the Save As folder", ex); }
+        catch (Exception ex) { LogService.Log($"MessageSaver: could not remember the Save As folder: {ex.GetType().Name}"); }
     }
 }

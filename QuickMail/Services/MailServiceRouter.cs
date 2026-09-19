@@ -220,8 +220,8 @@ public class MailServiceRouter : IMailService, IConnectionProbe
     public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default)
         => For(accountId).DownloadAttachmentAsync(accountId, folderName, messageId, partSpecifier, ct);
 
-    public Task<byte[]> GetOriginalMessageAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
-        => For(accountId).GetOriginalMessageAsync(accountId, folderName, messageId, ct);
+    public Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, System.IO.Stream destination, CancellationToken ct = default)
+        => For(accountId).CopyOriginalMessageToAsync(accountId, folderName, messageId, destination, ct);
 
     public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
         => For(accountId).CopyMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);

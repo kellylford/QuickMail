@@ -1193,10 +1193,12 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
     /// <summary>
     /// The whole message as the server stores it (#728). The folder is opened read-only (EXAMINE) and
-    /// MailKit fetches with BODY.PEEK[], so saving a message never marks it read.
+    /// MailKit fetches with BODY.PEEK[], so saving a message never marks it read. Fetched through the
+    /// streaming callback, which hands over the literal as it arrives off the socket, so the message
+    /// goes to <paramref name="destination"/> without being held in memory whole.
     /// </summary>
-    public async Task<byte[]> GetOriginalMessageAsync(
-        Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+    public async Task CopyOriginalMessageToAsync(
+        Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
@@ -1204,10 +1206,22 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
         {
-            using var source = await folder.GetStreamAsync(ToUid(messageId), ct);
-            using var copy   = new MemoryStream();
-            await source.CopyToAsync(copy, ct);
-            return copy.ToArray();
+            var found = false;
+            if (folder is ImapFolder imap)
+            {
+                await imap.GetStreamsAsync(new[] { ToUid(messageId) }, async (_, _, _, source, token) =>
+                {
+                    found = true;
+                    await source.CopyToAsync(destination, token);
+                }, ct);
+            }
+            else
+            {
+                using var source = await folder.GetStreamAsync(ToUid(messageId), ct);
+                await source.CopyToAsync(destination, ct);
+                found = true;
+            }
+            if (!found) throw new MessageNotFoundException($"Message UID {messageId} not found.");
         }
         catch (MessageNotFoundException)
         {

@@ -116,8 +116,9 @@ public class SaveMessageSettingsTests
             To = "someone@example.com", Subject = "Plain draft", Body = "no attachments here",
         }, replaceMessageId: null);
 
-        var bytes = await pop.GetOriginalMessageAsync(account, "Drafts", id, TestContext.Current.CancellationToken);
-        using var ms = new MemoryStream(bytes);
+        using var ms = new MemoryStream();
+        await pop.CopyOriginalMessageToAsync(account, "Drafts", id, ms, TestContext.Current.CancellationToken);
+        ms.Position = 0;
         Assert.Equal("Plain draft", (await MimeMessage.LoadAsync(ms, TestContext.Current.CancellationToken)).Subject);
     }
 
@@ -130,7 +131,9 @@ public class SaveMessageSettingsTests
         await store.StoreMimeBytesAsync(account, "Inbox", "uidl-1", [1, 2, 3]);
 
         var pop = new Pop3MailService(store);
-        Assert.Equal([1, 2, 3], await pop.GetOriginalMessageAsync(account, "Inbox", "uidl-1", TestContext.Current.CancellationToken));
+        using var ms = new MemoryStream();
+        await pop.CopyOriginalMessageToAsync(account, "Inbox", "uidl-1", ms, TestContext.Current.CancellationToken);
+        Assert.Equal([1, 2, 3], ms.ToArray());
     }
 
     [Fact]
@@ -146,7 +149,7 @@ public class SaveMessageSettingsTests
 
         var pop = new Pop3MailService(store);
         var ex = await Assert.ThrowsAsync<MessageOriginalUnavailableException>(
-            () => pop.GetOriginalMessageAsync(account, "Sent", localId, TestContext.Current.CancellationToken));
+            () => pop.CopyOriginalMessageToAsync(account, "Sent", localId, Stream.Null, TestContext.Current.CancellationToken));
         Assert.Contains("did not keep the original", ex.Message);
     }
 
@@ -155,6 +158,6 @@ public class SaveMessageSettingsTests
     {
         IMailService stub = new StubImapMailService();
         await Assert.ThrowsAsync<MessageOriginalUnavailableException>(
-            () => stub.GetOriginalMessageAsync(Guid.NewGuid(), "INBOX", "1", TestContext.Current.CancellationToken));
+            () => stub.CopyOriginalMessageToAsync(Guid.NewGuid(), "INBOX", "1", Stream.Null, TestContext.Current.CancellationToken));
     }
 }

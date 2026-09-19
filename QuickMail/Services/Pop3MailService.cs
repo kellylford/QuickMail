@@ -757,14 +757,20 @@ public class Pop3MailService : IMailService
     /// collected before every original was kept, and still on the server — downloaded again by its
     /// UIDL and kept from then on. Never rebuilt from the cached parts: either the original exists or
     /// Save says it does not.
+    /// <para>A POP3 message has to be held in memory whole regardless — the store keeps it as one
+    /// blob, and collection already downloads it that way — so this writes out bytes it already has.</para>
     /// </summary>
-    public async Task<byte[]> GetOriginalMessageAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+    public async Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
     {
         if (_onlineMode)
             throw new MessageOriginalUnavailableException(OnlineModeExplanation);
 
         var stored = await _store.LoadMimeBytesAsync(accountId, folderName, messageId);
-        if (stored is { Length: > 0 }) return stored;
+        if (stored is { Length: > 0 })
+        {
+            await destination.WriteAsync(stored, ct);
+            return;
+        }
 
         const string notKept =
             "QuickMail did not keep the original of this message when it was downloaded, and it is no longer on the server.";
@@ -773,6 +779,11 @@ public class Pop3MailService : IMailService
         if (messageId.StartsWith(LocalIdPrefix, StringComparison.Ordinal))
             throw new MessageOriginalUnavailableException(notKept);
 
+        // What the cached copy says the message is, to check the server hands back the same one: a
+        // server may reuse a UIDL (RFC 1939 allows it once the old message is gone), and keeping the
+        // wrong message's bytes would make it this message's original — and its attachments — for good.
+        var expectedId = (await _store.LoadDetailAsync(accountId, folderName, messageId))?.InternetMessageId?.Trim('<', '>', ' ');
+
         var bytes = await RunMaildropSessionAsync<byte[]?>(accountId, async client =>
         {
             if (client.Count == 0) return (Result: null, Quit: false);
@@ -780,18 +791,31 @@ public class Pop3MailService : IMailService
             var index = uidls.IndexOf(messageId);
             if (index < 0) return (Result: null, Quit: false);
 
-            var msg = await client.GetMessageAsync(index, ct);
-            using var ms = new MemoryStream();
-            await msg.WriteToAsync(ms, ct);
+            // The raw bytes as the server sent them, not a parse-and-reserialize of them.
+            using var raw = await client.GetStreamAsync(index, false, ct);
+            using var ms  = new MemoryStream();
+            await raw.CopyToAsync(ms, ct);
             // Nothing was marked for deletion, so there is nothing for a QUIT to commit.
             return (Result: ms.ToArray(), Quit: false);
         }, ct);
 
         if (bytes is null) throw new MessageOriginalUnavailableException(notKept);
 
+        if (!string.IsNullOrEmpty(expectedId))
+        {
+            using var check = new MemoryStream(bytes, writable: false);
+            var headers = await HeaderList.LoadAsync(check, ct);
+            var actualId = headers[HeaderId.MessageId]?.Trim().Trim('<', '>', ' ');
+            if (!string.Equals(expectedId, actualId, StringComparison.Ordinal))
+            {
+                LogService.Log($"POP3: UIDL {messageId} now names a different message on the server; not keeping it as the original.");
+                throw new MessageOriginalUnavailableException(notKept);
+            }
+        }
+
         // Keep it, so the next save needs no server and survives the server letting it go.
         await _store.StoreMimeBytesAsync(accountId, folderName, messageId, bytes);
-        return bytes;
+        await destination.WriteAsync(bytes, ct);
     }
 
     /// <summary>

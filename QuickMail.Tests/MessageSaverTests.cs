@@ -40,8 +40,17 @@ public sealed class MessageSaverTests : IDisposable
         public Exception? OriginalFailure;
         public int PrefetchCalls, GetDetailCalls;
 
-        public Task<byte[]> GetOriginalMessageAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
-            => OriginalFailure is not null ? Task.FromException<byte[]>(OriginalFailure) : Task.FromResult(Original!(messageId));
+        public byte[]? PartialBeforeFailure;
+
+        public async Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
+        {
+            if (OriginalFailure is not null)
+            {
+                if (PartialBeforeFailure is not null) await destination.WriteAsync(PartialBeforeFailure, ct);
+                throw OriginalFailure;
+            }
+            await destination.WriteAsync(Original!(messageId), ct);
+        }
 
         public override Task<MailMessageDetail> PrefetchMessageDetailAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
         {
@@ -86,11 +95,10 @@ public sealed class MessageSaverTests : IDisposable
             return ConfirmAnswer;
         }
 
-        public Task WritePdfAsync(string html, string path, CancellationToken ct)
+        public Task<byte[]> RenderPdfAsync(string html, CancellationToken ct)
         {
             PdfPages.Add(html);
-            File.WriteAllText(path, "%PDF-fake");
-            return Task.CompletedTask;
+            return Task.FromResult(Encoding.ASCII.GetBytes("%PDF-fake"));
         }
 
         public Task<bool> PrintAsync(string html, string documentTitle, CancellationToken ct)
@@ -100,7 +108,8 @@ public sealed class MessageSaverTests : IDisposable
         }
     }
 
-    private (MessageSaver Saver, FakeMail Mail, StubConfigService Config) NewSaver(string format = "eml", StubLocalStoreService? store = null)
+    private (MessageSaver Saver, FakeMail Mail, StubConfigService Config) NewSaver(
+        string format = "eml", StubLocalStoreService? store = null, Func<string, bool>? fileExists = null)
     {
         var mail = new FakeMail { Original = _ => Original };
         var config = new StubConfigService();
@@ -108,7 +117,8 @@ public sealed class MessageSaverTests : IDisposable
         cfg.SaveMessageFormat = format;
         cfg.SaveMessageFolder = _dir;
         var saver = new MessageSaver(mail, store, config,
-            m => new MessageSaveContext("Kelly (kelly@example.com)", "Inbox", null, DateTimeOffset.Now));
+            m => new MessageSaveContext("Kelly (kelly@example.com)", "Inbox", null, DateTimeOffset.Now),
+            fileExists, defaultFolder: () => Path.Combine(_dir, "Documents"));
         return (saver, mail, config);
     }
 
@@ -365,6 +375,82 @@ public sealed class MessageSaverTests : IDisposable
 
         Assert.Empty(ui.Explanations);   // another format would not get around this
         Assert.Contains("Access denied", outcome.Text);
+    }
+
+    // ── Security review follow-ups ──────────────────────────────────────────
+
+    [Fact]
+    public async Task ANameTakenBetweenTheCheckAndTheWrite_IsNotOverwritten()
+    {
+        // The existence check says every name is free, as it would if another save created the file a
+        // moment after the check. The write must still refuse to replace it.
+        var (saver, _, _) = NewSaver(fileExists: _ => false);
+        var ui = new FakeUi();
+        var message = Summary();
+        var name = MessageExport.BuildFileName(message, MessageSaveFormat.Eml);
+        File.WriteAllText(Path.Combine(_dir, name), "someone else's file");
+
+        await saver.SaveAsync([message], false, ui, ct: TestContext.Current.CancellationToken);
+
+        Assert.Equal("someone else's file", File.ReadAllText(Path.Combine(_dir, name)));
+        Assert.Equal(2, Directory.GetFiles(_dir).Length);
+    }
+
+    [Fact]
+    public async Task SaveAs_AReplacementTheDialogDidNotAskAbout_IsSavedBeside_NotOver()
+    {
+        var store = new StubLocalStoreService { SeededDetail = new MailMessageDetail { PlainTextBody = "Body" } };
+        var (saver, _, _) = NewSaver("eml", store);
+        var existing = Path.Combine(_dir, "Invoice 3.2.eml");
+        File.WriteAllText(existing, "keep me");
+        var ui = new FakeUi { OnChooseFile = (_, _, _) => new MessageSaveTarget(existing, MessageSaveFormat.Eml, OverwriteConfirmed: false) };
+
+        await saver.SaveAsync([Summary()], true, ui, ct: TestContext.Current.CancellationToken);
+
+        Assert.Equal("keep me", File.ReadAllText(existing));
+        Assert.True(File.Exists(Path.Combine(_dir, "Invoice 3.2 (2).eml")));
+    }
+
+    [Fact]
+    public async Task SaveAs_AConfirmedReplacement_ReplacesOnlyOnceTheNewFileIsComplete()
+    {
+        var (saver, mail, _) = NewSaver();
+        var existing = Path.Combine(_dir, "old.eml");
+        File.WriteAllText(existing, "the file the user chose to replace");
+        mail.OriginalFailure = new SocketException((int)SocketError.ConnectionReset);
+        mail.PartialBeforeFailure = [1, 2, 3];
+        var ui = new FakeUi { OnChooseFile = (_, _, _) => new MessageSaveTarget(existing, MessageSaveFormat.Eml, OverwriteConfirmed: true) };
+
+        await saver.SaveAsync([Summary()], true, ui, ct: TestContext.Current.CancellationToken);
+
+        // The download failed half way: the old file is untouched and nothing partial is left behind.
+        Assert.Equal("the file the user chose to replace", File.ReadAllText(existing));
+        Assert.Equal([existing], Directory.GetFiles(_dir));
+
+        mail.OriginalFailure = null;
+        await saver.SaveAsync([Summary()], true, ui, ct: TestContext.Current.CancellationToken);
+        Assert.Equal(Original, File.ReadAllBytes(existing));
+        Assert.Equal([existing], Directory.GetFiles(_dir));
+    }
+
+    [Fact]
+    public async Task AFailedDownload_LeavesNoPartialFile()
+    {
+        var (saver, mail, _) = NewSaver();
+        mail.OriginalFailure = new MessageOriginalUnavailableException("Gone.");
+        mail.PartialBeforeFailure = [1, 2, 3];
+
+        await saver.SaveAsync([Summary()], false, new FakeUi(), ct: TestContext.Current.CancellationToken);
+
+        Assert.Empty(Directory.GetFiles(_dir));
+    }
+
+    [Fact]
+    public void ARelativeSaveFolder_IsIgnored_ForDocuments()
+    {
+        var (saver, _, config) = NewSaver();
+        config.Load().SaveMessageFolder = @"Saved Mail";
+        Assert.Equal(Path.Combine(_dir, "Documents"), saver.SaveFolder());
     }
 
     // ── Print ────────────────────────────────────────────────────────────────
