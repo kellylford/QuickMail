@@ -201,8 +201,8 @@ public sealed partial class ServerRuleModel : ObservableObject
     {
         var c = new List<string>();
         if (!string.IsNullOrWhiteSpace(SenderContains)) c.Add($"sender contains '{SenderContains}'");
-        if (FromAddresses.Count > 0) c.Add($"from {string.Join(" or ", FromAddresses)}");
-        if (SentToAddresses.Count > 0) c.Add($"sent to {string.Join(" or ", SentToAddresses)}");
+        if (FromAddresses.Count > 0) c.Add($"from {AnyOf(FromAddresses)}");
+        if (SentToAddresses.Count > 0) c.Add($"sent to {AnyOf(SentToAddresses)}");
         if (!string.IsNullOrWhiteSpace(SubjectContains)) c.Add($"subject contains '{SubjectContains}'");
         if (!string.IsNullOrWhiteSpace(BodyOrSubjectContains)) c.Add($"subject or body contains '{BodyOrSubjectContains}'");
         if (!string.IsNullOrWhiteSpace(BodyContains)) c.Add($"body contains '{BodyContains}'");
@@ -212,6 +212,15 @@ public sealed partial class ServerRuleModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(Importance)) c.Add($"importance is {Importance}");
         return c;
     }
+
+    /// <summary>
+    /// The addresses one condition accepts. Several read as "any of a@x.com, b@y.com", not "a or b":
+    /// spoken beside the "and" that joins the conditions, "or" leaves the grouping ambiguous, and the
+    /// reading that wins is the one where the rule acts more widely than it does. A client rule's row
+    /// says the same (<see cref="UnifiedRuleRow"/>) — both kinds are read from the one list.
+    /// </summary>
+    private static string AnyOf(List<string> addresses)
+        => addresses.Count == 1 ? addresses[0] : "any of " + string.Join(", ", addresses);
 
     private List<string> DescribeActions()
     {

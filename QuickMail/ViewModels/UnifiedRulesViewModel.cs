@@ -479,8 +479,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     {
         // Editing preserves the kind: a client rule stays a client rule (spec §20.6). If the edits made
         // it un-representable as a client rule, block rather than silently convert.
-        if (!editor.IsClientRepresentable)
-            return "This rule can no longer run as a client-side rule. Remove the conditions or actions client-side rules don't support.";
+        if (editor.ClientEditError is { } clientError) return clientError;
 
         var updated = editor.ToClientRule(accountId);
         updated.Id = original.Id;                          // preserve identity

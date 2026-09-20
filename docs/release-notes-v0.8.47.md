@@ -29,6 +29,26 @@ Saved web pages and PDFs leave pictures out, as the reading pane does, with each
 
 ## Changed
 
+### Client-side rules can match more
+
+A client-side rule — which is every rule on an IMAP account, on a personal Outlook.com, Hotmail or Live.com account, and on a work or school account added over Standard IMAP/SMTP — can now use four conditions that until now only a server-side rule could:
+
+- **From addresses** and **Sent to addresses** take more than one address. A message matches when it has **any one** of them, so one rule covers a sender's several addresses instead of one rule each.
+- **Sender contains** can be used together with **From addresses**. Both have to match, so you can narrow a list of addresses to the ones whose sender also carries some text.
+- **Subject or body contains** looks for your text in either place. As with **Body contains**, the body a client-side rule reads is the start of the message QuickMail keeps as its preview, not the whole message.
+
+Conditions are still ANDed with each other: a message has to satisfy every condition you checked. The choice of addresses lives inside the one condition.
+
+**Sender contains** and **From addresses** have swapped places in the editor. **Sender contains** is now the first condition under **Apply when a message matches**, and **From addresses** has moved to **Advanced conditions & actions**. **Create Rule from Message** (**Ctrl+Shift+T**) fills in **Sender contains**, which is the right field for it: a sender reads as a name rather than an address — an organization's address book writes one as "Last, First" — and a comma in an address field is a separator, so a rule for one person would have become a rule for anyone with either name. If you made such a rule in an earlier version, opening it now shows it under **Sender contains**, unchanged, and saving it keeps it that way.
+
+The editor already offered all four, and until now **Save** refused them on an account that can only have client-side rules. That refusal is gone. One combination is still refused, because a client-side rule has a single subject condition: **Subject contains** and **Subject or body contains** at the same time. Use one or the other.
+
+If you go back to an earlier version, such a rule matches on the first of its addresses, and on the subject half of **Subject or body contains** — less mail than the rule covers, not more. The exception is a rule using **Sender contains** *and* **From addresses** together: an earlier version has no **Sender contains**, so it matches on the first address alone — which is not the same set of messages, and can include some this version would leave alone. Saving rules in an earlier version drops the rest either way, as it does with a rule that has several actions.
+
+[#682](https://github.com/kellylford/QuickMail/issues/682)
+
+---
+
 ### POP3 keeps the original of every message
 
 POP3 accounts now keep the whole original of every message they download. Before, they kept it only for messages with attachments. This is what makes it possible to save a POP3 message as an email message file. Messages downloaded before this version that had no attachments are downloaded again when you save them, if they are still on the server. The extra copy uses some disk space, about the size of the mail itself.
