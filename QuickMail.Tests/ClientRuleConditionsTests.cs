@@ -195,7 +195,9 @@ public class ClientRuleConditionsTests
     public void SeveralAddresses_AreSaved_AndTheOldFieldKeepsTheFirst()
     {
         var vm = Editor();
+        vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@x.com, invoices@y.com";
+        vm.UseSentToAddresses = true;
         vm.SentToAddresses = "dev@list.org; ops@list.org";
 
         var rule = vm.ToClientRule(Guid.NewGuid());
@@ -217,7 +219,9 @@ public class ClientRuleConditionsTests
         // No list where the single field says it all: an unchanged rules.json for the common rule, and
         // nothing new for an older build to ignore.
         var vm = Editor();
+        vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@x.com";
+        vm.UseSentToAddresses = true;
         vm.SentToAddresses = "dev@list.org";
 
         var rule = vm.ToClientRule(Guid.NewGuid());
@@ -232,6 +236,7 @@ public class ClientRuleConditionsTests
     public void SenderContainsAlone_IsAlsoLeftInTheFieldEveryClientRuleHasUsed()
     {
         var vm = Editor();
+        vm.UseSenderContains = true;
         vm.SenderContains = "acme";
 
         var rule = vm.ToClientRule(Guid.NewGuid());
@@ -262,7 +267,9 @@ public class ClientRuleConditionsTests
     public void SenderContainsWithAddresses_KeepsBothConditions()
     {
         var vm = Editor();
+        vm.UseSenderContains = true;
         vm.SenderContains = "acme";
+        vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@acme.com";
 
         var rule = vm.ToClientRule(Guid.NewGuid());
@@ -280,6 +287,7 @@ public class ClientRuleConditionsTests
         // switched-off address list would leave such a build testing the From header on nothing at all,
         // and a Move rule there would act on every message.
         var vm = Editor();
+        vm.UseSenderContains = true;
         vm.SenderContains = "acme";
         vm.FromAddresses = "billing@x.com, invoices@y.com";
         vm.UseFromAddresses = false;
@@ -303,6 +311,7 @@ public class ClientRuleConditionsTests
     public void SubjectOrBody_IsSavedAsTheSubjectConditionWidened()
     {
         var vm = Editor();
+        vm.UseBodyOrSubjectContains = true;
         vm.BodyOrSubjectContains = "invoice";
 
         var rule = vm.ToClientRule(Guid.NewGuid());
@@ -316,7 +325,9 @@ public class ClientRuleConditionsTests
     public void SubjectAndSubjectOrBodyTogether_CantBeAClientRule()
     {
         var vm = Editor();
+        vm.UseSubjectContains = true;
         vm.SubjectContains = "Digest";
+        vm.UseBodyOrSubjectContains = true;
         vm.BodyOrSubjectContains = "invoice";
 
         Assert.False(vm.IsClientRepresentable);
@@ -334,8 +345,11 @@ public class ClientRuleConditionsTests
     {
         // The report behind #682: an IMAP account was offered these and only told on Save.
         var vm = Editor();
+        vm.UseSenderContains = true;
         vm.SenderContains = "acme";
+        vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@acme.com, invoices@acme.net";
+        vm.UseSentToAddresses = true;
         vm.SentToAddresses = "me@work.com, team@work.com";
 
         Assert.True(vm.Validate());
@@ -346,6 +360,7 @@ public class ClientRuleConditionsTests
     public void OnAMicrosoft365Account_TheyStillPreferAServerRule()
     {
         var vm = Editor();
+        vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@x.com, invoices@y.com";
 
         Assert.Equal(RuleRunsWhere.Server, vm.Classify(accountSupportsServerRules: true).Kind);
@@ -357,9 +372,13 @@ public class ClientRuleConditionsTests
     public void EveryNewConditionSurvivesASaveAndReopen()
     {
         var vm = Editor();
+        vm.UseSenderContains = true;
         vm.SenderContains = "acme";
+        vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@acme.com, invoices@acme.net";
+        vm.UseSentToAddresses = true;
         vm.SentToAddresses = "me@work.com, team@work.com";
+        vm.UseBodyOrSubjectContains = true;
         vm.BodyOrSubjectContains = "invoice";
 
         var reopened = ServerRuleEditorViewModel.ForEditClient(vm.ToClientRule(Guid.NewGuid()));
@@ -385,6 +404,7 @@ public class ClientRuleConditionsTests
         var vm = Editor();
         vm.FromAddresses = "billing@x.com, invoices@y.com";
         vm.UseFromAddresses = false;
+        vm.UseSubjectContains = true;
         vm.SubjectContains = "Digest";
 
         var rule = vm.ToClientRule(Guid.NewGuid());
@@ -405,6 +425,7 @@ public class ClientRuleConditionsTests
         vm.UseSenderContains = false;
         vm.FromAddresses = "billing@x.com, invoices@y.com";
         vm.UseFromAddresses = false;
+        vm.UseSubjectContains = true;
         vm.SubjectContains = "Digest";
 
         var rule = vm.ToClientRule(Guid.NewGuid());
@@ -577,9 +598,13 @@ public class ClientRuleConditionsTests
         {
             var svc = new RuleService(new StubImapMailService(), new StubLocalStoreService(), dir);
             var vm = Editor("Round trip");
+            vm.UseSenderContains = true;
             vm.SenderContains = "acme";
+            vm.UseFromAddresses = true;
             vm.FromAddresses = "billing@acme.com, invoices@acme.net";
+            vm.UseSentToAddresses = true;
             vm.SentToAddresses = "me@work.com, team@work.com";
+            vm.UseBodyOrSubjectContains = true;
             vm.BodyOrSubjectContains = "invoice";
             svc.SaveRules([vm.ToClientRule(Guid.NewGuid())]);
 

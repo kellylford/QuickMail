@@ -29,6 +29,18 @@ Saved web pages and PDFs leave pictures out, as the reading pane does, with each
 
 ## Changed
 
+### A new rule starts with no conditions checked
+
+The rule editor used to open a new rule with every condition already checked — **Sender contains**, **Subject contains**, and several inside **Advanced conditions & actions** that you could not see without expanding it. The boxes beside them were empty, so the rule did not actually test anything, but the form said otherwise, and there was no telling at a glance which of the ticked conditions had anything in them.
+
+Now **Enabled** is the only box ticked on a new rule. Check a condition when you want it. Until you do, its box is read-only and skipped by Tab, so the order is: check the condition, then Tab into its box and type.
+
+**Create Rule from Message** (**Ctrl+Shift+T**) checks what it has filled in for you — the sender — and nothing else. The subject still comes across unchecked, as before: a rule matching one sender *and* one exact subject line matches, in practice, only the thread it was made from.
+
+Editing an existing rule is unchanged: it opens with exactly the conditions that rule uses, checked.
+
+---
+
 ### The rule editor stops offering what an account cannot use
 
 On an account that can only have client-side rules — any IMAP or POP3 account, a personal Outlook.com, Hotmail or Live.com account, and a work or school account added over Standard IMAP/SMTP — the rule editor used to offer every option a server-side rule can use, and only refuse them when you pressed **Save**, by which point you had built the rule.

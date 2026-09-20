@@ -161,6 +161,14 @@ public class ServerOnlyOptionsDisabledTests
             Assert.True(property is not null && property.CanWrite,
                 $"'{path}' is bound in the editor but cannot be set here, so this guard would skip it silently. Give it a setter, or exclude it deliberately.");
             property!.SetValue(vm, NonDefaultFor(property.PropertyType));
+
+            // A condition needs its switch as well as its text to count for anything, now that a new
+            // rule starts with every switch clear. Setting the text alone would leave every condition
+            // inert, so nothing could move IsClientRepresentable and a server-only free-text condition
+            // added later would slip straight through the derivation below.
+            if (typeof(ServerRuleEditorViewModel).GetProperty("Use" + path) is { CanWrite: true } toggle)
+                toggle.SetValue(vm, true);
+
             if (!vm.IsClientRepresentable) found.Add(path);
         }
         return found;

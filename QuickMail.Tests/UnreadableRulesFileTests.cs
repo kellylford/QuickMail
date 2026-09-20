@@ -48,7 +48,7 @@ public sealed class UnreadableRulesFileTests : IDisposable
                      + UnifiedRulesViewModel.ModeClause(false), vm.StatusText);
 
         vm.NewRuleCommand.Execute(null);
-        editor!.Name = "New"; editor.SubjectContains = "y"; editor.MarkAsRead = true;
+        editor!.Name = "New"; editor.UseSubjectContains = true; editor.SubjectContains = "y"; editor.MarkAsRead = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.StartsWith("Couldn't save client-side rules:", editor.SaveError);
