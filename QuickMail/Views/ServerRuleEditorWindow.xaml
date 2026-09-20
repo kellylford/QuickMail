@@ -60,14 +60,20 @@
                      and there was no way to say you only wanted one of them. Clearing the switch
                      leaves the text in the (read-only, skipped) box, so turning it back on is one
                      keystroke. The checkbox Content IS the field's label, so it carries the accessible
-                     name — no AutomationProperties.Name restating it in different words. -->
-                <CheckBox Content="From addresses (comma-separated)" IsChecked="{Binding UseFromAddresses}"
+                     name — no AutomationProperties.Name restating it in different words.
+
+                     Sender contains is the common one and From addresses is in Advanced, not the other
+                     way round (#682): Create Rule from Message prefills the sender, which is a
+                     substring of the From header and may well hold a comma — an Exchange address book
+                     writes "Last, First" — and the address list reads a comma as a separator. The
+                     prefilled field is the one that has to be first. -->
+                <CheckBox Content="Sender contains" IsChecked="{Binding UseSenderContains}"
                           Style="{StaticResource EditorCheckBox}"/>
-                <TextBox Text="{Binding FromAddresses, UpdateSourceTrigger=PropertyChanged}"
+                <TextBox Text="{Binding SenderContains, UpdateSourceTrigger=PropertyChanged}"
                          Style="{StaticResource EditorTextBox}"
-                         IsReadOnly="{Binding UseFromAddresses, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
-                         IsTabStop="{Binding UseFromAddresses}"
-                         AutomationProperties.Name="From addresses"/>
+                         IsReadOnly="{Binding UseSenderContains, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
+                         IsTabStop="{Binding UseSenderContains}"
+                         AutomationProperties.Name="Sender contains"/>
 
                 <CheckBox Content="Subject contains" IsChecked="{Binding UseSubjectContains}"
                           Style="{StaticResource EditorCheckBox}"/>
@@ -109,13 +115,13 @@
                     <StackPanel Margin="0,6,0,0">
                         <TextBlock Text="More conditions" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
 
-                        <CheckBox Content="Sender contains (substring match on sender)" IsChecked="{Binding UseSenderContains}"
+                        <CheckBox Content="From addresses (comma-separated)" IsChecked="{Binding UseFromAddresses}"
                                   Style="{StaticResource EditorCheckBox}"/>
-                        <TextBox Text="{Binding SenderContains, UpdateSourceTrigger=PropertyChanged}"
+                        <TextBox Text="{Binding FromAddresses, UpdateSourceTrigger=PropertyChanged}"
                                  Style="{StaticResource EditorTextBox}"
-                                 IsReadOnly="{Binding UseSenderContains, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
-                                 IsTabStop="{Binding UseSenderContains}"
-                                 AutomationProperties.Name="Sender contains"/>
+                                 IsReadOnly="{Binding UseFromAddresses, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
+                                 IsTabStop="{Binding UseFromAddresses}"
+                                 AutomationProperties.Name="From addresses"/>
 
                         <CheckBox Content="Sent to addresses (comma-separated)" IsChecked="{Binding UseSentToAddresses}"
                                   Style="{StaticResource EditorCheckBox}"/>

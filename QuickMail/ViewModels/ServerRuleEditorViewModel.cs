@@ -67,8 +67,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         {
             IsNew = true,
             Name = template.Name ?? string.Empty,
-            FromAddresses = template.FromContains ?? string.Empty,
-            UseFromAddresses = template.UseFromCondition,
+            // A template made from a message carries its sender as Sender contains, because a display
+            // name can hold a comma and the address fields would read that as two addresses (#682).
+            SenderContains = template.SenderContains ?? string.Empty,
+            UseSenderContains = template.UseSenderCondition,
+            FromAddresses = template.SenderContains is null ? template.FromContains ?? string.Empty : string.Empty,
+            UseFromAddresses = template.SenderContains is null && template.UseFromCondition,
             SubjectContains = template.SubjectContains ?? string.Empty,
             UseSubjectContains = template.UseSubjectCondition,
         };
@@ -126,12 +130,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>
     /// Populates the editor from a client-side <see cref="MailRule"/> (the inverse of
     /// <see cref="ToClientRule"/>), so a client rule can be edited in the same unified editor. The
-    /// client model's single-value substring conditions map to the corresponding fields, and its
-    /// actions to theirs. Editing preserves the rule's kind (client stays client) — the
+    /// client model's substring conditions map to the corresponding fields, and its actions to theirs. Editing preserves the rule's kind (client stays client) — the
     /// caller re-persists via the client rule service, it is not re-classified (spec §20.6).
     /// </summary>
     public static ServerRuleEditorViewModel ForEditClient(MailRule rule)
     {
+        var from = ReadFromCondition(rule);
         var vm = new ServerRuleEditorViewModel
         {
             IsNew = false,
@@ -140,12 +144,18 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             // A client condition is live only when its flag is set AND it has a value; the editor's
             // checkbox carries that same meaning, so the text comes across either way and the flag
             // decides whether the condition is switched on (#665).
-            FromAddresses = rule.FromContains ?? string.Empty,
-            UseFromAddresses = rule.UseFromCondition,
-            SentToAddresses = rule.ToContains ?? string.Empty,
+            FromAddresses = from.Addresses,
+            UseFromAddresses = from.UseAddresses,
+            SenderContains = from.Sender,
+            UseSenderContains = from.UseSender,
+            SentToAddresses = AddressText(rule.SentToAddresses, rule.ToContains),
             UseSentToAddresses = rule.UseToCondition,
-            SubjectContains = rule.SubjectContains ?? string.Empty,
-            UseSubjectContains = rule.UseSubjectCondition,
+            // One subject slot, which "subject or body" widens rather than replaces (#682), so the text
+            // goes back to whichever box it came from.
+            SubjectContains = rule.SubjectAlsoMatchesBody ? string.Empty : rule.SubjectContains ?? string.Empty,
+            UseSubjectContains = !rule.SubjectAlsoMatchesBody && rule.UseSubjectCondition,
+            BodyOrSubjectContains = rule.SubjectAlsoMatchesBody ? rule.SubjectContains ?? string.Empty : string.Empty,
+            UseBodyOrSubjectContains = rule.SubjectAlsoMatchesBody && rule.UseSubjectCondition,
             BodyContains = rule.BodyContains ?? string.Empty,
             UseBodyContains = rule.UseBodyCondition,
             HasAttachments = rule.MustHaveAttachments,
@@ -174,6 +184,42 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         vm.SyncConditionSwitchesToContent();
         vm.IsAdvancedExpanded = vm.HasAdvancedContent();
         return vm;
+    }
+
+    /// <summary>The editor text for a client rule's address condition: the list where the rule has one,
+    /// otherwise the single value the list would have been written from.</summary>
+    private static string AddressText(List<string>? addresses, string? single)
+        => addresses is { Count: > 0 } ? string.Join(", ", addresses) : single ?? string.Empty;
+
+    /// <summary>
+    /// Which of the editor's two From boxes a client rule's From condition belongs in, and whether each
+    /// is switched on. Three shapes reach this:
+    /// <list type="bullet">
+    /// <item>A rule carrying a sender and no address list keeps that sender in the old field too, for an
+    /// older build (<see cref="MailRule.FromContainsMirrorsSender"/>). It belongs in the Sender box
+    /// only, or the editor would show it twice.</item>
+    /// <item>A rule with an address list shows the list, with any sender beside it.</item>
+    /// <item>A rule from before #682 holds its whole From condition in one field, where a comma was
+    /// never a separator: <b>Ctrl+Shift+T wrote the sender's DISPLAY NAME there</b>, and an Exchange
+    /// address book routinely renders that "Last, First". Offered back as an address list it would be
+    /// split in two on the next save, and a rule for one person would become a rule for anyone called
+    /// either half. It goes in the Sender box, which is what it has always meant — a substring match on
+    /// From — and saving it again writes back exactly the rule that was opened.</item>
+    /// </list>
+    /// </summary>
+    private static (string Addresses, bool UseAddresses, string Sender, bool UseSender) ReadFromCondition(MailRule rule)
+    {
+        if (rule.FromContainsMirrorsSender)
+            return (string.Empty, false, rule.SenderContains ?? string.Empty, rule.UseSenderCondition);
+
+        if (rule.FromAddresses is { Count: > 0 })
+            return (AddressText(rule.FromAddresses, rule.FromContains), rule.UseFromCondition,
+                    rule.SenderContains ?? string.Empty, rule.UseSenderCondition);
+
+        var single = rule.FromContains ?? string.Empty;
+        return SplitAddresses(single).Count > 1
+            ? (string.Empty, false, single, rule.UseFromCondition)
+            : (single, rule.UseFromCondition, string.Empty, false);
     }
 
     // ── Fields ──────────────────────────────────────────────────────────────
@@ -395,51 +441,34 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>
     /// Assembles a client-side <see cref="MailRule"/> from the client-representable subset of the
     /// form (spec §20.4). Only valid when <see cref="IsClientRepresentable"/> holds — the caller
-    /// guarantees a single From/To value and only actions a client rule can do, so the mapping is lossless. The
+    /// guarantees only conditions and actions a client rule can hold, so the mapping is lossless. The
     /// client engine treats a condition as active only when its flag is set AND it has a value, so
     /// empty conditions are simply switched off.
     /// </summary>
     public MailRule ToClientRule(Guid accountId)
     {
-        var fromAddrs = SplitAddresses(EffectiveFromAddresses);
-        var from = !string.IsNullOrWhiteSpace(EffectiveSenderContains) ? EffectiveSenderContains.Trim()
-                 : fromAddrs.Count == 1 ? fromAddrs[0]
-                 : null;
-        var to = SplitAddresses(EffectiveSentToAddresses) is { Count: 1 } toList ? toList[0] : null;
-        var subject = Blank(EffectiveSubjectContains);
-        var body = Blank(EffectiveBodyContains);
-
-        // Which conditions the rule actually matches on — decided before the switched-off text below
-        // is carried in, so carrying it can never turn a condition on.
-        var useFrom = from is not null;
-        var useTo = to is not null;
-        var useSubject = subject is not null;
-        var useBody = body is not null;
-
-        // A switched-off condition keeps its text in the saved rule with its flag clear, so reopening
-        // the rule offers the text back instead of an empty box. That is MailRule's own meaning of the
-        // flag — the engine, the row summary and the standalone Rules Manager's validation all require
-        // the flag AND text — and it is what the standalone manager has always stored, so the same rule
-        // no longer means different things depending on which window saved it. Each line fills only a
-        // slot the switched-on conditions left empty: a populated-but-off Sender must never displace
-        // the From address that IS in use.
-        from ??= OffText(UseSenderContains, SenderContains) ?? OffSingleAddress(UseFromAddresses, FromAddresses);
-        to ??= OffSingleAddress(UseSentToAddresses, SentToAddresses);
-        subject ??= OffText(UseSubjectContains, SubjectContains);
-        body ??= OffText(UseBodyContains, BodyContains);
-
+        // Each condition is taken twice over. Whether it is live comes from the switched-ON value; its
+        // TEXT is carried into the saved rule either way, with the flag clear when it is off, so reopening
+        // the rule offers the text back instead of an empty box (#665). That is MailRule's own meaning of
+        // the flag — the engine and the row summary both require the flag AND a value — so the same rule
+        // means the same thing whichever window saved it. Carried text never displaces a condition that is
+        // in use: a populated-but-off field only ever fills a slot the live conditions left empty.
+        var sender = Blank(SenderContains);
+        var senderOn = !string.IsNullOrWhiteSpace(EffectiveSenderContains);
+        var fromAddrs = SplitAddresses(FromAddresses);
+        var fromOn = UseFromAddresses && fromAddrs.Count > 0;
+        var toAddrs = SplitAddresses(SentToAddresses);
+        var toOn = UseSentToAddresses && toAddrs.Count > 0;
+        var body = Blank(EffectiveBodyContains) ?? OffText(UseBodyContains, BodyContains);
         var actions = ClientActions();
 
-        return new MailRule
+        var rule = new MailRule
         {
             Name = Name.Trim(),
             IsEnabled = IsEnabled,
             AccountId = accountId,
 
-            UseFromCondition = useFrom, FromContains = from,
-            UseToCondition = useTo, ToContains = to,
-            UseSubjectCondition = useSubject, SubjectContains = subject,
-            UseBodyCondition = useBody, BodyContains = body,
+            UseBodyCondition = !string.IsNullOrWhiteSpace(EffectiveBodyContains), BodyContains = body,
             MustHaveAttachments = HasAttachments,
 
             Action = MainAction(actions),
@@ -447,6 +476,68 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             TargetFolder = MoveToFolder ? MoveToFolderId : null,
             CopyTargetFolder = CopyToFolder ? CopyToFolderId : null,
         };
+
+        // From. The addresses and Sender contains are two conditions now (#682), but only one field in
+        // the rule is old enough for a QuickMail from before #682 to read, so whichever of them is LIVE
+        // owns it — such a build must never be left testing the From header on nothing at all, which
+        // would let a Move rule empty the Inbox. Where the addresses own it they leave the first of
+        // them there, which matches less mail than the whole list, never more. A rule using BOTH is the
+        // exception, and the only one: such a build tests the addresses without the sender beside them.
+        // See MailRule.SenderContains.
+        rule.SenderContains = sender;
+        rule.UseSenderCondition = senderOn;
+
+        if (fromOn)
+        {
+            rule.UseFromCondition = true;
+            rule.FromContains = fromAddrs[0];
+            if (fromAddrs.Count > 1 || sender is not null) rule.FromAddresses = fromAddrs;
+        }
+        else if (senderOn)
+        {
+            // Sender contains is the live condition, so the old field mirrors it (FromValues reads
+            // SenderContains instead). The switched-off address text has nowhere left to sit and is
+            // dropped: the alternative is leaving the old field holding addresses the rule does not use.
+            rule.UseFromCondition = true;
+            rule.FromContains = sender;
+        }
+        else
+        {
+            // Neither is live: keep both texts, inert, so reopening the rule offers them back.
+            rule.UseFromCondition = false;
+            rule.FromContains = sender ?? fromAddrs.FirstOrDefault();
+            if (fromAddrs.Count > 0) rule.FromAddresses = fromAddrs;
+        }
+
+        // Sent-to: the same, without a Sender-contains equivalent to share the slot with. A list left
+        // switched off is kept whole, and reads as no condition in either build.
+        rule.UseToCondition = toOn;
+        rule.ToContains = toAddrs.FirstOrDefault();
+        if (toAddrs.Count > 1) rule.SentToAddresses = toAddrs;
+
+        ApplySubjectCondition(rule);
+        return rule;
+    }
+
+    /// <summary>
+    /// Fills the rule's one subject condition from the editor's two subject boxes: "Subject or body
+    /// contains" is that condition widened to the body (<see cref="MailRule.SubjectAlsoMatchesBody"/>),
+    /// not a second one. A rule that uses both at once is refused before it gets here
+    /// (<see cref="ClientModelLimits"/>), so at most one of them is live; a switched-off text takes the
+    /// slot only when neither is, and the other box's text is not kept — there is one slot, and a
+    /// condition in use has first claim on it.
+    /// </summary>
+    private void ApplySubjectCondition(MailRule rule)
+    {
+        var subject = Blank(SubjectContains);
+        var subjectOn = !string.IsNullOrWhiteSpace(EffectiveSubjectContains);
+        var subjectOrBody = Blank(BodyOrSubjectContains);
+        var subjectOrBodyOn = !string.IsNullOrWhiteSpace(EffectiveBodyOrSubjectContains);
+
+        var useSubjectOrBody = subjectOrBodyOn || (!subjectOn && subject is null && subjectOrBody is not null);
+        rule.SubjectContains = useSubjectOrBody ? subjectOrBody : subject;
+        rule.UseSubjectCondition = useSubjectOrBody ? subjectOrBodyOn : subjectOn;
+        rule.SubjectAlsoMatchesBody = useSubjectOrBody;
     }
 
     /// <summary>
@@ -625,6 +716,32 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         : $"{Join(ClientOnlyFeaturesUsed())} only works in a client-side rule, and this rule runs on the server. Remove it to save.";
 
     /// <summary>
+    /// Why an edited client rule can't be saved as it stands, or null when it can — the mirror of
+    /// <see cref="ServerEditError"/>. It names what is wrong, as the new-rule path's
+    /// <see cref="Classify"/> does: "remove what client-side rules don't support" sends the user hunting
+    /// for an unsupported condition that may not be there, when the fault is a combination of two
+    /// perfectly supported ones (#682).
+    /// </summary>
+    public string? ClientEditError
+    {
+        get
+        {
+            if (IsClientRepresentable) return null;
+
+            var serverOnly = ServerOnlyFeaturesUsed();
+            if (serverOnly.Count > 0)
+                return $"This rule runs in QuickMail, but {Join(serverOnly)} isn't available in a client-side rule. Remove it to save.";
+
+            var limits = ClientModelLimits();
+            if (limits.Count > 0)
+                return $"This rule runs in QuickMail, which {Join(limits)}. Change one to save.";
+
+            // Nothing left but an actionless rule, which Validate refuses before this is read.
+            return null;
+        }
+    }
+
+    /// <summary>
     /// True when every condition and action fits the client rule model (a near-subset of the server
     /// model): no server-only condition/action, single From/To value, a combination the client model can
     /// hold, and at least one action a client rule can do.
@@ -641,6 +758,11 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     {
         var f = new List<string>();
         if (MoveToFolder && Delete) f.Add("can't both move and delete a message");
+        // A client rule has one subject condition, which "Subject or body contains" widens rather than
+        // joins (#682, MailRule.SubjectAlsoMatchesBody), so the two can't both be switched on.
+        if (!string.IsNullOrWhiteSpace(EffectiveSubjectContains)
+            && !string.IsNullOrWhiteSpace(EffectiveBodyOrSubjectContains))
+            f.Add("can't use Subject contains and Subject or body contains at the same time");
         return f;
     }
 
@@ -662,18 +784,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     {
         var f = new List<string>();
 
-        // Conditions with no client equivalent.
-        if (!string.IsNullOrWhiteSpace(EffectiveBodyOrSubjectContains)) f.Add("the subject-or-body condition");
+        // Conditions with no client equivalent. Several From or Sent-to addresses, Sender contains
+        // alongside them, and the subject-or-body condition were here until #682, which gave the client
+        // rule model all four.
         if (SentToMe) f.Add("the “sent to me” condition");
         if (SentOnlyToMe) f.Add("the “sent only to me” condition");
         if (SelectedImportance?.Value is not null) f.Add("the importance condition");
-
-        // A client rule has a single From and a single To field.
-        var fromAddrs = SplitAddresses(EffectiveFromAddresses);
-        if (fromAddrs.Count > 1) f.Add("multiple From addresses");
-        if (!string.IsNullOrWhiteSpace(EffectiveSenderContains) && fromAddrs.Count > 0)
-            f.Add("both Sender-contains and From-addresses");
-        if (SplitAddresses(EffectiveSentToAddresses).Count > 1) f.Add("multiple Sent-to addresses");
 
         // Actions with no client equivalent.
         if (SelectedMarkImportance?.Value is not null) f.Add("Set importance");
@@ -694,7 +810,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// that is switched off but populated is still something they need to be shown.
     /// </summary>
     private bool HasAdvancedContent()
-        => !string.IsNullOrWhiteSpace(SenderContains)
+        => !string.IsNullOrWhiteSpace(FromAddresses)
            || !string.IsNullOrWhiteSpace(SentToAddresses)
            || !string.IsNullOrWhiteSpace(BodyOrSubjectContains)
            || !string.IsNullOrWhiteSpace(BodyContains)
@@ -741,10 +857,6 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     /// <summary>The text of a condition that is switched OFF — null when it is on, or has none.</summary>
     private static string? OffText(bool isOn, string raw) => isOn ? null : Blank(raw);
-
-    /// <summary>Same, for an address list the client model can only hold one entry of.</summary>
-    private static string? OffSingleAddress(bool isOn, string raw)
-        => isOn ? null : SplitAddresses(raw) is { Count: 1 } one ? one[0] : null;
 
     /// <summary>Parses a free-text recipient field ("a@b.com, c@d.com; e@f.com").</summary>
     private static List<string> SplitAddresses(string text)

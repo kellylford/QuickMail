@@ -119,13 +119,31 @@ public sealed class UnifiedRuleRow
     private static List<string> ClientConditions(MailRule r)
     {
         var conditions = new List<string>();
-        if (r.UseFromCondition && !string.IsNullOrWhiteSpace(r.FromContains)) conditions.Add($"from contains '{r.FromContains}'");
-        if (r.UseToCondition && !string.IsNullOrWhiteSpace(r.ToContains)) conditions.Add($"to contains '{r.ToContains}'");
-        if (r.UseSubjectCondition && !string.IsNullOrWhiteSpace(r.SubjectContains)) conditions.Add($"subject contains '{r.SubjectContains}'");
+        // A rule may list several addresses, any one of which matches (#682); read through the model's own
+        // accessor so the summary can't describe the condition differently from the engine that runs it.
+        if (r.FromValues() is { Count: > 0 } from) conditions.Add($"from contains {Quoted(from)}");
+        if (r.UseSenderCondition && !string.IsNullOrWhiteSpace(r.SenderContains))
+            conditions.Add($"sender contains '{r.SenderContains}'");
+        if (r.ToValues() is { Count: > 0 } to) conditions.Add($"to contains {Quoted(to)}");
+        if (r.UseSubjectCondition && !string.IsNullOrWhiteSpace(r.SubjectContains))
+            conditions.Add(r.SubjectAlsoMatchesBody
+                ? $"subject or body contains '{r.SubjectContains}'"
+                : $"subject contains '{r.SubjectContains}'");
         if (r.UseBodyCondition && !string.IsNullOrWhiteSpace(r.BodyContains)) conditions.Add($"body contains '{r.BodyContains}'");
         if (r.MustHaveAttachments) conditions.Add("has attachments");
         return conditions;
     }
+
+    /// <summary>
+    /// The values one condition accepts. A single value reads as it always has, "'a@x.com'"; several read
+    /// as "any of 'a@x.com', 'b@y.com'". "a or b" would be shorter, but spoken next to the "and" that
+    /// joins the conditions it leaves the grouping ambiguous — and the reading that wins is the one where
+    /// the rule acts more widely than it does.
+    /// </summary>
+    private static string Quoted(IReadOnlyList<string> values)
+        => values.Count == 1
+            ? $"'{values[0]}'"
+            : "any of " + string.Join(", ", values.Select(v => $"'{v}'"));
 
     /// <summary>What the rule does, in the order it does it.</summary>
     private List<string> ClientActions()

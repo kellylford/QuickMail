@@ -8494,10 +8494,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // "Rule for <sender>" that also has to match one exact subject line matches, in practice, the
         // single thread it was made from. The editor shows it in a cleared checkbox, one keystroke
         // from being part of the rule, rather than silently ANDing it with the sender.
+        // The sender goes in as "Sender contains", the condition that means a substring match on the
+        // From header — which is what this is. It must NOT go in as a From address: From holds the
+        // sender's DISPLAY NAME where there is one, an Exchange address book routinely makes that
+        // "Last, First", and the address fields read a comma as a separator. A rule for "Ford, Kelly"
+        // would become a rule for anyone called Ford OR anyone called Kelly (#682).
         var template = new MailRule
         {
             Name = $"Rule for {source.From}",
-            FromContains = source.From,
+            SenderContains = source.From,
+            UseSenderCondition = true,
             SubjectContains = string.IsNullOrWhiteSpace(source.Subject) ? null : source.Subject,
             UseSubjectCondition = false,
             AccountId = source.AccountId,

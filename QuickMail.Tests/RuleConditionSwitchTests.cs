@@ -28,7 +28,8 @@ public class RuleConditionSwitchTests
     private static MailRule Template(string from = "boss@work.com", string? subject = "Weekly Report") => new()
     {
         Name = $"Rule for {from}",
-        FromContains = from,
+        SenderContains = from,
+        UseSenderCondition = true,
         SubjectContains = subject,
         UseSubjectCondition = false,   // what MainViewModel.CreateRuleFromMessage now builds
     };
@@ -40,8 +41,8 @@ public class RuleConditionSwitchTests
     {
         var vm = ServerRuleEditorViewModel.ForNewFromTemplate(Template());
 
-        Assert.True(vm.UseFromAddresses);
-        Assert.Equal("boss@work.com", vm.FromAddresses);
+        Assert.True(vm.UseSenderContains);
+        Assert.Equal("boss@work.com", vm.SenderContains);
 
         // The text is present so the user can switch it on; the condition is not part of the rule.
         Assert.Equal("Weekly Report", vm.SubjectContains);
@@ -55,7 +56,8 @@ public class RuleConditionSwitchTests
 
         var model = vm.ToModel();
 
-        Assert.Equal(["boss@work.com"], model.FromAddresses);
+        Assert.Equal("boss@work.com", model.SenderContains);
+        Assert.Empty(model.FromAddresses);
         Assert.Null(model.SubjectContains);
     }
 
@@ -70,14 +72,14 @@ public class RuleConditionSwitchTests
     }
 
     [Fact]
-    public void SwitchingFromOff_DropsItFromTheSavedRule_ButKeepsTheText()
+    public void SwitchingTheSenderOff_DropsItFromTheSavedRule_ButKeepsTheText()
     {
         var vm = ServerRuleEditorViewModel.ForNewFromTemplate(Template());
 
-        vm.UseFromAddresses = false;
+        vm.UseSenderContains = false;
 
-        Assert.Empty(vm.ToModel().FromAddresses);
-        Assert.Equal("boss@work.com", vm.FromAddresses);   // still there to switch back on
+        Assert.Null(vm.ToModel().SenderContains);
+        Assert.Equal("boss@work.com", vm.SenderContains);   // still there to switch back on
     }
 
     [Fact]
@@ -199,6 +201,11 @@ public class RuleConditionSwitchTests
 
         Assert.True(rule.UseFromCondition);
         Assert.Equal("billing@x.com", rule.FromContains);
+        // And the rule really tests it. The dead Sender text is kept in the rule's own sender field, so
+        // without the address list beside it the old field would read as that sender's mirror and the
+        // From condition would vanish — a Mark as read rule matching every message.
+        Assert.False(rule.FromContainsMirrorsSender);
+        Assert.Equal(["billing@x.com"], rule.FromValues());
     }
 
     [Fact]
@@ -224,11 +231,12 @@ public class RuleConditionSwitchTests
     // ── Classification (spec §20.3) reads the switches too ──────────────────
 
     [Fact]
-    public void SwitchedOffServerOnlyCondition_DoesNotBlockTheClientMapping()
+    public void SwitchedOffCondition_DoesNotBlockTheClientMapping()
     {
-        // Subject-or-body has no client equivalent, so while it is switched ON the rule can only run
-        // on the server. Switching it off must actually remove it from the classifier's view — if the
-        // classifier read the raw text it would keep insisting the rule is server-only.
+        // A client rule has one subject condition, which "subject or body" widens rather than joins
+        // (#682), so while both are switched ON the rule can only run on the server. Switching one off
+        // must actually remove it from the classifier's view — if the classifier read the raw text it
+        // would keep insisting the rule is server-only.
         var vm = ServerRuleEditorViewModel.ForNew();
         vm.SubjectContains = "Digest";
         vm.BodyOrSubjectContains = "invoice";
@@ -242,18 +250,22 @@ public class RuleConditionSwitchTests
     }
 
     [Fact]
-    public void SwitchedOffFromAddresses_DoesNotCountAsMultipleFromAddresses()
+    public void SwitchedOffFromAddresses_AreNotAConditionAMoveRuleCanRestOn()
     {
+        // Move needs a condition, or the rule empties the Inbox. Addresses that are switched off are
+        // not one, however much text is sitting in the box.
         var vm = ServerRuleEditorViewModel.ForNew();
-        vm.FromAddresses = "a@x.com, b@x.com";     // more than one From: server-only
-        vm.SubjectContains = "Digest";
-        vm.MarkAsRead = true;
+        vm.Name = "Filing";
+        vm.FromAddresses = "a@x.com, b@x.com";
+        vm.MoveToFolder = true;
+        vm.MoveToFolderId = "Archive";
 
-        Assert.False(vm.IsClientRepresentable);
+        Assert.True(vm.Validate());
 
         vm.UseFromAddresses = false;
 
-        Assert.True(vm.IsClientRepresentable);
+        Assert.False(vm.Validate());
+        Assert.Contains(ServerRuleEditorViewModel.NoConditionError, vm.ActionsError, StringComparison.Ordinal);
     }
 
     // ── The command that starts it all ──────────────────────────────────────
@@ -280,8 +292,10 @@ public class RuleConditionSwitchTests
         vm.CreateRuleFromMessageCommand.Execute(null);
 
         Assert.NotNull(template);
-        Assert.True(template!.UseFromCondition);
-        Assert.Equal("boss@work.com", template.FromContains);
+        // The sender is a substring match on From, not an address list: a display name can hold a
+        // comma, which an address field reads as a separator (#682).
+        Assert.True(template!.UseSenderCondition);
+        Assert.Equal("boss@work.com", template.SenderContains);
         // Carried so it can be switched on in the editor, but not ANDed into the rule by default.
         Assert.Equal("Weekly Report", template.SubjectContains);
         Assert.False(template.UseSubjectCondition);
