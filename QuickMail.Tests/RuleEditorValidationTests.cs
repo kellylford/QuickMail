@@ -143,11 +143,13 @@ public class RuleEditorValidationTests
         // fields, because each is its own way in.
         var from = Named();
         from.Delete = true;
+        from.UseFromAddresses = true;      // ticked AND holding text, so the refusal is about the parse
         from.FromAddresses = separators;
         Assert.False(from.Validate());
 
         var sentTo = Named();
         sentTo.Delete = true;
+        sentTo.UseSentToAddresses = true;
         sentTo.SentToAddresses = separators;
         Assert.False(sentTo.Validate());
     }

@@ -279,11 +279,6 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     private string EffectiveBodyContains => UseBodyContains ? BodyContains : string.Empty;
 
     /// <summary>
-    /// Clears the switch on every condition that has no text, so an existing rule opens with exactly
-    /// the conditions it actually uses switched on. Never switches one ON — a deliberately-off but
-    /// prefilled field (Ctrl+Shift+T's subject) has to stay off.
-    /// </summary>
-    /// <summary>
     /// Switches each condition on where the rule has text for it, and off where it does not — for a
     /// SERVER rule, whose conditions are its content and which carries no per-condition flags of its own.
     /// <para>
@@ -303,6 +298,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         UseBodyContains = !string.IsNullOrWhiteSpace(BodyContains);
     }
 
+    /// <summary>
+    /// Clears the switch on every condition that has no text, so an existing CLIENT rule opens with
+    /// exactly the conditions it actually uses switched on. Never switches one ON — a deliberately-off
+    /// but prefilled field (#665) has to stay off, which is what separates this from
+    /// <see cref="SwitchConditionsToMatchContent"/>.
+    /// </summary>
     private void SyncConditionSwitchesToContent()
     {
         if (string.IsNullOrWhiteSpace(SenderContains)) UseSenderContains = false;
