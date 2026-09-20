@@ -62,6 +62,19 @@ public class RuleConditionSwitchTests
     }
 
     [Fact]
+    public void ForNewFromTemplate_TicksNothingItHasNothingToMatchOn()
+    {
+        // The sender and subject are covered above. What this adds: everything the template says
+        // nothing about arrives unticked, rather than ticked over an empty box.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(Template());
+
+        Assert.False(vm.UseFromAddresses);
+        Assert.False(vm.UseSentToAddresses);
+        Assert.False(vm.UseBodyOrSubjectContains);
+        Assert.False(vm.UseBodyContains);
+    }
+
+    [Fact]
     public void SwitchingSubjectOn_AddsItBackWithoutRetyping()
     {
         var vm = ServerRuleEditorViewModel.ForNewFromTemplate(Template());
@@ -117,27 +130,6 @@ public class RuleConditionSwitchTests
     }
 
     // ── Loading an existing rule ────────────────────────────────────────────
-
-    [Fact]
-    public void ForNewFromTemplate_TicksOnlyWhatItHasSomethingToMatchOn()
-    {
-        // Create Rule from Message: the sender is ticked because it carries the message's sender; the
-        // subject is carried but clear (see above — a rule matching this sender AND this exact subject
-        // matches the one thread it was made from); and nothing else is ticked, because nothing else
-        // has anything in it.
-        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(Template());
-
-        Assert.True(vm.UseSenderContains);
-        Assert.Equal("boss@work.com", vm.SenderContains);
-
-        Assert.False(vm.UseSubjectContains);
-        Assert.Equal("Weekly Report", vm.SubjectContains);
-
-        Assert.False(vm.UseFromAddresses);
-        Assert.False(vm.UseSentToAddresses);
-        Assert.False(vm.UseBodyOrSubjectContains);
-        Assert.False(vm.UseBodyContains);
-    }
 
     [Fact]
     public void ATemplateFlagOverAnEmptyField_TicksNothing()
@@ -232,7 +224,6 @@ public class RuleConditionSwitchTests
         // off and From switched on, the saved rule must match the From address — carrying the dead
         // Sender text into that slot would silently change what the rule matches.
         var vm = ServerRuleEditorViewModel.ForNew();
-        vm.UseSenderContains = true;
         vm.SenderContains = "accounts";
         vm.UseSenderContains = false;
         vm.UseFromAddresses = true;

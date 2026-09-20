@@ -289,7 +289,6 @@ public class ClientRuleConditionsTests
         var vm = Editor();
         vm.UseSenderContains = true;
         vm.SenderContains = "acme";
-        vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@x.com, invoices@y.com";
         vm.UseFromAddresses = false;
 
@@ -403,7 +402,6 @@ public class ClientRuleConditionsTests
         // #665: switching a condition off leaves its text one keystroke from being used again, and that
         // has to hold for a whole list, not just a single address.
         var vm = Editor();
-        vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@x.com, invoices@y.com";
         vm.UseFromAddresses = false;
         vm.UseSubjectContains = true;
@@ -423,10 +421,8 @@ public class ClientRuleConditionsTests
         // #665 again: two switched-off boxes, two texts to offer back. Neither owns the old field, so
         // neither has to give up its own.
         var vm = Editor();
-        vm.UseSenderContains = true;
         vm.SenderContains = "acme";
         vm.UseSenderContains = false;
-        vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@x.com, invoices@y.com";
         vm.UseFromAddresses = false;
         vm.UseSubjectContains = true;

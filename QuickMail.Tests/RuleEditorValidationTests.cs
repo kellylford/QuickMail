@@ -73,7 +73,6 @@ public class RuleEditorValidationTests
     {
         var vm = Named();
         vm.Delete = true;
-        vm.UseSubjectContains = true;
         vm.SubjectContains = "newsletter";
         vm.UseSubjectContains = false;
 
