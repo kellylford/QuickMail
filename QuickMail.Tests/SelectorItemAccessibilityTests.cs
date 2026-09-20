@@ -397,6 +397,8 @@ public class SelectorItemAccessibilityTests
             new ContactModel { DisplayName = "Alpha", EmailAddress = "alpha@example.com" }.ToString(),
             new ProviderCatalog().Other.ToString(),
             AdvancedSearchViewModel.ReadChoices[0].ToString(),
+            // Bound to both Importance ComboBoxes in the rule editor (#682).
+            ServerRuleEditorViewModel.ImportanceOptions[0].ToString(),
             new AdvancedSearchAccount(Guid.NewGuid(), "Alpha", isChosen: true).ToString(),
             new ConnectionAccountRow
             {

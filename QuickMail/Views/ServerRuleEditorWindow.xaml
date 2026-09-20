@@ -27,6 +27,18 @@
         <Style TargetType="CheckBox" x:Key="EditorCheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
             <Setter Property="Margin" Value="0,4"/>
         </Style>
+        <!-- A TextBlock has no control template and so no disabled look of its own: IsEnabled="False" on
+             one renders identically to an enabled one, leaving a full-contrast label beside the greyed
+             control it belongs to. These three label the server-only ComboBoxes and the Forward-to box
+             (#682), so they have to grey with them. -->
+        <Style TargetType="TextBlock" x:Key="FieldLabel">
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style TargetType="TextBlock" x:Key="SectionHeader">
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Margin" Value="0,12,0,4"/>
@@ -50,6 +62,35 @@
 
                 <CheckBox Content="Enabled" IsChecked="{Binding IsEnabled}"
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Rule enabled"/>
+
+                <!-- Why some options are turned off (#682). A disabled control leaves the Tab order, so
+                     without this the server-only options do not read as unavailable — they simply are not
+                     there. Placed before the form rather than beside them because the six they cover are
+                     spread across three sections, and it NAMES them, since nobody who cannot see which
+                     controls are greyed can work out what is missing.
+
+                     A focus stop, not decoration: an unfocusable TextBlock is reachable only in a screen
+                     reader's own review mode, which is no answer to six controls vanishing from Tab. The
+                     rules window makes its status line reachable by F6 instead, because it has panes to
+                     cycle; this window deliberately has none (see the code-behind), so Tab is the only
+                     route there is — don't "restore consistency" by copying its IsTabStop="False". The
+                     stop exists only while there is something to say, the same conditional-IsTabStop
+                     pattern the condition boxes below use. -->
+                <TextBlock Text="{Binding ServerOnlyOptionsDisabledReason}" TextWrapping="Wrap"
+                           Margin="0,4,0,0" Focusable="True"
+                           KeyboardNavigation.IsTabStop="{Binding HasServerOnlyOptionsDisabledReason}"
+                           AutomationProperties.Name="{Binding ServerOnlyOptionsDisabledReason}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <!-- Nothing to say: take no room either, rather than an empty line's margin. -->
+                                <DataTrigger Binding="{Binding HasServerOnlyOptionsDisabledReason}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
 
                 <!-- Common conditions -->
                 <TextBlock Text="Apply when a message matches" Style="{StaticResource SectionHeader}"/>
@@ -105,6 +146,7 @@
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Delete"/>
 
                 <CheckBox Content="Stop processing more rules" IsChecked="{Binding StopProcessingRules}"
+                          IsEnabled="{Binding CanUseServerOnlyOptions}"
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Stop processing more rules"/>
 
                 <!-- Advanced: less-common conditions/actions. Collapsed for a new rule; auto-expanded
@@ -148,16 +190,19 @@
                                  AutomationProperties.Name="Body contains"/>
 
                         <CheckBox Content="Sent to me" IsChecked="{Binding SentToMe}"
+                                  IsEnabled="{Binding CanUseServerOnlyOptions}"
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Sent to me"/>
                         <CheckBox Content="Sent only to me" IsChecked="{Binding SentOnlyToMe}"
+                                  IsEnabled="{Binding CanUseServerOnlyOptions}"
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Sent only to me"/>
                         <CheckBox Content="Has attachments" IsChecked="{Binding HasAttachments}"
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Has attachments"/>
 
-                        <TextBlock Text="Importance is"/>
+                        <TextBlock Text="Importance is" Style="{StaticResource FieldLabel}" IsEnabled="{Binding CanUseServerOnlyOptions}"/>
                         <ComboBox ItemsSource="{Binding ImportanceOptions}"
                                   SelectedItem="{Binding SelectedImportance}"
-                                  Style="{StaticResource EditorComboBox}" AutomationProperties.Name="Importance condition"/>
+                                  IsEnabled="{Binding CanUseServerOnlyOptions}"
+                                  Style="{StaticResource EditorComboBox}" AutomationProperties.Name="Importance is"/>
 
                         <TextBlock Text="More actions" Style="{StaticResource SectionHeader}"/>
 
@@ -177,13 +222,15 @@
                                 Command="{Binding PickCopyFolderCommand}" HorizontalAlignment="Left"
                                 Padding="8,3" Margin="0,0,0,8" AutomationProperties.Name="{Binding CopyToFolderButtonName}"/>
 
-                        <TextBlock Text="Set importance to"/>
+                        <TextBlock Text="Set importance to" Style="{StaticResource FieldLabel}" IsEnabled="{Binding CanUseServerOnlyOptions}"/>
                         <ComboBox ItemsSource="{Binding ImportanceOptions}"
                                   SelectedItem="{Binding SelectedMarkImportance}"
-                                  Style="{StaticResource EditorComboBox}" AutomationProperties.Name="Set importance action"/>
+                                  IsEnabled="{Binding CanUseServerOnlyOptions}"
+                                  Style="{StaticResource EditorComboBox}" AutomationProperties.Name="Set importance to"/>
 
-                        <TextBlock Text="Forward to (comma-separated)"/>
+                        <TextBlock Text="Forward to (comma-separated)" Style="{StaticResource FieldLabel}" IsEnabled="{Binding CanUseServerOnlyOptions}"/>
                         <TextBox Text="{Binding ForwardTo, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{Binding CanUseServerOnlyOptions}"
                                  Style="{StaticResource EditorTextBox}" AutomationProperties.Name="Forward to"/>
                     </StackPanel>
                 </Expander>
