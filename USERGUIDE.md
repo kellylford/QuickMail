@@ -604,7 +604,7 @@ The Rules Manager lists one account's rules at a time; choose the account in the
 4. Under **Then do this**, choose what happens: **Move to folder** (then activate **Choose folder…**), **Mark as read**, or **Delete**, which moves the message to Trash. **Mark as unread** is under **Advanced conditions & actions**.
 5. Activate **Save**.
 
-A **Move to folder** or **Delete** rule needs at least one condition, because a rule with none would act on every message. On an account that supports both kinds, QuickMail saves a new rule as server-side whenever it can; a rule that needs something only QuickMail can do, such as **Mark as unread**, is saved as client-side. Some options work only in a server-side rule, and if you use one where it cannot work, **Save** tells you what to remove.
+A **Move to folder** or **Delete** rule needs at least one condition, because a rule with none would act on every message. On an account that supports both kinds, QuickMail saves a new rule as server-side whenever it can; a rule that needs something only QuickMail can do, such as **Mark as unread**, is saved as client-side. Some options work only in a server-side rule. Where a rule cannot become one — an account with client-side rules only, or a rule you are editing that already runs in QuickMail — those options are turned off, and a line under **Enabled** names them and says why. That line is a Tab stop while it has something to say, so you meet it on the way through the form. **Save** still refuses a combination no client-side rule can hold, and tells you which.
 
 ### Creating a rule from a message
 

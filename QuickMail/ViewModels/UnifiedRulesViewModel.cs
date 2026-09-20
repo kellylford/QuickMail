@@ -203,8 +203,12 @@ public partial class UnifiedRulesViewModel : ObservableObject
         // Everything the save depends on comes from the account the editor opened on (#683). The editor is
         // modeless, so the Account list stays usable while it is open; classifying by whatever the list
         // showed at save time saved a rule to one account as the other account's kind.
-        var supportsServerRules = AccountSupportsServerRules;
+        // One capture, used for both: what the save classifies by, and what the editor gates on. Asked
+        // about the account the editor opened ON — two expressions of the same fact are how the Edit
+        // path came to gate on the wrong account in the first place (#682, #683).
+        var supportsServerRules = SupportsServerRulesForAccount(accountId);
         editor.AccountId = accountId;
+        editor.AccountSupportsServerRules = supportsServerRules;
         editor.Saved += _ => SaveNewAsync(accountId, supportsServerRules, editor);
         // The editor's messages (a validation error, a refused save) are announced by the editor window, the one
         // the user is in. Passing them on here as well had the Rules Manager behind it say each one again (#701).
@@ -271,6 +275,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
             editor.CopyToFolderName = GraphFolderButtonName(accountId, editor.CopyToFolderId);
         }
         editor.AccountId = accountId;
+        // The rule's OWN account, not whichever one the picker is showing (#683). The editor is modeless
+        // and the Account list stays usable behind it, so a row can still be edited a moment after the
+        // list moved on — and asking the picker would open a work account's server rule with its Forward
+        // and Importance fields greyed out, unchangeable, over a line blaming "this account".
+        editor.AccountSupportsServerRules = SupportsServerRulesForAccount(accountId);
         // Not passed on: the editor window announces its own messages (#701, see OpenNewEditor).
         editor.Saved += _ => row.RunsWhere == RuleRunsWhere.Server
             ? SaveEditedServerAsync(accountId, row.Server!, editor)
@@ -621,6 +630,16 @@ public partial class UnifiedRulesViewModel : ObservableObject
     public bool AccountSupportsServerRules
         => _serverRules != null
            && SelectedAccountModel is { } acct
+           && SupportsServerRules(acct);
+
+    /// <summary>
+    /// The same question as <see cref="AccountSupportsServerRules"/>, asked about a named account rather
+    /// than the one the picker is showing. What the editor is gated on, because a rule belongs to the
+    /// account it was listed under and the list can move on while the modeless editor is open (#683).
+    /// </summary>
+    private bool SupportsServerRulesForAccount(Guid accountId)
+        => _serverRules != null
+           && _allAccounts.FirstOrDefault(a => a.Id == accountId) is { } acct
            && SupportsServerRules(acct);
 
     /// <summary>

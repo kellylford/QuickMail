@@ -316,6 +316,59 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>Mark as unread can't run in a server-side rule, so it is turned off while editing one (#684).
     /// A new rule keeps it: ticking it there makes the rule client-side.</summary>
     public bool CanMarkAsUnread => !IsEditingServerRule;
+
+    /// <summary>
+    /// Whether the account this rule belongs to can carry server-side rules at all. Set by the owner when
+    /// it opens the editor, from the account the editor opened ON — not whatever the list has moved to
+    /// since (#683). Defaults to true so an editor opened without one offers everything and refuses on
+    /// save, as it did before #682: failing open can never leave a field set that cannot be cleared.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanUseServerOnlyOptions))]
+    [NotifyPropertyChangedFor(nameof(ServerOnlyOptionsDisabledReason))]
+    [NotifyPropertyChangedFor(nameof(HasServerOnlyOptionsDisabledReason))]
+    private bool _accountSupportsServerRules = true;
+
+    /// <summary>True while editing a rule that already runs in QuickMail. Editing never changes a rule's
+    /// kind (spec §20.6), so such a rule cannot take an option only a server rule can carry.</summary>
+    private bool IsEditingClientRule => !IsNew && !IsEditingServerRule;
+
+    /// <summary>
+    /// Whether the options only a server-side rule can carry are available. False where the rule cannot
+    /// become one — an account that has no server-side rules, or an existing client rule — and the editor
+    /// turns those options off rather than offering them and refusing them on Save (#682).
+    /// <para>
+    /// The mirror of <see cref="CanMarkAsUnread"/>, which does the same for the one option only a client
+    /// rule can carry (#684). Both fail open: an option that is somehow already set stays clearable.
+    /// </para>
+    /// </summary>
+    public bool CanUseServerOnlyOptions
+        => IsEditingServerRule || (AccountSupportsServerRules && !IsEditingClientRule);
+
+    /// <summary>
+    /// Why the server-only options are turned off, or empty when they are not. Shown on the form: a
+    /// disabled control drops out of the Tab order, so without this the options do not so much read as
+    /// unavailable as simply go missing, which is the one real cost of turning them off rather than
+    /// labelling them (#682).
+    /// </summary>
+    public string ServerOnlyOptionsDisabledReason => CanUseServerOnlyOptions
+        ? string.Empty
+        : (IsEditingClientRule && AccountSupportsServerRules
+            ? "This rule runs in QuickMail, and editing it doesn't change that, so these are turned off: "
+            : "This account only has client-side rules, so these are turned off: ") + ServerOnlyOptionNames + ".";
+
+    /// <summary>
+    /// The options turned off, named. Whoever cannot see which controls are greyed cannot work out what
+    /// is missing from a form they can no longer Tab to — and the save-time refusal this replaces DID
+    /// name what was in the way. Said once here, which is not the six repeated "(server rules only)"
+    /// labels that were turned down.
+    /// </summary>
+    internal const string ServerOnlyOptionNames =
+        "Sent to me, Sent only to me, Importance is, Set importance to, Forward to, and Stop processing more rules";
+
+    /// <summary>Whether there is a reason to show — what the notice's tab stop is gated on, so it is a
+    /// stop only when it has something to say.</summary>
+    public bool HasServerOnlyOptionsDisabledReason => !CanUseServerOnlyOptions;
     [ObservableProperty] private ImportanceOption _selectedMarkImportance = ImportanceOptions[0];
     [ObservableProperty] private bool _delete;
     [ObservableProperty] private string _forwardTo = string.Empty;
@@ -680,6 +733,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
         // Representable by neither: a client-only action combined with a server-only condition/action,
         // or a server-only feature on a non-Graph account.
+        // A backstop since #682: the editor turns the server-only options off wherever the rule cannot
+        // become a server rule, so on a client-only account they cannot be set to reach here. Kept
+        // because the gate fails OPEN — an editor nobody told about the account offers everything — and
+        // because nothing but this stands between a hand-made caller and an unsaveable rule.
         var serverOnly = ServerOnlyFeaturesUsed();
         var clientOnly = ClientOnlyFeaturesUsed();
         var runsOnClientBecause = accountSupportsServerRules && clientOnly.Count > 0
@@ -728,6 +785,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         {
             if (IsClientRepresentable) return null;
 
+            // Unreachable through the editor on every path, not merely the usual one: editing a client
+            // rule turns these off whatever the account can do (IsEditingClientRule alone closes the
+            // gate), and ForEditClient cannot populate a server-only field in the first place — MailRule
+            // has none. Kept as the backstop for a caller that assembles a VM by hand.
             var serverOnly = ServerOnlyFeaturesUsed();
             if (serverOnly.Count > 0)
                 return $"This rule runs in QuickMail, but {Join(serverOnly)} isn't available in a client-side rule. Remove it to save.";

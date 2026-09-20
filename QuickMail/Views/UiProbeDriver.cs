@@ -346,7 +346,12 @@ internal sealed class UiProbeDriver
     private static MailRule ProbeRuleTemplate() => new()
     {
         Name = "Rule for newsletter@example.com",
-        FromContains = "newsletter@example.com",
+        // What MainViewModel.CreateRuleFromMessage builds: the sender as a substring match, because a
+        // display name can hold a comma and the address fields read one as a separator (#682). Carrying
+        // it in FromContains instead put it in the Advanced section, so the capture showed an empty form
+        // above a prefilled field nobody could see.
+        SenderContains = "newsletter@example.com",
+        UseSenderCondition = true,
         SubjectContains = "Weekly digest",
         UseSubjectCondition = false,
     };

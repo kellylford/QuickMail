@@ -29,6 +29,16 @@ Saved web pages and PDFs leave pictures out, as the reading pane does, with each
 
 ## Changed
 
+### The rule editor stops offering what an account cannot use
+
+On an account that can only have client-side rules — any IMAP or POP3 account, a personal Outlook.com, Hotmail or Live.com account, and a work or school account added over Standard IMAP/SMTP — the rule editor used to offer every option a server-side rule can use, and only refuse them when you pressed **Save**, by which point you had built the rule.
+
+Those options are now turned off instead: **Sent to me**, **Sent only to me**, **Importance is**, **Set importance to**, **Forward to**, and **Stop processing more rules**. A line under **Enabled** names them and says why, and it is a Tab stop while it is there — a turned-off option is skipped by Tab, so without it they would simply go missing rather than read as unavailable. They are also turned off while you edit a rule that already runs in QuickMail, because editing never changes a rule's kind. On a Microsoft 365 account a **new** rule still offers them — choosing one is what makes the rule server-side.
+
+[#682](https://github.com/kellylford/QuickMail/issues/682)
+
+---
+
 ### Client-side rules can match more
 
 A client-side rule — which is every rule on an IMAP account, on a personal Outlook.com, Hotmail or Live.com account, and on a work or school account added over Standard IMAP/SMTP — can now use four conditions that until now only a server-side rule could:
