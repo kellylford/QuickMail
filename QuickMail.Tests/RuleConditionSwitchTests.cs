@@ -94,18 +94,22 @@ public class RuleConditionSwitchTests
     // ── A hand-made new rule is unchanged ───────────────────────────────────
 
     [Fact]
-    public void ForNew_StartsWithEveryConditionSwitchedOn()
+    public void ForNew_StartsWithEveryConditionSwitchedOff()
     {
-        // An empty field was, and still is, no condition — so defaulting the switches on keeps the
-        // "just type in the boxes you want" flow working exactly as it did before the switches existed.
+        // Only Enabled is ticked on a new rule; a condition is one the user asked for. They started ON,
+        // on the reasoning that an empty field is no condition either way — true of what gets SAVED, but
+        // not of what the form says. Arrowing the Advanced section gave three ticked boxes over empty
+        // fields, reading as a rule that tests things it does not.
         var vm = ServerRuleEditorViewModel.ForNew();
 
-        Assert.True(vm.UseFromAddresses);
-        Assert.True(vm.UseSubjectContains);
-        Assert.True(vm.UseSenderContains);
-        Assert.True(vm.UseSentToAddresses);
-        Assert.True(vm.UseBodyOrSubjectContains);
-        Assert.True(vm.UseBodyContains);
+        Assert.False(vm.UseFromAddresses);
+        Assert.False(vm.UseSubjectContains);
+        Assert.False(vm.UseSenderContains);
+        Assert.False(vm.UseSentToAddresses);
+        Assert.False(vm.UseBodyOrSubjectContains);
+        Assert.False(vm.UseBodyContains);
+
+        Assert.True(vm.IsEnabled);   // the one thing that is ticked
 
         var model = vm.ToModel();
         Assert.Null(model.SubjectContains);
@@ -113,6 +117,42 @@ public class RuleConditionSwitchTests
     }
 
     // ── Loading an existing rule ────────────────────────────────────────────
+
+    [Fact]
+    public void ForNewFromTemplate_TicksOnlyWhatItHasSomethingToMatchOn()
+    {
+        // Create Rule from Message: the sender is ticked because it carries the message's sender; the
+        // subject is carried but clear (see above — a rule matching this sender AND this exact subject
+        // matches the one thread it was made from); and nothing else is ticked, because nothing else
+        // has anything in it.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(Template());
+
+        Assert.True(vm.UseSenderContains);
+        Assert.Equal("boss@work.com", vm.SenderContains);
+
+        Assert.False(vm.UseSubjectContains);
+        Assert.Equal("Weekly Report", vm.SubjectContains);
+
+        Assert.False(vm.UseFromAddresses);
+        Assert.False(vm.UseSentToAddresses);
+        Assert.False(vm.UseBodyOrSubjectContains);
+        Assert.False(vm.UseBodyContains);
+    }
+
+    [Fact]
+    public void ATemplateFlagOverAnEmptyField_TicksNothing()
+    {
+        // A flag says the condition was wanted; the text is what it would match. Without both, ticking
+        // it offers a condition that tests nothing.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(new MailRule
+        {
+            Name = "Rule for nobody",
+            SenderContains = "   ",
+            UseSenderCondition = true,
+        });
+
+        Assert.False(vm.UseSenderContains);
+    }
 
     [Fact]
     public void ForEdit_SwitchesOnOnlyTheConditionsTheRuleActuallyUses()
@@ -192,8 +232,10 @@ public class RuleConditionSwitchTests
         // off and From switched on, the saved rule must match the From address — carrying the dead
         // Sender text into that slot would silently change what the rule matches.
         var vm = ServerRuleEditorViewModel.ForNew();
+        vm.UseSenderContains = true;
         vm.SenderContains = "accounts";
         vm.UseSenderContains = false;
+        vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@x.com";
         vm.MarkAsRead = true;
 
@@ -238,7 +280,9 @@ public class RuleConditionSwitchTests
         // must actually remove it from the classifier's view — if the classifier read the raw text it
         // would keep insisting the rule is server-only.
         var vm = ServerRuleEditorViewModel.ForNew();
+        vm.UseSubjectContains = true;
         vm.SubjectContains = "Digest";
+        vm.UseBodyOrSubjectContains = true;
         vm.BodyOrSubjectContains = "invoice";
         vm.MarkAsRead = true;
 
@@ -256,6 +300,7 @@ public class RuleConditionSwitchTests
         // not one, however much text is sitting in the box.
         var vm = ServerRuleEditorViewModel.ForNew();
         vm.Name = "Filing";
+        vm.UseFromAddresses = true;
         vm.FromAddresses = "a@x.com, b@x.com";
         vm.MoveToFolder = true;
         vm.MoveToFolderId = "Archive";

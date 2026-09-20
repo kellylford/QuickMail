@@ -69,12 +69,15 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             Name = template.Name ?? string.Empty,
             // A template made from a message carries its sender as Sender contains, because a display
             // name can hold a comma and the address fields would read that as two addresses (#682).
+            // A condition arrives switched on only where the template actually has something for it to
+            // match: a flag over an empty box would tick a condition that tests nothing.
             SenderContains = template.SenderContains ?? string.Empty,
-            UseSenderContains = template.UseSenderCondition,
+            UseSenderContains = template.UseSenderCondition && !string.IsNullOrWhiteSpace(template.SenderContains),
             FromAddresses = template.SenderContains is null ? template.FromContains ?? string.Empty : string.Empty,
-            UseFromAddresses = template.SenderContains is null && template.UseFromCondition,
+            UseFromAddresses = template.SenderContains is null && template.UseFromCondition
+                               && !string.IsNullOrWhiteSpace(template.FromContains),
             SubjectContains = template.SubjectContains ?? string.Empty,
-            UseSubjectContains = template.UseSubjectCondition,
+            UseSubjectContains = template.UseSubjectCondition && !string.IsNullOrWhiteSpace(template.SubjectContains),
         };
         vm.IsAdvancedExpanded = vm.HasAdvancedContent();
         return vm;
@@ -120,7 +123,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             string.Equals(o.Value, rule.Importance, StringComparison.OrdinalIgnoreCase)) ?? ImportanceOptions[0];
         vm.SelectedMarkImportance = ImportanceOptions.FirstOrDefault(o =>
             string.Equals(o.Value, rule.MarkImportance, StringComparison.OrdinalIgnoreCase)) ?? ImportanceOptions[0];
-        vm.SyncConditionSwitchesToContent();
+        vm.SwitchConditionsToMatchContent();
         // If the rule already uses any advanced field, open the Advanced section so editing never
         // hides a populated field. A brand-new rule leaves it collapsed.
         vm.IsAdvancedExpanded = vm.HasAdvancedContent();
@@ -252,18 +255,21 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     // supposed to use, so it used both. The switch is what says so, and — unlike clearing the box —
     // it leaves the text in place, so a prefilled value can be turned back on with one keystroke.
     //
-    // They start ON, matching the client Rules Manager, so a hand-made rule behaves exactly as before:
-    // an empty field was, and still is, no condition. Loading an existing rule clears the switch on
-    // every empty field (SyncConditionSwitchesToContent), so the editor reads back what the rule does.
+    // They start OFF on a new rule: only Enabled is ticked, and a condition is one the user asked for.
+    // They started ON until then, on the reasoning that an empty field is no condition either way — true
+    // of what gets SAVED, but not of what the form says. Arrowing the Advanced section gave three ticked
+    // boxes over empty fields, which reads as a rule that tests things it does not, and there is no
+    // seeing at a glance that the boxes beside them are empty. An existing rule opens with exactly the
+    // conditions it uses, which is now set from its content rather than defaulted on and pared back.
     //
     // Everything downstream reads the gated Effective* values below — never the raw text — so a
     // switched-off condition is invisible to saving, classification and the Advanced auto-expand.
-    [ObservableProperty] private bool _useSenderContains = true;
-    [ObservableProperty] private bool _useFromAddresses = true;
-    [ObservableProperty] private bool _useSentToAddresses = true;
-    [ObservableProperty] private bool _useSubjectContains = true;
-    [ObservableProperty] private bool _useBodyOrSubjectContains = true;
-    [ObservableProperty] private bool _useBodyContains = true;
+    [ObservableProperty] private bool _useSenderContains;
+    [ObservableProperty] private bool _useFromAddresses;
+    [ObservableProperty] private bool _useSentToAddresses;
+    [ObservableProperty] private bool _useSubjectContains;
+    [ObservableProperty] private bool _useBodyOrSubjectContains;
+    [ObservableProperty] private bool _useBodyContains;
 
     private string EffectiveSenderContains => UseSenderContains ? SenderContains : string.Empty;
     private string EffectiveFromAddresses => UseFromAddresses ? FromAddresses : string.Empty;
@@ -277,6 +283,26 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// the conditions it actually uses switched on. Never switches one ON — a deliberately-off but
     /// prefilled field (Ctrl+Shift+T's subject) has to stay off.
     /// </summary>
+    /// <summary>
+    /// Switches each condition on where the rule has text for it, and off where it does not — for a
+    /// SERVER rule, whose conditions are its content and which carries no per-condition flags of its own.
+    /// <para>
+    /// Not usable for a client rule: that model stores the flag and the text separately, so a populated
+    /// but deliberately switched-off field (#665) must stay off, and turning it on here would silently
+    /// widen the rule. <see cref="ForEditClient"/> takes the flags from the rule and then calls
+    /// <see cref="SyncConditionSwitchesToContent"/>, which only ever switches things off.
+    /// </para>
+    /// </summary>
+    private void SwitchConditionsToMatchContent()
+    {
+        UseSenderContains = !string.IsNullOrWhiteSpace(SenderContains);
+        UseFromAddresses = !string.IsNullOrWhiteSpace(FromAddresses);
+        UseSentToAddresses = !string.IsNullOrWhiteSpace(SentToAddresses);
+        UseSubjectContains = !string.IsNullOrWhiteSpace(SubjectContains);
+        UseBodyOrSubjectContains = !string.IsNullOrWhiteSpace(BodyOrSubjectContains);
+        UseBodyContains = !string.IsNullOrWhiteSpace(BodyContains);
+    }
+
     private void SyncConditionSwitchesToContent()
     {
         if (string.IsNullOrWhiteSpace(SenderContains)) UseSenderContains = false;

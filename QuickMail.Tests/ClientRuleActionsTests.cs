@@ -22,6 +22,7 @@ public class ClientRuleActionsTests
     {
         var vm = ServerRuleEditorViewModel.ForNew();
         vm.Name = name;
+        vm.UseSubjectContains = true;
         vm.SubjectContains = "digest";   // a condition, so Move and Delete are allowed
         return vm;
     }

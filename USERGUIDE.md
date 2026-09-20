@@ -600,7 +600,7 @@ The Rules Manager lists one account's rules at a time; choose the account in the
 
 1. In the Rules Manager, choose the account, then activate **New** or press **Ctrl+N**. The rule editor opens in its own window.
 2. Enter a **Rule name**.
-3. Under **Apply when a message matches**, check the conditions you want (**Sender contains**, **Subject contains**) and type the text to look for. More conditions, such as **From addresses**, **Sent to addresses**, **Subject or body contains**, **Body contains** and **Has attachments**, are under **Advanced conditions & actions**. A message must match every condition you checked. **From addresses** and **Sent to addresses** each take several addresses, separated by commas, and a message matches when it has any one of them.
+3. Under **Apply when a message matches**, check the conditions you want (**Sender contains**, **Subject contains**) and type the text to look for. A new rule starts with none of them checked, and a condition's box only accepts text once its checkbox is ticked. More conditions, such as **From addresses**, **Sent to addresses**, **Subject or body contains**, **Body contains** and **Has attachments**, are under **Advanced conditions & actions**. A message must match every condition you checked. **From addresses** and **Sent to addresses** each take several addresses, separated by commas, and a message matches when it has any one of them.
 4. Under **Then do this**, choose what happens: **Move to folder** (then activate **Choose folder…**), **Mark as read**, or **Delete**, which moves the message to Trash. **Mark as unread** is under **Advanced conditions & actions**.
 5. Activate **Save**.
 

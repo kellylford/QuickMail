@@ -1429,6 +1429,7 @@ public class UnifiedRulesViewModelTests
 
         var editor = await OpenNewEditorAsync(vm);
         editor.Name = "Keep a copy";
+        editor.UseSubjectContains = true;
         editor.SubjectContains = "digest";
         editor.CopyToFolder = true;
         editor.CopyToFolderId = "INBOX";
