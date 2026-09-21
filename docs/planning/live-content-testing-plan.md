@@ -33,7 +33,7 @@ These constraints shape everything below; they are worth stating explicitly
 because the obvious answer ("add a Docker `services:` block") does not work
 for this repository today.
 
-1. **The whole app is one `net8.0-windows10.0.17763.0` / `UseWPF=true`
+1. **The whole app is one `net10.0-windows10.0.17763.0` / `UseWPF=true`
    assembly.** `ImapMailService`, `SmtpService`, and the CalDAV/Google/Graph
    clients are protocol code with no WPF dependency, but they live in a
    Windows-TFM project that **cannot compile on a Linux runner**. Until

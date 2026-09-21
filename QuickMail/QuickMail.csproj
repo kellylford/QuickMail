@@ -27,7 +27,9 @@
          Product version and screen readers report programmatically — so suppress it. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AnalysisMode>Recommended</AnalysisMode>
-    <!-- Audit transitive packages too (default is direct-only); vulnerable deps warn at restore/build. -->
+    <!-- Audit transitive packages too. This is the default from .NET 10 (it was direct-only before);
+         kept explicit so the intent survives an SDK whose default changes back. Vulnerable deps
+         warn at restore/build. -->
     <NuGetAuditMode>all</NuGetAuditMode>
     <!-- Single-file publish: native DLLs (WebView2Loader, SQLite) extract to temp on first run -->
     <PublishSingleFile>true</PublishSingleFile>
@@ -35,6 +37,17 @@
     <!-- Pre-compile IL → native for faster startup; trimming is off (unsafe with WPF/XAML) -->
     <PublishReadyToRun>true</PublishReadyToRun>
     <SelfContained>true</SelfContained>
+    <!-- Intel CET (shadow stacks). From .NET 9 the SDK marks apphost/singlefilehost
+         /CETCOMPAT, so the shipped x64 exe would opt in to hardware-enforced stack
+         protection; a loaded native library that sets thread context off the shadow stack
+         then terminates the process. QuickMail loads plenty of foreign native code it does
+         not control — WebView2Loader, e_sqlite3, msalruntime, plus whatever antivirus or
+         assistive technology injects. CET is x64-only hardware and this project has no
+         x64 CET machine to test on (the maintainer's machine is ARM64, where the x64 build
+         runs emulated and shadow stacks do not exist), so the .NET 10 migration keeps the
+         .NET 8 behaviour rather than shipping an untestable change to every x64 user.
+         Turning this on is a deliberate, separately-verified change: issue #740. -->
+    <CETCompat>false</CETCompat>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <!-- Do NOT put the RID in the bin/obj paths. Setting RuntimeIdentifier on a WPF project makes
          the SDK's generated XAML temp project (QuickMail_<hash>_wpftmp.csproj) re-append the

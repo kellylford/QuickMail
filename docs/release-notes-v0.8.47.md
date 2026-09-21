@@ -81,7 +81,7 @@ POP3 accounts now keep the whole original of every message they download. Before
 
 ### Built on .NET 10
 
-QuickMail now runs on .NET 10 instead of .NET 8. Microsoft stops providing security fixes for .NET 8 on November 10, 2026, and because QuickMail carries its own copy of .NET inside the program, moving to .NET 10 is the only way for you to keep receiving those fixes. .NET 10 is supported until November 2028. Nothing about how QuickMail looks or works is meant to change, and you still do not need to install .NET yourself. If anything behaves differently after this update, please report it.
+QuickMail now runs on .NET 10 instead of .NET 8. Microsoft stops providing security fixes for .NET 8 on November 10, 2026, and because QuickMail carries its own copy of .NET inside the program, moving to the next long-term supported release is how you keep receiving those fixes. .NET 10 is supported until November 2028. Nothing about how QuickMail looks or works is meant to change, and you still do not need to install .NET yourself. If anything behaves differently after this update, please report it.
 
 [#472](https://github.com/kellylford/QuickMail/issues/472)
 

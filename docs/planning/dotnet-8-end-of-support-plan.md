@@ -317,3 +317,48 @@ system, so the registry read remains the right design, not a .NET 8 workaround.
 
 Items 5–10 of *Verification* (the screen reader walkthrough, toasts, the Velopack update from
 a .NET 8 install) remain manual and are Kelly's.
+
+## Independent review (2026-09-21)
+
+A reviewer with no part in the change went over the diff against `main`. Eight findings; what
+each led to:
+
+- **Intel CET was the real miss.** From .NET 9 the SDK marks `singlefilehost` `/CETCOMPAT`, so
+  the x64 build would have opted in to hardware-enforced stack protection — and a loaded native
+  library that sets thread context off the shadow stack terminates the process. QuickMail loads
+  native code it does not control (WebView2, SQLite, `msalruntime`, plus injected antivirus and
+  assistive-technology DLLs). CET is x64-only hardware and this project has no x64 CET machine
+  to test on, so the migration sets `<CETCompat>false</CETCompat>` to keep the .NET 8 behaviour.
+  Enabling it deliberately, with verification on real hardware, is **#740**.
+- **`global.json` would have broken against a .NET 11 SDK.** `rollForward: latestFeature` from
+  `10.0.100` does not accept an `11.0.1xx` SDK, which is go-live now and GA within weeks — CI is
+  immune (each job installs 10.0.x) but a contributor would get "A compatible .NET SDK was not
+  found". Changed to `latestMajor`, and `README.md` now says the band is pinned.
+- **The `NuGetAuditMode` comment had become false**: transitive auditing is the default from
+  .NET 10, not direct-only. Reworded, and the property kept as a floor.
+- **The release note claimed .NET 10 was "the only way"** to keep getting fixes. True only
+  because .NET 9 dies the same day, and .NET 11 arrives in weeks. Reworded.
+- **A planning doc stating a present-tense fact about the app** (`live-content-testing-plan.md`,
+  "the whole app is one `net8.0-…` assembly") now says `net10.0-…`. The policy this settles:
+  planning docs stay as written where they narrate a past decision, and move with the code only
+  where they assert what is true today — which is also why the theming spec's OS-mode note was
+  corrected rather than left.
+- **`MailAddress` now rejects consecutive dots** ([doc](https://learn.microsoft.com/dotnet/core/compatibility/networking/10.0/mailaddress-consecutive-dots)),
+  so `first..last@example.com` makes compose's Check Names report a recipient as unrecognized
+  where it used to say "All valid" (`Views/ComposeWindow.xaml.cs:654`). Sending is unaffected.
+  Left as-is: the new behaviour is the correct one, and the address form it rejects is invalid
+  unquoted. Recorded here because it is the one user-visible behaviour change in the migration.
+- Confirmed clean by the reviewer, with mechanism rather than observation: the
+  `System.Drawing.Common` removal (the resolved `packagesToPrune` set really does contain it,
+  and the toast library's resolved dependency set really is empty), the SQLitePCLRaw pin
+  correctly *kept* (nothing prunes it), every `DynamicResource` target property being
+  type-matched to what `BuildTokenDictionary` supplies, no stale TFM path segments anywhere, and
+  all seven SDK pins.
+- **The packaging half of CI had never run on .NET 10** — the publish/`vpk pack`/sign steps are
+  tag-gated. Rehearsed by dispatching `build-installer.yml` on the branch for both
+  architectures before merge, in addition to the local `build.bat` packs.
+
+Two pre-existing items the reviewer noted, left alone as unrelated to this change:
+`docs/USER-GUIDE.md` says "Windows 10 (1703 or later)" when the toast API needs 1809 (the
+supported-OS list did not move between .NET 8 and .NET 10), and the root `USERGUIDE.md`
+duplicates the published guide under `docs/`.
