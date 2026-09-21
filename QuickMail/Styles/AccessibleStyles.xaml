@@ -51,6 +51,44 @@
         <Setter Property="IsExpanded" Value="True"/>
     </Style>
 
+    <!-- Menu, ContextMenu, StatusBar and ToolTip take their font from WPF's default
+         style for each type (the system menu/status font), and a default style beats
+         the value a window passes down by inheritance — so without these four the menu
+         bar and status bar ignore Settings → Appearance → Text size entirely (#691).
+         Measured: in a window set to 20pt Comic Sans, Menu and StatusBar report their
+         FontSize with BaseValueSource.DefaultStyle at 12pt Segoe UI, while ToolBar and
+         ListBox report Inherited at 20pt. Setting the parent is enough — MenuItem and
+         StatusBarItem report Inherited, so they follow it. ContextMenu and ToolTip are
+         popup roots, which inherit nothing from their owner, and need their own.
+
+         Colors are NOT set here. ThemedControls.xaml repeats these four setters
+         alongside its colors, the way it repeats the Button setters above, and its
+         copy wins wherever it is merged. This one exists for the case where it is
+         NOT: under Windows High Contrast ThemeService withdraws ThemedControls so
+         WPF's HC-aware templates take over, and the HC theme deliberately keeps the
+         font and scale ("typography matters more to low-vision HC users",
+         ThemeService.BuildHighContrastTheme). A colorless style leaves every color to
+         the HC default style, exactly as an unset property should. -->
+    <Style TargetType="Menu">
+        <Setter Property="FontFamily" Value="{DynamicResource Theme.FontFamily}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Theme.FontSizeBase}"/>
+    </Style>
+
+    <Style TargetType="ContextMenu">
+        <Setter Property="FontFamily" Value="{DynamicResource Theme.FontFamily}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Theme.FontSizeBase}"/>
+    </Style>
+
+    <Style TargetType="StatusBar">
+        <Setter Property="FontFamily" Value="{DynamicResource Theme.FontFamily}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Theme.FontSizeBase}"/>
+    </Style>
+
+    <Style TargetType="ToolTip">
+        <Setter Property="FontFamily" Value="{DynamicResource Theme.FontFamily}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Theme.FontSizeBase}"/>
+    </Style>
+
     <Style TargetType="TextBox">
         <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
         <Setter Property="Padding" Value="4,2"/>
@@ -122,6 +160,45 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- Secondary text INSIDE a selectable row (a category under a command, a count
+         under a conversation). Lives here rather than in ThemedControls.xaml because
+         that dictionary is withdrawn under Windows High Contrast, and a StaticResource
+         to a missing key is a XamlParseException at window construction.
+
+         Neither of the two obvious ways to draw it is readable in every state, both
+         measured from probe captures and from the theme JSON:
+
+           - Theme.TextSecondary on its own reads 1.16:1 in Parchment once the row is
+             selected, because the selection fill lands underneath it.
+           - Dimming the inherited foreground with Opacity, which is what the command
+             palette did (#702), reads 4.19:1 unselected in Parchment and 2.72:1 on the
+             selected row in Dark. No opacity value fixes the second: Dark's
+             selectionText on selectionBackground is only 4.61:1 at FULL opacity, so
+             any dimming at all puts it under AA.
+
+         So the secondary token is used only while the row is unselected, where it
+         measures at least 5.8:1 in every built-in theme against all three fills an
+         unselected row can have (window 7.7:1+, surface 7.3:1+, hover 5.8:1+).
+         A selected row sets no foreground at all and
+         inherits the container's, which the themed ListBoxItem template already gets
+         right for both an active selection (Theme.SelectionText) and an inactive one
+         (Theme.TextPrimary over Theme.SelectionInactive) - and which the command
+         palette's own template, where the selection is never "active", also gets
+         right. Both pairs are held to 4.5:1 by BuiltInThemeTests. The cost is that a
+         selected row's secondary line is no longer dimmer than its first line; that is
+         the only version of it that is legible in all five themes.
+
+         If the ListBoxItem ancestor is missing the binding simply fails and the text
+         inherits the primary foreground - readable, just not secondary. -->
+    <Style x:Key="RowSecondaryText" TargetType="TextBlock">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                         Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Theme.TextSecondary}"/>
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <!-- TextBlock styled as a focusable status bar display region.

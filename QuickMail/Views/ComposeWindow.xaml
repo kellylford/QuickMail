@@ -406,7 +406,7 @@
                     </Style>
                 </ListBox.Style>
                 <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                         <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
                     </Style>
                 </ListBox.ItemContainerStyle>

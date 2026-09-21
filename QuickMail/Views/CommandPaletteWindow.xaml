@@ -73,7 +73,7 @@
                      PreviewMouseDown="CommandList_PreviewMouseDown"
                      MouseDoubleClick="CommandList_MouseDoubleClick">
                 <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                         <Setter Property="Padding" Value="8,5"/>
                         <Setter Property="IsTabStop" Value="False"/>
@@ -129,16 +129,16 @@
                                 <TextBlock Text="{Binding Title}"
                                            TextTrimming="CharacterEllipsis"/>
                                 <TextBlock Text="{Binding Category}"
+                                           Style="{StaticResource RowSecondaryText}"
                                            FontSize="{DynamicResource Theme.FontSizeSmall}"
-                                           Opacity="0.6"
                                            Margin="0,1,0,0"/>
                             </StackPanel>
 
                             <TextBlock Grid.Column="1"
                                        Text="{Binding GestureText}"
+                                       Style="{StaticResource RowSecondaryText}"
                                        FontSize="{DynamicResource Theme.FontSizeSmall}"
                                        FontFamily="{DynamicResource Theme.FontFamilyMono}"
-                                       Opacity="0.6"
                                        VerticalAlignment="Center"
                                        Margin="12,0,0,0"/>
                         </Grid>

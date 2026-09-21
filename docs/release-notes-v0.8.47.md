@@ -99,6 +99,32 @@ A specially written message could make QuickMail open a web page in your browser
 
 ---
 
+### Selected rows in nine more lists ignored the theme
+
+The highlighted row in the tab strip, the tab list, the account list, the flag list, the flag picker, the watched conversations list and all three attachment lists was drawn in Windows' own highlight colours rather than the theme's — a pale blue that belongs to no QuickMail theme, and that in the Rules Manager left the highlighted rule all but invisible in a dark theme. The Rules Manager was fixed in 0.8.45; these are the rest of the lists with the same cause.
+
+[#690](https://github.com/kellylford/QuickMail/issues/690)
+
+---
+
+### The menu bar and status bar follow your text size
+
+**Settings → Appearance → Text size** grew the toolbar, folder tree, message list and pane headings, but left the menu bar and the status bar at the size Windows uses for menus. At 150% they were the only text in the window that had not grown. They now follow the setting, as do context menus and tooltips, and all four follow your chosen font as well.
+
+Under Windows High Contrast they keep using the system's own menu and status fonts, as before.
+
+[#691](https://github.com/kellylford/QuickMail/issues/691)
+
+---
+
+### The command palette's category labels are easier to read
+
+The grey category under each command in the command palette (**Ctrl+Shift+P**), and the shortcut shown beside it, were drawn by fading the text rather than by using the theme's colour for secondary text. In the Parchment theme that left them below the readable-contrast minimum, and on the highlighted row they were fainter still in every theme. They now use the theme's secondary text colour, and the highlighted row's use its highlight text colour at full strength. The same change reaches the counts in the watched conversations list.
+
+[#702](https://github.com/kellylford/QuickMail/issues/702)
+
+---
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

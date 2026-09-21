@@ -1145,7 +1145,7 @@
                             </ItemsPanelTemplate>
                         </ListBox.ItemsPanel>
                         <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem">
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                                 <Setter Property="Padding" Value="8,5"/>
                                 <Setter Property="Margin" Value="0,0,1,0"/>
                                 <Setter Property="AutomationProperties.Name" Value="{Binding Title}"/>
@@ -1252,7 +1252,7 @@
                                      GotKeyboardFocus="ReadingPaneAttachmentList_GotKeyboardFocus"
                                      MouseDoubleClick="ReadingPaneAttachmentList_MouseDoubleClick">
                                 <ListBox.ItemContainerStyle>
-                                    <Style TargetType="ListBoxItem">
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                                         <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
                                     </Style>
                                 </ListBox.ItemContainerStyle>
