@@ -45,7 +45,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       # The two credential partials are gitignored, so the tree does not build without
       # them. The values are irrelevant here — nothing in the unit tests calls out — but

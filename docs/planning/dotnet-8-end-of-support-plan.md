@@ -1,7 +1,7 @@
 # .NET 8 End of Support — Plan
 
 **Issue:** [#472 — Migrate to .NET 10 before .NET 8 end of support](https://github.com/kellylford/QuickMail/issues/472)
-**Status:** planning. No code changed yet.
+**Status:** implemented on branch `claude/issue-472-build-8fa673` (2026-09-19); awaiting the manual verification pass. See *Pre-implementation review* below.
 **Date:** 2026-08-01
 **Deadline:** 2026-11-10 (about 14 weeks from this date)
 
@@ -256,3 +256,109 @@ regression that only real-world use exposes, there needs to be room for a fix re
 3. **Do the GitHub Actions `windows-latest` images still preinstall .NET 8** at migration
    time? Not blocking either way, since `actions/setup-dotnet` pins explicitly, but it affects
    how long CI takes and whether a fallback is needed if a job is ever run without setup-dotnet.
+
+## Pre-implementation review (2026-09-19)
+
+The plan was re-checked against the tree immediately before the migration. ARM64 (#18) had
+shipped in 0.8.46, so the sequencing precondition held. What the review found, and what was
+done about each:
+
+**Gaps in the plan's inventory**
+
+- **Two more CI pins.** `flaky-hunt.yml` and `winget-install-matrix.yml` also pinned `8.0.x`;
+  both workflows postdate the plan. All seven pins now read `10.0.x`.
+- **The release-notes Download footer.** `docs/download-footer.md` said "All downloads include
+  the .NET 8 runtime", and every release note copies it — including the 0.8.47 draft. Both
+  updated, plus a comment in `quickmail.yml` and `docs/CLAUDE-MENTIONS.md`.
+- **`System.Drawing.Common` was pinned to the 8.0.x band** "to match the net8.0 runtime". On
+  .NET 10 the SDK prunes packages the shared framework already supplies, the WindowsDesktop
+  framework supplies this one, and the explicit reference drew `NU1510`. The pin is removed;
+  `dotnet list package --vulnerable --include-transitive` reports nothing, so the vulnerable
+  4.7.0 transitive from the toast library is gone from the graph without it.
+
+**.NET 9 breaking changes.** The plan listed only .NET 10's, but a jump from 8 to 10 takes
+both. Checked: `BinaryFormatter` removal also breaks WPF clipboard / drag-drop of custom types
+— none here (no `SetData`/`DataObject`/`DoDragDrop`). Obsoletions (SYSLIB0057 etc.) — the
+build raised none.
+
+**C# 14 (the default language version on .NET 10).** `field` is now a keyword inside property
+accessors — no accessor refers to a member named `field`. First-class span conversions can
+rebind `array.Reverse()` to the in-place `MemoryExtensions.Reverse` — the three `Reverse()`
+calls are on `List<T>` or `IEnumerable<T>`, so none rebind.
+
+**`ThemeService` comment.** Corrected rather than just re-versioned: `Application.ThemeMode`
+applies WPF's Fluent theme; it does not report the OS light/dark setting to a custom theme
+system, so the registry read remains the right design, not a .NET 8 workaround.
+
+**Open questions, resolved**
+
+1. *Does the toolchain need .NET 8?* No. `vpk` 1.2.0 ships `net8.0`, `net9.0` and `net10.0`
+   builds, so it runs where .NET 10 is the only runtime.
+2. *A .NET 8 support branch?* Not needed as a standing branch. The `v0.8.46` tag is the last
+   .NET 8 commit, and a branch can be cut from it at any time; a .NET 8 hotfix would only need
+   a version number above the current release, which Velopack accepts from either runtime.
+3. *Do runner images still carry .NET 8?* Moot: every job installs its SDK through
+   `setup-dotnet`, and `global.json` pins the 10.0 band.
+
+**Verification done so far (automated)**
+
+- Solution builds with 0 errors; no new warning categories beyond analyzer style rules.
+- Full unit suite on .NET 10: 4235 passed, 0 failed, run with `--blame-hang`; the three opt-in
+  synthesized-input tests also pass (`QUICKMAIL_RUN_INPUT_TESTS=1`).
+- `ui-probe` baseline captured on .NET 8 **before** the change and re-run on .NET 10 (36
+  entries each). Every difference was traced: mouse-hover highlights, title-bar focus, and
+  the Settings probe landing on General instead of Appearance, which happens on .NET 8 as
+  well. A controlled A/B (alternating .NET 8 / .NET 10 runs, pointer parked) showed compose,
+  address book and reading pane **pixel-identical** across runtimes.
+- Crash sweep of every surface in the Ember, Fjord and Heather themes on .NET 10 (the plan
+  only covers Parchment and Parchment Dark), for the new `DynamicResource` crash behaviour.
+- Published single-file exes (x64 and ARM64) launched against the fixture profile, for the
+  native-library search change: SQLite and WebView2 both load.
+
+Items 5–10 of *Verification* (the screen reader walkthrough, toasts, the Velopack update from
+a .NET 8 install) remain manual and are Kelly's.
+
+## Independent review (2026-09-21)
+
+A reviewer with no part in the change went over the diff against `main`. Eight findings; what
+each led to:
+
+- **Intel CET was the real miss.** From .NET 9 the SDK marks `singlefilehost` `/CETCOMPAT`, so
+  the x64 build would have opted in to hardware-enforced stack protection — and a loaded native
+  library that sets thread context off the shadow stack terminates the process. QuickMail loads
+  native code it does not control (WebView2, SQLite, `msalruntime`, plus injected antivirus and
+  assistive-technology DLLs). CET is x64-only hardware and this project has no x64 CET machine
+  to test on, so the migration sets `<CETCompat>false</CETCompat>` to keep the .NET 8 behaviour.
+  Enabling it deliberately, with verification on real hardware, is **#740**.
+- **`global.json` would have broken against a .NET 11 SDK.** `rollForward: latestFeature` from
+  `10.0.100` does not accept an `11.0.1xx` SDK, which is go-live now and GA within weeks — CI is
+  immune (each job installs 10.0.x) but a contributor would get "A compatible .NET SDK was not
+  found". Changed to `latestMajor`, and `README.md` now says the band is pinned.
+- **The `NuGetAuditMode` comment had become false**: transitive auditing is the default from
+  .NET 10, not direct-only. Reworded, and the property kept as a floor.
+- **The release note claimed .NET 10 was "the only way"** to keep getting fixes. True only
+  because .NET 9 dies the same day, and .NET 11 arrives in weeks. Reworded.
+- **A planning doc stating a present-tense fact about the app** (`live-content-testing-plan.md`,
+  "the whole app is one `net8.0-…` assembly") now says `net10.0-…`. The policy this settles:
+  planning docs stay as written where they narrate a past decision, and move with the code only
+  where they assert what is true today — which is also why the theming spec's OS-mode note was
+  corrected rather than left.
+- **`MailAddress` now rejects consecutive dots** ([doc](https://learn.microsoft.com/dotnet/core/compatibility/networking/10.0/mailaddress-consecutive-dots)),
+  so `first..last@example.com` makes compose's Check Names report a recipient as unrecognized
+  where it used to say "All valid" (`Views/ComposeWindow.xaml.cs:654`). Sending is unaffected.
+  Left as-is: the new behaviour is the correct one, and the address form it rejects is invalid
+  unquoted. Recorded here because it is the one user-visible behaviour change in the migration.
+- Confirmed clean by the reviewer, with mechanism rather than observation: the
+  `System.Drawing.Common` removal (the resolved `packagesToPrune` set really does contain it,
+  and the toast library's resolved dependency set really is empty), the SQLitePCLRaw pin
+  correctly *kept* (nothing prunes it), every `DynamicResource` target property being
+  type-matched to what `BuildTokenDictionary` supplies, no stale TFM path segments anywhere, and
+  all seven SDK pins.
+- **The packaging half of CI had never run on .NET 10** — the publish/`vpk pack`/sign steps are
+  tag-gated. Rehearsed by dispatching `build-installer.yml` on the branch for both
+  architectures before merge, in addition to the local `build.bat` packs.
+
+Two pre-existing items the reviewer noted, left alone as unrelated to this change:
+`docs/USER-GUIDE.md` says "Windows 10 (1703 or later)" when the toast API needs 1809 (the
+supported-OS list did not move between .NET 8 and .NET 10), and the root `USERGUIDE.md`
+duplicates the published guide under `docs/`.

@@ -5,7 +5,7 @@ Windows installer (`quickmail-v<version>-setup.exe`).
 
 ## Prerequisites
 
-- The .NET 8 SDK (to publish QuickMail).
+- The .NET 10 SDK (to publish QuickMail).
 - [Inno Setup 6](https://jrsoftware.org/isdl.php) — `ISCC.exe` must be installed at the
   default location under `Program Files (x86)\Inno Setup 6` or `Program Files\Inno Setup 6`.
 
@@ -29,7 +29,7 @@ exists), run the compiler directly:
 
 ## What gets installed
 
-QuickMail publishes as a **self-contained, single-file** `win-x64` executable: the .NET 8
+QuickMail publishes as a **self-contained, single-file** `win-x64` executable: the .NET 10
 runtime is bundled inside `QuickMail.exe`, so the installer ships only that one file and
 requires **no .NET runtime install**.
 

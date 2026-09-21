@@ -18,7 +18,8 @@ A keyboard-first WPF desktop email client for Windows. Multi-account IMAP/SMTP w
 ## Requirements
 
 - Windows 10/11 x64
-- [.NET 8 SDK](https://dotnet.microsoft.com/download) (to build from source)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) (to build from source). `global.json`
+  pins the 10.0 band with `rollForward: latestMajor`, so a newer major SDK also works.
 - [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (usually pre-installed on Windows 11)
 
 ## Build & Run

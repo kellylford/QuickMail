@@ -100,7 +100,7 @@ Why each non-boilerplate line is there:
 - `if: contains(...)` — stops a runner from spinning up on every unrelated comment. The
   action re-checks the trigger phrase itself.
 - **`runs-on: windows-latest`** — QuickMail-specific and important. Both CI jobs (`build`,
-  `integration`) run on Windows because this is a WPF/.NET 8 desktop app. On
+  `integration`) run on Windows because this is a WPF/.NET 10 desktop app. On
   `ubuntu-latest` Claude could read the code but could not build it or run the test suite,
   so half of what you would want from a mention would not work.
 

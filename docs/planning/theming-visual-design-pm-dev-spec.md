@@ -130,7 +130,7 @@ public interface IThemeService : IDisposable
 
 **Decision: OS change detection uses two signals, debounced, dispatcher-marshaled.**
 - `SystemParameters.StaticPropertyChanged` for `HighContrast` (canonical WPF signal, fires on UI thread).
-- `Microsoft.Win32.SystemEvents.UserPreferenceChanged` (categories General/Color) for OS light/dark; on signal re-read `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\AppsUseLightTheme` (no managed API in .NET 8; `Application.ThemeMode` is .NET 9+). This event fires on a **non-UI thread in bursts**: marshal via Dispatcher, debounce ~250 ms.
+- `Microsoft.Win32.SystemEvents.UserPreferenceChanged` (categories General/Color) for OS light/dark; on signal re-read `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\AppsUseLightTheme` (WPF has no public API that reports it; `Application.ThemeMode`, .NET 9+, applies the Fluent theme rather than reporting the OS mode). This event fires on a **non-UI thread in bursts**: marshal via Dispatcher, debounce ~250 ms.
 Both converge on one `Refresh()` that rebuilds only if the effective theme changed, then raises `ThemeChanged` and announces via `AccessibilityHelper.Announce` (Status). ThemeService is `IDisposable` and unsubscribes both static events in `Dispose()` (called from `App.OnExit`).
 
 **Decision: High contrast = SystemColors passthrough + template withdrawal.**

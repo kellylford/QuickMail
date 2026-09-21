@@ -238,7 +238,7 @@ public class OAuthService : IOAuthService
             // platform. Set explicitly rather than via the framework-dependent WithDefaultRedirectUri.
             // See docs/ENTRA-APP-REGISTRATION.md.
             .WithRedirectUri("http://localhost")
-            // Enables the embedded WebView2 browser on net8.0-windows (Microsoft.Identity.Client.Desktop).
+            // Enables the embedded WebView2 browser on Windows TFMs (Microsoft.Identity.Client.Desktop).
             .WithWindowsEmbeddedBrowserSupport()
             .Build();
     }

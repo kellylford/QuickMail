@@ -409,7 +409,7 @@ public class IcsModel
                     out var naive))
             {
                 // TZID present and resolvable: the naive time is wall-clock in that zone.
-                // .NET 8 resolves both IANA ids ("America/New_York") and Windows ids
+                // .NET resolves both IANA ids ("America/New_York") and Windows ids
                 // ("Eastern Standard Time") on Windows 10+ via ICU.
                 if (!string.IsNullOrWhiteSpace(tzid)
                     && TimeZoneInfo.TryFindSystemTimeZoneById(tzid, out var zone))

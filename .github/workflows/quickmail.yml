@@ -15,7 +15,7 @@ permissions:
 jobs:
   # Protocol integration tests against a local GreenMail server (IMAP/SMTP), per
   # docs/planning/live-content-testing-plan.md (issue #304). Runs in parallel with the
-  # build job. GreenMail runs as a native Java process because the app's net8.0-windows
+  # build job. GreenMail runs as a native Java process because the app's net10.0-windows
   # TFM requires a Windows runner, and Docker service containers are Linux-only.
   integration:
     runs-on: windows-latest
@@ -25,7 +25,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       # The gitignored credential partial classes are required to compile QuickMail.csproj.
       # Same generation as the build job; the values themselves are never used by these tests.
@@ -128,7 +128,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Write Google OAuth credentials
         shell: pwsh

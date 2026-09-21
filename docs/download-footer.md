@@ -29,4 +29,4 @@ There are four downloads. Take a regular one unless you know your PC has an ARM 
 
 The regular downloads run on every supported PC, ARM ones included — just not as quickly there. The ARM downloads will not start at all on a non-ARM PC, so if you are unsure, the regular one is the safe guess.
 
-All downloads include the .NET 8 runtime — you do not need to install .NET separately.
+All downloads include the .NET 10 runtime — you do not need to install .NET separately.

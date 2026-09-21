@@ -97,7 +97,7 @@ public class ConnectionFailureTests
     [Fact]
     public void HttpTimeoutWrappingATimeoutExceptionIsTransport()
     {
-        // HttpClient on .NET 8 reports its own timeout as TaskCanceledException with an inner TimeoutException.
+        // HttpClient (.NET 5 and later) reports its own timeout as TaskCanceledException with an inner TimeoutException.
         var ex = new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout",
             new TimeoutException());
         Assert.True(ConnectionFailure.IsConnectionFailure(ex));

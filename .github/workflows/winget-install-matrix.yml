@@ -69,7 +69,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       # QuickMail.csproj will not compile without these gitignored partial classes. The
       # values are irrelevant here — nothing in this workflow signs in to anything — so they

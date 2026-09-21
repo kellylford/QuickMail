@@ -77,6 +77,14 @@ POP3 accounts now keep the whole original of every message they download. Before
 
 [#728](https://github.com/kellylford/QuickMail/issues/728)
 
+---
+
+### Built on .NET 10
+
+QuickMail now runs on .NET 10 instead of .NET 8. Microsoft stops providing security fixes for .NET 8 on November 10, 2026, and because QuickMail carries its own copy of .NET inside the program, moving to the next long-term supported release is how you keep receiving those fixes. .NET 10 is supported until November 2028. Nothing about how QuickMail looks or works is meant to change, and you still do not need to install .NET yourself. If anything behaves differently after this update, please report it.
+
+[#472](https://github.com/kellylford/QuickMail/issues/472)
+
 ## Fixed
 
 ### Alt in a message opens the menu bar
@@ -116,4 +124,4 @@ There are four downloads. Take a regular one unless you know your PC has an ARM 
 
 The regular downloads run on every supported PC, ARM ones included — just not as quickly there. The ARM downloads will not start at all on a non-ARM PC, so if you are unsure, the regular one is the safe guess.
 
-All downloads include the .NET 8 runtime — you do not need to install .NET separately.
+All downloads include the .NET 10 runtime — you do not need to install .NET separately.

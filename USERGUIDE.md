@@ -47,7 +47,7 @@ Two download options are available from the [Releases page](https://github.com/k
 | **`quickmail-vX.X.X-setup.exe`** — Windows installer | Recommended for most users. Installs per-user with no elevation required and registers an uninstaller in Windows Settings. |
 | **`QuickMail.exe`** — standalone portable executable | No installation required. Copy it anywhere and run it directly. |
 
-Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
+Both downloads include the .NET 10 runtime — you do not need to install .NET separately.
 
 ### WebView2 Runtime
 

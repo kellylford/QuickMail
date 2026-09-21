@@ -1,7 +1,7 @@
 ; QuickMail InnoSetup Installer Script
 ; Copyright (c) 2026 Kelly Ford.
 ;
-; QuickMail ships as a self-contained, single-file win-x64 executable: the .NET 8
+; QuickMail ships as a self-contained, single-file win-x64 executable: the .NET 10
 ; runtime is bundled inside QuickMail.exe, so no .NET runtime needs to be installed.
 ; The only external prerequisite is the Microsoft Edge WebView2 Runtime, which the
 ; installer detects and installs on demand (see [Code] below).
