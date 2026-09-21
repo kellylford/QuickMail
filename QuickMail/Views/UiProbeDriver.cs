@@ -120,6 +120,27 @@ internal sealed class UiProbeDriver
                 return await CaptureChildWindowAsync(() => ExecuteCommand("contacts.openAddressBook"),
                     w => w is AddressBookWindow, path);
 
+            // #690. Both are list-plus-editor windows whose row list was one of the eleven carrying an
+            // item-container style that replaced the themed one, and neither was reachable from any
+            // existing surface — so a list rendering WPF chrome instead of the theme's had nothing
+            // that could capture it. The fixture seeds one account and two flags, so each opens on a
+            // populated list rather than an empty box.
+            //
+            // The flag list draws its selected row with the ACTIVE treatment in both, even though
+            // FlagManagerWindow puts focus in EditNameBox on open, so the capture is the state the
+            // defect shows in. Measured across the fix, dark / parchment: the fill goes from WPF's
+            // #264557 / #C3DFEA to Theme.SelectionBackground, and the text from the theme foreground
+            // to Theme.SelectionText. The accounts list opens with its row focused but NOT selected
+            // (SelectedAccount is null until you pick one), so that capture shows no selection at all
+            // — it is here for the rest of the window, not for the row colors.
+            case "accounts":
+                return await CaptureChildWindowAsync(() => ExecuteCommand("account.manage"),
+                    w => w is AccountManagerDialog, path);
+
+            case "flag-manager":
+                return await CaptureChildWindowAsync(() => ExecuteCommand("mail.openFlagManager"),
+                    w => w is FlagManagerWindow, path);
+
             case "rules":
                 return await CaptureChildWindowAsync(() => ExecuteCommand("mail.rules"),
                     w => w is UnifiedRulesWindow, path);
@@ -178,7 +199,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }

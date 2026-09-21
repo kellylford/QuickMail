@@ -37,6 +37,16 @@
       "scale": 100
     },
     {
+      "surface": "accounts",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "flag-manager",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
       "surface": "rules",
       "theme": "parchment",
       "scale": 100
@@ -107,6 +117,16 @@
       "scale": 100
     },
     {
+      "surface": "accounts",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "flag-manager",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
       "surface": "rules",
       "theme": "dark",
       "scale": 100
@@ -173,6 +193,16 @@
     },
     {
       "surface": "address-book",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "accounts",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "flag-manager",
       "theme": "parchment",
       "scale": 150
     },

@@ -45,7 +45,7 @@
                  AutomationProperties.Name="Flags"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <ListBox.ItemContainerStyle>
-                <Style TargetType="ListBoxItem">
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                     <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
                 </Style>
             </ListBox.ItemContainerStyle>

@@ -216,6 +216,71 @@ public class ThemedControlCoverageTests
             + "\nUse BasedOn=\"{StaticResource {x:Static GridView.GridViewItemContainerStyleKey}}\".");
     }
 
+    /// <summary>
+    /// An inline ItemContainerStyle for a themed container type must build on the
+    /// themed style. A style with no BasedOn REPLACES it, so the row falls back to
+    /// WPF's default template and its system highlight colors while the text keeps
+    /// the theme's foreground. That is how the Rules Manager's selected rule came to
+    /// be near-white text on a near-white fill at 1.1:1 in the dark theme, with ten
+    /// more lists carrying the same pattern (#690). It is invisible in a light theme,
+    /// where the same default fill happens to carry dark text, so it survives a
+    /// sighted check of the theme people usually develop in.
+    ///
+    /// A style may still override anything it likes on top — the command palette
+    /// replaces the whole Template, because its selection is deliberately never the
+    /// "active" one and the shared template would dim it. Building on the themed
+    /// style first is what keeps every property it does NOT set themed.
+    ///
+    /// GridView ListViews are covered by the test above instead, which accepts the
+    /// GridView container key or a self-supplied GridViewRowPresenter.
+    ///
+    /// Known limits, matching that test: only the inline
+    /// &lt;X.ItemContainerStyle&gt; element is inspected, so an attribute-form
+    /// ItemContainerStyle="{StaticResource ...}" (which points at a keyed style
+    /// carrying its own BasedOn) and an ItemContainerStyleSelector are both skipped.
+    /// </summary>
+    [Fact]
+    public void InlineItemContainerStyles_BuildOnTheThemedContainerStyle()
+    {
+        var root = FindRepoRoot();
+        Assert.False(root is null, "Repo source tree not found from test base directory.");
+
+        // ListViewItem is absent on purpose: a ListView container style is the
+        // GridView test's subject, and that test accepts two other correct shapes.
+        var containerTypes = new[] { "ListBoxItem", "TreeViewItem", "MenuItem" };
+
+        var xamlFiles = new[] { "Views", "Controls" }
+            .Select(sub => Path.Combine(root!, "QuickMail", sub))
+            .Where(Directory.Exists)
+            .SelectMany(dir => Directory.EnumerateFiles(dir, "*.xaml"));
+
+        var violations = new List<string>();
+        foreach (var file in xamlFiles)
+        {
+            var doc = XDocument.Load(file);
+            foreach (var holder in doc.Descendants()
+                         .Where(e => e.Name.LocalName.EndsWith(".ItemContainerStyle", StringComparison.Ordinal)))
+            foreach (var style in holder.Elements().Where(e => e.Name.LocalName == "Style"))
+            {
+                var target = style.Attribute("TargetType")?.Value;
+                if (target is null || !containerTypes.Contains(target, StringComparer.Ordinal))
+                    continue;
+                if (style.Attribute("BasedOn") != null)
+                    continue;
+
+                violations.Add($"{Path.GetFileName(file)}: {holder.Name.LocalName} "
+                    + $"<Style TargetType=\"{target}\"> has no BasedOn");
+            }
+        }
+
+        Assert.True(violations.Count == 0,
+            "Item-container styles that replace the themed container style instead of building "
+            + "on it — their rows render WPF default chrome, unreadable against the theme "
+            + "foreground in dark themes:\n"
+            + string.Join("\n", violations)
+            + "\nAdd BasedOn=\"{StaticResource {x:Type <ContainerType>}}\".");
+    }
+
     [Fact]
     public void ExemptionTable_HasNoStaleEntries()
     {

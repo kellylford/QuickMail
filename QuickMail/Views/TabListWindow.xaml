@@ -43,7 +43,7 @@
                      AutomationProperties.Name="Open tabs. Arrow keys to navigate, Enter to activate, Delete to close, Escape to cancel."
                      MouseDoubleClick="TabList_MouseDoubleClick">
                 <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                         <Setter Property="Padding" Value="8,5"/>
                         <Setter Property="IsTabStop" Value="False"/>
