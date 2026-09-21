@@ -168,10 +168,15 @@ public class RuleService : IRuleService
         IsEnabled = source.IsEnabled,
         UseFromCondition = source.UseFromCondition,
         FromContains = source.FromContains,
+        FromAddresses = source.FromAddresses is null ? null : [.. source.FromAddresses],
+        UseSenderCondition = source.UseSenderCondition,
+        SenderContains = source.SenderContains,
         UseToCondition = source.UseToCondition,
         ToContains = source.ToContains,
+        SentToAddresses = source.SentToAddresses is null ? null : [.. source.SentToAddresses],
         UseSubjectCondition = source.UseSubjectCondition,
         SubjectContains = source.SubjectContains,
+        SubjectAlsoMatchesBody = source.SubjectAlsoMatchesBody,
         UseBodyCondition = source.UseBodyCondition,
         BodyContains = source.BodyContains,
         MustHaveAttachments = source.MustHaveAttachments,
@@ -232,7 +237,7 @@ public class RuleService : IRuleService
             }
 
             var matched = incoming.Where(m => MatchesRule(rule, m)).ToList();
-            LogService.Debug($"  Rule '{rule.Name}': {matched.Count} matched (actions={string.Join(", ", rule.AllActions())}, from='{rule.FromContains}', subject='{rule.SubjectContains}')");
+            LogService.Debug($"  Rule '{rule.Name}': {matched.Count} matched (actions={string.Join(", ", rule.AllActions())}, from='{string.Join("|", rule.FromValues())}', sender='{(rule.UseSenderCondition ? rule.SenderContains : null)}', subject='{rule.SubjectContains}')");
             if (matched.Count > 0)
             {
                 foreach (var m in matched.Take(3))
@@ -277,20 +282,34 @@ public class RuleService : IRuleService
 
     private static bool MatchesRule(MailRule rule, MailMessageSummary msg)
     {
-        if (rule.UseFromCondition
-            && !string.IsNullOrEmpty(rule.FromContains)
-            && !msg.From.Contains(rule.FromContains, StringComparison.OrdinalIgnoreCase))
+        // A rule may list several From (or Sent-to) addresses, and matching any one of them is enough
+        // (#682) — the same "or" a server rule's address list means. Every condition is still ANDed with
+        // the others, so the "or" is inside one condition, never across two.
+        if (rule.FromValues() is { Count: > 0 } fromValues
+            && !fromValues.Any(v => msg.From.Contains(v, StringComparison.OrdinalIgnoreCase)))
             return false;
 
-        if (rule.UseToCondition
-            && !string.IsNullOrEmpty(rule.ToContains)
-            && !msg.To.Contains(rule.ToContains, StringComparison.OrdinalIgnoreCase))
+        // ANDed with the addresses above, where a rule uses both.
+        if (rule.UseSenderCondition
+            && !string.IsNullOrEmpty(rule.SenderContains)
+            && !msg.From.Contains(rule.SenderContains, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        if (rule.UseSubjectCondition
-            && !string.IsNullOrEmpty(rule.SubjectContains)
-            && !msg.Subject.Contains(rule.SubjectContains, StringComparison.OrdinalIgnoreCase))
+        if (rule.ToValues() is { Count: > 0 } toValues
+            && !toValues.Any(v => msg.To.Contains(v, StringComparison.OrdinalIgnoreCase)))
             return false;
+
+        if (rule.UseSubjectCondition && !string.IsNullOrEmpty(rule.SubjectContains))
+        {
+            // "Subject or body contains" is the subject condition widened to the body as well (#682), so
+            // either place matching is enough. The body here is the stored preview, as BodyContains uses —
+            // the only body text a rule can count on having.
+            var hit = msg.Subject.Contains(rule.SubjectContains, StringComparison.OrdinalIgnoreCase)
+                      || (rule.SubjectAlsoMatchesBody
+                          && msg.Preview is not null
+                          && msg.Preview.Contains(rule.SubjectContains, StringComparison.OrdinalIgnoreCase));
+            if (!hit) return false;
+        }
 
         if (rule.UseBodyCondition
             && !string.IsNullOrEmpty(rule.BodyContains)

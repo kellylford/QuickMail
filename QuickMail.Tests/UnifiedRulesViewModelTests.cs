@@ -62,6 +62,58 @@ public class UnifiedRulesViewModelTests
     private static ServerRuleModel Server(string name) => new() { Id = name, DisplayName = name, SubjectContains = "x", MarkAsRead = true };
     private static MailRule Client(string name, Guid accountId) => new() { Name = name, AccountId = accountId, SubjectContains = "y", Action = RuleAction.MarkAsRead };
 
+    // ── What the editor is told about the account (#682) ────────────────────
+    //
+    // The editor turns off the options only a server-side rule can carry, and it decides that from what
+    // the owner tells it here. Asking the wrong account is not a cosmetic slip: it opens a work account's
+    // server rule with its Forward and Importance fields greyed and unchangeable.
+
+    [Fact]
+    public async Task NewRule_TellsTheEditorWhatTheAccountCanDo()
+    {
+        var a = Guid.NewGuid();
+        var vmGraph = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [Graph(a)], preferredAccountId: a);
+        Assert.True((await OpenNewEditorAsync(vmGraph)).AccountSupportsServerRules);
+
+        var b = Guid.NewGuid();
+        var vmImap = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [Imap(b)], preferredAccountId: b);
+        var editor = await OpenNewEditorAsync(vmImap);
+        Assert.False(editor.AccountSupportsServerRules);
+        Assert.False(editor.CanUseServerOnlyOptions);
+    }
+
+    [Fact]
+    public async Task EditRule_AsksAboutTheRulesOwnAccount_NotWhicheverThePickerShows()
+    {
+        // The editor is modeless and the Account list stays usable behind it, so a row can still be
+        // edited while a switch to another account is still loading — the rows on screen are still the
+        // old account's. Reading the picker there gates the rule on the wrong account entirely.
+        var home = Guid.NewGuid();   // IMAP: client-side rules only
+        var work = Guid.NewGuid();   // Microsoft 365: can carry server rules
+        var server = new FakeServerRules();
+        var client = new StubRuleService { LoadedRules = [Client("C1", home)] };
+        var vm = new UnifiedRulesViewModel(client, server, [Imap(home), Graph(work)], preferredAccountId: home);
+
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.SelectedRule = vm.Rules.Single();
+
+        // Switch to the work account and hold its load open, as a slow server would. The row selected is
+        // still the IMAP account's client rule.
+        server.PendingList = new TaskCompletionSource<IReadOnlyList<ServerRuleModel>>();
+        vm.SelectedAccount = vm.AccountOptions.Single(o => o.Id == work);
+        vm.EditRuleCommand.Execute(null);
+
+        Assert.NotNull(editor);
+        // The rule belongs to the IMAP account, so the options a server rule needs stay off — whatever
+        // the picker has moved on to.
+        Assert.False(editor!.AccountSupportsServerRules);
+        Assert.False(editor.CanUseServerOnlyOptions);
+
+        server.PendingList.SetResult([]);   // let the held load finish
+    }
+
     [Fact]
     public async Task Refresh_GraphAccount_MergesServerThenClientRules()
     {
@@ -145,7 +197,7 @@ public class UnifiedRulesViewModelTests
 
         Assert.False(vm.AccountSupportsServerRules);   // no service → client-only even for a Graph account
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "File it"; editor.SubjectContains = "later"; editor.MarkAsUnread = true;
+        editor.Name = "File it"; editor.UseSubjectContains = true; editor.SubjectContains = "later"; editor.MarkAsUnread = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.Single(client.LoadedRules);
@@ -216,7 +268,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Move digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Move digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.Contains("create", server.Calls);
@@ -239,7 +291,7 @@ public class UnifiedRulesViewModelTests
         vm.AnnouncementRequested += (t, c) => announcements.Add((t, c));
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Keep unread"; editor.SubjectContains = "later"; editor.MarkAsUnread = true;
+        editor.Name = "Keep unread"; editor.UseSubjectContains = true; editor.SubjectContains = "later"; editor.MarkAsUnread = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.DoesNotContain("create", server.Calls);      // not a server rule
@@ -264,7 +316,7 @@ public class UnifiedRulesViewModelTests
         vm.AnnouncementRequested += (t, _) => announcements.Add(t);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "File it"; editor.SubjectContains = "later"; editor.MarkAsUnread = true;
+        editor.Name = "File it"; editor.UseSubjectContains = true; editor.SubjectContains = "later"; editor.MarkAsUnread = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.Single(client.LoadedRules);                  // persisted as a client rule
@@ -394,7 +446,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(client, server, [Imap(home), Graph(work)], preferredAccountId: home);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
         await editor.SaveCommand.ExecuteAsync(null);
 
@@ -418,7 +470,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Imap(home), Graph(Guid.NewGuid())], preferredAccountId: home);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.Equal("Digests", vm.SelectedRule?.Name);
@@ -435,7 +487,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(client, server, [Imap(home), Graph(work)], preferredAccountId: work);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == home);
         await editor.SaveCommand.ExecuteAsync(null);
 
@@ -458,7 +510,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Imap(home), Graph(work)], preferredAccountId: work);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == home);
         await editor.SaveCommand.ExecuteAsync(null);
 
@@ -589,7 +641,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Move digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Move digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.NotNull(vm.SelectedRule);                                 // not stranded after create
@@ -650,7 +702,7 @@ public class UnifiedRulesViewModelTests
         var closed = false;
         editor.CloseRequested += () => closed = true;
 
-        editor.Name = "File it"; editor.SubjectContains = "later"; editor.MarkAsRead = true;
+        editor.Name = "File it"; editor.UseSubjectContains = true; editor.SubjectContains = "later"; editor.MarkAsRead = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.False(closed);
@@ -667,7 +719,7 @@ public class UnifiedRulesViewModelTests
         var closed = false;
         editor.CloseRequested += () => closed = true;
 
-        editor.Name = "File it"; editor.SubjectContains = "later"; editor.MarkAsRead = true;
+        editor.Name = "File it"; editor.UseSubjectContains = true; editor.SubjectContains = "later"; editor.MarkAsRead = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.Equal(0, client.SaveCount);
@@ -1377,6 +1429,7 @@ public class UnifiedRulesViewModelTests
 
         var editor = await OpenNewEditorAsync(vm);
         editor.Name = "Keep a copy";
+        editor.UseSubjectContains = true;
         editor.SubjectContains = "digest";
         editor.CopyToFolder = true;
         editor.CopyToFolderId = "INBOX";
@@ -1639,7 +1692,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(client, serverRules: null, [Imap(first), dflt], preferredAccountId: null);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "File it"; editor.SubjectContains = "x"; editor.MarkAsRead = true;
+        editor.Name = "File it"; editor.UseSubjectContains = true; editor.SubjectContains = "x"; editor.MarkAsRead = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.Equal(marked, Assert.Single(client.LoadedRules).AccountId);
@@ -1730,7 +1783,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(client, serverRules: null, [Imap(a)], preferredAccountId: a);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Newest"; editor.SubjectContains = "x"; editor.MarkAsRead = true;
+        editor.Name = "Newest"; editor.UseSubjectContains = true; editor.SubjectContains = "x"; editor.MarkAsRead = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.Equal(2, vm.Rules.Count);

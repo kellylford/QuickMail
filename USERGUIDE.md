@@ -600,17 +600,17 @@ The Rules Manager lists one account's rules at a time; choose the account in the
 
 1. In the Rules Manager, choose the account, then activate **New** or press **Ctrl+N**. The rule editor opens in its own window.
 2. Enter a **Rule name**.
-3. Under **Apply when a message matches**, check the conditions you want (**From addresses**, **Subject contains**) and type the text to look for. More conditions, such as **Sender contains**, **Sent to addresses**, **Body contains** and **Has attachments**, are under **Advanced conditions & actions**. A message must match every condition you checked.
+3. Under **Apply when a message matches**, check the conditions you want (**Sender contains**, **Subject contains**) and type the text to look for. A new rule starts with none of them checked, and a condition's box only accepts text once its checkbox is ticked. More conditions, such as **From addresses**, **Sent to addresses**, **Subject or body contains**, **Body contains** and **Has attachments**, are under **Advanced conditions & actions**. A message must match every condition you checked. **From addresses** and **Sent to addresses** each take several addresses, separated by commas, and a message matches when it has any one of them.
 4. Under **Then do this**, choose what happens: **Move to folder** (then activate **Choose folder…**), **Mark as read**, or **Delete**, which moves the message to Trash. **Mark as unread** is under **Advanced conditions & actions**.
 5. Activate **Save**.
 
-A **Move to folder** or **Delete** rule needs at least one condition, because a rule with none would act on every message. On an account that supports both kinds, QuickMail saves a new rule as server-side whenever it can; a rule that needs something only QuickMail can do, such as **Mark as unread**, is saved as client-side. Some options work only in a server-side rule, and if you use one where it cannot work, **Save** tells you what to remove.
+A **Move to folder** or **Delete** rule needs at least one condition, because a rule with none would act on every message. On an account that supports both kinds, QuickMail saves a new rule as server-side whenever it can; a rule that needs something only QuickMail can do, such as **Mark as unread**, is saved as client-side. Some options work only in a server-side rule. Where a rule cannot become one — an account with client-side rules only, or a rule you are editing that already runs in QuickMail — those options are turned off, and a line under **Enabled** names them and says why. That line is a Tab stop while it has something to say, so you meet it on the way through the form. **Save** still refuses a combination no client-side rule can hold, and tells you which.
 
 ### Creating a rule from a message
 
 1. Select a message in the message list.
 2. Press **Shift+F10** or the Applications key and choose **Create Rule from Message…**, or press **Ctrl+Shift+T**.
-3. The rule editor opens with the sender filled in and its condition checked, and the subject filled in but unchecked. The rule belongs to that message's account. Choose an action and save.
+3. The rule editor opens with the sender filled in under **Sender contains**, its condition checked, and the subject filled in but unchecked. The rule belongs to that message's account. Choose an action and save.
 
 Create Rule from Message is not in the context menu for a message in a shared mailbox, whose rules are managed in Outlook. **Ctrl+Shift+T** and the command palette say so on the status bar instead of making a rule.
 

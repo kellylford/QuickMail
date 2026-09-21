@@ -57,11 +57,12 @@ public class RuleEditorValidationTests
     [Fact]
     public void AConditionSwitchedOnButEmpty_DoesNotCount()
     {
-        // A new rule opens with every condition switched ON and empty. That is exactly the form a
-        // user reaches by typing a name, ticking Delete and pressing Save — the case this guards.
+        // Ticking a condition and typing nothing into it is not a condition. That is the form a user
+        // reaches by typing a name, ticking Subject contains, thinking better of it, ticking Delete and
+        // pressing Save — a Delete rule that would take the whole Inbox if the empty tick counted.
         var vm = Named();
-        Assert.True(vm.UseSubjectContains);
-        Assert.True(vm.UseFromAddresses);
+        vm.UseSubjectContains = true;
+        vm.UseFromAddresses = true;
         vm.Delete = true;
 
         Assert.False(vm.Validate());
@@ -122,6 +123,7 @@ public class RuleEditorValidationTests
     {
         var vm = Named();
         vm.Delete = true;
+        vm.UseSubjectContains = true;
         vm.SubjectContains = "newsletter";
 
         Assert.True(vm.Validate());
@@ -140,11 +142,13 @@ public class RuleEditorValidationTests
         // fields, because each is its own way in.
         var from = Named();
         from.Delete = true;
+        from.UseFromAddresses = true;      // ticked AND holding text, so the refusal is about the parse
         from.FromAddresses = separators;
         Assert.False(from.Validate());
 
         var sentTo = Named();
         sentTo.Delete = true;
+        sentTo.UseSentToAddresses = true;
         sentTo.SentToAddresses = separators;
         Assert.False(sentTo.Validate());
     }
@@ -155,6 +159,7 @@ public class RuleEditorValidationTests
         // The other side of the separator case: parsing must still recognise an actual address.
         var vm = Named();
         vm.Delete = true;
+        vm.UseFromAddresses = true;
         vm.FromAddresses = "boss@work.com";
 
         Assert.True(vm.Validate());

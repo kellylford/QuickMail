@@ -124,6 +124,18 @@ internal sealed class UiProbeDriver
                 return await CaptureChildWindowAsync(() => ExecuteCommand("mail.rules"),
                     w => w is UnifiedRulesWindow, path);
 
+            // #682. Its own surface because no other capture reaches it: the rule editor opens from the
+            // Rules Manager, not from MainWindow, so it is two windows deep and "rules" above captures
+            // the list in front of it.
+            case "rule-editor":
+                return await CaptureRuleEditorAsync(path, expandAdvanced: false);
+
+            // Half the editor's conditions and three of its actions live inside the Advanced expander,
+            // which a new rule opens collapsed — so the capture above shows none of them. Same reason
+            // settings-saving is separate from settings-appearance.
+            case "rule-editor-advanced":
+                return await CaptureRuleEditorAsync(path, expandAdvanced: true);
+
             case "saved-views":
                 return await CaptureChildWindowAsync(() => _vm.ManageViewsCommand.Execute(null),
                     w => w is ViewManagerWindow, path);
@@ -166,7 +178,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, rules, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }
@@ -221,14 +233,7 @@ internal sealed class UiProbeDriver
         // through the dispatcher and poll from within whatever loop is pumping.
         _ = _window.Dispatcher.BeginInvoke(open);
 
-        Window? child = null;
-        var deadline = Environment.TickCount64 + (long)SurfaceTimeout.TotalMilliseconds;
-        while (child is null && Environment.TickCount64 < deadline)
-        {
-            await Task.Delay(100);
-            child = Application.Current.Windows.OfType<Window>()
-                .FirstOrDefault(w => match(w) && w.IsLoaded && w.IsVisible);
-        }
+        var child = await WaitForWindowAsync(match);
         if (child is null)
         {
             LogService.Log($"ui-probe: expected window for {Path.GetFileNameWithoutExtension(path)} never appeared.");
@@ -253,6 +258,103 @@ internal sealed class UiProbeDriver
             await IdleAsync();
         }
     }
+
+    /// <summary>
+    /// Waits for an open window the predicate matches, up to <see cref="SurfaceTimeout"/>; null when none
+    /// appears. Polling rather than an event because the window a surface wants may be opened by a command,
+    /// by another window, or already be up.
+    /// </summary>
+    private static async Task<Window?> WaitForWindowAsync(Func<Window, bool> match)
+    {
+        var deadline = Environment.TickCount64 + (long)SurfaceTimeout.TotalMilliseconds;
+        while (Environment.TickCount64 < deadline)
+        {
+            await Task.Delay(100);
+            var hit = Application.Current.Windows.OfType<Window>()
+                .FirstOrDefault(w => match(w) && w.IsLoaded && w.IsVisible);
+            if (hit is not null) return hit;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Captures the rule editor, which is two windows deep: open the Rules Manager, wait for it, then ask
+    /// it for a new rule. The editor is modeless (see CLAUDE.md on dialogs over a live WebView2), so
+    /// nothing here runs inside a nested message loop and the capture can proceed while both are open.
+    /// <para>
+    /// The rule is prefilled, the way Create Rule from Message prefills one, so the capture shows text in
+    /// the boxes rather than an empty form — an empty TextBox says nothing about how its content reads.
+    /// The Rules Manager behind it is closed on the way out, whether or not the editor was reached.
+    /// </para>
+    /// </summary>
+    private async Task<bool> CaptureRuleEditorAsync(string path, bool expandAdvanced)
+    {
+        var name = Path.GetFileNameWithoutExtension(path);
+        _ = _window.Dispatcher.BeginInvoke(() => ExecuteCommand("mail.rules"));
+
+        if (await WaitForWindowAsync(w => w is UnifiedRulesWindow) is not UnifiedRulesWindow rules)
+        {
+            LogService.Log($"ui-probe: the Rules Manager never appeared, so {name} could not be reached.");
+            return false;
+        }
+
+        try
+        {
+            await IdleAsync();
+            _ = rules.Dispatcher.BeginInvoke(() => rules.PrefillFromTemplate(ProbeRuleTemplate()));
+
+            if (await WaitForWindowAsync(w => w is ServerRuleEditorWindow) is not { } editor)
+            {
+                LogService.Log($"ui-probe: expected window for {name} never appeared.");
+                return false;
+            }
+
+            try
+            {
+                await IdleAsync();
+                if (expandAdvanced && FindDescendant<Expander>(editor) is { } advanced)
+                {
+                    advanced.IsExpanded = true;
+                    await IdleAsync();
+
+                    // Expanding alone captures an open expander and none of its contents: the section is
+                    // taller than the window, so all of it sits below the fold inside the ScrollViewer and
+                    // the shot shows a turned chevron over the same fields as the collapsed one. The window
+                    // resizes (CanResizeWithGrip), so grow it to what the screen allows and scroll the
+                    // section to the top — what a reviewer would do by hand before looking.
+                    editor.Height = Math.Min(1180, SystemParameters.WorkArea.Height);
+                    await IdleAsync();
+                    advanced.BringIntoView();
+                    await IdleAsync();
+                }
+                return await CaptureSettledAsync(editor, path);
+            }
+            finally
+            {
+                try { editor.Close(); } catch (Exception ex) { LogService.Debug($"ui-probe: editor close failed: {ex.Message}"); }
+                await IdleAsync();
+            }
+        }
+        finally
+        {
+            try { rules.Close(); } catch (Exception ex) { LogService.Debug($"ui-probe: rules window close failed: {ex.Message}"); }
+            await IdleAsync();
+        }
+    }
+
+    /// <summary>The rule the editor capture is prefilled from. Fixed text, so two runs are comparable.</summary>
+    private static MailRule ProbeRuleTemplate() => new()
+    {
+        Name = "Rule for newsletter@example.com",
+        // What MainViewModel.CreateRuleFromMessage builds: the sender as a substring match, because a
+        // display name can hold a comma and the address fields read one as a separator (#682). Carrying
+        // it in FromContains instead put it in the Advanced section, so the capture showed an empty form
+        // above a prefilled field nobody could see.
+        SenderContains = "newsletter@example.com",
+        UseSenderCondition = true,
+        SubjectContains = "Weekly digest",
+        UseSubjectCondition = false,
+    };
 
     /// <summary>Selects the TabItem whose header contains the fragment (e.g. Appearance).</summary>
     private static void SelectTabByHeader(Window window, string headerFragment)

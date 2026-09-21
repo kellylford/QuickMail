@@ -42,6 +42,16 @@
       "scale": 100
     },
     {
+      "surface": "rule-editor",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "rule-editor-advanced",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
       "surface": "saved-views",
       "theme": "parchment",
       "scale": 100
@@ -102,6 +112,16 @@
       "scale": 100
     },
     {
+      "surface": "rule-editor",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "rule-editor-advanced",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
       "surface": "saved-views",
       "theme": "dark",
       "scale": 100
@@ -158,6 +178,16 @@
     },
     {
       "surface": "rules",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "rule-editor",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "rule-editor-advanced",
       "theme": "parchment",
       "scale": 150
     },
