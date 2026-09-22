@@ -1,4 +1,31 @@
-# QuickMail v0.8.48 Release Notes
+﻿# QuickMail v0.8.48 Release Notes
+
+## Added
+
+### Put your accounts in the order you want
+
+Accounts have always appeared in the order you added them. Now you can rearrange them. Move to the
+**Accounts** list, select an account, and press **Alt+Up**, **Alt+Down**, **Alt+Home** or
+**Alt+End** — or use the context menu (**Shift+F10**, the Applications key, or right-click), which
+offers **Move Up**, **Move Down**, **Move to Start** and **Move to End**.
+
+Each move says where the account landed — "Moved above Work" — and leaves you on the account you
+moved, so you can press the key again. At either end of the list QuickMail says so, rather than
+doing nothing.
+
+The order is not only the account list: it is the order the accounts appear in the folder tree, and
+the order of the **From** list when you compose a message. Putting the account you use most at the
+top puts it first everywhere. All four moves are in the command palette too, and you can give them
+different keys in **File → Settings → Keyboard Shortcuts**.
+
+### Move the Calendar to the bottom of the folder list
+
+**Calendar** has always been the first thing in the folder tree, which puts it in the way if you
+reach your mail by arrowing down from the top. Open the context menu on the **Calendar** node and
+choose **Calendar at Bottom of Folder List** to move it below your accounts, or **Calendar at Top of
+Folder List** to put it back. Both items are checkable, so opening the menu tells you where the
+calendar is now, and the choice is remembered between sessions. Both are in the command palette as
+well.
 
 ---
 

@@ -423,6 +423,41 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // through CalendarFilterFor with no second parser to keep in step. Empty = no preference.
     private string _defaultCalendarSource = string.Empty;
 
+    // ── Where Calendar sits in the folder tree ───────────────────────────────────
+    //
+    // False (the default) keeps Calendar as the first root, where it has always been. True moves it
+    // below the accounts, for someone who arrows down from the top of the tree to reach mail and
+    // does not want to pass the calendar every time.
+    private bool _calendarAtEndOfFolderList;
+
+    /// <summary>True when the Calendar node is pinned to the bottom of the folder tree.</summary>
+    public bool CalendarAtEndOfFolderList => _calendarAtEndOfFolderList;
+
+    /// <summary>
+    /// Moves the Calendar node to the top or the bottom of the folder tree and remembers the
+    /// choice. Returns the sentence the View reports (status bar plus a Result announcement), the
+    /// pairing every folder/calendar context-menu outcome uses.
+    /// </summary>
+    public string SetCalendarAtEndOfFolderList(bool atEnd)
+    {
+        if (CalendarVm == null)
+            return "The calendar is not available, so it has no place in the folder list.";
+
+        var already = _calendarAtEndOfFolderList == atEnd;
+        _calendarAtEndOfFolderList = atEnd;
+
+        var cfg = _configService.Load();
+        cfg.CalendarAtEndOfFolderList = atEnd;
+        _configService.Save(cfg);
+
+        if (!already) BuildFolderTree();
+
+        var where = atEnd ? "end" : "start";
+        return already
+            ? $"Calendar is already at the {where} of the folder list."
+            : $"Calendar moved to the {where} of the folder list.";
+    }
+
     /// <summary>The chosen default calendar as a filter, or null when the user has set no default.</summary>
     private CalendarFilter? DefaultCalendarFilter =>
         string.IsNullOrEmpty(_defaultCalendarSource)
@@ -1847,6 +1882,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _rememberViewPerFolder = cfg.RememberViewPerFolder;
         _defaultListState      = DefaultListStateFrom(cfg);
         _announceFlagStatus = cfg.AnnounceFlagStatus;
+        _calendarAtEndOfFolderList = cfg.CalendarAtEndOfFolderList;
 
         // Calendar — only when a calendar service is wired (skipped in tests).
         if (_calendarService != null)
@@ -2158,6 +2194,68 @@ public partial class MainViewModel : ObservableObject, IDisposable
         left.IncomingUseSsl == right.IncomingUseSsl &&
         left.RequireStartTls == right.RequireStartTls &&
         left.IncomingAcceptInvalidCert == right.IncomingAcceptInvalidCert;
+
+    // ── Account order ─────────────────────────────────────────────────────────────
+    //
+    // There is no ordering field on AccountModel: the order IS the array order in accounts.json,
+    // and every consumer reads it straight through — the account list, the folder tree's account
+    // roots, the calendar's per-account sources, and the compose window's From picker, which
+    // re-reads the file rather than sharing this collection. So one Move plus one SaveAccounts is
+    // the whole feature; nothing else has to be told.
+
+    /// <summary>Moves the account one place up the list. Returns the sentence the View reports.</summary>
+    public string MoveAccountUp(AccountModel? account) => MoveAccountBy(account, -1);
+
+    /// <summary>Moves the account one place down the list. Returns the sentence the View reports.</summary>
+    public string MoveAccountDown(AccountModel? account) => MoveAccountBy(account, +1);
+
+    /// <summary>Moves the account to the top of the list. Returns the sentence the View reports.</summary>
+    public string MoveAccountToStart(AccountModel? account) => MoveAccount(account, 0);
+
+    /// <summary>Moves the account to the bottom of the list. Returns the sentence the View reports.</summary>
+    public string MoveAccountToEnd(AccountModel? account) => MoveAccount(account, Accounts.Count - 1);
+
+    /// <summary>
+    /// Moves <paramref name="account"/> to <paramref name="target"/> and persists the new order.
+    /// The sentence names the account it is now next to rather than a position number: "moved above
+    /// Work" is what tells someone arrowing the list what actually happened, where "moved to
+    /// position 2" makes them count.
+    /// </summary>
+    private string MoveAccountBy(AccountModel? account, int delta)
+    {
+        var from = account == null ? -1 : Accounts.IndexOf(account);
+        return from < 0 ? "Select an account first." : MoveAccount(account, from + delta);
+    }
+
+    private string MoveAccount(AccountModel? account, int target)
+    {
+        if (account == null) return "Select an account first.";
+
+        var from = Accounts.IndexOf(account);
+        if (from < 0) return "Select an account first.";
+        if (Accounts.Count < 2) return "There is only one account, so there is nothing to reorder.";
+
+        if (target < 0)                return "Already at the start of the account list.";
+        if (target >= Accounts.Count)  return "Already at the end of the account list.";
+        if (target == from)
+            return from == 0 ? "Already at the start of the account list."
+                             : "Already at the end of the account list.";
+
+        Accounts.Move(from, target);
+        _accountService.SaveAccounts([.. Accounts]);
+
+        // Both the flat Folders list and the tree's account roots are built from Accounts in
+        // order, so both have to be rebuilt to follow — the same pair the account-delete path
+        // rebuilds. MergeFolderNodes re-sequences the live tree nodes in place, so nothing the user
+        // has expanded — or has keyboard focus on — is thrown away (#719).
+        RebuildFolderListFromCache();
+
+        var moved = target < from;
+        var neighbour = moved ? Accounts[target + 1] : Accounts[target - 1];
+        return moved
+            ? $"Moved above {neighbour.AccountLabel}."
+            : $"Moved below {neighbour.AccountLabel}.";
+    }
 
     // ── Saved-views lifecycle ─────────────────────────────────────────────────────
 
@@ -4971,6 +5069,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // "Calendar" — top-level virtual folder that opens the event list.
         // Shown only when a calendar service is wired (skipped in tests / online-only builds).
+        // Built here either way; where it lands is the user's choice, applied at the end.
+        FolderTreeNode? calendarRoot = null;
         if (CalendarVm != null)
         {
             var calNode = new FolderTreeNode
@@ -5023,7 +5123,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                 calNode.Children.Add(acctNode);
             }
-            roots.Add(calNode);
+            calendarRoot = calNode;
+            if (!_calendarAtEndOfFolderList) roots.Add(calNode);
         }
 
         // "Views" group — shown only when the user has saved at least one view.
@@ -5126,6 +5227,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 });
             }
         }
+
+        // Calendar last, when the user asked for it there — after every account root, so arrowing
+        // down from the top of the tree reaches mail without passing the calendar first.
+        if (calendarRoot != null && _calendarAtEndOfFolderList) roots.Add(calendarRoot);
 
         // Restore the state captured above. A node the tree has not seen before keeps the default
         // it was built with (header groups expanded, folders collapsed).

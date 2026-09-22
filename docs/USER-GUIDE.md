@@ -1,4 +1,4 @@
-# QuickMail User Guide
+﻿# QuickMail User Guide
 
 QuickMail is a keyboard and screen reader friendly email program for Windows. Gmail, iCloud, Outlook.com, Microsoft 365, and IMAP/SMTP providers in general are all supported.
 
@@ -389,6 +389,28 @@ Press **Save** — the default button, so Enter is enough — to keep the change
 **Set Default** marks the selected account as your default — the account new messages are sent from unless you choose another, and the one the Rules Manager opens on when you are not in a particular account (in **All Inboxes**, for example). The default account is announced as "default" alongside its name in the list.
 
 Server settings sit behind the same **Advanced settings** expander as in Add Account, so an account that is working needs no scrolling past hosts and ports to reach the settings people actually change. The **Provider** at the top is fixed when the account is created; to change it, remove the account and add it again.
+
+### Changing the order of your accounts
+
+Accounts appear in the order you added them, and you can rearrange them. Move to the **Accounts**
+list in the main window, select an account, and either press a key or use the context menu
+(**Shift+F10**, the Applications key, or right-click):
+
+| Key | Action |
+|---|---|
+| `Alt+Up` | Move Up |
+| `Alt+Down` | Move Down |
+| `Alt+Home` | Move to Start |
+| `Alt+End` | Move to End |
+
+Each move says where the account landed — "Moved above Work" — and leaves you on the account you
+moved, so you can press the key again. At either end of the list QuickMail tells you that too,
+rather than doing nothing.
+
+The order is not just the account list. It is the order the accounts appear in the folder tree, and
+the order of the **From** list when you compose a message, so putting the account you use most at the
+top puts it first everywhere. The four moves are also in the Command Palette (**Ctrl+Shift+P**), and
+you can give them different keys in **File → Settings → Keyboard Shortcuts**.
 
 ### Removing an account
 
@@ -1388,6 +1410,20 @@ Expand the **Calendar** node in the folder tree to choose which events you are l
 - **Each calendar under an account** — if an account has more than one calendar (for example iCloud's Home, Family, and Work, or several Google or Outlook calendars), each appears as its own node beneath the account, so you can look at just that one.
 
 Selecting a source filters the list to it. "All Calendars" is the usual choice for day-to-day use.
+
+### Where Calendar sits in the folder list
+
+**Calendar** is the first thing in the folder tree. If you reach your mail by arrowing down from the
+top of the tree, that puts the calendar in your way every time, so you can move it to the bottom
+instead.
+
+1. In the folder tree, move to the **Calendar** node.
+2. Open the context menu with **Shift+F10** or the Applications key (or right-click).
+3. Choose **Calendar at Top of Folder List** or **Calendar at Bottom of Folder List**.
+
+Both are checkable, so opening the menu also tells you where the calendar is now. At the bottom it
+sits after your accounts — the last root in the tree. The choice is remembered between sessions, and
+both are in the Command Palette (**Ctrl+Shift+P**) if you would rather not go through the menu.
 
 ### Choosing a default calendar for new appointments
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace QuickMail.Models;
@@ -436,6 +436,13 @@ public class ConfigModel
     /// Empty (the default) means no preference — the editor opens on the local calendar as before.
     /// </summary>
     public string DefaultCalendarSource { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether the Calendar node sits at the bottom of the folder tree rather than the top.
+    /// Default off — Calendar is the first root, as it has always been. Set from the Calendar
+    /// node's context menu, for users who arrow the folder tree from the top to reach mail.
+    /// </summary>
+    public bool CalendarAtEndOfFolderList { get; set; } = false;
 
     /// <summary>
     /// Obsolete: the calendar is now a folder in the folder tree, not a toggle pane.

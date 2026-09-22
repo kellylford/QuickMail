@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -1486,6 +1486,58 @@ public partial class MainWindow : Window
             id: "calendar.clearDefaultCalendar", category: "Calendar", title: "Clear Default Calendar",
             execute: () => Report(_vm.ClearDefaultCalendar()),
             isAvailable: () => _vm.CalendarVm != null));
+
+        // ── Where Calendar sits in the folder tree ──────────────────────────────
+        // No default key: the Calendar node's context menu is the entry point. Registered so the
+        // choice is also reachable — and rebindable — from the Command Palette, which is the rule a
+        // context-menu-only action broke in #250.
+        _registry.Register(new CommandDefinition(
+            id: "calendar.calendarAtTopOfFolderList", category: "Calendar",
+            title: "Calendar at Top of Folder List",
+            execute: () => Report(_vm.SetCalendarAtEndOfFolderList(false)),
+            isAvailable: () => _vm.CalendarVm != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.calendarAtBottomOfFolderList", category: "Calendar",
+            title: "Calendar at Bottom of Folder List",
+            execute: () => Report(_vm.SetCalendarAtEndOfFolderList(true)),
+            isAvailable: () => _vm.CalendarVm != null));
+
+        // ── Account order ───────────────────────────────────────────────────────
+        // Alt+arrows are the in-list gestures; they are registered rather than hardcoded in
+        // AccountList_PreviewKeyDown so they show up in keyboard customizations and the palette.
+        // isAvailable scopes each one to the account list: the window-level PreviewKeyDown sees
+        // every keystroke, and an unscoped Alt+Up would reorder accounts from inside a message.
+        //
+        // Alt+Up and Alt+Down are shared with mail.previousUnread / mail.nextUnread, which are
+        // scoped to the message area the same way. That is the registry's documented behaviour for
+        // a shared default (as Delete is for mail.delete and folder.delete): FindByGesture returns
+        // whichever command is available for the current focus, and the two scopes never overlap.
+        // Keep both gates focus-based — a scope that can be true in two panes at once makes which
+        // command runs depend on registration order.
+        _registry.Register(new CommandDefinition(
+            id: "account.moveUp", category: "Account", title: "Move Account Up",
+            execute: () => MoveSelectedAccount(_vm.MoveAccountUp),
+            defaultKey: Key.Up, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => AccountList.IsKeyboardFocusWithin));
+
+        _registry.Register(new CommandDefinition(
+            id: "account.moveDown", category: "Account", title: "Move Account Down",
+            execute: () => MoveSelectedAccount(_vm.MoveAccountDown),
+            defaultKey: Key.Down, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => AccountList.IsKeyboardFocusWithin));
+
+        _registry.Register(new CommandDefinition(
+            id: "account.moveToStart", category: "Account", title: "Move Account to Start",
+            execute: () => MoveSelectedAccount(_vm.MoveAccountToStart),
+            defaultKey: Key.Home, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => AccountList.IsKeyboardFocusWithin));
+
+        _registry.Register(new CommandDefinition(
+            id: "account.moveToEnd", category: "Account", title: "Move Account to End",
+            execute: () => MoveSelectedAccount(_vm.MoveAccountToEnd),
+            defaultKey: Key.End, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => AccountList.IsKeyboardFocusWithin));
 
         // ── Startup folder (#516) ──
         // No default key: the folder-tree context menu and Settings > Startup are the primary
@@ -6469,6 +6521,73 @@ public partial class MainWindow : Window
     // that is the dead end #250 filed against folder creation.
     private void SetDefaultCalendarFromSelection()
         => Report(_vm.SetDefaultCalendar(FolderList.SelectedItem as FolderTreeNode));
+
+    // ── Where Calendar sits in the folder tree ───────────────────────────────────
+    //
+    // The two items are checkable so the current choice is reported by the platform when the menu
+    // opens — state a screen reader already announces, so nothing here announces it a second time.
+    // They are matched by Tag, not by name: the menu lives in Window.Resources, which is its own
+    // name scope, so x:Name there generates no field on this class.
+
+    private void CalendarContextMenu_Opened(object sender, RoutedEventArgs e)
+        => SyncCalendarPositionChecks(sender as ContextMenu);
+
+    private void CalendarContextMenu_CalendarFirst_Click(object sender, RoutedEventArgs e)
+        => SetCalendarPosition(sender, atEnd: false);
+
+    private void CalendarContextMenu_CalendarLast_Click(object sender, RoutedEventArgs e)
+        => SetCalendarPosition(sender, atEnd: true);
+
+    private void SetCalendarPosition(object sender, bool atEnd)
+    {
+        Report(_vm.SetCalendarAtEndOfFolderList(atEnd));
+        // Clicking a checkable item toggles its own check, which for a two-way choice can leave the
+        // chosen item reading "unchecked". Re-derive both from the setting instead.
+        SyncCalendarPositionChecks((sender as MenuItem)?.Parent as ContextMenu);
+    }
+
+    private void SyncCalendarPositionChecks(ContextMenu? menu)
+    {
+        if (menu == null) return;
+        foreach (var item in menu.Items.OfType<MenuItem>())
+        {
+            if (item.Tag as string == "calendarFirst") item.IsChecked = !_vm.CalendarAtEndOfFolderList;
+            else if (item.Tag as string == "calendarLast") item.IsChecked = _vm.CalendarAtEndOfFolderList;
+        }
+    }
+
+    // ── Account order ────────────────────────────────────────────────────────────
+
+    private void AccountContextMenu_MoveUp_Click(object sender, RoutedEventArgs e)
+        => MoveSelectedAccount(_vm.MoveAccountUp);
+
+    private void AccountContextMenu_MoveDown_Click(object sender, RoutedEventArgs e)
+        => MoveSelectedAccount(_vm.MoveAccountDown);
+
+    private void AccountContextMenu_MoveToStart_Click(object sender, RoutedEventArgs e)
+        => MoveSelectedAccount(_vm.MoveAccountToStart);
+
+    private void AccountContextMenu_MoveToEnd_Click(object sender, RoutedEventArgs e)
+        => MoveSelectedAccount(_vm.MoveAccountToEnd);
+
+    // Runs the move, reports the outcome ("Moved above Work."), and puts keyboard focus back on the
+    // row that moved. The re-focus is not optional: ObservableCollection.Move regenerates the
+    // ListBoxItem containers, so without it the user is dropped out of the list after one Alt+Up
+    // and cannot press it again.
+    private void MoveSelectedAccount(Func<AccountModel?, string> move)
+    {
+        var account = AccountList.SelectedItem as AccountModel;
+        Report(move(account));
+        if (account == null) return;
+
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (AccountList.ItemContainerGenerator.ContainerFromItem(account) is ListBoxItem row)
+                row.Focus();
+            else
+                AccountList.Focus();
+        }, DispatcherPriority.Input);
+    }
 
     // Deletes the folder and lands focus on the folder above. The VM splices the node out of the
     // tree in place (no rebuild), so the captured neighbour reference stays valid for FocusTreeItem.

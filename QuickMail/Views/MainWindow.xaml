@@ -1,4 +1,4 @@
-<Window x:Class="QuickMail.Views.MainWindow"
+﻿<Window x:Class="QuickMail.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -328,7 +328,8 @@
              of them silently did nothing there. Same Window.Resources rule as above: a ContextMenu
              with Click handlers must not be declared inside a Style setter. -->
         <ContextMenu x:Key="CalendarContextMenu"
-                     AutomationProperties.Name="Calendar actions">
+                     AutomationProperties.Name="Calendar actions"
+                     Opened="CalendarContextMenu_Opened">
             <MenuItem Header="Use as _Default Calendar for New Appointments"
                       AutomationProperties.Name="Use as Default Calendar for New Appointments"
                       Click="CalendarContextMenu_SetDefault_Click"/>
@@ -351,6 +352,21 @@
             <MenuItem Header="Collapse A_ll Folders"
                       AutomationProperties.Name="Collapse All Folders"
                       Click="FolderContextMenu_CollapseAllFolders_Click"/>
+            <Separator/>
+            <!-- Where Calendar sits among the folder roots. Checkable so the current choice is
+                 reported by the platform on open — no custom announcement for state that a menu
+                 item's own check already carries. Tag is what CalendarContextMenu_Opened matches
+                 on: a ContextMenu in Window.Resources has its own name scope, so x:Name here does
+                 not give the code-behind a field to reach. Access keys D, C, X, P, E and L are
+                 taken by the items above, leaving T and B. -->
+            <MenuItem Header="Calendar at _Top of Folder List"
+                      AutomationProperties.Name="Calendar at Top of Folder List"
+                      Tag="calendarFirst" IsCheckable="True"
+                      Click="CalendarContextMenu_CalendarFirst_Click"/>
+            <MenuItem Header="Calendar at _Bottom of Folder List"
+                      AutomationProperties.Name="Calendar at Bottom of Folder List"
+                      Tag="calendarLast" IsCheckable="True"
+                      Click="CalendarContextMenu_CalendarLast_Click"/>
         </ContextMenu>
     </Window.Resources>
 
@@ -1009,6 +1025,29 @@
                                       AutomationProperties.Name="Account Settings"
                                       Command="{Binding PlacementTarget.DataContext.OpenAccountSettingsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                            <Separator/>
+                            <!-- Account order. The order is the array order in accounts.json, so
+                                 moving here also moves the folder tree's account roots and the
+                                 compose window's From list. Click handlers, not Command bindings:
+                                 each move returns a sentence the window reports to the status bar
+                                 and announces, and it re-focuses the moved row. Access keys D and
+                                 S are taken above; U, W, R and N are free. -->
+                            <MenuItem Header="Move _Up"
+                                      AutomationProperties.Name="Move Up"
+                                      InputGestureText="Alt+Up"
+                                      Click="AccountContextMenu_MoveUp_Click"/>
+                            <MenuItem Header="Move Do_wn"
+                                      AutomationProperties.Name="Move Down"
+                                      InputGestureText="Alt+Down"
+                                      Click="AccountContextMenu_MoveDown_Click"/>
+                            <MenuItem Header="Move to Sta_rt"
+                                      AutomationProperties.Name="Move to Start"
+                                      InputGestureText="Alt+Home"
+                                      Click="AccountContextMenu_MoveToStart_Click"/>
+                            <MenuItem Header="Move to E_nd"
+                                      AutomationProperties.Name="Move to End"
+                                      InputGestureText="Alt+End"
+                                      Click="AccountContextMenu_MoveToEnd_Click"/>
                         </ContextMenu>
                     </ListBox.ContextMenu>
                 </ListBox>

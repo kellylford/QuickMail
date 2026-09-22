@@ -1,4 +1,4 @@
-# Keyboard Shortcuts Reference
+﻿# Keyboard Shortcuts Reference
 
 ## Registered shortcut table (MainWindow)
 
@@ -50,6 +50,10 @@
 | *(unassigned)* | `mail.openFlagManager` | Manage Flags… |
 | Alt+Down | `mail.nextUnread` | Next Unread Message — the nearest unread message below the current one, in the flat list or a group tree (message-area focus only) |
 | Alt+Up | `mail.previousUnread` | Previous Unread Message — the nearest unread message above the current one (message-area focus only) |
+| Alt+Up | `account.moveUp` | Move Account Up (account-list focus only) |
+| Alt+Down | `account.moveDown` | Move Account Down (account-list focus only) |
+| Alt+Home | `account.moveToStart` | Move Account to Start (account-list focus only) |
+| Alt+End | `account.moveToEnd` | Move Account to End (account-list focus only) |
 | Shift+, | `mail.jumpToFirstInGroup` | First Message in Group |
 | Shift+. | `mail.jumpToLastInGroup` | Last Message in Group |
 | *(unassigned)* | `mail.acceptInvite` | Accept Invitation |
@@ -80,6 +84,19 @@
 | *(unassigned)* | `folder.collapse` | Collapse Folder — the selected folder and every subfolder in it |
 | *(unassigned)* | `folder.expandAll` | Expand All Folders |
 | *(unassigned)* | `folder.collapseAll` | Collapse All Folders — account headers included |
+| *(unassigned)* | `calendar.calendarAtTopOfFolderList` | Calendar at Top of Folder List |
+| *(unassigned)* | `calendar.calendarAtBottomOfFolderList` | Calendar at Bottom of Folder List |
+
+Alt+Up and Alt+Down appear twice above on purpose. `mail.previousUnread` / `mail.nextUnread` are
+scoped to the message area and `account.moveUp` / `account.moveDown` to the account list, and
+`FindByGesture` returns whichever of the two is available for the current focus — the same
+arrangement Delete has for `mail.delete` and `folder.delete`. Both scopes must stay focus-based: one
+that can be true in two panes at once makes which command runs depend on registration order.
+
+Moving an account reorders it everywhere, not just in the account list — the order is the array
+order in `accounts.json`, which the folder tree's account roots and the compose window's From list
+both read straight through. Each move announces what it landed next to ("Moved above Work") as an
+`AnnouncementCategory.Result`, and puts keyboard focus back on the row that moved.
 
 The folder tree's own Right and Left arrow keys expand and collapse one level. They are
 in-control navigation — the same kind as the arrow keys inside a list box — and are not registered
