@@ -343,4 +343,66 @@ public class CommandRegistryTests
         Assert.NotNull(clear.IsAvailable);
         Assert.False(clear.IsAvailable!());
     }
+    // ── A custom binding on a shared gesture ─────────────────────────────────────
+    //
+    // Delete is shared by mail.delete and folder.delete, and Alt+Up / Alt+Down by the unread jumps
+    // and the account moves; each pair is told apart by which one is available for the focused
+    // pane. The dispatcher looks a gesture up ONCE and does nothing when what it gets back is
+    // unavailable, so whatever this method returns is the only candidate that gets a chance.
+
+    [Fact]
+    public void FindByGesture_AnUnavailableOverride_DoesNotSwallowTheOtherCommandOnThatGesture()
+    {
+        // The user re-recorded Previous Unread Message on its own default, Alt+Up. Settings only
+        // checks a new binding against other custom bindings, so this is allowed — and it used to
+        // make Move Account Up unreachable by keyboard while its menu still advertised Alt+Up.
+        var reg = new CommandRegistry();
+        reg.Register(new CommandDefinition("mail.previousUnread", "Mail", "Previous Unread Message",
+            () => { }, defaultKey: Key.Up, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => false));
+        reg.Register(new CommandDefinition("account.moveUp", "Account", "Move Account Up",
+            () => { }, defaultKey: Key.Up, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => true));
+
+        reg.ApplyUserOverrides([
+            new HotkeyBinding { CommandId = "mail.previousUnread", Gesture = "Alt+Up" },
+        ]);
+
+        Assert.Equal("account.moveUp", reg.FindByGesture(Key.Up, ModifierKeys.Alt)!.Id);
+    }
+
+    [Fact]
+    public void FindByGesture_AnAvailableOverride_StillWins()
+    {
+        var reg = new CommandRegistry();
+        reg.Register(new CommandDefinition("mail.previousUnread", "Mail", "Previous Unread Message",
+            () => { }, defaultKey: Key.Up, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => true));
+        reg.Register(new CommandDefinition("account.moveUp", "Account", "Move Account Up",
+            () => { }, defaultKey: Key.Up, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => true));
+
+        reg.ApplyUserOverrides([
+            new HotkeyBinding { CommandId = "mail.previousUnread", Gesture = "Alt+Up" },
+        ]);
+
+        Assert.Equal("mail.previousUnread", reg.FindByGesture(Key.Up, ModifierKeys.Alt)!.Id);
+    }
+
+    [Fact]
+    public void FindByGesture_ALoneUnavailableOverride_IsStillWhatComesBack()
+    {
+        // Nothing else claims the gesture, so the user's own binding is still the answer — the
+        // dispatcher declines to run it, as it did before. Returning null here would let the
+        // keystroke fall through to whatever else handles it.
+        var reg = new CommandRegistry();
+        reg.Register(new CommandDefinition("mail.archive", "Mail", "Move to Archive",
+            () => { }, isAvailable: () => false));
+
+        reg.ApplyUserOverrides([
+            new HotkeyBinding { CommandId = "mail.archive", Gesture = "Alt+Up" },
+        ]);
+
+        Assert.Equal("mail.archive", reg.FindByGesture(Key.Up, ModifierKeys.Alt)!.Id);
+    }
 }

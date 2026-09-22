@@ -173,6 +173,23 @@ public class AccountOrderCommandRegistrationTests
         Assert.Equal(4, scoped);
     }
 
+    /// <summary>
+    /// Both moves land focus back where the user was standing. The account list is a plain
+    /// virtualizing ListBox, so a row scrolled out of sight has no container and the lookup returns
+    /// null — Move to End on a list taller than the pane would otherwise strand focus on the
+    /// ListBox itself, which nothing redirects into a row. The Calendar node has the same problem
+    /// for the opposite reason: moving it back to the top is a Move of that node, which regenerates
+    /// its TreeViewItem while the user is standing on it.
+    /// </summary>
+    [Fact]
+    public void BothMovesPutFocusBackOnWhatMoved()
+    {
+        var source = MainWindowSource();
+
+        Assert.Contains("AccountList.ScrollIntoView(account);", source, StringComparison.Ordinal);
+        Assert.Contains("FocusTreeItem(FolderList, calendar);", source, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("calendar.calendarAtTopOfFolderList")]
     [InlineData("calendar.calendarAtBottomOfFolderList")]

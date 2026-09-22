@@ -1,4 +1,4 @@
-﻿# QuickMail v0.8.48 Release Notes
+# QuickMail v0.8.48 Release Notes
 
 ## Added
 

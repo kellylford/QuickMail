@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -1494,13 +1494,13 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "calendar.calendarAtTopOfFolderList", category: "Calendar",
             title: "Calendar at Top of Folder List",
-            execute: () => Report(_vm.SetCalendarAtEndOfFolderList(false)),
+            execute: () => ApplyCalendarPosition(false, FolderList.IsKeyboardFocusWithin),
             isAvailable: () => _vm.CalendarVm != null));
 
         _registry.Register(new CommandDefinition(
             id: "calendar.calendarAtBottomOfFolderList", category: "Calendar",
             title: "Calendar at Bottom of Folder List",
-            execute: () => Report(_vm.SetCalendarAtEndOfFolderList(true)),
+            execute: () => ApplyCalendarPosition(true, FolderList.IsKeyboardFocusWithin),
             isAvailable: () => _vm.CalendarVm != null));
 
         // ── Account order ───────────────────────────────────────────────────────
@@ -6540,10 +6540,26 @@ public partial class MainWindow : Window
 
     private void SetCalendarPosition(object sender, bool atEnd)
     {
-        Report(_vm.SetCalendarAtEndOfFolderList(atEnd));
+        // The menu is opened from the Calendar node, so the tree is where the user is standing even
+        // though the popup holds focus while this runs.
+        ApplyCalendarPosition(atEnd, fromFolderTree: true);
         // Clicking a checkable item toggles its own check, which for a two-way choice can leave the
         // chosen item reading "unchecked". Re-derive both from the setting instead.
         SyncCalendarPositionChecks((sender as MenuItem)?.Parent as ContextMenu);
+    }
+
+    // Reports the outcome and, when the user is in the folder tree, puts focus back on the Calendar
+    // node. Moving it to the top is a Move of that node inside the live collection, so its
+    // TreeViewItem is regenerated and focus would be left on a container that no longer exists —
+    // the same reason the account list re-focuses its moved row. From the Command Palette the tree
+    // does not have focus and the palette restores its own, so nothing is taken from it.
+    private void ApplyCalendarPosition(bool atEnd, bool fromFolderTree)
+    {
+        Report(_vm.SetCalendarAtEndOfFolderList(atEnd));
+
+        if (!fromFolderTree) return;
+        if (_vm.FolderTree?.FirstOrDefault(n => n.IsCalendarNode) is { } calendar)
+            FocusTreeItem(FolderList, calendar);
     }
 
     private void SyncCalendarPositionChecks(ContextMenu? menu)
@@ -6582,6 +6598,15 @@ public partial class MainWindow : Window
 
         Dispatcher.InvokeAsync(() =>
         {
+            // ScrollIntoView first, or Move to End strands the user on an empty list. The account
+            // list is a plain virtualizing ListBox showing a handful of rows, so a row scrolled out
+            // of sight has no container at all and ContainerFromItem returns null — and the
+            // AccountList.Focus() fallback lands on the ListBox, not on a row, because
+            // List_GotKeyboardFocus only redirects into a row for the message list. Focus would
+            // then be nowhere near the account QuickMail had just said it moved.
+            AccountList.ScrollIntoView(account);
+            AccountList.UpdateLayout();
+
             if (AccountList.ItemContainerGenerator.ContainerFromItem(account) is ListBoxItem row)
                 row.Focus();
             else

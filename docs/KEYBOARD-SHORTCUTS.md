@@ -1,4 +1,4 @@
-﻿# Keyboard Shortcuts Reference
+# Keyboard Shortcuts Reference
 
 ## Registered shortcut table (MainWindow)
 
@@ -92,6 +92,13 @@ scoped to the message area and `account.moveUp` / `account.moveDown` to the acco
 `FindByGesture` returns whichever of the two is available for the current focus — the same
 arrangement Delete has for `mail.delete` and `folder.delete`. Both scopes must stay focus-based: one
 that can be true in two panes at once makes which command runs depend on registration order.
+
+A custom binding recorded on a shared gesture used to break the other half of the pair.
+`FindByGesture` returned a matching user override without asking whether it was available, and the
+dispatcher looks a gesture up only once — so re-recording Previous Unread Message on its own default
+Alt+Up left Move Account Up unreachable by keyboard while its menu still advertised the key. An
+available override still wins outright; an unavailable one now falls through to the defaults, and is
+kept only as the last resort so a lone unavailable override still beats an unrelated default.
 
 Moving an account reorders it everywhere, not just in the account list — the order is the array
 order in `accounts.json`, which the folder tree's account roots and the compose window's From list
