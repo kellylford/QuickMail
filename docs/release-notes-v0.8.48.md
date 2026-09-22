@@ -27,6 +27,19 @@ Folder List** to put it back. Both items are checkable, so opening the menu tell
 calendar is now, and the choice is remembered between sessions. Both are in the command palette as
 well.
 
+## Fixed
+
+### The right context menu on an account, and on the toolbar's dropdown buttons
+
+Pressing Shift+F10 (or the Applications key) on an account in the **Accounts** list opened the
+message menu — Reply, Reply All, Move to Folder — rather than the account actions. The same thing
+happened on the toolbar's **Sync Range** and **View Mode** buttons, where the gesture is the keyboard
+way to the dropdown those buttons open. All three now open their own menu.
+
+This is not new to this release; it goes back to the fix that gave the folder tree its own menu,
+which missed the other places. It became easy to notice now that the account menu has something on
+it worth reaching.
+
 ---
 
 ## Reporting Issues
