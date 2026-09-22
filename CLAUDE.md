@@ -95,11 +95,26 @@ none of the offline documentation on it. The trigger is kept only for a release 
 by hand in the GitHub UI, which does raise the event; that path does not re-run
 `quickmail.yml`, so the two cannot double up.
 
-The version shown on the page comes from `<Version>` in `QuickMail.csproj`, **not** from
-the tag and not from anything in `USER-GUIDE.md` — the guide contains no version string.
-So a site showing a stale version means the workflow has not run since the version bump,
-never that a document needs editing. It also means the publish must run from the tagged
-commit; `needs: build` in the same run guarantees that.
+The version shown on the page comes from the **v\* tags**, not from anything in
+`USER-GUIDE.md` — the guide contains no version string. It is the tag on the commit being
+published, and failing that the newest tag in the checkout, so a run by hand mid-cycle
+names the version people can actually download. It used to read `<Version>` from
+`QuickMail.csproj`, which is the version being *worked on*: identical on a tag, but a
+mid-cycle run then published a guide announcing a version that did not exist yet. A site
+showing a stale version means the workflow has not run since the last release, never that
+a document needs editing. The publish must still run from the tagged commit so the content
+matches the release; `needs: build` in the same run guarantees that, and the checkout uses
+`fetch-depth: 0` because the tags are now load-bearing.
+
+**Every released version needs `docs/release-notes-vX.Y.Z.md`.** `scripts/build-release-history.py`
+generates one page per release from those files, plus `releases.html` listing them all, and
+the User Guide's Release History section points at it. The script is driven by the tags: a
+notes file with no tag is an unreleased version and stays out of the history, and a tag with
+no notes file **fails the run** rather than quietly dropping that release from the record.
+It strips the Reporting Issues and Download footers, but only where they are a trailing
+block — an older file that opens with a download table keeps it, since prose was written
+inside those sections up to 0.8.34. Run it with `--dry-run` to check what it would generate
+without needing pandoc.
 
 **Before you ship a release**: Update `docs/USER-GUIDE.md` with any changes. The tag
 publishes it; a manual run is only for guide edits between releases.

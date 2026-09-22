@@ -56,3 +56,7 @@ QuickMail.Tests/TestResults/
 # Local integration-test servers (GreenMail jar cache, logs, pids)
 .testservers/
 *_wpftmp.csproj
+
+# Python bytecode from the docs/site scripts in scripts/
+__pycache__/
+*.pyc

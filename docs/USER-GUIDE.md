@@ -8,6 +8,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 
 - [System Requirements](#system-requirements)
 - [Installing and Updating QuickMail](#installing-and-updating-quickmail)
+- [Release History](#release-history)
 - [Accounts](#accounts)
 - [For Microsoft 365 Administrators and Tenant Owners](#for-microsoft-365-administrators-and-tenant-owners)
 - [Main Window](#main-window)
@@ -119,6 +120,18 @@ Two settings in **Settings → Advanced**, under **Updates**, put the whole mech
 ### Uninstalling
 
 Remove QuickMail from **Settings → Apps** as usual. After the app is removed, QuickMail asks whether to also delete your data — accounts, settings, contacts, rules, templates, saved views, cached mail, and saved passwords. Choose **No** (the default) to keep everything, so reinstalling later picks up exactly where you left off; choose **Yes** to remove it all.
+
+---
+
+## Release History
+
+Every version of QuickMail has release notes saying what was added, changed and fixed in it. They are all on the web, newest first, at [QuickMail Release History](https://kellylford.github.io/QuickMail/releases.html).
+
+Each version has its own page there, and every page links to the versions either side of it, so you can read back as far as you like. The list starts with version 0.5.0 in May 2026.
+
+To find out which version you are running, open **Help → About QuickMail**. If you installed QuickMail with the installer it updates itself, so you are normally on the newest version already.
+
+The same notes are on each version's own page on GitHub, alongside that version's downloads, at [github.com/kellylford/QuickMail/releases](https://github.com/kellylford/QuickMail/releases).
 
 ---
 
