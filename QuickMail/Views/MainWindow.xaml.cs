@@ -1940,14 +1940,34 @@ public partial class MainWindow : Window
 
         if (e.Handled) return;
 
-        // Only act as the message-list fallback. The folder tree owns its own FolderContextMenu;
-        // if the request came from there, bail so that menu opens instead of stealing it with the
-        // message menu (which would wrongly show Reply/Reply All on a folder).
-        if (e.OriginalSource is DependencyObject src && IsDescendantOf(FolderList, src))
-            return;
-
-        // The attachment list handles Shift+F10 directly and owns its own ContextMenu.
-        if (e.OriginalSource is DependencyObject attSrc && IsDescendantOf(ReadingPaneAttachmentList, attSrc))
+        // Only act as the message-list fallback, and only for a gesture that has no menu of its own
+        // to open.
+        //
+        // ContextMenuOpening BUBBLES. A gesture raised inside a control that owns a ContextMenu
+        // passes through this Window-level handler on the way up, BEFORE WPF opens the menu it
+        // found — so marking the event handled here cancels that control's menu and substitutes the
+        // message one. Every control that owns a ContextMenu therefore has to bail out here:
+        //
+        //   FolderList                  — #255: Shift+F10 on a folder offered Reply/Reply All.
+        //   AccountList                 — the same thing on an account. Missed when #255 fixed the
+        //                                 folder tree, so Shift+F10 on an account gave the message
+        //                                 menu unless the message list happened to be empty.
+        //   ReadingPaneAttachmentList   — handles Shift+F10 itself and owns its menu.
+        //   SyncRangeButton, ViewModeButton — toolbar buttons whose ContextMenu is their dropdown.
+        //                                 Shift+F10 on one is the keyboard way to the same menu the
+        //                                 Click handler opens.
+        //
+        // The group trees are absent on purpose: they build their menu in their own
+        // ContextMenuOpening handler and mark the event handled, which the check above returns on.
+        // ContextMenuFallbackTests sweeps the XAML for a control that gains a menu and is not
+        // listed here — the failure is invisible in review, since the XAML is correct and the menu
+        // simply never appears.
+        if (e.OriginalSource is DependencyObject src
+            && (IsDescendantOf(FolderList, src)
+                || IsDescendantOf(AccountList, src)
+                || IsDescendantOf(ReadingPaneAttachmentList, src)
+                || IsDescendantOf(SyncRangeButton, src)
+                || IsDescendantOf(ViewModeButton, src)))
             return;
 
         if (_vm.IsMessagesView && MessageList.Visibility == Visibility.Visible
