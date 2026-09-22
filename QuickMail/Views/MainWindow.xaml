@@ -985,6 +985,7 @@
                          GotKeyboardFocus="List_GotKeyboardFocus"
                          PreviewKeyDown="AccountList_PreviewKeyDown"
                          PreviewMouseLeftButtonDown="AccountList_PreviewMouseLeftButtonDown"
+                         PreviewMouseRightButtonDown="AccountList_PreviewMouseRightButtonDown"
                          MouseLeftButtonUp="AccountList_MouseLeftButtonUp">
 
                     <!-- Two-line item: account name + live status (connected/disconnected + inbox counts).

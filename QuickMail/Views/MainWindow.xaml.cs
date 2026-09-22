@@ -1956,9 +1956,14 @@ public partial class MainWindow : Window
         //   SyncRangeButton, ViewModeButton — toolbar buttons whose ContextMenu is their dropdown.
         //                                 Shift+F10 on one is the keyboard way to the same menu the
         //                                 Click handler opens.
+        //   ConversationTree, SenderGroupTree, ToGroupTree — each assigns its own ContextMenu from
+        //                                 its ContextMenuOpening handler. Those handlers mark the
+        //                                 event handled ONLY when nothing is selected, so in every
+        //                                 ordinary case the gesture arrives here unhandled. What
+        //                                 kept them working was the IsMessagesView test below being
+        //                                 false in their views — true today, and nothing states it
+        //                                 has to stay true. Listed here so it does not matter.
         //
-        // The group trees are absent on purpose: they build their menu in their own
-        // ContextMenuOpening handler and mark the event handled, which the check above returns on.
         // ContextMenuFallbackTests sweeps the XAML for a control that gains a menu and is not
         // listed here — the failure is invisible in review, since the XAML is correct and the menu
         // simply never appears.
@@ -1967,7 +1972,10 @@ public partial class MainWindow : Window
                 || IsDescendantOf(AccountList, src)
                 || IsDescendantOf(ReadingPaneAttachmentList, src)
                 || IsDescendantOf(SyncRangeButton, src)
-                || IsDescendantOf(ViewModeButton, src)))
+                || IsDescendantOf(ViewModeButton, src)
+                || IsDescendantOf(ConversationTree, src)
+                || IsDescendantOf(SenderGroupTree, src)
+                || IsDescendantOf(ToGroupTree, src)))
             return;
 
         if (_vm.IsMessagesView && MessageList.Visibility == Visibility.Visible
@@ -3107,6 +3115,17 @@ public partial class MainWindow : Window
 
     private void AccountList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         => _accountListClick.Press(MouseActivation.RowFromClick(e.OriginalSource), e.ClickCount);
+
+    // A WPF ListBox does not select on right-click, and every item on the account menu acts on
+    // SelectedItem — so right-clicking one account while another was selected would have deleted,
+    // opened the settings of, or moved the selected one. Until the fix above the account menu was
+    // effectively unreachable by mouse (the message menu opened instead), so this pairs with it.
+    // The group trees route the same gesture through their controllers for the same reason.
+    private void AccountList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (MouseActivation.RowFromClick(e.OriginalSource) is AccountModel account)
+            AccountList.SelectedItem = account;
+    }
 
     private void GroupTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         => _groupTreeClick.Press(MouseActivation.RowFromClick(e.OriginalSource), e.ClickCount);
