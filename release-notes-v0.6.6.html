@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.6.6 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.7.html">Newer: 0.6.7</a> | <a href="release-notes-v0.6.5.html">Older: 0.6.5</a></div>
+  <h1 id="quickmail-v0.6.6-release-notes">QuickMail v0.6.6 Release
+Notes</h1>
+<p class="version">Released May 28, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.6.6">downloads for this release</a></p>
+<h2 id="new-features">New Features</h2>
+<h3 id="address-fields-now-keep-each-address-separate">Address fields
+now keep each address separate</h3>
+<p>The <strong>To</strong>, <strong>Cc</strong>, and
+<strong>Bcc</strong> fields in the compose window now keep each
+confirmed address as its own button. Type an address and press
+<strong>Tab</strong>, <strong>Enter</strong>, <strong>comma</strong>, or
+<strong>semicolon</strong> to confirm it — or select a contact from the
+autocomplete dropdown. Multiple addresses appear as a row of buttons
+before the text input cursor. Each one can be navigated to, removed, or
+copied independently.</p>
+<p><strong>Keyboard navigation:</strong></p>
+<ul>
+<li><strong>Left / Right arrow</strong> — move focus between
+addresses</li>
+<li><strong>Right arrow</strong> on the last address — move back to the
+text input</li>
+<li><strong>Left arrow</strong> at the start of the text input — move to
+the last address</li>
+<li><strong>Delete</strong> or <strong>Backspace</strong> on a focused
+address — remove that address</li>
+<li><strong>Backspace</strong> in an empty text input — remove the last
+address</li>
+<li><strong>Ctrl+C</strong> on a focused address — copy the full address
+to the clipboard</li>
+</ul>
+<p><strong>Context menu (right-click or Shift+F10 on an
+address):</strong></p>
+<ul>
+<li><strong>Copy Address</strong> — copies the full name and email to
+the clipboard</li>
+<li><strong>Add to Address Book</strong> — saves the contact silently
+with no dialog (shows a message if the address is already saved)</li>
+<li><strong>Remove</strong> — removes this address from the field</li>
+</ul>
+<p><strong>Check Addresses (Ctrl+K):</strong> Validates every address in
+all three fields. Addresses that cannot be validated are highlighted in
+red and their accessible name changes to begin with “Unrecognized:” so
+screen readers convey the problem without relying on colour alone. Bare
+names with no @ sign are looked up in your address book — if a single
+match is found, the address resolves to the full name and email
+automatically. A summary is announced when the check completes.</p>
+<p><strong>Screen reader behavior:</strong> Each address button’s
+accessible name is the full RFC address (for example, “Kelly Ford
+&lt;kelly@example.com&gt;”). When you Tab into a field that already has
+addresses, those addresses are announced immediately so you are not left
+wondering whether the field is empty.</p>
+<hr />
+<h3 id="open-address-book-from-the-compose-window">Open Address Book
+from the compose window</h3>
+<p>You can now open the Address Book directly from the compose window
+with <strong>Ctrl+Shift+B</strong>. When opened this way, a row of three
+buttons appears at the top of the dialog — <strong>To</strong> (Alt+T),
+<strong>Cc</strong> (Alt+C), and <strong>Bcc</strong> (Alt+B) — so you
+can search for a contact and insert them into whichever field you
+choose. The dialog stays open after each insertion, so you can add
+several contacts in one session before closing.</p>
+<p>When the Address Book is opened from the main window the insert
+buttons are not shown and the dialog works as before.</p>
+<hr />
+<h3 id="group-boundary-navigation-in-grouped-views">Group boundary
+navigation in grouped views</h3>
+<p>Two new keyboard shortcuts let you jump to the start or end of a
+group in Conversations, By Sender, and By Recipient views:</p>
+<table>
+<colgroup>
+<col style="width: 55%" />
+<col style="width: 44%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Shift+,</strong> (less-than key)</td>
+<td>Jump to the first (newest) message in the current group</td>
+</tr>
+<tr class="even">
+<td><strong>Shift+.</strong> (greater-than key)</td>
+<td>Jump to the last (oldest) message in the current group</td>
+</tr>
+</tbody>
+</table>
+<p>If the group is collapsed when you press either key, it expands
+automatically before moving focus. In the flat Messages view the keys do
+nothing. Both shortcuts are remappable via <strong>File → Settings →
+Keyboard Shortcuts</strong> and appear in the command palette.</p>
+<hr />
+<h3 id="ctrlenter-as-an-alternate-send-shortcut">Ctrl+Enter as an
+alternate send shortcut</h3>
+<p>You can now send a message from the compose window with
+<strong>Ctrl+Enter</strong> in addition to the existing
+<strong>Alt+S</strong>. This is useful if you prefer not to lift your
+hands from the main keyboard area to reach Alt+S.</p>
+<hr />
+<h3 id="confirmation-before-emptying-trash">Confirmation before emptying
+trash</h3>
+<p><strong>Empty Trash</strong> (<code>Ctrl+Shift+E</code>) now shows a
+confirmation dialog before permanently deleting messages. The dialog
+reports exactly how many messages will be removed so you know what you
+are about to do.</p>
+<p>If you prefer not to see the confirmation, open <strong>File →
+Settings</strong>, select the <strong>General</strong> tab, and turn off
+<strong>Confirm before emptying trash</strong> in the <strong>Mail
+Actions</strong> group.</p>
+<hr />
+<h3 id="junk-folder-support">Junk folder support</h3>
+<p>QuickMail now recognises and tracks the <strong>Junk</strong> (spam)
+folder as a distinct special folder alongside Inbox, Drafts, Sent, and
+Trash. If your mail server has a dedicated Junk folder, it is no longer
+lumped together with Trash in QuickMail’s folder handling.</p>
+<hr />
+<h3 id="about-dialog">About dialog</h3>
+<p><strong>Help → About QuickMail</strong> opens an About dialog showing
+the application version and a link to the MIT License on GitHub. The
+same dialog is accessible from the Command Palette
+(<strong>Ctrl+Shift+P</strong>) — search for <strong>About
+QuickMail</strong>.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><p><strong>Reading pane closed by incoming mail</strong> — When new
+mail arrived while you were reading a message, the reading pane appeared
+to close and focus jumped back to the message list. QuickMail now leaves
+focus in the reading pane when new mail arrives.</p></li>
+<li><p><strong>Trash messages reappear after Empty Trash</strong> — If
+you emptied trash and then changed the sort order or applied a filter,
+previously deleted messages could briefly reappear in the message list.
+QuickMail now clears the cached message count for each account’s Trash
+folder immediately after a successful empty, so the list stays
+correct.</p></li>
+<li><p><strong>To, Cc, and Bcc fields not named correctly for screen
+readers</strong> — The To, Cc, and Bcc fields in the compose window now
+report their names correctly to screen readers and braille displays.
+Previously the field names were either missing or announced twice when
+tabbing between fields.</p></li>
+<li><p><strong>Keyboard shortcuts announced as part of control
+names</strong> — Keyboard shortcut text (for example “Alt+S” or
+“Ctrl+Shift+A”) was embedded directly in the accessible names of buttons
+and fields throughout the compose window and toolbar, causing screen
+readers to read it as part of the control’s identity on every focus.
+Shortcuts are now exposed through the correct UIA AcceleratorKey
+property, where screen readers can surface them on request rather than
+announcing them automatically every time focus arrives.</p></li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.7.html">Newer: 0.6.7</a> | <a href="release-notes-v0.6.5.html">Older: 0.6.5</a></div>
+</body>
+</html>

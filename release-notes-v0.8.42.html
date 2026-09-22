@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.42 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.43.html">Newer: 0.8.43</a> | <a href="release-notes-v0.8.41.html">Older: 0.8.41</a></div>
+  <h1 id="quickmail-v0.8.42-release-notes">QuickMail v0.8.42 Release
+Notes</h1>
+<p class="version">Released August 26, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.42">downloads for this release</a></p>
+<h2 id="new-shared-mailboxes">New: shared mailboxes</h2>
+<p>If your organization has given you access to a shared mailbox — a
+<code>support@</code>, <code>info@</code>, or <code>sales@</code>
+address a team reads together — you can now add it to QuickMail, and it
+appears as its own mailbox in the folder tree, alongside your own
+accounts.</p>
+<p>You add one through an account you already have: open <strong>Account
+Manager</strong>, choose <strong>Add shared mailbox</strong>, pick the
+Microsoft 365 work or school account that has access to it, and type the
+shared mailbox’s address. There is no separate password and no separate
+sign-in — QuickMail reads and sends the shared mailbox using the
+permission your organization already granted your own account.</p>
+<ul>
+<li><strong>Reading</strong> works like any other mailbox — select it in
+the folder tree and open its folders.</li>
+<li><strong>Sending as the shared mailbox</strong> is a matter of
+choosing its address in the <strong>From</strong> list when you
+compose.</li>
+<li><strong>New-mail notifications are off by default</strong> for a
+shared mailbox, since it’s often a busy team address. Turn on
+<strong>Notify me of new mail in this shared mailbox</strong> for a
+particular one in Account Manager if you want them (the main new-mail
+notification setting still has to be on).</li>
+</ul>
+<p>Two things worth knowing: a shared mailbox <strong>updates every few
+minutes, not the instant mail arrives</strong> (your own mailboxes still
+update live), and shared mailboxes are a <strong>Microsoft 365 work or
+school</strong> feature — personal Outlook.com accounts don’t have them.
+Removing the account a shared mailbox reads through also removes the
+shared mailbox; QuickMail tells you first. (<a
+href="https://github.com/kellylford/QuickMail/issues/31">#31</a>)</p>
+<h2
+id="new-an-administrator-can-approve-quickmail-for-a-whole-organization">New:
+an administrator can approve QuickMail for a whole organization</h2>
+<p>Work or school organizations often require an administrator to
+approve a new app before anyone can sign in. QuickMail now has an in-app
+way to do it: <strong>Help → Grant Admin Consent for Your
+Organization</strong>. An administrator signs in there once, approves
+for the whole organization, and afterwards everyone signs in with no
+prompts — no hand-built URLs or portal digging.</p>
+<p>The approval also works from an ordinary sign-in now: everything
+QuickMail needs is requested together, so an administrator adding their
+own account (or approving at the “needs admin approval” screen) grants
+it all in one pass. And if you sign in as an administrator to approve
+and QuickMail notices it isn’t the account you were adding, it no longer
+dead-ends — it tells you the approval is saved and offers to sign you
+back in as yourself. (<a
+href="https://github.com/kellylford/QuickMail/issues/607">#607</a>)</p>
+<h2 id="new-a-key-that-goes-straight-to-the-next-unread-message">New: a
+key that goes straight to the next unread message</h2>
+<p>A user wrote in asking for one, mentioning that Space did this in the
+mail program they came from. Until now the only way to find unread mail
+in a long folder was to arrow through everything you had already
+read.</p>
+<p><strong>Alt+Down</strong> goes to the nearest unread message below
+where you are. <strong>Alt+Up</strong> goes to the nearest one above.
+Both are also in the Command Palette (<strong>Ctrl+Shift+P</strong>) as
+<strong>Next Unread Message</strong> and <strong>Previous Unread
+Message</strong>, and either can be given a key of your own in
+<strong>File → Settings → Keyboard Shortcuts</strong>.</p>
+<p>They work in every view. In <strong>Messages</strong> they move down
+or up the list, skipping what you have read. In
+<strong>Conversations</strong>, <strong>From</strong>, and
+<strong>To</strong> they run through every message the tree holds, in
+group order, so they cross from one conversation or sender into the next
+rather than stopping at the end of the one you are in.</p>
+<p>Three details worth knowing:</p>
+<ul>
+<li><strong>A closed group is searched, and opened.</strong> An unread
+message inside a conversation you have not opened is still found, and
+the conversation opens so that message can take focus. It stays open
+afterwards, the same as one you opened yourself.</li>
+<li><strong>Neither wraps around.</strong> Reaching the end says “No
+unread messages below” — QuickMail does not quietly start again from the
+top, and nothing moving is never left unexplained.</li>
+<li><strong>They stay out of the way of everything else.</strong> The
+keys act while you are in the message list or a group tree — the reading
+pane can be open beside it — so Alt+Down still opens a drop-down list
+when that is what you are on. They do nothing while focus is inside the
+reading pane itself, and an open message window has its own keys:
+Alt+Left and Alt+Right already move between messages there. Started from
+the palette where there is no list to move through, they say why instead
+of going quiet.</li>
+</ul>
+<p>(<a
+href="https://github.com/kellylford/QuickMail/issues/617">#617</a>)</p>
+<h2 id="new-expanding-and-collapsing-folders">New: expanding and
+collapsing folders</h2>
+<p>Until now the only way to open or close a folder was Right and Left
+arrow on the folder itself, one level at a time. An account with folders
+nested several levels deep could only be folded away one item at a time,
+and there was no way at all to close the whole tree — which is what
+prompted this: <em>“I was in the folder tree and wanted to collapse all
+folders. There was no option to do so.”</em></p>
+<p>Four new actions:</p>
+<ul>
+<li><strong>Expand Folder</strong> opens the selected folder and
+everything inside it, all the way down.</li>
+<li><strong>Collapse Folder</strong> closes it and everything inside it,
+so a deeply nested branch folds back to a single line.</li>
+<li><strong>Expand All Folders</strong> opens every folder in the
+tree.</li>
+<li><strong>Collapse All Folders</strong> closes everything, account
+headers included, leaving the tree as a short list of accounts.</li>
+</ul>
+<p>The two single-folder actions deliberately act on the whole branch
+rather than one level, because one level is what Right and Left arrow
+already do — and those keep working exactly as before.</p>
+<p>Each is reachable three ways: from the new <strong>Folder</strong>
+menu items on the menu bar, from the folder tree’s context menu
+(<strong>Shift+F10</strong>), and from the Command Palette
+(<strong>Ctrl+Shift+P</strong>). None of the four has a shortcut key to
+begin with; if you use one often, assign your own in <strong>File →
+Settings → Keyboard Shortcuts</strong>. On a calendar the first two read
+<strong>Expand Calendar</strong> and <strong>Collapse Calendar</strong>
+and do the same thing.</p>
+<p>Three details worth knowing:</p>
+<ul>
+<li><strong>A collapse stays collapsed.</strong> It survives QuickMail
+refreshing its folder list, and coming back to the tree with
+<strong>F6</strong> or <strong>Ctrl+2</strong> no longer re-opens the
+branch holding the folder you are reading. Go to a different folder and
+the tree opens up to show it again, as it always has.</li>
+<li><strong>The selection never disappears into a closed
+branch.</strong> If collapsing hides the folder you were on, the
+selection moves up to the nearest folder still showing.</li>
+<li><strong>The two “all folders” actions say what they did</strong> —
+“All folders collapsed” — because you can start them from the menu bar
+with focus anywhere. The single-folder ones stay quiet when you use the
+context menu, where the folder keeps focus and your screen reader
+reports its own expanded or collapsed state; started from the menu bar
+with focus elsewhere, where nothing would report it, they say what they
+did instead.</li>
+</ul>
+<p>Expansion is not remembered between runs — QuickMail still starts
+with each account open. (<a
+href="https://github.com/kellylford/QuickMail/issues/590">#590</a>)</p>
+<h2 id="fixed-the-mouse-did-nothing-in-the-folder-tree">Fixed: the mouse
+did nothing in the folder tree</h2>
+<p>Selecting a folder with the mouse left the folder highlighted and
+nothing else: the message list went on showing the folder you came from,
+and moving back to the tree with <strong>F6</strong> put the highlight
+back on the folder that was really open, as though the mouse had never
+been used. Reported by a sighted user as <em>“clicking on folders does
+not select the folders”</em>, which is exactly what it looked like.</p>
+<p>The cause was that QuickMail is built keyboard-first, and every one
+of these lists was wired to <strong>Enter</strong> only. They all
+respond to the mouse now:</p>
+<ul>
+<li><strong>Folders</strong> open on a single click, the same as Enter —
+with the difference that Enter also moves you on to the message list,
+and a click leaves you looking at the tree you just used.</li>
+<li><strong>Accounts</strong> connect on a single click.</li>
+<li><strong>Messages in the Conversations, From and To views</strong>
+open on a single click, which they already did in the plain message
+list. A conversation holding a single message opens that message, the
+same as pressing Enter on it.</li>
+<li><strong>Attachments</strong> open on a double click, in both the
+reading pane and an open message window.</li>
+</ul>
+<p>Three smaller faults in the message list went with them, all of them
+about a click that meant something other than “open this”. Selecting
+several messages with <strong>Ctrl</strong> or <strong>Shift</strong>
+held used to open each one as you added it — in Window mode, a window
+per message on the way to deleting them. Dragging across several
+messages to select them used to open the last one, which dropped the
+selection back to that message, so the Delete that followed deleted one
+message instead of the five you had selected. And a click on the empty
+space below the last message re-opened whichever message was selected.
+All three now leave the selection alone.</p>
+<p>Nothing about the keyboard changed: no shortcut, no announcement, and
+no reading order is different from 0.8.41. (<a
+href="https://github.com/kellylford/QuickMail/pull/601">#601</a>)</p>
+<h2
+id="fixed-typing-a-date-or-a-time-in-the-appointment-editor-did-nothing-at-first">Fixed:
+typing a date or a time in the appointment editor did nothing at
+first</h2>
+<p>Pressing <strong>N</strong> for a new appointment and typing a date
+into the <strong>Starts</strong> field left the field showing the date
+it had opened on. The same happened in the time field. As the report put
+it: <em>“The date field didn’t change. The same thing happened in the
+time field. You have to move the field with an arrow key or select it
+all before it takes any input.”</em></p>
+<p>These fields open holding a full, spelled-out value — “Thursday, July
+16, 2026” — with the cursor parked at the end of it and nothing
+selected. Typing <code>8/3</code> therefore made “Thursday, July 16,
+20268/3”, which means nothing as a date, so QuickMail quietly put the
+old value back. Nothing was said about it either: the value it restored
+was the one already there, so as far as the field was concerned nothing
+had changed.</p>
+<p>The value is now selected when you arrive at the field, so the first
+thing you type replaces it — the same as what already happened when a
+refused save sent you back to a field to correct it. Typing
+<code>8/3</code>, <code>tomorrow</code>, or <code>+7</code> works from
+the first keystroke. The arrow keys are unchanged: Up and Down still
+step the value by a day or a quarter hour and leave it unselected with
+the cursor at the end, so what you hear afterwards is the new value and
+not a selection.</p>
+<p>Leaving a field part-way through typing and coming back to it —
+opening the Command Palette over the editor, or switching to another
+window and back — keeps what you had typed, and keeps the cursor where
+you left it.</p>
+<p>This applies everywhere these fields are used — the
+<strong>Starts</strong> and <strong>Ends</strong> dates and times, the
+repeat interval and <strong>until</strong> date, and <strong>Go to
+Date</strong> (<strong>Ctrl+G</strong>) in the calendar. (<a
+href="https://github.com/kellylford/QuickMail/issues/570">#570</a>)</p>
+<h2 id="new-choose-which-calendar-an-appointment-goes-on">New: choose
+which calendar an appointment goes on</h2>
+<p>Until now an appointment saved to a Microsoft or Google account
+always landed on that account’s default calendar. There was no way to
+file one on <strong>Team</strong>, or on <strong>Family</strong>, short
+of moving it afterwards in Outlook or Gmail. iCloud accounts have
+offered a choice for a while; the other two now do too.</p>
+<p>The <strong>Calendar</strong> picker in the appointment editor lists
+your <strong>Local Calendar</strong> first, then every calendar you can
+write to on each connected account, named account-first: <strong>Work:
+Team</strong>, <strong>Apple: Family</strong>. Microsoft and Google
+accounts also get an entry for the account itself — <strong>Work
+(default calendar)</strong> — for when you do not mind which calendar it
+lands on and would rather it follow whatever you have set on the
+provider’s own site. iCloud has no such entry, because an iCloud
+appointment always names the calendar it goes on.</p>
+<p>The picker still starts on your default calendar if you have set one,
+whether you set that to a whole account or to a single calendar under
+it.</p>
+<p>Two things worth knowing:</p>
+<ul>
+<li><strong>Calendars you only subscribe to are left out.</strong> A
+holidays feed, or someone else’s calendar shared with you to read,
+cannot have appointments added to it, so offering it could only lead to
+a save that was refused. They keep their place in the folder tree, which
+is where reading them happens.</li>
+<li><strong>A calendar you have not put anything in yet is offered like
+any other.</strong> QuickMail now keeps each account’s real list of
+calendars rather than working out which calendars exist from the
+appointments already in them — so an empty calendar is somewhere you can
+file the first one. Those calendars also appear in the folder tree now,
+where before an empty one was missing entirely.</li>
+</ul>
+<p>(<a
+href="https://github.com/kellylford/QuickMail/issues/569">#569</a>)</p>
+<h2
+id="fixed-a-new-appointment-was-missing-from-the-calendar-it-was-filed-on">Fixed:
+a new appointment was missing from the calendar it was filed on</h2>
+<p>If you had one of your calendars selected in the folder tree — not
+<strong>Calendar</strong> at the top, but a particular calendar
+underneath it — an appointment you created went in, and then was not in
+the list. Pressing <strong>F5</strong> brought it into view. Reported
+twice, once as <em>“I added a new event in my default Gmail calendar. I
+looked for it and it didn’t show up. I pressed F5 to refresh and then it
+showed up.”</em></p>
+<p>The appointment was saved correctly the whole time; it just was not
+labelled with the calendar it had gone onto, so the list you were
+looking at filtered it out. The next sync relabelled it and it appeared.
+QuickMail now labels a new appointment with its calendar as soon as it
+saves it, so it is in the list straight away — and the
+<strong>Calendar</strong> column reads correctly instead of coming up
+blank.</p>
+<p>The same fault had a second form on Microsoft 365 accounts:
+<em>editing</em> an appointment stripped the label off one that already
+had it, so an appointment you had just edited dropped out of the list
+until the next sync. Edits keep the label now, as they already did on
+Google accounts.</p>
+<p>This is one half of a complaint that came in twice. Both halves
+looked identical from the outside — an appointment missing until F5 —
+but they had different causes. This one is about an appointment you
+created in QuickMail; the other, <strong>“the calendar did not ask the
+server when you opened it”</strong> below, is about one you added
+somewhere else. (<a
+href="https://github.com/kellylford/QuickMail/issues/569">#569</a>, <a
+href="https://github.com/kellylford/QuickMail/issues/519">#519</a>)</p>
+<h2
+id="fixed-the-calendar-did-not-ask-the-server-when-you-opened-it">Fixed:
+the calendar did not ask the server when you opened it</h2>
+<p>The other half of the complaint described under <strong>“a new
+appointment was missing from the calendar it was filed on”</strong>
+above: the same symptom, a different cause. An appointment added
+somewhere other than QuickMail — in Gmail or Outlook on the web, or on a
+phone — was not in the agenda when you opened the calendar. It turned up
+on its own eventually, because QuickMail checks connected calendars
+every fifteen minutes, but until then <strong>F5</strong> was the only
+way to see it. The report was precise about it: <em>“I added an
+appointment to my Gmail calendar and it didn’t show in the agenda view…
+Press F5 to refresh the list. Now it will show up.”</em></p>
+<p>Opening the calendar now asks your accounts as well. The list still
+appears immediately from what QuickMail already had — you are never left
+waiting on the network to see your own calendar — and anything new folds
+in when the answer arrives.</p>
+<p>Three details worth knowing:</p>
+<ul>
+<li><strong>It speaks only if something changed.</strong> Opening the
+calendar already tells you which view you are in and how many events it
+holds, so repeating that number a moment later would be chatter — and in
+the ordinary case, where your accounts had nothing new, you hear nothing
+at all. When the check does bring an appointment down, the count you
+were just given is out of date, so QuickMail says the new one. The
+fifteen-minute background check announces itself as it always did.</li>
+<li><strong>You keep your place.</strong> When a check lands while you
+are reading, the appointment you were on stays selected — and in Month
+view, so does the day you had moved to. Until now a check arriving
+mid-read could drop you back to the top of the list, or back onto today
+in the month grid, because the events had been rebuilt underneath
+you.</li>
+<li><strong>Opening it again does not ask again.</strong> Going out to
+your mail and straight back reuses what was just fetched; there is a
+half-minute gap before another check.</li>
+</ul>
+<p>(<a
+href="https://github.com/kellylford/QuickMail/issues/519">#519</a>)</p>
+<h2
+id="fixed-microsoft-365-unread-counts-went-stale-until-you-refreshed">Fixed:
+Microsoft 365 unread counts went stale until you refreshed</h2>
+<p>On a Microsoft 365 account, the unread count beside a folder only
+changed when the whole folder list was fetched from the server again.
+Reading, deleting, or moving mail — including doing it inside QuickMail
+— left the number where it was for the rest of the session.</p>
+<p>That number is part of what a folder is called, so a stale count was
+not merely displayed: arrowing past the folder said “Newsletters, 3
+unread” long after you had read all three. A manual
+<strong>Refresh</strong> was the only thing that put it right.</p>
+<p>The count now updates as the mail does, on Microsoft 365 accounts as
+it already did on IMAP ones. (<a
+href="https://github.com/kellylford/QuickMail/issues/491">#491</a>)</p>
+<h2
+id="fixed-the-applications-key-did-not-open-a-context-menu-on-an-attachment">Fixed:
+the Applications key did not open a context menu on an attachment</h2>
+<p>The <strong>Applications</strong> key — the one some keyboards still
+carry between the right Alt and Ctrl keys — did nothing on the
+attachment list. A menu was announced and then gone again before
+anything could be done with it, which left <strong>Shift+F10</strong> as
+the only way in.</p>
+<p>The two keys reach a program differently: Windows turns Shift+F10
+into a request for a context menu as the key goes down, and the
+Applications key into one as the key comes back up. The attachment list
+was opening its own menu on the way down, so with the Applications key a
+second request arrived a moment later and closed what had just
+opened.</p>
+<p>The attachment list now leaves that key to Windows, the way every
+other list in QuickMail already did. Both keys open the same menu —
+<strong>Save…</strong>, <strong>Save All…</strong>,
+<strong>Open</strong> — in the reading pane and in an open message
+window alike. (<a
+href="https://github.com/kellylford/QuickMail/issues/631">#631</a>)</p>
+<h2 id="changed-sign-in-is-now-the-last-thing-you-tab-to">Changed: Sign
+in is now the last thing you tab to</h2>
+<p>In both <strong>Add Account</strong> and <strong>Manage
+Accounts</strong>, the <strong>Sign in with Microsoft…</strong> /
+<strong>Sign in with Google…</strong> button sat in the middle of the
+form — before <strong>Advanced settings</strong>. Signing in is the last
+thing you do when setting up or re-authenticating an account, so tabbing
+to it meant passing it on the way through the fields and coming
+back.</p>
+<p>The button is now the final tab stop in both dialogs, after Advanced
+settings and everything inside it. (<a
+href="https://github.com/kellylford/QuickMail/issues/584">#584</a>)</p>
+<h2
+id="changed-one-permission-screen-instead-of-three-for-a-personal-microsoft-account-on-graph">Changed:
+one permission screen instead of three, for a personal Microsoft account
+on Graph</h2>
+<p>Adding a personal Outlook.com, Hotmail, or Live.com account with
+<strong>Sync contacts</strong> and <strong>Sync calendar</strong>
+checked asked for permission three separate times — mail, then contacts,
+then calendar. Cancelling any one of them left the account in a state
+that needed the checkbox switched off and back on to recover.</p>
+<p>The contact and calendar permissions are now folded into the mail
+sign-in, so one screen lists all three together. This applies when the
+account is set to connect over <strong>Microsoft 365 (Graph)</strong> —
+which you choose under <strong>Advanced settings → Connection
+method</strong>; a personal account left on the standard IMAP connection
+is unaffected. A personal account folds in only what you asked for —
+mail, plus contacts or calendar if you checked those. Work and school
+accounts fold everything into their sign-in as well, but for a different
+purpose: so an administrator can approve the whole set for the
+organization in one pass (see <em>An administrator can approve QuickMail
+for a whole organization</em>, above). Someone without the authority to
+approve it all is simply signed in with mail only, rather than being
+turned away.</p>
+<p>A related bug went with it: an account with only <strong>Sync
+calendar</strong> checked used to fall through to a plain mail sign-in
+and a separate calendar prompt. Either box now triggers the fold. (<a
+href="https://github.com/kellylford/QuickMail/issues/544">#544</a>)</p>
+<h2 id="personal-accounts-can-connect-over-microsoft-365-graph">Personal
+accounts can connect over Microsoft 365 (Graph)</h2>
+<p>A personal Outlook.com, Hotmail, or Live.com account can connect over
+<strong>Microsoft 365 (Graph)</strong> instead of IMAP — choose it under
+<strong>Advanced settings → Connection method</strong> when you add the
+account. Graph is the more capable connection, and a future version of
+QuickMail will make it the default for Microsoft accounts; for now
+personal accounts stay on the standard IMAP connection unless you choose
+Graph yourself.</p>
+<h2 id="changed-a-new-email-address-for-reaching-us">Changed: a new
+email address for reaching us</h2>
+<p>The email address for questions, bug reports, and anything else you
+would rather send by mail is now <strong><a
+href="mailto:support@theideaplace.net">support@theideaplace.net</a></strong>,
+replacing the address used in earlier releases. The in-app <strong>Help
+→ Report a Bug</strong> paths are unchanged.</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.43.html">Newer: 0.8.43</a> | <a href="release-notes-v0.8.41.html">Older: 0.8.41</a></div>
+</body>
+</html>

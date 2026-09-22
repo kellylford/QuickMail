@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.5.6 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.5.7.html">Newer: 0.5.7</a> | <a href="release-notes-v0.5.5.html">Older: 0.5.5</a></div>
+  <h1 id="quickmail-v0.5.6-release-notes">QuickMail v0.5.6 Release
+Notes</h1>
+<p class="version">Released May 18, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.5.6">downloads for this release</a></p>
+<h2 id="new-features">New Features</h2>
+<h3 id="address-book">Address book</h3>
+<p>A new built-in address book stores email addresses and display names
+for quick reuse. Contacts can be added manually, edited, or imported
+directly from messages. The address book is stored as human-readable
+JSON in your AppData folder alongside other QuickMail settings.</p>
+<ul>
+<li>Open <strong>File → Address Book</strong> (or press
+<code>Ctrl+Shift+B</code>) to manage contacts</li>
+<li>Search by name or email address</li>
+<li>Choose a contact to view and edit its details</li>
+</ul>
+<h3 id="grab-addresses-from-messages">Grab addresses from messages</h3>
+<p>While reading a message, quickly save sender, recipient, and reply-to
+addresses to your address book in bulk:</p>
+<ul>
+<li>Open <strong>Message → Grab Addresses from Message</strong> (or
+press <code>Ctrl+Shift+G</code>)</li>
+<li>A dialog shows all addresses found in the message (From, To,
+Cc)</li>
+<li>All addresses are checked by default; uncheck any you don’t want to
+save</li>
+<li>Activate <strong>Save</strong> to add selected addresses to your
+address book</li>
+</ul>
+<h3 id="address-autocomplete-in-compose">Address autocomplete in
+compose</h3>
+<p>When composing a message, matching contacts from your address book
+appear as you type in the <strong>To</strong>, <strong>Cc</strong>, or
+<strong>Bcc</strong> fields:</p>
+<ul>
+<li>Type at least one character to see suggestions, sorted by
+recency</li>
+<li>Press <strong>Down</strong> arrow to move into the suggestion
+list</li>
+<li>Press <strong>Enter</strong> or <strong>Tab</strong> to insert a
+contact</li>
+<li>The autocomplete respects your address separator preference (comma
+or semicolon) — whatever you’ve been using in the field, new addresses
+use the same separator</li>
+</ul>
+<h3 id="menu-bar">Menu bar</h3>
+<p>All major features are now organized in a menu bar at the top of the
+window:</p>
+<table>
+<colgroup>
+<col style="width: 37%" />
+<col style="width: 62%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Menu</th>
+<th>Contains</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>File</strong></td>
+<td>New Message, Manage Accounts, Address Book, Exit</td>
+</tr>
+<tr class="even">
+<td><strong>Message</strong></td>
+<td>Reply, Reply All, Forward, Delete, Empty Trash, Move/Copy to Folder,
+Grab Addresses</td>
+</tr>
+<tr class="odd">
+<td><strong>View</strong></td>
+<td>Refresh, View Mode (Messages / Conversations / By Sender / By
+Recipient), Sync Range, Go to Folder, Command Palette</td>
+</tr>
+<tr class="even">
+<td><strong>Help</strong></td>
+<td>User Guide</td>
+</tr>
+</tbody>
+</table>
+<p>All menu items show their keyboard shortcuts for quick reference.</p>
+<hr />
+<h2 id="improvements">Improvements</h2>
+<h3 id="accessibility">Accessibility</h3>
+<ul>
+<li><strong>Address book</strong> — Keyboard navigation and screen
+reader support throughout. Delete key removes selected contacts; Enter
+in the email field submits the add form.</li>
+</ul>
+<h3 id="address-separator-consistency">Address separator
+consistency</h3>
+<p>When inserting an address from the address book, QuickMail now
+detects which separator (comma or semicolon) you’ve been using in the
+field and inserts the new address with the same separator. Both formats
+are supported throughout: <code>address1, address2</code> or
+<code>address1; address2</code>.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>Autocomplete race condition</strong> — Fast typing no longer
+causes stale search results to overwrite recent ones. Previous searches
+are properly cancelled when new text arrives.</li>
+<li><strong>Contact service thread safety</strong> — Fixed a race
+condition in the contact loading logic where concurrent callers could
+load and cache the contact list twice. Now uses proper
+synchronization.</li>
+<li><strong>Non-atomic contact saves</strong> — Contact data is now
+written atomically (to a temp file, then renamed) to prevent corruption
+if the process is interrupted mid-write.</li>
+</ul>
+<hr />
+<h2 id="code-quality-internal">Code quality (internal)</h2>
+<ul>
+<li><code>IContactService</code> interface extracted for contact
+operations, replacing contact CRUD methods in
+<code>ILocalStoreService</code>. Contact data is now separate from mail
+caching.</li>
+<li>Contact search operations now accept <code>CancellationToken</code>
+to prevent autocomplete race conditions in the UI layer.</li>
+<li>All confirmation dialogs (e.g., contact deletion) moved from
+ViewModels to view code-behind, maintaining strict MVVM separation.</li>
+<li>Exception logging added to contact service initialization instead of
+silently swallowing errors.</li>
+<li>XAML parse tests extended to cover <code>AddressBookWindow</code>
+and <code>GrabAddressesDialog</code>.</li>
+</ul>
+<hr />
+<h2 id="updated-documentation">Updated documentation</h2>
+<p>The User Guide has been updated with complete coverage of the new
+address book features, keyboard shortcuts, and address separator
+behavior.</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.5.7.html">Newer: 0.5.7</a> | <a href="release-notes-v0.5.5.html">Older: 0.5.5</a></div>
+</body>
+</html>

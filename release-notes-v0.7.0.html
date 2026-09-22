@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.0 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.1.html">Newer: 0.7.1</a> | <a href="release-notes-v0.6.9.html">Older: 0.6.9</a></div>
+  <h1 id="quickmail-v0.7.0-release-notes">QuickMail v0.7.0 Release
+Notes</h1>
+<p class="version">Released June 8, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.0">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.0:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.0-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="new-features">New Features</h2>
+<h3 id="tabs-and-windows">Tabs and windows</h3>
+<p>Messages can now be opened in three ways, controlled by a new
+<strong>Reading mode</strong> setting in <strong>Settings →
+Windowing</strong>:</p>
+<p><strong>Reading Pane</strong> (default) — the original behavior. One
+message at a time in the reading pane on the right. Nothing changes for
+users who keep this setting.</p>
+<p><strong>Tab</strong> — each message you open gets its own tab in a
+strip below the toolbar. Multiple messages can be open at the same
+time.</p>
+<ul>
+<li><code>Ctrl+Tab</code> / <code>Ctrl+Shift+Tab</code> cycle through
+open tabs.</li>
+<li><code>Ctrl+1</code> through <code>Ctrl+8</code> jump to tab N;
+<code>Ctrl+9</code> jumps to the last tab.</li>
+<li><code>Ctrl+W</code> closes the active tab.</li>
+<li><code>Ctrl+Shift+``</code> (backtick) opens a <strong>tab list
+overlay</strong> — a navigable list of all open tabs, similar to the
+Alt+Tab switcher.</li>
+<li><code>Ctrl+Shift+T</code> focuses the tab strip itself for arrow-key
+navigation.</li>
+<li>The <strong>Move Tab to New Window</strong> command (command
+palette) detaches the active tab into a standalone window.</li>
+</ul>
+<p><strong>Window</strong> — each message opens in its own standalone
+window. Useful when you want messages on a second monitor or open
+side-by-side.</p>
+<p>Regardless of the setting, <strong>Ctrl+Enter on any message always
+opens a new window</strong>.</p>
+<h3 id="message-windows">Message windows</h3>
+<p>Standalone message windows have a full set of navigation
+controls:</p>
+<ul>
+<li>A <strong>Previous / Next</strong> toolbar moves through the
+messages in the originating folder without going back to the main
+window.</li>
+<li><strong>F6 / Shift+F6</strong> cycles focus through the toolbar,
+header fields, and message body.</li>
+<li><strong>Ctrl+Shift+P</strong> opens a command palette scoped to the
+window: Previous Message, Next Message, Move to Main Window, Close
+Window.</li>
+<li><strong>Move to Main Window</strong> opens the message as a tab in
+the main window’s tab strip and closes the standalone window.</li>
+<li>When a message window closes, focus returns to the originating row
+in the main window’s message list.</li>
+<li>A <strong>loading indicator</strong> is shown while the message body
+is fetching from the server.</li>
+</ul>
+<h3 id="pane-navigation-refinement">Pane navigation refinement</h3>
+<p>With <code>Ctrl+1</code>–<code>8</code> now doing double duty (pane
+focus when no tabs are open; tab N when tabs are open), three new
+always-reliable alternatives are registered:</p>
+<table>
+<colgroup>
+<col style="width: 55%" />
+<col style="width: 44%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Ctrl+Alt+1</code></td>
+<td>Focus account list (works whether or not tabs are open)</td>
+</tr>
+<tr class="even">
+<td><code>Ctrl+Alt+2</code></td>
+<td>Focus folder tree (always)</td>
+</tr>
+<tr class="odd">
+<td><code>Ctrl+Alt+3</code></td>
+<td>Focus message list (always)</td>
+</tr>
+<tr class="even">
+<td><code>Ctrl+Shift+T</code></td>
+<td>Focus tab strip (when visible)</td>
+</tr>
+</tbody>
+</table>
+<p><code>Ctrl+1</code>–<code>3</code> continue to focus the panes when
+no tabs are open, so existing muscle memory is preserved.</p>
+<hr />
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+<li><strong>Tab strip <code>AutomationProperties.Name</code> is a short
+label only.</strong> The previous value included the keyboard shortcut
+instructions, violating the CLAUDE.md rule against embedding
+instructions in names. The name is now <code>"Open message tabs"</code>.
+Shortcut instructions are delivered as a <code>Hint</code>-category
+announcement the first time the tab strip receives keyboard focus.</li>
+<li><strong>Message-open-mode radio buttons</strong> in the Settings
+dialog now form a single tab stop with arrow-key navigation between
+options, matching standard radio group behavior. Previously each radio
+button was independently reachable with Tab.</li>
+<li><strong>Role names removed from Settings tab labels.</strong> The
+tab items in the Settings dialog previously appended “tab” to their
+names (e.g., “General settings tab”), which caused screen readers to
+announce “General settings tab tab.” The names are now “General
+settings”, “Advanced settings”, “Keyboard shortcuts”, and “Windowing
+settings”.</li>
+<li><strong>Message window loading indicator</strong> uses
+<code>AutomationProperties.LiveSetting="Polite"</code> so the “Loading…”
+text is announced when the indicator appears.</li>
+<li><strong>Message window F6 cycle</strong> is fully implemented:
+toolbar → header fields → message body, with F6 relayed from inside the
+WebView2 message body via the same postMessage mechanism used in the
+main window.</li>
+<li><strong>Message window command palette</strong>
+(<code>Ctrl+Shift+P</code>) surfaces all window-scoped actions for users
+who prefer not to remember individual shortcuts.</li>
+<li><strong>Tab strip close buttons are now
+keyboard-accessible.</strong> When the tab strip has focus, Left/Right
+arrows navigate between tab headers and their individual close buttons
+(✕). Pressing Right from a tab header moves to that tab’s close button;
+pressing Right again moves to the next tab header. Previously the close
+buttons were only reachable with a pointing device.</li>
+<li><strong><code>Ctrl+W</code> works from inside the message
+body.</strong> The shortcut is now relayed from the WebView2 message
+body back to WPF in both Tab mode (closes the active tab) and Window
+mode (closes the window), so it is not necessary to move focus out of
+the message to close.</li>
+<li><strong><code>Ctrl+W</code> in Reading Pane mode closes the reading
+pane.</strong> A new <strong>Close Message</strong> command
+(<code>Ctrl+W</code> default) is registered for Reading Pane mode,
+giving it consistent behavior across all three reading modes.</li>
+<li><strong>Radio button selections in Settings are announced.</strong>
+When the selected option changes in the Message Open Mode or Log Format
+radio groups, the newly selected option is announced to screen readers.
+WPF’s built-in <code>SelectionItemPatternOnElementSelected</code> event
+fires correctly but screen readers require a parent
+<code>ISelectionProvider</code> container — which a plain StackPanel
+does not provide — so the announcement is supplemented via the
+<code>AccessibilityHelper.Announce</code> pathway.</li>
+<li><strong>Log Format radio group on the Advanced tab</strong> now uses
+single-tab-stop / arrow-key navigation, consistent with the Message Open
+Mode group and standard radio group behavior.</li>
+<li><strong>Tutorial overlay is hidden from the accessibility tree while
+inactive.</strong> The overlay is placed over the main content area;
+when not in use it was still reachable by screen reader virtual cursor
+navigation. Setting <code>Visibility=Collapsed</code> when inactive
+removes it from the tree entirely.</li>
+</ul>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<h3 id="tabs-and-windows-1">Tabs and windows</h3>
+<ul>
+<li><strong>Message window Previous/Next navigation was always
+disabled.</strong> The message list was not being populated when a
+window opened, so the navigation buttons had nothing to navigate. The
+window now receives the full message list from the originating
+folder.</li>
+<li><strong>Message window re-fetched the message body even when it was
+already loaded.</strong> Opening a window from the main reading pane now
+reuses the already-loaded message detail instead of making a redundant
+IMAP request.</li>
+<li><strong>Message window did not cancel in-flight IMAP loads when
+closed or navigated.</strong> A <code>CancellationTokenSource</code> now
+cancels any active fetch when the window closes or when the user
+navigates to a different message.</li>
+<li><strong>Blank message tab when using Move to Main Window.</strong>
+Using “Move to Main Window” in Window mode opened a tab that appeared
+empty. Fixed by correcting the condition that gates message rendering in
+tabs.</li>
+<li><strong>Arrow keys in the tab strip activated a message
+load.</strong> Moving between tabs with the keyboard triggered
+<code>OnActiveTabChangedAsync</code>, which loaded the message body and
+moved focus away from the tab strip. Arrow-key navigation now only
+highlights tabs; the message loads when Enter or Space is pressed.</li>
+<li><strong>Rapid tab switching could show stale message
+content.</strong> A version stamp on tab activation prevents a slower
+IMAP load started for an earlier tab from overwriting the content of a
+tab the user has already moved on from.</li>
+<li><strong><code>Ctrl+Tab</code> could land on the permanent Messages
+tab.</strong> Cycling through tabs now skips the non-closeable Messages
+sentinel and wraps through message tabs only.</li>
+<li><strong>Switching from Tab mode left orphaned tabs visible.</strong>
+Changing Reading mode to Reading Pane or Window now clears all open
+message tabs, not just the sentinel, preventing a visible tab strip with
+unrenderable entries.</li>
+<li><strong>Focus was not restored to the message list when a message
+window closed.</strong> The main window now scrolls back to the row that
+was selected when the window opened.</li>
+<li><strong>Sync guards and address-grab availability did not account
+for messages open in windows.</strong> Commands that should remain
+available while reading a message (<code>Grab Addresses</code>,
+sync-related guards) now check whether a message is open in a window,
+not only whether the reading pane is visible.</li>
+<li><strong>MessageListTabViewModel sentinel tab was missing.</strong>
+In Tab mode, the tab strip was hidden when no message tabs were open,
+stranding keyboard focus. A non-closeable “Messages” sentinel tab is now
+always present in Tab mode so the strip stays visible and the focus
+cycle remains intact.</li>
+<li><strong>Reading pane stayed visible when a message opened in Window
+mode.</strong> When Reading mode was set to Window, the reading pane was
+not always cleared before the new window opened, leaving the previous
+message visible in the background.</li>
+<li><strong>Deferred selection update could reopen the reading pane in
+Window mode.</strong> A background <code>SelectMessageAsync</code>
+completion could arrive after a Window-mode open was already in progress
+and re-show the reading pane. Async version stamps now discard these
+stale completions.</li>
+<li><strong>Closing a tab moved focus to the reading pane instead of the
+tab strip.</strong> After the active tab closed, focus jumped to the
+message list or reading pane. Focus now stays on the tab strip, landing
+on the next logical tab.</li>
+</ul>
+<h3 id="imap-compatibility">IMAP compatibility</h3>
+<ul>
+<li><strong>Delete and Empty Trash now work on Courier IMAP.</strong>
+Special-use folder attributes (<code>\Trash</code>, <code>\Sent</code>,
+etc.) are not advertised by all IMAP servers. A name-based fallback now
+classifies folders named “Trash”, “Sent”, etc. correctly without the
+attributes, fixing folder detection, All Mail exclusion, delete, and
+Empty Trash on Courier and other servers that omit these
+attributes.</li>
+<li><strong>Messages with malformed MIME parts now open.</strong> HTML
+and plain-text body fetches now use separate try/catch scopes so a
+message with malformed MIME entity headers opens with whatever body
+parts could be fetched rather than failing to open entirely.</li>
+</ul>
+<h3 id="startup">Startup</h3>
+<ul>
+<li><strong>Default saved view now appears at startup, not after
+sync.</strong> When a default saved view is set, the app previously
+loaded all mail into the All Mail view first, then switched to the
+default view only after the full background sync completed (~20–40
+seconds). The default view is now applied as soon as connections are
+established (~4 seconds), so the correct view is shown throughout the
+sync period.</li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<p><strong>Code contributions:</strong> - <a
+href="https://github.com/CityDweller">CityDweller</a> — Microsoft Graph
+backend groundwork: IMailService refactoring, string MessageId
+migration, backend router and feature gate scaffolding - <a
+href="https://github.com/Menelion">Menelion</a> — Windows installer
+(Inno Setup) - <a href="https://github.com/serrebidev">serrebidev</a> —
+Pooled IMAP connections, virtualized folder picker, HTML rendering
+improvements</p>
+<p><strong>Issues and feedback:</strong> - <a
+href="https://github.com/CityDweller">CityDweller</a> - <a
+href="https://github.com/Dennisl123">Dennisl123</a> - <a
+href="https://github.com/jaybird110127">jaybird110127</a> - <a
+href="https://github.com/KE8UPE">KE8UPE</a> - <a
+href="https://github.com/paoscripts">paoscripts</a> - <a
+href="https://github.com/serrebidev">serrebidev</a> - <a
+href="https://github.com/slannon97">slannon97</a> - <a
+href="https://github.com/sofquipeut">sofquipeut</a> - <a
+href="https://github.com/taylorarndt">taylorarndt</a></p>
+<p>Note: Others have made contributions through various social media
+platforms that are not listed here yet.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<ul>
+<li><code>MessageBodyHtmlBuilder</code> — new shared static class
+extracts all HTML rendering helpers (reader-mode detection,
+sanitization, plain-text auto-linking, heavy-HTML stripping) from both
+<code>MainWindow.xaml.cs</code> and <code>MessageWindow.xaml.cs</code>.
+Previously the ~150-line render pipeline was duplicated verbatim in both
+files.</li>
+<li><code>MessageListTabViewModel</code> — new sentinel VM for the
+non-closeable “Messages” tab in Tab mode; extends
+<code>TabSessionViewModel</code> with
+<code>CanClose = false</code>.</li>
+<li><code>TabSessionModel.TabKind</code> gains a
+<code>MessageList</code> variant for the sentinel tab.</li>
+<li><code>MainViewModel.IsMessageOpenInWindow</code> — new observable
+property set when one or more standalone message windows are open;
+guards that previously checked only <code>IsMessageOpen</code> now check
+both.</li>
+<li>449 tests, all green (one pre-existing clipboard-API failure in the
+test runner environment is unrelated to this change).</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.1.html">Newer: 0.7.1</a> | <a href="release-notes-v0.6.9.html">Older: 0.6.9</a></div>
+</body>
+</html>

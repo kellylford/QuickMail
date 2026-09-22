@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.2 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.3.html">Newer: 0.7.3</a> | <a href="release-notes-v0.7.1.html">Older: 0.7.1</a></div>
+  <h1 id="quickmail-v0.7.2-release-notes">QuickMail v0.7.2 Release
+Notes</h1>
+<p class="version">Released June 12, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.2">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.2:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.2-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="new-features">New Features</h2>
+<h3 id="rich-compose-plain-text-markdown-and-html-modes">Rich Compose:
+Plain Text, Markdown, and HTML Modes</h3>
+<p>Composing email gets its largest update yet. Every compose window now
+offers three editing modes:</p>
+<ul>
+<li><strong>Plain Text</strong> — the classic experience,
+unchanged.</li>
+<li><strong>Markdown</strong> — write Markdown source in the familiar
+text editor; QuickMail renders it to formatted HTML when the message is
+sent. Press <strong>F8</strong> to open a rendered preview in a separate
+window where screen readers can browse the output as a web page.</li>
+<li><strong>HTML</strong> — a rich text editor with real formatting:
+bold, italic, underline, strikethrough, three heading levels, bullet and
+numbered lists, and links.</li>
+</ul>
+<p>Switch modes at any time with <strong>Ctrl+Shift+1/2/3</strong>, the
+<strong>View</strong> menu, or the mode selector in the compose status
+row. Content converts between modes automatically; switching from a rich
+mode down to Plain Text asks for confirmation first, because formatting
+would be lost. Messages composed in Markdown or HTML are sent with both
+a formatted HTML part and a plain text part, so every recipient’s mail
+app can display them.</p>
+<p>The HTML editor is a native Windows rich edit control, not an
+embedded browser — screen readers stay in their normal edit cursor with
+no virtual cursor or browse mode. Settings allow you to control
+announcement of format information when cursoring. Also use CTRL+Shift+t
+to review fomratting information in a list at any point or ctrl+t to
+have it announced.</p>
+<h3 id="formatting-commands">Formatting Commands</h3>
+<p>Formatting works in both rich modes — in HTML mode the commands apply
+real formatting; in Markdown mode they insert the equivalent Markdown
+syntax at the cursor or around the selection. Each command confirms its
+result aloud (“Bold on”, “Heading 2”, “Bullet list off”):</p>
+<table>
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>Shortcut</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Bold / Italic / Underline</td>
+<td><code>Ctrl+B</code> / <code>Ctrl+I</code> / <code>Ctrl+U</code></td>
+</tr>
+<tr class="even">
+<td>Strikethrough</td>
+<td><code>Ctrl+Shift+X</code></td>
+</tr>
+<tr class="odd">
+<td>Heading 1 / 2 / 3</td>
+<td><code>Ctrl+Alt+1/2/3</code></td>
+</tr>
+<tr class="even">
+<td>Bullet list / Numbered list</td>
+<td><code>Ctrl+Shift+L</code> / <code>Ctrl+Shift+N</code></td>
+</tr>
+<tr class="odd">
+<td>Insert link</td>
+<td><code>Ctrl+L</code></td>
+</tr>
+<tr class="even">
+<td>Clear formatting</td>
+<td><code>Ctrl+Space</code></td>
+</tr>
+<tr class="odd">
+<td>Announce formatting state</td>
+<td><code>Ctrl+T</code></td>
+</tr>
+<tr class="even">
+<td>Show formatting list</td>
+<td><code>Ctrl+Shift+T</code></td>
+</tr>
+<tr class="odd">
+<td>Open preview</td>
+<td><code>F8</code> (Markdown and HTML modes)</td>
+</tr>
+</tbody>
+</table>
+<p>One exception: Markdown has no underline syntax, so underline is
+available in HTML mode only — invoking it in Markdown explains this
+aloud.</p>
+<h3 id="heading-commands-apply-to-the-selected-paragraph">Heading
+Commands Apply to the Selected Paragraph</h3>
+<h3 id="announce-formatting-while-navigating-html-mode">Announce
+Formatting While Navigating (HTML Mode)</h3>
+<p>In HTML compose mode, QuickMail now announces the block type whenever
+the caret moves to a paragraph with a different type — for example,
+moving onto a heading line announces “Heading 2” without needing to
+press <code>Ctrl+T</code>. This is on by default and can be turned off
+under <strong>Settings → Screen Reader Announcements → Announce
+formatting while navigating in HTML compose</strong>.</p>
+<p>This announcement is HTML-mode-only. Markdown mode does not produce
+automatic formatting announcements, since the raw Markdown syntax is
+already present in the text.</p>
+<h3 id="preview-window-f8">Preview Window (F8)</h3>
+<p>In Markdown or HTML mode, pressing <strong>F8</strong> opens a
+dedicated preview window that renders your message as formatted HTML.
+The preview window is fully focusable, so screen readers switch into
+browse mode and you can read the rendered output exactly as a recipient
+would see it. Links open in your default browser. Press
+<strong>Escape</strong> or <strong>Ctrl+W</strong> to close the preview
+and return focus to the editor. Pressing <strong>F8</strong> again while
+the preview is open closes it.</p>
+<p>In HTML mode the editor is a rich text control, so screen readers
+read it in edit mode. The preview window is the way to hear the composed
+message as a recipient would — as a fully-rendered web page — without
+leaving the compose window.</p>
+<p><strong>Two ways to check formatting at the cursor:</strong></p>
+<ul>
+<li><strong>Announce Formatting (<code>Ctrl+T</code>)</strong> speaks a
+one-line summary, for example “Heading 2. Bold on, Italic off, Underline
+off, Strikethrough off.”</li>
+<li><strong>Show Formatting (<code>Ctrl+Shift+T</code>)</strong> opens a
+small window listing the same facts one per row, so you can arrow
+through them at your own pace. <strong>Escape</strong> or
+<strong>Enter</strong> closes it and returns focus to the editor.</li>
+</ul>
+<h3 id="compose-menu-bar">Compose Menu Bar</h3>
+<p>The compose window now has a full menu bar — <strong>File, Edit,
+View, Format, and Tools</strong> — so every compose action is
+discoverable without memorizing shortcuts. Press <strong>Alt</strong> or
+<strong>F10</strong> to reach it; every item shows its keyboard
+shortcut. The Format menu’s items gray out in Plain Text mode, and
+opening it there explains that formatting requires Markdown or HTML
+mode. Following Windows convention, top-level menus are never skipped
+during arrow navigation.</p>
+<h3 id="automatic-draft-saving">Automatic Draft Saving</h3>
+<p>QuickMail now saves your message as a draft automatically while you
+compose — on by default, every 2 minutes. Auto-save is deliberately
+quiet:</p>
+<ul>
+<li>A successful save updates a small status (“Auto-saved 3:42 PM”) in
+the compose status row <strong>without any announcement</strong>, so it
+never interrupts your writing.</li>
+<li>A failed save is announced <strong>once</strong>, then stays quiet
+until a save succeeds again.</li>
+<li>The command palette includes <strong>Announce Last
+Auto-Save</strong> to hear the last save time on demand.</li>
+<li>Auto-save skips untouched composes, empty composes, and template
+editing, and repeated saves replace the previous server draft rather
+than piling up copies.</li>
+</ul>
+<p>Control it under <strong>Settings → General → Composing</strong>:
+turn auto-save off, choose an interval from 30 seconds to 10 minutes,
+and pick the <strong>default compose mode</strong> new messages start
+in.</p>
+<h3 id="compose-window-titles">Compose Window Titles</h3>
+<p>The compose window title now leads with your subject and editing mode
+— for example, “Lunch Friday - HTML - QuickMail” — so the taskbar and
+Alt+Tab identify each message at a glance. The title updates live as you
+type the subject or switch modes.</p>
+<h3 id="valid-accessible-html-email">Valid, Accessible HTML Email</h3>
+<p>Messages composed in Markdown or HTML mode are now sent as a
+complete, valid HTML5 document built to WCAG 2.2 AA structure:</p>
+<ul>
+<li>The document declares the <strong>message language</strong> and
+carries the <strong>subject as its title</strong>, so recipients’ mail
+apps and screen readers identify the message correctly.</li>
+<li><strong>Image descriptions (alt text) are preserved</strong> end to
+end — what you write in <code>![description](address)</code> is exactly
+what a screen reader user receives.</li>
+<li><strong>Table header cells are sent as real headers</strong> with
+column scope, so screen readers announce the column header while moving
+through table cells.</li>
+<li>Task-list syntax (<code>- [x] done</code>) is kept as literal,
+readable text instead of being rendered as checkbox form controls, which
+most mail apps strip and which are not accessible in email.</li>
+</ul>
+<h3 id="lossless-markdown-html-mode-switching">Lossless Markdown ↔︎ HTML
+Mode Switching</h3>
+<p>Switching a Markdown message into HTML mode and back now returns
+exactly what you wrote. Tables (with header rows and column alignment),
+images (with their descriptions), headings at all six levels, fenced
+code blocks with their language, multi-paragraph quotes, nested lists,
+and exact link addresses all survive the trip in both directions. Images
+appear in the HTML editor as their description text, so the description
+stays readable and editable.</p>
+<h3 id="nested-lists-tab-and-shifttab">Nested Lists (Tab and
+Shift+Tab)</h3>
+<p>In both HTML and Markdown modes, you can now create and navigate
+multi-level lists using the keyboard:</p>
+<ul>
+<li><strong>Tab</strong> while the cursor is on a list item increases
+its indent level, creating a sub-list.</li>
+<li><strong>Shift+Tab</strong> decreases the indent level. In HTML mode,
+pressing <strong>Shift+Tab</strong> on a top-level list item removes it
+from the list entirely, returning it to normal text.</li>
+</ul>
+<p>Tab and Shift+Tab on a non-list line move focus between fields as
+usual — the indentation behavior only activates when the cursor is
+inside a list item.</p>
+<p>In HTML mode, screen readers hear the new level announced immediately
+— for example, “Bullet list item, level 2.” The block type label also
+includes the level when navigating by caret, so moving between levels is
+audible without pressing <strong>Ctrl+T</strong>.</p>
+<hr />
+<h2 id="ux-improvements">UX Improvements</h2>
+<h3 id="message-windows-now-have-full-mail-actions">Message Windows Now
+Have Full Mail Actions</h3>
+<p>When a message is opened in a standalone window (via
+<strong>Ctrl+Enter</strong> or Reading mode set to
+<strong>Window</strong>), the window previously offered only navigation
+— Previous, Next, and Move to Main Window. All mail actions are now
+available directly from the message window without needing to return to
+the main window first.</p>
+<p>A full menu bar (<strong>File</strong>, <strong>Message</strong>,
+<strong>Navigate</strong>) provides access to every command, alongside a
+toolbar with the most common actions and keyboard shortcuts matching the
+main window:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Ctrl+R</code></td>
+<td>Reply</td>
+</tr>
+<tr class="even">
+<td><code>Ctrl+Shift+R</code></td>
+<td>Reply All</td>
+</tr>
+<tr class="odd">
+<td><code>Ctrl+F</code></td>
+<td>Forward</td>
+</tr>
+<tr class="even">
+<td><code>Delete</code></td>
+<td>Delete</td>
+</tr>
+<tr class="odd">
+<td><code>Ctrl+Q</code></td>
+<td>Mark as Read</td>
+</tr>
+<tr class="even">
+<td><code>Ctrl+Shift+G</code></td>
+<td>Grab Addresses from Message</td>
+</tr>
+</tbody>
+</table>
+<p>The command palette (<code>Ctrl+Shift+P</code>) now includes all of
+these commands in addition to the navigation commands. A status bar at
+the bottom of the window shows the message’s position in the folder —
+for example, “Message 3 of 47”.</p>
+<p>Deleting a message from its window closes the window immediately;
+focus returns to the originating position in the message list.</p>
+<h3 id="sync-progress-announcements">Sync Progress Announcements</h3>
+<p>Screen reader users will experience significantly quieter sync
+progress announcements:</p>
+<p><strong>Before:</strong> Screen readers announced the sync progress
+number after every single folder completion, creating excessive chatter
+(“1”, “2”, “3”, “4”… “45”).</p>
+<p><strong>After:</strong> QuickMail announces sync progress only every
+10 folders or at the end of sync: - “Synced 10 of 45 folders.” - “Synced
+20 of 45 folders.” - “Synced 30 of 45 folders.” - “Synced 40 of 45
+folders.” - “Sync complete.”</p>
+<p>The status bar continues to show “Syncing mail…” without duplicating
+announcements through the screen reader.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>HTML compose mode was silent to screen readers.</strong>
+Entering HTML mode replaced the rich editor’s document, which
+permanently disconnected the text from the UI Automation layer — screen
+readers read nothing of what was actually in the editor. The editor now
+keeps one document for its lifetime and loads content into it in place,
+with an automated regression test asserting what assistive technology
+actually receives across mode switches.</li>
+<li><strong>F7 (next misspelling) always reported “No misspellings
+found” in compose.</strong> The spell navigation search started at the
+current caret position and searched forward — with the caret at the end
+of the text after typing, the forward pass found nothing and gave up.
+Spell navigation now wraps: it searches from the caret to the end, then
+wraps from the beginning if nothing was found in the first pass. The
+same wrap applies to Shift+F7 searching backward.</li>
+<li><strong>Heading shortcut applied to the wrong paragraph when text
+was selected.</strong> When you selected text and pressed a heading
+shortcut, the heading was applied to the paragraph at the caret (the
+active end of the selection) rather than the paragraph where the
+selection started. If the selection ended at a paragraph boundary, this
+meant the heading landed on the <em>next</em> paragraph — the one after
+your selected text. The heading now applies to the paragraph the
+selection begins in, matching what users expect.</li>
+<li><strong>Heading formatting bled into the blank line below the
+selected text.</strong> WPF places structural element-boundary positions
+between paragraphs. When a selection ended in that gap — for example
+after pressing Shift+Down to select a line — WPF attributed the position
+to the next paragraph, so the heading was applied to both the selected
+line and the blank line below it. The boundary check now correctly
+excludes any position at or before the start of the next paragraph’s
+content.</li>
+<li><strong>Escape closed the whole compose window from open menus and
+dropdowns.</strong> Escape now closes the open menu, combo dropdown, or
+address autocomplete first; only when nothing transient is open does it
+close the window.</li>
+<li><strong>Formatting announcements were silenced by focus
+changes.</strong> Invoking a formatting command from the menu restored
+focus to the editor, and the focus speech overrode the result
+announcement — all you heard was “message body.” Formatting feedback is
+now timed to land after focus settles.</li>
+<li><strong>Duplicate sync progress announcements.</strong> The status
+bar text and explicit screen reader announcements were both being read
+aloud during sync, creating redundant chatter. Now only the explicit
+announcements (which respect user settings) are spoken, eliminating
+duplicates.</li>
+<li><strong>Spaces between adjacent formatted spans were silently
+deleted.</strong> Switching a Markdown message like <code>*a* *b*</code>
+into HTML mode dropped the space between the styled words, merging them.
+Whitespace between inline elements is now preserved with correct HTML
+semantics (collapsed to a single space, never removed).</li>
+<li><strong>Markdown tables were destroyed by a mode switch.</strong>
+Entering HTML mode flattened tables to tab-separated text and the table
+never came back. Tables are now real tables in the HTML editor and
+convert back to pipe-format Markdown, headers and alignment intact.</li>
+<li><strong>Images lost their address on a mode switch.</strong>
+<code>![alt](address)</code> kept only the description text; the image
+address was discarded. Both now round-trip.</li>
+<li><strong>Headings 4–6 were demoted to heading 3</strong> when
+switching from Markdown to HTML mode. All six levels are now
+preserved.</li>
+<li><strong>Code block language was dropped</strong>
+(<code>```csharp</code> became a plain fence) and <strong>link addresses
+were rewritten</strong> by URL normalization. Both are now preserved
+character for character.</li>
+<li><strong>Multi-paragraph quotes split into separate quotes</strong>
+on each round trip. Consecutive quoted paragraphs now stay one
+quote.</li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="rich-compose">Rich Compose</h3>
+<ul>
+<li><code>ComposeMode</code> (PlainText / Markdown / Html) on
+<code>ComposeModel</code>; rich messages are sent as
+<code>multipart/alternative</code> by <code>MimeMessageBuilder</code>
+whenever <code>HtmlBody</code> is present</li>
+<li><code>MarkdownService</code> (Markdig) renders Markdown to HTML with
+an explicit, bounded extension set (pipe tables, strikethrough,
+auto-links; raw HTML disabled, task lists excluded);
+<code>WrapDocument</code> emits a full HTML5 document with doctype,
+<code>lang</code>, charset, and the subject as
+<code>&lt;title&gt;</code></li>
+<li><code>RichTextDocumentConverter</code> converts FlowDocument ↔︎
+HTML/Markdown with structure tracked on element tags:
+<code>Paragraph.Tag</code> for headings 1–6, code blocks
+(<code>PRE:lang</code>), hr, and blockquote; <code>TableCell.Tag</code>
+for header cells and column alignment; <code>Run.Tag</code> for image
+src (alt text is the run text); <code>Hyperlink.Tag</code> for the
+author’s verbatim href (script/data schemes excluded)</li>
+<li>Round-trip fidelity is locked in by
+<code>MarkdownRoundTripTests</code>: an exact Markdown → HTML →
+FlowDocument → Markdown corpus, plus XML well-formedness and WCAG
+structure checks on the full sent document</li>
+<li><code>MarkdownEditing</code> — pure, unit-tested text operations
+behind the Markdown formatting commands, applied through
+<code>TextBox.SelectedText</code> so each toggle is one undo unit</li>
+<li><strong>Never replace <code>RichTextBox.Document</code></strong> —
+WPF’s automation peer binds to the original document’s text container
+and never rebinds; all loads go through
+<code>RichTextDocumentConverter.LoadInto</code>. Guarded by
+<code>ComposeUiaTextPatternTests</code>, which asserts UIA TextPattern
+content through real mode switches</li>
+<li><code>FormattingListWindow</code> — the Show Formatting list; shares
+its state-reading code with the spoken announcement</li>
+<li><code>MarkdownPreviewWindow</code> — focusable WebView2 preview
+window opened by F8 in Markdown or HTML mode; JS key relay returns
+F6/Escape/Ctrl+W to WPF; links open in the default browser; rich CSS
+with dark-mode support via <code>prefers-color-scheme</code></li>
+<li><code>AnnounceFormattingWhileNavigating</code> config key (default
+on): fires an announcement when the caret moves to a paragraph with a
+different block type in HTML mode; suppressed during mode switches and
+programmatic loads</li>
+<li>Auto-save: <code>ComposeViewModel.AutoSaveAsync</code> driven by a
+<code>DispatcherTimer</code>; config keys <code>AutoSaveDrafts</code>
+and <code>AutoSaveIntervalSeconds</code> (clamped 30–600); failure
+announcements arm once per failure streak</li>
+<li>New Settings → General → Composing group (auto-save toggle,
+interval, <code>DefaultComposeMode</code>)</li>
+<li>New Settings → Screen Reader Announcements → Announce formatting
+while navigating in HTML compose</li>
+<li><code>MarkdownEditing.IndentListItem</code> /
+<code>DedentListItem</code> — pure text operations for Tab/Shift+Tab in
+Markdown mode (2-space indentation per level)</li>
+<li><code>RichBodyBox_PreviewKeyDown</code> intercepts Tab/Shift+Tab on
+list items and calls <code>EditingCommands.IncreaseIndentation</code> /
+<code>DecreaseIndentation</code>; suppresses the navigation announcement
+during the command and replaces it with a single Result announce</li>
+<li><code>BlockTypeLabel</code> / <code>ListDepthOf</code> helpers: list
+item labels now include the nesting depth (“Bullet list item, level 2”)
+so navigation between levels is audible everywhere</li>
+</ul>
+<h3 id="sync-progress-reporting">Sync Progress Reporting</h3>
+<ul>
+<li><code>ISyncService.SyncProgressChanged</code> event fires after each
+folder completes with <code>(completedFolders, totalFolders)</code></li>
+<li><code>MainViewModel</code> now throttles status text updates to
+every 10 folders to prevent excessive screen reader announcements</li>
+<li>Announcements respect <code>ConfigModel.AnnounceStatus</code> user
+preference</li>
+</ul>
+<hr />
+<h2 id="known-limitations">Known Limitations</h2>
+<h3 id="rich-compose-1">Rich Compose</h3>
+<ul>
+<li><strong>Drafts and templates always reopen in Plain Text.</strong>
+The editing mode is not yet round-tripped through the mail server, so a
+draft written in HTML reopens as plain text (the formatted content is
+preserved in the sent form, but further editing starts from the text
+representation).</li>
+<li><strong>No underline in Markdown mode.</strong> Markdown has no
+underline syntax; use HTML mode when underline matters.</li>
+<li><strong>Images and tables cannot be created in the HTML
+editor</strong> — author them in Markdown mode; they display correctly
+and survive switches into HTML mode and back. <strong>Fonts and
+colors</strong> are not yet available in either rich mode.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.3.html">Newer: 0.7.3</a> | <a href="release-notes-v0.7.1.html">Older: 0.7.1</a></div>
+</body>
+</html>

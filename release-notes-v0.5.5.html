@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.5.5 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.5.6.html">Newer: 0.5.6</a> | <a href="release-notes-v0.5.2.html">Older: 0.5.2</a></div>
+  <h1 id="quickmail-v0.5.5-release-notes">QuickMail v0.5.5 Release
+Notes</h1>
+<p class="version">Released May 17, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.5.5">downloads for this release</a></p>
+<h2 id="new-features">New Features</h2>
+<h3 id="per-account-all-mail-virtual-folders">Per-account All Mail
+virtual folders</h3>
+<p>Each account now has its own <strong>All Mail — {Account
+Name}</strong> entry directly under that account in the folder tree.
+Selecting it shows every non-excluded message for that account across
+all of its folders, sorted newest-first — the same aggregate view as the
+global All Mail, but scoped to one account.</p>
+<p>The per-account All Mail folders also appear in the
+<strong>Ctrl+Y</strong> folder picker under their respective
+accounts.</p>
+<h3 id="to-recipient-view">To (Recipient) View</h3>
+<p>A new <strong>To</strong> view groups messages by recipient,
+complementing the existing <strong>From</strong> (sender) view. This is
+useful when a folder contains mail sent to multiple addresses — for
+example, a shared mailbox or an alias — letting you quickly scan
+messages by who they were addressed to.</p>
+<p>Toggle between Messages, From, To, and Conversations views from the
+View menu.</p>
+<h3 id="type-ahead-navigation">Type-ahead navigation</h3>
+<p>First-letter type-ahead is now available in the folder tree and
+message list. With focus in either pane, start typing a word and the
+selection jumps to the nearest matching item. Subsequent keypresses
+within a short timeout continue the search within the same prefix.</p>
+<h3 id="spell-check-in-compose">Spell check in compose</h3>
+<p>The compose window body field now has spell checking enabled.
+Misspelled words are underlined as you type; right-click or use
+Shift+F10 a word for suggested corrections. Note, not all screen readers
+are picking up spelling notifications yet.</p>
+<h3 id="configurable-sync-range">Configurable sync range</h3>
+<p>Two new <code>config.ini</code> settings give you control over how
+much mail is fetched on sync:</p>
+<table>
+<colgroup>
+<col style="width: 28%" />
+<col style="width: 28%" />
+<col style="width: 43%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Setting</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>SyncDays</code></td>
+<td><code>30</code></td>
+<td>How many days back to look for messages during sync. Set to
+<code>0</code> to fetch all messages (can be slow on large
+mailboxes).</td>
+</tr>
+<tr class="even">
+<td><code>InitialSyncCount</code></td>
+<td><code>500</code></td>
+<td>Maximum number of messages fetched per folder on the very first sync
+of a newly connected account.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>Background sync ignored SyncDays</strong> — Background sync
+was always fetching all messages regardless of the <code>SyncDays</code>
+setting. It now correctly limits its search to the configured date
+range.</li>
+<li><strong>Virtual folder order</strong> — All Mail now appears before
+All Inboxes in the virtual folder group so keyboard and screen reader
+users encounter it first when arrowing down through the list.</li>
+<li><strong>Folder navigation strict matching</strong> — Folder
+selection in the main window now uses strict account-ID matching,
+preventing a navigation edge case where the wrong account’s folder could
+be highlighted after a folder picker selection.</li>
+<li><strong>Folder loading and account labels</strong> — Several edge
+cases with folder tree population and account display name rendering
+have been resolved.</li>
+</ul>
+<hr />
+<h2 id="code-quality-internal">Code quality (internal)</h2>
+<ul>
+<li>Compose message building extracted into a dedicated
+<code>MimeMessageBuilder</code> static class, eliminating duplicated
+logic between compose, reply, and forward paths.</li>
+<li>Address parsing moved to a shared <code>AddressParser</code> utility
+class.</li>
+<li><code>AccountManagerViewModel</code> and
+<code>AddAccountViewModel</code> now share a common
+<code>AccountEditorViewModel</code> base class, removing duplicated
+validation and field-binding code.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.5.6.html">Newer: 0.5.6</a> | <a href="release-notes-v0.5.2.html">Older: 0.5.2</a></div>
+</body>
+</html>

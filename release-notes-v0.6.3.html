@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.6.3 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.4.html">Newer: 0.6.4</a> | <a href="release-notes-v0.6.2.html">Older: 0.6.2</a></div>
+  <h1 id="quickmail-v0.6.3-release-notes">QuickMail v0.6.3 Release
+Notes</h1>
+<p class="version">Released May 24, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.6.3">downloads for this release</a></p>
+<h2 id="accessibility">Accessibility</h2>
+<h3 id="status-bar-keyboard-navigation">Status bar keyboard
+navigation</h3>
+<p>The status bar now supports full keyboard exploration. Press
+<code>Ctrl+9</code> or cycle through panes with <code>F6</code> to reach
+it, then use <strong>Left</strong> and <strong>Right</strong> arrow keys
+to move between its four regions. Press <strong>Tab</strong> to exit
+back to the main pane cycle.</p>
+<table>
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 65%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Region</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Status</strong></td>
+<td>Current activity — message counts, sync progress, search
+results</td>
+</tr>
+<tr class="even">
+<td><strong>Connection</strong></td>
+<td>Connection state — Offline, Connecting…, Syncing…, N accounts
+connected, or Connection error</td>
+</tr>
+<tr class="odd">
+<td><strong>Rules</strong></td>
+<td>Rules summary — how many rules are active, disabled, and when they
+last ran</td>
+</tr>
+<tr class="even">
+<td><strong>Sync progress</strong></td>
+<td>A progress indicator shown while mail is syncing (hidden
+otherwise)</td>
+</tr>
+</tbody>
+</table>
+<p>Screen readers announce each region individually as focus moves,
+using the region’s current value as the accessible name. The status bar
+also exposes the UIA StatusBar control pattern, which enables screen
+readers to read the entire bar with their built-in status-bar
+commands.</p>
+<h3 id="connection-status-region">Connection status region</h3>
+<p>A new <strong>Connection</strong> region in the status bar shows the
+current state of your account connections at a glance. The value updates
+in real time:</p>
+<ul>
+<li><strong>Offline</strong> — no accounts are connected</li>
+<li><strong>Connecting…</strong> — accounts are being connected</li>
+<li><strong>Syncing…</strong> — a background sync is in progress</li>
+<li><strong>N accounts connected</strong> — all accounts are online</li>
+<li><strong>Connection error</strong> — a sync attempt failed</li>
+</ul>
+<h3 id="rules-status-region-is-now-a-button">Rules status region is now
+a button</h3>
+<p>The Rules summary in the status bar was previously a styled read-only
+text element with no accessible role. It is now a proper
+<strong>Button</strong> (ControlType.Button). Screen readers correctly
+announce it as interactive, and pressing <strong>Enter</strong> or
+<strong>Space</strong> opens the Rules Manager — the same as selecting
+<strong>Rules…</strong> from the menu or pressing
+<code>Ctrl+Shift+L</code>.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<ul>
+<li>Removed <code>StatusBarAccessibleName</code> ViewModel property;
+status bar name is now derived from a XAML binding, keeping
+accessibility label logic in the View layer.</li>
+<li><code>AutomationProperties.Name</code> consolidated onto child
+elements only, eliminating potential for double-announcement by screen
+readers when navigating the UIA tree.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.4.html">Newer: 0.6.4</a> | <a href="release-notes-v0.6.2.html">Older: 0.6.2</a></div>
+</body>
+</html>

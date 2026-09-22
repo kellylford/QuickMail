@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.1 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.2.html">Newer: 0.7.2</a> | <a href="release-notes-v0.7.0.html">Older: 0.7.0</a></div>
+  <h1 id="quickmail-v0.7.1-release-notes">QuickMail v0.7.1 Release
+Notes</h1>
+<p class="version">Released June 9, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.1">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.1:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.1-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="new-features">New Features</h2>
+<h3 id="address-book-contacts-management">Address Book Contacts
+management</h3>
+<p>The Address Book Contacts tab has been completely redesigned with
+explicit Add, Edit, and Delete workflows:</p>
+<p><strong>Adding a contact:</strong> - Press <strong>Add</strong> or
+activate the button from the action buttons - Screen reader announces:
+“Add contact” - Name and Email fields become editable - Type the
+contact’s name and email address - Press Enter or activate
+<strong>Save</strong> to add the contact - The contact is added to the
+list and fields return to readonly</p>
+<p><strong>Editing a contact:</strong> - Select a contact from the list
+- Press <strong>F2</strong>, click <strong>Edit</strong>, or activate
+the Edit command (<code>contacts.edit</code>) - Screen reader announces:
+“Edit {contact name}” - Name and Email fields become editable - Modify
+the contact’s name or email address - Press Enter or activate
+<strong>Save</strong> to save changes - If the email address is already
+used by another contact, an error message appears and you can correct it
+- On successful save, the contact list updates and fields return to
+readonly</p>
+<p><strong>Deleting a contact:</strong> - Select a contact and press
+Delete or activate the Delete button - A confirmation dialog asks you to
+confirm - If confirmed, the contact is deleted from the address book</p>
+<p><strong>Reading contact details (keyboard-only access):</strong> -
+Select a contact to populate the Name and Email display fields - Press
+Tab to focus the Name field (readonly, but fully navigable) - Use arrow
+keys to move through the text character-by-character (useful for email
+addresses) - Your screen reader will read the text as you navigate -
+Press Ctrl+A to select all text; Ctrl+C to copy - Press Tab to move to
+the Email field or other controls</p>
+<h3 id="readonly-field-navigation">Readonly field navigation</h3>
+<p>Name and Email display fields are fully keyboard-navigable even when
+readonly: - Arrow keys move the cursor character-by-character - Home /
+End jump to the start or end of the field - Tab / Shift+Tab navigate to
+the next/previous control - Ctrl+A selects all text - Screen readers can
+read the content using their standard text access commands</p>
+<h3 id="imap-connection-health">IMAP Connection Health</h3>
+<p>QuickMail now implements robust connection recovery and failure
+verification to maintain reliable mail sync even on unstable
+networks:</p>
+<p><strong>Startup retry with exponential backoff:</strong> - On first
+launch, QuickMail retries account connections up to 3 times - Delays
+increase: 15 seconds, then 30 seconds, then 60 seconds - Timeouts also
+increase per attempt (30s, 45s, 60s) - Automatically handles brief
+network interruptions without user intervention</p>
+<p><strong>Dynamic connection status:</strong> - Account connection
+state is continuously monitored via the IDLE watcher - If the connection
+drops, the app detects it and updates the UI in real-time - IDLE watcher
+automatically reconnects with exponential backoff (30s, 60s, 120s cap) -
+Connection status is reflected in the status bar</p>
+<p><strong>Periodic heartbeat:</strong> - Every 10 minutes, QuickMail
+sends a NOOP (no-op) command to keep connections alive - Prevents idle
+connection timeouts from slow/inactive networks - Detects dropped
+connections mid-session</p>
+<p><strong>Sync visibility in the status bar:</strong> - During sync:
+“Syncing… (X of Y folders)” shows folder-by-folder progress - After sync
+completes: “Synced HH:MM” shows the last successful sync time - Initial
+state: “Never synced” until first sync completes - Sync in progress: “In
+progress” to avoid confusing “Never synced” + “Syncing…” sequence</p>
+<p><strong>Account Properties Sync section:</strong> - New
+<strong>Sync</strong> section shows cache statistics for each account: -
+<strong>Messages in cache:</strong> Actual count of synced messages in
+the local SQLite database - <strong>Oldest cached:</strong> Date of the
+earliest message in cache (useful for understanding sync history) -
+<strong>Sync window:</strong> “All mail” or “Last N days” (configurable
+via settings)</p>
+<p><strong>False operation error verification:</strong> - <strong>Empty
+Trash:</strong> After an exception, QuickMail verifies if the trash is
+actually empty on the server. If the trash count is zero, the operation
+is considered successful despite the error (TCP acknowledgment timeout).
+- <strong>Delete messages:</strong> If deletion fails, the app shows
+“Delete may not have completed — refreshing” and automatically re-syncs
+the affected folders after 5 seconds to reconcile the UI with server
+state.</p>
+<p><strong>Error announcements:</strong> - All connection, sync, and
+operation errors are announced through the screen reader announcement
+system - Users can control which categories of announcements they hear
+via <strong>Settings</strong> → <strong>Custom
+Announcements</strong></p>
+<hr />
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+<li><strong>Address Book contact editing is now fully
+discoverable.</strong> The previous implicit “edit-on-populate” behavior
+has been replaced with explicit <strong>Add</strong>,
+<strong>Edit</strong>, and <strong>Save</strong> buttons visible in the
+command palette and as keyboard commands (<code>contacts.add</code>,
+<code>contacts.edit</code>, <code>contacts.save</code>,
+<code>contacts.cancelEdit</code>).</li>
+<li><strong>Readonly fields support full cursor navigation.</strong> The
+Name and Email fields in display mode allow arrow-key navigation,
+Home/End, selection, and copying without allowing text modification.
+Screen reader users can read the content using their reader’s standard
+text access commands.</li>
+<li><strong>Error feedback is visible and announced.</strong> When an
+email conflict is detected during edit, an error message appears inline
+and is announced to screen readers.</li>
+<li><strong>Field labels are properly associated.</strong> The Name and
+Email fields use <code>AutomationProperties.LabeledBy</code> so screen
+readers announce the label when focusing each field.</li>
+<li><strong>Edit-mode button set is distinct from display-mode
+buttons.</strong> When editing, the <strong>Add</strong> /
+<strong>Edit</strong> / <strong>Delete</strong> buttons are replaced
+with <strong>Save</strong> and <strong>Cancel</strong> buttons, making
+the current mode clear to all users.</li>
+</ul>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>Contact editing was impossible.</strong> The previous design
+auto-populated name/email fields when a contact was selected, but
+immediately cleared the selection when the user started typing, losing
+the email address association. Changing an email address created a new
+contact instead of updating the existing one. This is now fixed with
+explicit edit modes.</li>
+<li><strong>No way to discover how to edit a contact.</strong> There
+were no visible affordances (buttons, menu options, keyboard shortcuts)
+for editing. Now <strong>Edit</strong> is a prominent button and a
+registered keyboard command.</li>
+<li><strong>Readonly TextBox behavior was unintuitive for screen reader
+users.</strong> The previous <code>IsReadOnly="True"</code> binding
+prevented cursor navigation entirely. Fields now allow full keyboard
+navigation while preventing text modification.</li>
+<li><strong>Contact.Display property was serialized to JSON
+redundantly.</strong> The computed <code>Display</code> property
+(formatted as “Name <email>”) was being written to
+<code>contacts.json</code> alongside the authoritative
+<code>DisplayName</code> and <code>EmailAddress</code> fields, creating
+noise in the file. The property is now marked
+<code>[JsonIgnore]</code>.</li>
+<li><strong>Cache statistics queries used wrong column names.</strong>
+The queries backing the new “Messages in cache” and “Oldest cached”
+fields in Account Properties referenced stale column names from the
+pre-migration schema. The queries now use the correct column names and
+return accurate results.</li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<p><strong>Code contributions:</strong> - <a
+href="https://github.com/CityDweller">CityDweller</a> — Microsoft Graph
+backend groundwork: IMailService refactoring, string MessageId
+migration, backend router and feature gate scaffolding - <a
+href="https://github.com/Menelion">Menelion</a> — Windows installer
+(Inno Setup) - <a href="https://github.com/serrebidev">serrebidev</a> —
+Pooled IMAP connections, virtualized folder picker, HTML rendering
+improvements</p>
+<p><strong>Issues and feedback:</strong> - <a
+href="https://github.com/CityDweller">CityDweller</a> - <a
+href="https://github.com/Dennisl123">Dennisl123</a> - <a
+href="https://github.com/jaybird110127">jaybird110127</a> - <a
+href="https://github.com/KE8UPE">KE8UPE</a> - <a
+href="https://github.com/paoscripts">paoscripts</a> - <a
+href="https://github.com/serrebidev">serrebidev</a> - <a
+href="https://github.com/slannon97">slannon97</a> - <a
+href="https://github.com/sofquipeut">sofquipeut</a> - <a
+href="https://github.com/taylorarndt">taylorarndt</a></p>
+<p>Note: Others have made contributions through various social media
+platforms that are not listed here yet.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="address-book">Address Book</h3>
+<ul>
+<li><code>IContactService.UpdateContactAsync(id, displayName, emailAddress)</code>
+— new method for updating a contact’s name and email with email-conflict
+detection. Returns false if another contact owns the target email
+address.</li>
+<li><code>AddressBookViewModel</code> — refactored with explicit
+<code>BeginAddContactCommand</code>,
+<code>BeginEditContactCommand</code>, <code>SaveContactCommand</code>,
+and <code>CancelEditCommand</code>. Removed the implicit
+“populate-on-select” behavior and replaced it with explicit mode state
+(<code>IsEditingContact</code>, <code>EditName</code>,
+<code>EditEmail</code>, <code>ContactError</code>).</li>
+<li><code>ContactFieldBox_PreviewKeyDown</code> — new keyboard handler
+that allows navigation keys (arrows, Tab, Home, End, Ctrl+A) in readonly
+mode while blocking all text-modification operations.</li>
+<li><code>ContactModel.Display</code> — now marked
+<code>[JsonIgnore]</code> to prevent redundant JSON serialization.</li>
+</ul>
+<h3 id="connection-health">Connection Health</h3>
+<ul>
+<li><code>IMailService.AccountReachabilityChanged</code> — new event
+fired when a connection is lost or recovered. Backends (IMAP, Graph)
+raise this; <code>MailServiceRouter</code> aggregates and forwards to
+the UI layer.</li>
+<li><code>IMailService.CountTrashMessagesAsync()</code> — new method for
+post-failure trash verification. Used to determine if an Empty Trash
+operation succeeded despite an exception.</li>
+<li><code>ISyncService.SyncProgressChanged</code> — new event fired
+after each folder sync completes with
+<code>(completedFolders, totalFolders)</code> for progress
+reporting.</li>
+<li><code>ILocalStoreService.CountSummariesAsync()</code> and
+<code>GetOldestMessageDateAsync()</code> — new methods for cache
+statistics in Account Properties. Handle graceful failures in
+<code>--online</code> mode.</li>
+<li><code>MainViewModel.LastSyncText</code> — new property displays
+“Synced HH:MM”, “Never synced”, or “In progress” in the status bar.</li>
+<li><code>MainViewModel.StartPeriodicNoOpAsync()</code> — new background
+task that sends NOOP commands every 10 minutes to keep connections
+alive.</li>
+<li><code>ConnectOneAccountAsync()</code> — now implements 3-attempt
+startup retry with exponential backoff.</li>
+<li><code>StartBackgroundSyncAsync()</code> — updated to subscribe to
+reachability events, report sync progress, and wire error
+announcements.</li>
+<li><code>ImapMailService.RunIdleWatcherAsync()</code> — updated to fire
+<code>AccountReachabilityChanged</code> on connection loss/recovery and
+implement exponential backoff for reconnection attempts.</li>
+<li><code>EmptyTrashAsync()</code> and
+<code>DeleteMessagesAsync()</code> — updated with post-failure
+verification and reconciliation.</li>
+<li>Status bar unified into single TextBlock with Run elements
+(StatusText + LastSyncText) for coherent screen reader reading.</li>
+<li>New <code>StringToVisibilityConverter</code> XAML converter.</li>
+<li>465 tests, all green.</li>
+</ul>
+<hr />
+<h2 id="known-limitations">Known Limitations</h2>
+<h3 id="address-book-1">Address Book</h3>
+<ul>
+<li><strong>Email address changes are not merged with existing
+contacts.</strong> If you change a contact’s email from
+<code>old@example.com</code> to <code>new@example.com</code>, the old
+email entry remains in the address book if it was separate. A future
+merge/deduplicate feature will address this.</li>
+<li><strong>Contacts are not automatically harvested from incoming
+mail.</strong> Contacts must be added manually via the <strong>Grab
+Addresses</strong> feature (Ctrl+Shift+B on a message) or the Compose
+window’s right-click “Add to Address Book” option.</li>
+</ul>
+<h3 id="connection-health-1">Connection Health</h3>
+<ul>
+<li><strong>Delete operations show uncertainty message.</strong> If a
+delete fails, the message “Delete may not have completed — refreshing”
+appears. The UI is reconciled after 5 seconds via targeted re-sync. In
+rare cases on very slow networks, the reconciliation might lag behind
+the user’s next action.</li>
+<li><strong>IDLE watcher reconnection uses exponential backoff with
+120-second cap.</strong> If a connection is unstable and drops
+repeatedly, reconnection attempts max out at 120 seconds between tries.
+A future feature may add user-configurable backoff settings.</li>
+<li><strong>–online mode provides no connection recovery.</strong> When
+running with <code>--online</code> flag, there is no cache and no
+persistence of sync state, so connection interruptions cannot be
+recovered gracefully. Normal mode (with SQLite cache) is recommended for
+reliable sync.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.2.html">Newer: 0.7.2</a> | <a href="release-notes-v0.7.0.html">Older: 0.7.0</a></div>
+</body>
+</html>

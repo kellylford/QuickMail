@@ -1,0 +1,2279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.37 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.38.html">Newer: 0.8.38</a> | <a href="release-notes-v0.8.36.html">Older: 0.8.36</a></div>
+  <h1 id="quickmail-v0.8.37-release-notes">QuickMail v0.8.37 Release
+Notes</h1>
+<p class="version">Released August 4, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.37">downloads for this release</a></p>
+<p>This is a large release — the most change in a single version since
+the calendar arrived in v0.8.33.</p>
+<p>Adding an account has been rebuilt around three questions instead of
+a page of server settings. Gmail accounts now need an app password,
+because Google is no longer granting QuickMail sign-in authorizations to
+anyone who does not already have one. You can now decide what each row
+of a message list says out loud, and in what order. You can watch a
+conversation and have every message in it — including the replies that
+have not arrived yet — collect in one folder. Mail deleted or filed
+somewhere else now keeps up while QuickMail is open, instead of waiting
+for a restart. Microsoft 365 accounts get a run of fixes and can now
+manage their server-side Inbox rules — the ones Outlook sets up — from
+inside QuickMail, mail rules change in when they run and which folders
+they act on, several lists that were unreadable to a screen reader are
+fixed, and there is a build for ARM PCs.</p>
+<p>The last public release was <strong>v0.8.36</strong>, so if that is
+what you have been running, everything below is new to you.</p>
+<h2 id="contents">Contents</h2>
+<ul>
+<li><a href="#download">Download</a></li>
+<li><a href="#accounts-and-signing-in">Accounts and signing in</a>
+<ul>
+<li><a
+href="#new-adding-an-account-now-asks-three-questions-not-ten">New:
+adding an account now asks three questions, not ten</a></li>
+<li><a
+href="#changed-gmail-needs-an-app-password--google-sign-in-is-no-longer-available-to-new-accounts">Changed:
+Gmail needs an app password — Google sign-in is no longer available to
+new accounts</a></li>
+</ul></li>
+<li><a href="#microsoft-365-accounts">Microsoft 365 accounts</a>
+<ul>
+<li><a href="#fixed-deleted-and-moved-mail-no-longer-comes-back">Fixed:
+deleted and moved mail no longer comes back</a></li>
+<li><a
+href="#new-mail-deleted-or-filed-elsewhere-now-keeps-up-while-quickmail-is-open">New:
+mail deleted or filed elsewhere now keeps up while QuickMail is
+open</a></li>
+<li><a
+href="#fixed-the-same-message-no-longer-appears-twice-in-combined-views">Fixed:
+the same message no longer appears twice in combined views</a></li>
+<li><a
+href="#fixed-a-folder-no-longer-stops-loading-because-of-one-message">Fixed:
+a folder no longer stops loading because of one message</a></li>
+<li><a
+href="#fixed-adding-a-work-or-school-account-now-always-asks-your-permission">Fixed:
+adding a work or school account now always asks your permission</a></li>
+</ul></li>
+<li><a href="#reading-and-organizing-mail">Reading and organizing
+mail</a>
+<ul>
+<li><a
+href="#new-choose-what-a-message-list-row-says-and-in-what-order">New:
+choose what a message list row says, and in what order</a></li>
+<li><a href="#new-combined-views-say-which-folder-a-message-is-in">New:
+combined views say which folder a message is in</a></li>
+<li><a href="#new-all-archive">New: All Archive</a></li>
+<li><a href="#new-watched-conversations">New: watched
+conversations</a></li>
+<li><a href="#fixed-a-saved-views-filter-was-described-as-all">Fixed: a
+saved view’s filter was described as “All”</a></li>
+<li><a
+href="#fixed-all-flagged-was-missing-from-two-places-the-other-combined-views-appear">Fixed:
+All Flagged was missing from two places the other combined views
+appear</a></li>
+<li><a
+href="#fixed-attachments-were-unreachable-when-a-message-opens-in-its-own-window">Fixed:
+attachments were unreachable when a message opens in its own
+window</a></li>
+<li><a
+href="#fixed-some-links-opened-inside-quickmail-instead-of-your-browser">Fixed:
+some links opened inside QuickMail instead of your browser</a></li>
+</ul></li>
+<li><a href="#mail-rules">Mail rules</a>
+<ul>
+<li><a
+href="#new-your-microsoft-365-server-rules-in-the-rules-manager">New:
+your Microsoft 365 server rules, in the Rules Manager</a></li>
+<li><a href="#changed-rules-are-now-per-account">Changed: rules are now
+per-account</a></li>
+<li><a
+href="#changed-rules-run-on-mail-that-arrives-while-quickmail-is-open">Changed:
+rules run on mail that arrives while QuickMail is open</a></li>
+<li><a
+href="#changed-rules-act-on-the-inbox-and-only-on-new-arrivals">Changed:
+rules act on the Inbox, and only on new arrivals</a></li>
+<li><a
+href="#fixed-the-rules-editor-no-longer-offers-actions-with-nothing-to-act-on">Fixed:
+the rules editor no longer offers actions with nothing to act
+on</a></li>
+</ul></li>
+<li><a href="#writing-and-sending-mail">Writing and sending mail</a>
+<ul>
+<li><a
+href="#fixed-choosing-a-sending-account-could-send-the-message">Fixed:
+choosing a sending account could send the message</a></li>
+<li><a href="#fixed-sending-mail-gave-no-feedback">Fixed: sending mail
+gave no feedback</a></li>
+<li><a
+href="#fixed-the-compose-window-used-only-part-of-its-width">Fixed: the
+compose window used only part of its width</a></li>
+</ul></li>
+<li><a href="#address-book">Address book</a>
+<ul>
+<li><a href="#new-find-a-contacts-mail-from-the-address-book">New: find
+a contact’s mail from the address book</a></li>
+<li><a href="#new-filter-the-contact-list-by-account">New: filter the
+contact list by account</a></li>
+<li><a href="#fixed-typing-a-letter-jumps-to-a-contact">Fixed: typing a
+letter jumps to a contact</a></li>
+</ul></li>
+<li><a href="#calendar">Calendar</a>
+<ul>
+<li><a
+href="#new-typing-and-stepping-dates-and-times-in-the-appointment-editor">New:
+typing and stepping dates and times in the appointment editor</a></li>
+<li><a href="#fixed-creating-an-appointment-late-in-the-evening">Fixed:
+creating an appointment late in the evening</a></li>
+</ul></li>
+<li><a href="#keyboard-and-navigation">Keyboard and navigation</a>
+<ul>
+<li><a
+href="#fixed-moving-or-copying-a-folder-now-shows-the-folder-tree">Fixed:
+moving or copying a folder now shows the folder tree</a></li>
+<li><a
+href="#fixed-choosing-a-rules-target-folder-now-shows-the-folder-tree">Fixed:
+choosing a rule’s target folder now shows the folder tree</a></li>
+<li><a
+href="#fixed-typing-a-folder-name-in-the-folder-picker-now-works">Fixed:
+typing a folder name in the folder picker now works</a></li>
+<li><a
+href="#fixed-arrowing-through-settings-options-now-chooses-them">Fixed:
+arrowing through settings options now chooses them</a></li>
+</ul></li>
+<li><a href="#screen-readers">Screen readers</a>
+<ul>
+<li><a
+href="#fixed-four-lists-read-out-an-internal-name-instead-of-their-contents">Fixed:
+four lists read out an internal name instead of their contents</a></li>
+<li><a href="#fixed-the-rules-manager-said-its-status-line-twice">Fixed:
+the Rules Manager said its status line twice</a></li>
+<li><a
+href="#fixed-ctrlshiftp-did-nothing-inside-a-message-window">Fixed:
+Ctrl+Shift+P did nothing inside a message window</a></li>
+</ul></li>
+<li><a href="#appearance">Appearance</a>
+<ul>
+<li><a href="#new-message-list-density">New: message list
+density</a></li>
+<li><a href="#changed-themes">Changed: themes</a></li>
+<li><a href="#changed-manage-themes-moved-to-the-view-menu">Changed:
+Manage Themes moved to the View menu</a></li>
+<li><a
+href="#fixed-the-rules-manager-was-cut-off-at-large-text-sizes">Fixed:
+the Rules Manager was cut off at large text sizes</a></li>
+<li><a
+href="#fixed-the-compose-windows-mode-selector-was-crushed-to-pl">Fixed:
+the compose window’s mode selector was crushed to “Pl”</a></li>
+<li><a
+href="#fixed-the-theme-managers-import-button-at-large-text-sizes">Fixed:
+the Theme Manager’s Import button at large text sizes</a></li>
+</ul></li>
+<li><a href="#windows-on-arm">Windows on ARM</a>
+<ul>
+<li><a href="#new-a-version-built-for-arm-pcs">New: a version built for
+ARM PCs</a></li>
+</ul></li>
+<li><a href="#diagnostics-and-troubleshooting">Diagnostics and
+troubleshooting</a>
+<ul>
+<li><a
+href="#fixed-adding-an-account-no-longer-shows-every-other-account-as-disconnected">Fixed:
+adding an account no longer shows every other account as
+disconnected</a></li>
+<li><a
+href="#new-connection-diagnostics-for-when-something-looks-wrong">New:
+Connection Diagnostics, for when something looks wrong</a></li>
+<li><a
+href="#new-debug-screenshots--off-by-default-and-off-again-every-time-you-exit">New:
+debug screenshots — off by default, and off again every time you
+exit</a></li>
+<li><a
+href="#changed-delete-quickmail-logs-removes-every-diagnostic-file">Changed:
+Delete QuickMail logs removes every diagnostic file</a></li>
+</ul></li>
+<li><a href="#thank-you-to-contributors">Thank You to
+Contributors</a></li>
+<li><a href="#internal">Internal</a> — developer detail, not needed to
+use QuickMail</li>
+<li><a href="#reporting-issues">Reporting Issues</a></li>
+</ul>
+<hr />
+<h2 id="download">Download</h2>
+<p>v0.8.37 is the first release built for ARM PCs as well as regular
+ones, so there are four downloads. Take a regular one unless you know
+your PC has an ARM processor — to check, open <strong>Settings → System
+→ About</strong> and read <strong>System type</strong>.</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>QuickMail-win.msi</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. A standard setup wizard with license
+agreement; installs per-user with no elevation required, adds the
+WebView2 Runtime if missing, and enables automatic updates.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail-win-arm64.msi</code></strong> — Windows
+installer, ARM</td>
+<td>The same installer for PCs with an ARM processor, such as the
+Snapdragon X models of Surface Laptop and Surface Pro.</td>
+</tr>
+<tr class="odd">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail-arm64.exe</code></strong> — standalone
+portable executable, ARM</td>
+<td>The portable version for PCs with an ARM processor.</td>
+</tr>
+</tbody>
+</table>
+<p>The regular downloads run on every supported PC, ARM ones included —
+just not as quickly there. The ARM downloads will not start at all on a
+non-ARM PC, so if you are unsure, the regular one is the safe guess.</p>
+<p>All downloads include the .NET 8 runtime — you do not need to install
+.NET separately.</p>
+<hr />
+<h2 id="accounts-and-signing-in">Accounts and signing in</h2>
+<p>Setting up a mail account was the hardest thing QuickMail asked
+anyone to do. That is what changed most in this release.</p>
+<h3 id="new-adding-an-account-now-asks-three-questions-not-ten">New:
+adding an account now asks three questions, not ten</h3>
+<p>Adding an account used to mean supplying an IMAP host, a port, an SSL
+setting, and a certificate rule — and then the same four things over
+again for SMTP. Ten or so fields, every one of them a chance to get
+something subtly wrong, for values QuickMail already knew perfectly
+well.</p>
+<p>Adding an account now asks three questions:</p>
+<ol type="1">
+<li><strong>Which provider?</strong> — Gmail, Outlook.com / Microsoft
+365, Yahoo Mail, iCloud Mail, or <strong>Other (enter settings
+manually)</strong>.</li>
+<li><strong>What is your email address?</strong></li>
+<li><strong>What is your password?</strong></li>
+</ol>
+<p>QuickMail works out the rest. Choosing a provider fills in every
+server setting and tells you what it filled in, and typing an address at
+a provider it recognizes chooses that provider for you — so most people
+never touch the list at all. The hosts, ports, and SSL settings have not
+gone anywhere: they moved behind an <strong>Advanced settings</strong>
+expander that stays closed unless you need it, and Tab reaches that
+expander’s heading before its contents, so a single keystroke moves past
+the whole thing.</p>
+<p>The Provider list opens on <strong>Other (enter settings
+manually)</strong> rather than ending with it, so Down arrow reaches the
+rest of the list from wherever the dialog puts you.</p>
+<p><strong>The account name is now optional.</strong> Leave it blank and
+the account is labelled with its email address.</p>
+<p><strong>An address QuickMail does not recognize is looked up for
+you</strong> when you leave the Email field, so a work address, or one
+at a domain of your own, usually takes no more typing than a Gmail one.
+QuickMail checks its own built-in list of providers first — that step is
+entirely offline, and nothing leaves your computer — and then tries
+three public sources of mail settings, ending with the records that say
+where your domain’s mail is actually delivered. Only your
+<strong>domain</strong> is sent to two of those; the third sends your
+address to your own provider’s server, exactly as Outlook does. That
+step is what makes ordinary business mail work, because a work mailbox
+often has no IMAP host to type in the first place — the way in is a
+sign-in. If nothing is found anywhere, Advanced settings opens with
+focus in the <strong>IMAP host</strong> box, and a message names the
+sign-in route to try for a work or school account. To use the offline
+built-in list only, set <code>AutoDiscoverOnline = off</code> in
+<code>config.ini</code>.</p>
+<p><strong>Gmail, Yahoo Mail, and iCloud Mail need an app
+password</strong> — a password you generate on the provider’s own
+website for use in a mail program, rather than the one you sign in with.
+Each of those providers now says so above the password box, and Gmail
+links straight to the page where you create one. Gmail defaults to this
+route because Google is not currently granting QuickMail new sign-in
+authorizations, so an app password is the path that works today. (If
+your Gmail account already signs in with Google, see the next entry — it
+keeps working.) (#369)</p>
+<p><strong>Work or school Microsoft 365 accounts now connect through
+Microsoft 365 directly.</strong> An address on your organization’s own
+domain moves onto that connection method as you type it, instead of
+being left on IMAP — where sign-in ended at “your administrator needs to
+make a change” for a mailbox that signs in perfectly well the other way.
+Personal Outlook.com, Hotmail, and Live.com accounts are unaffected and
+stay on IMAP.</p>
+<p><strong>Test Connection checks both halves of your mail.</strong>
+Incoming and outgoing are probed separately and reported separately —
+“IMAP: OK. SMTP: OK.” A working inbox with a misconfigured send server
+used to pass this test and then fail on your first message. Microsoft
+365 accounts can be tested now as well.</p>
+<p><strong>Manage Accounts was simplified in the same way.</strong> It
+has the same <strong>Advanced settings</strong> expander, so reaching
+the settings people actually change no longer means moving past hosts
+and ports on an account that is working perfectly. Each account now
+shows which provider it belongs to, and <strong>Test Connection</strong>
+is on this window too — which is where you want it when an account has
+stopped working, rather than only when you are setting one up.</p>
+<p>The <a
+href="https://kellylford.github.io/QuickMail/accounts.html">Accounts
+section of the User Guide</a> covers the whole lifecycle — choosing a
+provider, adding an account, entering settings by hand, testing,
+editing, and removing.</p>
+<h3
+id="changed-gmail-needs-an-app-password-google-sign-in-is-no-longer-available-to-new-accounts">Changed:
+Gmail needs an app password — Google sign-in is no longer available to
+new accounts</h3>
+<p><strong>Google is no longer granting QuickMail authorizations, so
+signing in with Google is not available to you unless your account was
+authorized before that happened.</strong> For everyone else — which is
+nearly everyone — a Gmail account is added with an <strong>app
+password</strong>: a password you generate on Google’s own website for
+use in a mail program, rather than the one you sign in to Google with.
+QuickMail says so above the password box when you choose Gmail, and
+links straight to the page where you create one. The User Guide’s <a
+href="https://kellylford.github.io/QuickMail/accounts.html">Accounts
+section</a> has the steps.</p>
+<p>This is not a limit QuickMail chose and it is not one any QuickMail
+setting can lift. An attempt to sign in with Google on an account that
+was not authorized earlier ends in <strong>“This app has been
+blocked”</strong> — Google refusing the application, not your account
+being wrong. If you see that, an app password is the way in.</p>
+<p><strong>A small number of accounts were authorized before this
+happened, and they keep working.</strong> If your Gmail account already
+uses Google sign-in, nothing changes and you need do nothing: it keeps
+signing in, keeps syncing mail, contacts, and calendar, and Manage
+Accounts still shows it as a Google account. This release exists in part
+to make sure those accounts keep their route in — only the
+<em>offer</em> of Google sign-in to a <strong>new</strong> account is
+withdrawn.</p>
+<p><strong>If you are one of those people and want to add another Gmail
+account over Google sign-in</strong>, the offer is still there to turn
+on:</p>
+<ol type="1">
+<li><strong>Tools → Settings → Advanced</strong>, check <strong>Sign in
+with Google for Gmail accounts</strong>, and select
+<strong>Save</strong>.</li>
+<li>Restart QuickMail — the setting is read at startup.</li>
+</ol>
+<p>The <strong>Provider</strong> list then has a <strong>Gmail (sign in
+with Google)</strong> entry directly below plain <strong>Gmail</strong>.
+Choose it and there is no password box at all: Gmail’s servers fill in
+as usual and a <strong>Sign in with Google</strong> button stands where
+the password would be. Contact and calendar sync are offered too,
+granted as part of the same sign-in. The Google choice also returns to
+<strong>Advanced settings → Authentication</strong>. (The same switch is
+available as <code>GoogleAuth = true</code> under
+<code>[features]</code> in <code>config.ini</code>, or
+<code>--feature GoogleAuth</code> at launch.)</p>
+<p><strong>Why the offer is off unless you ask for it.</strong> It used
+to be on for everyone, which meant the one path Google refuses was the
+one QuickMail put in front of you — and a sign-in that ends in “This app
+has been blocked” tells you nothing about what to do instead. Off by
+default, a new Gmail account gets the app-password route that works, and
+the few people the sign-in still works for have a supported way to ask
+for it.</p>
+<hr />
+<h2 id="microsoft-365-accounts">Microsoft 365 accounts</h2>
+<p>Four fixes for accounts that connect through Microsoft 365 — work and
+school accounts, and Outlook.com accounts added with a Microsoft
+sign-in. Accounts that connect over IMAP are untouched by everything in
+this section.</p>
+<h3 id="fixed-deleted-and-moved-mail-no-longer-comes-back">Fixed:
+deleted and moved mail no longer comes back</h3>
+<p>Deleting or moving a message on a Microsoft 365 account removed it
+from the list, and then the next sync brought it back about a minute
+later, often with a “Delete may not have completed — refreshing.”
+message. The cause was that Microsoft 365 changes a message’s identifier
+whenever the message moves between folders — which happens on any move,
+from QuickMail, from Outlook, or from a server-side rule. QuickMail’s
+stored identifier then pointed at nothing, so the delete or move was
+refused, and the message came back.</p>
+<p>QuickMail now asks Microsoft 365 for identifiers that do not change,
+so a stored identifier stays valid for the life of the message. Delete,
+move, mark as read, and flag all act on the message you meant. As a
+second line of defence, an action against a message the server says is
+already gone is treated as success rather than as a failure to report.
+(#416, #419)</p>
+<p><strong>This brings a one-time re-sync on your first launch after
+updating.</strong> The identifiers already in QuickMail’s local cache
+are the old, changeable kind, so they are cleared for Microsoft 365
+accounts and re-fetched from the server. What that means for you:</p>
+<ul>
+<li><strong>You need do nothing.</strong> It happens by itself during
+the normal startup sync. QuickMail announces “Microsoft 365 mail is
+doing a one-time re-sync — this may take a few minutes.”</li>
+<li>Your Microsoft 365 message list starts empty and refills over the
+next few minutes, going back as far as your <strong>View → Sync
+Range</strong> setting (Last 30 Days by default). Larger mailboxes take
+longer.</li>
+<li><strong>Nothing is deleted from the server</strong>, and nothing
+else on your computer is touched — accounts, settings, rules, flags,
+drafts, contacts, and calendar events all survive.</li>
+<li><strong>Your rules will not re-run</strong> over the mail that comes
+back, so nothing gets moved or deleted a second time.</li>
+<li>If you happen to be offline for that first launch, Microsoft 365
+mail is unavailable until you reconnect. It resumes by itself.</li>
+<li>Accounts that are not Microsoft 365 are not touched at all. If you
+have no Microsoft 365 accounts, nothing happens.</li>
+</ul>
+<p>It runs once. Later launches start normally.</p>
+<h3
+id="new-mail-deleted-or-filed-elsewhere-now-keeps-up-while-quickmail-is-open">New:
+mail deleted or filed elsewhere now keeps up while QuickMail is
+open</h3>
+<p>Two things used to wait for a restart. Mail you deleted or moved from
+Outlook on the web, from your phone, or by a server-side rule stayed in
+QuickMail’s list until you restarted — so the list showed messages that
+were no longer there. And mail a server rule filed straight into a
+folder of your own did not appear until you opened that folder.</p>
+<p>Both are now handled while QuickMail is running. Deletions and moves
+made elsewhere are reconciled as they happen, and again when you open a
+folder, so combined views like All Mail stop showing messages that have
+gone. And every folder of every account is checked periodically — not
+just the inbox — so filed mail turns up on its own.</p>
+<p>This applies to Microsoft 365 accounts and to IMAP accounts alike.
+(#366)</p>
+<h3
+id="fixed-the-same-message-no-longer-appears-twice-in-combined-views">Fixed:
+the same message no longer appears twice in combined views</h3>
+<p>A Microsoft 365 message was fetched without the identifier that the
+rest of QuickMail uses to recognize two copies of one message, so
+nothing could merge them. In <strong>All Mail</strong> and the other
+combined views, one message could show up twice. Microsoft 365 mail now
+carries that identifier and collapses the way IMAP and Gmail mail always
+has. (#429)</p>
+<h3
+id="fixed-a-folder-no-longer-stops-loading-because-of-one-message">Fixed:
+a folder no longer stops loading because of one message</h3>
+<p>Microsoft 365 reports some messages — certain drafts and
+system-generated mail — with no read state at all. A single one of those
+failed the entire folder’s fetch, so none of that folder’s new mail
+arrived and nothing said why. One real session hit it 49 times. A
+message with no read state is now treated as unread. (#395)</p>
+<h3
+id="fixed-adding-a-work-or-school-account-now-always-asks-your-permission">Fixed:
+adding a work or school account now always asks your permission</h3>
+<p>On some organizations, sign-in finished without ever showing a
+permission screen — and then every attempt to read mail failed. The
+account was added, looked connected, and could not reach a single
+message. It happened where the organization had already approved
+QuickMail for something else, such as contacts or calendar: Microsoft
+treats an existing approval as covering the whole request and signs you
+in silently, so the mail permissions were never asked for and never
+granted.</p>
+<p>Adding an account now always shows the permission screen, so the full
+set is approved once, up front. You will see it when you add an account,
+and when you use <strong>Sign in</strong> in Manage Accounts — which is
+the button you reach for when an account has stopped working, so asking
+again there is deliberate. An account whose sign-in has merely expired
+renews as before, without asking. This also applies to Outlook.com
+accounts added with a Microsoft sign-in over IMAP. (#391)</p>
+<hr />
+<h2 id="reading-and-organizing-mail">Reading and organizing mail</h2>
+<p>The headline here is that the line a message list reads out is no
+longer fixed: you choose which pieces it says, and in what order.</p>
+<h3 id="new-choose-what-a-message-list-row-says-and-in-what-order">New:
+choose what a message list row says, and in what order</h3>
+<p>Every row in a message list is read as one line — sender, subject,
+date, and so on — and until now that line was fixed. <strong>View →
+Message List Fields…</strong> lets you decide which pieces are spoken
+and where each one falls.</p>
+<p>Every field is a check box. Check one to include it, uncheck it to
+leave it out, and use <strong>Alt+Up</strong> and
+<strong>Alt+Down</strong> to move it. The Up and Down arrows move
+through the fields and stop at the first and last one, the way they do
+in any list. <strong>Home</strong> and <strong>End</strong> go straight
+to those ends, and typing a letter jumps to the next field starting with
+it. Moving a field that is switched off says so, since that changes
+nothing you can hear.</p>
+<p>A <strong>Spoken preview</strong> box shows the message you had
+selected when you opened the window, read exactly as the list would read
+it, updating as you go. There is no OK or Cancel — changes take effect
+as you make them, and the window is modeless, so you can leave it open,
+arrow through the list behind it, and hear the result.</p>
+<p>Each kind of row keeps its own arrangement: individual
+<strong>messages</strong>, <strong>conversation groups</strong>, and
+<strong>sender and recipient groups</strong>.</p>
+<p><strong>Status is no longer one lump.</strong> It used to be a single
+word — “replied”, “forwarded”, “unread”, or “read” — that you could take
+or leave. <strong>Unread</strong>, <strong>Replied</strong>, and
+<strong>Forwarded</strong> are now separate fields you can place
+independently, and each offers <strong>Speak only when true</strong> or
+<strong>Always speak</strong>. So “tell me about unread but never say
+read” is: turn <strong>Status (combined)</strong> off, turn
+<strong>Unread</strong> on, leave it on <em>Speak only when true</em>.
+The same applies to <strong>Attachments</strong>, which can now sit
+anywhere in the line rather than in the middle of it.</p>
+<p>Because <strong>Status (combined)</strong> and
+<strong>Unread</strong> both produce the word “unread”, turning one on
+while the other is already on says it twice. Selecting either field
+explains what the other is doing, so the two do not quietly fight.</p>
+<p>Other fields you can now add: <strong>To</strong>, <strong>Mailing
+list</strong>, and <strong>Source folder</strong>.</p>
+<p><strong>Speak field labels</strong> prefixes text fields with their
+names (“From: Chris Lee. Subject: Budget review.”). States and counts
+are never labelled, since “unread” and “3 messages” already say what
+they are.</p>
+<p><strong>If you never open the window, nothing changes</strong> — the
+default arrangement is exactly what QuickMail has always said, with one
+deliberate exception: empty fields are now skipped rather than leaving a
+gap, so a message with no preview or no subject reads without a pause
+where it would have been.</p>
+<p>Two small consequences. The <strong>Announce flag status</strong>
+checkbox has left Settings, because Flag is now one field with its own
+checkbox; if you had it turned off, Flag starts out unchecked for you.
+And a conversation or sender group used to keep saying “Has unread”
+after you had read its last unread message — it now updates. (#457)</p>
+<p><strong>Show message status column</strong> has also left Settings.
+It only ever governed the visible Status column — the one showing New,
+Replied, Fwd, or a flag name — and never what a row said out loud, which
+is what people reasonably expected of a setting with that name; turning
+it off changed nothing you could hear. Speech is now chosen field by
+field in the window above. The column itself is always shown, so if you
+are among the few who turned it off to reclaim the space on screen, it
+comes back and there is currently no way to hide it — say so and it can
+be made resizable. The <code>ShowMessageStatus</code> line in
+<code>config.ini</code> is no longer read and can be deleted; it will
+disappear on its own the next time QuickMail rewrites the file. (<a
+href="https://github.com/kellylford/QuickMail/issues/19">#19</a>)</p>
+<h3 id="new-combined-views-say-which-folder-a-message-is-in">New:
+combined views say which folder a message is in</h3>
+<p>In a view that gathers mail from more than one place, a row never
+told you where the message actually lives, so an inbox message and one a
+rule had filed into a custom folder read identically. Each row now ends
+with its folder — “… 12:24 PM. Inbox.” — and when the view spans more
+than one account the folder is named with its account, “Work –
+Inbox”.</p>
+<p>This applies to All Mail, All Inboxes, All Drafts, All Sent, All
+Archive, All Trash, All Flagged, an account’s own All Mail, every saved
+view, and the contact-mail results that are also new in this release
+(see <a href="#new-find-a-contacts-mail-from-the-address-book">find a
+contact’s mail from the address book</a>). An ordinary single-folder
+view says nothing extra, because there the folder is already obvious.
+<strong>Source folder</strong> is one of the fields in <strong>Message
+List Fields…</strong>, so you can move it or switch it off. (#423)</p>
+<h3 id="new-all-archive">New: All Archive</h3>
+<p>The <strong>All Mail</strong> group in the folder tree gathers each
+kind of folder across every account — All Inboxes, All Drafts, All Sent,
+All Trash, All Flagged — and archived mail was the one thing missing.
+<strong>All Archive</strong> is now there too, listed between All Sent
+and All Trash, and it is available in the folder picker and as a saved
+view like the others.</p>
+<p>It follows each account’s own archive setting rather than guessing.
+If you pointed an account at a particular folder with <strong>Set as
+Archive Folder</strong>, that is the folder All Archive reads, so the
+list is exactly the mail <strong>Move to Archive</strong> put there.
+Accounts with no Archive folder contribute nothing rather than causing
+an error.</p>
+<p>One thing to know if you use Gmail: the guide now recommends creating
+a Gmail label named <strong>Archive</strong> and pointing the account at
+it with <strong>Set as Archive Folder</strong>, rather than at
+<strong>[Gmail]/All Mail</strong>. Both archive correctly, but an
+account pointed at All Mail contributes its entire mailbox to All
+Archive, because for that account All Mail <em>is</em> the archive. A
+label gives you a folder holding only what you archived. (#452)</p>
+<h3 id="new-watched-conversations">New: watched conversations</h3>
+<p>Some conversations you want to keep an eye on — a release
+announcement, a bug thread, a trip itinerary. Until now the only way was
+to flag each message as it landed, which means noticing it first.</p>
+<p>Press <strong>Ctrl+Shift+W</strong> on any message and its whole
+conversation is watched from then on. <strong>Watched
+Conversations</strong>, the last item in the <strong>All Mail</strong>
+group of the folder tree, then lists every message in that conversation,
+from every folder and every account, newest first — <strong>including
+the replies that have not arrived yet</strong>, which join on their own
+as they sync. That is the difference from flagging: a flag marks a
+message you already have, a watch is a standing subscription to the
+conversation.</p>
+<p>The same key stops watching, from any message in the conversation. It
+works from the message list, from a Conversations group header, from the
+reading pane, from a message tab, and from a message window.
+<strong>Watch Conversation</strong> is also on the
+<strong>Message</strong> menu, with a check mark showing whether the
+conversation you are on is already watched; on a sender or recipient
+group header it is dimmed, because a group of that kind is not one
+conversation. Watching changes nothing on the mail server and nothing in
+other mail programs; it is remembered on this computer only.</p>
+<p><strong>Everything else in the message list works there as
+usual</strong> — view modes, filters, sorting, and the message list
+fields. Conversations view mode is a natural fit, since each watched
+conversation becomes one group. You can save Watched Conversations as
+one of your own views.</p>
+<p><strong>Tools → Watched Conversations…</strong> lists everything you
+are watching, with how many messages each has collected and when you
+started. Press <strong>Enter</strong> on one to jump to that
+conversation, <strong>Delete</strong> to stop watching it, or
+<strong>Rename</strong> to give it a clearer label — renaming changes
+the label only, not which messages are collected. Type a letter to jump
+down the list. The window stays open while you work.</p>
+<p><strong>Settings → Notifications → Show a notification when a watched
+conversation gets a reply</strong> tells you when one arrives. Unlike
+the ordinary new-mail notification this applies to every folder, not
+just the inbox, because a watched thread’s next message can land
+anywhere. The two settings are independent, and a message that is both
+new inbox mail and part of a watched conversation produces one
+notification, the watched one.</p>
+<p><strong>View → Filter → Watched</strong> narrows any folder to
+watched conversations, and can be saved as part of a view. If you would
+like each row to say whether its conversation is watched, turn on the
+<strong>Watched</strong> field in <strong>View → Message List
+Fields…</strong>; it is off to begin with.</p>
+<p>Two things worth knowing. QuickMail groups a conversation by its
+subject, ignoring <code>Re:</code> and <code>Fwd:</code> prefixes, so a
+reply is recognized automatically — but two unrelated messages that
+happen to share a subject count as one conversation. And a message with
+no subject at all cannot be watched; you will hear “Cannot watch a
+conversation with no subject” and nothing changes.</p>
+<h3 id="fixed-a-saved-views-filter-was-described-as-all">Fixed: a saved
+view’s filter was described as “All”</h3>
+<p>A saved view that used the <strong>With Attachments</strong> or
+<strong>To Me</strong> filter reported its filter as “All” in the View
+Manager. The view itself always applied the right filter — only the
+description was wrong.</p>
+<h3
+id="fixed-all-flagged-was-missing-from-two-places-the-other-combined-views-appear">Fixed:
+All Flagged was missing from two places the other combined views
+appear</h3>
+<p><strong>All Flagged</strong> was in the folder tree, but not in the
+flat folder list or in the <strong>Go to Folder</strong> picker, and a
+saved view built on it did not resolve back to the real folder. Every
+other combined view — All Mail, All Inboxes, All Drafts, All Sent, All
+Archive, All Trash — was in all three places. It now is too.</p>
+<h3
+id="fixed-attachments-were-unreachable-when-a-message-opens-in-its-own-window">Fixed:
+attachments were unreachable when a message opens in its own window</h3>
+<p>v0.8.36 added <strong>Alt+A</strong> for jumping to the attachment
+list, and fixed the Shift+Tab path (#350). One part was still missing:
+with <strong>Message open mode</strong> set to <strong>Window</strong>,
+a message with attachments had no attachment list at all. Alt+A answered
+“No attachments” and Shift+Tab from the message body skipped straight
+past it. Reading pane and Tab modes were unaffected, which is what made
+it look like an Alt+A problem — the list existed, it was just never
+shown. Both now work in every mode. (<a
+href="https://github.com/kellylford/QuickMail/issues/439">#439</a>)</p>
+<p><strong>Alt+A now also works while composing.</strong> It moves focus
+to the attachment list of the message you are writing, matching what it
+does in an open message, and lands on the first file rather than the
+empty list. <strong>Ctrl+Shift+A</strong> is still the way to add files.
+The new command is in the compose window’s Command Palette
+(<strong>Ctrl+Shift+P</strong>) as <strong>Focus Attachment
+List</strong>; compose shortcuts are fixed and are not among the ones
+Settings → Keyboard can rebind.</p>
+<h3
+id="fixed-some-links-opened-inside-quickmail-instead-of-your-browser">Fixed:
+some links opened inside QuickMail instead of your browser</h3>
+<p>Pressing Enter on a link in a message opened with <strong>Message
+open mode</strong> set to <strong>Window</strong> could land you in a
+bare window inside QuickMail rather than in your default browser. That
+window is QuickMail’s own display of a web page: none of your browser’s
+cookies, saved passwords, passkeys, or extensions are there, so a
+password manager had nothing to fill and a site you were already signed
+in to asked you to sign in again.</p>
+<p>It depended on the message, which is why it looked intermittent. A
+great deal of mail — newsletters and anything sent by a mailing tool in
+particular — marks its links to open in a new window, and those links
+took a different route out of the message than ordinary ones. QuickMail
+handled the ordinary route and not the other one. The same thing
+happened to a link opened with Ctrl or Shift held down, or with the
+middle mouse button.</p>
+<p>Every link in every message now opens in your default browser, from
+the reading pane, a message tab, or a message window alike. The Markdown
+preview window is fixed in the same way. Links are still limited to web
+and mail addresses, as before. (<a
+href="https://github.com/kellylford/QuickMail/issues/483">#483</a>)</p>
+<hr />
+<h2 id="mail-rules">Mail rules</h2>
+<p>Mail rules — the ones you set up in <strong>Tools → Rules…</strong>
+to file, flag, or delete mail automatically — changed in four ways this
+release. If you have a Microsoft 365 account, the Rules Manager now
+shows the rules that live on your Exchange mailbox as well as the ones
+that run inside QuickMail. For everyone, three things changed about the
+rules QuickMail runs: which account a rule belongs to, when rules run,
+and which folders they act on. If you use rules, all of it is worth
+reading, because together these change behaviour you may be relying
+on.</p>
+<h3 id="new-your-microsoft-365-server-rules-in-the-rules-manager">New:
+your Microsoft 365 server rules, in the Rules Manager</h3>
+<p>If you have a Microsoft 365 (Exchange) account, the Rules Manager now
+shows that mailbox’s <strong>server-side rules</strong> — the same rules
+Outlook calls “Inbox rules” — alongside the rules that run inside
+QuickMail. A server rule runs on Microsoft’s servers, so it acts on your
+mail <strong>even when QuickMail is closed</strong>, and wherever else
+you read that mailbox. You can create, edit, enable and disable,
+reorder, and delete them from QuickMail.</p>
+<p><strong>Most people will see none of this yet.</strong> It needs a
+Microsoft 365 mailbox connected through Microsoft sign-in, and for a
+work or school mailbox that means your organization’s administrator has
+approved QuickMail for your tenant — which few have so far, since few
+know the app exists. If that is not you, nothing in this entry applies
+and nothing about your rules has changed shape; the rest of the Mail
+rules section is what affects you.</p>
+<p><strong>If you do have one, the change you will notice first: the
+Rules Manager is now one account at a time.</strong> When you have a
+Microsoft 365 account, the Rules Manager opens on a single account
+chosen in an <strong>Account</strong> list at the top, instead of
+listing every account’s rules together. Your rules are not gone — they
+are behind the account picker. Choose the account, and the list below
+shows that mailbox’s rules. With only one account there is no
+picker.</p>
+<p>The rest of what is worth knowing:</p>
+<ul>
+<li><strong>Server and QuickMail rules share one list</strong>, each row
+saying where it runs — <strong>on server</strong> or <strong>in
+QuickMail</strong> — along with its name and whether it is enabled.</li>
+<li><strong>QuickMail decides where a new rule lives.</strong> It saves
+a rule as a server rule whenever it can, so the rule keeps working while
+QuickMail is closed. A rule that needs something only QuickMail can do —
+today, <strong>Mark as unread</strong> — is saved as a QuickMail rule
+instead, and QuickMail tells you why.</li>
+<li><strong>Some rules built in Outlook are shown read-only.</strong> If
+a rule uses conditions or actions QuickMail cannot represent exactly,
+you can read it here but not change it, so it cannot quietly become
+something you did not mean. Change those in Outlook.</li>
+<li><strong>Test works on QuickMail rules.</strong> For a server rule
+the Test control is turned off, the same way Edit and Delete are for a
+read-only rule — a server rule runs in Exchange, so there is nothing
+local to test it against.</li>
+</ul>
+<p><strong>For most work or school accounts this needs your
+administrator to allow QuickMail to read and change your mailbox
+rules.</strong> Without that permission you will see a message saying so
+rather than your server rules. <strong>Your QuickMail rules are
+unaffected either way</strong> — they are fetched separately, so they
+still load, still run, and can still be created and edited, whether the
+permission is missing, the server is unreachable, or the account is not
+a Microsoft 365 one at all. Rules have not become a Microsoft 365
+feature; this adds a second place they can run. (<a
+href="https://github.com/kellylford/QuickMail/issues/333">#333</a>)</p>
+<h3 id="changed-rules-are-now-per-account">Changed: rules are now
+per-account</h3>
+<p>The “All accounts” rule option has been replaced by scoping each rule
+to a specific account. This happens automatically the first time rules
+load after updating, once QuickMail can see your account list:</p>
+<ul>
+<li>Existing “All accounts” rules are <strong>copied to each of your
+standard (IMAP/SMTP) accounts</strong>, so they keep working exactly as
+before.</li>
+<li><strong>If you use <em>only</em> Microsoft 365 accounts</strong>,
+any old “All accounts” rules are <strong>removed</strong>, because the
+migration has no standard account to attach them to. If you had such
+rules, recreate them and scope them to the account you want — a rule
+scoped to a Microsoft 365 account does run. (This affects very few
+people; every removal is recorded in the log.)</li>
+<li>New rules now ask which account they apply to, starting on your
+default account, instead of offering “All accounts”. (#333)</li>
+</ul>
+<h3
+id="changed-rules-run-on-mail-that-arrives-while-quickmail-is-open">Changed:
+rules run on mail that arrives while QuickMail is open</h3>
+<p>Rules used to be applied only during a full sync. Mail that arrived
+afterwards — the mail QuickMail picks up while you are sitting there
+working — was never looked at, so a rule that should have moved or
+flagged it simply did not fire until the next full sync. Rules now run
+on new mail as it arrives, on every sync path. Each message is
+considered once, so nothing is acted on twice. (#411)</p>
+<h3
+id="changed-rules-act-on-the-inbox-and-only-on-new-arrivals">Changed:
+rules act on the Inbox, and only on new arrivals</h3>
+<p>Two things used to happen that they should not have. Rules ran
+against <strong>every folder</strong> QuickMail synced, so a message
+that a server-side rule — or you — had already filed into Sent, Archive,
+or a folder of your own could be picked up and acted on again when that
+folder synced. And <strong>closing the Rules Manager silently
+reprocessed your whole cached mailbox</strong>, so simply looking at
+your rules could move mail.</p>
+<p>Rules now behave the classic way: they run on the
+<strong>Inbox</strong>, on <strong>new arrivals</strong>, and never
+retroactively unless you ask. Other folders are still fetched and cached
+as before — they are just not rule-processed. Closing the Rules Manager
+no longer runs anything. (<a
+href="https://github.com/kellylford/QuickMail/issues/336">#336</a>)</p>
+<p><strong>Run on Existing Mail</strong> is how you ask. Its reach is
+now the Inbox of each account rather than every cached folder, so it can
+no longer move or delete mail you deliberately filed somewhere else. It
+reports how many messages were moved or deleted. An account whose Inbox
+cannot be identified is skipped rather than guessed at, and that is
+recorded in the log. It covers every account either way, not only the
+one you are looking at. (#346)</p>
+<p><strong>Where to find it depends on which Rules Manager you
+get.</strong> Without a Microsoft 365 account it is the button beside
+New and Delete, where it has always been. <strong>With a Microsoft 365
+account</strong> — where Rules opens the account-at-a-time window
+described above — there is no button for it in this release: press
+<strong>Ctrl+Shift+P</strong> in that window and choose <strong>Run
+Rules on Existing Mail</strong>. It does the same thing from there. (<a
+href="https://github.com/kellylford/QuickMail/issues/493">#493</a>)</p>
+<h3
+id="fixed-the-rules-editor-no-longer-offers-actions-with-nothing-to-act-on">Fixed:
+the rules editor no longer offers actions with nothing to act on</h3>
+<p>Two things in the Rules Manager, both in the window you get
+<strong>without</strong> a Microsoft 365 account:</p>
+<ul>
+<li>With <strong>no rule selected</strong>, the rule’s fields are
+disabled and drop out of the Tab order, so you cannot land on a live but
+meaningless Account list. The buttons stay reachable, so
+<strong>Close</strong> always works.</li>
+<li><strong>Delete</strong>, <strong>Save</strong>, and
+<strong>Test</strong> are disabled until you select a rule, and
+<strong>Run on Existing Mail</strong> is disabled while you have no
+rules — including the moment you delete the last one.</li>
+</ul>
+<p><strong>With a Microsoft 365 account</strong> the account-at-a-time
+window applies the same principle by its own route: it has no editable
+fields to disable, because editing opens a separate window, and
+<strong>Edit</strong>, <strong>Delete</strong>,
+<strong>Enable/Disable</strong>, <strong>Move Up</strong>, <strong>Move
+Down</strong>, and <strong>Test</strong> each switch off when they have
+nothing to act on — including for a rule that is shown read-only, and
+for Test on a server rule, which runs in Exchange rather than in
+QuickMail. <strong>Close</strong> always works there too.</p>
+<p><strong>“Show field labels in the rules list” now survives a
+restart.</strong> The setting saved and applied for the session, but was
+never written to <code>config.ini</code>, so it reverted to off every
+time QuickMail started. Note that it governs the window without a
+Microsoft 365 account; the account-at-a-time window does not read it
+yet, so with a Microsoft 365 account the checkbox currently changes
+nothing. (<a
+href="https://github.com/kellylford/QuickMail/issues/493">#493</a>)</p>
+<hr />
+<h2 id="writing-and-sending-mail">Writing and sending mail</h2>
+<h3 id="fixed-choosing-a-sending-account-could-send-the-message">Fixed:
+choosing a sending account could send the message</h3>
+<p>Pressing Enter after arrowing to an account in the compose window’s
+<strong>From</strong> list sent the message (<a
+href="https://github.com/kellylford/QuickMail/issues/201">#201</a>). Not
+chose the account — sent the mail, half-written, to whoever was already
+in the To field. Choosing a mode from the compose-mode list, or pressing
+Enter in the <strong>Subject</strong> box or the attachment list, did
+the same thing.</p>
+<p>The Send button was marked as the window’s default button, which in
+Windows means Enter activates it from anywhere in the window that does
+not use Enter for something of its own. A closed list is exactly such a
+place: arrowing through it already changes the selection, so Enter had
+nothing to do there and went to Send instead. That default is now
+removed. Enter no longer sends from anywhere in the compose window.</p>
+<p>Send is still <strong>Alt+S</strong>, <strong>Ctrl+Enter</strong>, or
+Enter or Space with the Send button focused.</p>
+<p><strong>Enter on the From list now confirms the account.</strong>
+Since the keystroke no longer sends, it says which account you landed on
+— “IdeaPlace used as From address”. You also hear it when you pick an
+account from the expanded list, and when you leave the From field having
+changed it. Arrowing past accounts stays quiet, because your screen
+reader is already reading each one. This uses the <strong>Announce
+action results</strong> setting, so turning that off turns this off with
+it.</p>
+<h3 id="fixed-sending-mail-gave-no-feedback">Fixed: sending mail gave no
+feedback</h3>
+<p>A report of “sending an email gives no feedback, and does not close
+the compose window” (<a
+href="https://github.com/kellylford/QuickMail/issues/396">#396</a>)
+turned out to be four separate problems stacked on top of each other.
+All four are fixed.</p>
+<p><strong>A send that fails now says so out loud.</strong> The failure
+message was classed as background progress, so if you had turned
+<strong>Announce background progress</strong> off — a reasonable thing
+to do, since that is the setting that stops every folder announcing
+itself during a sync — pressing Send produced the button greying out,
+coming back, and nothing else. Send failures, refusals, and
+confirmations are now announced as results, which is the category for
+the outcome of something you just did, and they interrupt rather than
+queue. The same fix applies to a refused save in Add Account and Manage
+Accounts.</p>
+<p><strong>A message that was accepted is no longer reported as
+failed.</strong> QuickMail closed the connection inside the same step
+that sent the message, so a server that hangs up the instant it takes
+your mail — or any hiccup during the sign-off — produced “Send failed”
+for a message that was already on its way. This is why the reporter saw
+messages sometimes arrive anyway. The sign-off is now separate and its
+own failure is ignored, because by then the server has your message.</p>
+<p><strong>Your login and your email address can now be different
+things.</strong> There was one box serving as both, and for some
+accounts they are not the same string: an iCloud mailbox on your own
+domain logs in under the Apple ID, and some hosted servers want a bare
+user name. Whichever one you entered, the other use of it was wrong — a
+login name in the box became the From address on your mail, which
+servers reject. <strong>Advanced settings</strong> in both account
+dialogs now has a <strong>Login username</strong> box, empty for almost
+everyone, filled in only when your server logs in under something other
+than your email address. The <strong>Email address</strong> box is now
+only that, and saving an account refuses an entry that is not a full
+address, pointing at the new box instead.</p>
+<p>If you already had an account set up with a login name in the address
+box, QuickMail copies it into <strong>Login username</strong> for you
+the first time it starts. That matters: correcting the address is what
+you are now asked to do, and without the copy you would be deleting the
+very thing your account signs in with. You enter the address; the login
+carries on working. This also covers contact and calendar sync on
+iCloud, which sign in with the same name.</p>
+<p><strong>A wrong encryption setting on a known server is corrected at
+startup.</strong> An account set up by hand before QuickMail knew these
+providers could end up with <strong>Implicit SSL on connect</strong>
+checked while using port 587, which is a STARTTLS port. That combination
+fails every single send, about a second after you press the button, with
+an error that names a certificate rather than a checkbox. At startup
+QuickMail now corrects the encryption setting when — and only when — the
+account is one you have never saved yourself, the server is one it ships
+settings for, <em>and</em> the port is the exact port it publishes for
+that server. Anything else — one of those servers on a different port,
+or any account you have saved in Manage Accounts — is left exactly as
+you set it. A corrected connection also requires encryption from then
+on, rather than falling back to plain text if the server offers
+none.</p>
+<h3 id="fixed-the-compose-window-used-only-part-of-its-width">Fixed: the
+compose window used only part of its width</h3>
+<p>The address fields, the subject line, and the body editor were
+squeezed into a narrow column against the left edge, leaving roughly two
+thirds of the window blank no matter how large you made it. It had been
+that way since the compose window was built. They now stretch across the
+full width and grow when you resize. Nothing else about the window
+changed — the same fields, the same order, the same keyboard behaviour.
+(<a
+href="https://github.com/kellylford/QuickMail/issues/435">#435</a>)</p>
+<hr />
+<h2 id="address-book">Address book</h2>
+<h3 id="new-find-a-contacts-mail-from-the-address-book">New: find a
+contact’s mail from the address book</h3>
+<p>Select someone in the address book, press <strong>Shift+F10</strong>,
+and choose <strong>Find mail from this contact</strong> or <strong>Find
+mail to this contact</strong>. The address book closes and the message
+list fills with the matches, newest first, drawn from every account and
+folder QuickMail has cached — not just the folder you were in. Focus
+lands on the message list and the count is announced (“12 messages from
+Bob Baker.”), and the window title reads <strong>Mail from Bob
+Baker</strong> so the results are easy to tell apart from a folder.</p>
+<p>Press <strong>Escape</strong> in the message list to close the
+results and return to the folder you started from — the destination and
+its message count are announced (“Search closed. Inbox, 42 messages.”).
+There is also a <strong>Close</strong> button above the results next to
+the count, and <strong>Close Contact Mail Results</strong> in the
+Command Palette, which you can give a keyboard shortcut in Settings →
+Keyboard. Escape keeps everything else it already did: an open reading
+pane, the calendar, and tab mode claim it first, and in the search box
+it still clears your search text.</p>
+<p>Both actions are also in the address book’s Command Palette
+(<strong>Ctrl+Shift+P</strong>) as <strong>Find Mail From
+Contact</strong> and <strong>Find Mail To Contact</strong>.</p>
+<p>Two things to know about the results: mail older than your sync range
+is not stored locally, so it is not searched, and <strong>Find mail to
+this contact</strong> matches the To line — a message where the person
+was only in Cc does not appear. (#370)</p>
+<h3 id="new-filter-the-contact-list-by-account">New: filter the contact
+list by account</h3>
+<p>A <strong>Filter</strong> button sits to the right of the address
+book’s search box and carries the current filter in its own label, so it
+reads <strong>Filter: All accounts</strong>, <strong>Filter:
+Work</strong>, and so on. <strong>Alt+F</strong> reaches it from
+anywhere on the Contacts tab. The menu offers <strong>All
+accounts</strong>, then <strong>Local address book</strong>, then each
+of your accounts; the active one is checked and is where the menu opens,
+and applying one announces the result (“Work, 12 contacts”).</p>
+<p>The filter works alongside the search box, survives a contact sync or
+an edit, and falls back to All accounts if the account it named is
+removed. A contact filtered out of view is deselected, so Edit and
+Delete cannot act on a row you can no longer see. It is also in the
+address book’s Command Palette as <strong>Filter Addresses by
+Account</strong>, with no default key, so you can assign one. Where the
+address book opens with focus is unchanged. (#399)</p>
+<h3 id="fixed-typing-a-letter-jumps-to-a-contact">Fixed: typing a letter
+jumps to a contact</h3>
+<p>With focus on the address book’s contact list, typing a letter did
+nothing. Now it jumps to the first contact starting with that letter,
+the same way lists behave elsewhere in Windows. Type several letters
+quickly to match a longer beginning (“br” goes to Brenda rather than
+Bob), or press the same letter again to move to the next contact
+starting with it. Contacts saved without a name are matched on their
+address. The <strong>Groups</strong> and <strong>Group members</strong>
+lists work the same way. (#371)</p>
+<hr />
+<h2 id="calendar">Calendar</h2>
+<h3
+id="new-typing-and-stepping-dates-and-times-in-the-appointment-editor">New:
+typing and stepping dates and times in the appointment editor</h3>
+<p>The appointment editor’s dates went through a calendar popup built
+for a mouse, and its times were plain text boxes. Nothing responded to
+the arrow keys, so changing anything meant retyping the whole value.</p>
+<p><strong>Start date</strong>, <strong>Start time</strong>, <strong>End
+date</strong>, <strong>End time</strong>, <strong>Repeat
+interval</strong>, and <strong>Repeat until</strong> are now ordinary
+edit fields that step with the arrow keys. The same field is used for
+the date in the <strong>Go to date</strong> window.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Keys</th>
+<th>Date field</th>
+<th>Time field</th>
+<th>Number field</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Up / Down</td>
+<td>1 day</td>
+<td>15 minutes, snapped to the quarter hour</td>
+<td>1</td>
+</tr>
+<tr class="even">
+<td>Ctrl+Up / Ctrl+Down</td>
+<td>1 day</td>
+<td>1 minute</td>
+<td>1</td>
+</tr>
+<tr class="odd">
+<td>Shift+Up / Shift+Down</td>
+<td>1 week</td>
+<td>1 hour</td>
+<td>5</td>
+</tr>
+<tr class="even">
+<td>Page Up / Page Down</td>
+<td>1 month</td>
+<td>1 hour</td>
+<td>10</td>
+</tr>
+<tr class="odd">
+<td>Ctrl+Page Up / Ctrl+Page Down</td>
+<td>1 year</td>
+<td>1 day</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
+<p>Typing still works, and takes far more than it used to. Dates accept
+“8/3”, “August 3”, “2026-08-03”, “today”, “tomorrow”, “yesterday”,
+weekday names like “fri” or “next tuesday”, a bare day number, and
+offsets such as “+7”, “-3”, “+2w”, “+1m”, “+1y”. Times accept “9”,
+“930”, “9:30”, “9:30 AM”, “9p”, “14:30”, “noon”, “midnight”, and “+30”
+or “-15”. Enter or moving to another field applies what you typed; text
+that cannot be read as a date or time puts the previous value back
+rather than guessing.</p>
+<p>Two behaviours worth knowing. <strong>Stepping a time past midnight
+carries the date with it</strong> — 11:50 PM stepped up becomes 12:00 AM
+the next day, instead of wrapping round and leaving the date behind. And
+<strong>the end follows the start</strong>: moving the start moves the
+end by the same amount and keeps the appointment’s length, while
+changing the end sets a new length.</p>
+<p>If a save is refused, QuickMail now moves focus to the field at fault
+and selects its text, and shows the reason on a line above the buttons
+that clears itself when you fix the field — so the refusal is visible
+and reachable however your announcement settings are set. (#400)</p>
+<h3 id="fixed-creating-an-appointment-late-in-the-evening">Fixed:
+creating an appointment late in the evening</h3>
+<p>Pressing <strong>N</strong> for a new appointment after about 11:30
+PM produced a default half-hour range whose end crossed midnight while
+its end <em>date</em> stayed on the day you started, so the appointment
+ended before it began and Save was refused over values you had never
+touched. The only way out was to correct the end date by hand. A new
+appointment started at 11:45 PM now ends at 12:15 AM the next day and
+saves. (#378)</p>
+<hr />
+<h2 id="keyboard-and-navigation">Keyboard and navigation</h2>
+<h3
+id="fixed-moving-or-copying-a-folder-now-shows-the-folder-tree">Fixed:
+moving or copying a folder now shows the folder tree</h3>
+<p>Choosing where to move or copy a folder — <strong>Shift+F10</strong>
+on a folder, then <strong>Move Folder…</strong> or <strong>Copy
+Folder…</strong> — presented one long flat list of every folder in every
+account, with each one spelled out as a full path. Every other place
+QuickMail asks you to pick a destination folder shows a tree. This
+picker now does too: folders nested under their parent, everything
+expanded so arrow keys and type-ahead reach any folder without opening
+anything first. (<a
+href="https://github.com/kellylford/QuickMail/issues/431">#431</a>)</p>
+<p>Two destinations it no longer offers, both of which could only
+fail:</p>
+<ul>
+<li><strong>Folders in your other accounts.</strong> A folder moves and
+copies within its own account; the old list showed every account’s
+folders with the account name spelled into each row. In a tree the
+account name sits on a header several rows up, so two accounts that each
+have an “Archive” would have been told apart only by where you had
+arrowed from — and the move would have silently acted on the wrong one.
+The picker is now limited to the account the folder already lives
+in.</li>
+<li><strong>The folder you are moving, and everything inside
+it.</strong> Nothing can be moved or copied into itself.</li>
+</ul>
+<p><strong>Both folder pickers now open on the folder you came
+from</strong>, rather than on nothing. Moving or copying messages opens
+on the folder those messages are in — in a combined view such as All
+Inboxes that is the message’s own folder, not the view. Moving or
+copying a folder opens on the folder it currently sits under, since the
+folder being moved is not one of the destinations. Where there is no
+single place you came from — messages selected from several folders, or
+a top-level folder with no parent — it opens on the first folder rather
+than leaving the tree unselected.</p>
+<p><strong>Open</strong> is unavailable when what is selected is not a
+folder: an account header, or one of the intermediate names some servers
+produce for a level that holds folders but is not a mailbox itself.
+Pressing Enter on one announces “Choose a folder” rather than appearing
+to ignore the keypress.</p>
+<p>Since the picker now opens on where you already are,
+<strong>QuickMail no longer carries out a move or copy that puts
+something back where it started.</strong> It says so instead. That was
+worth guarding: copying messages into the folder they are already in
+used to duplicate every one of them, and on Microsoft 365 accounts
+copying a folder into its own parent left a second copy of the folder
+and all of its mail.</p>
+<p>Two cases that used to end in silence or a server error now say what
+happened: when the exclusions above leave nowhere to move the folder,
+QuickMail says so instead of opening an empty picker; and <strong>Move
+Folder…</strong> or <strong>Copy Folder…</strong> on one of the views
+that sit in the folder tree — All Inboxes, All Mail, an account’s All
+Mail — now says it is a view rather than a folder. Choosing it on a
+per-account All Mail previously opened a full picker and failed at the
+server.</p>
+<h3
+id="fixed-choosing-a-rules-target-folder-now-shows-the-folder-tree">Fixed:
+choosing a rule’s target folder now shows the folder tree</h3>
+<p>The rule editors were the last place still asking for a destination
+folder as one long flat list: <strong>Choose Target Folder</strong> in
+the Rules Manager, and the move and copy folder in the Microsoft 365
+rule editor. Both now show the same tree as everywhere else, and both
+open on a folder rather than on nothing:</p>
+<ul>
+<li><strong>Editing a rule that already files somewhere opens on that
+folder</strong>, so checking or changing where a rule files starts where
+the rule already points. A new rule, or one whose folder has since been
+deleted or renamed on the server, opens on the first folder instead of
+leaving the tree unselected.</li>
+<li><strong>Only the rule’s own account is offered.</strong> A rule
+files mail within one mailbox, so another account’s folder was never a
+real choice — and with two accounts that each have an “Archive”, the
+flat list’s account-prefixed rows were the only thing telling them
+apart. If QuickMail cannot tell which account a rule belongs to, or has
+not cached that account’s folders yet, it still shows every account
+rather than an empty picker.</li>
+</ul>
+<h3
+id="fixed-typing-a-folder-name-in-the-folder-picker-now-works">Fixed:
+typing a folder name in the folder picker now works</h3>
+<p>Typing letters in the tree view of the folder picker — the view you
+get when moving or copying a message — did nothing. The v0.8.32 notes
+said typing a folder name there would jump to it; the mechanism behind
+that claim turned out never to have worked, and nothing else was wired
+in its place. The tree now has the same type-ahead as the main window’s
+folder tree: type the first letters of a folder’s name and the selection
+jumps to it, keep typing to narrow the match, repeat a letter to cycle
+through folders that share it. (<a
+href="https://github.com/kellylford/QuickMail/issues/418">#418</a>)</p>
+<p>Two related repairs in the same picker:</p>
+<ul>
+<li><strong>The flat “Go to Folder” list matched against the wrong
+text.</strong> Typing a letter there searched an internal name rather
+than the folder names on screen, so it went nowhere useful. It now
+matches the folder path you see.</li>
+<li><strong>Typing “o” or “c” could press a button.</strong> The Open
+and Cancel buttons carried shortcut letters that fire on a bare keypress
+when focus is in a list, so an unmatched type-ahead letter could
+activate one of them — “c” closed the picker. The same problem was fixed
+for the New Folder button in v0.8.32; Open and Cancel now follow. Enter
+still opens the selected folder and Escape still cancels.</li>
+</ul>
+<p><strong>In the main window’s folder tree, type-ahead now continues a
+prefix.</strong> Typing “s”, “e” in quick succession finds “Sent” rather
+than treating each letter as a fresh first-letter search. The v0.5.5
+notes described the folder tree working this way, but the code never
+actually did — each letter was always a fresh search; the message list
+is where continuation really lived. The tree now genuinely does what
+those notes said.</p>
+<p><strong>Repeating a letter now cycles through matches
+everywhere.</strong> Pressing “s” twice quickly used to build the prefix
+“ss”, which matches nothing, so rapid repeats went dead until the
+timeout passed. A repeated letter now keeps the single-letter prefix and
+moves to the next match — the standard list behavior — in the message
+list, the grouped views, both folder trees, and the picker.</p>
+<p>One more small change in the same code: <strong>a capital letter now
+works for type-ahead.</strong> Shift+S was silently ignored in the
+message list and grouped views; it now matches the same as “s”.
+(Matching was always case-insensitive once the letter got through.)</p>
+<h3 id="fixed-arrowing-through-settings-options-now-chooses-them">Fixed:
+arrowing through settings options now chooses them</h3>
+<p>In Settings, arrowing through a group of options — <strong>Message
+open mode</strong>, <strong>Message list density</strong>, <strong>Log
+format</strong>, <strong>Spelling suggestions verbosity</strong> — moved
+between them without choosing one; you had to press Space on the option
+you had landed on, which is not how these behave elsewhere in Windows.
+Arrow keys now select the option they move to. Tab still enters the
+group on the option already chosen and changes nothing on the way in or
+out. The same applies to the <strong>Change: this event only / all
+events in the series</strong> choice when editing a repeating
+appointment.</p>
+<p>QuickMail also stopped speaking the option name itself when you
+choose one. That announcement was added to paper over this same bug —
+choices went unannounced because arrowing never made one — and with the
+groups behaving correctly it was QuickMail talking over software you
+have already set up to speak the way you want. (<a
+href="https://github.com/kellylford/QuickMail/issues/441">#441</a>)</p>
+<hr />
+<h2 id="screen-readers">Screen readers</h2>
+<h3
+id="fixed-four-lists-read-out-an-internal-name-instead-of-their-contents">Fixed:
+four lists read out an internal name instead of their contents</h3>
+<p>The calendar agenda read “QuickMail.Models.CalendarEvent” for every
+row rather than the appointment. The same fault affected three other
+lists: <strong>Group Manager</strong>, <strong>Message
+Properties</strong>, and the shortcut list in <strong>Settings →
+Keyboard</strong>.</p>
+<p>All four are multi-column lists, and each row’s spoken name was
+coming from the row object rather than from the columns on screen — so
+the columns were visible but unreadable, and what was spoken was the
+internal type name. This looked completely correct to anyone reading the
+screen, which is why it survived. (<a
+href="https://github.com/kellylford/QuickMail/issues/448">#448</a>)</p>
+<h3 id="fixed-the-rules-manager-said-its-status-line-twice">Fixed: the
+Rules Manager said its status line twice</h3>
+<p>The Rules Manager’s status text was wired to speak through two
+independent mechanisms at once, so it was announced twice — and one of
+those routes ignored your announcement settings entirely, so turning
+announcements off did not silence it. It also spoke on opening the
+window, over the thing you had just moved to.</p>
+<p>There is now one route, it respects your settings, and the status is
+silent on open — press <strong>F6</strong> to read it when you want
+it.</p>
+<h3 id="fixed-ctrlshiftp-did-nothing-inside-a-message-window">Fixed:
+Ctrl+Shift+P did nothing inside a message window</h3>
+<p>With <strong>Message open mode</strong> set to
+<strong>Window</strong>, the command palette shortcut did nothing. Focus
+lands inside the message body as soon as the window opens, and the
+keystroke was not being passed out of it. Found while adding
+Ctrl+Shift+W to the same window; both work there now.</p>
+<hr />
+<h2 id="appearance">Appearance</h2>
+<h3 id="new-message-list-density">New: message list density</h3>
+<p><strong>Message List Density</strong> offers
+<strong>Comfortable</strong> and <strong>Compact</strong>. It is in
+<strong>Settings → Appearance</strong>, and also directly on the
+<strong>View → Density</strong> submenu so you can change it without
+opening Settings. Choosing one announces “Comfortable density.” or
+“Compact density.”</p>
+<p>Comfortable is the new default and puts a little more space around
+each message row. Compact is the tighter spacing QuickMail has always
+used, so choosing it returns the message list to exactly what you had
+before. The setting changes spacing only — the rows say the same thing
+either way, and nothing about keyboard navigation changes.</p>
+<p>Both options are also available as commands, <strong>Density:
+Comfortable</strong> and <strong>Density: Compact</strong>, in the
+Command Palette and in Settings → Keyboard, so you can give either one a
+shortcut. Neither has a shortcut by default. (#421)</p>
+<h3 id="changed-themes">Changed: themes</h3>
+<ul>
+<li><strong>Ember, Fjord, and Heather are complete themes now.</strong>
+Each of them previously supplied only four colors and borrowed
+everything else from Parchment. Each now carries its own full set —
+text, borders, links, selection, focus, and status colors included.</li>
+<li><strong>The toolbar follows your theme.</strong> Its buttons,
+separators, and background used stock Windows colors in every theme,
+which is why the toolbar looked out of place in the dark themes in
+particular.</li>
+<li><strong>Borders are darker against their backgrounds</strong> in
+Parchment and Parchment Dark, so the edges of boxes, fields, and panes
+stand out more clearly.</li>
+<li><strong>The focus indicator gained an outline behind it</strong>,
+which keeps it visible against backgrounds close to its own color.</li>
+<li><strong>The Markdown preview window</strong> no longer opens with a
+white background under a dark theme.</li>
+</ul>
+<h3 id="changed-manage-themes-moved-to-the-view-menu">Changed: Manage
+Themes moved to the View menu</h3>
+<p><strong>Manage Themes…</strong> is on the <strong>View</strong> menu
+now rather than Tools — choosing how the app looks belongs with the rest
+of what View controls. The <strong>Next Theme</strong> and
+<strong>Previous Theme</strong> menu items were removed; both are still
+commands, so they remain in the Command Palette and keep any shortcut
+you assigned them.</p>
+<h3 id="fixed-the-rules-manager-was-cut-off-at-large-text-sizes">Fixed:
+the Rules Manager was cut off at large text sizes</h3>
+<p>At a Windows text size of 150% the Rules Manager’s boxes and buttons
+clipped their contents — text ran out of the bottom of fields, and
+button labels were cut off. The rows had fixed heights that did not grow
+with the text. They size to their content now. (<a
+href="https://github.com/kellylford/QuickMail/issues/449">#449</a>)</p>
+<h3
+id="fixed-the-compose-windows-mode-selector-was-crushed-to-pl">Fixed:
+the compose window’s mode selector was crushed to “Pl”</h3>
+<p>At 150% text the <strong>Plain text / HTML / Markdown</strong>
+selector at the top of the compose window was squeezed down to about two
+characters, because the buttons beside it claimed the width first. The
+selector now gets its width before they do. (<a
+href="https://github.com/kellylford/QuickMail/issues/450">#450</a>)</p>
+<h3
+id="fixed-the-theme-managers-import-button-at-large-text-sizes">Fixed:
+the Theme Manager’s Import button at large text sizes</h3>
+<p>At a Windows text size of 150% the buttons beside the theme list ran
+past the bottom of the window and <strong>Import</strong> could not be
+reached at all. That column scrolls now, and moving to a button with the
+keyboard brings it into view.</p>
+<hr />
+<h2 id="windows-on-arm">Windows on ARM</h2>
+<h3 id="new-a-version-built-for-arm-pcs">New: a version built for ARM
+PCs</h3>
+<p>QuickMail now has a build for PCs with an ARM processor — the
+Snapdragon X models of Surface Laptop and Surface Pro, and similar
+machines from other manufacturers. Until now those PCs ran the regular
+build through Windows’ built-in emulation, which works but costs speed
+and battery life. The ARM build runs on the processor directly.</p>
+<p>Nothing changes for anyone on a regular PC, and nothing changes for
+you automatically: automatic updates stay on whichever version you
+installed, and QuickMail will never move you across on its own.</p>
+<p>If you are on an ARM PC running the regular build, QuickMail says so
+once, and the <strong>Help</strong> menu keeps a <strong>Get the ARM
+Version</strong> entry that opens the switching instructions in the user
+guide, where the download is linked. That entry appears only on an ARM
+PC running the regular build — which makes it the way to check where you
+stand. Once you are on the ARM version, it is gone.</p>
+<p><strong>Switching is a manual uninstall and reinstall, and the
+uninstall is not optional:</strong></p>
+<ol type="1">
+<li>Uninstall QuickMail from <strong>Settings → Apps</strong>. When the
+uninstaller offers to delete your data, choose <strong>No</strong>.</li>
+<li>Download and run
+<strong><code>QuickMail-win-arm64.msi</code></strong>.</li>
+<li>Start QuickMail. Your accounts, settings, contacts, rules,
+templates, saved views, and cached mail are all as you left them — your
+data lives separately from the program itself.</li>
+</ol>
+<p>Running the ARM installer on top of a regular QuickMail of the same
+version does <strong>not</strong> replace it. Windows treats the two as
+separate programs, installs the second beside the first, reports
+success, and leaves the regular build running. Nothing in QuickMail
+would look wrong afterwards, which is exactly why it is worth saying
+plainly: uninstall first, and check the Help menu once you have
+restarted. If it has already happened, uninstalling and running the ARM
+installer again puts it right — and note that <strong>Settings →
+Apps</strong> cannot tell you which build you have, since both report
+the same name and version there. (#18)</p>
+<hr />
+<h2 id="diagnostics-and-troubleshooting">Diagnostics and
+troubleshooting</h2>
+<h3
+id="fixed-adding-an-account-no-longer-shows-every-other-account-as-disconnected">Fixed:
+adding an account no longer shows every other account as
+disconnected</h3>
+<p>Adding a new account made the accounts you already had report
+<strong>disconnected</strong> in the account list, and they stayed that
+way until you restarted QuickMail. This has been reported several times,
+and each previous attempt fixed a real connection bug that turned out
+not to be this one.</p>
+<p><strong>Nothing was ever actually disconnecting.</strong> Your
+accounts stayed connected the whole time — mail kept arriving, folders
+kept working. What broke was the account list’s picture of them. Adding
+an account makes QuickMail re-read your account file, and connection
+status is live information that is deliberately never written to that
+file, so every account came back from the re-read reporting
+“disconnected”. Accounts that were already working were then skipped by
+the reconnect pass — correctly, since nothing was wrong with them — so
+nothing ever corrected the status, and the wrong label stuck.</p>
+<p>The status now survives a re-read. Adding, editing, or removing an
+account leaves the others reporting exactly what they were.</p>
+<p>This one hid for so long because it looks exactly like a connection
+failure: it appears the moment you touch your accounts, it hits every
+account at once, and it lasts until a restart. It was found by recording
+what QuickMail’s connections were actually doing at the moment it
+happened — which is the feature below. (#312)</p>
+<h3 id="new-connection-diagnostics-for-when-something-looks-wrong">New:
+Connection Diagnostics, for when something looks wrong</h3>
+<p><strong>Settings → Advanced → Record connection diagnostics</strong>
+turns on a record of how QuickMail connects to your mail servers. It is
+<strong>off by default</strong>, and most people will never need it.</p>
+<p>Turn it on when an account reports the wrong status, mail stops
+arriving, or an action reports a failure you cannot explain — then
+reproduce the problem. It starts recording the moment you switch it on,
+so you do not have to restart first and lose what you were trying to
+capture.</p>
+<p>While it is on, a <strong>Connection Diagnostics</strong> item
+appears in the <strong>Help</strong> menu. It shows each account with
+what QuickMail believes about it alongside what its mail server actually
+says, and a <strong>Test this account</strong> button checks an account
+directly on a brand-new connection. That is the question this exists to
+answer: whether the problem is your connection or what QuickMail is
+reporting about it. <strong>Copy report</strong> and <strong>Save
+report</strong> produce a plain-text file you can attach to a bug
+report.</p>
+<p><strong>What it records:</strong> your account names, your mail
+server names and addresses, connection attempts and their results, and
+error messages. <strong>What it never records:</strong> passwords,
+authentication tokens, and the contents of your mail. Your account names
+may be email addresses, and mail server names identify your provider, so
+it is worth knowing what is in a report before you share one.</p>
+<p>The record goes into a file named <code>connection.log</code>, kept
+beside QuickMail’s other settings. It is capped in size, and it stops
+the moment you turn the setting off.</p>
+<h3
+id="new-debug-screenshots-off-by-default-and-off-again-every-time-you-exit">New:
+debug screenshots — off by default, and off again every time you
+exit</h3>
+<p>QuickMail can save a picture of each window as you open it, so that
+how the app <em>looks</em> can be reviewed by someone who is not looking
+at the screen. It is genuinely useful — it is how the visual problems
+fixed in this release were found — but it is the one feature here that
+writes pictures of your actual mail to disk, so it is deliberately hard
+to switch on and impossible to leave on by accident.</p>
+<p><strong>Two separate deliberate acts are required, and neither is
+remembered.</strong></p>
+<ol type="1">
+<li>Start QuickMail with the <code>/debug</code> switch. Without it the
+feature does not exist — the setting is not merely hidden, there is
+nothing behind it to turn on.</li>
+<li>Then, in <strong>Tools → Settings → Advanced</strong>, find
+<strong>Diagnostics (debug)</strong> and check <strong>Capture
+screenshots of new windows</strong>.</li>
+</ol>
+<p><strong>It turns itself off when QuickMail closes.</strong> The
+setting is never written to <code>config.ini</code> — it lives only in
+memory for the session. Start QuickMail again <em>with
+<code>/debug</code> again</em> and capture is off again, waiting to be
+switched on deliberately a second time. There is no way to make it
+stick, and that is the point.</p>
+<p><strong>While it is on, every window’s title bar says so</strong>,
+ending in ” - SCREENSHOTS ON”. If that text is not in your title bars,
+nothing is being captured.</p>
+<p><strong>Never attach a screenshot to a GitHub issue.</strong> A
+GitHub issue is public and permanent, and a QuickMail screenshot is a
+picture of your real mailbox — senders, subject lines, and the text of
+whatever message was open. QuickMail itself never uploads them and never
+attaches them to a bug report: <strong>Help → Report a Bug</strong> does
+not touch them in any form. They stay in a folder on your computer
+(<strong>Open screenshots folder</strong> in that same Settings group
+takes you there), and <strong>Settings → Advanced → Delete QuickMail
+logs</strong> removes the whole folder. If a picture is genuinely needed
+to explain a problem, email it to <a
+href="mailto:quickmailissues@theideaplace.net">quickmailissues@theideaplace.net</a>,
+where it reaches a person rather than a public page — and look at what
+it shows before you send it.</p>
+<p><strong>Whether this ships enabled at all is still being
+decided.</strong> It is in this release so it can be evaluated in real
+use; it may be restricted further, or removed from production builds
+entirely, in a future version. If you have a view on that, say so
+through any of the routes in <a href="#reporting-issues">Reporting
+Issues</a>. (#175)</p>
+<h3
+id="changed-delete-quickmail-logs-removes-every-diagnostic-file">Changed:
+Delete QuickMail logs removes every diagnostic file</h3>
+<p>QuickMail can leave three kinds of diagnostic file on your computer,
+and <strong>Settings → Advanced → Delete QuickMail logs</strong> removes
+all of them. Two of the three are new in this release, so this is what
+the command covers rather than a change to what it used to do:</p>
+<ul>
+<li><strong>The application log</strong> (<code>quickmail.log</code>) —
+a running record of what QuickMail did. It is always written, and in
+more detail if you start QuickMail with the <code>/debug</code>
+switch.</li>
+<li><strong>The connection log</strong> (<code>connection.log</code>) —
+the connection record described just above, written only while
+<strong>Record connection diagnostics</strong> is switched on.</li>
+<li><strong>Debug screenshots</strong> — pictures of QuickMail’s own
+windows, saved to a folder, as described in the entry just above. It is
+not something you will meet in ordinary use, and it can never be
+capturing without your knowing.</li>
+</ul>
+<p>Delete QuickMail logs removes all three, and says so before it does
+it. The usual reason to delete these files is that they carry your email
+addresses and mail server names — and screenshots hold pictures of your
+actual mail — so leaving one behind because it happens to live in a
+different folder would quietly defeat the point. Screenshots are cleared
+even when you are running normally, in case an earlier
+<code>/debug</code> session left some behind. (#436)</p>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thanks to everyone who reported problems and tested fixes for this
+release. The reports behind the Microsoft 365 mail-reappearing
+investigation (#366), the silent send failures (#396), the compose
+Enter-sends-the-message report (#201), and the rules-scoping and
+attachment feedback shaped a great deal of what shipped here.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<p>Everything below is developer detail — implementation notes, test
+coverage, and build changes. Nothing here is needed to use
+QuickMail.</p>
+<h3 id="microsoft-365-graph">Microsoft 365 / Graph</h3>
+<ul>
+<li><strong>Immutable ids everywhere (#419).</strong>
+<code>GraphHeaders</code> adds the immutable-id preference header; every
+read (<code>GraphMailService</code> summary/detail/delta paths) and
+every write (delete, move, mark-read, flag) now round-trips an id that
+survives a folder move, as does <code>GraphChangeNotifier</code>’s delta
+poll. Graph’s default ids change on move, so a cached id went stale the
+moment a server rule or another client filed the message — the delete
+then 404’d and the next sync resurrected it.</li>
+<li><strong>One-time cache rebuild.</strong> <code>App.OnStartup</code>
+clears <code>MessageDetail</code>, <code>MessageSummary</code>, and
+<code>DeltaToken</code> rows for <code>BackendKind.MicrosoftGraph</code>
+accounts only, guarded by a <code>.immutable-id-rebuilt</code> marker
+file in the profile directory. <code>CalendarEvent</code> rows are
+deliberately untouched, and IMAP caches are untouched so IMAP
+invite-source links survive. A failed clear is caught, logged, and
+leaves the marker unwritten so the next launch retries; the rebuild is
+skipped in <code>--online</code> and <code>--ui-probe</code>.
+<code>SyncService.SeedRebuildBaseline</code> makes the first full sync
+per folder cache without running rules, so the refetched backlog does
+not re-fire rules — a crash between the wipe and that first Inbox sync
+can still lose the in-memory baseline, tracked as <strong>#454</strong>.
+Note the downgrade hazard: an older build run against a rebuilt cache
+treats the stored immutable ids as mutable.</li>
+<li><strong><code>IsAlreadyGone</code> (#416)</strong> is retained as
+belt-and-braces on delete/move even though #419 removed the cause; it
+still covers a message genuinely deleted from another device.</li>
+<li><strong>#366 live reconciliation landed after all.</strong> An
+earlier draft of these notes said the remaining #366 work was not in
+this release; that was written before it merged.
+<code>SyncService.ReconcileFolderAsync</code> compares the server’s id
+set against the store and raises <code>MessagesRemoved</code> for the
+difference; it runs on folder open, on the Graph delta poll (which now
+consumes <code>@removed</code> tombstones), and on the periodic sweep.
+The sweep covers <strong>every</strong> non-excluded folder of every
+account on <code>MailSyncPollMinutes</code> (default 5), not just
+inboxes, which is what makes server-rule-filed mail appear without
+opening the folder. Probe mode never deletes.</li>
+<li><strong><code>internetMessageId</code> is selected on Graph
+summaries (#429).</strong> Without it
+<code>MessageDeduplicator.CollapseKeyFor</code> fell back to the
+per-folder key (account + folder + id), which cannot merge copies, so
+Graph messages doubled in every aggregate view.</li>
+<li><strong><code>GraphMessage.IsRead</code> becomes
+<code>bool?</code></strong>, mapped <code>?? false</code> at both sites.
+As a non-nullable <code>bool</code> it threw
+<code>JsonException: Cannot get the value of a token type 'Null' as a boolean</code>
+mid-batch, and because the throw escaped the whole deserialization, one
+message took down the entire folder fetch.</li>
+<li><strong><code>OAuthService.PromptForSignIn(firstConnect, username)</code></strong>
+centralizes the MSAL prompt choice: the add-account path forces
+<code>Prompt.Consent</code>, re-auth keeps
+<code>ForceLogin</code>/<code>SelectAccount</code>. Scopes stay
+<code>.default</code> for work/school, so requested-equals-declared
+still holds by construction (#208) and Azure resolves the set per
+account type — an explicit org-only scope list would have broken
+personal accounts on a custom domain.
+<code>SignInInteractiveAsync(account, ct)</code> is the add path and is
+reached from both <code>AddAccountViewModel</code> and
+<code>AccountManagerViewModel</code>’s <strong>Sign in</strong> button,
+since both derive from <code>AccountEditorViewModel</code>. The #202
+identity-mismatch guard still refuses to adopt a different identity that
+completes sign-in, so the protection moves from prevention to detection
+rather than disappearing. <code>.default</code> never surfaces a
+<em>newly declared</em> permission to a user who already holds an older
+grant — any permission added in future must be requested explicitly at
+the point it is needed, as contacts and calendar already do.</li>
+</ul>
+<h3 id="rules">Rules</h3>
+<ul>
+<li><strong><code>SyncService.ApplyRulesToArrivalsAsync</code> is the
+single chokepoint</strong> for rule application, called from the full
+sync and from both IDLE paths (cached and online). Previously only the
+full sync applied rules, so IDLE-delivered mail permanently escaped
+them. Dedupe authority is the store in cached mode (an id snapshot taken
+<em>before</em> the upsert) and an in-session set in online mode.
+Rule-removed messages are stripped from the returned batch and from the
+store so they never flash in the origin folder.</li>
+<li><strong>The #336 Inbox gate</strong> is
+<code>folder.Kind == SpecialFolderKind.Inbox || folder.FullName == "INBOX"</code>.
+For Graph accounts <code>FullName</code> is an opaque id that never
+equals <code>"INBOX"</code>, so <code>Kind</code> is the <em>only</em>
+thing keeping client rules alive on a Graph inbox — pinned by
+<code>SyncServiceRuleApplicationTests.GraphInbox_ByKind_RunsRules_EvenWithOpaqueFolderId</code>.
+Any new sync entry point handing this method a Graph inbox with
+<code>Kind == None</code> would silently stop running rules on it.</li>
+<li><strong>Online mode baselines the first fetch per folder</strong>
+(the last-50 reconciliation batch) as seen without running rules, so a
+move/delete rule never rewrites up to fifty pre-existing messages on the
+first reconciliation.</li>
+<li><strong><code>RuleService.MigrateAllAccountRules</code></strong>
+runs from <code>LoadRules()</code> and is not feature-gated. It defers
+entirely when the account list is empty — an empty read can be transient
+(startup ordering, a locked <code>accounts.json</code>) and migrating
+against it would drop every unscoped rule. A genuine Graph-only profile
+still drops, and logs each dropped rule by name.
+<code>AccountOptions</code> lists every account including Graph ones, so
+a user can rescope a dropped rule and it will run.</li>
+<li><strong><code>ApplyRulesToExistingAsync</code> takes an
+account→Inbox-<code>FullName</code> map</strong> and filters cached mail
+to those pairs Ordinal, skipping accounts absent from the map
+<strong>fail-closed</strong> rather than guessing an Inbox. The caller
+builds the map from <code>CachedFolders</code>, logs unresolved
+accounts, and runs under a 60-second timeout. The Rules Manager’s
+<code>Closed</code> handler no longer calls it — it only refreshes the
+status text.</li>
+<li><strong>The status line carried two independent speech
+mechanisms</strong>: an
+<code>AutomationProperties.LiveSetting="Polite"</code> live region
+<em>and</em> the gated custom <code>Announce</code> path on the same
+text. The live region ignored the user’s announcement config entirely
+and double-spoke the count. <code>LiveSetting</code> is removed from all
+three rules status TextBlocks — the unified window’s and the client
+window’s two; the line keeps its <code>AutomationProperties.Name</code>
+and stays focusable, so it never auto-announces on open or refresh but
+F6 reads the count on demand, and action outcomes still go through the
+gated path. Verified with the screen-reader user against a build with
+the surface enabled. The unified editor window is documented as a
+deliberate New-Window-Checklist exception to the F6 requirement: it is a
+single linear form (Name → conditions → action → Save/Cancel) with no
+distinct panes, so Tab-only is correct there rather than missed
+(#466).</li>
+<li><strong>Never reached a user: the blank Account combo.</strong>
+Retiring the “All accounts” option left a new rule’s
+<code>AccountId</code> null with nothing in <code>AccountOptions</code>
+matching it, so the combo rendered blank. Introduced 77 minutes after
+the v0.8.36 tag and fixed 35 minutes later, so no shipped build ever had
+it — which is why it is not in the user-facing notes.</li>
+<li><strong>Server rules ship on.</strong>
+<code>FeatureFlag.ServerRules</code> now defaults to <code>true</code>
+in <code>ConfigFeatureGate.Defaults</code> — the flag existed to keep
+the surface hidden while list/create/edit/delete/reorder and the unified
+per-account window were built, and they are done.
+<code>MainWindow</code> builds <code>UnifiedRulesWindow</code> when the
+flag is on, a <code>ServerRuleService</code> exists,
+<strong>and</strong> a Graph account is present; a profile with no Graph
+account still gets the client-only <code>RulesManagerWindow</code>,
+unchanged. Note what the flip actually swaps for a Graph user: the whole
+Rules Manager, not an extra section — so the client-only window’s
+per-rule Account column gives way to the unified window’s account
+picker, and every action the old window offered had to exist in the new
+one. <strong>Turn the surface off again</strong> with
+<code>ServerRules=false</code> under <code>[features]</code> in
+<code>config.ini</code>, or <code>--no-feature ServerRules</code> at
+launch. There is no Settings UI for it.</li>
+<li><strong>Test Rule was the parity gap the flip nearly
+shipped.</strong> <code>RulesManagerWindow</code> has had a Test button
+since before the unified window existed;
+<code>UnifiedRulesViewModel</code> had no equivalent, so enabling the
+flag would have silently removed rule testing for every Microsoft 365
+user — including for their client rules on IMAP accounts, since one
+Graph account swaps the window for all of them. Caught in review of the
+flag flip, not of the window that omitted it.
+<code>CanTestSelected</code> gates on the row being a client rule, and
+the button, context-menu item, and command-palette entry all follow it.
+Testing a <em>server</em> rule is deliberately a disabled control rather
+than an enabled one that announces “not available”: that message was
+<code>Result</code>-category, so a user running with announcements off
+would have pressed a button and perceived nothing.</li>
+<li><strong>Live verification</strong> (Timothy Spaulding, real M365
+mailbox, 67 server rules): create → edit → reorder → disable → delete
+each confirmed by re-listing from Graph afterwards rather than trusting
+the app’s own state. The reorder held its minimal diff — 2 rules
+PATCHed, not all 66. A create rejected by Graph for an invalid Sent-To
+address surfaced the exact error and left the editor open, so the
+failure path is exercised too.</li>
+</ul>
+<h3 id="message-list-row-speech">Message-list row speech</h3>
+<ul>
+<li><strong><code>RowFieldCatalog</code> / <code>RowLayoutService</code>
+/ <code>RowSpeechBuilder</code></strong> replace the six hand-written
+accessible-name converters. The catalog is the single source of field
+ids, display names, labels, bound property paths, and formats; the
+default order is
+<code>["flag", "status", "attachments", "from", "subject", "preview", "date", "folder"]</code>,
+which reproduces the previously shipped speech exactly except that empty
+fields are skipped rather than emitting a bare <code>". "</code>.
+<code>MessageAccessibleNameConverter</code> is gone.</li>
+<li><strong>The legacy <code>AnnounceFlagStatus</code> setting is
+honoured once</strong> at seed time in <code>RowLayoutService</code>:
+false means the Flag field starts unchecked. The Settings checkbox is
+deleted; the config key remains readable so an existing
+<code>config.ini</code> still lands correctly.</li>
+<li><strong><code>FieldCheckList</code> uses real <code>CheckBox</code>
+controls, not a <code>ListBox</code>.</strong> A
+<code>ListBoxItem</code> wrapper carries a second copy of the row’s
+name; making each row the actual check box means role and checked state
+come from the platform and <code>Space</code> toggles natively. The cost
+is that <code>Home</code>/<code>End</code> and first-letter navigation —
+free in a <code>ListBox</code> — are implemented on the control, using
+<code>TypeAheadPrefixTracker</code> rather than WPF
+<code>TextSearch</code> (which requires a <code>Selector</code>). It is
+therefore <strong>not</strong> a <code>TypeAheadWiringTests</code>
+site.</li>
+<li><strong><code>StampFolderDisplayNames</code></strong> fills
+<code>FolderDisplayName</code> on aggregate rows only;
+<code>AggregateSpansMultipleAccounts</code> decides
+account-qualification by view identity, and an uncached folder appends
+nothing rather than a raw backend id.</li>
+</ul>
+<h3 id="watched-conversations">Watched conversations</h3>
+<ul>
+<li><strong>A watch is a predicate, not per-message state.</strong>
+<code>WatchService</code> stores a JSON watch list
+(<code>watches.json</code>) keyed on
+<code>ConversationBuilder.NormalizeSubject</code> — the same key the
+Conversations view mode already uses — rather than an
+<code>is_watched</code> column. Future messages are therefore already
+members without anything having to notice them arrive, and watches
+survive a cache clear and work unchanged in <code>--online</code> mode.
+<code>MailMessageSummary.IsWatched</code> is transient and derived,
+stamped in <code>SetMessages</code> and <code>OnFolderSynced</code>, and
+is deliberately <strong>not</strong> in
+<code>ReconcileMessageState</code>: a freshly fetched summary has never
+been stamped, so copying it would clear the flag on every aggregate
+merge. <code>FetchAllMailAsync</code>,
+<code>FetchViewFoldersAsync</code>, and
+<code>FetchAccountAllMailAsync</code> insert via
+<code>InsertMessageSorted</code>, bypassing <code>SetMessages</code>, so
+they stamp explicitly — without it the newest rows, the ones this
+feature exists for, spoke no watch state.</li>
+<li><strong>The target is resolved by the View, not read off
+<code>SelectedMessage</code>.</strong>
+<code>GroupedMessageTreeController</code> assigns
+<code>SelectedMessage</code> only for a <code>MailMessageSummary</code>,
+so selecting a group header leaves it stale — reading it watched the
+wrong conversation and announced that wrong subject, in Conversations
+view, which is exactly where the command gets used.
+<code>MainWindow</code> supplies a <code>WatchTargetResolver</code>
+(same shape as <code>RegisterAccountBackend</code>): a conversation
+group resolves to its own subject, a From/To group header to null so the
+command is unavailable, otherwise the selected message.
+<code>isAvailable</code> reads the target without storing it, since
+availability is polled and must not mutate state.</li>
+<li><strong>Two WebView2 keydown relays, and the key is
+<code>'W'</code>.</strong> Focus is inside the document as soon as a
+message opens, so neither the WPF key ladder nor the local registry is
+reachable. The reading pane’s relay and <code>MessageWindow</code>’s
+separate one both forward the chord; the test must accept
+<code>'W'</code> as well as <code>'w'</code> because the browser reports
+the upper-case key with Shift held, and the branch is ordered
+<strong>before</strong> the lower-case <code>ctrl-w</code> branch so
+closing and watching stay distinct. <code>Ctrl+Shift+P</code> had the
+identical pre-existing gap in <code>MessageWindow</code> and is relayed
+too. <code>MessageWindow</code> raises <code>WatchToggleRequested</code>
+and <code>MainWindow</code> routes it to <code>MainViewModel</code>,
+keeping one writer for the watch list so main-window rows and the
+watched folder stay in step.</li>
+<li><strong>The manager is a modeless singleton whose counts are
+computed per open</strong>, never stored — a stored count drifts from
+the cache on every sync — and read “count unavailable” rather than a
+confident zero in <code>--online</code> mode. The count read moved into
+<code>Task.Run</code> because Sqlite’s <code>*Async</code> completes
+synchronously, so the read and its <code>GroupBy</code> were running on
+the dispatcher. Rename is deliberately label-only: the matching key is
+the normalized subject, and editing it would silently change which
+messages the watch collects while presenting as a rename. Identity is
+captured at <code>BeginRename</code>, since selection stays reachable
+while renaming (F6, arrows) and a plain keyboard sequence otherwise
+renamed the wrong watch silently.</li>
+<li><strong>No button in that window carries an access-key
+underscore.</strong> The list has first-letter type-ahead, and WPF fires
+a bare mnemonic without Alt when focus is not in a text field — which is
+how “c” closed the folder picker (#418). <code>Alt+G/R/S/C</code> are
+wired explicitly and guarded on <code>Modifiers == Alt</code> exactly,
+so AltGr (Ctrl+Alt) still reaches type-ahead, and they are suppressed
+while a rename is in progress. Escape cancels the rename rather than
+closing the window: <code>PreviewKeyDown</code> <strong>tunnels</strong>
+root-to-leaf, so the window override runs before the text box’s handler.
+The list is a constructor-time snapshot while <code>Ctrl+Shift+W</code>
+stays live behind it, so both stale paths now say so and reload, and
+stopping a watch here routes through <code>RefreshWatchStateFor</code> —
+one writer, one place that reacts.</li>
+<li><strong>The notification ordering is load-bearing and
+tested.</strong> The watched path runs first and is handed only the
+watched subset, because both paths share
+<code>_notifiedMessageKeys</code> and
+<code>NewMailFilter.SelectNew</code> consumes whatever it is shown:
+handing it the full list would claim ordinary inbox mail and silently
+suppress the new-mail toast, and running it second would give a watched
+inbox message the generic toast instead of the informative one. A
+watched inbox message produces exactly one toast, the watched one.
+<code>NotifyOnWatchedConversation</code> defaults off and fires in every
+folder, unlike the inbox-only new-mail path.</li>
+<li><strong>Adding a <code>MessageFilter</code> value touches eleven
+sites and nothing enumerated the enum</strong>, so a missed site failed
+silently. The new coverage test walks every value through
+<code>FilterKey</code> → <code>SetFilterCommand</code> →
+<code>FilterLabel</code>, asserting keys are unique, nameable, and that
+none can describe itself as “All” — and it immediately surfaced two real
+pre-existing bugs. <code>ViewManagerViewModel</code>’s two summary
+builders labelled the current filter from
+<code>CurrentFilter.ToString().ToLowerInvariant()</code>, but the enum
+name and the stored key are not the same string for every value
+(<code>WithAttachments</code> lowercases to
+<code>withattachments</code>, which <code>FilterLabel</code> has no arm
+for); both now route through <code>FilterKey</code>, the single writer
+of that field.</li>
+<li><strong>All Flagged was absent from the flat folder list</strong>,
+which <code>ApplyViewAsync</code> resolves a saved view’s
+<code>VirtualFolderKey</code> against — so a view saved over it fell
+through to a fabricated folder instead of the live singleton. Flagged
+twice as pre-existing debt during this work; the fix is two lines.</li>
+<li>Specs:
+<code>docs/planning/watched-conversations-pm-dev-spec.md</code> and
+<code>docs/planning/watched-conversations-phase2-pm-dev-spec.md</code>.
+Section 14A of the first and 13A of the second record each defect found
+by adversarial review and why it is re-introducible.</li>
+</ul>
+<h3 id="type-ahead">Type-ahead</h3>
+<ul>
+<li><strong><code>TypeAheadPrefixTracker</code> +
+<code>TypeAheadMatcher</code> (new)</strong> — the hand-rolled prefix
+accumulator and wrap-around matcher, extracted from
+<code>MainWindow</code> so they can be tested without a window (#415).
+The tracker takes a <code>TimeProvider</code>, so
+<code>TypeAheadLogicTests</code> exercises the 1-second reset window
+deterministically, including its exact boundary — coverage that
+previously required synthesized keystrokes racing a real clock
+(#380/#414). The tracker’s peek/commit split also closes a latent
+double-append: the <code>PreviewKeyDown</code> route now peeks and
+commits only on a match, so an unmatched keystroke is recorded once (by
+<code>PreviewTextInput</code>), not twice.</li>
+<li><strong><code>TypeAheadWiringTests</code> now fails any
+<code>TreeView</code> declaring
+<code>TextSearch.TextPath</code>.</strong> WPF disables text search by
+default on <code>TreeView</code>/<code>TreeViewItem</code> (verified
+against the control defaults;
+<code>ListBox</code>/<code>ListView</code>/<code>ComboBox</code> enable
+it), and even enabled it matches one level’s items only — which is how
+the picker’s inert attribute shipped in v0.8.32 with a release note
+claiming it worked. Trees must wire <code>PreviewTextInput</code> to the
+shared tracker instead.</li>
+</ul>
+<h3 id="connection-diagnostics-and-account-status">Connection
+diagnostics and account status</h3>
+<ul>
+<li><strong><code>MainViewModel.LoadAccountList</code> carries
+<code>IsConnected</code>/<code>TotalUnread</code> across a
+reload</strong>, keyed by account id. Both are runtime state
+deliberately excluded from <code>accounts.json</code>, so rebuilding the
+models produced objects defaulting to disconnected, and replacing the
+<code>Accounts</code> collection made the whole list read that way at
+once. <code>RefreshAccountList</code> reconnects only accounts failing
+<code>AccountsNeedingConnect</code>, so healthy accounts were never
+re-evaluated and the false label persisted until restart. The carry-over
+is skipped when the account’s connection identity changed (host, port,
+login, auth or security settings), so an edited account is not vouched
+for by connections belonging to the old server; duplicate ids in
+<code>accounts.json</code> no longer throw on reload. Guarded by
+<code>AccountListReloadStatusTests</code> (4 of its 5 fail with the
+carry-over removed) and
+<code>AccountListCarryOverGuardTests</code>.</li>
+<li><strong>The instrumentation could not see this directly</strong>,
+and that is the lesson worth keeping: the state was lost by <em>object
+replacement</em>, not assignment. <code>ApplyAccountStatus</code>
+genuinely is the only writer of <code>IsConnected</code>, so no write
+was ever observable — the journal’s silence next to a plainly visible
+symptom was itself the evidence. <code>LoadAccountList</code> now
+records an <code>accounts-reloaded</code> event closing that blind spot,
+and <code>ApplyAccountStatus</code> takes a <code>source</code> tag from
+all eight call sites.</li>
+<li><strong><code>ConnectionJournal</code> (new)</strong> — bounded,
+self-rotating <code>connection.log</code> plus a 2000-event in-memory
+ring backing the diagnostics window. Gated on
+<code>ConfigModel.ConnectionDiagnostics</code> (default
+<code>false</code>). <code>Record</code> returns on a volatile read
+before allocating, <strong>but arguments to the eager overload are
+evaluated first</strong> — so call sites whose detail invokes
+<code>HostConnectionCensus</code> (which resolves DNS) use a
+<code>Func&lt;string&gt;</code> overload or check <code>Enabled</code>
+themselves. An independent review caught the original version computing
+the census on every pool rent with the feature off. Enable and disable
+each write a marker, so a journal that stops is distinguishable from one
+switched off mid-investigation. File writes take a separate lock from
+the ring, so a background disk write never blocks a UI-thread
+<code>Snapshot()</code>.</li>
+<li><strong><code>HostConnectionCensus</code> (new)</strong> — live
+socket counts per host with cached DNS resolution, and shared-address
+detection. Our cap is per <em>account</em>; a server’s is per
+<em>user+IP</em>, and on shared hosting per IP overall. Registrations
+live in a <code>ConditionalWeakTable</code> keyed by client so release
+is idempotent. Documented limitation: the count is decremented only via
+<code>Released()</code>, which every disposal path funnels through — a
+client collected <em>without</em> being disposed would leave the counter
+high, so an implausibly high census is to be treated as suspect rather
+than as proof and cross-checked against the <code>pool=</code> figure on
+the same line.</li>
+<li><strong><code>IConnectionProbe</code> /
+<code>ConnectionTruthProbe</code> (new)</strong> — independent
+reachability verification on a connection sharing nothing with the pools
+or watchers, emitting a greppable <code>verdict</code> line stating what
+the UI shows against what the server said. Serialized process-wide and
+rate-limited per account, since a per-IP limit is a plausible suspect
+and the probe must not become part of what it measures. <strong>Gated on
+the setting at every entry point</strong>: an independent review found
+the first version starting its verification loop regardless, so a single
+IDLE failure on a default install opened an authenticated connection
+outside the pool cap every 60 seconds, indefinitely — against exactly
+the host already refusing connections. <code>RetainOnly</code> also
+abandons verification for an account removed while it was showing
+disconnected, which otherwise probed a deleted mailbox for the rest of
+the session.</li>
+<li><strong><code>ProbeResult</code> carries a three-state
+<code>ProbeOutcome</code></strong>
+(<code>Reachable</code>/<code>Unreachable</code>/<code>NotSupported</code>).
+The first live run wired the probe straight to
+<code>ImapMailService</code>, which answered “not registered with the
+IMAP service” for a <strong>Graph</strong> account; collapsed to a
+boolean that read as unreachable, it reported a healthy account as
+broken. <code>Unreachable</code> is false for <code>NotSupported</code>,
+so the two cannot be conflated again. <code>GraphMailService</code>
+implements the interface via the Inbox counts, and
+<code>MailServiceRouter</code> dispatches per account with <strong>no
+default-backend fallback</strong> — defaulting to IMAP was the original
+defect.</li>
+<li><strong><code>ImapMailService.RaiseReachability</code></strong>
+funnels <code>AccountReachabilityChanged</code> so every raise carries a
+reason. Worth noting for anyone reading the connection code: the IDLE
+watcher is still the only source of reachability, and it marks an
+account unreachable after a <em>single</em> failure, before any retry
+(#314).</li>
+<li><strong><code>ConnectionDiagnosticsWindow</code></strong> is
+modeless per the modal-dialog rules, with its own F6 ring, Escape
+handling, focus restoration, a <code>CancellationTokenSource</code>
+field cancelled in <code>OnClosing</code> (closing mid-test previously
+left a probe holding the process-wide probe semaphore for up to 45
+seconds), and a <strong>window-scoped</strong> command palette listing
+its own actions rather than the main window’s. Pane names on F6 announce
+as <code>Status</code>, not <code>Hint</code>, so turning hints off does
+not make the ring silent. <code>Refresh</code> preserves the event
+filter — rebuilding the combo dropped its selection, wrote null back
+through the TwoWay binding, and blanked the journal pane permanently.
+<code>help.connectionDiagnostics</code> is registered and unregistered
+by <code>ApplyConnectionDiagnosticsSetting</code> rather than at
+startup, so the palette and the Help menu never disagree about whether
+the feature exists.</li>
+<li><strong>Delete QuickMail logs</strong> removes
+<code>quickmail.log</code>, <code>connection.log</code> (and its
+rolled-over <code>.1</code>, clearing the in-memory ring with it), and
+the whole <code>debug-screenshots</code> tree.
+<code>ScreenshotCaptureService.DeleteAllCaptures</code> is static and
+profile-keyed so it works in a normal launch where only the null capture
+service is wired; in-flight PNG saves are flushed first so nothing
+survives by holding a handle (#436).</li>
+</ul>
+<h3 id="accounts-provider-catalog-and-sending">Accounts, provider
+catalog, and sending</h3>
+<ul>
+<li><strong><code>AccountModel.LoginUsername</code></strong> (persisted,
+nullable) plus computed <code>AuthUsername</code> =
+<code>LoginUsername ?? Username</code>. Every <strong>password</strong>
+authentication uses <code>AuthUsername</code> — IMAP, all three SMTP
+entry points, and the iCloud CardDAV/CalDAV Basic auth in
+<code>ICloudContactSource</code> and
+<code>GraphCalendarSyncService</code>, which is the same credential
+pair. OAuth still uses <code>Username</code>, the mailbox the token was
+issued for. <code>Username</code> is now documented as the email address
+and nothing else — it is the From header, the provider-catalog match,
+and the autodiscovery domain. <code>SameConnectionSettings</code>
+includes <code>LoginUsername</code> so a corrected login invalidates the
+pooled client.</li>
+<li><strong><code>EmailAddressValidator</code> (new)</strong> parses
+with <code>AllowAddressesWithoutDomain = false</code> — MimeKit’s
+default accepts a bare local part, which is exactly the input that
+produced <code>MAIL FROM:&lt;fastfinge&gt;</code>. Deliberately does not
+require a dot in the domain. <code>TryNormalize</code> returns
+<code>mailbox.Address</code>, and that normalized form is what both
+editors save: <code>MailboxAddress.TryParse</code> accepts
+<code>Kelly Ford &lt;kelly@example.com&gt;</code>, an angle-addr, and
+padded input, while the <code>MailboxAddress(name, address)</code>
+constructor <code>MimeMessageBuilder</code> calls throws on all three —
+so validating without normalizing would only have moved the failure from
+a refused save to a rejected send. Enforced in
+<code>AccountEditorViewModel.IsEmailAddressUsable</code> (shared by
+<code>IsReadyToSave</code> and
+<code>AccountManagerViewModel.SaveAccount</code>) and as a pre-send
+guard in <code>ComposeViewModel.SendAsync</code>.</li>
+<li><strong><code>AccountStartupRepair</code> (new)</strong> runs in
+<code>OnStartup</code> against the loaded account list and does two
+things. It corrects <code>ImapUseSsl</code>/<code>SmtpUseSsl</code>
+where the account carries no <code>ProviderId</code> (the marker for
+predating the catalog — <code>SaveAccount</code> backfills it, so a
+deliberate pairing the user has saved is never overruled), the host
+equals a catalog provider’s host, <em>and</em> the port equals that
+provider’s published port; a leg moved to STARTTLS also gets
+<code>RequireStartTls</code>, matching what <code>ApplyProvider</code>
+sets for the same host and port, so a repaired account is not left
+weaker than a freshly added one. It also copies a non-address
+<code>Username</code> into <code>LoginUsername</code> on password
+accounts, so correcting the address does not destroy the working login.
+Matched on host rather than <code>ProviderCatalog.Resolve</code>, whose
+email-domain fallback would claim an address relayed through a
+third-party server.</li>
+<li><strong><code>SmtpService.DisconnectQuietlyAsync</code></strong>
+replaces the in-<code>try</code> <code>DisconnectAsync</code> in
+<code>SendAsync</code>, <code>SendIcsReplyAsync</code>, and
+<code>VerifyAsync</code>, so a failed sign-off cannot be reported as a
+failed send.</li>
+<li><strong><code>AnnouncementCategory StatusCategory</code></strong> on
+<code>ComposeViewModel</code> and <code>AccountEditorViewModel</code>,
+with <code>SetStatusOutcome</code>/<code>SetProgress</code>.
+<strong>One-shot</strong> — it returns to <code>Status</code> after
+every raise, matching
+<code>MainViewModel.StatusAnnouncementCategory</code>, because both VMs
+assign <code>StatusText</code> directly in dozens of places and a
+latched <code>Result</code> would re-classify all of them as
+interrupting outcomes. The setter also clears <code>StatusText</code>
+first so an identical repeated message still raises
+<code>PropertyChanged</code>; without that, pressing a button twice on
+the same unfixed field announced nothing the second time. Replaces
+<code>AddAccountDialog</code>’s local <code>_statusCategory</code>
+field, and removes three double-announce sites in
+<code>ComposeWindow</code>.
+<code>AccountManagerViewModel.EmailAddressRejected</code> lets the View
+open Advanced settings and focus the address box, since the refusal
+names a control behind a collapsed expander.</li>
+<li><strong><code>FeatureFlag.GoogleAuth</code> default flips to
+<code>false</code>.</strong> It gates only the <em>offer</em> — no
+runtime authentication path consults it, so saved
+<code>AuthType.OAuth2Google</code> accounts are unaffected. New
+<code>ProviderCatalog</code> entry <code>gmail-oauth</code> (“Gmail
+(sign in with Google)”), <code>DefaultAuthType = OAuth2Google</code>, no
+app-password hint, exposed as
+<code>IProviderCatalog.GmailGoogleSignIn</code>. It carries the
+gmail.com domains but sits after the plain Gmail entry, so
+<code>MatchByEmail</code> and <code>Resolve</code>’s host fallback still
+answer <code>gmail</code> for every Gmail address; it is reached only by
+an explicit pick or a saved <code>ProviderId</code>.
+<code>AccountEditorViewModel.Providers</code> is an
+<code>ObservableCollection&lt;MailProvider&gt;</code> built from the
+catalog minus the Google entry, with
+<code>EnsureGoogleSignInListed()</code> inserting it after Gmail —
+absent from the list rather than collapsed, so it is out of the keyboard
+order and the accessibility tree entirely.
+<code>ShowGoogleAuthOption</code> is
+<code>IsGoogleAuthEnabled || AuthType == AuthType.OAuth2Google</code>,
+and that second clause is what keeps an existing Google account’s
+Authentication combo populated. <code>ConfigModel.Features</code> is an
+<code>OrdinalIgnoreCase</code> dictionary so
+<code>SettingsViewModel.GoogleSignIn</code> updates the existing key
+instead of adding a second one in different capitalization.</li>
+<li><strong>Account Manager’s Provider value is a read-only
+<code>TextBox</code>, not a <code>TextBlock</code>.</strong> A TextBox
+exposes its <code>Text</code> as a value alongside the
+<code>LabeledBy</code> name; on a TextBlock, <code>LabeledBy</code>
+overrode the automatic name (its own text) and left no value behind it,
+so the binding was announced as nothing.</li>
+</ul>
+<h3 id="theming-density-and-visual-verification">Theming, density, and
+visual verification</h3>
+<ul>
+<li><strong>Theme tokens.</strong> <code>Theme.FocusHaloThickness</code>
+(= <code>FocusThickness + 2</code>) is consumed by
+<code>AccessibleStyles.xaml</code> as a halo stroke under the focus
+dash. <code>ThemedControls.xaml</code> gained a <code>ToolBarTray</code>
+style and the seven <code>ToolBar.*StyleKey</code> item styles — WPF
+default chrome ignores theming, which is why the unstyled ToolBar
+shipped washed-out for months and passed every sighted spot-check.
+Ember, Fjord, and Heather went from 4-token files inheriting from
+Parchment to full 26-token palettes.
+<code>ThemedControlCoverageTests</code> requires every WPF control type
+used in <code>Views/</code> and <code>Controls/</code> to have an
+implicit style or a reviewed exemption; contrast is computed by the WCAG
+math in <code>BuiltInThemeTests</code>, never eyeballed.</li>
+<li><strong>Density is padding only.</strong>
+<code>Theme.ListRowPadding</code> is <code>Thickness(2,1,2,1)</code>
+compact versus <code>Thickness(4,3,4,3)</code> comfortable; the UIA tree
+and announcements are identical in both modes by design. Compact
+reproduces the message list’s original shipped rendering, whose row
+template hardcoded <code>2,1</code>. <code>ThemeService</code> now
+separates its publish signature from its announce signature so a density
+change does not announce a theme change.</li>
+<li><strong>Debug-only screenshot capture (#175).</strong> The real
+<code>ScreenshotCaptureService</code> is constructed only under
+<code>/debug</code>; otherwise a null service is wired, so the feature
+is structurally inert rather than merely hidden. The Settings group is
+bound to <code>IsDebugDiagnosticsVisible</code>
+(<code>LogService.DebugMode &amp;&amp; _screenshotCapture != null</code>),
+capture defaults off and is session-only, output goes to
+<code>&lt;profileDir&gt;\debug-screenshots\&lt;yyyyMMdd-HHmmss&gt;\</code>,
+and every window title gains a ” - SCREENSHOTS ON” suffix while it is
+running.</li>
+<li><strong>The ui-probe harness (#180)</strong> is developer tooling:
+<code>scripts/ui-probe.ps1</code>,
+<code>scripts/ui-probe-plan.json</code>,
+<code>scripts/ui-review-prompt.md</code>, and the
+<code>Tools/QuickMail.Fixtures</code> project, which is referenced only
+by the test project and never packaged
+(<code>installer/quickmail.iss</code> ships a single file). In-app it is
+a launch mode only — <code>--ui-probe &lt;surface&gt;</code> implies
+<code>/debug</code>, forces offline services, drives the surface,
+captures, and exits; malformed args shut down with exit 64. The script
+refuses to run on a locked desktop, since DWM never composites new
+windows there and captures come out white.</li>
+<li><strong><code>ComposeWindow</code>’s form grid was not the
+<code>DockPanel</code> fill child.</strong> The autocomplete
+<code>Popup</code> was declared last, so <code>LastChildFill</code>
+applied to it — a <code>Popup</code> occupies no layout space — and the
+grid fell back to <code>Dock=Left</code> at content width. Declaring the
+popup before the grid fixes it; a <code>Popup</code>’s position in the
+child list has no layout or rendering effect because placement is set in
+code-behind. Element set, tab order, and UIA tree are unchanged.</li>
+</ul>
+<h3 id="controls-and-accessibility-infrastructure">Controls and
+accessibility infrastructure</h3>
+<ul>
+<li><p><strong><code>RadioGroupNavigation</code> (new,
+<code>Helpers/</code>)</strong> — an opt-in attached behaviour,
+<code>SelectionFollowsFocus="True"</code>, set on the container of a
+radio group. Arrow keys move to the next or previous enabled button of
+the same <code>GroupName</code> (wrapping, to match
+<code>DirectionalNavigation="Cycle"</code>), focus it, and check it;
+every other key is left to WPF. Walks the <strong>logical</strong> tree,
+so it works before the group has been rendered. It checks the button
+<strong>before</strong> focusing it, so the focus that follows lands on
+an option already selected and the state reported is the new one, and it
+announces nothing itself. Applied to the four
+<code>SettingsDialog</code> groups and the
+<code>EventEditorWindow</code> edit-scope group. Deliberately
+<strong>not</strong> applied to the FlagManager colour swatches, whose
+buttons carry a <code>Command</code>: <code>ButtonBase</code> invokes it
+from <code>OnClick()</code>, which a programmatic
+<code>IsChecked = true</code> does not raise, so arrowing there would
+show a swatch as chosen while the command that applies the colour never
+ran.</p></li>
+<li><p><strong><code>SettingsDialog.RadioButton_Checked</code> is
+deleted, not suppressed.</strong> f71f86f added it so that choosing an
+option was announced at all, on the reading that a bare
+<code>StackPanel</code> is not a UIA selection container. That was
+treating a symptom: the reason a choice went unannounced is that
+arrowing never made one — it moved focus and left the selection behind.
+With selection following focus the platform reports the change itself,
+and an app that speaks over that is overriding a decision the user has
+already made in their own software. The suppression flag the first cut
+of this fix introduced (<code>IsMovingSelection</code>) is gone with it;
+a mechanism whose only job is to mute an announcement that should not
+exist is a sign the announcement is the bug. Guarded by
+<code>RadioGroupWiringTests.SettingsRadioButtons_DoNotAnnounceThemselves</code>.</p></li>
+<li><p><strong><code>Controls/DateTimeField</code></strong> is a plain
+<code>TextBox</code> with no automation peer of its own. Three shapes
+were built and evaluated with three screen readers before this one was
+chosen: an edit field, an edit field claiming
+<code>AutomationControlType.Spinner</code>, and a purpose-built spinner
+implementing <code>IValueProvider</code> and
+<code>IRangeValueProvider</code>. All three announced correctly, so the
+one that invents nothing won — replacing <code>TextBox.Text</code>
+raises the UIA value-change event screen readers already act on. There
+is <strong>no</strong> <code>AccessibilityHelper.Announce</code> in the
+stepping path, and there must not be: a programmatic announcement is
+filtered by the user’s announcement settings, a native value change is
+not. Stepping and parsing live in
+<code>Helpers/DateTimeFieldParser.cs</code> (pure, unit-tested); a time
+field holds a full instant rather than a <code>TimeSpan</code>, so
+stepping past midnight carries into the date, and
+<code>TryParseTime</code> explicitly <strong>rejects date-shaped
+text</strong> because <code>DateTime.TryParse("8/3")</code> succeeds
+with a <code>TimeOfDay</code> of zero.</p></li>
+<li><p><strong><code>MailMessageDetail.Attachments</code> keeps the
+inherited <code>HasAttachments</code> flag in sync</strong> — nothing
+else ever set it on a detail. <code>ImapMailService</code>,
+<code>GraphMailService</code>, and
+<code>LocalStoreService.LoadDetailAsync</code> all populate the list
+only, and <code>MainViewModel</code> patched the <em>summary</em> after
+loading, which is exactly why the reading pane looked right.
+<code>MessageWindow.xaml</code> binds the attachment list’s
+<code>Visibility</code> to <code>MessageDetail.HasAttachments</code>
+with <code>FallbackValue=Collapsed</code>, so the always-false flag hid
+the list, and <code>FocusAttachmentList</code>’s visibility check then
+reported “No attachments.” Fixing the three producers one at a time
+would have left the next one free to reintroduce it.
+<code>MessageDetailAttachmentTests</code> covers the invariant, the
+local-store round trip, and reads <code>MessageWindow.xaml</code> to
+assert that whatever property the Visibility binding names really is
+true for a message with attachments.</p></li>
+<li><p><strong>WebView2 splits link activation across two events, and
+every host must handle both.</strong> An ordinary link raises
+<code>NavigationStarting</code>; a link carrying
+<code>target="_blank"</code>, or one activated with
+Ctrl/Shift/middle-click, raises <code>NewWindowRequested</code>
+<strong>instead</strong> — the parent <code>CoreWebView2</code> never
+sees a <code>NavigationStarting</code> for it. Unhandled, WebView2’s
+default is to open the URI in its own popup window against QuickMail’s
+user-data folder, which is a browser with none of the user’s cookies,
+passkeys, or extensions. <code>MainWindow</code> handled both;
+<code>MessageWindow</code> and <code>MarkdownPreviewWindow</code>
+handled only the first, so window mode leaked links into the app. Both
+now set <code>args.Handled = true</code> and route the URI through
+<code>ExternalUriPolicy</code>, same as the reading pane.
+<code>TryStripHeavyHtml</code> additionally strips the
+<code>target</code> attribute, so the rendered document does not depend
+on any host getting the second event right.
+<code>ExternalLinkWiringTests</code> discovers WebView2 hosts by
+scanning <code>Views/*.xaml</code> for the element tag — not the bare
+word, which appears in a comment in <code>ThemeManagerWindow.xaml</code>
+and as a leftover <code>xmlns</code> in <code>ComposeWindow.xaml</code>
+— and asserts each code-behind handles <code>NewWindowRequested</code>
+and routes through the policy, so a new WebView2 window is covered the
+day it is added. (#483)</p></li>
+</ul>
+<h3 id="tests-and-build">Tests and build</h3>
+<ul>
+<li><strong>Keep non-WPF tests out of the <code>WpfTests</code>
+collection.</strong> The radio-group wiring tests are plain XML parsing
+and were first written inside <code>RadioGroupNavigationTests</code>,
+which carries <code>[Collection("WpfTests")]</code>. That reliably broke
+six <code>AccountDialogHintTests</code> (“focusing AccountNameBox
+produced no hint. Heard: (nothing)”) across three full runs, while
+<code>main</code> was green under the same conditions — the collection
+exists to serialize window-loading tests, and non-STA tests scheduled
+inside it disturb them. Moving them to their own class fixed it. Worth
+remembering the next time a full-suite run goes red in a class the
+change never touched.</li>
+<li>New or extended suites in this release:
+<code>AccountStartupRepairTests</code> (17),
+<code>AccountLoginUsernameTests</code> (20),
+<code>ComposeViewModelSendFeedbackTests</code> (13),
+<code>EmailAddressValidatorTests</code> (26),
+<code>GoogleSignInOptInTests</code> (20),
+<code>RadioGroupNavigationTests</code> (10),
+<code>RadioGroupWiringTests</code> (6),
+<code>SyncServiceRuleApplicationTests</code>,
+<code>MessageDetailAttachmentTests</code>,
+<code>TypeAheadLogicTests</code>,
+<code>ConnectionDiagnosticsTests</code>,
+<code>ConnectionDiagnosticsSettingTests</code>,
+<code>ConnectionDiagnosticsWindowTests</code>,
+<code>ConnectionDiagnosticsReviewFixTests</code>,
+<code>AccountListCarryOverGuardTests</code>,
+<code>AccountListReloadStatusTests</code>,
+<code>WatchServiceTests</code>, <code>WatchedConversationsTests</code>,
+<code>WatchedConversationsPhase2Tests</code>,
+<code>ExternalLinkWiringTests</code>, <code>MainViewModelTabTests</code>
+and <code>TabSessionModelTests</code> (tab and window management, Phase
+6, closing #40), <code>ImapConnectionInstrumentationTests</code> (real
+connect path against a closed port and a hang-up listener, asserting
+socket error codes are captured and the census does not drift), plus
+login-identity tests in <code>CardDavContactSyncTests</code> and
+<code>CalDavCalendarSyncTests</code>.
+<code>StatusAnnouncementRecorder</code> captures announcements inside
+the <code>PropertyChanged</code> notification, the way the View does —
+asserting the category afterwards would pass against a broken
+implementation now that the category is one-shot.</li>
+<li><strong>Test-harness fixes:</strong> <code>LogServiceTests</code> is
+immune to parallel writers; the capture service no longer crashes across
+threads in parallel runs (#433); two flaky tests that depended on the
+real clipboard and on window activation were repaired (#410); and
+synthesized-input type-ahead tests are gated behind
+<code>QUICKMAIL_RUN_INPUT_TESTS</code> (#414).</li>
+<li><strong>Build:</strong> <code>bin</code>/<code>obj</code> are
+excluded from the default <code>Compile</code> glob via
+<code>Directory.Build.props</code>, and the RID and TFM no longer appear
+in output paths, so Dependabot can read the dependency graph (#382).
+CI’s <code>-warnaserror</code> gate is now real rather than nominal
+(#446).</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.38.html">Newer: 0.8.38</a> | <a href="release-notes-v0.8.36.html">Older: 0.8.36</a></div>
+</body>
+</html>

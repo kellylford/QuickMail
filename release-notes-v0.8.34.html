@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.34 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.35.html">Newer: 0.8.35</a> | <a href="release-notes-v0.8.33.html">Older: 0.8.33</a></div>
+  <h1 id="quickmail-v0.8.34-release-notes">QuickMail v0.8.34 Release
+Notes</h1>
+<p class="version">Released July 21, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.34">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.8.34:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>QuickMail-win.msi</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. A standard setup wizard with license
+agreement; installs per-user with no elevation required, adds the
+WebView2 Runtime if missing, and enables automatic updates.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<p>This release adds <strong>archiving</strong> — move messages out of
+your inbox into an Archive folder instead of deleting them, with a
+dedicated shortcut — and lets you <strong>turn off the delete and
+archive announcements</strong> on their own so they stop interrupting
+the screen reader as it reads the next message. If you installed
+QuickMail from the MSI, this update is delivered automatically.</p>
+<hr />
+<h2 id="new-archive-messages">New: Archive messages</h2>
+<p>You can now <strong>archive</strong> a message — move it to your
+account’s Archive folder — instead of deleting it. This is for mail you
+want out of your inbox but kept, not thrown away.</p>
+<ul>
+<li>Press <strong>Ctrl+Shift+M</strong> to archive the selected message.
+The command is named <strong>Move to Archive</strong> (on the message
+menu, the context menu, and in the Command Palette), and the shortcut is
+rebindable in <strong>Settings → Keyboard</strong>.
+<strong>Delete</strong> still works exactly as before (moves to
+Trash).</li>
+<li>Archiving works from every view. In the <strong>From</strong>,
+<strong>To</strong>, and <strong>Conversations</strong> groupings,
+archiving a group moves the whole group at once — the same way Delete
+does.</li>
+<li><strong>Each account archives to its own folder.</strong> QuickMail
+uses the folder your mail provider marks as the Archive folder
+automatically, so for most accounts there is nothing to set up. To
+choose a different folder, activate a folder in the folder tree, open
+its context menu, and select <strong>Set as Archive Folder</strong> (or
+<strong>Use Automatic Archive Folder</strong> to go back to the
+automatic one). There is no single shared archive folder — the choice is
+per account.</li>
+<li>If an account has no Archive folder and you have not set one,
+QuickMail tells you so instead of doing nothing.</li>
+</ul>
+<h2 id="new-turn-off-delete-and-archive-announcements-on-their-own">New:
+Turn off delete and archive announcements on their own</h2>
+<p>When you delete or archive a message, QuickMail announces “Deleting
+message…” and “1 message deleted.” Because those announcements shared
+the same setting as background loading and sync progress, turning them
+off also silenced sync progress — and left on, they can interrupt the
+screen reader as it starts reading the next message in the list.</p>
+<p>Delete and archive announcements now have <strong>their own
+setting</strong>. In <strong>Settings → Screen Reader
+Announcements</strong>, clear <strong>Announce delete and archive
+actions</strong> to silence just that chatter while keeping everything
+else. It is on by default, and the change takes effect immediately.
+Failure messages (for example, if a delete may not have completed) are
+still announced even when this is off.</p>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you, as always, to everyone who contributes to QuickMail
+through code, bug reports, feature suggestions, and other feedback —
+including the requests that shaped archiving and the report that the
+delete announcements were interrupting the reading of the next
+message.</p>
+<hr />
+<h2 id="reporting-issues">Reporting Issues</h2>
+<p>Found a problem or have a suggestion? There are three ways to reach
+us — pick the one that fits:</p>
+<ol type="1">
+<li><strong>Report a Bug → Send</strong> (Help menu, inside QuickMail).
+Files the report for you anonymously — it includes no email address or
+other identifying information, so there is no way to follow up with you.
+<strong>Best when you don’t want any follow-up.</strong></li>
+<li><strong>Report a Bug → Copy report and open GitHub</strong> (Help
+menu). Opens a pre-filled issue that you submit under your own GitHub
+account, so your GitHub contact information is attached. <strong>Best
+when you have a GitHub account and want automatic filing plus direct
+contact.</strong></li>
+<li><strong>Email</strong> <a
+href="mailto:quickmailissues@theideaplace.net">quickmailissues@theideaplace.net</a>.
+<strong>Best when you don’t mind sending email and want a personal
+follow-up.</strong></li>
+</ol>
+<p>Full details, including exactly what a report contains (and what it
+never contains), are in the <a
+href="https://kellylford.github.io/QuickMail/reporting-issues.html">Reporting
+Issues section of the User Guide</a>.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="per-account-message-archiving-issue-318-pr-319">Per-account
+message archiving (issue #318, PR #319)</h3>
+<ul>
+<li>New <code>mail.archive</code> command, titled <strong>Move to
+Archive</strong> (default <strong>Ctrl+Shift+M</strong>, rebindable, in
+the Command Palette). Registered in
+<code>MainViewModel.RegisterCommands</code> and overridden in
+<code>MainWindow</code> with the same focus-aware guard as
+<code>mail.delete</code> so multi-selection in the list and group-tree
+nodes archive the whole selection/group via the controls’ own
+<code>PreviewKeyDown</code> (an <code>IsArchiveGesture</code> helper).
+Ctrl+Shift+M was chosen over Alt+Delete, which collides with the common
+screen-reader “announce cursor position” command.</li>
+<li><code>MainViewModel.ArchiveMessagesAsync</code> mirrors
+<code>DeleteMessagesAsync</code>’s optimistic UI + focus landing, but
+the server op is a <strong>move</strong> (like
+<code>MoveSelectedMessagesToFolderAsync</code>): folder counts reconcile
+via <code>ScheduleFolderCountRefresh</code> and the account unread total
+is left intact (archived mail still belongs to the account). Messages
+are grouped by <code>(AccountId, FolderName)</code>, so one call on a
+From/To/conversation group archives across every account it spans, each
+to its own Archive folder. Already-archived messages are skipped;
+accounts with no Archive folder surface guidance rather than a silent
+no-op.</li>
+<li>Archive folder resolution: explicit per-account override wins, else
+the server-flagged Archive folder. New
+<code>SpecialFolderKind.Archive</code>, detected in
+<code>ImapMailService.GetSpecialFolderKind</code> (IMAP
+<code>\Archive</code> attribute + name fallback) and
+<code>GraphMailService</code> (well-known <code>archive</code> +
+display-name fallback); Archive is <strong>not</strong> excluded from
+the All Mail aggregate. New
+<code>AccountModel.ArchiveFolderFullName</code> (nullable, auto-persists
+to accounts.json), set/cleared from the folder-tree context menu
+(<strong>Set as Archive Folder</strong> / <strong>Use Automatic Archive
+Folder</strong>). No global archive folder.</li>
+<li>Gmail has no <code>\Archive</code>; pointing an account’s archive
+folder at <code>[Gmail]/All Mail</code> archives correctly (the move
+removes the Inbox label). Tests: command registration + gesture; Graph
+“Archive” maps to <code>SpecialFolderKind.Archive</code>.</li>
+</ul>
+<h3
+id="message-action-announcement-category-issue-317-pr-320">Message-action
+announcement category (issue #317, PR #320)</h3>
+<ul>
+<li>Delete/archive status announcements were emitted as
+<code>AnnouncementCategory.Status</code> (every <code>StatusText</code>
+change is announced by the View), so they rode the same toggle as
+sync/loading and interrupted the screen reader reading the next message.
+New <code>AnnouncementCategory.MessageAction</code> +
+<code>ConfigModel.AnnounceMessageActions</code> (default on;
+<code>config.ini</code> under <code>[global]</code>; honored in
+<code>AccessibilityHelper</code>, applied immediately by
+<code>ConfigService.Save → AccessibilityHelper.Configure</code>).
+Settings dialog: <strong>Announce delete and archive
+actions</strong>.</li>
+<li>Status-bar announcements can now carry a category.
+<code>MainViewModel.SetStatus(text, category)</code> sets a one-shot
+<code>StatusAnnouncementCategory</code> and assigns
+<code>StatusText</code>; the View’s <code>PropertyChanged</code> handler
+reads it synchronously (WPF raises <code>PropertyChanged</code> inline)
+in <code>QueueStatusAnnounce</code>, capturing the category at queue
+time before the VM resets it. Plain <code>StatusText = …</code> stays
+<code>Status</code>. Delete/archive progress/success/cancel route
+through <code>MessageAction</code>; failures and the archive “no Archive
+folder” guidance stay <code>Result</code> so they’re heard even when the
+toggle is off. Reusable — move/copy can adopt <code>MessageAction</code>
+later.</li>
+<li>Tests: <code>AnnounceMessageActions</code> default-on + config
+round-trip; settings-VM load/save round-trip.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.35.html">Newer: 0.8.35</a> | <a href="release-notes-v0.8.33.html">Older: 0.8.33</a></div>
+</body>
+</html>

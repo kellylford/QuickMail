@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.8.1 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.9.html">Newer: 0.7.9</a> | <a href="release-notes-v0.7.8.html">Older: 0.7.8</a></div>
+  <h1 id="quickmail-v0.7.8.1-release-notes">QuickMail v0.7.8.1 Release
+Notes</h1>
+<p class="version">Released June 29, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.8.1">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.8.1:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.8.1-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><p><strong>Attachment keyboard access was completely broken when
+reading messages.</strong> Pressing Tab to move to the attachment list
+did not set focus on any attachment; pressing Enter did nothing;
+pressing Shift+F10 opened the message context menu (Reply, Forward,
+Delete) instead of the attachment menu (Open, Save, Save All). This
+affected all three message viewing modes — reading pane, tab, and
+standalone window. All three interactions now work correctly in all
+modes.</p></li>
+<li><p><strong>First Shift+F10 in a session showed the Windows system
+menu.</strong> The very first time Shift+F10 was pressed after starting
+QuickMail, the Windows system menu (Restore, Maximize, Minimize, Close)
+appeared instead of QuickMail’s context menu. All subsequent presses in
+the same session worked correctly. This has been fixed; QuickMail’s
+context menu now opens consistently from the first keypress.</p></li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="attachment-list-keyboard-fixes-issues-162-and-148">Attachment
+list keyboard fixes (issues #162 and #148)</h3>
+<p><strong>Issue #162 — three root causes fixed:</strong></p>
+<ul>
+<li><code>GotKeyboardFocus</code> on each attachment
+<code>ListBox</code> now calls <code>.Focus()</code> on the
+<code>ListBoxItem</code> container (not just
+<code>SelectedIndex = 0</code>). Setting <code>SelectedIndex</code>
+alone selects an item visually but leaves WPF keyboard focus on the
+<code>ListBox</code> shell. The handler also checks
+<code>e.OriginalSource</code> to distinguish focus landing on the shell
+from a child item already having focus, preventing unwanted resets on
+subsequent navigation.</li>
+<li><code>PreviewKeyDown</code> on each attachment <code>ListBox</code>
+now handles Shift+F10 and the Apps key explicitly, opening
+<code>ContextMenu.IsOpen = true</code> directly and marking
+<code>e.Handled = true</code>. This bypasses WPF’s ContextMenu routing
+mechanism, which was allowing <code>ContextMenuOpening</code> to bubble
+to the window-level fallback handler and open the message context menu
+instead.</li>
+<li><code>OnWindowContextMenuOpening</code> in <code>MainWindow</code>
+gained an exclusion check for the attachment list
+(<code>IsDescendantOf(ReadingPaneAttachmentList, e.OriginalSource)</code>)
+as belt-and-suspenders against the same fallback scenario from
+right-click.</li>
+</ul>
+<p>Fixes applied to both <code>MainWindow.xaml.cs</code> (reading pane
+and tab modes) and <code>MessageWindow.xaml.cs</code> (window mode).</p>
+<p><strong>Issue #148 — Win32 hook approach:</strong></p>
+<p>A <code>WM_CONTEXTMENU</code> Win32 hook
+(<code>HwndSource.AddHook</code>) detects when
+<code>Keyboard.FocusedElement</code> is null at the moment
+WM_CONTEXTMENU arrives — the state that occurs on the very first
+Shift+F10 after startup, when WebView2 initialisation has taken Win32
+focus without WPF tracking it. The hook calls
+<code>FocusPanelSynchronously()</code> before returning, giving WPF a
+non-null focused element to route <code>ContextMenuOpening</code> from.
+This is a synchronous update; an earlier attempt using
+<code>Dispatcher.InvokeAsync</code> lost the timing race and did not fix
+the issue.</p>
+<h3 id="dependency-updates">Dependency updates</h3>
+<ul>
+<li><code>Microsoft.Identity.Client</code> (MSAL) 4.85.0 → 4.85.2</li>
+<li><code>Microsoft.NET.Test.Sdk</code> 18.6.0 → 18.7.0</li>
+<li><code>actions/checkout</code> v4 → v7</li>
+<li><code>peaceiris/actions-gh-pages</code> v3 → v4</li>
+</ul>
+<h3 id="debug-input-trace">Debug input trace</h3>
+<p><code>AccessibilityHelper.RegisterDebugInputTrace(Window)</code>
+wires window-level <code>PreviewKeyDown</code> and
+<code>GotKeyboardFocus</code> handlers (both with
+<code>handledEventsToo: true</code>) when <code>/debug</code> is active.
+Each key press logs the key, modifiers, handled state, and focused
+element; each focus change logs the old and new elements labelled by
+<code>AutomationProperties.Name</code>, XAML <code>x:Name</code>,
+DataContext type, or element type in that priority order — matching the
+event-stream style of AccEvent for MSAA. Called from both
+<code>MainWindow</code> and <code>MessageWindow</code> on load. No-op in
+normal runs.</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.9.html">Newer: 0.7.9</a> | <a href="release-notes-v0.7.8.html">Older: 0.7.8</a></div>
+</body>
+</html>

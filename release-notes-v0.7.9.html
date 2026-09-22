@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.9 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.9.1.html">Newer: 0.7.9.1</a> | <a href="release-notes-v0.7.8.1.html">Older: 0.7.8.1</a></div>
+  <h1 id="quickmail-v0.7.9-release-notes">QuickMail v0.7.9 Release
+Notes</h1>
+<p class="version">Released July 2, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.9">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.9:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.9-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="new-the-check-spelling-dialog">New: the Check Spelling
+dialog</h2>
+<p>Compose windows now have a full dialog-based spelling review, modeled
+on the classic word-processor spelling dialog. Press <strong>F7</strong>
+(or choose <strong>Tools → Check Spelling…</strong>) to review the
+entire message: the check walks the body first, then the subject line,
+stopping on each word that is not in the dictionary. For each word you
+can:</p>
+<ul>
+<li><strong>Change</strong> (Alt+C or Enter) — replace this occurrence
+with the “Change to” text</li>
+<li><strong>Change All</strong> (Alt+L) — also replace later occurrences
+automatically for the rest of the check</li>
+<li><strong>Ignore</strong> (Alt+I) — skip this occurrence</li>
+<li><strong>Ignore All</strong> (Alt+G) — skip this word for the rest of
+the check</li>
+<li><strong>Add to Dictionary</strong> (Alt+A) — never flag this word
+again, anywhere in QuickMail</li>
+<li><strong>Read in Context</strong> (Alt+R) — hear the full line
+containing the word</li>
+</ul>
+<p>When the dialog opens on a word, the word is announced and the first
+suggestion is selected in the Suggestions list, so screen readers voice
+both automatically. Arrow through the suggestions to pick a different
+one; the check ends with a confirmation of how many words were
+changed.</p>
+<h3 id="custom-dictionary">Custom dictionary</h3>
+<p><strong>Add to Dictionary</strong> stores words in
+<code>custom.lex</code> in your profile folder — one word per line.
+Added words stop being flagged everywhere (dialog, inline navigation,
+and squiggles) immediately and persist across restarts. You can edit the
+file by hand in a text editor to remove words.</p>
+<h3 id="subject-line-spell-checking">Subject line spell checking</h3>
+<p>The subject line is now spell-checked, both in the F7 review (checked
+after the body) and with inline squiggles while you type.</p>
+<h2 id="changed-keyboard-shortcuts-please-note">Changed keyboard
+shortcuts — please note</h2>
+<p><strong>F7 now opens the Check Spelling dialog.</strong> The previous
+inline navigation keys have moved:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Action</th>
+<th>Old key</th>
+<th>New key</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Check Spelling (dialog)</td>
+<td>—</td>
+<td><strong>F7</strong></td>
+</tr>
+<tr class="even">
+<td>Next misspelling (inline)</td>
+<td>F7</td>
+<td><strong>Ctrl+F7</strong></td>
+</tr>
+<tr class="odd">
+<td>Previous misspelling (inline)</td>
+<td>Shift+F7</td>
+<td><strong>Ctrl+Shift+F7</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Alt+F7 (repeat spelling announcement) and Alt+1/2/3 (apply a
+suggestion inline) are unchanged. If you had customized these shortcuts
+in the keyboard customizations dialog, your bindings are untouched —
+these are new defaults only, and all three commands can be rebound
+there.</p>
+<p>The compose <strong>Tools</strong> menu now groups all spelling
+commands at the top: Check Spelling…, Next/Previous Misspelling (moved
+from the Edit menu), and Toggle Spelling Announcements.</p>
+<hr />
+<h2 id="improved-security-and-resource-management-fable5cr">Improved
+security and resource management (Fable5CR)</h2>
+<h3 id="security-hardening">Security hardening</h3>
+<ul>
+<li><strong>URI allow-list (<code>ExternalUriPolicy</code>)</strong> —
+Every URI that leaves the app via <code>ShellExecute</code> (reading
+pane links, message windows, markdown preview, update page) now goes
+through a configurable http/https/mailto allow-list. Everything else is
+logged and dropped. This closes the attack surface for social
+engineering attacks via crafted message content.</li>
+<li><strong>Attachment safety</strong> — New
+<code>AttachmentSafety</code> service consolidates filename sanitization
+(directory stripping, invalid characters, trailing dots and spaces) and
+enforces an expanded dangerous-file-extension list, closing the
+path-traversal gap.</li>
+<li><strong>HTML sanitizer fail-closed</strong> — If the HTML
+sanitizer’s regex timeout during stripping, the app falls back to reader
+mode rather than rendering partially stripped HTML. The actual security
+boundary is CSP, which remains in place for all navigation and
+scripting.</li>
+</ul>
+<h3 id="resource-management">Resource management</h3>
+<ul>
+<li><code>GraphMailService</code> is now properly disposed in
+<code>App.OnExit</code> (it owns an <code>HttpClient</code> via the
+<code>GraphClient</code>).</li>
+<li><code>MainViewModel</code> now implements <code>IDisposable</code>
+and is disposed when the main window closes, releasing its seven
+<code>CancellationTokenSource</code> instances and calendar timer.</li>
+<li>Compose window autocomplete <code>CancellationTokenSource</code> is
+properly cancelled and disposed on tab switch and window close.</li>
+<li><code>ConfigService</code> now writes <code>config.ini</code> and
+<code>hotkeys.json</code> atomically via temp file + rename, matching
+the pattern used for account and view persistence.</li>
+</ul>
+<h3 id="mvvm-and-testability-improvements">MVVM and testability
+improvements</h3>
+<ul>
+<li>New <code>IUiDispatcher</code> service centralizes all
+<code>Dispatcher</code> calls out of <code>MainViewModel</code>,
+improving testability and MVVM compliance.</li>
+<li>Win32 file dialogs are no longer called directly from
+<code>ViewModels</code>; they are now wired through View-layer
+callbacks.</li>
+<li>82 new unit tests added (URI policy, attachment safety, sanitizer
+behavior, config persistence, main window lifecycle, compose attachment
+behavior, background task fault logging). Full test suite: 879/879
+passing.</li>
+</ul>
+<h3 id="reliability">Reliability</h3>
+<ul>
+<li>Background <code>Task.Run</code> calls now use
+<code>Task.LogFaults(context)</code> so failures are logged promptly
+instead of surfacing at finalization. Applied to local store writes,
+mark-read batches, and preview fetch operations.</li>
+<li><code>SyncService</code> preview batch now has a per-folder catch
+block so a single folder failure cannot stop the rest.</li>
+<li>MSAL token-cache registration is now lazy and asynchronous instead
+of blocking the <code>OAuthService</code> constructor.</li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="check-spelling-implementation-pr-167">Check Spelling
+implementation (PR #167)</h3>
+<ul>
+<li><code>CustomDictionaryService</code> owns
+<code>{ProfileDir}\custom.lex</code> (UTF-16 LE with BOM, the encoding
+the WPF spell engine reads most reliably) and re-registers the lexicon
+on all three compose editors when a word is added, so new words stop
+being flagged without reopening the window.</li>
+<li>The find-next-misspelling cores were extracted into
+<code>SpellScan</code> / <code>TextBoxSpellSource</code> /
+<code>RichTextBoxSpellSource</code>; both the dialog session and the
+inline Ctrl+F7 navigation run on the same implementation. Scans use
+<code>GetNextSpellingErrorCharacterIndex</code> /
+<code>GetNextSpellingErrorPosition</code> — one spell-engine call per
+error rather than one per character.</li>
+<li>The Spelling dialog is modeless (<code>Show()</code>, owner =
+compose window) per the project’s Modal Dialog Rules; the session
+re-queries the live editor for each next error, so editing the message
+mid-check is safe.</li>
+<li>Session state (ignore set, change-all map, counters, announcements)
+lives in <code>SpellCheckDialogViewModel</code>, unit-tested against
+scripted sources.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.9.1.html">Newer: 0.7.9.1</a> | <a href="release-notes-v0.7.8.1.html">Older: 0.7.8.1</a></div>
+</body>
+</html>

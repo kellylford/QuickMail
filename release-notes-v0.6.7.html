@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.6.7 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.8.html">Newer: 0.6.8</a> | <a href="release-notes-v0.6.6.html">Older: 0.6.6</a></div>
+  <h1 id="quickmail-v0.6.7-release-notes">QuickMail v0.6.7 Release
+Notes</h1>
+<p class="version">Released June 2, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.6.7">downloads for this release</a></p>
+<h2 id="new-features">New Features</h2>
+<h3 id="selection-keyboard-shortcuts">Selection keyboard shortcuts</h3>
+<p>Several standard Windows selection shortcuts that were previously
+missing are now implemented.</p>
+<p><strong>In the message list:</strong></p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Ctrl+A</strong></td>
+<td>Select all messages in the current folder</td>
+</tr>
+<tr class="even">
+<td><strong>Ctrl+Shift+Home</strong></td>
+<td>Extend the current selection to the first message in the list</td>
+</tr>
+<tr class="odd">
+<td><strong>Ctrl+Shift+End</strong></td>
+<td>Extend the current selection to the last message in the list</td>
+</tr>
+</tbody>
+</table>
+<p>These compose naturally with the existing
+<strong>Shift+Up/Down</strong> selection: after pressing
+<strong>Ctrl+Shift+Home</strong>, pressing <strong>Shift+Down</strong>
+shrinks the selection from the top, and after
+<strong>Ctrl+Shift+End</strong>, <strong>Shift+Up</strong> shrinks from
+the bottom.</p>
+<p><strong>Ctrl+A</strong> is also registered in the Command Palette as
+<strong>Select All Messages</strong> and can be remapped in <strong>File
+→ Settings → Keyboard Shortcuts</strong>. It is context-sensitive: it
+only fires when the message list has focus, so pressing Ctrl+A in the
+search box or any text field still selects the text in that field as
+expected.</p>
+<p><strong>In the Address Book:</strong> Press <strong>Ctrl+A</strong>
+while the contact list has focus to select all visible contacts. Press
+<strong>Delete</strong> to remove all selected contacts (a single
+confirmation prompt shows the count before anything is deleted).</p>
+<p><strong>In Compose address fields (To/Cc/Bcc):</strong> Press
+<strong>Ctrl+A</strong> to select all address chips in the field.
+Selected chips are highlighted. Press <strong>Delete</strong> or
+<strong>Backspace</strong> to remove them all, or
+<strong>Ctrl+C</strong> to copy all their addresses. Any arrow-key
+navigation or click clears the selection. When the field has typed text
+(not yet committed as a chip), <strong>Ctrl+A</strong> selects that text
+as usual.</p>
+<hr />
+<h3 id="mark-as-read-ctrlq">Mark as Read (Ctrl+Q)</h3>
+<p>A new <strong>Mark as Read</strong> command, bound to
+<strong>Ctrl+Q</strong> by default, marks the current selection as read
+without opening it. The command is context-sensitive:</p>
+<table>
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 65%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Context</th>
+<th>What gets marked</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>A single message is selected</td>
+<td>That message</td>
+</tr>
+<tr class="even">
+<td>A group header is selected (Conversations, By Sender, or By
+Recipient view)</td>
+<td>Every message in the group</td>
+</tr>
+<tr class="odd">
+<td>The folder tree has focus</td>
+<td>Every message loaded in the current folder or virtual folder</td>
+</tr>
+</tbody>
+</table>
+<p>The shortcut is remappable via <strong>File → Settings → Keyboard
+Shortcuts</strong> and appears in the Command Palette
+(<strong>Ctrl+Shift+P</strong>).</p>
+<hr />
+<h3 id="to-me-filter">To Me filter</h3>
+<p>A new <strong>To Me</strong> filter shows only messages where one of
+your configured account addresses appears directly in the
+<strong>To</strong> field. It is available in <strong>View → Filter → To
+Me</strong> and in the Command Palette.</p>
+<p>Mailing list messages are excluded even when the list software copies
+your address into the To field alongside the list address. Detection
+uses the standard <code>List-Id</code> header that all compliant mailing
+list managers send. Messages already in your database are retroactively
+identified using a domain pattern backfill (groups.io, Freelists,
+Listserv, Mailman, Yahoo Groups, Google Groups) that runs automatically
+on first launch after updating.</p>
+<p>The filter can be saved as part of a named view and assigned a custom
+keyboard shortcut in <strong>File → Settings → Keyboard
+Shortcuts</strong>.</p>
+<hr />
+<h3 id="action-first-log-format">Action-first log format</h3>
+<p>The <strong>Advanced</strong> tab in <strong>File → Settings</strong>
+now includes a <strong>Log Format</strong> option controlling how lines
+are written to <code>quickmail.log</code>.</p>
+<p><strong>Action first</strong> (the new default) puts the message
+before the timestamp:</p>
+<pre><code>Sync completed: 42 messages  [2024-11-15 14:23:45.123]</code></pre>
+<p><strong>Time first</strong> preserves the original format with the
+timestamp at the start:</p>
+<pre><code>2024-11-15 14:23:45.123  Sync completed: 42 messages</code></pre>
+<p>Because the log is already in chronological order, the timestamp at
+the start added no navigation value — it just pushed the information you
+actually wanted to the right. Action first makes each line readable from
+the beginning, which is significantly better when reviewing the log with
+a screen reader. The setting takes effect immediately when you save; no
+restart is needed.</p>
+<hr />
+<h2 id="accessibility-fixes">Accessibility fixes</h2>
+<h3 id="status-bar-no-longer-reads-content-multiple-times">Status bar no
+longer reads content multiple times</h3>
+<p>Pressing <strong>Ctrl+9</strong> to move focus to the status bar
+previously caused screen readers to announce the status text four times:
+once as the container label, once as the TextBox name, once as the
+TextBox value, and once as the screen reader’s own region-entry
+announcement.</p>
+<p>The status bar regions now use focusable text elements
+(ControlType.Text) instead of read-only text boxes (ControlType.Edit). A
+text element has no separate Value property, so the content is announced
+exactly once when focus arrives. The status bar container no longer
+carries a redundant name that duplicated the content announcement.</p>
+<p>The “Press Escape to return to message list” hint that appeared in
+the status text after opening a message has also been removed from the
+status bar. That hint was already being delivered as a one-time screen
+reader announcement immediately after the message loaded — having it
+persist in the status bar meant it was repeated every time focus visited
+the bar.</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.8.html">Newer: 0.6.8</a> | <a href="release-notes-v0.6.6.html">Older: 0.6.6</a></div>
+</body>
+</html>

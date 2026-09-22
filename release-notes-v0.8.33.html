@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.33 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.34.html">Newer: 0.8.34</a> | <a href="release-notes-v0.8.32.html">Older: 0.8.32</a></div>
+  <h1 id="quickmail-v0.8.33-release-notes">QuickMail v0.8.33 Release
+Notes</h1>
+<p class="version">Released July 20, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.33">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.8.33:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>QuickMail-win.msi</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. A standard setup wizard with license
+agreement; installs per-user with no elevation required, adds the
+WebView2 Runtime if missing, and enables automatic updates.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<p>This is a big release. QuickMail now has a <strong>full
+calendar</strong>: create your own appointments, keep repeating events,
+get reminders, respond to meeting invitations, and connect your
+Microsoft, Google, or iCloud calendar. It also makes <strong>new-mail
+sync more reliable</strong>, quiets down <strong>notifications after
+your computer wakes</strong>, and fixes <strong>opening a message in a
+tab</strong>. See the <a
+href="https://kellylford.github.io/QuickMail/calendar.html">Calendar
+section of the User Guide</a> for the full walkthrough. If you installed
+QuickMail from the MSI, this update is delivered automatically.</p>
+<hr />
+<h2 id="new-the-calendar">New: The Calendar</h2>
+<p>QuickMail now has a real, keyboard-first calendar. Press
+<strong>Ctrl+Shift+C</strong> (or select the <strong>Calendar</strong>
+node in the folder tree) to open it. Move through your events with the
+<strong>Up and Down arrows</strong>; on any appointment, press
+<strong>Tab</strong> once to reach a details box with everything about
+it, or <strong>Enter</strong> to open the full appointment.</p>
+<p>The <a
+href="https://kellylford.github.io/QuickMail/calendar.html">Calendar
+page of the User Guide</a> covers all of this in detail. In brief:</p>
+<h3 id="create-and-manage-your-own-appointments">Create and manage your
+own appointments</h3>
+<p>Press <strong>N</strong> to create an appointment. You get a title,
+all-day or timed start and end (type times naturally — “9”, “9:00 AM”,
+“14:30”), location, notes, and repeat options. Press <strong>E</strong>
+to edit and <strong>Delete</strong> to delete; QuickMail always confirms
+before deleting.</p>
+<p><strong>Repeating appointments</strong> support Daily, Weekly,
+Monthly, and Yearly patterns, an “every N” interval, an optional end
+date, and — for weekly events — a day-of-week picker. When you edit or
+delete one occurrence, QuickMail asks whether you mean <strong>this
+event only</strong> or <strong>the whole series</strong>.</p>
+<h3 id="four-views-and-quick-date-navigation">Four views and quick date
+navigation</h3>
+<p>Switch between <strong>Agenda</strong>, <strong>Day</strong>,
+<strong>Week</strong>, and <strong>Month</strong> views with
+<strong>A</strong>, <strong>D</strong>, <strong>W</strong>, and
+<strong>M</strong>. Move between periods with <strong>Ctrl+Left</strong>
+and <strong>Ctrl+Right</strong>, jump to today with <strong>T</strong>,
+and jump to any date with <strong>Ctrl+G</strong> (Go to Date). In Month
+view, arrow keys move day by day and <strong>Enter</strong> opens the
+selected day.</p>
+<h3 id="reminders">Reminders</h3>
+<p>Turn on <strong>Remind me before appointments</strong> in
+<strong>Settings → General</strong> and choose how many minutes ahead
+you want them. QuickMail then shows a Windows notification and announces
+each reminder as it comes due. Reminders are off by default.</p>
+<h3 id="meeting-invitations">Meeting invitations</h3>
+<p>Open an email that contains a meeting invitation and QuickMail adds
+an event card to the top with <strong>Accept</strong>,
+<strong>Tentative</strong>, and <strong>Decline</strong> buttons.
+Choosing one replies to the organizer and updates your calendar right
+away. Cancellations remove the matching entry automatically.</p>
+<p>You can also respond straight from the calendar: an invitation you
+haven’t answered shows as <strong>Pending</strong>, and pressing
+<strong>Enter</strong> on it opens a short menu —
+<strong>Accept</strong>, <strong>Tentative</strong>,
+<strong>Decline</strong>, or <strong>Open full appointment</strong> — so
+you can reply without leaving the calendar to find the email.</p>
+<h3 id="connect-an-online-calendar-per-account">Connect an online
+calendar — per account</h3>
+<p>Calendars connect <strong>per account</strong>, just like contact
+sync. When you add an account — or later, in <strong>Manage
+Accounts</strong> — check <strong>Sync calendar from this
+account</strong> and QuickMail shows that account’s calendar:</p>
+<ul>
+<li><strong>Microsoft</strong> (Outlook.com, Microsoft 365) and
+<strong>Google</strong> — see your events, and create, edit, or delete
+<strong>single</strong> (non-repeating) events, with the change sent
+back to that account.</li>
+<li><strong>iCloud</strong> — see your events, and create, edit, or
+delete <strong>single</strong> (non-repeating) events, with the change
+sent back to your iCloud account. QuickMail uses the app-specific
+password you already entered for the account, so there’s nothing else to
+set up.</li>
+</ul>
+<p>Nothing syncs until you check the box, and unchecking it removes that
+account’s events. Connected calendars refresh in the background;
+<strong>F5</strong> (or <strong>Sync Calendars Now</strong> in the
+command palette) refreshes on demand. Repeating appointments are always
+saved to your local calendar, and repeating events that come from an
+online calendar are read-only for now — the guide’s <a
+href="https://kellylford.github.io/QuickMail/calendar.html">what the
+calendar does and does not do</a> list lays out the current limits.</p>
+<h3 id="search-and-export">Search and export</h3>
+<p>Press <strong>Ctrl+Shift+S</strong> to search your appointments by
+title, location, or notes. Export any appointment as a standard
+<code>.ics</code> file from the command palette.</p>
+<h3 id="feedback-welcome">Feedback welcome</h3>
+<p>Feedback on the calendar user experience and any issues you encounter
+with calendar management is welcome. Testing across a range of
+appointment types and calendar accounts has been conducted but this is a
+large surface area. Please see the Reporting Issues section for ways to
+report issues in general or provide feedback on the calendar
+experience.</p>
+<hr />
+<h2 id="new-more-reliable-new-mail-sync">New: More reliable new-mail
+sync</h2>
+<p>QuickMail primarily learns about new mail through a live server
+connection (IMAP IDLE). This release adds a safety net behind that
+connection and fixes two related reliability problems:</p>
+<ul>
+<li><strong>A periodic new-mail check.</strong> If a server never
+pushes, a held connection dies quietly, or you read or flag messages in
+another app, QuickMail now re-checks your inboxes on a schedule. Set it
+in <strong>Settings → General</strong>, under <strong>Sync</strong>, at
+<strong>“Check for new mail every”</strong> (Off, 1, 5, 15, 30, or 60
+minutes; 5 by default). Changes apply without a restart.</li>
+<li><strong>No more “connection was forcibly closed” after
+idle.</strong> Pooled connections that have been idle for a while are
+now checked and reconnected before reuse, so opening a message after
+your machine has been sitting a while no longer fails.</li>
+<li><strong>Read state stays in sync.</strong> A message you read in
+another client (for example, Gmail on the web) now stops showing as
+unread in QuickMail.</li>
+</ul>
+<hr />
+<h2 id="new-quieter-notifications-after-your-computer-wakes">New:
+Quieter notifications after your computer wakes</h2>
+<p>When your computer wakes from sleep or a dropped connection
+reconnects, all the mail that arrived during the gap arrives at once.
+Previously that produced a single large “9 new messages” burst
+notification, and it could repeat on each wake. QuickMail now recognizes
+a catch-up backlog (more than a handful of messages in one batch) and
+skips the toast for it — the messages are still marked as seen so
+nothing re-fires. Real-time arrivals, a few at a time, notify
+normally.</p>
+<hr />
+<h2
+id="fixed-opening-a-message-in-a-tab-now-shows-just-the-message">Fixed:
+Opening a message in a tab now shows just the message</h2>
+<p>When you set messages to open in a <strong>tab</strong> (Settings →
+Windowing → Reading mode → Tab), activating a message opened a tab that
+showed a <em>copy of the whole message list</em> with the message itself
+squeezed into a small, fixed strip at the bottom — not the message on
+its own. Opening in a <strong>window</strong> worked correctly.</p>
+<p>Tabs now behave as expected: opening a message in a tab fills the
+pane with that message, and the message list is set aside until you
+return to it. The message list is still there whenever you need it —</p>
+<ul>
+<li><strong>Escape</strong> from an open message returns you to the
+message list (the message’s tab stays open).</li>
+<li><strong>Ctrl+W</strong> closes the message’s tab and returns you to
+the list.</li>
+<li>The <strong>tab strip</strong> (Ctrl+Shift+T, or F6 to reach it)
+lets you switch between the list and any open messages.</li>
+</ul>
+<p>The list also stays visible while a message is still loading, and if
+a message fails to load the list remains on screen rather than leaving
+the pane blank.</p>
+<hr />
+<h2 id="fixed-the-compose-preview-window-no-longer-opens-blank">Fixed:
+The compose preview window no longer opens blank</h2>
+<p>Previewing the formatted (Markdown) version of a message you are
+composing opened a blank window on current WebView2 runtimes. The
+preview now renders your formatted message as expected.</p>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you, as always, to everyone who contributes to QuickMail
+through code, bug reports, feature suggestions, and other feedback —
+including the reports that shaped the calendar’s design, the tab-open
+behavior found during the theming review, and the notification and
+sync-reliability reports.</p>
+<hr />
+<h2 id="reporting-issues">Reporting Issues</h2>
+<p>Found a problem or have a suggestion? There are three ways to reach
+us — pick the one that fits:</p>
+<ol type="1">
+<li><strong>Report a Bug → Send</strong> (Help menu, inside QuickMail).
+Files the report for you anonymously — it includes no email address or
+other identifying information, so there is no way to follow up with you.
+<strong>Best when you don’t want any follow-up.</strong></li>
+<li><strong>Report a Bug → Copy report and open GitHub</strong> (Help
+menu). Opens a pre-filled issue that you submit under your own GitHub
+account, so your GitHub contact information is attached. <strong>Best
+when you have a GitHub account and want automatic filing plus direct
+contact.</strong></li>
+<li><strong>Email</strong> <a
+href="mailto:quickmailissues@theideaplace.net">quickmailissues@theideaplace.net</a>.
+<strong>Best when you don’t mind sending email and want a personal
+follow-up.</strong></li>
+</ol>
+<p>Full details, including exactly what a report contains (and what it
+never contains), are in the <a
+href="https://kellylford.github.io/QuickMail/reporting-issues.html">Reporting
+Issues section of the User Guide</a>.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3
+id="full-calendar-pr-273-spec-docsplanningfull-calendar-pm-dev-spec.md">Full
+calendar (PR #273, spec
+<code>docs/planning/full-calendar-pm-dev-spec.md</code>)</h3>
+<ul>
+<li>Local authoring with a modeless <code>EventEditorWindow</code> (per
+the modal-dialog rules — editable fields over the live WebView2),
+master/detail list + details pane, and four views
+(<code>Agenda</code>/<code>Day</code>/<code>Week</code>/<code>Month</code>)
+driven by <code>CalendarViewModel.ViewMode</code> +
+<code>ReferenceDate</code>. Month is a 42-cell grid with arrow
+navigation and Enter-to-drill.</li>
+<li>Recurrence is a practical RFC-5545 subset
+(<code>RecurrenceRule</code>, <code>RecurrenceExpander</code>):
+<code>FREQ</code> daily/weekly/monthly/yearly, <code>INTERVAL</code>,
+weekly <code>BYDAY</code>, and one <code>COUNT</code>/<code>UNTIL</code>
+end condition. Expansion is local wall-clock (DST-safe) with a ~10-year
+iteration cap. Per-occurrence edit/delete uses <code>EXDATE</code> +
+detach; whole-series edits preserve <code>EXDATE</code>s and the
+original start.</li>
+<li>All-day events are fully supported and persisted
+(<code>is_all_day</code> column; re-anchored to local midnight across
+all providers to avoid off-by-one-day display). The “timed events only /
+deferred” comment in <code>EventEditorViewModel</code> is stale and
+should be removed.</li>
+<li>Times stored as UTC ticks; TZID handling per provider
+(<code>Prefer: outlook.timezone</code> for Graph, RFC3339 offsets for
+Google, kind-carrying stamps for CalDAV).</li>
+<li>Sync engine (<code>GraphCalendarSyncService</code>, name predates
+multi-provider): read-down window −30…+365 days, replace-slice per
+account, background pass every 15 min plus one after startup mail sync,
+best-effort (never throws), <code>silentOnly</code> (no interactive
+sign-in). Write-back is <strong>single events only</strong> for
+Microsoft, Google, and iCloud (recurring push rejected pre-network with
+<code>NotSupportedException</code>); iCloud CalDAV write
+(<code>CalDavCalendarClient</code>) was added in a later PR — see
+<strong>iCloud calendar write</strong> below. Failed server create/edit
+falls back to a local save, announced. Which accounts sync is the
+per-account opt-in below.</li>
+<li>Folder tree: <code>Calendar</code> sentinel node with
+<code>All Calendars</code> / <code>Local Calendar</code> / one child per
+opted-in account, and — when an account has more than one calendar — a
+grandchild per calendar. <code>CalendarFilterFor</code> maps a node to
+<code>CalendarViewModel.SourceFilter</code> (a
+<code>CalendarFilter(Guid? Account, string? CalendarId)</code>
+record).</li>
+<li>Invitations: <code>LocalCacheCalendarProvider</code> harvests
+<code>text/calendar</code> parts; Accept/Tentative/Decline event card in
+the reading pane sends an ICS REPLY and upserts the response status
+immediately; <code>METHOD:CANCEL</code> marks events cancelled (filtered
+from all views).</li>
+<li>Reminders: opt-in 60-second timer (<code>CalendarReminders</code> /
+<code>CalendarReminderMinutes</code>, default off / 10 min), Windows
+notification + <code>AnnouncementCategory.Result</code>, fired at most
+once per <code>(uid, start)</code> per run.</li>
+<li>Export via <code>IcsModel.ExportEvent</code>
+(<code>calendar.exportEvent</code>, no default key).</li>
+<li>Settings: Calendar field labels; Calendar reminders + minutes.
+<code>ShowDeclinedEvents</code> remains config-only (read at
+construction; not live-updated).</li>
+</ul>
+<h3 id="per-account-calendar-sync-282">Per-account calendar sync
+(#282)</h3>
+<ul>
+<li>Calendar sync is now a per-account opt-in mirroring contact sync
+(#256), not a global setting. New <code>AccountModel.SyncCalendar</code>
+bool (auto-persists); a “Sync calendar from this account” checkbox in
+the Add Account and Manage Accounts dialogs
+(<code>AccountEditorViewModel.ShowCalendarSyncOption</code> /
+<code>AccountManagerViewModel.CanSyncCalendar</code> +
+<code>SetCalendarSyncAsync</code>, immediate-apply via a
+<code>Click</code> handler). Offered for Microsoft, Google, and iCloud —
+a superset of contacts.</li>
+<li><code>GraphCalendarSyncService.SyncAllAsync</code> now gates on
+<code>SyncCalendar</code>; new public
+<code>SyncAccountCalendarAsync</code> /
+<code>RemoveAccountCalendarAsync</code> drive the enable/disable paths.
+<code>IsCalendarPushAccount</code> (save-target picker) and the calendar
+tree loop also gate on the flag.</li>
+<li><strong>iCloud</strong> calendars are reached over CalDAV per
+account (<code>https://caldav.icloud.com</code>), reusing the account’s
+own app-specific password
+(<code>ICredentialService.GetPassword(account.Id)</code>) — the same one
+IMAP uses, no separate credential. <code>CalDavCalendarClient</code>
+(manual-redirect discovery + REPORT fetch) is retained and adapted
+per-account; the discovery result is cached per account id.</li>
+<li><strong>Consent</strong>: Microsoft gets a one-time
+<code>RequestCalendarConsentAsync</code>
+(<code>Calendars.ReadWrite</code>) at opt-in; Google’s calendar scope is
+already granted at mail sign-in; iCloud needs none. The
+<code>OAuthRouter</code> routes only Microsoft to the consent call.</li>
+<li><strong>Removed</strong> the interim global Settings → Internet
+Calendar (CalDAV) source: its UI, <code>SettingsViewModel</code> CalDav
+members, <code>[caldav]</code> config keys, and the synthetic-id
+(<code>AccountIdFor</code> / <code>SecretKeyFor</code>) helpers — all
+superseded by the per-account model.</li>
+<li>New palette command <code>calendar.syncNow</code> (“Sync Calendars
+Now”). Tests: per-account CalDAV sync (rewritten
+<code>CalDavCalendarSyncTests</code>), opt-in gating,
+<code>ShowCalendarSyncOption</code>,
+<code>IsCalendarPushAccount</code>.</li>
+</ul>
+<h3 id="multiple-calendars-per-account-separate-selectable">Multiple
+calendars per account (separate &amp; selectable)</h3>
+<ul>
+<li>Each account’s calendars (Home / Family / Work …) now sync and
+appear as <strong>separate selectable nodes</strong> under the account
+in the folder tree, instead of only the primary/default calendar.
+<code>CalendarEvent</code> gains
+<code>CalendarId</code>/<code>CalendarName</code> (two idempotent
+<code>ALTER TABLE</code> migrations, no schema-version bump); every
+event is tagged with its source calendar.</li>
+<li>All three providers enumerate every calendar and union them into the
+existing per-account replace-slice (one
+<code>ReplaceGraphCalendarEventsAsync(account.Id, union)</code>):
+Microsoft <code>GET /me/calendars</code> → per-calendar
+<code>calendarView</code>; Google <code>calendarList</code> →
+per-calendar events; iCloud CalDAV keeps <strong>all</strong> VEVENT
+collections (discovery cache is now a per-account list) and issues one
+REPORT per calendar. A single calendar’s fetch failing leaves the prior
+slice intact.</li>
+<li>Tree grandchildren (only when an account has &gt;1 calendar) are fed
+from a new <code>LocalStoreService.LoadCalendarSourcesAsync</code>
+(DISTINCT account/calendar), cached and refreshed on startup and after
+each sync. Selecting a calendar node filters to that calendar; the
+account node still shows all its calendars merged.</li>
+</ul>
+<h3 id="icloud-calendar-write-caldav">iCloud calendar write
+(CalDAV)</h3>
+<ul>
+<li>iCloud calendars are no longer read-only: you can <strong>create,
+edit, and delete single (non-repeating) appointments</strong> on them,
+alongside the existing Microsoft/Google write-back. When creating an
+appointment, the save-target picker lists each of your Apple calendars
+(e.g. “Apple: Home”, “Apple: Family”) so you choose which one.</li>
+<li><code>CalDavCalendarClient</code> gains
+<code>PutEventAsync</code>/<code>DeleteEventAsync</code> (the
+redirect/Basic-auth <code>SendAsync</code> refactored into a shared
+<code>SendCoreAsync</code> so reads and writes share it); PUT sends
+<code>text/calendar</code> with <code>If-None-Match: *</code> on create;
+the VCALENDAR body omits <code>METHOD</code> per RFC 4791.
+<code>GraphCalendarSyncService</code> create/edit/delete gain an iCloud
+branch; <code>IsCalendarPushAccount</code> includes iCloud.</li>
+<li>Read-sync now stores each event’s real CalDAV resource URL
+(<code>CalendarEvent.ResourceUrl</code>, new <code>resource_url</code>
+column), so editing or deleting an event <strong>created on another
+device</strong> targets the correct server resource (Apple names
+resources by a random filename, not the UID). Recurring events stay
+read-only; last-write-wins (no ETag/If-Match in v1).</li>
+</ul>
+<h3 id="icloud-contacts-via-carddav">iCloud contacts via CardDAV</h3>
+<ul>
+<li>The “Sync contacts from this account” checkbox (#256) now also
+appears for <strong>iCloud</strong> accounts, alongside Microsoft and
+Google — so every account offers a checkbox for each service QuickMail
+can read. iCloud contacts sync over <strong>CardDAV</strong>
+(<code>https://contacts.icloud.com</code>) using the account’s own
+app-specific password (<code>GetPassword(account.Id)</code>), no
+OAuth.</li>
+<li>New <code>CardDavContactClient</code> (mirrors
+<code>CalDavCalendarClient</code>: manual-redirect Basic-auth
+<code>SendAsync</code>, <code>current-user-principal</code> →
+<code>addressbook-home-set</code> → collections discovery,
+<code>addressbook-query</code> REPORT) + minimal vCard parsing
+(<code>VCardModel</code>, reusing <code>IcsModel</code>’s
+unfolding/block-scan/unescape).
+<code>ICloudContactSource : IProviderContactSource</code>
+(<code>ContactSource.ICloud</code>) plugs into
+<code>ContactSyncService</code> via an iCloud host guard in
+<code>SourceFor</code>. <code>ShowContactSyncOption</code> /
+<code>CanSyncContacts</code> extended to the iCloud host; consent is
+requested for Microsoft and Google only (iCloud reuses the app
+password). iCloud contacts are saved contacts only (CardDAV has no
+“recent recipients” concept).</li>
+</ul>
+<h3 id="go-to-date-pr-279">Go to Date (PR #279)</h3>
+<ul>
+<li><code>calendar.goToDate</code> (default <strong>Ctrl+G</strong>,
+rebindable, in the Command Palette) opens a modeless
+<code>GoToDateWindow</code> (DatePicker). Day/Week/Month keep their view
+and recenter; Agenda switches to Day. <code>RequestGoToDate</code>
+announces unavailability in online mode; the picker is
+single-instance.</li>
+</ul>
+<h3 id="mail-sync-reliability-prs-271-272-split-from-240">Mail-sync
+reliability (PRs #271, #272, split from #240)</h3>
+<ul>
+<li><strong>#267 (PR #272):</strong>
+<code>ConfigModel.MailSyncPollMinutes</code> (default 5; 0 disables;
+clamped 1–120) drives <code>StartFallbackSyncAsync</code> in
+<code>MainViewModel</code>, a periodic inbox re-sync behind IMAP IDLE.
+New Settings → Sync control; re-reads the interval each cycle so changes
+apply without a restart; notifies through the shared de-dupe path.</li>
+<li><strong>#268 (PR #271):</strong> NOOP-probe pooled IMAP connections
+idle beyond 30s before reuse, fixing “An existing connection was
+forcibly closed by the remote host” when opening a message after a long
+idle.</li>
+<li><strong>#269 (PR #271):</strong> reconcile <code>\Seen</code> for
+already-cached messages on folder sync, so a message read in another
+client stops showing unread.</li>
+<li><strong>#270 (PRs #271, #274):</strong> the new-mail notify
+breakdown (incoming/unread/fresh counts and UIDs) logs at
+<strong>Log</strong> level when a toast actually fires
+(<code>fresh &gt; 0</code>), so users who enable logging via Settings →
+Advanced (Log, not Debug) can capture it; the frequent
+<code>fresh == 0</code> evaluations stay Debug-only.</li>
+</ul>
+<h3 id="wakereconnect-toast-suppression-pr-275">Wake/reconnect toast
+suppression (PR #275)</h3>
+<ul>
+<li>When one notify evaluation yields more than
+<code>MaxNotifyBatchSize</code> (5) genuinely-new messages, treat it as
+a catch-up backlog and skip the toast (messages still marked notified so
+they don’t re-fire; count logged). The startup backlog was already
+excluded by the notify threshold; this is its mid-session equivalent for
+wake/reconnect bursts.</li>
+</ul>
+<h3
+id="tab-open-mode-showed-the-message-list-instead-of-the-message-issue-177-pr-264">Tab
+open-mode showed the message list instead of the message (issue #177, PR
+#264)</h3>
+<ul>
+<li>In <code>MessageOpenMode.Tab</code>, the right-pane content region
+left the message-list container visible (it was the
+<code>DockPanel</code> fill child) while the reading pane showed as a
+<code>MinHeight=200</code> <code>Dock=Bottom</code> sliver, so a message
+tab rendered the list plus a body strip rather than the message alone.
+Window mode was unaffected (separate <code>MessageWindow</code>);
+Reading-Pane mode was unaffected.</li>
+<li>The content region is now a two-row <code>Grid</code> whose row
+sizes swap on a new <code>IsMessageListAreaVisible</code> VM flag via
+<code>BoolToGridLengthConverter</code>. The flag is
+<code>!(MessageOpenMode == Tab &amp;&amp; ActiveTab is MessageTabViewModel &amp;&amp; IsMessageOpen)</code>
+— the <code>IsMessageOpen</code> term keeps the list visible during the
+async body load and if the load fails/returns null, so a slow or failed
+open never blanks the pane (Feature Checklist rule 4).
+<code>CycleFocusAsync</code> gates the message-list F6 stop on the same
+flag; the window-level <strong>Escape</strong> handler routes to
+<code>ActivateMessageListTab()</code> (revealing the list, leaving the
+tab open) in Tab mode instead of <code>CloseReadingPane</code>.</li>
+<li>Reading-Pane and Window layouts are byte-for-byte equivalent (the
+flag is always true outside Tab mode). Independent review caught and
+fixed the transient/failed-load blank-pane case before merge. Adds
+<code>TabModeMessageListVisibilityTests</code> (8 cases).</li>
+<li>Brian Vogel’s #177 review also surfaced two still-parked,
+pre-existing items — the Reading-Pane reading pane not being resizable,
+and account deletion triggering repeated re-auth prompts — neither of
+which is addressed here.</li>
+</ul>
+<h3 id="calendar-fixes-polish-290-291-293-297">Calendar fixes &amp;
+polish (#290, #291, #293, #297)</h3>
+<ul>
+<li><strong>#290</strong> — switching calendar views (A/D/W/M) now moves
+keyboard focus into the new view, so the arrow keys work immediately
+instead of needing a Tab-away-and-back.
+<code>CalendarViewModel.SwitchView</code> raises
+<code>ListFocusRequested</code>.</li>
+<li><strong>#291</strong> — with calendar field labels off (concise
+mode), event rows carry <strong>no</strong> field labels at all
+(comma-separated values only); the appointment editor shows the event’s
+calendar in a read-only, tab-reachable field.
+<code>CalendarEvent.DisplayLine</code> drops the
+<code>Location:</code>/<code>Organizer:</code> labels;
+<code>EventEditorViewModel</code> exposes the calendar label.</li>
+<li><strong>#293</strong> — Google events on a
+<strong>secondary</strong> calendar can now be deleted/edited: the write
+path (<code>GoogleCalendarClient</code> create/update/delete) was
+hardcoded to <code>calendars/primary/events</code> and 404’d on any
+other calendar; it now targets the event’s own <code>CalendarId</code>
+(URL-escaped, <code>primary</code> fallback). Adding an account now
+triggers an immediate calendar sync
+(<code>TriggerCalendarSyncSoon</code>) so its sub-calendars appear right
+away instead of only after the next 15-minute pass or a restart. Also
+fixes tests writing into the user’s real <code>quickmail.log</code> (a
+<code>[ModuleInitializer]</code> redirects test logging to a temp
+dir).</li>
+<li><strong>#297</strong> — the meeting-invite Accept/Decline card now
+persists across opens.
+<code>ImapMailService.GetMessageDetailCoreAsync</code> set
+<code>CalendarInvite</code> (parsed, in-memory) but not
+<code>CalendarIcs</code> (the raw text the local store caches), so once
+the background prefetch cached the row the card vanished on every later
+cache-served open — a prefetch-vs-open race that looked
+account-dependent. Now the raw ICS is persisted.</li>
+</ul>
+<h3 id="markdown-preview-window-opened-blank-301">Markdown preview
+window opened blank (#301)</h3>
+<ul>
+<li><code>MarkdownPreviewWindow</code>’s <code>NavigationStarting</code>
+handler cancelled every navigation except <code>about:</code>, which
+cancelled its own <code>data:text/html</code> content — how current
+WebView2 runtimes deliver <code>NavigateToString</code> — leaving a
+blank <code>about:blank</code> page. It now allows <code>data:</code>
+through (as <code>MessageWindow</code> already does); external
+<code>http</code>/<code>https</code>/<code>mailto</code> links still
+route to the default browser and the content stays CSP-locked in
+<code>BuildHtml</code>.</li>
+</ul>
+<h3 id="respond-to-invitations-from-the-calendar">Respond to invitations
+from the calendar</h3>
+<ul>
+<li>Pressing <strong>Enter</strong> on a pending email invitation in the
+calendar (new <code>CalendarEvent.IsPendingInvite</code> =
+<code>!IsUserCreated &amp;&amp; !IsGraph &amp;&amp; ResponseStatus == Pending</code>)
+opens a <code>ContextMenu</code> (Accept / Tentative / Decline / — /
+Open full appointment) instead of jumping to the source email. The menu
+is anchored to the focused row and, because a programmatically-opened
+<code>ContextMenu</code> doesn’t reliably focus its first item, an
+<code>Opened</code> handler focuses “Accept” so a screen reader
+announces it; <code>Closed</code> returns focus to the list. Every
+non-pending row keeps its prior Enter dispatch (edit / open source /
+drill day).</li>
+<li><code>MainViewModel.SendIcsReply</code> was refactored into a shared
+<code>SendIcsReplyForAsync(invite, account, partStat, actionLabel, sourceMessageId, sourceFolder)</code>;
+the reading-pane card and the new
+<code>RespondToCalendarInviteAsync(evt, partStat, actionLabel)</code>
+both call it. The calendar path loads the invite’s source message
+(<code>LoadDetailAsync</code> → <code>GetMessageDetailAsync</code>
+fallback), replies <strong>from the account that received the
+invite</strong> (<code>evt.AccountId</code> — not any default, guarding
+against the #296 mis-routing), announces the result, and updates the
+row’s response status. Palette commands
+<code>calendar.acceptInvite</code> /
+<code>calendar.tentativeInvite</code> /
+<code>calendar.declineInvite</code> (no default key) are available when
+a pending invitation is selected. Tests: reply routes from the receiving
+account and updates status; empty-source guard;
+<code>IsPendingInvite</code> predicate.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.34.html">Newer: 0.8.34</a> | <a href="release-notes-v0.8.32.html">Older: 0.8.32</a></div>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.4 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.5.html">Newer: 0.7.5</a> | <a href="release-notes-v0.7.3.html">Older: 0.7.3</a></div>
+  <h1 id="quickmail-v0.7.4-release-notes">QuickMail v0.7.4 Release
+Notes</h1>
+<p class="version">Released June 17, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.4">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.4:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.4-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="new-features">New Features</h2>
+<h3 id="gmail-support-via-google-sign-in">Gmail Support via Google
+Sign-In</h3>
+<p>You can now add a Gmail account using your Google account instead of
+an app password.</p>
+<p><strong>Adding a Gmail account:</strong> Open the account manager
+(<strong>Settings → Accounts</strong>) and choose <strong>Add
+Account</strong>. Enter an account name, a sender display name, and your
+Gmail address in the <strong>Email / Username</strong> field. When
+QuickMail sees a Gmail address, it automatically selects Google
+authentication for the account — you do not need to set the
+authentication type yourself. Move to the <strong>Sign in with
+Google</strong> button and activate it; your default browser opens to a
+Google sign-in page. Complete the Google sign-in, grant QuickMail
+permission to read and send mail, then close the browser window. Back in
+QuickMail, activate the <strong>Add Account</strong> button to add the
+account, then close the account manager. Gmail’s IMAP and SMTP server
+settings are filled in automatically; you do not need to enter them.</p>
+<p>You may see a message that no password was saved for the account.
+This is expected when you use Google authentication — there is no
+password to save, because Gmail signs in through your Google account
+rather than a stored password.</p>
+<p>The Google sign-in itself is stored securely in Windows Credential
+Manager, the same store QuickMail uses for other accounts. The access
+token refreshes automatically in the background; you will not be
+prompted to sign in again unless you revoke access from your Google
+account settings.</p>
+<p><strong>Removing a Gmail account:</strong> Open <strong>Settings →
+Accounts</strong>, select the account, and press
+<strong>Delete</strong>. This removes the account from QuickMail and
+clears the stored credential from Windows Credential Manager.</p>
+<p><strong>Important: Google’s “unverified app” warning.</strong> When
+you sign in with your Google account, Google displays a warning that
+QuickMail is an unverified application and asks you to confirm you want
+to proceed. This is normal and expected — QuickMail has not undergone
+Google’s App Verification process, which can take several weeks and
+potentially require expensive third-party security assessment. You can
+safely ignore this warning and click <strong>Advanced</strong> →
+<strong>Go to QuickMail (unsafe)</strong> to continue signing in.</p>
+<p>If you prefer to avoid this warning, Gmail accounts also support
+app-specific passwords: generate one from your Google Account security
+settings and use it with QuickMail’s standard <strong>Password</strong>
+authentication method instead of <strong>Google OAuth</strong>.</p>
+<h3 id="grab-addresses-add-to-group">Grab Addresses: Add to Group</h3>
+<p>When grabbing addresses from an open message
+(<code>Ctrl+Shift+G</code>), you can now add the selected contacts
+directly to an address book group in the same step.</p>
+<p><strong>How it works:</strong></p>
+<ol type="1">
+<li>Press <code>Ctrl+Shift+G</code> to open the <strong>Add to Address
+Book</strong> window.</li>
+<li>The message’s addresses appear as checkboxes, all checked by
+default. Uncheck any you do not want.</li>
+<li>Check <strong>Add to group</strong> to show the group options.</li>
+<li>Choose an existing group from the <strong>Group</strong> combo box,
+or choose <strong>Create new group</strong> and type a name in the
+<strong>New group name</strong> field.</li>
+<li>Press <strong>Save</strong> (or Enter). Each checked contact is
+added to your address book and, if you chose a group, added to that
+group.</li>
+</ol>
+<p>If you type a new group name and leave it blank when Save is pressed,
+QuickMail announces “Enter a name for the new group” and keeps the
+window open. No contacts are saved until a valid group name is provided
+or you remove the name and save without the group option checked.</p>
+<p>If you type a new group name that already exists, QuickMail does not
+create a second group with that name. Instead it tells you the group
+already exists and keeps the window open so you can enter a different
+name, or pick the existing group from the list. This prevents two groups
+with the same name — which could otherwise lead to sending to the wrong
+people.</p>
+<h3 id="unique-group-names">Unique Group Names</h3>
+<p>Address book group names are now required to be unique, regardless of
+letter case (“Team” and “team” are treated as the same name). This
+applies everywhere groups are created or renamed — the Grab Addresses
+window, the Group Manager, and the Address Book. If a name is already in
+use, QuickMail tells you and leaves your text in place so you can choose
+a different name. Existing groups are never merged.</p>
+<h3 id="grab-addresses-tab-navigation-fix">Grab Addresses: Tab
+Navigation Fix</h3>
+<p>Previously, Tab cycled through every address checkbox in the list,
+requiring many Tab presses to reach the Save or Cancel button. Tab now
+stops on the address list once — pressing Tab again exits the list and
+moves to the <strong>Add to group</strong> checkbox, then to the group
+controls, then to Save and Cancel. Arrow keys still move between
+individual address checkboxes within the list.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>Resource leak in compose windows.</strong> Each compose
+window left a timer handle open when closed because
+<code>ComposeViewModel</code>’s auto-save cancellation token source was
+never cancelled or disposed. The handle is now cancelled and disposed
+when the compose window closes.</li>
+<li><strong>SemaphoreSlim handles leaked on app exit.</strong>
+<code>ContactService</code> and <code>TemplateService</code> each hold a
+<code>SemaphoreSlim</code> whose underlying <code>WaitHandle</code> was
+never released. Both services are now disposed on application exit.</li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="google-oauth">Google OAuth</h3>
+<ul>
+<li><code>AuthType.OAuth2Google</code> enum value;
+<code>FeatureFlag.GoogleAuth</code> (default on).</li>
+<li><code>IGoogleOAuthService</code> / <code>GoogleOAuthService</code>:
+browser sign-in via <code>LocalServerCodeReceiver</code>
+(Google.Apis.Auth); access token refreshed automatically; refresh token
+persisted in Windows Credential Manager via
+<code>CredentialService.SaveSecret</code> / <code>GetSecret</code> /
+<code>DeleteSecret</code>.</li>
+<li><code>OAuthRouter</code>: routes <code>IOAuthService</code> calls to
+MSAL or <code>GoogleOAuthService</code> by <code>AuthType</code>, so
+<code>ImapMailService</code> and <code>SmtpService</code> need only a
+one-line guard change.</li>
+<li><code>ConfigModel</code> / <code>ConfigService</code>:
+<code>[google]</code> section reads <code>GoogleClientId</code> /
+<code>GoogleClientSecret</code> from <code>config.ini</code>;
+credentials are gitignored and supplied via GitHub Actions secrets in
+CI.</li>
+<li><code>AddAccountViewModel</code>: auto-fills
+<code>imap.gmail.com:993 (SSL)</code> and
+<code>smtp.gmail.com:587</code> when <code>OAuth2Google</code> is
+selected, matching the Microsoft auto-fill pattern.</li>
+<li><code>AccountEditorViewModel</code>:
+<code>SignInGoogleCommand</code> (async, opens browser flow),
+<code>IsGoogleOAuth</code> computed property, updated
+<code>AuthTypeIndex</code> (0 = Password, 1 = Microsoft, 2 =
+Google).</li>
+<li><code>AddAccountDialog</code> / <code>AccountManagerDialog</code>:
+Google OAuth combo item and <strong>Sign in with Google</strong> button,
+both gated by <code>ShowGoogleAuthOption</code> /
+<code>FeatureFlag.GoogleAuth</code>.</li>
+<li><code>AccountPropertiesBuilder</code>, <code>MainViewModel</code>,
+<code>AccountManagerViewModel</code>: updated to handle
+<code>OAuth2Google</code> in auth display and sign-out paths.</li>
+<li><code>docs/privacy.html</code>: privacy policy page hosted on GitHub
+Pages at
+<code>https://kellylford.github.io/QuickMail/privacy.html</code>;
+required for Google OAuth verification.</li>
+<li><code>StubGoogleOAuthService</code> added to test project.</li>
+</ul>
+<h3 id="grab-addresses">Grab Addresses</h3>
+<ul>
+<li><code>GrabAddressesDialog</code> shown modelessly
+(<code>.Show()</code>) instead of via <code>.ShowDialog()</code>. Modal
+nesting over a WebView2 host + editable text field + screen reader
+caused a hard UI-thread deadlock on focus. Modeless windows have no
+<code>DialogResult</code>, so Escape and Cancel are wired to
+<code>Close()</code> explicitly; Escape is guarded against the group
+combo’s open dropdown.</li>
+<li><code>Save_Click</code> service calls wrapped in try/catch: failures
+are logged and announced (<code>Result</code> category); the dialog
+stays open for retry rather than crashing on an unhandled
+<code>async void</code> exception.</li>
+<li><code>UpsertContactAsync</code>: set <code>contact.Id</code> for
+existing contacts so <code>AddMemberAsync</code> receives a valid
+ID.</li>
+<li><code>GrabAddressesDialogTests</code> rewritten: 9 tests covering
+focus on open, Tab exit from address list, static group controls,
+modeless Escape-close, Save with new group, Save without group,
+empty-name validation, and duplicate-name rejection
+(case-insensitive).</li>
+</ul>
+<h3 id="group-name-uniqueness">Group Name Uniqueness</h3>
+<ul>
+<li><code>ContactService.CreateGroupAsync</code> and
+<code>RenameGroupAsync</code> reject a name that already exists
+(case-insensitive, <code>OrdinalIgnoreCase</code>) by throwing the new
+public <code>DuplicateGroupNameException</code>. The check runs inside
+the load lock so there is no check-then-create race. No merging is
+performed.</li>
+<li>All three group entry points catch it and announce a
+<code>Result</code>-category message, leaving the input in place:
+<code>GrabAddressesDialog.Save_Click</code>,
+<code>GroupManagerViewModel</code> (create + rename), and
+<code>AddressBookViewModel</code> (create + rename).</li>
+</ul>
+<h3 id="idisposable">IDisposable</h3>
+<ul>
+<li><code>ComposeViewModel.Dispose()</code>: calls
+<code>_autoSaveCts.Cancel()</code> before <code>Dispose()</code>
+(prevents <code>ObjectDisposedException</code> in in-flight autosave
+tasks per the IDisposable rules in <code>CLAUDE.md</code>).</li>
+<li><code>ComposeWindow.OnClosed</code>: calls
+<code>_vm.Dispose()</code>.</li>
+<li><code>App.OnExit</code>: <code>ContactService</code> and
+<code>TemplateService</code> promoted to private fields and
+disposed.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.5.html">Newer: 0.7.5</a> | <a href="release-notes-v0.7.3.html">Older: 0.7.3</a></div>
+</body>
+</html>

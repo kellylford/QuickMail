@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.6 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.7.html">Newer: 0.7.7</a> | <a href="release-notes-v0.7.5.html">Older: 0.7.5</a></div>
+  <h1 id="quickmail-v0.7.6-release-notes">QuickMail v0.7.6 Release
+Notes</h1>
+<p class="version">Released June 26, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.6">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.6:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.6-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="important">Important</h2>
+<p>QuickMail is still under active development and supporting various
+email providers is an important goal for the product. That said, it is a
+broad target and you may want to use the BCC field or another option
+when sending email to ensure it is retained. Reasonable testing is done
+before releasing a build but as a bug fix here shows, sometimes issues
+can arise. An always BCC myself feature is also under consideration.</p>
+<hr />
+<h2 id="improvements">Improvements</h2>
+<h3 id="calendar-upcoming-appointments-from-invitation-emails">Calendar:
+upcoming appointments from invitation emails</h3>
+<p>QuickMail now tracks upcoming appointments from calendar invitation
+emails in your mailbox. A <strong>Calendar</strong> node appears in the
+folder list; selecting it shows your upcoming events, drawn from
+<code>.ics</code> attachments in your messages and sorted by date and
+time.</p>
+<blockquote>
+<p><strong>Scope note:</strong> This initial calendar implementation is
+designed to close a specific gap: when you accept a meeting invitation
+from within QuickMail, you now have a place to see what you accepted. It
+is not a general-purpose calendar. A more complete calendar experience
+is under consideration for a future release.</p>
+</blockquote>
+<ul>
+<li><strong>Keyboard navigation:</strong> Arrow keys move through the
+event list and stay within the calendar pane. F6 cycles to the next pane
+as expected.</li>
+<li><strong>Open the source email:</strong> Press <strong>Enter</strong>
+on any event to open the invitation email it came from. If the email is
+no longer in your local cache, QuickMail announces this and does nothing
+instead of showing an error.</li>
+<li><strong>Invite updates and cancellations:</strong> When you receive
+an updated or cancelled invitation, the calendar reflects the change
+automatically — no restart required.</li>
+<li><strong>Accepting invites:</strong> Accepting a meeting invite
+updates the calendar without restarting.</li>
+</ul>
+<h3
+id="startup-sync-is-faster-especially-with-multiple-accounts">Startup
+sync is faster, especially with multiple accounts</h3>
+<p>QuickMail now syncs your <strong>Inbox folders first</strong> across
+all accounts before syncing sent mail, drafts, trash, and other folders.
+Accounts also sync in parallel rather than one at a time. Together these
+changes mean new mail in your inboxes typically appears within a few
+seconds of launch rather than after the full sync cycle completes. No
+configuration is required — the improvement applies automatically. (<a
+href="https://github.com/kellylford/QuickMail/issues/144">#144</a>)</p>
+<h3 id="move-and-copy-now-use-a-folder-tree-instead-of-a-flat-list">Move
+and copy now use a folder tree instead of a flat list</h3>
+<p>When you choose to move or copy an email message or conversation, the
+folder picker now shows the same hierarchical tree view used in the main
+folder panel — folders nested under their parents, with account names as
+collapsible group headers when multiple accounts are present. Previously
+the picker showed a flat alphabetical list with full folder paths
+written out for every entry. (<a
+href="https://github.com/kellylford/QuickMail/issues/145">#145</a>)</p>
+<h3
+id="move-to-folder-and-copy-to-folder-now-appear-in-the-command-palette">Move
+to Folder and Copy to Folder now appear in the command palette</h3>
+<p><strong>Move to Folder</strong> and <strong>Copy to Folder</strong>
+are now available in the command palette
+(<strong>Ctrl+Shift+P</strong>), in addition to the existing context
+menu entries. (#146)</p>
+<h3 id="logging-control-in-advanced-settings">Logging control in
+Advanced settings</h3>
+<p><strong>Settings → Advanced</strong> now has a <strong>QuickMail
+Logging</strong> section with two options:</p>
+<ul>
+<li><strong>Enable logging</strong> checkbox — turn logging on or off.
+Logging is <strong>off by default</strong>. When enabled, QuickMail
+writes activity to <code>quickmail.log</code> in your profile directory
+(usually <code>%APPDATA%\QuickMail</code>, or the path supplied via
+<code>--profileDir</code>). Changes take effect as soon as you select
+<strong>Save</strong> — no restart required.</li>
+<li><strong>Delete QuickMail log</strong> button — deletes the current
+log file after a Yes/No confirmation. If logging is still enabled, a
+fresh log file is created the next time an activity is logged.</li>
+</ul>
+<blockquote>
+<p><strong>Note:</strong> If QuickMail is launched with the
+<code>/debug</code> flag, logging always runs regardless of the
+<strong>Enable logging</strong> setting. The <code>/debug</code> flag is
+intended for diagnosing problems and overrides this preference so that
+no diagnostic detail is lost.</p>
+</blockquote>
+<h3 id="spelling-suggestions-are-now-numbered">Spelling suggestions are
+now numbered</h3>
+<p>When a misspelling is announced, each suggestion is now preceded by
+its number — for example: “Misspelling: teh. 1: the, 2: then, 3: them.”
+This makes the <code>Alt+1</code> / <code>Alt+2</code> /
+<code>Alt+3</code> correction shortcuts immediately obvious without
+having to count suggestions mentally.</p>
+<p>A new <strong>Spelling Suggestions Verbosity</strong> setting in
+<strong>Settings → Screen Reader Announcements</strong> lets you choose
+between <strong>Numbers with suggestions</strong> (the new default) and
+<strong>Just suggestions</strong> if you prefer the previous style.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<h3
+id="newsletter-emails-no-longer-announce-meaningless-characters-at-the-top">Newsletter
+emails no longer announce meaningless characters at the top</h3>
+<p>Opening a newsletter from MailChimp, Mailmojo, or similar senders no
+longer causes screen readers to read a long sequence of invisible
+Unicode characters before reaching the message body. These characters
+(U+034F Combining Grapheme Joiner and U+200C Zero-Width Non-Joiner) are
+padding injected by newsletter tools to control the preview snippet
+shown in email client lists — they are meant to be invisible.
+QuickMail’s HTML sanitizer was stripping the <code>display:none</code>
+style that kept them hidden, making the whole block visible to screen
+readers. They are now removed before sanitization runs. (#142)</p>
+<h3
+id="spell-check-corrections-no-longer-jump-focus-to-the-menu-bar">Spell-check
+corrections no longer jump focus to the menu bar</h3>
+<p>Pressing <strong>Alt+1</strong>, <strong>Alt+2</strong>, or
+<strong>Alt+3</strong> to apply a spell-check suggestion in the compose
+window no longer causes focus to jump to the menu bar (File menu). The
+earlier fix for this class of bug (#130) handled window-level shortcuts
+(Alt+S, Alt+U, Alt+M, Alt+Y) but missed the spell-check correction
+paths. The suppression flag is now armed in both the plain-text and
+rich-text correction handlers. (#140)</p>
+<h3
+id="shifttab-from-the-message-body-returns-focus-to-header-fields">Shift+Tab
+from the message body returns focus to header fields</h3>
+<p>In both plain-text and HTML compose modes, pressing
+<strong>Shift+Tab</strong> from the message body now moves focus back to
+the Subject field and through the other header fields in reverse order.
+Previously, <code>AcceptsTab</code> on the editor blocked WPF’s
+reverse-tab navigation, leaving focus stranded in the body. List
+indentation (Tab to indent, Shift+Tab to dedent) continues to work
+correctly inside list items in Markdown and HTML modes. (#131)</p>
+<h3
+id="altkey-shortcuts-in-compose-no-longer-activate-the-menu-bar">Alt+key
+shortcuts in compose no longer activate the menu bar</h3>
+<p>Pressing <strong>Alt+S</strong> to send, <strong>Alt+U</strong> for
+subject, <strong>Alt+M</strong> for From, or <strong>Alt+Y</strong> for
+body no longer causes the menu bar to receive focus after the shortcut
+runs. The previous fix intercepted the Win32 <code>SC_KEYMENU</code>
+system command but missed two additional paths:
+<code>DefWindowProc</code> generating <code>SC_KEYMENU</code> from the
+Alt key-release, and WPF’s <code>AccessKeyManager</code> responding to
+the Alt key-up event independently of Win32. The fix now intercepts
+<code>WM_KEYUP(VK_MENU)</code> in the WndProc hook before either path
+fires. (#130)</p>
+<h3
+id="calendar-invitation-links-no-longer-error-when-the-source-email-has-been-purged">Calendar
+invitation links no longer error when the source email has been
+purged</h3>
+<p>Pressing <strong>Enter</strong> on a calendar event whose original
+invitation email had been removed from the local message cache (due to
+the sync window advancing or a remote deletion) previously failed with a
+“Message UID not found” error. The local store now clears the
+source-message link when the referenced message is purged, and a
+background cleanup pass at the end of each sync removes any orphaned
+links that slipped through earlier. If no source email is available,
+pressing Enter announces “The original invitation email is no longer in
+your local message cache” and does nothing, instead of attempting a
+failing network fetch.</p>
+<h3 id="all-flagged-mail-virtual-folder-renamed-to-all-flagged">“All
+Flagged Mail” virtual folder renamed to “All Flagged”</h3>
+<p>The cross-account virtual folder that collects all flagged messages
+is now named <strong>All Flagged</strong> to match the shorter,
+consistent naming used by other virtual folders. (#135)</p>
+<h3
+id="adding-a-new-account-no-longer-disconnects-existing-accounts">Adding
+a new account no longer disconnects existing accounts</h3>
+<p>Opening the Account Manager and adding a new account no longer causes
+all existing accounts to appear disconnected. The bug was a race
+condition in the <code>AccountReachabilityChanged</code> event handler:
+when the Account Manager refreshed the accounts collection, the event
+handler remained bound to the old account objects. New accounts would
+never receive their connection status updates and would show as
+disconnected indefinitely. The handler is now properly unsubscribed and
+re-subscribed when the accounts collection is refreshed. (#126)</p>
+<h3
+id="virtual-folder-refresh-now-reconciles-read-and-flag-state">Virtual
+folder refresh now reconciles read and flag state</h3>
+<p>Pressing <strong>F5</strong> in <strong>All Mail</strong>,
+<strong>All Inboxes</strong>, <strong>Drafts</strong>,
+<strong>Sent</strong>, <strong>Trash</strong>, or a per-account All Mail
+view now correctly updates messages that were already in the list.
+Previously, if you marked a message read or flagged it in another mail
+client and then pressed F5, the existing row kept its stale state — only
+newly arrived messages were added. The refresh now updates
+<code>IsRead</code>, reply/forward state, attachments, and flag
+information on any message that has changed on the server, without
+disturbing selection or screen reader focus. (#111)</p>
+<h3
+id="sent-folder-now-recognized-on-servers-that-name-it-sent-messages">Sent
+folder now recognized on servers that name it “Sent Messages”</h3>
+<p>On IMAP servers that use “Sent Messages” as the Sent folder name —
+including Apple Mail and some Dovecot configurations — sent mail now
+appears correctly in the Sent view. Previously, QuickMail’s
+special-folder detection did not recognize this name variant, so sent
+messages were not mapped and the Sent view appeared empty for those
+accounts. (#149)</p>
+<h3
+id="shiftf10-context-menu-regression-in-conversation-tree-fixed">Shift+F10
+context menu regression in conversation tree fixed</h3>
+<p>Pressing <strong>Shift+F10</strong> on a message in the conversation
+tree now opens the QuickMail context menu correctly. A previous fix to
+conversation-tree context menu handling had inadvertently suppressed
+Shift+F10 for messages shown as tree items. The fix also corrects the
+menu’s placement target so that Move to Folder and Copy to Folder work
+correctly when opened from the conversation tree. (#146)</p>
+<hr />
+<h2 id="known-issues">Known Issues</h2>
+<h3
+id="first-shiftf10-press-shows-the-system-menu-instead-of-the-quickmail-context-menu">First
+Shift+F10 press shows the system menu instead of the QuickMail context
+menu</h3>
+<p>On the very first Shift+F10 keypress after launching QuickMail, the
+Windows system menu (Restore, Move, Size, Minimize, Maximize, Close) may
+appear instead of the QuickMail context menu. All subsequent presses in
+the same session work correctly.</p>
+<p><strong>Workaround:</strong> Press Shift+F10 a second time. After the
+first press, the behaviour is correct for the remainder of the
+session.</p>
+<p>The root cause is a startup-timing issue: WebView2 initialization can
+claim Win32 focus before WPF’s first focus-restoration pass completes.
+When Shift+F10 arrives while <code>Keyboard.FocusedElement</code> is
+null, WPF has no element to route <code>ContextMenuOpening</code> from
+and falls through to <code>DefWindowProc</code>, which shows the system
+menu. (<a
+href="https://github.com/kellylford/QuickMail/issues/148">#148</a>)</p>
+<h3
+id="icloud-two-copies-of-sent-messages-appear-in-sent-messages">iCloud:
+two copies of sent messages appear in Sent Messages</h3>
+<p>When sending from an iCloud account, two identical copies of each
+sent message may appear in the Sent Messages folder. iCloud’s SMTP
+server saves a copy automatically when relaying the message; QuickMail
+also appends a copy after a successful send. Before fix #149 added the
+“Sent Messages” folder alias, QuickMail’s explicit append was silently
+failing — so only the auto-saved copy existed. The fix makes both copies
+land correctly.</p>
+<p><strong>Impact:</strong> Cosmetic only. Both copies are identical and
+no mail is lost.</p>
+<p><strong>Planned fix:</strong> Before appending, search the Sent
+folder for a matching <code>Message-ID</code> and skip the append if a
+copy already exists. (<a
+href="https://github.com/kellylford/QuickMail/issues/150">#150</a>)</p>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="invokeonui-dispatcher-guard">InvokeOnUi dispatcher guard</h3>
+<p><code>InvokeOnUi</code> (the helper that marshals change-notifier
+events onto the UI thread) now detects background STA threads whose
+dispatcher is not pumping a message loop and runs the action inline
+instead of queuing it. This prevents a class of silent hang where an
+event fires on a background STA thread that has no WPF message loop —
+the queued work would never execute and the caller would time out.</p>
+<h3 id="virtual-folder-refresh-reconciliation">Virtual folder refresh
+reconciliation</h3>
+<ul>
+<li><code>MainViewModel</code>: replaced the add-only
+<code>existingKeys</code> <code>HashSet</code> in all virtual-folder
+merge paths (All Mail, per-account All Mail, All Inboxes, Drafts, Sent,
+Trash) with a <code>Dictionary</code> keyed on
+<code>(MessageId, AccountId, FolderName)</code>. On collision, a new
+<code>ReconcileMessageState</code> helper copies server-fresh mutable
+fields (<code>IsRead</code>, <code>IsReplied</code>,
+<code>IsForwarded</code>, <code>HasAttachments</code>,
+<code>FlagId</code>, <code>FlagName</code>, <code>FlagColorHex</code>,
+<code>IsServerFlagged</code>) onto the existing
+<code>ObservableObject</code> in place, triggering
+<code>PropertyChanged</code> so rows update without disturbing selection
+or screen reader focus. Genuinely new messages continue to be inserted
+sorted. The local-store upsert at the end of each path already covered
+all fetched messages, so cache correctness was unaffected.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.7.html">Newer: 0.7.7</a> | <a href="release-notes-v0.7.5.html">Older: 0.7.5</a></div>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.8 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.8.1.html">Newer: 0.7.8.1</a> | <a href="release-notes-v0.7.7.html">Older: 0.7.7</a></div>
+  <h1 id="quickmail-v0.7.8-release-notes">QuickMail v0.7.8 Release
+Notes</h1>
+<p class="version">Released June 28, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.8">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.8:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.8-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>Attachment list now announces correctly with screen
+readers.</strong> When arrowing through the attachment list in a compose
+window or reading pane, some screen readers were reading the internal
+class name (<code>QuickMail.Models.AttachmentModel</code>) instead of
+the file name. Each attachment now has a proper accessible label — file
+name and size — that screen readers announce when focus moves to it.
+This bug did not affect JAWS, which has a long-standing workaround for
+this specific WPF pattern.</li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="attachment-list-accessible-names">Attachment list accessible
+names</h3>
+<ul>
+<li><code>AttachmentModel</code>: added <code>AccessibleName</code>
+property returning <code>"{FileName}, {FileSizeDisplay}"</code>
+(e.g. “report.pdf, 152 KB”).</li>
+<li><code>MainWindow.xaml</code>, <code>ComposeWindow.xaml</code>,
+<code>MessageWindow.xaml</code>: added
+<code>ListBox.ItemContainerStyle</code> to each attachment list binding
+<code>AutomationProperties.Name</code> to
+<code>{Binding AccessibleName}</code>. Without this, WPF’s automation
+peer fell back to <code>AttachmentModel.ToString()</code> — the full
+type name — as the accessible name of each list item. Same root cause
+and fix as the keyboard shortcuts list in v0.7.5 (#107).</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.8.1.html">Newer: 0.7.8.1</a> | <a href="release-notes-v0.7.7.html">Older: 0.7.7</a></div>
+</body>
+</html>

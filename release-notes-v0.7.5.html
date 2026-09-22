@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.5 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.6.html">Newer: 0.7.6</a> | <a href="release-notes-v0.7.4.html">Older: 0.7.4</a></div>
+  <h1 id="quickmail-v0.7.5-release-notes">QuickMail v0.7.5 Release
+Notes</h1>
+<p class="version">Released June 20, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.5">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.5:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.5-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="new-features">New Features</h2>
+<h3 id="icloud-email-support">iCloud Email Support</h3>
+<p>You can now add an iCloud email account using your iCloud address and
+an Apple app-specific password.</p>
+<p><strong>Adding an iCloud account:</strong> Open the account manager
+(<strong>Settings → Accounts</strong>) and choose <strong>Add
+Account</strong>. Enter an account name, a sender display name, and your
+iCloud address in the <strong>Email / Username</strong> field. When
+QuickMail sees an <code>@icloud.com</code>, <code>@me.com</code>, or
+<code>@mac.com</code> address, it automatically fills in Apple’s IMAP
+and SMTP server settings — you do not need to enter them yourself.</p>
+<p><strong>App-specific password required:</strong> Apple does not allow
+third-party apps to sign in with your Apple ID password. You must
+generate an app-specific password at <strong>appleid.apple.com</strong>
+under Sign-In &amp; Security → App-Specific Passwords. QuickMail shows a
+reminder about this in the password field when it detects an iCloud
+address. Enter the app-specific password in the Password field; it is
+stored securely in Windows Credential Manager.</p>
+<p>Once added, iCloud accounts sync and send mail the same way as any
+other IMAP/SMTP account.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><p><strong>Shift+Tab navigation now wraps from the account list back
+to the message panel.</strong> Pressing Shift+Tab moved focus backward
+through the message panel, folder tree, and account list, but pressing
+Shift+Tab again from the account list produced no response — focus was
+stuck. The backward cycle now completes correctly: Shift+Tab from the
+account list moves focus to the active message panel, consistent with
+how the forward Tab cycle works. (#106)</p></li>
+<li><p><strong>Keyboard shortcuts list now announces correctly with
+screen readers.</strong> When arrowing through the keyboard shortcuts
+list in Settings, NVDA and Narrator were reading the internal class name
+(<code>SettingsViewModel+HotkeyRowViewModel</code>) instead of the
+command name. Each row now has a proper accessible label — command name,
+category, and current shortcut — that screen readers announce when focus
+moves to a row. This bug did not affect JAWS, which has a long-standing
+workaround for this specific WPF pattern. (#107)</p></li>
+<li><p><strong>Deleted iCloud messages going to Junk instead of
+Trash.</strong> When deleting a message from an iCloud account,
+QuickMail was moving it to the Junk folder rather than Trash. The delete
+logic was falling back to Junk when it could not identify the Trash
+folder by name — iCloud names its trash folder “Deleted Messages” rather
+than “Trash”. The name-based fallback now recognises “Deleted Messages”,
+and the fallback to Junk has been removed from the delete path entirely
+(Junk is never an acceptable destination for deleted messages).</p></li>
+<li><p><strong>Screen readers now announce the correct title for compose
+and message windows.</strong> When a compose or message window was open
+and you used a screen reader’s “report window title” command, it
+announced the main application title (“QuickMail — All Mail”) instead of
+the title of the open window (“Reply to Kelly — HTML — QuickMail”, for
+example). All screen readers now correctly identify compose and message
+windows by their own titles.</p></li>
+<li><p><strong>Alt shortcuts in the compose window no longer also
+activate the menu bar.</strong> Pressing Alt+U (Subject field), Alt+M
+(From account), or Alt+Y (message body) moved focus to the right place
+but also sometimes activated the menu bar, pulling focus away from where
+you had just navigated. This no longer happens.</p></li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="icloud-support">iCloud Support</h3>
+<ul>
+<li><code>AddAccountViewModel</code>: detects <code>@icloud.com</code>,
+<code>@me.com</code>, and <code>@mac.com</code> addresses in the
+<code>Username</code> <code>PropertyChanged</code> handler and
+auto-fills <code>imap.mail.me.com:993 (SSL)</code> and
+<code>smtp.mail.me.com:587 (STARTTLS)</code>. Auth type stays
+<code>Password</code>; no feature gate required. Restructured the Gmail
+auto-fill guard so the two domain-detection paths are independent.</li>
+<li><code>AccountEditorViewModel</code>: <code>IsICloudAccount</code>
+computed property derived from
+<code>ImapHost == "imap.mail.me.com"</code>, with
+<code>[NotifyPropertyChangedFor]</code> on <code>_imapHost</code> so it
+updates when the host changes. Available in both Add and Edit
+dialogs.</li>
+<li><code>AddAccountDialog</code> / <code>AccountManagerDialog</code>:
+orange hint panel inside the password <code>StackPanel</code>, bound to
+<code>IsICloudAccount</code>, directing users to generate an
+app-specific password at <code>appleid.apple.com</code>.</li>
+<li><code>AccountPropertiesBuilder</code>: iCloud accounts display
+“App-Specific Password (iCloud)” in the Authentication row instead of
+the generic “Password (Windows Credential Manager)”.</li>
+<li><code>PropertiesBuilderTests</code>: new
+<code>Build_ICloudAccount_ShowsAppSpecificPassword</code> test.</li>
+</ul>
+<h3 id="delete-to-trash">Delete to Trash</h3>
+<ul>
+<li><code>ImapMailService.MoveToTrashAsync</code> /
+<code>MoveToTrashBatchAsync</code>: removed
+<code>SpecialFolder.Junk</code> from the
+<code>FindSpecialFolderAsync</code> candidate list. The existing
+<code>else</code> branch (set <code>\Deleted</code> flag) is the correct
+fallback when no Trash folder can be found; routing deleted mail to Junk
+was wrong.</li>
+<li><code>FindSpecialFolderAsync</code> name-based fallback: added
+<code>"Deleted Messages"</code> as an alias for
+<code>SpecialFolder.Trash</code> to cover servers (including iCloud)
+that use that name rather than <code>"Trash"</code>. The attribute-based
+lookup (<code>client.GetFolder(SpecialFolder.Trash)</code>) remains the
+primary path and handles RFC 6154-compliant servers without the name
+fallback.</li>
+<li><code>EmptyTrashAsync</code> and
+<code>CountTrashMessagesAsync</code> retain
+<code>SpecialFolder.Junk</code> as a secondary candidate — those
+operations intentionally treat Junk as part of the trash concept.</li>
+</ul>
+<h3 id="screen-reader-compose-window-fixes">Screen Reader / Compose
+Window Fixes</h3>
+<ul>
+<li><code>ComposeWindow.xaml</code> / <code>MessageWindow.xaml</code>:
+added <code>AutomationProperties.Name="{Binding WindowTitle}"</code> so
+the UIA <code>Name</code> property on the window element tracks the
+window-specific title. WPF’s
+<code>WindowAutomationPeer.GetNameCore()</code> does not reliably
+propagate <code>Window.Title</code> to UIA in .NET 8, so screen readers
+that read the UIA tree (rather than the HWND title) were falling back to
+the application name.</li>
+<li><code>MainWindow.xaml.cs</code>: removed <code>Owner = this</code>
+from both <code>ComposeWindow</code> creation sites. WPF places owned
+windows as descendants of the owner in the UIA element tree; screen
+readers that walk the tree to the topmost <code>Window</code> ancestor
+reported the main window title rather than the compose window title.
+Without an owner, the compose window is a peer window in the UIA tree
+and its own title is reported correctly. <code>ComposeWindow.xaml</code>
+startup location changed from <code>CenterOwner</code> to
+<code>CenterScreen</code>. A <code>_openComposeWindows</code> tracking
+list and <code>OnClosed</code> override were added to explicitly close
+any open compose windows on main window exit — WPF auto-closes owned
+windows but not independent ones.</li>
+<li><code>ComposeWindow.xaml.cs</code>: added a Win32
+<code>WM_SYSCOMMAND SC_KEYMENU</code> hook (registered in
+<code>OnSourceInitialized</code> via <code>HwndSource.AddHook</code>).
+WPF’s <code>AccessKeyManager</code> posts <code>SC_KEYMENU</code> after
+every Alt key press regardless of <code>e.Handled = true</code> in
+<code>PreviewKeyDown</code>. The hook intercepts the message and
+discards it when <code>_suppressNextMenuActivation</code> is set; that
+flag is set by the Alt+U, Alt+M, and Alt+Y handlers and by the registry
+command dispatcher when an Alt-modified command fires.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.6.html">Newer: 0.7.6</a> | <a href="release-notes-v0.7.4.html">Older: 0.7.4</a></div>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.5.2 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.5.5.html">Newer: 0.5.5</a> | <a href="release-notes-v0.5.1.html">Older: 0.5.1</a></div>
+  <h1 id="quickmail-v0.5.2-release-notes">QuickMail v0.5.2 Release
+Notes</h1>
+<p class="version">Released May 15, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.5.2">downloads for this release</a></p>
+<h2 id="new-features">New Features</h2>
+<h3 id="from-sender-view">From (Sender) View</h3>
+<ul>
+<li>New <strong>From</strong> view groups your inbox by sender so you
+can see at a glance who has sent you messages and how many.</li>
+<li>Select a sender group to expand it and read individual messages, or
+press <strong>Delete</strong> on the group to delete all messages from
+that sender at once.</li>
+<li>Toggle between Messages, From, and Conversations views from the View
+menu or with <strong>Ctrl+Shift+V</strong>.</li>
+</ul>
+<h3 id="command-palette">Command Palette</h3>
+<ul>
+<li>Press <strong>Ctrl+Shift+P</strong> to open the command palette and
+run any action by typing its name — no need to remember every keyboard
+shortcut.</li>
+<li>All registered commands are searchable, including folder navigation,
+compose, delete, and view switching.</li>
+<li>Keyboard shortcuts can be customised via the command registry.</li>
+</ul>
+<h3 id="context-menus">Context Menus</h3>
+<ul>
+<li>Right-click context menus are now available throughout the app:
+message list, folder tree, sender groups, and conversation groups.</li>
+<li>Common actions (Reply, Reply All, Forward, Delete, Mark as
+Read/Unread, Move to Folder) are available without leaving the
+keyboard.</li>
+</ul>
+<h3 id="virtual-folders">Virtual Folders</h3>
+<ul>
+<li>In addition to <strong>All Mail</strong>, the folder tree now
+includes <strong>All Inboxes</strong>, <strong>All Drafts</strong>,
+<strong>All Sent</strong>, and <strong>All Trash</strong> — each
+aggregating the corresponding folder across all your accounts.</li>
+</ul>
+<h3 id="folder-picker-pre-selection">Folder Picker Pre-selection</h3>
+<ul>
+<li><strong>Ctrl+Y</strong> folder picker now opens with the current
+folder already selected and scrolled into view.</li>
+</ul>
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><p><strong>From/Conversations view group delete</strong> — Deleting
+a sender group or conversation group on the second+ keypress previously
+deleted only one message instead of the whole group. Root cause: the
+global <code>Delete</code> hotkey was intercepting the keypress because
+<code>SelectedMessage</code> was left non-null after the previous
+delete. Fixed in three parts:</p>
+<ol type="1">
+<li><code>DeleteMessagesAsync</code> now clears
+<code>SelectedMessage</code> after a group delete (rather than leaving
+the old selection in place), preventing the global hotkey from firing on
+subsequent presses.</li>
+<li>The focus-landing listener
+(<code>LandOnSenderGroupAfterRebuild</code>) is now registered
+<em>before</em> the delete awaits IMAP, ensuring it catches the rebuild
+that fires ~60 ms in.</li>
+<li>A per-account semaphore in
+<code>ImapService.ExecuteWithRetryAsync</code> prevents background sync
+and a user-triggered delete from hitting the same
+<code>ImapClient</code> concurrently (which previously caused an
+<code>InvalidOperationException</code>).</li>
+</ol></li>
+<li><p><strong>Reply All missing recipients</strong> — Reply All now
+correctly includes all original To recipients in addition to Cc.
+Previously only Cc was copied.</p></li>
+<li><p><strong>Startup crash</strong> — Fixed an <code>APPCRASH</code>
+on launch caused by a WPF XAML compiler issue with
+<code>GridSplitter</code> click handlers inside <code>ContextMenu</code>
+style setters.</p></li>
+<li><p><strong>Empty Trash scope</strong> — Empty Trash no longer clears
+the message list when you are viewing a non-trash folder. The list and
+selection are now unaffected unless you are currently looking at a Trash
+folder.</p></li>
+<li><p><strong>Empty message list keyboard navigation</strong> — Arrow
+keys on an empty message list no longer escape the pane and accidentally
+move focus to the toolbar.</p></li>
+<li><p><strong>Command palette screen reader navigation</strong> —
+Up/Down in the command palette results list now correctly moves focus to
+<code>ListBoxItem</code> elements, and typed characters are forwarded
+back to the search box via <code>PreviewTextInput</code>.</p></li>
+</ul>
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+<li>Status bar changes (folder loading, message counts) are now
+announced to screen readers via live regions.</li>
+<li>A dedicated hotkey focuses the status bar for screen reader
+users.</li>
+<li>The reading pane title and header fields (From, To, Subject) are now
+properly exposed to accessibility tools as read-only.</li>
+<li>Shift+Tab navigation out of the reading pane works correctly.</li>
+<li>Screen reader double-announcement on message selection has been
+eliminated by aligning the programmatic <code>Announce</code> text with
+the <code>AutomationProperties.Name</code> binding.</li>
+<li>Command palette now restores focus to the previous element on
+dismiss.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.5.5.html">Newer: 0.5.5</a> | <a href="release-notes-v0.5.1.html">Older: 0.5.1</a></div>
+</body>
+</html>

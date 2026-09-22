@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.6.9 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.0.html">Newer: 0.7.0</a> | <a href="release-notes-v0.6.8.html">Older: 0.6.8</a></div>
+  <h1 id="quickmail-v0.6.9-release-notes">QuickMail v0.6.9 Release
+Notes</h1>
+<p class="version">Released June 3, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.6.9">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.6.9:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.6.9-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<p>The installer requires the <strong>Microsoft Edge WebView2
+Runtime</strong> to render HTML messages. It is preinstalled on Windows
+11 and most recent Windows 10 systems; the installer downloads and
+installs it automatically when missing.</p>
+<h3 id="uninstalling">Uninstalling</h3>
+<p>Uninstall from <strong>Windows Settings → Apps</strong>. The
+uninstaller gives you a choice: remove the app only, or remove the app
+and all your local data — the accounts configuration, mail cache,
+contacts, rules, templates, and saved views stored in
+<code>%AppData%\QuickMail</code>. Passwords in Windows Credential
+Manager are never touched.</p>
+<p>Uninstalling QuickMail does not affect your mail on the server.
+Nothing on the server is ever changed unless you take an explicit action
+in the app. The only time QuickMail permanently deletes messages is when
+you choose <strong>Empty Trash</strong>.</p>
+<hr />
+<h2 id="new-features">New Features</h2>
+<h3 id="view-properties-altenter">View Properties (Alt+Enter)</h3>
+<p>Pressing <strong>Alt+Enter</strong> anywhere in QuickMail opens a
+read-only <strong>Properties</strong> dialog for whatever is currently
+selected — the same shortcut Windows uses for properties everywhere.</p>
+<p><strong>What opens depends on where focus is:</strong></p>
+<table>
+<colgroup>
+<col style="width: 48%" />
+<col style="width: 51%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Focus location</th>
+<th>Properties shown</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>A message in the message list</td>
+<td>From, To, Cc, Reply-To, Subject, Date, Message-ID; account, folder,
+and IMAP UID; format and attachment count</td>
+</tr>
+<tr class="even">
+<td>A conversation header (Conversations view)</td>
+<td>Subject, message count, unread count, all participants, newest and
+oldest message dates</td>
+</tr>
+<tr class="odd">
+<td>A sender group header (From view)</td>
+<td>Sender, message count, unread count, most recent date, and newest
+subject</td>
+</tr>
+<tr class="even">
+<td>A recipient group header (To view)</td>
+<td>Recipient, message count, unread count, most recent date, and newest
+subject</td>
+</tr>
+<tr class="odd">
+<td>A folder in the folder tree</td>
+<td>Folder name, full path, account, and message counts</td>
+</tr>
+<tr class="even">
+<td>An account in the account list</td>
+<td>Display name, email address, IMAP and SMTP server details,
+authentication method</td>
+</tr>
+<tr class="odd">
+<td>A contact in the address book</td>
+<td>Display name, email address, group memberships, and last-used
+date</td>
+</tr>
+<tr class="even">
+<td>A group in the address book</td>
+<td>Group name, member count, missing contacts, and a list of all
+members</td>
+</tr>
+<tr class="odd">
+<td>An attachment in the reading pane</td>
+<td>File name, MIME type, and size</td>
+</tr>
+</tbody>
+</table>
+<p><strong>In grouped views (Conversations, From, To):</strong> pressing
+Alt+Enter on a group header row shows properties for the group itself.
+To see properties for an individual message inside a group, expand the
+group, navigate to the message, and press Alt+Enter.</p>
+<p><strong>Navigating the Properties dialog:</strong></p>
+<p>The dialog contains a single properties list. Arrow keys move
+continuously through all rows, including section headers that appear as
+named entries in the list. Tab moves to the Copy all and Close
+buttons.</p>
+<ul>
+<li><strong>Enter</strong> or <strong>Ctrl+C</strong> on a selected row
+copies it to the clipboard. Section headers copy just the name; data
+rows copy “Field: Value”.</li>
+<li><strong>Ctrl+A</strong> selects all rows. Pressing
+<strong>Enter</strong> or <strong>Ctrl+C</strong> then copies all
+selected rows at once.</li>
+<li><strong>Copy all</strong> copies every property as structured plain
+text organized by section.</li>
+<li><strong>Escape</strong> or <strong>Close</strong> dismisses the
+dialog and returns focus to where it was.</li>
+</ul>
+<hr />
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+<li><strong>Properties list is one continuous list</strong> — all rows
+and section headers are in a single list navigable with arrow keys, so
+there are no separate focus stops between sections.</li>
+<li><strong>Section headers are focusable</strong> — section names (for
+example, “Headers”, “Storage”) appear as entries in the list and are
+announced by name when focused.</li>
+<li><strong>Properties hint respects hint suppression</strong> — the
+“Press Enter or Ctrl+C to copy” instruction is delivered through the
+app’s hint system and is silenced when you have turned hints off in
+Settings.</li>
+</ul>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>Alt+Enter from the command palette</strong> — pressing
+Alt+Enter when the command palette had focus silently did nothing; it
+now correctly shows properties for the previously focused item.</li>
+<li><strong>Alt+Enter on the folder tree</strong> — if you pressed
+Alt+Enter immediately after arrowing to a folder (before pressing Enter
+to commit the selection), properties for the wrong folder could be
+shown; focus is now read directly from the tree’s live selection.</li>
+<li><strong>Alt+Enter on a conversation or sender group header</strong>
+— previously fell back to showing properties for the first message in
+the group instead of group-level properties.</li>
+</ul>
+<hr />
+<h2 id="internal">Internal</h2>
+<ul>
+<li><code>ConversationPropertiesBuilder</code> and
+<code>SenderGroupPropertiesBuilder</code> added alongside the existing
+context builders.</li>
+<li><code>PropertiesViewModel</code> now exposes a flat
+<code>IReadOnlyList&lt;FlatRow&gt;</code> (with interleaved header rows)
+rather than split
+<code>FieldSections</code>/<code>SubListSections</code>
+collections.</li>
+<li><code>PropertyItemNameConverter</code> updated to produce
+<code>"Label"</code> for header rows and <code>"Label: Value"</code> for
+data rows.</li>
+<li>49 new tests added. Total test count is now 440, all green.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.0.html">Newer: 0.7.0</a> | <a href="release-notes-v0.6.8.html">Older: 0.6.8</a></div>
+</body>
+</html>

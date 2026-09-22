@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.6.8 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.9.html">Newer: 0.6.9</a> | <a href="release-notes-v0.6.7.html">Older: 0.6.7</a></div>
+  <h1 id="quickmail-v0.6.8-release-notes">QuickMail v0.6.8 Release
+Notes</h1>
+<p class="version">Released June 3, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.6.8">downloads for this release</a></p>
+<h2 id="new-features">New Features</h2>
+<h3 id="contact-groups">Contact groups</h3>
+<p>The Address Book now has a <strong>Groups</strong> tab alongside the
+contacts list. Groups let you bundle any number of contacts under a
+name, then insert every member into a To, Cc, or Bcc field in a single
+step — either from the address book itself or by typing the group name
+in a compose address field and selecting it from the autocomplete
+list.</p>
+<p>All group data is stored locally in <code>groups.json</code> in your
+AppData folder and never leaves your machine. Groups are completely
+separate from <code>contacts.json</code>; adding or removing a group
+never touches your individual contacts.</p>
+<p><strong>Opening the Groups tab</strong></p>
+<ul>
+<li>In the Address Book window, choose the <strong>Groups</strong> tab
+at the top, or press <strong>Ctrl+G</strong> to jump to the groups list
+from anywhere in the window. Pressing <strong>Ctrl+G</strong> again
+returns you to the Contacts tab.</li>
+<li>Press <strong>Ctrl+Shift+M</strong> (or activate the
+<strong>Manage…</strong> button on the Groups tab) to open the
+standalone <strong>Group Manager</strong> window for heavier editing —
+renaming, bulk member changes, and deletion — without the contacts list
+in the way.</li>
+</ul>
+<p><strong>Creating a group</strong></p>
+<p>Press <strong>Ctrl+Shift+N</strong> from anywhere in the Address
+Book, or activate the <strong>New</strong> button on the Groups tab. A
+name field appears above the buttons. Type the name and press
+<strong>Enter</strong>. Press <strong>Escape</strong> to cancel without
+creating a group.</p>
+<p><strong>Adding contacts to a group</strong></p>
+<ul>
+<li>From the <strong>Contacts</strong> tab, select a contact, then press
+<strong>Shift+F10</strong> (or the <strong>Apps</strong> key) to open
+the context menu and choose which group to add them to.</li>
+<li>In the <strong>Group Manager</strong> window, select a group on the
+left, then press <strong>Enter</strong> on a candidate in the lower list
+to add them. Pressing <strong>Enter</strong> again on a contact who is
+already a member removes them — the action always toggles, so you never
+get a repeated “Added” announcement.</li>
+</ul>
+<p><strong>Inserting a group into a message</strong></p>
+<p>From the <strong>compose</strong> address fields, type any part of a
+group name and the autocomplete list shows matching groups (above
+individual contacts). Selecting a group expands all its members directly
+into the field. The screen reader announces the count: “Inserted N
+addresses from group ‘X’”.</p>
+<p>From the <strong>Address Book</strong> window, select a group on the
+Groups tab and press <strong>Alt+T</strong>, <strong>Alt+C</strong>, or
+<strong>Alt+B</strong> — or activate the <strong>To</strong>,
+<strong>Cc</strong>, or <strong>Bcc</strong> buttons. Every member is
+inserted in order of recency. If opened from the main window (not from a
+compose window), a new compose window opens automatically to receive the
+addresses.</p>
+<p><strong>Renaming a group</strong></p>
+<p>Select a group in the list and press <strong>F2</strong>, or activate
+the <strong>Rename</strong> button. The name field appears pre-filled
+with the current name. Edit it and press <strong>Enter</strong> to save,
+or <strong>Escape</strong> to cancel.</p>
+<p><strong>Deleting a group</strong></p>
+<p>Select a group and press <strong>Delete</strong> (or activate the
+<strong>Delete</strong> button). A confirmation appears. Deleting a
+group does <strong>not</strong> delete the contacts that were in it.</p>
+<p><strong>Missing contacts</strong></p>
+<p>If a contact referenced by a group is later deleted, the group
+retains the membership record. The groups list shows “N members (M
+missing)” so you can see when cleanup is needed. The missing member is
+silently skipped during insertion and the screen reader notes the skip
+count.</p>
+<p><strong>Keyboard reference for the Address Book window</strong></p>
+<table>
+<colgroup>
+<col style="width: 44%" />
+<col style="width: 55%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Action</th>
+<th>Shortcut</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Switch to Groups tab / return to Contacts tab</td>
+<td><code>Ctrl+G</code></td>
+</tr>
+<tr class="even">
+<td>New group (shows name field)</td>
+<td><code>Ctrl+Shift+N</code></td>
+</tr>
+<tr class="odd">
+<td>Rename selected group</td>
+<td><code>F2</code></td>
+</tr>
+<tr class="even">
+<td>Delete selected group</td>
+<td><code>Delete</code></td>
+</tr>
+<tr class="odd">
+<td>Add selected contact to a group</td>
+<td><code>Shift+F10</code> or <code>Apps</code> key (context menu)</td>
+</tr>
+<tr class="even">
+<td>Open Group Manager</td>
+<td><code>Ctrl+Shift+M</code></td>
+</tr>
+<tr class="odd">
+<td>Insert group into To field</td>
+<td><code>Alt+T</code></td>
+</tr>
+<tr class="even">
+<td>Insert group into Cc field</td>
+<td><code>Alt+C</code></td>
+</tr>
+<tr class="odd">
+<td>Insert group into Bcc field</td>
+<td><code>Alt+B</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>Delete key on group members list</strong> — pressing Delete
+while focus is in the group members list now removes the focused member
+from the group instead of deleting the entire group.</li>
+<li><strong>Alt+T / Alt+C / Alt+B</strong> — these shortcuts now work
+correctly on the Groups tab as well as the Contacts tab, and they work
+when the address book is opened standalone (not just from a compose
+window).</li>
+</ul>
+<h2 id="internal">Internal</h2>
+<ul>
+<li><code>IContactService</code> gained nine group methods:
+<code>LoadAllGroupsAsync</code>, <code>CreateGroupAsync</code>,
+<code>RenameGroupAsync</code>, <code>DeleteGroupAsync</code>,
+<code>AddMemberAsync</code>, <code>RemoveMemberAsync</code>,
+<code>ListGroupsForContactAsync</code>, <code>TouchGroupAsync</code>,
+and <code>SearchGroupsAsync</code>. <code>StubContactService</code>
+implements the same surface for tests.</li>
+<li><code>ContactService</code> writes groups to
+<code>groups.json</code> (separate from <code>contacts.json</code>)
+using the same atomic temp-then-rename pattern. A corrupt
+<code>groups.json</code> is renamed to
+<code>groups.json.bak-{timestamp}</code> and treated as empty, matching
+the recovery behaviour already used for <code>views.json</code>,
+<code>rules.json</code>, and <code>templates.json</code>.</li>
+<li><code>GroupModel</code> exposes computed
+<code>ResolvedMemberCount</code> and <code>MissingContactCount</code>
+(<code>[JsonIgnore]</code>) so the UI never recomputes them.</li>
+<li><code>AddressSuggestion</code> (internal to
+<code>ComposeWindow</code>) wraps either a <code>ContactModel</code> or
+a <code>GroupModel</code>; the autocomplete popup uses a two-line item
+template (bold name / dimmed secondary text) and sets
+<code>AutomationProperties.Name</code> to the full accessible label on
+each row.</li>
+<li>59 new tests added across <code>ContactServiceGroupTests</code>,
+<code>AddressBookViewModelGroupTests</code>,
+<code>GroupManagerViewModelTests</code>,
+<code>GroupsTabFocusTests</code>, and
+<code>GroupSubtitleConverterTests</code>. Total test count is now 391,
+all green.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.9.html">Newer: 0.6.9</a> | <a href="release-notes-v0.6.7.html">Older: 0.6.7</a></div>
+</body>
+</html>

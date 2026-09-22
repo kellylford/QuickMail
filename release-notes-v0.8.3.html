@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.3 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.31.html">Newer: 0.8.31</a> | <a href="release-notes-v0.8.2.html">Older: 0.8.2</a></div>
+  <h1 id="quickmail-v0.8.3-release-notes">QuickMail v0.8.3 Release
+Notes</h1>
+<p class="version">Released July 13, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.3">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.8.3:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>QuickMail-0.8.3-win.msi</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. A standard setup wizard with license
+agreement; installs per-user with no elevation required, adds the
+WebView2 Runtime if missing, and enables automatic updates.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<p>This release adds <strong>plain-text message reading</strong> and
+<strong>Windows notifications for new mail</strong>, plus the option to
+<strong>run in the background when you close the window</strong>. It
+also fixes messages sometimes staying unread in your other email clients
+after you had read them in QuickMail, and puts the version number in the
+downloaded installer’s filename. If you installed QuickMail from the
+MSI, this update is delivered automatically. Everything from v0.8.2,
+v0.8.1, and v0.8.0 — the Gmail duplicate fix, live folder unread counts,
+themes and the visual design system, automatic updates, the Tools menu,
+and in-app bug reporting — is included.</p>
+<hr />
+<h2 id="new-in-0.8.3">New in 0.8.3</h2>
+<h3 id="plain-text-view">Plain Text View</h3>
+<p>Read messages as plain text instead of HTML. Open <strong>Settings →
+General</strong> and check <strong>Read messages as plain text</strong>,
+or toggle it with <strong>Ctrl+Shift+H</strong> or the <strong>View →
+Plain Text View</strong> menu item. The preference is sticky: it
+persists across restarts and applies to the reading pane, message tabs,
+and standalone message windows. When plain-text view is on, QuickMail
+renders each message from its original plain-text part, falling back to
+text extracted from the HTML only when the sender included no plain-text
+part. Use it for a cleaner, low-noise read or to inspect a message’s raw
+text for security checking.</p>
+<h3 id="windows-notifications-for-new-mail">Windows Notifications for
+New Mail</h3>
+<p>Get a native Windows notification when new mail arrives in an inbox.
+Open <strong>Settings → General → Notifications</strong> and check
+<strong>Show a notification when new mail arrives</strong>.
+Notifications are announced by screen readers and appear in the Windows
+notification center. Activate a notification to bring QuickMail to the
+front and open that message. Requires Windows 10 1809 or later.</p>
+<h3 id="run-in-the-background-when-you-close-the-window">Run in the
+Background When You Close the Window</h3>
+<p>Keep QuickMail running in the notification area when you close the
+main window, so new-mail notifications keep arriving. Open
+<strong>Settings → General → Notifications</strong> and check
+<strong>Keep running in the notification area when I close the
+window</strong>. The first time you close to the tray, a notification
+explains that QuickMail is still running. Restore the window from the
+tray icon, by double-activating the icon, or by activating a
+notification. Use <strong>File → Exit</strong> or the tray icon’s
+<strong>Exit QuickMail</strong> to quit.</p>
+<hr />
+<h2 id="fixed-in-0.8.3">Fixed in 0.8.3</h2>
+<h3 id="messages-you-read-now-show-as-read-everywhere">Messages you read
+now show as read everywhere</h3>
+<p>After reading messages in QuickMail, some of them could still appear
+<strong>unread</strong> when you looked at the same mailbox in another
+client — Outlook, Apple Mail, or the web — or after you closed and
+reopened QuickMail. The messages showed as read inside QuickMail, so the
+problem was invisible until you checked elsewhere. It affected both
+Gmail and Microsoft accounts and felt random: some messages were marked
+read on the server and some were not.</p>
+<p>The cause was that opening a message only reliably told the server
+“this is read” when QuickMail had to fetch the message body fresh.
+QuickMail reads ahead and caches nearby messages so they open instantly
+— and those pre-cached messages, which are exactly the ones you tend to
+read next, were being marked read only in QuickMail’s own view, never on
+the server. Opening a message now marks it read on the server directly,
+whether the body came from the cache or a fresh fetch, in the reading
+pane, in a tab, and in a standalone message window. (Opening a message
+in its own window now marks it read on open, the same as the reading
+pane already did.)</p>
+<h3 id="the-installer-download-now-carries-its-version-number">The
+installer download now carries its version number</h3>
+<p>The downloaded Windows installer was always named
+<code>QuickMail-win.msi</code>, so once it was on your disk you could
+not tell which version it was. The installer is now published as
+<code>QuickMail-&lt;version&gt;-win.msi</code> — for this release,
+<code>QuickMail-0.8.3-win.msi</code>. This is a filename change only;
+automatic updates for existing MSI installs are unaffected.</p>
+<hr />
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+<li><strong>Plain Text View</strong> provides a lower-noise reading
+option for users who prefer a simpler layout or want to inspect raw
+message text for security purposes.</li>
+<li><strong>New-mail notifications</strong> are delivered as native
+Windows notifications, which screen readers announce automatically.
+Notifications appear in the Windows notification center (open it with
+<strong>Win+N</strong> on Windows 11, or <strong>Win+A</strong> on
+Windows 10). No custom in-app announcements are layered on top — the
+platform’s native delivery is the accessibility mechanism.</li>
+<li>The mark-as-read fix is a server-side correction; it does not change
+what is announced or where focus lands when you open a message.</li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you, as always, to everyone who contributes to QuickMail
+through code, bug reports, feature suggestions, and other feedback —
+including the report that surfaced the mark-as-read problem and the
+independent confirmation that it also affected Gmail accounts.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3
+id="mark-messages-read-on-the-server-when-opened-from-cache-issue-225-pr-248">Mark
+messages read on the server when opened from cache (issue #225, PR
+#248)</h3>
+<ul>
+<li>Root cause: opening a message set <code>IsRead</code> locally and
+updated the local store, but the IMAP <code>\Seen</code> flag was only
+set as a <strong>side effect</strong> of
+<code>ImapMailService.GetMessageDetailAsync</code> (which opens the
+folder <code>ReadWrite</code> and calls <code>AddFlags(\Seen)</code>).
+In cached (default, non-online) mode, <code>SelectMessageAsync</code>
+serves the detail from the local store on a cache hit and only falls
+back to that fetch on a miss. The prefetcher
+(<code>PrefetchMessageDetailAsync</code>, <code>markRead: false</code>)
+caches the top of the folder and the neighbors of every opened message
+without setting <code>\Seen</code>, so those messages were served from
+cache on open and never flagged on the server — read in QuickMail,
+unread everywhere else. Provider-independent; the timing dependence
+(whether a message had been prefetched) is why the symptom looked
+random.</li>
+<li>Fix: decouple the server mark-read from the body fetch.
+<code>SelectMessageAsync</code> now calls
+<code>_imap.MarkReadAsync(...)</code> explicitly (fire-and-forget via
+<code>.LogFaults</code>) when opening an unread message in cached mode —
+covering the reading-pane and tab paths, which both route through it.
+<code>AddFlags(\Seen)</code> is idempotent, so the cache-miss path is
+unaffected, and online mode already flags during its fetch, so it is
+skipped there. Standalone <strong>window</strong> mode
+(<code>MessageWindow.LoadSelectedMessageAsync</code>) previously
+auto-marked read on open through no path at all (only explicit Ctrl+Q);
+it now marks read after the body loads via the existing
+<code>MarkReadCommand</code> → <code>MarkReadAction</code> →
+<code>MainViewModel.MarkMessagesReadAsync</code> chain, which is a no-op
+when already read and runs after the render so a load failure never
+marks an unread message.</li>
+<li>Tests: <code>MarkReadOnOpenTests</code> covers the cache-hit path
+(fails without the fix) and the already-read no-op case; verified the
+cache-hit test fails on a stashed tree and passes with the fix. An
+independent review approved the change (no double-flag in online mode,
+cache-miss path unaffected, null-safe window wiring).</li>
+</ul>
+<h3 id="versioned-installer-filename-issue-244">Versioned installer
+filename (issue #244)</h3>
+<ul>
+<li><code>vpk pack</code> always emits the MSI as the version-less
+<code>QuickMail-win.msi</code>. The release workflow now renames the
+packed MSI to <code>QuickMail-&lt;version&gt;-win.msi</code> after
+packing and uploads that (glob still covered by
+<code>fail_on_unmatched_files</code>). Filename only; the MSI’s internal
+<code>ProductVersion</code> is unchanged. Workflow-only change, no
+application code impact.</li>
+</ul>
+<h3 id="plain-text-view-issue-34">Plain Text View (issue #34)</h3>
+<ul>
+<li>Added a sticky “Plain Text View” preference, configurable via the
+View menu, a <strong>Ctrl+Shift+H</strong> hotkey, and a Settings
+checkbox. When on, messages render from their original
+<code>text/plain</code> MIME part (falling back to text extracted from
+HTML only when the sender provided no plain-text part). The setting
+persists across restarts and applies to all three reading surfaces
+(reading pane, tab, and standalone window). Default is off. Plain-text
+rendering reuses the existing <code>BuildPlainTextHtmlDocument</code>
+builder; a new optional <code>forcePlainText</code> parameter routes
+callers through the plain-text branch.</li>
+</ul>
+<h3 id="windows-notifications-for-new-mail-issue-240">Windows
+Notifications for New Mail (issue #240)</h3>
+<ul>
+<li>Two new features enable Windows native notifications for new mail
+and background-running when the window is closed. Phase 1 adds
+<code>INotificationService</code> /
+<code>WindowsToastNotificationService</code> (requires Windows 10 1809+)
+and a <code>NotifyOnNewMail</code> config flag (opt-in, off by default).
+The service hooks into the existing <code>InboxNewMailDetected</code>
+event; a dedupe filter (by session start time, read status, and message
+key) prevents duplicate toasts. Activating a single-message toast opens
+that message; multi-message toasts bring the app forward. Phase 2 adds
+<code>CloseToTray</code> and <code>TrayHintShown</code> flags; when
+<code>CloseToTray</code> is on, closing the window hides it to the
+notification area (system tray) instead of exiting, so the IDLE/delta
+watchers keep running. Exit can be triggered explicitly via File → Exit
+or the tray icon’s Exit menu item. Both features require explicit opt-in
+in <strong>Settings → General → Notifications</strong>.</li>
+</ul>
+<h3 id="not-shipped-in-this-build">Not shipped in this build</h3>
+<ul>
+<li>Planning specs landed on <code>main</code> since v0.8.2 but are not
+implemented in this release: the Windows mail-client registration spec,
+the message-selection multi-select spec, and the issue #245 MSI
+upgrade-UX investigation notes. They are documentation only and have no
+runtime effect here.</li>
+</ul>
+<h3 id="version">Version</h3>
+<ul>
+<li>Bumped to <code>0.8.3</code> (<code>Version</code>,
+<code>AssemblyVersion</code>, <code>FileVersion</code>).</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.31.html">Newer: 0.8.31</a> | <a href="release-notes-v0.8.2.html">Older: 0.8.2</a></div>
+</body>
+</html>

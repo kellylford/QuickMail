@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.3 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.4.html">Newer: 0.7.4</a> | <a href="release-notes-v0.7.2.html">Older: 0.7.2</a></div>
+  <h1 id="quickmail-v0.7.3-release-notes">QuickMail v0.7.3 Release
+Notes</h1>
+<p class="version">Released June 16, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.3">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.3:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.3-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="new-features">New Features</h2>
+<h3 id="flag-messages">Flag Messages</h3>
+<p>You can now flag messages for follow-up — and QuickMail stays in sync
+with flags you set in Outlook, on your phone, or in any other mail
+client.</p>
+<p><strong>One keypress to flag or unflag:</strong> Press <code>K</code>
+on any message in the list to toggle its flag. Press <code>K</code>
+again to clear it. No menu required. In Conversations, From, or To view,
+pressing <code>K</code> on a group row flags every message in the group
+at once.</p>
+<p><strong>Named flags:</strong> QuickMail ships with one built-in
+“Flagged” flag. You can create up to 20 named flags — “Urgent”,
+“Waiting”, “Done”, or whatever fits your workflow, each with an optional
+color. Open the Flag Manager from the command palette
+(<code>Ctrl+Shift+P</code> → “Manage Flags…”) to create, rename,
+reorder, and delete flags.</p>
+<p><strong>Choose which flag <code>K</code> applies:</strong> In the
+Flag Manager, select any flag and choose “Set as K default.” From that
+point, <code>K</code> applies that flag instead of the built-in one. The
+setting survives app restarts.</p>
+<p><strong>Pick a specific flag:</strong> Press
+<code>Ctrl+Shift+K</code> to open the flag picker and choose any of your
+named flags by keyboard. Arrow to the flag you want and press Enter. A
+“Clear flag” option at the bottom removes whatever flag is currently
+set.</p>
+<p><strong>Filter to flagged messages:</strong> The message filter now
+includes a “Flagged” option. Select it from the View menu or filter
+combobox to see only flagged messages in the current folder. You can
+save a flagged view with a hotkey via the View Manager.</p>
+<p><strong>All Flagged Mail:</strong> A new “All Flagged Mail” virtual
+folder appears in the folder tree, aggregating flagged messages across
+all your accounts in one place, sorted newest first.</p>
+<p><strong>Cross-client sync:</strong> Flags set in Outlook, on your
+phone, or in any other IMAP client appear in QuickMail on the next sync
+cycle. Flags set in QuickMail are written to the server immediately and
+visible in other clients. Microsoft 365 accounts use the Graph
+<code>followUpFlag</code> API.</p>
+<h3 id="flag-accessibility">Flag Accessibility</h3>
+<p><strong>Flag name is announced first:</strong> When you arrow to a
+flagged message, the flag name is spoken before read status — for
+example, “Urgent. Unread. Kelly Ford. Budget deadline. 6/13/2026.” This
+makes it immediately clear a message needs attention without having to
+navigate past the sender and subject first.</p>
+<p><strong>Flag toggle is confirmed aloud:</strong> Pressing
+<code>K</code> announces the outcome: “Flagged: Urgent.” or “Unflagged.”
+or “Flagged 4 messages: Urgent.” for a group. These announcements
+respect the “Announce results” preference.</p>
+<p><strong>The announcement is optional:</strong> If you prefer not to
+hear flag names while navigating the message list, turn off “Announce
+flag status” in Settings → General → Accessibility. The flag indicator
+remains visible on screen; only the spoken name is suppressed.</p>
+<h3 id="forward-mail">Forward Mail</h3>
+<p><strong>No more blank forwarded messages:</strong> Forwarding an
+HTML-only message — one sent without a plain-text part — no longer
+produces an empty compose window. QuickMail now converts the HTML to
+readable plain text when no plain-text version was included in the
+original.</p>
+<p><strong>Quoted HTML in HTML mode:</strong> When composing in HTML
+mode, the forwarded message body appears as a block-quoted section below
+the cursor, with a header showing the original sender, date, subject,
+and recipient. The cursor starts at the top of the compose area so you
+can type your message immediately.</p>
+<p><strong>Choose which attachments to include:</strong> When you
+forward a message that has attachments, QuickMail now opens an
+<strong>Include Attachments</strong> dialog before downloading anything.
+All attachments are checked by default.</p>
+<ul>
+<li>Use <strong>Up/Down</strong> arrows to move between attachments;
+<strong>Space</strong> to toggle individual files.</li>
+<li>Press <strong>Alt+Enter</strong> on any attachment to see its file
+name, size, and type.</li>
+<li>Press <strong>Tab</strong> to reach the <strong>Forward</strong>
+button, then <strong>Tab</strong> again for
+<strong>Cancel</strong>.</li>
+<li>Activate <strong>Forward</strong> (or press <strong>Enter</strong>)
+to include the checked files. Activate <strong>Cancel</strong> to
+abandon the forward entirely. If you forward with no attachments
+checked, the message goes out without attached files.</li>
+</ul>
+<p><strong>Per-file download progress:</strong> The status bar announces
+each file as it downloads — “Downloading 1 of 3 attachments…”,
+“Downloading 2 of 3 attachments…”. If a file cannot be downloaded,
+QuickMail still opens the compose window with whatever did succeed and
+shows how many could not be downloaded.</p>
+<p><strong>Attachments announced early in the message list:</strong> The
+message list now includes “attachments” right after the read status in
+the screen reader accessible name — for example, “Unread. Attachments.
+Kelly Ford. Budget review. …” — so you can identify messages with
+attachments without navigating past the sender and subject first.</p>
+<h3 id="attachment-paste-and-drop-confirmation">Attachment Paste and
+Drop Confirmation</h3>
+<p>When you paste files from the clipboard (<code>Ctrl+V</code>) or drag
+and drop them into a compose window, a screen reader now announces how
+many files were successfully attached — for example, “1 file attached”
+or “3 files attached”. These announcements respect the “Announce
+results” preference.</p>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="forwarding">Forwarding</h3>
+<ul>
+<li><code>ComposeViewModel.CreateForward</code>: if
+<code>PlainTextBody</code> is empty and <code>HtmlBody</code> is
+non-empty, falls back to
+<code>HtmlStripper.ToPlainText(detail.HtmlBody)</code> instead of an
+empty body. When <code>HtmlBody</code> is present, sets
+<code>model.Mode = ComposeMode.Html</code> and
+<code>model.HtmlBody</code> to the output of
+<code>BuildForwardedHtmlBlock</code>.</li>
+<li><code>BuildForwardedHtmlBlock</code>: produces
+<code>&lt;p&gt;&amp;#160;&lt;/p&gt;</code> (empty paragraph for cursor
+placement) + forward header <code>&lt;div&gt;</code> +
+<code>&lt;blockquote style="border-left:2px solid #ccc; ..."&gt;</code>
+wrapping <code>StripHtmlWrappers(detail.HtmlBody)</code>.</li>
+<li><code>StripHtmlWrappers</code>: strips <code>&lt;!DOCTYPE&gt;</code>
+and extracts <code>&lt;body&gt;</code> content to avoid double nesting
+inside the blockquote.</li>
+<li><code>ComposeWindow</code> <code>Loaded</code> handler: when the
+compose kind is <code>Forward</code> and the mode is not HTML,
+<code>BodyBox.CaretIndex = 0</code> places the cursor before the quoted
+text. HTML mode is handled by the existing
+<code>LoadHtmlIntoEditorRequested</code> handler
+(<code>RichBodyBox.CaretPosition = RichBodyBox.Document.ContentStart</code>).</li>
+<li><code>ForwardAttachmentDialogViewModel</code>
+(<code>ViewModels/ForwardAttachmentDialogViewModel.cs</code>, new):
+<code>ForwardAttachmentSelectionItem</code> wraps
+<code>AttachmentModel</code> + <code>IsIncluded</code> bool. Commands:
+<code>IncludeSelectedCommand</code> (sets <code>Result</code> to checked
+subset), <code>IncludeNoneCommand</code> (sets <code>Result</code> to
+empty list), <code>CancelCommand</code> (sets <code>Result</code> to
+null). All three fire <code>CloseRequested</code>.</li>
+<li><code>ForwardAttachmentDialogWindow</code>
+(<code>Views/ForwardAttachmentDialogWindow.xaml</code>, new): Grid
+layout with <code>ItemsControl</code> (list, Tab-first) above a button
+<code>StackPanel</code> (Forward + Cancel). <code>ItemsPanel</code>
+<code>StackPanel</code> has <code>TabNavigation="Once"</code> +
+<code>DirectionalNavigation="Contained"</code> for single-Tab-stop arrow
+navigation within the list. <code>Loaded</code> calls
+<code>MoveFocus(First)</code> at <code>DispatcherPriority.Input</code>
+to focus the first checkbox. <code>PreviewKeyDown</code> handles
+<code>F6</code>/<code>Shift+F6</code> pane cycling and
+<code>Alt+Enter</code> for attachment properties
+(<code>MessageBox</code> showing file name, size, and type).</li>
+<li><code>MainViewModel.SelectAttachmentsForForwardRequested</code>:
+<code>Func&lt;IReadOnlyList&lt;AttachmentModel&gt;, Task&lt;IReadOnlyList&lt;AttachmentModel&gt;?&gt;&gt;?</code>
+event fired before any download begins. Null return = user cancelled.
+Empty list = forward with no attachments. No subscriber = include all
+(backward-compat). <code>Forward()</code> announces “Downloading N of M
+attachments…” (<code>AnnouncementCategory.Status</code>) per file; on
+partial failure, reports a count of skipped files and still opens
+compose with what succeeded.</li>
+<li><code>MainWindow.ShowForwardAttachmentDialogAsync</code>: subscribes
+<code>CloseRequested</code> before <code>ShowDialog()</code>,
+unsubscribes after — follows the modal dialog rules enforced in
+CLAUDE.md.</li>
+<li><code>MessageAccessibleNameConverter</code> in
+<code>MainWindow.xaml.cs</code>: accepts an 8th binding
+(<code>HasAttachments</code> bool); inserts <code>"attachments. "</code>
+immediately after the read-status label and before the sender name. All
+four <code>MultiBinding</code> blocks (ListView, ConversationTree,
+SenderGroupTree, ToGroupTree) updated.</li>
+<li>New test files:
+<code>QuickMail.Tests/ForwardAttachmentDialogViewModelTests.cs</code>,
+<code>QuickMail.Tests/MainViewModelForwardTests.cs</code>. Extended
+<code>ComposeViewModelReplyTests.cs</code> with four
+<code>CreateForward_*</code> tests covering the HTML-only fallback,
+blockquote generation, mode selection, and header content.</li>
+</ul>
+<h3 id="flagging">Flagging</h3>
+<ul>
+<li><code>FlagDefinition</code> model
+(<code>Models/FlagDefinition.cs</code>): <code>Id</code> (Guid),
+<code>Name</code>, <code>ColorHex</code>, <code>SortOrder</code>,
+<code>IsBuiltIn</code>. One built-in “Flagged” flag with a well-known
+constant <code>Id</code>. Maximum 20 user-defined flags.</li>
+<li><code>flags.json</code> in the profile directory, managed by
+<code>FlagService</code>. Atomic temp-then-rename writes. Corrupt file
+renamed to <code>flags.json.bak-{timestamp}</code>; built-in flag
+restored.</li>
+<li><code>IFlagService</code> / <code>FlagService</code>:
+<code>ToggleDefaultFlagAsync</code>, <code>SetMessageFlagAsync</code>,
+<code>SetMessageFlagBatchAsync</code>, <code>GetKDefaultFlag</code>,
+<code>SetKDefaultFlagAsync</code>. Optimistic in-memory update; rolls
+back on failure. <code>FlagDefinitionsChanged</code> event for consumers
+to refresh denormalized names/colors.</li>
+<li><code>MailMessageSummary</code> additions: <code>FlagId</code> (Guid
+string, null = unflagged), <code>FlagName</code>,
+<code>FlagColorHex</code> (denormalized), <code>FlagLabel</code>,
+<code>IsFlagged</code>. <code>StatusDisplay</code> shows flag name when
+flagged.</li>
+<li>SQLite schema migration 3 → 4:
+<code>ALTER TABLE MessageSummary ADD COLUMN flag_id TEXT NULL DEFAULT NULL</code>.</li>
+<li><code>UpdateFlagIdAsync</code> / <code>UpdateFlagIdBatchAsync</code>
+on <code>ILocalStoreService</code>. Both wrapped in their own try/catch
+in <code>FlagService</code> so <code>SqliteException</code> (e.g.,
+<code>--online</code> mode) does not prevent the IMAP/Graph flag from
+being set.</li>
+<li>IMAP write: <code>SetMessageFlaggedAsync</code> via
+<code>AddFlagsAsync</code> / <code>RemoveFlagsAsync</code> with
+<code>MessageFlags.Flagged</code>. Routed through
+<code>MailServiceRouter</code>.</li>
+<li>Graph write: PATCH <code>/messages/{id}</code> with
+<code>{ "flag": { "flagStatus": "flagged" } }</code> or
+<code>"notFlagged"</code>. <code>GraphFollowUpFlag</code> DTO added to
+<code>GraphDtos</code>.</li>
+<li>IMAP ↔︎ local reconciliation in
+<code>SyncService.OnFolderSynced</code>:
+<code>IsServerFlagged=true</code> + local <code>flag_id IS NULL</code> →
+set <code>flag_id</code> to default flag.
+<code>IsServerFlagged=false</code> + local
+<code>flag_id IS NOT NULL</code> → clear. Local named flag is preserved
+when the server flag is also set.</li>
+<li><code>MessageFilter.Flagged</code> value added;
+<code>BuildFilteredMessages</code> in <code>MainViewModel</code> filters
+to <code>msg.IsFlagged</code>.</li>
+<li><code>SavedView.FlagFilter</code> (nullable string): secondary
+filter to a specific named flag applied after
+<code>MessageFilter</code>.</li>
+<li><code>\x00AllFlagged</code> virtual folder: aggregates flagged
+messages across all accounts, same merge pattern as
+<code>\x00AllInboxes</code>.</li>
+<li><code>AnnounceFlagStatus</code> config key (bool, default
+<code>true</code>): controls whether <code>FlagLabel</code> is prepended
+to the message row accessible name. Wired to Settings → General →
+Accessibility.</li>
+<li><code>ConfigModel.DefaultFlagId</code>: the Guid of the flag
+<code>K</code> applies. Falls back to the built-in flag if the stored
+Guid is missing or was deleted; config updated silently.</li>
+<li><code>FlagManagerViewModel</code> / <code>FlagManagerWindow</code>:
+CRUD for named flags, color picker (12 preset colors + hex input, radio
+group with <code>DirectionalNavigation="Cycle"</code>), move up/down,
+Set as K default. VM does not raise <code>FlagDefinitionsChanged</code>
+directly; parent reloads after <code>ShowDialog()</code> returns to
+avoid COM apartment reentrancy.</li>
+<li><code>FlagPickerViewModel</code> / <code>FlagPickerWindow</code>:
+inline popup for <code>Ctrl+Shift+K</code>; lists flags + “Clear flag”;
+focus restored to originating message row on close.</li>
+<li><code>mail.toggleFlag</code> (K), <code>mail.pickFlag</code>
+(Ctrl+Shift+K), <code>mail.openFlagManager</code> (unassigned)
+registered in <code>CommandRegistry</code>.</li>
+<li><code>MessagePropertiesBuilder</code>: “Flag” row added to Storage
+section.</li>
+<li><code>BuildMessageAccessibleName</code> helper in
+<code>MainWindow.xaml.cs</code> centralizes the accessible name string
+so it is not duplicated across view modes.</li>
+</ul>
+<h3 id="compose">Compose</h3>
+<ul>
+<li><code>ComposeWindow.Window_Drop</code> /
+<code>Window_PreviewKeyDown</code>: after processing a clipboard paste
+(<code>Ctrl+V</code>) or drag-drop, announces the actual number of files
+added via <code>AnnouncementCategory.Result</code>. Uses an
+<code>Attachments.Count</code> delta rather than the input path count so
+silently-skipped nonexistent files are excluded from the announced
+number. Both paths now null-filter the file list before iterating.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.4.html">Newer: 0.7.4</a> | <a href="release-notes-v0.7.2.html">Older: 0.7.2</a></div>
+</body>
+</html>

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.1 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.2.html">Newer: 0.8.2</a> | <a href="release-notes-v0.8.0.html">Older: 0.8.0</a></div>
+  <h1 id="quickmail-v0.8.1-release-notes">QuickMail v0.8.1 Release
+Notes</h1>
+<p class="version">Released July 9, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.1">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.8.1:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>QuickMail-win.msi</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. A standard setup wizard with license
+agreement; installs per-user with no elevation required, adds the
+WebView2 Runtime if missing, and enables automatic updates.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<p>This is a <strong>stability release</strong> on top of v0.8.0. It
+fixes an intermittent freeze that could occur when opening a reply, and
+it is the first update delivered automatically to installed copies.
+<strong>Everything introduced in v0.8.0 — themes and the visual design
+system, automatic updates, the Tools menu, and in-app bug reporting — is
+included, and the full v0.8.0 notes are reproduced below</strong>
+because they bubble down as this release moves to the top of the
+releases page.</p>
+<hr />
+<h2 id="fixed-in-0.8.1-intermittent-freeze-when-opening-a-reply">Fixed
+in 0.8.1: intermittent freeze when opening a reply</h2>
+<p>On some systems, opening a <strong>Reply</strong>, <strong>Reply
+All</strong>, or <strong>Forward</strong> could intermittently freeze
+QuickMail — the window stopped responding to the keyboard and had to be
+closed from Task Manager. It was most likely to happen when starting a
+reply directly from an open message while a screen reader was running,
+and especially on Windows-on-ARM machines, where QuickMail runs under
+emulation that widens the timing window.</p>
+<p>The cause was a timing collision at the exact moment the compose
+window opened. QuickMail was building the compose window in the middle
+of handling a keystroke that had arrived from the reading pane’s
+web-based view, and the two cross-process calls involved — one to the
+reading pane, one to the accessibility layer — could deadlock the
+interface. QuickMail now opens the compose window a fraction of a second
+later, after that keystroke has finished being handled, which removes
+the collision entirely. In normal use the change is invisible: the
+compose window opens exactly as before.</p>
+<p>This is the third and, we believe, the decisive fix in a family of
+related freezes tracked over the 0.8.0 cycle (issues addressed in #190,
+#198, and now #181/#209); unlike the earlier two, this one removes the
+underlying trigger the whole family shared rather than one symptom.</p>
+<h3 id="updating-to-0.8.1">Updating to 0.8.1</h3>
+<p>If you installed QuickMail <strong>0.8.0 from the MSI</strong>, you
+receive 0.8.1 automatically — this is the first release to exercise that
+path end to end. The update downloads quietly in the background and
+installs the next time you exit and reopen QuickMail; Help → About will
+then read 0.8.1. If you are still on a version <strong>before
+0.8.0</strong> (the older Inno Setup installer), the one-time reinstall
+step described in the carried-over 0.8.0 notes below still applies to
+get you onto the automatic-update track.</p>
+<hr />
+<h1 id="included-from-v0.8.0">Included from v0.8.0</h1>
+<p>v0.8.0 introduced <strong>theming and a visual design
+system</strong>: light and dark themes, app-wide text scaling and font
+choice, and a Theme Manager for creating, sharing, and hand-editing
+themes. See the <a
+href="https://kellylford.github.io/QuickMail/themes.html">Themes section
+of the User Guide</a> for the full walkthrough. It also introduced
+<strong>automatic updates</strong> — installed copies of QuickMail now
+keep themselves current, with you in control throughout. And it added an
+always-available <strong>Tools</strong> menu and in-app <strong>bug
+reporting</strong> that doesn’t require a GitHub account.</p>
+<h2 id="automatic-updates">Automatic updates</h2>
+<p>Starting with the 0.8.0 release, QuickMail keeps itself up to date.
+When a newer version is available, the installed app downloads it
+quietly in the background and installs it the next time you exit and
+reopen QuickMail — no download page, no installer to run, no security
+warnings. The Help menu continues to show whether you are current,
+offers a <strong>Restart to Update</strong> option when a new version is
+waiting, and the first start after an update confirms what was
+installed. You stay in control throughout: automatic updating and its
+notifications can each be turned off in <strong>Settings →
+Advanced</strong>, with manual updating always available. See the <a
+href="https://kellylford.github.io/QuickMail/installing-and-updating-quickmail.html">Installing
+and Updating section of the User Guide</a> for the full walkthrough.</p>
+<h3 id="one-time-step-for-existing-installed-users">One-time step for
+existing installed users</h3>
+<p>The 0.8.0 release moved to a new installer, so getting onto the
+automatic-update track requires one manual reinstall — this applies only
+if you are still on a version <strong>before 0.8.0</strong>:</p>
+<ol type="1">
+<li>Uninstall your current QuickMail from <strong>Settings →
+Apps</strong>. When the uninstaller offers to delete user data,
+<strong>choose No</strong>.</li>
+<li>Download and run <strong>QuickMail-win.msi</strong> from this
+release page. A standard setup wizard walks through the license and
+installation.</li>
+<li>Start QuickMail. All your accounts, settings, contacts, rules,
+templates, saved views, and cached mail are exactly as you left
+them.</li>
+</ol>
+<p>Your data is safe throughout: settings and mail live in a separate
+location the installer never touches, and passwords stay in Windows
+Credential Manager. After this one reinstall, all future updates are
+automatic.</p>
+<p>Notes on the install:</p>
+<ul>
+<li>QuickMail installs per-user (no administrator prompt). The previous
+option to install for all users is gone.</li>
+<li>A Start Menu entry is created. The first time QuickMail starts, it
+asks whether to add a desktop shortcut; the choice can be changed
+anytime in Settings → General.</li>
+<li>Uninstalling asks whether to also remove your data — and unlike
+before, choosing Yes also clears QuickMail’s saved passwords from
+Windows Credential Manager.</li>
+</ul>
+<h3 id="portable-exe-users">Portable exe users</h3>
+<p>Nothing changes. <code>QuickMail.exe</code> remains a single-file
+download that you update manually; the Help menu still tells you when a
+new version is available.</p>
+<h2 id="themes">Themes</h2>
+<p>QuickMail has a color theme, chosen in <strong>Settings →
+Appearance</strong>. Six themes ship built in:</p>
+<ul>
+<li><strong>System</strong> — follows the Windows light or dark
+setting.</li>
+<li><strong>Parchment</strong> (the default light look) — warm
+off-whites with a muted steel-blue accent.</li>
+<li><strong>Parchment Dark</strong> — the dark counterpart.</li>
+<li><strong>Ember</strong> (warm), <strong>Fjord</strong> (cool), and
+<strong>Heather</strong> (muted) — light variants with different accent
+and selection colors.</li>
+</ul>
+<p>Theme changes apply immediately — no restart. An open message
+re-renders in the new colors <strong>without moving focus</strong>.</p>
+<h3 id="understanding-a-theme-without-seeing-it">Understanding a theme
+without seeing it</h3>
+<p>Every theme carries a plain-language <strong>Theme
+description</strong> — a written account of its overall look, its fonts,
+and each individual color together with exactly where that color is used
+(message list, links, selection, focus outline, error and status text,
+and so on). Color values are translated into words like “dark muted
+blue” or “warm off-white,” with the nearest well-known color name for
+reference. The Theme Manager shows this description for whichever theme
+is selected, in a read-only text box you can read or hear at your own
+pace, so themes can be understood and compared without seeing the
+colors.</p>
+<h2 id="text-size-font-and-vision-settings">Text size, font, and vision
+settings</h2>
+<p>The <strong>Appearance</strong> tab also gives you:</p>
+<ul>
+<li><strong>Text size</strong> — scale all app text using fixed stops at
+100%, 110%, 125%, 150%, 175%, and 200%, independent of Windows display
+scaling. The chosen size flows through every window.</li>
+<li><strong>Font</strong> — override the app font, or keep the theme’s
+own font.</li>
+<li><strong>Always underline links</strong> — underline links
+everywhere, not just by color.</li>
+<li><strong>Thicker keyboard focus indicators</strong> — widen the focus
+outline for easier tracking.</li>
+<li><strong>Apply theme colors to message content</strong> — override a
+sender’s hard-to-read colors and fonts in the reading pane with your
+theme’s colors. Off by default, so messages render as their sender
+intended unless you turn it on.</li>
+</ul>
+<h2 id="the-theme-manager">The Theme Manager</h2>
+<p>Choose <strong>Manage Themes…</strong> from the
+<strong>Tools</strong> menu, or <strong>Manage Themes</strong> from the
+Command Palette (<strong>Ctrl+Shift+P</strong>), to open the Theme
+Manager. It is a separate, non-blocking window, so you can leave it open
+and try themes against real messages. From the theme list, press Tab to
+reach the actions:</p>
+<ul>
+<li><strong>Apply</strong> — switch to the selected theme
+immediately.</li>
+<li><strong>Duplicate</strong> — copy a theme as a starting point for
+your own.</li>
+<li><strong>Rename</strong> / <strong>Delete</strong> — for your own
+themes.</li>
+<li><strong>Export…</strong> — save a theme as a shareable
+<code>.quickmailtheme</code> file.</li>
+<li><strong>Import…</strong> — load a <code>.quickmailtheme</code> file.
+If a file has a problem, QuickMail tells you exactly what is wrong (for
+example, which color value is not a valid hex color).</li>
+<li><strong>Open themes folder</strong> — open the folder where your
+themes are stored, for hand-editing.</li>
+</ul>
+<p>A theme is a plain, documented JSON text file: duplicate a built-in
+theme, open the themes folder, and edit the copy in any text editor. Any
+color you leave out is filled in from the built-in Light or Dark
+theme.</p>
+<p>The Command Palette also offers <strong>Next Theme</strong> and
+<strong>Previous Theme</strong>, and a <strong>Theme: [name]</strong>
+command for each theme. None of these carry a default shortcut — assign
+one in <strong>Settings → Keyboard</strong> if you want direct
+access.</p>
+<h2 id="the-tools-menu">The Tools menu</h2>
+<p>The main window has an always-available <strong>Tools</strong> menu,
+grouping the commands used less often than day-to-day mail actions:
+<strong>Manage Themes…</strong>, <strong>Next Theme</strong>,
+<strong>Previous Theme</strong>, <strong>Address Book…</strong>
+(Ctrl+Shift+B), <strong>Rules…</strong> (Ctrl+Shift+L), and
+<strong>Command Palette…</strong> (Ctrl+Shift+P). Address Book, Rules,
+and Command Palette moved here from their previous menus, so each
+command now lives in exactly one place; their keyboard shortcuts are
+unchanged.</p>
+<h2 id="windows-high-contrast">Windows High Contrast</h2>
+<p>When Windows High Contrast is on, QuickMail steps aside entirely —
+every color comes from your Windows High Contrast palette, QuickMail’s
+own control styling is withdrawn so the system’s High Contrast controls
+take over, and the reading pane defers to the browser’s forced-colors
+handling. Your theme choice is remembered and returns automatically when
+High Contrast is turned off. Font and text-size settings continue to
+apply.</p>
+<h2 id="report-a-bug">Report a Bug</h2>
+<p><strong>Help → Report a Bug</strong> opens a report window without
+requiring a GitHub account. Fill in a summary and, optionally, what
+happened, what you expected, and steps to reproduce — a
+<strong>Preview</strong> area always shows exactly what will be sent.
+QuickMail submits the report directly to GitHub Issues using its own
+narrowly-scoped, app-owned credential, and shows a link to the created
+issue on success. If sending isn’t possible (no credential available, or
+the request fails), <strong>Copy report and open GitHub</strong> copies
+your report to the clipboard and opens a pre-filled issue page in your
+browser instead. By deliberate design, the only things sent are what you
+type plus a short <strong>Environment</strong> section of non-sensitive
+details — currently the QuickMail version, your Windows version, the
+.NET runtime version, the active theme, the current view (message
+grouping, plus the saved view name if one is applied), and the message
+sort order. No message content, email addresses, account settings,
+credentials, or log file content is ever collected — and the Preview
+shows the whole report so you can confirm before sending.</p>
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+<li>The update dialogs are small native dialogs: focus lands on the
+primary action, Escape always dismisses, and closing them returns focus
+to the message list. A found update is announced once; the background
+check itself is silent when you are already current.</li>
+<li>Theme switching never moves focus, collapses trees, or clears
+selection; the only thing that re-renders is the open message.</li>
+<li>Every custom announcement continues to respect your <strong>Screen
+Reader Announcements</strong> settings; theme and High Contrast changes
+are announced as <strong>status</strong>, and Theme Manager outcomes as
+<strong>results</strong>.</li>
+<li>Every built-in theme meets the WCAG contrast policy (4.5:1 for text,
+3:1 for indicators and status colors) — enforced automatically by a unit
+test, so a theme that would fail contrast cannot ship.</li>
+<li>The Report a Bug preview is a genuine editable <code>TextBox</code>
+(edits blocked in code, not by making it read-only), so arrow-key
+navigation through the preview behaves the same as any other text field
+instead of losing character-by-character review. Its window title reads
+and announces as “Report a Bug - QuickMail”.</li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you, as always, to everyone who contributes to QuickMail
+through code, bug reports, feature suggestions, and other feedback.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="compose-open-hang-fix-issue-181-pr-209">Compose-open hang fix
+(issue #181, PR #209)</h3>
+<ul>
+<li>A third live capture of the intermittent compose-open freeze
+(2026-07-09) was taken with <code>dotnet-stack</code> while the process
+spun (~90% of one core, <code>Responding=True</code> — the documented
+signature). Two identical samples confirmed a permanent STA-thread wedge
+in a pumping COM wait under <code>Window.Show()</code> →
+<code>ContextLayoutManager.fireAutomationEvents</code> →
+<code>AutomationPeer.UpdateSubtree</code> →
+<code>get_HostRawElementProvider</code>.</li>
+<li>The root the earlier captures missed is at the base of the stack:
+<code>ReplyAll</code> ran <strong>nested inside the reading-pane
+WebView2’s <code>CoreWebView2Controller_AcceleratorKeyPressed</code> COM
+callback</strong>. Building and <code>Show()</code>-ing the compose
+window inline issued an outbound cross-apartment UIA call while the STA
+thread was still servicing that inbound WebView2 COM call — re-entrant
+cross-apartment COM that never unblocks (widened by x64-on-ARM64
+emulation). All three captured blocking sites (#190 spell-check init,
+#198 <code>LoadInto</code> UIA storm, and this
+<code>Window.Show()</code> layout burst) share this one trigger, so the
+fix removes the nesting rather than chasing each site.</li>
+<li><code>MainWindow.OpenComposeWindow</code> now builds and shows the
+window via
+<code>Dispatcher.InvokeAsync(…, DispatcherPriority.Input)</code>, so the
+WebView2 callback returns and the inbound COM stack unwinds before the
+window opens on a clean, non-re-entrant turn. <code>e.Handled</code> is
+still set synchronously, so key routing is unaffected; compose windows
+are modeless, so the one-turn delay is imperceptible. An independent
+review confirmed the change is correct and free of swallowed-exception,
+ordering, and focus regressions. Build clean; 1086/1086 tests pass.</li>
+</ul>
+<h3 id="automatic-updates-issue-156-pr-200">Automatic updates (issue
+#156, PR #200)</h3>
+<ul>
+<li><a href="https://velopack.io/">Velopack</a> 1.2.0 replaces the Inno
+Setup installer. <code>App.xaml.cs</code> declares an explicit
+<code>Main</code> that runs <code>VelopackApp.Build().Run()</code>
+before WPF initializes — <code>vpk pack</code> verifies this via IL
+inspection and refuses to pack without it (<code>App.xaml</code>
+compiles as <code>Page</code>).</li>
+<li><code>UpdateCheckService</code> branches by runtime: installed
+copies use <code>UpdateManager</code> + <code>GithubSource</code>
+(silent background download; applied on exit, or immediately via the
+Restart to Update dialog, which is cancellable — dismissing the dialog
+retracts a restart waiting on a slow download); the portable exe keeps
+the original GitHub API notification-only check. The
+<code>AutoUpdate</code> setting switches installed copies to
+notification-only.</li>
+<li>The shipped installer is the WiX 5 MSI (<code>vpk --msi</code>) with
+welcome/license/conclusion pages; Velopack’s one-click
+<code>Setup.exe</code> and <code>-Portable.zip</code> are deliberately
+not published. <code>--framework webview2</code> preserves WebView2
+install-on-demand; <code>--instLocation PerUser</code> keeps updates
+elevation-free (per-machine installs are deliberately unsupported).</li>
+<li>Desktop shortcut is owned by the app (first-run offer + Settings →
+General checkbox, targeting the update-stable
+<code>current\QuickMail.exe</code> path); uninstall offers data removal
+via a detached prompt from <code>OnBeforeUninstallFastCallback</code>
+(hook processes are killed after 30 seconds), including Credential
+Manager cleanup, with diagnostics in
+<code>%TEMP%\quickmail-uninstall.log</code>.</li>
+<li>Release workflow: the tag must equal the csproj
+<code>Version</code>, <code>AssemblyVersion</code>, and
+<code>FileVersion</code>; <code>vpk download github</code> enables delta
+packages from the second release onward;
+<code>fail_on_unmatched_files</code> fails the release if expected
+assets are missing. A <code>--updateFeed &lt;path&gt;</code> startup
+flag allows full offline update-cycle testing against local
+<code>vpk pack</code> output (see <code>docs/INSTALLER.md</code>).</li>
+<li>An independent multi-angle review of the PR confirmed 10 findings,
+all fixed before merge — including a cancellable restart path, accurate
+failure messaging when a download fails, and elimination of a phantom
+“update installed” notice when portable and installed copies share a
+profile. Full test suite passing; complete update cycles verified live
+against a local feed.</li>
+</ul>
+<h3 id="theming-system-issue-177-pr-179">Theming system (issue #177, PR
+#179)</h3>
+<ul>
+<li>Twenty-six semantic color tokens plus typography and focus-thickness
+are published as <code>Theme.*</code> DynamicResources;
+<code>Theming/ThemeKeys.cs</code> is the single source of truth for
+their names.</li>
+<li><code>ThemeService</code> publishes tokens by <strong>atomically
+replacing</strong> one merged dictionary rather than mutating in place,
+so DynamicResource listeners never see a transient missing-resource
+state. Under High Contrast every token is rebuilt from live
+<code>SystemColors</code> and <code>Styles/ThemedControls.xaml</code> is
+withdrawn so WPF’s built-in High-Contrast templates return. The service
+is <code>IDisposable</code>; <code>App.OnExit</code> disposes it and
+detaches the static OS-change handlers.</li>
+<li><code>ThemeStore</code> keeps built-ins as embedded resources and
+user themes as one JSON file each under <code>{profile}\themes\</code>;
+corrupt files are skipped with a log line and never block startup.
+Parsed user themes are cached and invalidated on save/delete.</li>
+<li>The reading pane and compose preview consume theme colors through a
+<code>--qm-*</code> CSS-variable bridge; with no theme CSS the documents
+fall back to CSS system colors, so no-theme rendering is unchanged.</li>
+<li><code>Helpers/ThemeDescriber.cs</code> generates the plain-language
+Theme description: it converts each hex color to a spoken descriptor
+(lightness, chroma-gated saturation, hue) plus the nearest documented
+CSS/X11 color name, and lays out where each token is used.</li>
+<li>The <code>ThemeRegressionGuard</code> test rejects new hardcoded
+colors or numeric font sizes in <code>Views/</code>,
+<code>Controls/</code>, and <code>Styles/</code> XAML outside a reviewed
+allowlist, so future work keeps everything token-driven.</li>
+<li>Two independent code reviews (logic and UI/accessibility) were run
+against the branch; findings were fixed, including a case where applying
+a theme from the Theme Manager could be silent when the selection
+resolved to the palette already showing. Full test suite: 1017/1017
+passing.</li>
+<li>Post-merge screenshot review of the dark theme found three controls
+with a local <code>Style</code> lacking <code>BasedOn</code>, which
+silently discarded the themed background/foreground and reverted to
+WPF’s default light chrome: the message list and the
+Conversation/Sender/Recipient tree views (severe — white background made
+dark-theme Conversation view unreadable), Rules Manager text boxes and
+dropdowns (moderate), and the compose formatting toolbar (minor). All
+now chain <code>BasedOn</code> to the themed implicit or keyed
+styles.</li>
+<li>Theme files are a shareable, attacker-influenced artifact
+(Export/Import, dropped into <code>{profile}\themes\</code>), so their
+parse path was hardened per issue #183:
+<code>fontFamily</code>/<code>monoFontFamily</code> are validated to
+plain family names (a raw WPF <code>FontFamily</code> string allows
+<code>#</code> to mean <code>baseUri#familyName</code>, which could
+otherwise point the font loader at an attacker-controlled file/UNC/pack
+URI); theme files over 256 KB are rejected before being read; and
+<code>PathForId</code> asserts the resolved path stays a direct child of
+the themes folder as defense-in-depth against path traversal.</li>
+</ul>
+<h3 id="bug-reporting-issue-186">Bug reporting (issue #186)</h3>
+<ul>
+<li><code>IBugReportService</code> submits directly to the GitHub Issues
+API using an app-owned, repo-scoped (<code>Issues:Write</code> only)
+token stored through the existing <code>ICredentialService</code> — no
+user GitHub sign-in. <code>BuildFallbackUrl</code> uses
+<code>Uri.EscapeDataString</code> (correct percent-encoding) and
+truncates the body so the pre-filled fallback URL can’t exceed what
+<code>ShellExecute</code> will open; the full report is always available
+via the clipboard regardless.</li>
+<li><code>ReportBugViewModel</code> collects only what the user types
+plus a fixed Environment block (QuickMail version, Windows version, .NET
+runtime version, active theme, current view/grouping, and message sort —
+captured as a <code>BugReportContext</code> snapshot when the window
+opens). It never reads <code>quickmail.log</code>, an explicit product
+decision recorded in
+<code>docs/planning/bug-reporting-pm-dev-spec.md</code>, not an
+oversight.</li>
+<li><code>ReportBugWindow</code> is opened modeless
+(<code>.Show()</code>, not <code>.ShowDialog()</code>) per this
+codebase’s modal-dialog rules, since it has editable text fields and can
+be opened over a window with a live WebView2 reading pane. Its event
+subscriptions use named handlers so <code>OnClosed</code> can
+unsubscribe all of them, preventing a Send still in flight from touching
+the window after it closes and is disposed.</li>
+</ul>
+<h3 id="version">Version</h3>
+<ul>
+<li>Bumped to <code>0.8.1</code> (<code>Version</code>,
+<code>AssemblyVersion</code>, <code>FileVersion</code>).</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.2.html">Newer: 0.8.2</a> | <a href="release-notes-v0.8.0.html">Older: 0.8.0</a></div>
+</body>
+</html>

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.32 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.33.html">Newer: 0.8.33</a> | <a href="release-notes-v0.8.31.html">Older: 0.8.31</a></div>
+  <h1 id="quickmail-v0.8.32-release-notes">QuickMail v0.8.32 Release
+Notes</h1>
+<p class="version">Released July 15, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.32">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.8.32:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>QuickMail-0.8.32-win.msi</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. A standard setup wizard with license
+agreement; installs per-user with no elevation required, adds the
+WebView2 Runtime if missing, and enables automatic updates.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<p>This release adds <strong>contact sync</strong>, which pulls the
+contacts and prior recipients from your Microsoft and Google accounts
+into QuickMail’s address book, and makes <strong>creating
+folders</strong> easy to reach from the keyboard. It also restores
+<strong>personal Microsoft (Outlook.com / Hotmail) sign-in</strong>,
+which had stopped working, and fixes replies to HTML-only messages
+coming through with an empty quote. If you installed QuickMail from the
+MSI, this update is delivered automatically. Everything from v0.8.31 —
+single-instance launch, plain-text reading, Windows notifications for
+new mail, and running in the background when you close the window — is
+included.</p>
+<hr />
+<h2 id="new-in-0.8.32">New in 0.8.32</h2>
+<h3
+id="contact-sync-bring-your-accounts-contacts-into-the-address-book">Contact
+Sync — bring your accounts’ contacts into the address book</h3>
+<p>QuickMail can now fill its address book from the contacts and prior
+recipients already stored in your Microsoft and Google accounts. Turn it
+on per account and the people you correspond with become available for
+autocomplete when you address a message — no more typing full addresses
+for people your account already knows.</p>
+<ul>
+<li><strong>Off by default, one switch per account.</strong> When you
+add a Microsoft or Google account, the Add Account dialog has a
+<strong>Sync contacts from this account</strong> checkbox you can check
+before you sign in. For an account you already have, open
+<strong>Settings → Accounts</strong>, edit the account, and check the
+same box — it takes effect immediately, with no separate Save step.</li>
+<li><strong>Read-only, one direction.</strong> Synced contacts flow from
+the server into QuickMail only; QuickMail never writes changes back to
+your account. Synced people appear in the address book but cannot be
+edited or deleted there (your own local contacts stay fully editable,
+even when someone has the same address). Turning the switch off again
+removes that account’s synced contacts from QuickMail.</li>
+<li><strong>One-time permission.</strong> Enabling sync asks your
+account for read-only access to your contacts. For Google this is folded
+into the same sign-in you already do; for Microsoft it is granted right
+after sign-in.</li>
+<li><strong>Automatic and manual.</strong> QuickMail refreshes synced
+contacts quietly in the background (about twice a day). To pull the
+latest immediately, use the <strong>Sync Now</strong> button in the
+address book, or the <strong>Sync Contacts Now</strong> command in the
+Command Palette.</li>
+<li><strong>An Account column in the address book.</strong> Each contact
+now shows where it came from — <strong>Local address book</strong> for
+the ones you added yourself, or the account name for synced ones. A
+screen reader reads each row as its plain contents (“Kelly Ford,
+kelly@example.com, Local address book”), the same concise style the
+message list uses. If you prefer to hear the field names spoken, turn on
+<strong>Show field labels in the contact list</strong> in
+<strong>Settings → General → Accessibility</strong>.</li>
+</ul>
+<h3 id="new-folder-is-now-easy-to-find">New Folder is now easy to
+find</h3>
+<p>Creating a folder used to be available only from the folder tree’s
+right-click / Shift+F10 menu, which made it hard to discover from the
+keyboard. It now has proper, discoverable entry points:</p>
+<ul>
+<li>A <strong>Folder → New Folder…</strong> menu item.</li>
+<li>A <strong>New Folder…</strong> command in the Command Palette
+(<strong>Ctrl+Shift+P</strong>), which you can assign your own shortcut
+to in keyboard customizations.</li>
+<li>A <strong>New Folder</strong> button in the folder picker you use
+when moving or copying a message — create the destination folder right
+there and move into it without leaving the dialog.</li>
+</ul>
+<hr />
+<h2 id="fixed-in-0.8.32">Fixed in 0.8.32</h2>
+<h3
+id="personal-microsoft-outlook.com-hotmail-sign-in-works-again">Personal
+Microsoft (Outlook.com / Hotmail) sign-in works again</h3>
+<p>Signing in with a personal Microsoft account had begun failing
+outright with a “scope … is not valid” error, which blocked adding or
+re-authorizing Outlook.com, Hotmail, and Live.com accounts on shipped
+builds. QuickMail now requests the correct, explicit mail permissions
+for these accounts. Personal and work Microsoft accounts both sign in
+normally again.</p>
+<h3
+id="replying-to-an-html-only-message-keeps-the-original-text">Replying
+to an HTML-only message keeps the original text</h3>
+<p>Reply and Reply All to a message that had no plain-text part produced
+a reply containing only the “On … wrote:” attribution line, with none of
+the original message quoted beneath it. Replies now fall back to the
+message’s HTML content when there is no plain-text part, so the original
+text is always quoted — matching how Forward already worked.</p>
+<h3
+id="launching-quickmail-after-closing-a-message-window-works-again">Launching
+QuickMail after closing a message window works again</h3>
+<p>If you had opened a message in its own window and then closed the
+main window, that stray message window could keep QuickMail running
+invisibly in the background, which in turn stopped you from launching a
+fresh copy. Message windows are now closed together with the main
+window, so relaunching always works.</p>
+<h3 id="keyboard-fixes-in-the-folder-tree-and-lists">Keyboard fixes in
+the folder tree and lists</h3>
+<ul>
+<li><strong>Pressing K in the folder tree</strong> no longer toggles a
+message flag. The single-key <strong>K</strong> flag shortcut now
+applies only when the message list or a sender/recipient group has
+focus; in the folder tree, K does folder type-ahead as expected.</li>
+<li><strong>Shift+F10 in the folder list and account list</strong> now
+opens that list’s own context menu instead of the message list’s, and
+the very first Shift+F10 right after launch no longer opens the Windows
+system menu by mistake.</li>
+<li>In the move/copy folder picker, plain letter keys again jump through
+the folder tree by typing (the New Folder button is reached with
+<strong>Alt+N</strong>).</li>
+</ul>
+<hr />
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+<li><strong>Contact sync</strong> feeds the same autocomplete you
+already use to address messages, so the benefit is simply that more of
+the right people are there when you type — no new interaction to learn.
+The address book’s new <strong>Account</strong> column is spoken as part
+of each row’s single utterance, keeping navigation concise; the optional
+<strong>Show field labels in the contact list</strong> setting is there
+for anyone who prefers to hear the field names.</li>
+<li>Because the address book runs as a modal window, contact sync
+deliberately never pops a sign-in window while it is open (that
+combination can freeze the interface with a screen reader active).
+Consent is gathered up front when you enable sync; if a grant later
+lapses, QuickMail tells you to turn sync off and on again rather than
+surprising you with a sign-in prompt.</li>
+<li>The <strong>K</strong> flag key is now scoped to the message area,
+so it no longer competes with folder-tree type-ahead — a plain-key
+gesture behaves the same way as the calendar’s plain-key shortcuts,
+which are scoped to their own list.</li>
+<li><strong>New Folder</strong> is reachable by menu, Command Palette,
+and an assignable shortcut, so folder creation no longer depends on
+finding a context menu.</li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you, as always, to everyone who contributes to QuickMail
+through code, bug reports, feature suggestions, and other feedback —
+including the reports that pinned down the broken personal-Microsoft
+sign-in, the empty HTML-only reply, the K-in-the-folder-tree flag, and
+the launch problem caused by a lingering message window.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3
+id="server-contact-sync-and-prior-recipients-issue-256-prs-257-259-263">Server
+contact sync and prior recipients (issue #256, PRs #257, #259,
+#263)</h3>
+<ul>
+<li>One-way (server → local) pull of contacts and prior recipients from
+Microsoft (Graph <code>/me/contacts</code> + <code>/me/people</code>)
+and Google (People <code>connections</code> +
+<code>otherContacts</code>) accounts into the existing local address
+book, deduplicated by email against local contacts and surfaced through
+the existing compose autocomplete with no compose-side changes. Off by
+default, per-account <code>SyncContacts</code> toggle (OAuth accounts
+only). Enabling requests read-only contact scopes (one-time consent) and
+pulls an initial snapshot; disabling purges that account’s synced
+contacts. Re-sync updates in place by provider id, removes
+server-deleted rows, and never touches local or other accounts’ rows.
+Prior recipients capped at 1000 per source (logged when capped).</li>
+<li>New <code>ContactSource</code> provenance on
+<code>ContactModel</code> (back-compatible with old
+<code>contacts.json</code>), <code>IContactSyncService</code> /
+<code>ContactSyncService</code>, provider sources
+(<code>GraphContactSource</code>, <code>GoogleContactSource</code> +
+<code>GooglePeopleClient</code>), scope-aware <code>GraphClient</code>
+overload, and <code>RequestContactsConsentAsync</code> across the OAuth
+services. Read-only only: no write-back, no iCloud/CardDAV (deferred to
+v2). Spec:
+<code>docs/planning/contact-sync-server-issue-256-pm-dev-spec.md</code>.</li>
+<li><strong>Refinements from testing</strong> (PR #263): fixed the
+address-book → compose path opening with an empty From picker (the
+compose VM was created but never <code>Seed()</code>-ed); added the Add
+Account opt-in checkbox (<code>SyncContacts</code> moved to the shared
+editor base); added the address-book <strong>Account</strong> column
+with concise composed accessible names and the
+<code>ContactListShowFieldLabels</code> opt-in (off by default); made
+the Account Manager toggle apply immediately from the checkbox
+<code>Click</code> handler (async fire-and-forget stays in the View per
+the MVVM rules) rather than on Save; dropped the chatty per-row “synced,
+read-only” focus hint.</li>
+<li><strong>Review hardening</strong> (PR #259): contact sync acquires
+its Graph token <strong>silent-only</strong> — no interactive fallback —
+because an MSAL embedded WebView2 launched inside the address book’s
+nested modal loop can deadlock the UI thread (the documented
+modal-dialog hazard, with the screen-reader path as trigger). Added
+<code>IOAuthService.GetAccessTokenSilentAsync</code> + a
+<code>silentOnly</code> path through <code>GraphClient</code>.
+Background sync throttled to 12h via <code>SyncAllDueAsync</code>; the
+manual “Sync Contacts Now” command bypasses the throttle.</li>
+<li>40+ new tests across <code>ContactServiceSyncTests</code>,
+<code>ContactSyncServiceTests</code>,
+<code>ContactSourceMappingTests</code>,
+<code>ContactRefinementsTests</code>,
+<code>ContactSyncScopeAndViewModelTests</code>, and
+<code>OAuthServiceScopeSelectionTests</code>.</li>
+</ul>
+<h3
+id="personal-microsoft-sign-in-on-the-imap-path-issue-239-pr-242">Personal
+Microsoft sign-in on the IMAP path (issue #239, PR #242)</h3>
+<ul>
+<li>The <code>.default</code> migration (#217/#218/#234) was
+over-applied to the IMAP/SMTP path. <code>.default</code> on
+<code>outlook.office.com</code> is invalid for personal Microsoft
+accounts (no admin-consent model; the resource isn’t in Required
+Resource Access for consumer sign-in), so personal-account sign-in via
+IMAP failed with “scope … is not valid”. Because the Graph backend is
+feature-gated, IMAP is the only Microsoft path in shipped builds, so
+this broke consumer sign-in for everyone. <code>ImapSmtpScopes</code>
+now requests explicit <code>IMAP.AccessAsUser.All</code> +
+<code>SMTP.Send</code>, which work for personal and work accounts alike.
+Tests lock the explicit IMAP scopes; ENTRA doc + spec corrected.</li>
+</ul>
+<h3
+id="empty-quoted-body-when-replying-to-html-only-messages-issue-260">Empty
+quoted body when replying to HTML-only messages (issue #260)</h3>
+<ul>
+<li>Reply / Reply All quoted only <code>detail.PlainTextBody</code>, so
+replying to a message with no plain-text part produced just the
+attribution line. Applied the same HTML→text fallback
+<code>CreateForward</code> already uses. Preserving HTML formatting in
+replies is tracked as a follow-up in #262.</li>
+</ul>
+<h3
+id="folder-creation-discoverability-and-message-window-lifetime-issues-250-252-255-253-pr-257">Folder-creation
+discoverability and message-window lifetime (issues #250, #252, #255,
+#253, PR #257)</h3>
+<ul>
+<li><strong>#250:</strong> Registered a discoverable
+<code>folder.new</code> command (Command Palette + customizable hotkey)
+and a <strong>Folder → New Folder…</strong> menu item; context menu and
+the new entry points share one <code>CreateFolderUnderNodeAsync</code>
+helper. Added a <strong>New Folder</strong> button to the move/copy
+folder picker (tree-view picker only) that creates under the selected
+node — or the account root — and rebuilds the picker tree in place.
+Re-entrancy safety: folder creation inside the picker refreshes only the
+folder cache, deferring the main-window tree rebuild
+(<code>_folderTreeRebuildPending</code> →
+<code>CommitPendingFolderTreeRebuild</code>, flushed at the call site
+after every picker close, including cancel) to avoid the documented
+“re-query the folder tree while the dialog’s loop is active” crash.
+Removed the picker button’s <code>_New</code> mnemonic (it fired on the
+type-ahead <code>n</code>), wired <strong>Alt+N</strong> explicitly, and
+set <code>TextSearch.TextPath="Label"</code> for folder type-ahead.</li>
+<li><strong>#252:</strong> Standalone message windows are now tracked in
+<code>_openMessageWindows</code> and closed in
+<code>MainWindow.OnClosed</code>, the same way compose windows are. An
+orphaned message window had been keeping the process (and the
+per-profile single-instance mutex) alive after the main window closed,
+blocking relaunch.</li>
+<li><strong>#255:</strong> The bare-<strong>K</strong> Toggle Flag
+command is gated on a new <code>IsMessageAreaFocused()</code> so it
+fires only when the message list or a group tree has focus; elsewhere
+the command is unavailable, <code>e.Handled</code> stays false, and the
+folder tree’s type-ahead handles K.</li>
+<li><strong>Shift+F10 fixes:</strong> the pre-focus handler now supplies
+a focus target only when WPF focus is genuinely null (the startup case),
+so the folder tree and account list open their own context menus; and
+when focus can’t be parked synchronously on the first post-launch press
+(WebView2 holds Win32 focus at startup), the hook swallows the message
+rather than falling through to the Win32 system menu.</li>
+<li><strong>#253:</strong> Documented (working-as-designed) that the
+single-instance activation signal carries no payload, so a second launch
+with toast deep-link args brings the window forward but drops the
+open-specific-message payload; marked the seam for any future IPC
+extension.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.33.html">Newer: 0.8.33</a> | <a href="release-notes-v0.8.31.html">Older: 0.8.31</a></div>
+</body>
+</html>

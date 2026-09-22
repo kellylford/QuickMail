@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.5.9 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.0.html">Newer: 0.6.0</a> | <a href="release-notes-v0.5.8.html">Older: 0.5.8</a></div>
+  <h1 id="quickmail-v0.5.9-release-notes">QuickMail v0.5.9 Release
+Notes</h1>
+<p class="version">Released May 21, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.5.9">downloads for this release</a></p>
+<h2 id="new-features">New Features</h2>
+<h3 id="message-sorting">Message sorting</h3>
+<p>A new <strong>View → Sort</strong> menu lets you control the order of
+the message list. The selected sort persists across sessions and applies
+independently of the active view mode or filter.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Sort order</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Newest First</td>
+<td>Most recent messages at the top (default)</td>
+</tr>
+<tr class="even">
+<td>Oldest First</td>
+<td>Oldest messages at the top</td>
+</tr>
+<tr class="odd">
+<td>A → Z</td>
+<td>Alphabetical by sender or group name</td>
+</tr>
+<tr class="even">
+<td>Z → A</td>
+<td>Reverse alphabetical by sender or group name</td>
+</tr>
+<tr class="odd">
+<td>Most Messages</td>
+<td>Groups with the most messages at the top</td>
+</tr>
+<tr class="even">
+<td>Fewest Messages</td>
+<td>Groups with the fewest messages at the top</td>
+</tr>
+</tbody>
+</table>
+<p>Date and alphabetical sorts work in all view modes. The two
+message-count sorts are only meaningful in grouped views (Conversations,
+By Sender, By Recipient) and are greyed out when the flat Messages view
+is active.</p>
+<p>All six sort options are also registered in the command palette and
+can be assigned custom keyboard shortcuts in <strong>Settings → Keyboard
+Shortcuts</strong>.</p>
+<hr />
+<h3 id="saved-views">Saved views</h3>
+<p>A <strong>saved view</strong> is a named snapshot of a folder (or set
+of folders), view mode, filter, and sort order that you can jump back to
+instantly.</p>
+<p><strong>Creating a view</strong></p>
+<p>Open <strong>View → Views → Save View…</strong>. The dialog opens
+focused on the name field with a suggested name based on the current
+folder and settings — type to replace it or press Tab to accept it. Set
+an optional keyboard shortcut and mark the view as the default if you
+want it applied automatically when the app starts. Press <strong>Save
+View</strong> when done. Press <strong>Cancel</strong> or Escape to
+discard.</p>
+<p><strong>Applying a view</strong></p>
+<p>Four ways to switch to a saved view: - <strong>View menu</strong> —
+select the view from the <strong>View → Views</strong> submenu (a
+checkmark appears next to the active view) - <strong>Folder
+tree</strong> — a <strong>Views</strong> section appears below your
+accounts; expand it and activate the view - <strong>Keyboard
+shortcut</strong> — press the shortcut assigned in the view manager or
+in Settings → Keyboard Shortcuts - <strong>Apply View button</strong> —
+select the view in Manage Views and press <strong>Apply View</strong> to
+activate it and close the dialog</p>
+<p><strong>Managing views</strong></p>
+<p>Open <strong>View → Views → Manage Views…</strong> to rename,
+reassign shortcuts, change the default, set a day limit, update the
+saved state, or delete any view. Select a view to see its details in
+read-only mode; press <strong>Edit</strong> to make changes.</p>
+<p><strong>Multi-folder views</strong></p>
+<p>If you press <strong>Save</strong> in the manager while the current
+folder differs from the one already stored in a view, you can choose to
+replace the existing folder, add the new one alongside it, or cancel. A
+view that spans multiple folders shows an <strong>All</strong> child in
+the folder tree (shows all messages together) plus individual folder
+nodes.</p>
+<p><strong>Keyboard shortcuts</strong></p>
+<p>Shortcuts assigned to saved views appear in the folder tree and the
+View menu alongside the view name. They are also registered in the
+command palette and visible in <strong>Settings → Keyboard
+Shortcuts</strong>.</p>
+<hr />
+<h3 id="day-limit-for-saved-views">Day limit for saved views</h3>
+<p>A saved view can include an optional <strong>day limit</strong> that
+restricts the message list to only messages received within the last N
+days. Older messages stay in the local cache and reappear immediately
+when the view is cleared or you navigate to the folder directly — the
+limit affects display only, not how much mail is downloaded in the
+background.</p>
+<p>To set a day limit, open <strong>Manage Views…</strong>, select a
+view, press <strong>Edit</strong>, and enter a number in the <strong>Day
+Limit</strong> field. Leave it blank to show all cached messages. When a
+day limit is active it stacks with any filter that is also part of the
+view, so a view can be both “last 7 days” and “unread only.”</p>
+<hr />
+<h3 id="clear-view-command">Clear View command</h3>
+<p><strong>View → Views → Clear View</strong> deactivates the current
+saved view and returns to normal folder navigation, leaving the selected
+folder and all other settings unchanged. Pressing <strong>F5</strong>
+(Refresh) while a view is active re-applies the view rather than
+reverting to the underlying folder.</p>
+<hr />
+<h2 id="improvements">Improvements</h2>
+<h3 id="save-view-dialog-focus">Save View dialog focus</h3>
+<p>When <strong>View → Views → Save View…</strong> is chosen, the dialog
+opens in a streamlined create mode:</p>
+<ul>
+<li>The saved-views list is hidden so the editing panel fills the full
+width</li>
+<li>Focus lands immediately in the <strong>Name</strong> field with the
+suggested name selected — start typing to replace it</li>
+<li>Bottom buttons are <strong>Save View</strong> (enabled once the name
+is not blank) and <strong>Cancel</strong></li>
+</ul>
+<p>The <strong>Manage Views…</strong> dialog is unchanged.</p>
+<hr />
+<h3 id="view-manager-read-only-and-edit-states">View Manager: read-only
+and edit states</h3>
+<p>The right-hand panel in <strong>Manage Views…</strong> now has three
+distinct states:</p>
+<ul>
+<li><strong>Empty</strong> — shown when no view is selected; includes a
+<strong>Create New View from Current State</strong> button</li>
+<li><strong>Read-only</strong> — shown when a view is selected; displays
+the name, keyboard shortcut, saved folders, and saved settings, with
+<strong>Apply View</strong>, <strong>Edit</strong>,
+<strong>Delete</strong>, and <strong>Save As New</strong> buttons</li>
+<li><strong>Edit</strong> — shown when you press <strong>Edit</strong>
+or are creating a new view; exposes the name field, keyboard shortcut
+picker, default-view checkbox, and day-limit field, with
+<strong>Save</strong> and <strong>Cancel</strong> buttons</li>
+</ul>
+<p>Focus moves automatically to the Name field when entering edit
+mode.</p>
+<hr />
+<h3 id="folder-picker-uses-the-account-nickname">Folder picker uses the
+account nickname</h3>
+<p>The move/copy folder picker was labelling each folder with the
+account display name (e.g. “Kelly Ford”), which made folders
+indistinguishable when multiple accounts share the same name. It now
+uses the account nickname (the email address or label shown everywhere
+else in the app), which is unique per account.</p>
+<hr />
+<h3
+id="movecopy-picker-shows-only-the-source-accounts-folders">Move/copy
+picker shows only the source account’s folders</h3>
+<p>The move and copy pickers used to list folders from all accounts.
+Selecting a folder from a different account than the message’s source
+caused a “folder not found” error. The picker now filters to only
+folders that belong to the same account as the messages being moved or
+copied.</p>
+<hr />
+<h3 id="suggested-view-name-for-virtual-folders">Suggested view name for
+virtual folders</h3>
+<p>When saving a view while a virtual folder (All Mail, All Inboxes,
+etc.) is selected, the suggested name no longer includes the account
+nickname prefix. Virtual folder views span all accounts, so
+“theideaplace All Mail” was misleading. The name is now just “All Mail”
+or “All Inboxes, Unread” as appropriate.</p>
+<hr />
+<h3 id="compose-window-focus">Compose window focus</h3>
+<p>When replying to or forwarding a message, focus now lands in the
+message body rather than the To field, so you can start typing
+immediately.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><p><strong>Views created from virtual folders loaded no
+messages</strong> — Views saved while All Mail, All Inboxes, or another
+virtual folder was active stored the folder reference in a way that
+could not be resolved on apply, resulting in an empty message list.
+Virtual folder views now record which virtual folder they were created
+from and navigate to it correctly when applied.</p></li>
+<li><p><strong>Crash when pressing Escape to cancel the Save View
+dialog</strong> — Cancelling the Save View dialog (via Escape, the X
+button, or Cancel) triggered a re-entrant event that mutated the main
+window’s menu while the dialog’s message loop was still unwinding,
+causing a COM apartment violation crash. The cleanup now runs after the
+dialog is fully closed.</p></li>
+<li><p><strong>Crash when deleting or saving a view in the View
+Manager</strong> — The same COM apartment crash occurred when deleting
+or saving a view inside the manager. <code>ViewsChanged</code> was being
+fired while <code>ShowDialog()</code> was still blocking; it is now
+handled only after the dialog closes.</p></li>
+<li><p><strong>Crash when deleting a view</strong> — Removing a view
+from the collection fired a change notification that cleared
+<code>SelectedView</code> before the deletion code could finish using
+it, causing a <code>NullReferenceException</code>. The selected view is
+now captured to a local variable before any collection
+mutation.</p></li>
+<li><p><strong>“Folder not found” when moving or copying
+messages</strong> — Fixed by the improved move/copy picker described
+above.</p></li>
+<li><p><strong>Sent messages not appearing in Sent folder</strong> —
+QuickMail was delivering messages via SMTP but never copying them to the
+IMAP Sent folder. Providers that automatically copy sent mail (Gmail)
+appeared to work; all others silently dropped the sent copy. The app now
+appends each sent message to the Sent folder via IMAP immediately after
+a successful SMTP delivery. The append runs in the background so a slow
+server response does not delay the compose window closing.</p></li>
+<li><p><strong>Drafts opening for reading in grouped views</strong> — In
+Conversations, By Sender, and By Recipient views, opening a draft
+message displayed it in the reading pane instead of opening it in the
+compose window. The draft detection logic now applies in all view
+modes.</p></li>
+<li><p><strong>SMTP connection failures</strong> — Connections to some
+SMTP servers were failing silently or being cancelled before the server
+had time to respond. The connect timeout is now separate from the
+folder-listing timeout (30 s and 120 s respectively), and connection
+errors are logged with enough detail to diagnose them. The SSL option
+label in the account dialog has been clarified: checked means implicit
+SSL on connect (port 465); unchecked means STARTTLS (port 587).</p></li>
+</ul>
+<hr />
+<h2 id="internal">Internal</h2>
+<ul>
+<li>Added <code>SavedViewsTests.cs</code> with 106 tests covering the
+full view lifecycle: apply, refresh, clear, folder navigation, day-limit
+filtering, sentinel string round-tripping, window title updates, and
+switching between views with different settings.</li>
+<li>Fixed a <code>\x00</code> vs <code> </code> escape bug in
+virtual-folder sentinel constants. The C# <code>\x</code> escape
+greedily consumes up to four hex digits, so <code>"\x00AllMail"</code>
+compiled to a line-feed character followed by <code>"llMail"</code>
+instead of a NUL followed by <code>"AllMail"</code>. All sentinel
+constants now use <code> </code>, which always takes exactly four
+digits.</li>
+<li><code>ViewManagerViewModel</code> and <code>ViewManagerWindow</code>
+visibility bindings have full unit-test coverage. Tests use
+<code>Dispatcher.PushFrame</code> at Background priority to drain the
+WPF DataBind queue before asserting.</li>
+<li><code>ViewManagerWindow</code> is included in the XAML parse test
+suite.</li>
+<li>Added <code>WarningsAsErrors</code> for CS8602, CS8604, and CS8618
+in the test project so nullable dereference risks fail the build rather
+than silently shipping.</li>
+<li><code>EnsureApplication()</code> in the test project uses
+<code>lock (typeof(Application))</code> so parallel
+<code>[StaFact]</code> threads from different test classes cannot race
+to create a second WPF <code>Application</code> instance.</li>
+<li><code>CLAUDE.md</code>: documented the modal dialog / COM apartment
+crash pattern, event subscription cleanup rules, and
+<code>FindName</code> null-safety requirements for tests.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.0.html">Newer: 0.6.0</a> | <a href="release-notes-v0.5.8.html">Older: 0.5.8</a></div>
+</body>
+</html>

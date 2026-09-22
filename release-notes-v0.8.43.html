@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.43 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.44.html">Newer: 0.8.44</a> | <a href="release-notes-v0.8.42.html">Older: 0.8.42</a></div>
+  <h1 id="quickmail-v0.8.43-release-notes">QuickMail v0.8.43 Release
+Notes</h1>
+<p class="version">Released September 1, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.43">downloads for this release</a></p>
+<h2
+id="changed-a-bug-report-now-says-which-kind-of-account-you-use">Changed:
+a bug report now says which kind of account you use</h2>
+<p>A report sent with <strong>Report a Bug</strong> already describes
+the setting it happened in — your QuickMail version, your Windows
+version, the theme, the view, the sort order, and where messages open.
+It did not say how your accounts connect, and that turns out to be one
+of the first things worth knowing: an account connected over IMAP, over
+POP3, and through Microsoft 365 genuinely behave differently from one
+another, so a report that leaves it out can take a while to place.</p>
+<p>Reports now include one more line — how many accounts you have set up
+and the protocols they use, for example <em>“2 (IMAP, Microsoft
+365)”</em>. Shared mailboxes are counted on their own, as in <em>“2
+(Microsoft 365), plus 1 shared mailbox”</em>, because a shared mailbox
+is not one of your own accounts. It is counts and protocol names,
+nothing else: no address, no server name, no account name. As always the
+<strong>Preview</strong> in the report window shows the complete text
+before you send it, so you can read exactly what is being sent. (<a
+href="https://github.com/kellylford/QuickMail/issues/639">#639</a>)</p>
+<h2 id="fixed-a-senders-email-address-sometimes-went-missing">Fixed: a
+sender’s email address sometimes went missing</h2>
+<p>Opening a message, or replying to one, sometimes showed the sender’s
+full address — name and email address together, with Message Properties
+able to report it — and sometimes showed nothing but a name. Replying to
+one of the latter put a bare name in the <strong>To</strong> field,
+where it stayed as ordinary typed text instead of becoming an address
+you could act on.</p>
+<p>Which one you got depended on whether the message was being read from
+the server or from QuickMail’s own copy on your PC, so the same message
+could behave either way at different times. QuickMail now keeps the
+sender’s address with its copy of the message. Messages saved before
+this release get their address filled back in the next time they are
+opened.</p>
+<p>Message Properties also reports the sender’s full address now,
+matching the <strong>To</strong> line right below it. (<a
+href="https://github.com/kellylford/QuickMail/issues/636">#636</a>)</p>
+<h2 id="new-create-a-folder-while-you-are-writing-a-rule">New: create a
+folder while you are writing a rule</h2>
+<p>Writing a rule is often where you decide a folder ought to exist —
+“everything from the school goes in a folder called School”, and there
+is no School folder yet. Until now that meant leaving the rule
+half-written, going back to the main window to make the folder, and
+starting the rule again.</p>
+<p>The folder picker a rule opens for <strong>Move to folder</strong>
+now has the same <strong>New Folder</strong> button the message move and
+copy pickers have had for a while. Activate it (or press
+<strong>Alt+N</strong>) with a folder selected, type a name, and the new
+folder is created under that one, appears in the tree, and is selected
+ready for you to choose as the rule’s target — without leaving the rule
+you were writing. It works in both the Rules Manager and, where
+Microsoft 365 server rules are available, the rule editor there.</p>
+<p>Two places the button does not appear, both on purpose. A POP3
+account has no folders on the server to create, so there is nothing the
+button could do. And a rule the picker cannot tie to one particular
+account — a rule that has no account of its own, or an account whose
+folders QuickMail has not read yet — falls back to showing every
+account’s folders, where a new folder would land in one mailbox while
+the rule files mail in another; picking an existing folder is still
+offered there, creating one is not. (<a
+href="https://github.com/kellylford/QuickMail/issues/645">#645</a>)</p>
+<h2 id="fixed-shifttab-goes-back-to-the-folder-list">Fixed: Shift+Tab
+goes back to the folder list</h2>
+<p>The window that asks you to choose a folder — moving or copying
+messages, moving or copying a folder, choosing a rule’s target, choosing
+the startup folder — let you tab forward from the list of folders to the
+buttons, but not back. Shift+Tab landed on <strong>Cancel</strong>
+instead of returning to the folders, so the only way back to the list
+was to keep tabbing forward all the way round.</p>
+<p>Shift+Tab now returns to the folder list, on the folder you had
+selected rather than at the top of it. Tab and Shift+Tab move round the
+window in a ring: the folders, <strong>New Folder</strong> where it is
+offered, <strong>Open</strong>, <strong>Cancel</strong>, and back to the
+folders.</p>
+<p>Two smaller things came with it. <strong>Open</strong> is unavailable
+while the selection is an account name, or a folder path that is not
+itself a folder, and Tab stopped dead there instead of moving on to a
+button you could actually use; it now goes to the next available one.
+And in <strong>Go to Folder</strong>, Tab from the search box reached
+the buttons before it reached the list of folders those buttons act on —
+the list comes first now.</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.44.html">Newer: 0.8.44</a> | <a href="release-notes-v0.8.42.html">Older: 0.8.42</a></div>
+</body>
+</html>

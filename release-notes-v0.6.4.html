@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.6.4 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.5.html">Newer: 0.6.5</a> | <a href="release-notes-v0.6.3.html">Older: 0.6.3</a></div>
+  <h1 id="quickmail-v0.6.4-release-notes">QuickMail v0.6.4 Release
+Notes</h1>
+<p class="version">Released May 25, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.6.4">downloads for this release</a></p>
+<h2 id="new-features">New Features</h2>
+<h3 id="spell-check-in-compose-window">Spell check in compose
+window</h3>
+<p>The message body now has spell check enabled. Misspelled words are
+underlined with the standard red squiggle. Press <strong>F7</strong> to
+jump to the next misspelling; press <strong>Shift+F7</strong> to go back
+to the previous one.</p>
+<p>Spell check is built on the Windows spell-checking engine, the same
+one used by WordPad and other Windows applications. No configuration
+needed.</p>
+<p><strong>Screen reader announcements:</strong> As you navigate through
+the message body with arrow keys, QuickMail automatically detects when
+the caret enters a misspelled word and announces it through your screen
+reader. When the “Announce spelling suggestions” setting is on (the
+default), you hear the word and up to three suggestions — for example,
+“Misspelling: recieve. receive, relieve, retrieve.” When the setting is
+off, only the misspelled word is announced.</p>
+<p><strong>Quick replacement:</strong> When a misspelling is announced,
+press <strong>Alt+1</strong>, <strong>Alt+2</strong>, or
+<strong>Alt+3</strong> to replace the word with the first, second, or
+third suggestion. QuickMail announces “Replaced with receive.” and moves
+on. This lets experienced users correct errors without opening a context
+menu.</p>
+<p><strong>Settings:</strong> A new “Announce spelling suggestions”
+checkbox in <strong>Tools → Settings → Screen Reader
+Announcements</strong> controls whether suggestions are spoken. Turn it
+off for faster, quieter spell checking once you know the Alt+number
+workflow.</p>
+<h3 id="email-signatures">Email signatures</h3>
+<p>Each account now has a <strong>Signature</strong> field in Account
+Settings. Enter any plain-text signature — your name, title, phone
+number, or a full closing block — and QuickMail automatically appends it
+to the end of every new message, reply, and forward from that
+account.</p>
+<p>Signatures follow the standard <code>-- \n</code> convention, so
+email clients that recognize signature separators will display them
+correctly. Drafts that are re-opened for editing do not get a duplicate
+signature — the signature is only added when the compose window first
+opens.</p>
+<p>To set a signature, open <strong>File → Manage Accounts</strong>,
+select an account, and fill in the Signature field at the bottom of the
+settings form.</p>
+<h3 id="calendar-invite-handling">Calendar invite handling</h3>
+<p>When someone sends you a meeting invitation (an ICS file attachment),
+QuickMail now displays an <strong>Event Invitation</strong> card
+directly in the reading pane — above the message body. The card
+shows:</p>
+<ul>
+<li>Event title</li>
+<li>Organizer name</li>
+<li>Start and end time (converted to your local time zone)</li>
+<li>Location (when included)</li>
+<li>Full event description</li>
+</ul>
+<p>Three buttons let you respond: <strong>Accept</strong>,
+<strong>Tentative</strong>, or <strong>Decline</strong>. Each generates
+a proper ICS reply and sends it back to the organizer via SMTP. The
+entire flow works from the keyboard — Tab to the card, Tab between
+buttons, Enter to respond.</p>
+<p>Screen readers announce the full event summary when the card receives
+focus, and a confirmation is announced after each response.</p>
+<h3 id="keyboard-tutorial">Keyboard Tutorial</h3>
+<p>A new keyboard tutorial is available off the Help Menu. It allows you
+to try some of the important keyboard commands for QuickMail and get
+feedback that you pressed the correct keys.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Step</th>
+<th>Shortcut</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td><strong>F6</strong></td>
+<td>Cycle focus through all panes</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td><strong>Ctrl+1</strong></td>
+<td>Focus the account list</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td><strong>Ctrl+2</strong></td>
+<td>Focus the folder tree</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td><strong>Ctrl+3</strong></td>
+<td>Focus the message list</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td><strong>Ctrl+Shift+P</strong></td>
+<td>Open the Command Palette</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td><strong>Escape</strong></td>
+<td>Close the reading pane or dismiss dialogs</td>
+</tr>
+</tbody>
+</table>
+<p>Each step announces the instruction through your screen reader, waits
+for you to press the correct key, then confirms success and moves to the
+next step. Press <strong>Escape</strong> at any time to exit the
+tutorial.</p>
+<p>Once completed, the tutorial does not appear again. You can replay it
+at any time from <strong>Help → Keyboard Tutorial</strong>.</p>
+<h3 id="message-templates">Message templates</h3>
+<p>Save common responses as templates and insert them with a few
+keystrokes. Templates are stored in
+<code>%APPDATA%\QuickMail\templates.json</code>.</p>
+<p><strong>Inserting a template:</strong> In the compose window,
+activate the <strong>Insert Template…</strong> button. A searchable list
+appears — type to filter by title, press <strong>Down</strong> to move
+into the list, and press <strong>Enter</strong> to insert. The template
+body is appended to your message.</p>
+<p><strong>Saving a template:</strong> Compose a message you want to
+reuse, then activate <strong>Save as Template</strong>. The subject line
+becomes the template title (or “Untitled” if the subject is empty).</p>
+<p><strong>Placeholders:</strong> Templates support three placeholders
+that are filled in automatically when inserted:</p>
+<table>
+<colgroup>
+<col style="width: 46%" />
+<col style="width: 53%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Placeholder</th>
+<th>Replaced with</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>{sender}</code></td>
+<td>Your display name (or email address if no display name is set)</td>
+</tr>
+<tr class="even">
+<td><code>{date}</code></td>
+<td>Today’s date</td>
+</tr>
+<tr class="odd">
+<td><code>{time}</code></td>
+<td>The current time</td>
+</tr>
+</tbody>
+</table>
+<p>Placeholders are case-insensitive — <code>{Sender}</code>,
+<code>{SENDER}</code>, and <code>{sender}</code> all work.</p>
+<hr />
+<h2 id="improvements">Improvements</h2>
+<ul>
+<li><strong>Inline spell check announcements</strong> — Screen readers
+now announce misspelled words automatically as you navigate through the
+message body with arrow keys, not just when pressing F7.</li>
+<li><strong>Alt+1/2/3 quick replacement</strong> — Replace a misspelled
+word with a suggestion in one keystroke. No context menu needed.</li>
+<li><strong>Spelling suggestions setting</strong> — New “Announce
+spelling suggestions” option in Settings lets experienced users silence
+suggestion speech while keeping the Alt+number workflow.</li>
+<li><strong>Compose window command palette</strong> — Press
+<strong>Ctrl+Shift+P</strong> in the compose window to open the Command
+Palette with 11 compose-specific commands (Send, Save Draft, Add
+Attachments, Insert Template, Save as Template, Cancel, Focus Subject,
+Focus From, Focus Body, Next/Previous Misspelling).</li>
+<li><strong>Alt+Y in compose</strong> — Press <strong>Alt+Y</strong> to
+jump directly to the message body from any field.</li>
+<li><strong>Tutorial wrong-key feedback</strong> — The keyboard tutorial
+now announces what key you pressed when it’s incorrect (e.g. “You
+pressed Ctrl+N. Try again.”), so you get immediate feedback instead of
+silence.</li>
+<li><strong>Tutorial manual-only launch</strong> — The tutorial is now
+available only from <strong>Help → Keyboard Tutorial</strong>; it no
+longer auto-launches on first run.</li>
+<li><strong>Signature auto-insertion</strong> — Signatures are appended
+to new messages, replies, and forwards automatically. Drafts re-opened
+for editing do not receive a duplicate signature.</li>
+<li><strong>ICS parsing</strong> — Calendar invites are detected in
+<code>text/calendar</code> MIME parts and displayed as an inline event
+card. ICS replies are generated and sent via SMTP.</li>
+<li><strong>Template picker</strong> — Searchable list dialog for
+inserting saved templates. Filter-as-you-type with screen reader match
+count announcements.</li>
+<li><strong>Template placeholders</strong> — <code>{sender}</code>,
+<code>{date}</code>, and <code>{time}</code> are replaced automatically
+when a template is inserted.</li>
+</ul>
+<hr />
+<h2 id="internal">Internal</h2>
+<ul>
+<li><strong>Refactored MainViewModel</strong> — Extracted
+<code>RebuildActiveGroupView()</code> to replace 12 repeated if-else
+chains. Extracted <code>ReplaceCts()</code> helper for proper
+<code>CancellationTokenSource</code> disposal.</li>
+<li><strong>Refactored MainWindow.xaml.cs</strong> — Extracted
+<code>GroupedMessageTreeController</code> to eliminate ~30
+near-duplicate event handlers across the three tree views
+(ConversationTree, SenderGroupTree, ToGroupTree).</li>
+<li><strong>Centralized ViewMode and Sort serialization</strong> —
+<code>ConfigModel.ParseViewMode()</code>,
+<code>ConfigModel.ParseSort()</code>, and their
+<code>ToConfigString()</code> counterparts now handle all string↔︎enum
+conversion in one place, replacing six duplicate switch statements.</li>
+<li><strong>New service: TemplateService</strong> — JSON file storage
+for message templates, following the same pattern as
+<code>ContactService</code> and <code>ViewService</code>.</li>
+<li><strong>New model: IcsModel</strong> — Parses ICS calendar files and
+generates reply messages with proper <code>PARTSTAT</code> values.</li>
+<li><strong>New model: MessageTemplate</strong> — Template data model
+with title, subject, and body.</li>
+<li><strong>DI wiring</strong> — <code>SmtpService</code> and
+<code>TemplateService</code> are now injected into
+<code>MainViewModel</code> and <code>ComposeViewModel</code>
+respectively.</li>
+<li>Total test count: 235 (v0.6.3) → 341 (v0.7). New test files:
+<code>IcsModelTests.cs</code> (30 tests),
+<code>TutorialViewModelTests.cs</code> (14 tests),
+<code>TemplateServiceTests.cs</code> (15 tests),
+<code>TemplatePickerViewModelTests.cs</code> (15 tests),
+<code>ComposeViewModelTemplateTests.cs</code> (16 tests).</li>
+</ul>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>Tutorial overlay crash</strong> — The
+<code>Steps.Count</code> binding in <code>TutorialOverlay.xaml</code>
+was missing <code>Mode=OneWay</code>, causing an
+<code>InvalidOperationException</code> when WPF tried to write to the
+read-only <code>ObservableCollection&lt;T&gt;.Count</code> property.
+Fixed by adding explicit one-way binding mode.</li>
+<li><strong>Alt+1/2/3 focus jump</strong> — Replacing a misspelled word
+with Alt+1/2/3 would move focus to the first error on the page instead
+of staying on the replaced word. Fixed by suppressing spelling
+announcements during the programmatic text change so the
+<code>SelectionChanged</code> handler doesn’t fire with a stale caret
+position.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.5.html">Newer: 0.6.5</a> | <a href="release-notes-v0.6.3.html">Older: 0.6.3</a></div>
+</body>
+</html>

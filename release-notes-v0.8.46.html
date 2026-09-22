@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.46 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.47.html">Newer: 0.8.47</a> | <a href="release-notes-v0.8.45.html">Older: 0.8.45</a></div>
+  <h1 id="quickmail-v0.8.46-release-notes">QuickMail v0.8.46 Release
+Notes</h1>
+<p class="version">Released September 17, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.46">downloads for this release</a></p>
+<p>This release is mostly about search. Search now reads the whole
+message, there is an Advanced Search form, and one search can cover
+every folder of every account and ask the mail server too. The command
+palette filters as you type, client-side rules can copy and do more than
+one thing, and background syncs no longer move focus.</p>
+<h2 id="added">Added</h2>
+<h3 id="search-reads-the-whole-message">Search reads the whole
+message</h3>
+<p>The search box (<strong>Ctrl+Shift+S</strong>, or <code>/</code> in
+the message list) used to look only at what the message list shows. It
+now searches the whole message: its text, its Cc recipients and the
+names of its attachments. It works in any folder, including <strong>All
+Inboxes</strong> and <strong>All Mail</strong>, and still narrows the
+list as you type.</p>
+<ul>
+<li>Every word must be there, in any order, and a word also finds longer
+words that begin with it.</li>
+<li>Quotes keep a phrase together, and a minus sign leaves out messages
+with a word: <code>"quarterly report" -draft</code>.</li>
+<li><code>from:</code>, <code>to:</code>, <code>cc:</code>,
+<code>subject:</code>, <code>body:</code> and <code>attachment:</code>
+look in one place.</li>
+<li><code>has:attachment</code>, <code>is:unread</code>,
+<code>is:read</code>, <code>is:flagged</code>,
+<code>is:unflagged</code>, <code>after:</code>, <code>before:</code>,
+<code>folder:</code> and <code>account:</code> narrow the results.</li>
+</ul>
+<p>Search uses the mail kept on this computer, so a message’s text is
+found once it has been downloaded. The first time you start this
+version, QuickMail indexes the mail it already has in the background,
+newest first. Until that finishes, older messages are found by sender,
+recipients, subject and preview, as before.</p>
+<p>The user guide’s Searching section lists everything search
+understands.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/717">#717</a></p>
+<hr />
+<h3 id="advanced-search-across-every-account">Advanced Search, across
+every account</h3>
+<p><strong>Ctrl+/</strong> (or <strong>View → Advanced Search…</strong>)
+opens a form, so you don’t need the search syntax. It has a field for
+words anywhere, sender, To, Cc, subject, body and attachment name. You
+can also choose whether the message has attachments, is read or flagged,
+and when it arrived.</p>
+<p>The form can search the folder you are in, or every folder of the
+accounts you choose. Searching the current folder fills in the search
+box, so you can see how the search is written. Searching accounts opens
+a <strong>Search results</strong> folder, which works like any other
+folder. A bar above the list says what was found, with <strong>Change
+Search</strong> (or <strong>Ctrl+/</strong>) and <strong>Close</strong>
+(or <strong>Escape</strong>).</p>
+<ul>
+<li><strong>Also search the mail server</strong> asks each account’s
+server for the same search, and adds what it finds. This reaches mail
+older than the sync range, or whose text was never downloaded.
+<strong>Search the Server</strong> on the results bar does the same
+after a search. Messages found this way are shown but not kept.</li>
+<li><strong>Save View…</strong> on the results keeps the search as a
+view, with its own name and optional shortcut. Choosing the view runs
+the search again.</li>
+</ul>
+<p>If nothing is found, the form stays open with focus in the first
+field.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/717">#717</a></p>
+<hr />
+<h3 id="more-mail-downloaded-for-offline-reading">More mail downloaded
+for offline reading</h3>
+<p><strong>Settings → General → Sync → Download messages for offline
+reading</strong> used to stop at 90 days. It now also offers <strong>6
+months</strong>, <strong>1 year</strong> and <strong>All mail</strong>.
+It never reaches past the <strong>Sync range</strong>.</p>
+<p>A new option, <strong>Include other folders, not just the
+Inbox</strong>, also downloads Sent, Archive and your other folders,
+except Trash, Junk and Drafts. This is what lets search find words in
+sent and archived mail. It is off by default, because it can download a
+lot more.</p>
+<p>A large download fills in gradually over many background checks, and
+the data file grows to match. The status bar shows progress, for example
+“Messages: 1,240 of 2,000 downloaded”. It is between the rules status
+and the sync progress (<strong>Ctrl+9</strong>, then
+<strong>Right</strong>), and is not announced.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/715">#715</a>, <a
+href="https://github.com/kellylford/QuickMail/issues/717">#717</a></p>
+<hr />
+<h3 id="the-command-palette-filters-as-you-type">The command palette
+filters as you type</h3>
+<p>The command palette (<strong>Ctrl+Shift+P</strong>) now has a filter
+box. Typing narrows the list to matching commands, and the best match is
+at the top, ready for <strong>Enter</strong>.</p>
+<p>A match can come from anywhere in the name. <code>arch</code> finds
+<strong>Move to Archive</strong>, <code>gtf</code> finds <strong>Go to
+Folder</strong> by its initials, <code>mail</code> lists the Mail
+commands, and <code>arch mail</code> works with the words in either
+order.</p>
+<p>Focus stays in the filter box. <strong>Up</strong> and
+<strong>Down</strong> move through the list, and <strong>Page
+Up</strong> and <strong>Page Down</strong> move ten at a time. If the
+top match stays the same as you type, the new count is announced
+instead, such as “3 commands”. <strong>Escape</strong> clears the
+filter, or closes the palette if the filter is empty.</p>
+<p>This works in every command palette in the app, not only the main
+window’s.</p>
+<p><a href="https://github.com/kellylford/QuickMail/pull/705">PR
+#705</a></p>
+<hr />
+<h3
+id="client-side-rules-can-copy-and-can-do-more-than-one-thing">Client-side
+rules can copy, and can do more than one thing</h3>
+<p>A client-side rule used to do one thing: move, delete, mark as read
+or mark as unread. It can now also copy to a folder, and combine actions
+— for example, mark a mailing list read and file it. Actions always run
+in this order: mark read or unread, then copy, then move or delete.</p>
+<p><strong>Save</strong> refuses a combination that can’t work, and says
+why:</p>
+<ul>
+<li>Marking a message both read and unread.</li>
+<li>Both moving and deleting.</li>
+<li><strong>Mark as unread</strong> with a move or delete, since the
+move discards the local change.</li>
+<li>A client-side rule copying into the Inbox, which would copy the same
+message again and again.</li>
+</ul>
+<p>A copy rule now needs at least one condition, as move and delete
+rules already do. This includes server-side copy rules, so an existing
+one with no conditions needs one before it can be saved again.</p>
+<p>If a copy fails, the rule stops, and the message stays in the Inbox.
+The reason is in the log.</p>
+<p>If you go back to an earlier version, a rule with several actions
+does at most one of them, and saving rules there drops the rest.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/682">#682</a></p>
+<hr />
+<h2 id="fixed">Fixed</h2>
+<h3 id="background-syncs-no-longer-move-focus">Background syncs no
+longer move focus</h3>
+<p>Two things could move focus with no key pressed:</p>
+<ul>
+<li>In the folder tree, focus could jump to <strong>All Mail</strong>
+when a sync started or an account connected.</li>
+<li>When messages were removed on the server, focus could jump from the
+folder tree into the message list.</li>
+</ul>
+<p>Focus now stays where you put it. Opening a folder still moves focus
+to the message list, as before.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/719">#719</a></p>
+<hr />
+<h3
+id="client-side-rules-no-longer-miss-mail-that-arrives-while-the-inbox-is-open">Client-side
+rules no longer miss mail that arrives while the Inbox is open</h3>
+<p>A rule could skip a new message if QuickMail picked it up another way
+first — usually by opening the Inbox, All Inboxes, All Mail or a saved
+view just as it arrived. The message was never checked by rules, and
+nothing was logged.</p>
+<p>Rules now run on every message that arrives in your Inbox, however
+QuickMail first saw it. If the Inbox is open, a matching message may
+show briefly before the rule files it.</p>
+<p>Rules still leave older mail alone, including mail that appears
+because you widened the <strong>Sync range</strong>. Mail already in
+your mailbox when you update counts as already handled.</p>
+<p>Also, Microsoft 365 and POP3 messages now show whether they have
+attachments without being opened first, so filtering for attachments
+includes them.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/712">#712</a></p>
+<hr />
+<h3 id="a-rules-file-quickmail-cant-read-is-no-longer-replaced">A rules
+file QuickMail can’t read is no longer replaced</h3>
+<p>If <code>rules.json</code>, the file that holds client-side rules,
+couldn’t be read, QuickMail treated it as empty. The next rule you saved
+replaced the file, and every other client-side rule was lost.</p>
+<p>QuickMail now never overwrites a rules file it couldn’t read:</p>
+<ul>
+<li>The Rules Manager says “Couldn’t load client-side rules”, and why. A
+damaged file is named, with its folder.</li>
+<li>Saving a client-side rule is refused with the same reason, and the
+editor keeps what you typed.</li>
+<li>The status bar says “Client-side rules can’t be read”.</li>
+<li>Mail still arrives, but no client-side rule runs until the file can
+be read. After that, use <strong>Run on Existing Mail</strong> for
+anything that arrived in the meantime.</li>
+</ul>
+<p>A file that was only locked for a moment recovers by itself. And any
+other failure to save a rule change, such as a full disk, is now
+reported instead of silent.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/700">#700</a></p>
+<hr />
+<h3 id="the-rule-editors-folder-buttons-say-which-folder-is-chosen">The
+rule editor’s folder buttons say which folder is chosen</h3>
+<p>The move and copy folder buttons were always read as “Choose move-to
+folder”, even when a folder was chosen. They now say “Move to folder:
+Digests” or “Copy to folder: Kept”, and only ask you to choose when no
+folder is set.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/713">#713</a></p>
+<hr />
+<h3 id="rule-editor-messages-are-said-once">Rule editor messages are
+said once</h3>
+<p>When the rule editor refused to save, its message was spoken twice:
+once by the editor and once by the Rules Manager. A missing-permission
+message was also spoken twice. Each is now spoken once.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/701">#701</a></p>
+<hr />
+<h3
+id="every-item-in-the-view-sort-and-help-menus-has-its-own-access-key">Every
+item in the View, Sort and Help menus has its own access key</h3>
+<p>Three pairs of menu items shared an access key, so pressing it moved
+between them instead of choosing one.</p>
+<ul>
+<li><strong>View</strong>: <strong>Sync Range</strong> is now Y.
+<strong>Search Folders</strong> keeps S.</li>
+<li><strong>View → Sort</strong>: <strong>Fewest Messages</strong> is
+now W. <strong>Newest First</strong> keeps F.</li>
+<li><strong>Help</strong>: <strong>Get the ARM Version</strong> is now
+V. <strong>About QuickMail</strong> keeps A.</li>
+</ul>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/695">#695</a></p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.47.html">Newer: 0.8.47</a> | <a href="release-notes-v0.8.45.html">Older: 0.8.45</a></div>
+</body>
+</html>

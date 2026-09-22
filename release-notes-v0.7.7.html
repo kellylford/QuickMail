@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.7 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.8.html">Newer: 0.7.8</a> | <a href="release-notes-v0.7.6.html">Older: 0.7.6</a></div>
+  <h1 id="quickmail-v0.7.7-release-notes">QuickMail v0.7.7 Release
+Notes</h1>
+<p class="version">Released June 27, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.7">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.7:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.7-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="improvements">Improvements</h2>
+<h3 id="automatic-update-notifications">Automatic update
+notifications</h3>
+<p>QuickMail now checks for a newer release on startup, and an update
+entry is <strong>always present</strong> at the top of the
+<strong>Help</strong> menu so you have a reliable way to check.</p>
+<ul>
+<li>When you are up to date, the entry reads <strong>“No updates
+available.”</strong> Activating it opens the QuickMail releases page in
+your browser, so the entry is always there and useful — you don’t have
+to infer from the absence of a notification that the check
+happened.</li>
+<li>When an update is found, the entry changes to <strong>“Update
+available: version X.Y.Z”</strong> — activating it opens that release’s
+page directly — and a spoken announcement fires a few seconds after
+launch: “QuickMail update available: version X.Y.Z. Check the Help
+menu.” This respects your action-result announcement preference.</li>
+</ul>
+<p>The startup check runs quietly in the background; it never delays
+startup, and when you are already on the latest version it stays silent
+rather than announcing on every launch. This is what will let you know
+when fixes like the connection improvement below are available, without
+having to check manually.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<h3
+id="imap-accounts-no-longer-disconnect-repeatedly-on-shared-hosting">IMAP
+accounts no longer disconnect repeatedly on shared hosting</h3>
+<p>Accounts were frequently dropping their connections with a “Server
+shutting down” response from the server, then reconnecting, then
+dropping again — repeating every minute or two. This affected all
+accounts simultaneously, including accounts on different servers.</p>
+<p>The root cause was the startup sync introduced in v0.7.6, which
+parallelized syncing across all accounts at once. When two or more
+accounts share the same IMAP server — common when multiple addresses are
+hosted on the same provider — the parallel sync opened simultaneous
+connections to that server and exceeded its per-IP connection limit. The
+server responded by terminating connections, which also took down the
+IDLE watchers responsible for new-mail notification.</p>
+<p>Accounts on the same IMAP server now sync sequentially, so only one
+sync connection at a time is active per server. Accounts on different
+servers continue to sync in parallel, preserving the startup speed
+improvement from v0.7.6.</p>
+<p>This release also adds several resilience measures around the same
+area, so a brief server hiccup no longer turns into a repeating
+disconnect cycle:</p>
+<ul>
+<li>Account connections at startup are also grouped by server — accounts
+sharing a host connect one at a time, while different hosts still
+connect in parallel.</li>
+<li>When connections do drop, the automatic reconnect attempts are now
+spread out with randomized timing instead of all retrying at the same
+instant, so they no longer arrive in lockstep and re-trigger the
+server’s limit.</li>
+</ul>
+<hr />
+<h2 id="known-issues">Known Issues</h2>
+<h3
+id="first-shiftf10-press-shows-the-system-menu-instead-of-the-quickmail-context-menu">First
+Shift+F10 press shows the system menu instead of the QuickMail context
+menu</h3>
+<p>On the very first Shift+F10 keypress after launching QuickMail, the
+Windows system menu (Restore, Move, Size, Minimize, Maximize, Close) may
+appear instead of the QuickMail context menu. All subsequent presses in
+the same session work correctly.</p>
+<p><strong>Workaround:</strong> Press Shift+F10 a second time. After the
+first press, the behaviour is correct for the remainder of the
+session.</p>
+<p>The root cause is a startup-timing issue: WebView2 initialization can
+claim Win32 focus before WPF’s first focus-restoration pass completes.
+When Shift+F10 arrives while <code>Keyboard.FocusedElement</code> is
+null, WPF has no element to route <code>ContextMenuOpening</code> from
+and falls through to <code>DefWindowProc</code>, which shows the system
+menu. (<a
+href="https://github.com/kellylford/QuickMail/issues/148">#148</a>)</p>
+<h3
+id="icloud-two-copies-of-sent-messages-appear-in-sent-messages">iCloud:
+two copies of sent messages appear in Sent Messages</h3>
+<p>When sending from an iCloud account, two identical copies of each
+sent message may appear in the Sent Messages folder. iCloud’s SMTP
+server saves a copy automatically when relaying the message; QuickMail
+also appends a copy after a successful send.</p>
+<p><strong>Impact:</strong> Cosmetic only. Both copies are identical and
+no mail is lost.</p>
+<p><strong>Planned fix:</strong> Before appending, search the Sent
+folder for a matching <code>Message-ID</code> and skip the append if a
+copy already exists. (<a
+href="https://github.com/kellylford/QuickMail/issues/150">#150</a>)</p>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thank you to everyone who has contributed to QuickMail through code,
+bug reports, feature suggestions, and other feedback. Your contributions
+make the project better for everyone.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="improved-imap-disconnect-logging">Improved IMAP disconnect
+logging</h3>
+<p>When an IDLE watcher loses its connection, the log now includes the
+full exception chain — type, message, and (for socket-level failures)
+the <code>SocketError</code> code and native error code. Previously only
+<code>ex.Message</code> was logged, which collapsed the chain and
+omitted the socket error code needed to distinguish a server-initiated
+disconnect from a network timeout. The account username now appears in
+error lines instead of the internal account GUID. Session elapsed time
+is also recorded in debug mode, making it straightforward to correlate
+how long a connection was alive before it failed.
+(<code>LogService.FormatException</code>,
+<code>ImapMailService.RunIdleWatcherAsync</code>)</p>
+<h3 id="connection-hardening-from-a-connection-code-review">Connection
+hardening from a connection-code review</h3>
+<p>A review of the connection code following the disconnect fix produced
+several hardening changes beyond the sync-ordering fix:</p>
+<ul>
+<li><strong>Randomized reconnect jitter.</strong> Both the IDLE watcher
+retry backoff (<code>ImapMailService.RunIdleWatcherAsync</code>) and the
+startup connection retry backoff
+(<code>MainViewModel.ConnectOneAccountAsync</code>) apply ±30% jitter.
+When a server terminates every connection at once, retries previously
+fired on the identical schedule and reconnected in lockstep, which could
+re-trip the per-IP connection limit that disconnected them.</li>
+<li><strong>Per-host grouping at connect time.</strong>
+<code>MainViewModel.ConnectAllAccountsAsync</code> now groups accounts
+by IMAP host so same-host accounts connect sequentially, matching the
+grouping <code>SyncService.SyncAllAccountsAsync</code> applies during
+sync.</li>
+<li><strong>Thread-safe Google token cache.</strong>
+<code>GoogleOAuthService</code>’s in-memory credential cache is now a
+<code>ConcurrentDictionary</code>; it is read and written concurrently
+by IDLE watcher threads and pooled IMAP/SMTP operations, where the
+previous plain <code>Dictionary</code> could race under
+read-during-write.</li>
+<li><strong>Cleanups.</strong> Removed a dead <code>delaySeconds</code>
+declaration in <code>ConnectOneAccountAsync</code>; corrected the
+periodic-NOOP heartbeat comment to describe its actual behavior.</li>
+</ul>
+<p>A larger structural follow-up — a per-host connection cap that also
+accounts for IDLE watcher connections — is tracked in <a
+href="https://github.com/kellylford/QuickMail/issues/152">#152</a> for a
+future release.</p>
+<h3 id="update-check-service">Update check service</h3>
+<p>The startup update notification is implemented by
+<code>UpdateCheckService</code> (<code>IUpdateCheckService</code>),
+which queries the GitHub Releases API with <code>HttpClient</code> +
+<code>System.Text.Json</code> (no new dependencies, 10-second timeout,
+debug-level logging on failure). It holds an internal
+<code>CancellationTokenSource</code> that is cancelled before disposal
+so an in-flight request on app exit is cancelled cleanly rather than
+relying on the HTTP timeout or throwing
+<code>ObjectDisposedException</code>. The reflected assembly version is
+cached in a static field. (<a
+href="https://github.com/kellylford/QuickMail/pull/151">#151</a>)</p>
+<p>The Help-menu entry is always present:
+<code>UpdateAvailableText</code> defaults to “No updates available” and
+the entry binds to <code>OpenUpdatePageCommand</code>, which opens the
+specific release when one is known (<code>UpdateReleaseUrl</code>
+non-empty) or the general releases page otherwise. The startup check
+(<code>CheckForUpdateInBackgroundAsync</code>) updates the entry’s text
+and stays silent when up to date (announcing only a found update). The
+status-bar update button’s visibility tracks
+<code>UpdateReleaseUrl</code> so it appears only when an update actually
+exists.</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.7.8.html">Newer: 0.7.8</a> | <a href="release-notes-v0.7.6.html">Older: 0.7.6</a></div>
+</body>
+</html>

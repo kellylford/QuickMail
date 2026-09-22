@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.6.0 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.1.html">Newer: 0.6.1</a> | <a href="release-notes-v0.5.9.html">Older: 0.5.9</a></div>
+  <h1 id="quickmail-v0.6.0-release-notes">QuickMail v0.6.0 Release
+Notes</h1>
+<p class="version">Released May 22, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.6.0">downloads for this release</a></p>
+<h2 id="new-features">New Features</h2>
+<h3 id="mail-rules">Mail rules</h3>
+<p>Mail rules let you define automatic actions that run on incoming
+messages during background sync. A rule tests each arriving message
+against a set of conditions and, if everything matches, performs an
+action — move it to a folder, mark it read or unread, or send it to
+Trash.</p>
+<p>Rules run <strong>locally on your machine</strong> within seconds of
+messages arriving. No data is sent to any server for processing.</p>
+<p><strong>Opening the Rules Manager</strong></p>
+<ul>
+<li><strong>Message → Rules…</strong> from the menu bar</li>
+<li><strong>Ctrl+Shift+L</strong></li>
+<li>Command palette (<code>Ctrl+Shift+P</code>) → “Manage Rules”</li>
+</ul>
+<p><strong>Conditions</strong> (all checked conditions must match):</p>
+<table>
+<thead>
+<tr class="header">
+<th>Condition</th>
+<th>What it matches</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>From</td>
+<td>Sender address or name contains the text you enter</td>
+</tr>
+<tr class="even">
+<td>To</td>
+<td>Recipients field contains the text you enter</td>
+</tr>
+<tr class="odd">
+<td>Subject</td>
+<td>Subject line contains the text you enter</td>
+</tr>
+<tr class="even">
+<td>Body</td>
+<td>Message body preview contains the text you enter</td>
+</tr>
+<tr class="odd">
+<td>Has attachments</td>
+<td>Message has at least one attachment</td>
+</tr>
+<tr class="even">
+<td>Account</td>
+<td>Scopes the rule to one account, or leave as “All accounts”</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Actions:</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th>Action</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Mark as read</td>
+<td>Marks matching messages as read</td>
+</tr>
+<tr class="even">
+<td>Mark as unread</td>
+<td>Marks matching messages as unread</td>
+</tr>
+<tr class="odd">
+<td>Move to folder</td>
+<td>Moves matching messages to a folder you choose</td>
+</tr>
+<tr class="even">
+<td>Delete</td>
+<td>Moves matching messages to Trash</td>
+</tr>
+</tbody>
+</table>
+<p>Each condition can be enabled or disabled independently with its
+checkbox, so you can keep a condition’s text without having it
+contribute to the match.</p>
+<p><strong>Creating a rule from a message</strong></p>
+<p>Select any message, then right-click → <strong>Create Rule from
+Message…</strong> (or press <code>Ctrl+Shift+T</code>). The Rules
+Manager opens with the sender address and subject already filled in —
+choose an action and save.</p>
+<p><strong>Testing a rule</strong></p>
+<p>Before saving, press <strong>Test Rule</strong> to see how many of
+the messages currently shown in your message list would match. The
+result appears in the status bar at the bottom of the dialog.</p>
+<p><strong>Applying rules to existing mail</strong></p>
+<p>When you save a new or edited rule, QuickMail immediately applies it
+to your existing cached messages — you don’t have to wait for the next
+sync cycle to see the effect.</p>
+<p><strong>Rules status bar</strong></p>
+<p>The status bar shows how many rules are active, how many are
+disabled, and when rules last ran. Selecting the rules area in the
+status bar opens the Rules Manager.</p>
+<p><strong>Keyboard shortcuts</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Ctrl+Shift+L</code></td>
+<td>Open Rules Manager</td>
+</tr>
+<tr class="even">
+<td><code>Ctrl+Shift+T</code></td>
+<td>Create rule from selected message</td>
+</tr>
+<tr class="odd">
+<td><code>Ctrl+N</code></td>
+<td>New rule (when Rules Manager is focused)</td>
+</tr>
+<tr class="even">
+<td><code>Escape</code></td>
+<td>Close Rules Manager</td>
+</tr>
+</tbody>
+</table>
+<p>Rules are stored in <code>rules.json</code> in your profile directory
+and can be inspected or backed up in any text editor.</p>
+<hr />
+<h3 id="profile-support">Profile support</h3>
+<p>A new <code>--profileDir &lt;path&gt;</code> command-line option lets
+you point QuickMail at a custom data directory instead of the default
+<code>%AppData%\QuickMail</code>. Every data file — accounts, mail
+cache, configuration, contacts, saved views, rules, and the log — is
+read from and written to the specified path. The directory is created
+automatically if it does not already exist.</p>
+<p><strong>Common uses:</strong></p>
+<ul>
+<li><strong>Separate work and personal mail</strong> — run two
+shortcuts, each with a different <code>--profileDir</code>, and switch
+between them without any accounts bleeding across.</li>
+<li><strong>Store data on a synced drive</strong> — point
+<code>--profileDir</code> at a OneDrive or Dropbox folder to keep your
+account configuration and settings in sync across machines. (The mail
+cache itself is large and regenerable, so syncing it is optional.)</li>
+</ul>
+<pre><code>QuickMail.exe --profileDir &quot;C:\Users\YourName\OneDrive\QuickMail&quot;
+QuickMail.exe --profileDir &quot;C:\Users\YourName\AppData\Roaming\QuickMail-Work&quot;</code></pre>
+<p>Passwords are stored in Windows Credential Manager (system-wide) and
+are shared across profiles — you do not need to re-enter them when
+switching.</p>
+<p>A <code>--help</code> option (also <code>-h</code>,
+<code>-help</code>, <code>/?</code>) shows a summary of available
+command-line options and exits without starting the app.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>Messages in regular folders not updating live during
+sync</strong> — When a regular IMAP folder (such as INBOX) was open and
+background sync completed, new messages were not added to the message
+list until you pressed Refresh. Only virtual folders (All Mail, All
+Inboxes, and so on) were receiving live sync updates. Regular folders
+now update in real-time the same way virtual folders do.</li>
+</ul>
+<hr />
+<h2 id="internal">Internal</h2>
+<ul>
+<li>Added <code>RulesManagerViewModelTests.cs</code> with 35 tests
+covering rule creation, deletion, saving, validation (name required,
+target folder required for Move, at least one condition required for
+Move and Delete), test-rule dry run, the <code>UseXCondition</code>
+per-condition enable/disable flags, accessibility announcements, and
+account option population.</li>
+<li>Added <code>RulesManagerWindow</code> XAML parse test and
+<code>RulesManagerViewModel</code> construction test.</li>
+<li><code>RuleServiceTests.cs</code> covers load/save round-trip,
+corrupted file recovery, caching, all five condition types, AND
+semantics, case-insensitive matching, empty-condition pass-through,
+account scoping, disabled rule skipping, cancellation propagation, and
+match counting. 452 lines, 16 tests.</li>
+<li>Total test count: 196 (v0.5.9) → 223 (v0.6).</li>
+<li><code>rules.json</code> is written atomically (write to temp file,
+rename) so a crash during save cannot corrupt the rule list.</li>
+<li><code>RuleService</code> passes <code>profile.ProfileDir</code> to
+keep rules in the active profile directory when
+<code>--profileDir</code> is used.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.1.html">Newer: 0.6.1</a> | <a href="release-notes-v0.5.9.html">Older: 0.5.9</a></div>
+</body>
+</html>

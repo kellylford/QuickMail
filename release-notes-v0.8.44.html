@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.44 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.45.html">Newer: 0.8.45</a> | <a href="release-notes-v0.8.43.html">Older: 0.8.43</a></div>
+  <h1 id="quickmail-v0.8.44-release-notes">QuickMail v0.8.44 Release
+Notes</h1>
+<p class="version">Released September 2, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.44">downloads for this release</a></p>
+<h2 id="new-writing-mail-works-without-a-connection">New: writing mail
+works without a connection</h2>
+<p>Until now a dropped connection could trap a message in the compose
+window. Saving a draft was always a trip to the server, so on a flaky
+airport connection it failed; sending failed the same way; and a window
+with unsaved changes refused to close after a failed save, leaving you
+holding a message you could not keep and could not let go of.</p>
+<p>QuickMail now tries your account first and falls back to this
+computer only when the server does not answer:</p>
+<ul>
+<li><strong>Save Draft</strong> (<code>Ctrl+S</code>) and auto-save keep
+the draft on this computer when the server cannot be reached. You hear
+<em>“Draft saved on this computer. It will upload when you’re
+online.”</em> The draft goes to your account’s Drafts folder the next
+time QuickMail connects. Auto-save shows <em>“Kept on this computer 3:42
+PM”</em> in its status line and says so once.</li>
+<li><strong>Send</strong> (<code>Alt+S</code>) queues the message when
+the server cannot be reached. You hear <em>“Message queued. It will be
+sent when you’re online.”</em>, the window closes, and the message
+leaves the moment a connection returns. A server that answers and
+refuses the message — a bad address, a rejected login — still fails in
+the window, where you can fix it.</li>
+<li><strong>Closing</strong> a window with unsaved changes and choosing
+Save keeps the draft on this computer if the server is unreachable, and
+the window closes. It stays open only when the draft could be saved
+nowhere at all.</li>
+</ul>
+<p>Everything waiting lives in a new <strong>Outbox</strong>, the last
+entry in the All Mail group of the folder tree. Its count is spoken as
+<em>“waiting”</em>, not <em>“unread”</em>. Each row shows the account
+the message will leave from, and its subject starts with its state:
+<em>“Waiting to send”</em>, <em>“Waiting to upload draft”</em>,
+<em>“Sending…”</em>, or <em>“Failed”</em> followed by the server’s
+reason. Press <code>Enter</code> on a row to reopen it in the compose
+window exactly as you wrote it — recipients, Bcc, attachments and
+compose mode included; saving or sending from there replaces the queued
+copy. Press <code>Delete</code> to remove one; QuickMail asks first,
+because there is no Trash to get it back from. <strong>Send Outbox
+Now</strong> (Message menu, or the command palette) tries everything
+right away, including anything marked Failed.</p>
+<p>The Outbox drains on its own when QuickMail connects at launch, when
+the connection returns, and on each background check for new mail. A
+drain is announced once as a whole — <em>“Outbox: 2 messages sent, 1
+draft uploaded.”</em> A message the server refused stays in the Outbox
+marked Failed with the reason until you reopen and fix it, or remove it.
+A message you have reopened is never sent from under you while its
+window is open. The Outbox is not available when QuickMail is started
+with <code>--online</code>, which runs without the local store. (<a
+href="https://github.com/kellylford/QuickMail/issues/637">#637</a>)</p>
+<h2 id="new-quickmail-knows-when-it-is-offline-and-says-so">New:
+QuickMail knows when it is offline, and says so</h2>
+<p>QuickMail keeps a copy of your recent mail on this computer, and when
+the connection drops you keep reading it. The connection label in the
+status bar now reads <strong>Offline</strong>, and screen readers hear
+<em>“Offline. Showing cached messages.”</em> once, and <em>“Back
+online.”</em> when the connection returns. QuickMail waits a few seconds
+before saying Offline, so a momentary blip never interrupts you.</p>
+<p>Opening a folder offline shows what is cached with plain wording —
+<em>“Offline — showing 12 cached messages.”</em> or <em>“Offline — no
+cached messages in Projects.”</em> — instead of a raw network error, and
+it never sits on <em>“Loading…”</em>. A message that was never
+downloaded says <em>“This message is not available offline.”</em>; Reply
+and Forward on it say the same rather than silently doing nothing;
+attachments say <em>“Attachments are not available offline.”</em></p>
+<p>Getting back online needs nothing from you. When Windows reports the
+network again QuickMail reconnects every account by itself; when the
+network is up but nothing answers — a hotel or airport sign-in page, an
+outage at the provider — it keeps trying on its own, first every half
+minute and then every five, until something does. <code>F5</code> forces
+an attempt at any time. Once something answers, the folder you are
+looking at refreshes and anything waiting in the Outbox goes out. A
+sign-in you have to do yourself, or a missing password, is reported as
+exactly that and never as being offline.</p>
+<p>Launching with no network no longer spends up to three minutes on
+<em>“Connecting…”</em> before admitting it; it says Offline at once and
+shows your cached mail. (<a
+href="https://github.com/kellylford/QuickMail/issues/637">#637</a>)</p>
+<h2 id="new-keep-recent-messages-for-reading-offline">New: keep recent
+messages for reading offline</h2>
+<p>By default QuickMail keeps the full text of a message only once you
+have opened it, or when it fetched a few ahead of time. A new setting,
+<strong>Settings → General → Sync → Download messages for offline
+reading</strong>, keeps more ready before the connection drops:
+<strong>Off</strong> (the default), or the last <strong>7</strong>,
+<strong>30</strong> or <strong>90</strong> days. With a window set, the
+sync at launch and each background check finish by downloading the text
+of each Inbox message in that window that QuickMail does not have yet,
+newest first, and new mail gets its text as it arrives. When a pass
+completes you hear <em>“Downloaded 120 messages for offline
+reading.”</em> once.</p>
+<p>Inbox only; never wider than the sync range above it; attachments are
+not included and still need a connection; POP3 accounts already keep
+every message whole. The text lives in <code>mail.db</code> in
+QuickMail’s data folder, which grows accordingly. (<a
+href="https://github.com/kellylford/QuickMail/issues/637">#637</a>)</p>
+<h2 id="fixed-two-cache-fallbacks-that-skipped-the-server">Fixed: two
+cache fallbacks that skipped the server</h2>
+<p>Opening a message, and the fetch behind Reply and Forward, both read
+QuickMail’s local copy first and went to the server only if there was
+none. A failure reading the local copy — every read fails in
+<code>--online</code> mode — skipped the server too, so the message did
+not open at all. Both now fall through to the server as intended. (<a
+href="https://github.com/kellylford/QuickMail/issues/637">#637</a>)</p>
+<h2 id="fixed-the-address-book-reads-out-contacts-again">Fixed: the
+address book reads out contacts again</h2>
+<p>Moving through the list of contacts in the address book announced
+every row as <em>“QuickMail.Models.ContactModel”</em> followed by its
+position — the same thing for all 35 of your contacts, with no way to
+tell one from the next except by opening it. The list of a group’s
+members was silent in exactly the same way. The Groups list happened to
+escape it, but only by accident: it had the same underlying fault and
+was one small edit away from going silent too.</p>
+<p>The rows carried the right text all along; it was attached to the
+wrong part of the row. Screen readers read a list row’s name from the
+row itself, and the address book had put the name on something drawn
+inside the row instead — which looks identical on screen, and is why
+this went unnoticed. Every other list in QuickMail already put it in the
+right place; these three now do too.</p>
+<p>A contact row reads as its name, its address, and where it came from
+— <em>“Alice Adams, alice@example.com, Local address book”</em> — or
+with each part labelled, if you have turned on field labels in the
+contact list. A contact saved with no name reads as its address and
+where it came from. A group reads as its name and how many members it
+has, and a group’s member reads as name and address.</p>
+<p>As a safety net for any list of contacts anywhere in QuickMail, a
+contact with nothing else to say for itself now falls back to reading
+its name and address rather than its internal type name, so this
+particular kind of silence cannot come back through some other list. (<a
+href="https://github.com/kellylford/QuickMail/issues/644">#644</a>)</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.45.html">Newer: 0.8.45</a> | <a href="release-notes-v0.8.43.html">Older: 0.8.43</a></div>
+</body>
+</html>

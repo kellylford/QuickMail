@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.6.1 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.2.html">Newer: 0.6.2</a> | <a href="release-notes-v0.6.0.html">Older: 0.6.0</a></div>
+  <h1 id="quickmail-v0.6.1-release-notes">QuickMail v0.6.1 Release
+Notes</h1>
+<p class="version">Released May 23, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.6.1">downloads for this release</a></p>
+<h2 id="new-features">New Features</h2>
+<h3 id="imap-idle-real-time-new-mail-notification">IMAP IDLE — real-time
+new mail notification</h3>
+<p>QuickMail now uses IMAP IDLE to detect new mail as soon as it
+arrives, without polling. After connecting, a dedicated background
+connection per account watches the INBOX. When the server signals that a
+new message has arrived, QuickMail runs a targeted sync for that inbox
+and the message appears in your list automatically — no manual refresh
+needed.</p>
+<h3 id="online-mode---online">Online mode (<code>--online</code>)</h3>
+<p>A new <code>--online</code> command-line flag runs QuickMail in fully
+live mode: every folder selection fetches messages directly from IMAP,
+and nothing is read from or written to the local SQLite cache. Useful
+for a clean look at your mail without any cached state.</p>
+<pre><code>QuickMail.exe --online</code></pre>
+<h3 id="hour-clock-and-updated-date-format">12-hour clock and updated
+date format</h3>
+<p>Message dates in the list now use a 12-hour clock with an A or P
+suffix for today’s messages (e.g., <code>9:30A</code>,
+<code>3:45P</code>), and <code>M/d/yyyy</code> for older messages (e.g.,
+<code>5/22/2026</code>).</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><strong>IDLE push not working in <code>--online</code> mode</strong>
+— The IDLE watcher was never started when <code>--online</code> was
+active, so new mail required a manual refresh. IDLE connections now
+start regardless of caching mode, and new arrivals are fetched live from
+IMAP and merged into the message list without touching the cache.</li>
+<li><strong>Delete and Move to Folder crashing in <code>--online</code>
+mode</strong> — After a successful IMAP delete or move, QuickMail tried
+to remove the message from the local SQLite cache, which doesn’t exist
+in online mode. This produced the error “SQLite Error 1: no such table:
+MessageSummary”. Both operations now skip the cache cleanup step when
+running in online mode.</li>
+<li><strong>Preview text showing when Preview Lines is set to 0</strong>
+— When <code>PreviewLines = 0</code> in Settings, the IMAP PREVIEW
+extension on the server was still populating preview text in the message
+list. QuickMail now clears preview text when loading or inserting
+messages whenever the preview display is disabled.</li>
+<li><strong>Preview Lines 1–5 all showing the same amount of
+text</strong> — Because IMAP PREVIEW strings from the server contain no
+newlines, the line-splitting logic treated any value 1–5 identically.
+Preview text is now capped at 100 characters per line (100–500
+characters for settings 1–5), giving meaningful control over how much
+preview text is announced.</li>
+</ul>
+<hr />
+<h2 id="internal">Internal</h2>
+<ul>
+<li>Added <code>SyncOneFolderOnlineAsync</code> to
+<code>ISyncService</code> / <code>SyncService</code> for IDLE-triggered
+inbox refreshes that bypass the local store.</li>
+<li>Added <code>SessionFeaturesTests.cs</code> with 12 new tests
+covering date display format, preview suppression, the
+<code>OnlineMode</code> constructor flag, and IDLE-triggered sync
+dispatch in both normal and online modes.</li>
+<li>Total test count: 223 (v0.6) → 235 (v0.6.1).</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.6.2.html">Newer: 0.6.2</a> | <a href="release-notes-v0.6.0.html">Older: 0.6.0</a></div>
+</body>
+</html>

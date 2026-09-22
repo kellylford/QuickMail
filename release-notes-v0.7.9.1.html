@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.7.9.1 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.0.html">Newer: 0.8.0</a> | <a href="release-notes-v0.7.9.html">Older: 0.7.9</a></div>
+  <h1 id="quickmail-v0.7.9.1-release-notes">QuickMail v0.7.9.1 Release
+Notes</h1>
+<p class="version">Released July 3, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.7.9.1">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.7.9.1:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>quickmail-v0.7.9.1-setup.exe</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. Installs per-user with no elevation
+required, checks for the WebView2 Runtime, and registers an
+uninstaller.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<p>This is a small follow-up release on top of v0.7.9; there are no
+functional changes to mail handling.</p>
+<hr />
+<h2 id="bug-fixes">Bug Fixes</h2>
+<ul>
+<li><p><strong>Stray underscores across the interface are gone (issue
+#168).</strong> In several places the interface showed literal
+underscore characters — field labels in the Manage Accounts and Add
+Account dialogs (for example “_Account Name”, “SMTP H_ost”), the From
+and Subject labels in Compose, the Insert Link labels, and every button
+on the main toolbar (“_New”, “Reply _All”, “For_ward”, “Refres_h”).
+Those underscores are the markers that turn a letter into a keyboard
+access key, and in these spots they were being drawn on screen instead
+of doing their job — which also meant a screen reader read the
+underscore aloud as part of the field name. Field labels now register
+their access key correctly (the underscore becomes an underline shown
+when you press Alt, and screen readers announce a clean name). Toolbar
+buttons no longer carry access keys at all, matching how standard
+Windows toolbars work — they read as plain text (New, Reply, Reply All,
+Forward, Delete, Refresh, Empty Trash, Accounts, User Guide) and are
+still reachable by their existing Ctrl shortcuts, tooltips, and
+Tab/arrow navigation.</p></li>
+<li><p><strong>The Help menu now shows the running version (issue
+#169).</strong> When you check for updates and you are already up to
+date, the entry reads “No updates available — running version 0.7.9.1”,
+so you can always confirm which build you are on. The version reported
+to your screen reader and to File Explorer is now clean digits as well,
+rather than a long string with an appended build identifier.</p></li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Special thanks to <strong>Brian Vogel (<span class="citation"
+data-cites="britechguy">@britechguy</span>)</strong> for reporting issue
+#168, which flagged the stray underscores scattered through the
+interface. Those characters had lingered longer than they should have —
+a good reminder that even when you navigate QuickMail by screen reader
+every day, it is easy to stop noticing a rough edge you have walked past
+a hundred times. Thank you, Brian, for the careful eye and the clear
+report; this is exactly the kind of feedback that keeps the app honest
+and makes it better for everyone.</p>
+<p>Thank you, as always, to everyone who contributes to QuickMail
+through code, bug reports, feature suggestions, and other feedback.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<h3 id="access-key-cleanup-issue-168">Access-key cleanup (issue
+#168)</h3>
+<ul>
+<li><p><strong>Field labels</strong> in
+<code>AccountManagerDialog</code>, <code>AddAccountDialog</code>,
+<code>ComposeWindow</code> (From/Subject), and
+<code>InsertLinkDialog</code> were <code>TextBlock</code>s with
+underscore mnemonics. <code>TextBlock</code> does not process access
+keys, so the underscore rendered literally and, because each label is
+the field’s <code>AutomationProperties.LabeledBy</code> source, a screen
+reader announced “underscore Account Name” as the field name. They are
+now <code>Label</code> controls with a <code>Target</code> binding (the
+pattern <code>AddressBookWindow</code> already used), so the mnemonic
+renders as an underline and the accessible name is clean.</p></li>
+<li><p><strong>Mnemonic letters were reworked</strong> to remove
+access-key collisions (both within the dialogs and against the top-level
+menu letters), rather than the earlier self-colliding scheme that forced
+mid-word placements.</p></li>
+<li><p><strong>Toolbar buttons</strong> rendered their underscores
+literally because a WPF <code>ToolBar</code> re-templates its child
+buttons with a flat template whose <code>ContentPresenter</code> leaves
+<code>RecognizesAccessKey = false</code>. Verified with a
+<code>RenderTargetBitmap</code> probe: plain buttons, menu items, and
+labels recognize the key; only <code>ToolBar</code> children do not.
+Rather than force the mnemonic through <code>AccessText</code>, the
+toolbar access keys were removed — every toolbar button already has a
+Ctrl accelerator, a tooltip, and an
+<code>AutomationProperties.Name</code>. Menu
+(<code>MenuItem.Header</code>) mnemonics were left unchanged, as they
+render correctly and are standard.</p></li>
+</ul>
+<h3 id="running-version-and-version-reporting-issue-169">Running version
+and version reporting (issue #169)</h3>
+<ul>
+<li>The Help “check for updates” entry now appends the running version
+at rest, sourced from a shared <code>Helpers.AppVersion.Display</code>
+helper.</li>
+<li><code>IncludeSourceRevisionInInformationalVersion</code> is set to
+<code>false</code>, so the informational/product version is clean digits
+(<code>0.7.9.1</code>) instead of <code>0.7.9.1+&lt;git sha&gt;</code> —
+that value is what File Explorer’s Product version and screen readers
+report programmatically.</li>
+<li><code>AppVersion.Display</code> shows the 4th (revision) component
+only when it is non-zero, so normal releases read “0.7.9” and a hotfix
+reads “0.7.9.1”. It is used by the About dialog, the Help entry, the
+SMTP User-Agent, and the update check. Because the update check parses
+this string, the hotfix build compares at full precision and does not
+mistake its own release for a newer one.</li>
+</ul>
+<h3 id="version">Version</h3>
+<ul>
+<li>Bumped to <code>0.7.9.1</code> (<code>Version</code>,
+<code>AssemblyVersion</code>, <code>FileVersion</code>).</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.0.html">Newer: 0.8.0</a> | <a href="release-notes-v0.7.9.html">Older: 0.7.9</a></div>
+</body>
+</html>

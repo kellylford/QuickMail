@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.47 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.46.html">Older: 0.8.46</a></div>
+  <h1 id="quickmail-v0.8.47-release-notes">QuickMail v0.8.47 Release
+Notes</h1>
+<p class="version">Released September 21, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.47">downloads for this release</a></p>
+<h2 id="added">Added</h2>
+<h3 id="save-and-print-messages">Save and print messages</h3>
+<p>You can now save a message to a file, or print it. Until now the only
+thing you could save was an attachment.</p>
+<ul>
+<li><strong>Save</strong> (<strong>Ctrl+S</strong>) saves without
+asking, in your default format and folder. Out of the box that is the
+original message, in your Documents folder.</li>
+<li><strong>Save As…</strong> (<strong>F12</strong>) opens the Save
+dialog, where you choose the folder and the format.</li>
+<li><strong>Print…</strong> (<strong>Ctrl+P</strong>) opens the Windows
+Print dialog.</li>
+</ul>
+<p>All three are on the <strong>File</strong> menu and in the command
+palette, and Save As and Print are on a message’s context menu. They
+work from the message list, the reading pane, a tab, and a message
+window, including while you are reading inside the message itself. Save
+and Save As act on everything selected: several messages, or a whole
+conversation or sender group when its heading is selected. Each message
+is saved in its own file, named from its subject, sender and date.
+Saving never marks a message read, and never replaces or duplicates a
+file without asking. If a message was saved there before, Save opens the
+Save As dialog on that name.</p>
+<p>There are four formats:</p>
+<ul>
+<li><strong>Email message (.eml)</strong> is the original message
+exactly as your server holds it, attachments included. Any mail program
+can open it.</li>
+<li><strong>Text file (.txt)</strong> starts with the message’s details
+in plain words: sender, recipients, date, account, folder, status,
+attachments and more. The message’s text follows.</li>
+<li><strong>Web page (.html)</strong> has the same details, then the
+message with its formatting, headings, tables and links. Nothing in it
+runs or loads from the internet.</li>
+<li><strong>PDF (.pdf)</strong> is made from the web page. It is a
+tagged PDF, so headings and tables come through to a screen reader.</li>
+</ul>
+<p>Set the default format and folder in <strong>Settings → General →
+Saving Messages</strong>.</p>
+<p>An email message file can only come from your mail server. If the
+server cannot be reached, or no longer has the message, QuickMail says
+why. It then asks whether you want to save in another format, instead of
+quietly writing something else. The other formats work offline for any
+message whose text is on this computer.</p>
+<p>Saved web pages and PDFs leave pictures out, as the reading pane
+does, with each picture’s description in its place.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/728">#728</a></p>
+<h2 id="changed">Changed</h2>
+<h3 id="a-new-rule-starts-with-no-conditions-checked">A new rule starts
+with no conditions checked</h3>
+<p>The rule editor used to open a new rule with every condition already
+checked — <strong>Sender contains</strong>, <strong>Subject
+contains</strong>, and several inside <strong>Advanced conditions &amp;
+actions</strong> that you could not see without expanding it. The boxes
+beside them were empty, so the rule did not actually test anything, but
+the form said otherwise, and there was no telling at a glance which of
+the ticked conditions had anything in them.</p>
+<p>Now <strong>Enabled</strong> is the only box ticked on a new rule.
+Check a condition when you want it. Until you do, its box is read-only
+and skipped by Tab, so the order is: check the condition, then Tab into
+its box and type.</p>
+<p><strong>Create Rule from Message</strong>
+(<strong>Ctrl+Shift+T</strong>) checks what it has filled in for you —
+the sender — and nothing else. The subject still comes across unchecked,
+as before: a rule matching one sender <em>and</em> one exact subject
+line matches, in practice, only the thread it was made from.</p>
+<p>Editing an existing rule is unchanged: it opens with exactly the
+conditions that rule uses, checked.</p>
+<hr />
+<h3 id="the-rule-editor-stops-offering-what-an-account-cannot-use">The
+rule editor stops offering what an account cannot use</h3>
+<p>On an account that can only have client-side rules — any IMAP or POP3
+account, a personal Outlook.com, Hotmail or Live.com account, and a work
+or school account added over Standard IMAP/SMTP — the rule editor used
+to offer every option a server-side rule can use, and only refuse them
+when you pressed <strong>Save</strong>, by which point you had built the
+rule.</p>
+<p>Those options are now turned off instead: <strong>Sent to
+me</strong>, <strong>Sent only to me</strong>, <strong>Importance
+is</strong>, <strong>Set importance to</strong>, <strong>Forward
+to</strong>, and <strong>Stop processing more rules</strong>. A line
+under <strong>Enabled</strong> names them and says why, and it is a Tab
+stop while it is there — a turned-off option is skipped by Tab, so
+without it they would simply go missing rather than read as unavailable.
+They are also turned off while you edit a rule that already runs in
+QuickMail, because editing never changes a rule’s kind. On a Microsoft
+365 account a <strong>new</strong> rule still offers them — choosing one
+is what makes the rule server-side.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/682">#682</a></p>
+<hr />
+<h3 id="client-side-rules-can-match-more">Client-side rules can match
+more</h3>
+<p>A client-side rule — which is every rule on an IMAP account, on a
+personal Outlook.com, Hotmail or Live.com account, and on a work or
+school account added over Standard IMAP/SMTP — can now use four
+conditions that until now only a server-side rule could:</p>
+<ul>
+<li><strong>From addresses</strong> and <strong>Sent to
+addresses</strong> take more than one address. A message matches when it
+has <strong>any one</strong> of them, so one rule covers a sender’s
+several addresses instead of one rule each.</li>
+<li><strong>Sender contains</strong> can be used together with
+<strong>From addresses</strong>. Both have to match, so you can narrow a
+list of addresses to the ones whose sender also carries some text.</li>
+<li><strong>Subject or body contains</strong> looks for your text in
+either place. As with <strong>Body contains</strong>, the body a
+client-side rule reads is the start of the message QuickMail keeps as
+its preview, not the whole message.</li>
+</ul>
+<p>Conditions are still ANDed with each other: a message has to satisfy
+every condition you checked. The choice of addresses lives inside the
+one condition.</p>
+<p><strong>Sender contains</strong> and <strong>From addresses</strong>
+have swapped places in the editor. <strong>Sender contains</strong> is
+now the first condition under <strong>Apply when a message
+matches</strong>, and <strong>From addresses</strong> has moved to
+<strong>Advanced conditions &amp; actions</strong>. <strong>Create Rule
+from Message</strong> (<strong>Ctrl+Shift+T</strong>) fills in
+<strong>Sender contains</strong>, which is the right field for it: a
+sender reads as a name rather than an address — an organization’s
+address book writes one as “Last, First” — and a comma in an address
+field is a separator, so a rule for one person would have become a rule
+for anyone with either name. If you made such a rule in an earlier
+version, opening it now shows it under <strong>Sender contains</strong>,
+unchanged, and saving it keeps it that way.</p>
+<p>The editor already offered all four, and until now
+<strong>Save</strong> refused them on an account that can only have
+client-side rules. That refusal is gone. One combination is still
+refused, because a client-side rule has a single subject condition:
+<strong>Subject contains</strong> and <strong>Subject or body
+contains</strong> at the same time. Use one or the other.</p>
+<p>If you go back to an earlier version, such a rule matches on the
+first of its addresses, and on the subject half of <strong>Subject or
+body contains</strong> — less mail than the rule covers, not more. The
+exception is a rule using <strong>Sender contains</strong> <em>and</em>
+<strong>From addresses</strong> together: an earlier version has no
+<strong>Sender contains</strong>, so it matches on the first address
+alone — which is not the same set of messages, and can include some this
+version would leave alone. Saving rules in an earlier version drops the
+rest either way, as it does with a rule that has several actions.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/682">#682</a></p>
+<hr />
+<h3 id="pop3-keeps-the-original-of-every-message">POP3 keeps the
+original of every message</h3>
+<p>POP3 accounts now keep the whole original of every message they
+download. Before, they kept it only for messages with attachments. This
+is what makes it possible to save a POP3 message as an email message
+file. Messages downloaded before this version that had no attachments
+are downloaded again when you save them, if they are still on the
+server. The extra copy uses some disk space, about the size of the mail
+itself.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/728">#728</a></p>
+<hr />
+<h3 id="built-on-.net-10">Built on .NET 10</h3>
+<p>QuickMail now runs on .NET 10 instead of .NET 8. Microsoft stops
+providing security fixes for .NET 8 on November 10, 2026, and because
+QuickMail carries its own copy of .NET inside the program, moving to the
+next long-term supported release is how you keep receiving those fixes.
+.NET 10 is supported until November 2028. Nothing about how QuickMail
+looks or works is meant to change, and you still do not need to install
+.NET yourself. If anything behaves differently after this update, please
+report it.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/472">#472</a></p>
+<h2 id="fixed">Fixed</h2>
+<h3 id="alt-in-a-message-opens-the-menu-bar">Alt in a message opens the
+menu bar</h3>
+<p>While reading a message, pressing Alt opened the window’s system menu
+(Restore, Move, Size and so on) instead of the menu bar. It now goes to
+the menu bar with File selected, exactly as Alt does everywhere else in
+the window, and Escape returns you to the message. Alt with a letter
+opens that menu, so Alt+F opens File, and Alt+A still goes to the
+attachment list. This works in the reading pane, tabs and message
+windows. Alt+Space still opens the system menu.</p>
+<h3 id="a-message-could-open-a-web-page-without-being-clicked">A message
+could open a web page without being clicked</h3>
+<p>A specially written message could make QuickMail open a web page in
+your browser just by being previewed. It could also make your browser
+look up the sender’s server as the message was shown, which tells the
+sender it was read. QuickMail now opens a web page only when you
+activate a link, and the cleanup applied to every message’s formatting
+now catches the trick these messages used. The problem was found during
+the security review of saving messages.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/728">#728</a></p>
+<hr />
+<h3 id="selected-rows-in-nine-more-lists-ignored-the-theme">Selected
+rows in nine more lists ignored the theme</h3>
+<p>The highlighted row in the tab strip, the tab list, the account list,
+the flag list, the flag picker, the watched conversations list and all
+three attachment lists was drawn in Windows’ own highlight colours
+rather than the theme’s — a pale blue that belongs to no QuickMail
+theme, and that in the Rules Manager left the highlighted rule all but
+invisible in a dark theme. The Rules Manager was fixed in 0.8.45; these
+are the rest of the lists with the same cause.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/690">#690</a></p>
+<hr />
+<h3 id="the-menu-bar-and-status-bar-follow-your-text-size">The menu bar
+and status bar follow your text size</h3>
+<p><strong>Settings → Appearance → Text size</strong> grew the toolbar,
+folder tree, message list and pane headings, but left the menu bar and
+the status bar at the size Windows uses for menus. At 150% they were the
+only text in the window that had not grown. They now follow the setting,
+as do context menus and tooltips, and all four follow your chosen font
+as well.</p>
+<p>Under Windows High Contrast they keep using the system’s own menu and
+status fonts, as before.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/691">#691</a></p>
+<hr />
+<h3 id="the-command-palettes-category-labels-are-easier-to-read">The
+command palette’s category labels are easier to read</h3>
+<p>The grey category under each command in the command palette
+(<strong>Ctrl+Shift+P</strong>), and the shortcut shown beside it, were
+drawn by fading the text rather than by using the theme’s colour for
+secondary text. In the Parchment theme that left them below the
+readable-contrast minimum, and on the highlighted row they were fainter
+still in every theme. They now use the theme’s secondary text colour,
+and the highlighted row’s use its highlight text colour at full
+strength. The same change reaches the counts in the watched
+conversations list.</p>
+<p><a
+href="https://github.com/kellylford/QuickMail/issues/702">#702</a></p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.46.html">Older: 0.8.46</a></div>
+</body>
+</html>

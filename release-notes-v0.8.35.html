@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.35 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.36.html">Newer: 0.8.36</a> | <a href="release-notes-v0.8.34.html">Older: 0.8.34</a></div>
+  <h1 id="quickmail-v0.8.35-release-notes">QuickMail v0.8.35 Release
+Notes</h1>
+<p class="version">Released July 23, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.35">downloads for this release</a></p>
+<h2 id="download">Download</h2>
+<p>Two options are available for v0.8.35:</p>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Download</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><code>QuickMail-win.msi</code></strong> — Windows
+installer</td>
+<td>Recommended for most users. A standard setup wizard with license
+agreement; installs per-user with no elevation required, adds the
+WebView2 Runtime if missing, and enables automatic updates.</td>
+</tr>
+<tr class="even">
+<td><strong><code>QuickMail.exe</code></strong> — standalone portable
+executable</td>
+<td>No installation required. Copy it anywhere and run.</td>
+</tr>
+</tbody>
+</table>
+<p>Both downloads include the .NET 8 runtime — you do not need to
+install .NET separately.</p>
+<hr />
+<h2 id="new-microsoft-365-and-exchange-online-support">New: Microsoft
+365 and Exchange Online support</h2>
+<p>QuickMail now connects to <strong>Microsoft 365 / Exchange
+Online</strong> and <strong>Outlook.com</strong> mailboxes through
+Microsoft 365 directly — no IMAP/SMTP server names or ports to enter. In
+the Add Account dialog, set <strong>Account type</strong> to
+<strong>Microsoft 365 / Outlook.com</strong>, sign in with Microsoft,
+and you’re done. This is on by default for everyone in this release.</p>
+<p>Work or school (Microsoft 365) accounts frequently sit in
+organizations that require an administrator to approve a new app before
+anyone can sign in. If your sign-in stops at a <strong>“needs admin
+approval”</strong> message, that is expected — QuickMail needs a
+one-time approval from your organization’s IT administrator. We’ve added
+a full <strong><a href="https://kellylford.github.io/QuickMail/">For
+Microsoft 365 Administrators and Tenant Owners</a></strong> section to
+the User Guide explaining exactly what an admin needs to do (it takes a
+couple of minutes). Personal Outlook.com accounts are not affected.</p>
+<p><strong>Important for work and school accounts:</strong> turning on
+Exchange support in QuickMail is only part of the process. Until your
+administrator or tenant owner completes the steps in the <a
+href="https://kellylford.github.io/QuickMail/">administrator guide</a>,
+QuickMail will not be able to connect to your work or school account. If
+you plan to use a Microsoft 365 account, share that guide with whoever
+manages your organization’s Microsoft 365 tenant first.</p>
+<p>Prefer IMAP? You still can — choose <strong>Standard
+IMAP/SMTP</strong> and <strong>Microsoft OAuth</strong> as the
+authentication method. The new Microsoft 365 / Outlook.com option is
+simply the recommended path.</p>
+<h2
+id="new-accept-tentative-and-decline-meeting-invitations-in-microsoft-365-mail">New:
+Accept, Tentative, and Decline meeting invitations in Microsoft 365
+mail</h2>
+<p>When you open a meeting invitation in a Microsoft 365 / Outlook.com
+mailbox, QuickMail now adds the same <strong>Accept / Tentative /
+Decline</strong> card to the top of the message that IMAP accounts have
+had — choose a response and QuickMail sends your reply to the organizer
+and updates your calendar. Cancelled invitations say so instead of
+offering buttons.</p>
+<p>Note for this first release: responding notifies the organizer and
+updates your calendar <strong>inside QuickMail</strong>. Your response
+is not yet written back to the Microsoft 365 server calendar, so other
+clients (Outlook on the web, your phone) may still show the meeting as
+unanswered. Fuller server-side handling is planned for a later
+release.</p>
+<h2
+id="fixed-signing-in-as-the-wrong-account-and-sign-in-timeouts">Fixed:
+signing in as the wrong account, and sign-in timeouts</h2>
+<ul>
+<li>When you sign in to a Microsoft or Google account and a
+<strong>different</strong> account completes the sign-in — common when
+an administrator signs in at an approval screen — QuickMail no longer
+silently switches your account to that identity. It keeps the address
+you entered and shows a clear warning. (#202)</li>
+<li>The interactive sign-in no longer has a hidden time limit.
+Admin-approval waits and screen-reader navigation could previously be
+cut off after a few minutes, tearing down the sign-in window mid-flow.
+You now have as long as you need; close the sign-in window yourself to
+cancel. (#203)</li>
+</ul>
+<hr />
+<h2 id="thank-you-to-contributors">Thank You to Contributors</h2>
+<p>Thanks to everyone who tested Microsoft 365 sign-in and reported the
+admin-approval and identity-mismatch behavior — it directly shaped this
+release.</p>
+<hr />
+<h2 id="reporting-issues">Reporting Issues</h2>
+<p>Found a problem or have a suggestion? There are three ways to reach
+us — pick the one that fits:</p>
+<ol type="1">
+<li><strong>Report a Bug → Send</strong> (Help menu, inside QuickMail).
+Files the report for you anonymously — it includes no email address or
+other identifying information, so there is no way to follow up with you.
+<strong>Best when you don’t want any follow-up.</strong></li>
+<li><strong>Report a Bug → Copy report and open GitHub</strong> (Help
+menu). Opens a pre-filled issue that you submit under your own GitHub
+account, so your GitHub contact information is attached. <strong>Best
+when you have a GitHub account and want automatic filing plus direct
+contact.</strong></li>
+<li><strong>Email</strong> <a
+href="mailto:quickmailissues@theideaplace.net">quickmailissues@theideaplace.net</a>.
+<strong>Best when you don’t mind sending email and want a personal
+follow-up.</strong></li>
+</ol>
+<p>Full details, including exactly what a report contains (and what it
+never contains), are in the <a
+href="https://kellylford.github.io/QuickMail/reporting-issues.html">Reporting
+Issues section of the User Guide</a>.</p>
+<hr />
+<h2 id="internal">Internal</h2>
+<p>Per-PR technical changelog for this release (changes since the
+v0.8.34 tag):</p>
+<ul>
+<li><strong>Microsoft Graph mail backend on by default.</strong>
+<code>ConfigFeatureGate</code> default for
+<code>FeatureFlag.GraphBackend</code> flipped to <code>true</code>; the
+Add Account dialog now offers <strong>Microsoft 365 /
+Outlook.com</strong> as an account type for everyone. Can be disabled
+with <code>GraphBackend=false</code> in
+<code>config.ini [features]</code> or
+<code>--no-feature GraphBackend</code> at launch.
+<code>GraphBackendGateTests</code> updated (default-on,
+config-off).</li>
+<li><strong>Graph meeting-invite card</strong> (basic iMIP option,
+#332). <code>GraphMailService.GetMessageDetailAsync</code> detects
+meeting-request messages via the Graph <code>@odata.type</code>
+annotation, fetches the raw MIME (<code>/$value</code>), extracts the
+<code>text/calendar</code> part with MimeKit, and populates
+<code>CalendarInvite</code>/<code>CalendarIcs</code> — lighting up the
+existing reading-pane RSVP flow. Replies route through Graph
+<code>/sendMail</code>. Known limitation: no write-back to the server
+calendar (tracked in #332). Commits 6060aa5, ea7e8f3.</li>
+<li><strong>Sign-in identity mismatch guard + interactive sign-in
+timeout removed</strong> (#202, #203, #322). Interactive sign-in no
+longer rebinds the account to a different identity than the one entered
+(raises <code>SignInIdentityMismatch</code>, surfaced as a
+focus-grabbing warning in both account dialogs); the 3-/5-minute
+<code>CancellationTokenSource</code> on the interactive path is dropped.
+<code>AccountEditorSignInTests</code> added.</li>
+<li><strong>Docs: Entra scope guidance corrected</strong> after #323
+(<code>Contacts.Read</code> requested explicitly; <code>.default</code>
+contradictions removed). Commits 6a35f65, 8366fcc.</li>
+<li><strong>User Guide:</strong> rewrote the Microsoft account
+instructions around the Microsoft 365 / Outlook.com account type and
+added a <strong>For Microsoft 365 Administrators and Tenant
+Owners</strong> section (admin consent, delegated permissions, roles,
+one-click consent URL, troubleshooting).</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.36.html">Newer: 0.8.36</a> | <a href="release-notes-v0.8.34.html">Older: 0.8.34</a></div>
+</body>
+</html>

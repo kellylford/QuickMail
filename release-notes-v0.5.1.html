@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.5.1 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.5.2.html">Newer: 0.5.2</a> | <a href="release-notes-v0.5.0.html">Older: 0.5.0</a></div>
+  <h1 id="quickmail-v0.5.1-release-notes">QuickMail v0.5.1 Release
+Notes</h1>
+<p class="version">Released May 12, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.5.1">downloads for this release</a></p>
+<p>These notes were published on the release itself; this file records
+them with the rest.</p>
+<h2 id="attachments">Attachments</h2>
+<ul>
+<li>You can now send attachments when composing a message. Use the
+<strong>Add Attachment</strong> button, drag files onto the compose
+window, or paste from the clipboard.</li>
+<li>Received messages show their attachments in the reading pane. Click
+an attachment to open it or use <strong>Save As</strong> to save it to
+disk.</li>
+<li>A security warning is shown before opening file types that are
+commonly used to deliver malware (<code>.exe</code>, <code>.bat</code>,
+<code>.ps1</code>, etc.).</li>
+<li>Attachment presence is indicated in the message list so you can tell
+at a glance which messages have files.</li>
+</ul>
+<h2 id="drafts">Drafts</h2>
+<ul>
+<li><strong>Save Draft</strong> (Ctrl+S) saves your in-progress message
+to the Drafts folder on the server so it is accessible from any
+device.</li>
+<li>Drafts are automatically removed from the server when you send the
+message.</li>
+<li>The compose window now shows a clear saved/unsaved state in the
+title bar.</li>
+</ul>
+<h2 id="microsoft-outlook-accounts">Microsoft / Outlook accounts</h2>
+<ul>
+<li>Microsoft 365 and Outlook.com accounts can now be added using OAuth2
+— no app password required. QuickMail will open a browser login page and
+handle the token exchange automatically.</li>
+<li>Fixed a bug that could cause OAuth2 re-authentication to fail after
+a token refresh.</li>
+</ul>
+<h2 id="conversation-view">Conversation view</h2>
+<ul>
+<li>Messages can be grouped by conversation (thread). Conversation
+grouping is <strong>off by default</strong> and can be toggled from the
+View menu.</li>
+<li>Read/unread status is now shown with a dedicated label in the
+message list for better accessibility.</li>
+</ul>
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+<li>Screen readers now receive live announcements (via UIA) when the
+message list is loading, when a folder is empty, and when messages are
+deleted.</li>
+<li>Arrow key navigation is properly contained within each list pane —
+keys no longer bleed through to adjacent panes.</li>
+<li>Keyboard shortcut fixes: Escape now correctly closes the reading
+pane without closing the main window.</li>
+</ul>
+<h2 id="user-guide">User Guide</h2>
+<ul>
+<li>A built-in <strong>User Guide</strong> is now available from the
+Help menu or by pressing <strong>F1</strong>. It opens the guide on
+GitHub in your default browser.</li>
+<li>The guide now includes full documentation for
+<code>config.ini</code> settings.</li>
+</ul>
+<h2 id="other-fixes">Other fixes</h2>
+<ul>
+<li>Fixed a crash that could occur when closing a dialog under certain
+timing conditions.</li>
+<li>Fixed the window title not always reflecting the currently open
+folder or message.</li>
+<li>Shift+click now selects a range of messages in the message
+list.</li>
+<li>The authentication method selector in the account setup dialog is
+now a drop-down instead of free text, making valid options clearer.</li>
+<li>The app reconnects automatically when the IMAP connection drops and
+you refresh.</li>
+</ul>
+<p><strong>Full changelog</strong>:
+https://github.com/kellylford/QuickMail/compare/v0.5.0…v0.5.1</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.5.2.html">Newer: 0.5.2</a> | <a href="release-notes-v0.5.0.html">Older: 0.5.0</a></div>
+</body>
+</html>

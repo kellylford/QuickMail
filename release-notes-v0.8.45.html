@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.45 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.46.html">Newer: 0.8.46</a> | <a href="release-notes-v0.8.44.html">Older: 0.8.44</a></div>
+  <h1 id="quickmail-v0.8.45-release-notes">QuickMail v0.8.45 Release
+Notes</h1>
+<p class="version">Released September 12, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.45">downloads for this release</a></p>
+<h2
+id="security-a-crafted-message-could-run-script-in-the-reading-pane">Security:
+a crafted message could run script in the reading pane</h2>
+<p><strong>Please update.</strong> A specially written HTML email could
+run its own JavaScript inside the component that displays message
+bodies, on nothing more than opening the message. Script that ran this
+way could read the message you were reading and send it elsewhere, and
+it could suppress the spoken confirmations QuickMail delivers from
+inside a message — the invitation RSVP result, and the link menu’s
+report when a copy fails — so that an action appeared to have succeeded
+when it had not.</p>
+<p>Message bodies are displayed under a Content Security Policy that
+forbids script, and a stripping pass removes script blocks before they
+ever reach the display. Two flaws had to line up for either to be got
+past, and both are fixed: the policy is now always written into the part
+of the document where a browser reads it, and the stripping pass now
+recognises the ways of closing an element that it previously did
+not.</p>
+<p>It affects QuickMail 0.7.0 and later. It was found by review rather
+than by anything going wrong, and was reported privately rather than
+published.</p>
+<hr />
+<h2 id="fixed-every-rule-condition-now-has-a-checkbox">Fixed: every rule
+condition now has a checkbox</h2>
+<p><strong>Create Rule from Message</strong> (<code>Ctrl+Shift+T</code>)
+filled in the sender <em>and</em> the subject of the message you were
+reading, and the rule editor had no way to say which of them the rule
+was supposed to use. Both were conditions, both had to match, so “Rule
+for someone@example.com” quietly became a rule that matched that sender
+only when the subject was the exact line it was made from — in practice,
+the one conversation you started from.</p>
+<p>Each text condition in the editor now has its own checkbox in front
+of it: <strong>From addresses</strong>, <strong>Subject
+contains</strong>, and the four under <strong>Advanced conditions &amp;
+actions</strong> (<strong>Sender contains</strong>, <strong>Sent to
+addresses</strong>, <strong>Subject or body contains</strong>,
+<strong>Body contains</strong>). A message has to satisfy every
+condition you checked, so leaving one unchecked is how you say “don’t
+care”. Clearing a checkbox keeps the text in its box — read-only and
+skipped by Tab, but one keystroke from being part of the rule again,
+rather than something you have to retype.</p>
+<p>Creating a rule from a message uses that: the sender arrives checked,
+and the subject arrives <strong>unchecked</strong> with its text ready
+to switch on. So the rule you get by default is the one the name says —
+everything from that sender. (<a
+href="https://github.com/kellylford/QuickMail/issues/665">#665</a>)</p>
+<hr />
+<h2 id="fixed-view-mode-counts-its-choices-correctly">Fixed: View Mode
+counts its choices correctly</h2>
+<p><strong>View → View Mode</strong> offers four choices — Messages,
+Conversations, From, To — but arrowing through them announced <em>“1 of
+8”</em>, <em>“2 of 8”</em>, and so on. The menu actually held eight
+items: the four above plus the four calendar views (Agenda, Day, Week,
+Month), which were hidden rather than removed while you were reading
+mail. Hiding a menu item takes it off the screen but leaves it in the
+menu, so it still counted.</p>
+<p>The menu now holds only the choices that apply: the four mail views
+while you are in a mail folder, and the four calendar views while the
+calendar is open. The count you hear matches what is there.</p>
+<p>The <strong>View mode</strong> button on the toolbar
+(<code>Ctrl+Shift+V</code>) drops the same list, so it is fixed the same
+way — it was counting seven — and it gains <strong>Month</strong>, which
+it had been missing while the calendar is open. Two View menu entries
+are renamed to match what the toolbar button, the folder tree and the
+user guide have always called them: <strong>By Sender</strong> and
+<strong>By Recipient</strong> are now <strong>From</strong> and
+<strong>To</strong>. <strong>Settings → General → View → Display
+mode</strong>, which sets the same four modes, follows suit and reads
+<strong>From (grouped by sender)</strong> and <strong>To (grouped by
+recipient)</strong>. (<a
+href="https://github.com/kellylford/QuickMail/issues/663">#663</a>)</p>
+<hr />
+<h2
+id="changed-one-rules-window-whatever-kind-of-account-you-have">Changed:
+one Rules window, whatever kind of account you have</h2>
+<p>QuickMail had two Rules windows behind the scenes, and which one you
+got depended on how the account connected rather than on what it could
+actually do. An account connected through Microsoft 365 opened a fuller
+window — the one that can also show rules that run on the server; an
+account connected the ordinary IMAP way opened a simpler one.</p>
+<p>A personal Outlook.com account connected through Microsoft 365 is the
+case that went wrong. It connects the same way a work or school account
+does, so it was handed the fuller window — but a personal account cannot
+have server-side rules, so in that window the Move Up and Move Down
+buttons never came to life, and creating a rule popped up a box telling
+you it had been saved as a client-side rule instead. Neither made sense
+for an account that was only ever going to run its rules inside
+QuickMail.</p>
+<p>There is now a single Rules window for every account. It shows what
+the selected account supports — server-side rules for a work or school
+account, client-side rules for everyone else — and the window’s status
+line says which kinds the account can have, so an empty list is never a
+mystery. <strong>F6</strong> cycles the panes — account list, rules,
+details, status line — so it reaches that status line and reads it back
+at any time.</p>
+<p>That replaces a spoken message on every account you landed on, which
+meant arrowing down the account list said a sentence about each account
+you passed through on the way to the one you wanted. The pop-up box
+after saving a rule is gone as well; on an account that has no server
+rules there was never anything surprising to report.</p>
+<p>One place still speaks up: on a work or school account, a rule that
+uses something only QuickMail can do — marking a message unread, say —
+is saved as a client-side rule rather than a server-side one, and
+because that account <em>does</em> also do server rules, QuickMail
+announces that when it happens. The rule’s own row reads <strong>on
+client</strong> regardless, so where it went is there to read with
+announcements off.</p>
+<p>The single window also brings back a safeguard the old one had. A
+<strong>Move to folder</strong> or <strong>Delete</strong> rule must now
+have at least one condition before it can be saved: with none, a rule
+matches every message, and rules run on mail as it arrives and through
+<strong>Run on Existing Mail</strong>, so it would empty the Inbox. This
+covers server-side rules too, since Exchange treats a rule with no
+conditions the same way. A server-side rule made in Outlook with no
+conditions still runs, and can still be turned on or off from QuickMail,
+but QuickMail asks for a condition before it will save a change to
+it.</p>
+<p>Which account a new rule belongs to is now decided by where you are.
+A new rule belongs to the account the Rules Manager is showing, and it
+opens on the account of the folder or view you are in; from a view that
+spans accounts, such as <strong>All Inboxes</strong>, it opens on your
+default account. Before, a profile with no Microsoft 365 account got a
+window that gave every new rule your default account, and a profile with
+one got a window that opened on whichever account you had last visited
+or read a message from.</p>
+<p>In the rules list, <strong>Space</strong> on a rule reliably turns it
+on or off. And <strong>Test</strong>, which checks a rule against its
+own account’s messages in the message list, now says so instead of
+calling them your selected messages. (<a
+href="https://github.com/kellylford/QuickMail/issues/550">#550</a>)</p>
+<hr />
+<h2 id="changed-a-shared-mailboxs-rules-are-left-to-outlook">Changed: a
+shared mailbox’s rules are left to Outlook</h2>
+<p>QuickMail cannot reach a shared mailbox’s server-side rules: signing
+in as yourself does not give access to another mailbox’s rules, and no
+permission QuickMail can ask for changes that. Opening the Rules Manager
+on a shared mailbox used to ask you to get an administrator to grant a
+permission that was already granted, and that would not have helped if
+granted again.</p>
+<p>A shared mailbox is no longer in the Rules Manager’s
+<strong>Account</strong> list. If you open the Rules Manager from one,
+the window shows your default account instead, names it in the title,
+and says on its status line that the shared mailbox’s rules are managed
+in Outlook. <strong>Create Rule from Message</strong> is not in the
+context menu for a shared mailbox’s messages, and
+<strong>Ctrl+Shift+T</strong> and the command palette say why instead of
+making a rule. In the mailbox’s folders the rule summary on the status
+bar says its rules are managed in Outlook instead of counting rules.
+Everywhere else the summary now says it counts client-side rules,
+because server-side rules were never in its count. And a client-side
+rule saved on a shared mailbox by an earlier version is kept but no
+longer runs: it acted, from one person’s computer only, on mail everyone
+with access to the mailbox reads. (<a
+href="https://github.com/kellylford/QuickMail/issues/678">#678</a>)</p>
+<hr />
+<h2
+id="fixed-deleting-a-message-no-longer-talks-over-the-next-one">Fixed:
+deleting a message no longer talks over the next one</h2>
+<p>Pressing Delete on a message could produce a spoken
+<strong>“unavailable”</strong> before the next message was read, and the
+confirmation that followed could cut that reading off. Two separate
+faults, both now fixed.</p>
+<p>The <strong>“unavailable”</strong> came from the order things
+happened in. The deleted row was taken out of the list while it still
+held keyboard focus, which leaves focus on a row that no longer exists —
+Windows then describes that row as a disabled control, and a screen
+reader says so. Focus now moves to the message you are about to land on
+<em>before</em> the deleted one leaves the list, so there is never a
+moment where the focused row is a row that has gone. Delete and Archive
+both do this.</p>
+<p>The confirmation was the second half. Deleting one message announced
+<strong>“1 message deleted”</strong> a moment after the next message
+started being read — telling you something you had just been told, by
+interrupting the sentence that told you. <strong>A single delete or
+archive now says nothing.</strong> The row is gone and the next one is
+read: that is the confirmation.</p>
+<p>What still speaks is anything you could not otherwise know: a count
+when you acted on several at once (“3 messages deleted”), “Folder is now
+empty” when the last one goes, and every failure. All of it still
+appears in the status bar, and <code>Ctrl+9</code> reads the status bar
+on demand.</p>
+<p>This is not the announcement setting doing its job — <strong>Settings
+→ Accessibility → Announce delete, archive and move actions</strong> is
+still on by default and still controls the announcements that remain.
+Nothing to turn off, and nothing to turn back on. (<a
+href="https://github.com/kellylford/QuickMail/issues/667">#667</a>)</p>
+<hr />
+<h2
+id="fixed-shiftf10-while-reading-no-longer-throws-you-back-to-the-message-list">Fixed:
+Shift+F10 while reading no longer throws you back to the message
+list</h2>
+<p>Pressing <strong>Shift+F10</strong> with focus in the message body
+moved focus out of the message and back to the message list. Nothing had
+closed, but there was no way to tell that from the outside: you were
+reading, and then you were on the list.</p>
+<p>Windows reports “no element has focus” in two unrelated situations —
+at startup, before any pane has been focused, and whenever focus is
+inside the message body, which sits in a separate window of its own
+underneath. QuickMail had a piece of startup repair that read the second
+as the first, and moved focus to the message list to correct a problem
+that was not happening.</p>
+<p>Reading a message is now told apart from having nothing focused, so
+focus stays where you are reading. On ordinary body text the key now
+does nothing, rather than doing the wrong thing; on a link it opens a
+menu — see <strong>a context menu on links in a message</strong>,
+below.</p>
+<p>Shift+F10 and the Applications key on the message list, the folder
+tree, and the attachment list are unaffected and open the same menus as
+before, including on the first press after launch. (<a
+href="https://github.com/kellylford/QuickMail/issues/672">#672</a>)</p>
+<hr />
+<h2 id="added-a-context-menu-on-links-in-a-message">Added: a context
+menu on links in a message</h2>
+<p>Pressing <strong>Shift+F10</strong> or the Applications key on a link
+in a message did nothing. The link could be opened with Enter, but there
+was no way to copy where it went — or to find out where it went without
+going there.</p>
+<p>Links in a message now have a context menu, reached with
+<strong>Shift+F10</strong>, the Applications key, or a right-click:</p>
+<ul>
+<li><strong>Open</strong> — the same as pressing Enter. A web link opens
+in your default browser; an email address link goes to whichever mail
+program Windows has registered, which is what <strong>New Message to
+This Address</strong>, below, avoids.</li>
+<li><strong>Copy Address</strong> — puts the destination on the
+clipboard.</li>
+<li><strong>Copy Text</strong> — puts the link’s own wording on the
+clipboard. Offered only when that wording is not simply the address
+again, so an auto-linked address does not present the same item
+twice.</li>
+<li><strong>New Message to This Address</strong> — last, and only on an
+email address link. Opens a new message in QuickMail rather than handing
+the address to whichever mail client Windows has registered.</li>
+</ul>
+<p>A copy that works says nothing — it did what you asked. A copy that
+fails writes a line at the end of the message, starting
+<strong>QuickMail:</strong>, and in the reading pane also puts it in the
+status bar where <strong>Ctrl+9</strong> reads it back. That line is not
+usually spoken as it appears, because it is written just as the menu
+closes and your screen reader is already announcing its way back into
+the message; it is there to be found rather than to interrupt.</p>
+<p>Copying the address is how you check where a link goes before
+following it, and comparing it with the link’s text is how you spot a
+link that does not go where it says it does.</p>
+<p>Escape closes the menu and leaves you exactly where you were — on the
+link you opened it on, not at the top of the message and not back on the
+message list. The menu works the same way in the reading pane, in a
+message tab, and in a message window. It is offered for ordinary web and
+email links, and not for the <strong>Accept</strong> /
+<strong>Tentative</strong> / <strong>Decline</strong> buttons on a
+meeting invitation, which are internal to QuickMail; on ordinary body
+text the key does nothing, as before. (<a
+href="https://github.com/kellylford/QuickMail/issues/671">#671</a>)</p>
+<hr />
+<h2 id="fixed-f6-out-of-an-open-message-goes-to-the-next-pane">Fixed: F6
+out of an open message goes to the next pane</h2>
+<p>Pressing <strong>F6</strong> while reading a message skipped ahead:
+instead of moving to the pane after the reading pane, it carried on from
+the toolbar and landed on the account list. Coming back the other way,
+focus was not returned to the message after changing the view mode.</p>
+<p>Windows reports no focused element while the message body has focus —
+the message is drawn by a separate component with its own window, so the
+focus QuickMail can see has moved outside its own controls. Two pieces
+of code asked the question in a way that could not be true at the time
+they asked it, so the reading pane was never recognised as the pane you
+were in.</p>
+<p>Both now use the same test, and it is one that works while you are
+reading. (<a
+href="https://github.com/kellylford/QuickMail/issues/673">#673</a>)</p>
+<hr />
+<h2 id="fixed-rules-are-saved-edited-and-run-as-you-set-them-up">Fixed:
+rules are saved, edited and run as you set them up</h2>
+<ul>
+<li><strong>A new rule belongs to the account its editor opened
+on.</strong> The Rules Manager’s <strong>Account</strong> list stays
+usable while a rule’s editor is open. If you changed it before saving,
+the rule was saved to the first account but made server-side or
+client-side according to the second, and the folder list offered the
+second account’s folders. The editor now uses the account it opened on
+throughout, and when you save, the list goes back to that account and
+selects the rule, and the status line says where it was saved. (<a
+href="https://github.com/kellylford/QuickMail/issues/683">#683</a>)</li>
+<li><strong>Editing a server-side rule no longer drops Mark as unread
+without a word.</strong> A server-side rule can’t mark mail unread, so
+ticking it and saving closed the editor as if it had worked and saved
+the rule without it. <strong>Mark as unread</strong> is now unavailable
+while you edit a server-side rule. (<a
+href="https://github.com/kellylford/QuickMail/issues/684">#684</a>)</li>
+<li><strong>Run on Existing Mail acts on each message once.</strong>
+When two rules matched the same message, a later rule could act again on
+a message an earlier rule had already moved or deleted, and the message
+was counted twice. A moved or deleted message is now out of the running
+for the rules after it, as it already was for mail as it arrives. (<a
+href="https://github.com/kellylford/QuickMail/issues/685">#685</a>)</li>
+</ul>
+<hr />
+<h2
+id="fixed-the-rules-managers-status-line-and-test-count-what-they-say">Fixed:
+the Rules Manager’s status line and Test count what they say</h2>
+<ul>
+<li><strong>After a failed load, the status line counts only what
+loaded.</strong> When the server-side rules couldn’t be loaded but the
+client-side ones could, the status line said the account had “0 on
+server”, straight after saying the server rules couldn’t be loaded. It
+now counts only the kind it loaded, for example “2 client-side rules.”
+(<a
+href="https://github.com/kellylford/QuickMail/issues/679">#679</a>)</li>
+<li><strong>Test counts only the rule’s own account.</strong>
+<strong>Test</strong> counted a client-side rule’s matches across every
+message in the list, whatever account each came from, though the rule
+only ever acts on its own account’s mail. It now counts only that
+account’s messages, names the account, and says so when the list holds
+none of them. (<a
+href="https://github.com/kellylford/QuickMail/issues/687">#687</a>)</li>
+</ul>
+<hr />
+<h2 id="fixed-two-dark-theme-readability-problems">Fixed: two dark-theme
+readability problems</h2>
+<ul>
+<li><strong>The status bar’s Rules and update buttons</strong> drew
+their text in black in every theme, which was nearly invisible on the
+dark theme’s status bar. They now use the theme’s text colour. (<a
+href="https://github.com/kellylford/QuickMail/issues/689">#689</a>)</li>
+<li><strong>The selected rule in the Rules Manager</strong> was
+near-white text on a near-white highlight in the dark theme. It now uses
+the theme’s selection colours. (<a
+href="https://github.com/kellylford/QuickMail/issues/690">#690</a>)</li>
+</ul>
+<hr />
+<h2
+id="fixed-keyboard-access-in-the-message-menus-and-the-reading-pane">Fixed:
+keyboard access in the message menus and the reading pane</h2>
+<ul>
+<li><strong>Ctrl+Shift+P opens the command palette while you read a
+message</strong> in the reading pane, as it already did in a message
+window. Before, you had to leave the message first. Closing the palette
+puts you back where you were reading, and a command you choose from it
+runs before focus goes back to the message. (<a
+href="https://github.com/kellylford/QuickMail/issues/676">#676</a>)</li>
+<li><strong>Each item in the message menus has its own access
+key.</strong> In the message context menu and the Message menu,
+<strong>Reply All</strong> and <strong>Move to Archive</strong> both
+used A, so pressing A only moved between them. <strong>Move to
+Archive</strong> now uses H, and <strong>Grab Addresses from
+Message</strong> uses G. In the From, To and Conversations menus,
+<strong>Reply</strong> and the archive item both used R; the archive
+items now use H too. In the context menu, <strong>Create Rule from
+Message</strong> uses T, because R is <strong>Reply</strong>’s. (<a
+href="https://github.com/kellylford/QuickMail/issues/692">#692</a>)</li>
+<li><strong>Caps Lock no longer mixes up Ctrl+W and Ctrl+Shift+W in a
+message.</strong> With Caps Lock on, Ctrl+Shift+W in the reading pane
+closed the message instead of watching its conversation, and Ctrl+W in a
+message window did nothing. Both now work whether Caps Lock is on or
+off. (<a
+href="https://github.com/kellylford/QuickMail/pull/697">#697</a>)</li>
+</ul>
+<hr />
+<h2 id="fixed-no-unavailable-after-moving-or-unwatching">Fixed: no
+“unavailable” after moving or unwatching</h2>
+<p>Moving messages to another folder, or unwatching a conversation while
+the <strong>Watched Conversations</strong> folder is open, could make a
+screen reader say “unavailable” before the next message, as deleting did
+before 0.8.45. Focus now lands on the next message before the moved or
+unwatched ones leave the list. When the last message goes, focus goes to
+the empty list, instead of staying in a message that is no longer there.
+Unwatching a conversation from a message window, or from the Watched
+Conversations manager, no longer pulls focus into the main window.</p>
+<p>Moving now speaks as deleting does. A single move says nothing, since
+the next message is being read, while moving several says the count, and
+emptying the folder says so. The setting that controls these is renamed
+<strong>Settings → Accessibility → Announce delete, archive and move
+actions</strong>. A move that fails is announced as a result, so you
+hear it even with that setting off. If you had turned that setting off
+but left <strong>Announce action results</strong> on, you will no longer
+hear how many messages a move moved: those counts used to be results.
+(<a
+href="https://github.com/kellylford/QuickMail/issues/670">#670</a>)</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.46.html">Newer: 0.8.46</a> | <a href="release-notes-v0.8.44.html">Older: 0.8.44</a></div>
+</body>
+</html>
