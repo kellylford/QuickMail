@@ -167,6 +167,18 @@ work the same as in the main window:</p>
 <td><code>Alt+A</code></td>
 <td>Focus the attachment list</td>
 </tr>
+<tr class="even">
+<td><code>Ctrl+S</code></td>
+<td>Save</td>
+</tr>
+<tr class="odd">
+<td><code>F12</code></td>
+<td>Save As</td>
+</tr>
+<tr class="even">
+<td><code>Ctrl+P</code></td>
+<td>Print</td>
+</tr>
 </tbody>
 </table>
 <p>Deleting a message from its window closes the window and returns
@@ -214,6 +226,101 @@ All…</strong>, <strong>Open</strong></td>
 </tr>
 </tbody>
 </table>
+<h3 id="saving-and-printing-messages">Saving and Printing Messages</h3>
+<p>You can save a message to a file, or print it. <strong>Save</strong>
+and <strong>Save As…</strong> act on everything selected: one message,
+several selected messages, or a whole conversation or sender group when
+its heading is selected. <strong>Print</strong> acts on one message.</p>
+<table>
+<colgroup>
+<col style="width: 30%" />
+<col style="width: 27%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Ctrl+S</code></td>
+<td><strong>Save</strong></td>
+<td>Saves in your default format, into your save folder, without
+asking.</td>
+</tr>
+<tr class="even">
+<td><code>F12</code></td>
+<td><strong>Save As…</strong></td>
+<td>Asks where to save and in which format.</td>
+</tr>
+<tr class="odd">
+<td><code>Ctrl+P</code></td>
+<td><strong>Print…</strong></td>
+<td>Opens the Windows Print dialog.</td>
+</tr>
+</tbody>
+</table>
+<p>All three are on the <strong>File</strong> menu, and Save As and
+Print are also on a message’s context menu. They work the same way in
+the reading pane, a tab, and a message window, and they are in the
+command palette.</p>
+<p><strong>Formats.</strong> You can save a message in four formats:</p>
+<ul>
+<li><strong>Email message (.eml).</strong> The original message exactly
+as your mail server holds it, attachments included. Any mail program can
+open it, and so can Windows. This is the default, and it is the only
+format that keeps everything.</li>
+<li><strong>Text file (.txt).</strong> A block of details, then the
+message’s own text. It opens in Notepad or any editor.</li>
+<li><strong>Web page (.html).</strong> The same details, then the
+message with its formatting, headings, tables and links. It opens in any
+browser.</li>
+<li><strong>PDF (.pdf).</strong> The web page as a PDF. The PDF is
+tagged, so its headings and tables come through to a screen reader.</li>
+</ul>
+<p>The text, web page and PDF formats all start with the same details,
+in words rather than raw headers: subject, sender, reply-to address if
+it is different, recipients, date, the account and folder the message is
+in, whether it has been read, flagged, replied to or forwarded, and its
+attachments by name and size. Meeting invitations also list the meeting,
+its time and place, and the organizer.</p>
+<p><strong>Pictures.</strong> A saved web page or PDF leaves pictures
+out, as the reading pane does, and shows each picture’s description in
+its place. Nothing in a saved web page runs or loads from the internet
+when you open it.</p>
+<p><strong>Where Save puts files.</strong> Save uses the format and
+folder set in <strong>Settings → General → Saving Messages</strong>. The
+default is <strong>Email message</strong> in your
+<strong>Documents</strong> folder. Each file is named from the subject,
+sender and date, for example <em>Your order has shipped - Jane Smith -
+2026-09-17 1432.eml</em>. Save never replaces or duplicates a file
+without asking. If you have saved the message there before, Save opens
+the Save As dialog on that name, so you can pick another name or folder;
+choose the same name and Windows asks whether to replace it. If you save
+several messages and some were saved there before, QuickMail asks once:
+<strong>Yes</strong> replaces those copies, <strong>No</strong> keeps
+both and saves new copies beside them, and <strong>Cancel</strong> saves
+nothing. The status bar says what was saved and where.</p>
+<p><strong>Save As.</strong> For one message, Save As opens the standard
+Save dialog with the file name filled in. Choose a different format with
+<strong>Save as type</strong>. For several messages, the dialog’s title
+says how many. Choose a folder and a format, and each message is saved
+under its own name. Save As starts in the folder you used last time, and
+it does not change your default format or folder.</p>
+<p><strong>When the original is not available.</strong> An email message
+file has to come from your mail server. When QuickMail cannot reach the
+server, or the server no longer has the message, Save As does not write
+something else in its place. It says why and asks whether you want to
+choose another format. The text file, web page and PDF formats work
+offline for any message whose text is on this computer.</p>
+<p>For POP3 accounts, QuickMail keeps the original of every message it
+downloads, so it can always save one. Messages downloaded before version
+0.8.47 kept their original only if they had attachments. For others,
+QuickMail downloads the original again if it is still on the server. If
+it is not, the message can still be saved in the other formats.</p>
 <h3 id="message-properties">Message Properties</h3>
 <p>Press <strong>Alt+Enter</strong> on any message to open a properties
 window showing sender, recipients, date, size, and flags.</p>

@@ -75,20 +75,30 @@ writing.</p>
 <li><strong>Rule name</strong> — how you recognize it in the list. A
 rule must have one.</li>
 <li><strong>Enabled</strong> — turn a rule off without deleting it.</li>
-<li><strong>Apply when a message matches</strong> — <strong>From
-addresses</strong> and <strong>Subject contains</strong>. Each condition
+<li><strong>Apply when a message matches</strong> — <strong>Sender
+contains</strong> and <strong>Subject contains</strong>. Each condition
 is switched on by the checkbox in front of it: check the ones you want
-and type the text to look for. A message must satisfy
-<strong>every</strong> condition you checked, so leaving one unchecked
-is how you say “don’t care”. Matching ignores case. The
-<em>contains</em> conditions look for your text anywhere in the field;
-<strong>From addresses</strong> and <strong>Sent to addresses</strong>
-are for email addresses. A client-side rule’s <strong>Body
-contains</strong> looks at the start of the message that QuickMail keeps
-as its preview, not the whole message. Clearing a checkbox leaves the
-text sitting in its box, now read-only and skipped by Tab, so a
-condition you turned off is one keystroke from being turned back on
-rather than something you have to retype.</li>
+and type the text to look for. A new rule starts with
+<strong>none</strong> of them checked — <strong>Enabled</strong> is the
+only box ticked — so the conditions a rule tests are the ones you asked
+for. Until a condition is checked its box is read-only and skipped by
+Tab, so the order is: check the condition, then Tab into its box and
+type. A message must satisfy <strong>every</strong> condition you
+checked, so leaving one unchecked is how you say “don’t care”. Matching
+ignores case. The <em>contains</em> conditions look for your text
+anywhere in the field, so <strong>Sender contains</strong> matches part
+of a sender’s name as readily as an address. <strong>From
+addresses</strong> and <strong>Sent to addresses</strong> are for email
+addresses, and each takes more than one, separated by commas — a message
+matches when it has <strong>any one</strong> of them. Use <strong>Sender
+contains</strong> where your text is not an address, or holds a comma.
+The choice is inside that one condition; the conditions themselves are
+still all required. A client-side rule’s <strong>Body contains</strong>
+and <strong>Subject or body contains</strong> look at the start of the
+message that QuickMail keeps as its preview, not the whole message.
+Clearing a checkbox leaves the text sitting in its box, now read-only
+and skipped by Tab, so a condition you turned off is one keystroke from
+being turned back on rather than something you have to retype.</li>
 <li><strong>Then do this</strong> — <strong>Move to folder</strong>,
 <strong>Mark as read</strong>, <strong>Delete</strong>, and <strong>Stop
 processing more rules</strong>. <strong>Delete</strong> moves the
@@ -110,7 +120,7 @@ folder created under the selected node could land in a different mailbox
 from the one the rule files in; you can still pick an existing folder
 there.</li>
 <li><strong>Advanced conditions &amp; actions</strong> — more conditions
-(<strong>Sender contains</strong>, <strong>Sent to addresses</strong>,
+(<strong>From addresses</strong>, <strong>Sent to addresses</strong>,
 <strong>Subject or body contains</strong>, <strong>Body
 contains</strong>, <strong>Sent to me</strong>, <strong>Sent only to
 me</strong>, <strong>Has attachments</strong>, and <strong>Importance
@@ -128,10 +138,16 @@ would act on every message — so QuickMail will not save it until you add
 one. <strong>Mark as read</strong> and <strong>Mark as unread</strong>
 rules can have none.</p>
 <p><strong>What a client-side rule can use.</strong> A client-side rule
-can test <strong>From addresses</strong> (one address), <strong>Subject
-contains</strong>, <strong>Sender contains</strong> (but not together
-with From addresses), <strong>Sent to addresses</strong> (one address),
-<strong>Body contains</strong>, and <strong>Has attachments</strong>. It
+can test <strong>From addresses</strong>, <strong>Subject
+contains</strong>, <strong>Sender contains</strong>, <strong>Sent to
+addresses</strong>, <strong>Subject or body contains</strong>,
+<strong>Body contains</strong>, and <strong>Has attachments</strong>.
+<strong>From addresses</strong> and <strong>Sent to addresses</strong>
+each take several addresses, and <strong>Sender contains</strong> can be
+used together with <strong>From addresses</strong>, in which case both
+have to match. It has a single subject condition, so <strong>Subject
+contains</strong> and <strong>Subject or body contains</strong> cannot
+both be used in one rule; <strong>Save</strong> says so if you try. It
 can <strong>Mark as read</strong> or <strong>Mark as unread</strong>,
 <strong>Copy to folder</strong>, and <strong>Move to folder</strong> or
 <strong>Delete</strong>, and it can do more than one of them — but not
@@ -143,17 +159,28 @@ message, so it cannot be combined with moving or deleting, which would
 throw that copy away and the mark with it. A client-side rule cannot
 copy into the Inbox either: it runs on the Inbox, so each copy would be
 copied again on the next check. Everything else in the editor needs a
-server-side rule: the other conditions and actions, and more than one
-address in a field. <strong>Mark as unread</strong> is the reverse —
+server-side rule: <strong>Sent to me</strong>, <strong>Sent only to
+me</strong>, <strong>Importance is</strong>, <strong>Set importance
+to</strong>, <strong>Forward to</strong>, and <strong>Stop processing
+more rules</strong>. <strong>Mark as unread</strong> is the reverse —
 only a client-side rule can do it, which is why its label says so.
 Editing never changes a rule’s kind, so a client-side rule stays
-client-side. The editor offers the server-side options even where they
-cannot be used — on an account with client-side rules only, and when you
-edit a client-side rule — and <strong>Save</strong> refuses a rule that
-uses one. For a new rule it names the option to remove; for an edited
-one it asks you to remove what a client-side rule cannot do. While you
-edit a server-side rule, <strong>Mark as unread</strong> is unavailable,
-because the server has no way to do it.</p>
+client-side. Where a rule cannot become a server-side one, the editor
+turns those options off rather than offering them: on an account that
+has client-side rules only, and while you edit a rule that already runs
+in QuickMail, since editing never changes a rule’s kind. A line under
+<strong>Enabled</strong> says which of the two it is and names the
+options concerned; it is a Tab stop while it is there, so you meet it on
+the way through the form. Turned-off options are skipped by Tab, so you
+will not meet them while moving through the form. On a Microsoft 365
+account a <strong>new</strong> rule still offers them — choosing one
+there is what makes the rule server-side. <strong>Save</strong> still
+refuses the combinations no client-side rule can hold, and names them:
+<strong>Subject contains</strong> with <strong>Subject or body
+contains</strong>, and <strong>Move to folder</strong> with
+<strong>Delete</strong>. While you edit a server-side rule, <strong>Mark
+as unread</strong> is unavailable, because the server has no way to do
+it.</p>
 <p><strong>The order rules run in.</strong> Every enabled rule for the
 account is tried, and each one that matches acts. Server-side rules run
 on the server as mail is delivered, in the order the list shows;
