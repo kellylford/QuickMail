@@ -390,6 +390,28 @@ Press **Save** — the default button, so Enter is enough — to keep the change
 
 Server settings sit behind the same **Advanced settings** expander as in Add Account, so an account that is working needs no scrolling past hosts and ports to reach the settings people actually change. The **Provider** at the top is fixed when the account is created; to change it, remove the account and add it again.
 
+### Changing the order of your accounts
+
+Accounts appear in the order you added them, and you can rearrange them. Move to the **Accounts**
+list in the main window, select an account, and either press a key or use the context menu
+(**Shift+F10**, the Applications key, or right-click):
+
+| Key | Action |
+|---|---|
+| `Alt+Up` | Move Up |
+| `Alt+Down` | Move Down |
+| `Alt+Home` | Move to Start |
+| `Alt+End` | Move to End |
+
+Each move says where the account landed — "Moved above Work" — and leaves you on the account you
+moved, so you can press the key again. At either end of the list QuickMail tells you that too,
+rather than doing nothing.
+
+The order is not just the account list. It is the order the accounts appear in the folder tree, and
+the order of the **From** list when you compose a message, so putting the account you use most at the
+top puts it first everywhere. The four moves are also in the Command Palette (**Ctrl+Shift+P**), and
+you can give them different keys in **File → Settings → Keyboard Shortcuts**.
+
 ### Removing an account
 
 Select the account and press **Delete**. For an ordinary account there is no confirmation step, and the removal happens at once: QuickMail forgets the account's password from Windows Credential Manager, deletes the mail it had cached, removes any contacts synced from it, and for Microsoft and Google accounts signs out as well. You hear "Account deleted. Cleaning up…", then "Account deleted." when the tidying has finished. (Deleting an account that a shared mailbox reads through does ask first, because it removes the shared mailbox too — see [Shared mailboxes](#shared-mailboxes).)
@@ -1388,6 +1410,20 @@ Expand the **Calendar** node in the folder tree to choose which events you are l
 - **Each calendar under an account** — if an account has more than one calendar (for example iCloud's Home, Family, and Work, or several Google or Outlook calendars), each appears as its own node beneath the account, so you can look at just that one.
 
 Selecting a source filters the list to it. "All Calendars" is the usual choice for day-to-day use.
+
+### Where Calendar sits in the folder list
+
+**Calendar** is the first thing in the folder tree. If you reach your mail by arrowing down from the
+top of the tree, that puts the calendar in your way every time, so you can move it to the bottom
+instead.
+
+1. In the folder tree, move to the **Calendar** node.
+2. Open the context menu with **Shift+F10** or the Applications key (or right-click).
+3. Choose **Calendar at Top of Folder List** or **Calendar at Bottom of Folder List**.
+
+Both are checkable, so opening the menu also tells you where the calendar is now. At the bottom it
+sits after your accounts — the last root in the tree. The choice is remembered between sessions, and
+both are in the Command Palette (**Ctrl+Shift+P**) if you would rather not go through the menu.
 
 ### Choosing a default calendar for new appointments
 

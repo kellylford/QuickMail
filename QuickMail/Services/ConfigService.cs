@@ -330,6 +330,7 @@ public class ConfigService : IConfigService
                     case "showdeclinedevents": config.ShowDeclinedEvents = ParseBool(value); break;
                     case "defaultcalendarsource": config.DefaultCalendarSource = value; break;
                     case "calendarpaneopen":   config.CalendarPaneOpen   = ParseBool(value); break;
+                    case "calendaratendoffolderlist": config.CalendarAtEndOfFolderList = ParseBool(value); break;
                 }
             }
             else if (section == "windowing")
@@ -735,6 +736,9 @@ public class ConfigService : IConfigService
             sb.AppendLine("# \"Use as Default Calendar for New Appointments\". Remove this line to go");
             sb.AppendLine("# back to the local calendar.");
         }
+        sb.AppendLine($"CalendarAtEndOfFolderList = {(config.CalendarAtEndOfFolderList ? "on" : "off")}");
+        sb.AppendLine("# Where the Calendar sits in the folder tree: off puts it first, on puts it");
+        sb.AppendLine("# last. Set it from the Calendar node's context menu.");
         sb.AppendLine();
 
         // ── Startup (#516) ───────────────────────────────────────────────────────
