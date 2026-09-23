@@ -1,6 +1,9 @@
 # Compose Editor — Review and Prioritized Plan
 
-Status: draft for Kelly's review, 2026-09-17. Nothing here is implemented yet.
+Status: Phase 1 implemented 2026-09-22 (issue #729). Decisions taken for it: a Paragraph style
+box replaces the heading buttons; Quote is Ctrl+Shift+9 (Gmail's key); Enter continues a quote and
+Enter on an empty quoted line ends it. A quote is a `Section` container in the editor rather than a
+tagged paragraph, so nesting and headings or lists inside quotes survive. Phases 2 to 8 are not started.
 Tracking issue: [#729](https://github.com/kellylford/QuickMail/issues/729).
 
 Goal: support the things people commonly put in email today, and make each of them

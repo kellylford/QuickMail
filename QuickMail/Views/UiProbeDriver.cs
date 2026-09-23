@@ -112,6 +112,13 @@ internal sealed class UiProbeDriver
                 return await CaptureChildWindowAsync(() => ExecuteCommand("mail.new"),
                     w => w is ComposeWindow, path);
 
+            // #729: the formatting toolbar (and its Paragraph style box) is shown only in
+            // HTML mode, which the fixture's default compose mode does not open in.
+            case "compose-html":
+                return await CaptureChildWindowAsync(() => ExecuteCommand("mail.new"),
+                    w => w is ComposeWindow, path,
+                    w => (w.DataContext as ViewModels.ComposeViewModel)?.SetMode(Models.ComposeMode.Html));
+
             case "theme-manager":
                 return await CaptureChildWindowAsync(() => ExecuteCommand("theme.manager.open"),
                     w => w is ThemeManagerWindow, path);

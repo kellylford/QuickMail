@@ -27,7 +27,45 @@ Folder List** to put it back. Both items are checkable, so opening the menu tell
 calendar is now, and the choice is remembered between sessions. Both are in the command palette as
 well.
 
+### Headings 4 to 6, Normal text, and quotes when you write a message
+
+In Markdown and HTML modes you can now make a line a heading of any level from 1 to 6, with
+**Ctrl+Alt+1** to **Ctrl+Alt+6**, and turn headings or quoted lines back into ordinary paragraphs
+with **Ctrl+Alt+0**. Before, the only way out of a heading was to press its key again.
+
+**Ctrl+Shift+9** — the same key Gmail uses — quotes the lines you are on or have selected, and takes
+them out of the quote when you press it again. Press Enter inside a quote to continue it, or Enter on
+an empty quoted line to end it. A quote can be inside another quote, and **Ctrl+T** tells you which
+level you are at ("Quote, level 2"). **Ctrl+T** also now tells you when you are in a link, with its
+address, and when you are in inline code.
+
+In HTML mode, the three heading buttons on the formatting toolbar are replaced by a **Paragraph
+style** box: it shows the style of the line you are on. Arrow to Normal text, a heading level or
+Quote and press Enter, or choose one from the open list, to apply it and return to your text.
+Arrowing through the box on its own changes nothing. **Format → Paragraph Style** has the same eight choices, with the current one
+checked.
+
+Pressing Enter at the end of a heading now starts a line of normal text, as in Word and Outlook.
+
 ## Fixed
+
+### Replies in HTML mode sent ">" characters instead of a quote
+
+When your default compose mode is HTML, a reply put the original message in as lines beginning with
+">", and that is what the recipient got. The original is now a real quote, and when it was an HTML
+message it keeps its own headings, lists, links and earlier quotes. Quotes inside quotes stay
+nested. The plain text part of the message still marks quoted lines with ">", as plain text mail
+always has. Your signature now also appears when a reply or a forward opens in HTML mode.
+
+### Clear Formatting cleared only the first and last line of a selection
+
+**Ctrl+Space** over several paragraphs left every heading in the middle alone. It now clears every
+line you selected, and takes them out of any quote.
+
+### Undo after changing a heading
+
+Undoing a heading change restored how the line looked but not what was sent, so a line that looked
+like normal text could still go out as a heading. Undo and Redo now change both.
 
 ### The right context menu on an account, and on the toolbar's dropdown buttons
 

@@ -76,12 +76,20 @@
                 <MenuItem Header="_Strikethrough" InputGestureText="Ctrl+Shift+X"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarStrikethrough_Click"/>
                 <Separator/>
-                <MenuItem Header="Heading _1" InputGestureText="Ctrl+Alt+1"
-                          IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarHeading1_Click"/>
-                <MenuItem Header="Heading _2" InputGestureText="Ctrl+Alt+2"
-                          IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarHeading2_Click"/>
-                <MenuItem Header="Heading _3" InputGestureText="Ctrl+Alt+3"
-                          IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarHeading3_Click"/>
+                <!-- The same eight styles as the toolbar's Paragraph style box. Check
+                     marks show the style at the caret (set when the submenu opens). -->
+                <MenuItem Header="_Paragraph Style" x:Name="ParagraphStyleMenu"
+                          IsEnabled="{Binding IsFormattingAvailable}"
+                          SubmenuOpened="ParagraphStyleMenu_SubmenuOpened">
+                    <MenuItem Header="_Normal Text" InputGestureText="Ctrl+Alt+0" Tag="0" Click="MenuParagraphStyle_Click"/>
+                    <MenuItem Header="Heading _1" InputGestureText="Ctrl+Alt+1" Tag="1" Click="MenuParagraphStyle_Click"/>
+                    <MenuItem Header="Heading _2" InputGestureText="Ctrl+Alt+2" Tag="2" Click="MenuParagraphStyle_Click"/>
+                    <MenuItem Header="Heading _3" InputGestureText="Ctrl+Alt+3" Tag="3" Click="MenuParagraphStyle_Click"/>
+                    <MenuItem Header="Heading _4" InputGestureText="Ctrl+Alt+4" Tag="4" Click="MenuParagraphStyle_Click"/>
+                    <MenuItem Header="Heading _5" InputGestureText="Ctrl+Alt+5" Tag="5" Click="MenuParagraphStyle_Click"/>
+                    <MenuItem Header="Heading _6" InputGestureText="Ctrl+Alt+6" Tag="6" Click="MenuParagraphStyle_Click"/>
+                    <MenuItem Header="_Quote" InputGestureText="Ctrl+Shift+9" Tag="7" Click="MenuParagraphStyle_Click"/>
+                </MenuItem>
                 <Separator/>
                 <MenuItem Header="Bu_llet List" InputGestureText="Ctrl+Shift+L"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarBulletList_Click"/>
@@ -149,18 +157,23 @@
                     <TextBlock Text="S" TextDecorations="Strikethrough"/>
                 </Button>
                 <Separator/>
-                <Button Content="H1" MinWidth="28"
-                        AutomationProperties.Name="Heading 1"
-                        AutomationProperties.AcceleratorKey="Ctrl+Alt+1"
-                        ToolTip="Heading 1 (Ctrl+Alt+1)" Click="ToolbarHeading1_Click"/>
-                <Button Content="H2" MinWidth="28"
-                        AutomationProperties.Name="Heading 2"
-                        AutomationProperties.AcceleratorKey="Ctrl+Alt+2"
-                        ToolTip="Heading 2 (Ctrl+Alt+2)" Click="ToolbarHeading2_Click"/>
-                <Button Content="H3" MinWidth="28"
-                        AutomationProperties.Name="Heading 3"
-                        AutomationProperties.AcceleratorKey="Ctrl+Alt+3"
-                        ToolTip="Heading 3 (Ctrl+Alt+3)" Click="ToolbarHeading3_Click"/>
+                <!-- Shows the style at the caret and applies a choice to the selected
+                     paragraphs. Item order is ComposeParagraphStyle's values. -->
+                <ComboBox x:Name="ParagraphStyleCombo" MinWidth="120"
+                          AutomationProperties.Name="Paragraph style"
+                          ToolTip="Paragraph style (Ctrl+Alt+0 to 6, Ctrl+Shift+9)"
+                          PreviewKeyDown="ParagraphStyleCombo_PreviewKeyDown"
+                          DropDownClosed="ParagraphStyleCombo_DropDownClosed"
+                          IsKeyboardFocusWithinChanged="ParagraphStyleCombo_IsKeyboardFocusWithinChanged">
+                    <ComboBoxItem Content="Normal text"/>
+                    <ComboBoxItem Content="Heading 1"/>
+                    <ComboBoxItem Content="Heading 2"/>
+                    <ComboBoxItem Content="Heading 3"/>
+                    <ComboBoxItem Content="Heading 4"/>
+                    <ComboBoxItem Content="Heading 5"/>
+                    <ComboBoxItem Content="Heading 6"/>
+                    <ComboBoxItem Content="Quote"/>
+                </ComboBox>
                 <Separator/>
                 <Button Content="• List" MinWidth="40"
                         AutomationProperties.Name="Bullet list"

@@ -167,6 +167,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private bool _localAutoSaveNoticed;
     private ComposeMode _seededMode = ComposeMode.PlainText;
     private string? _seededHtmlBody;
+    // The plain body the seeded HTML stands for. Once the user has edited the plain body, the
+    // seeded HTML is stale and switching to HTML converts what they wrote instead.
+    private string? _seededHtmlForBody;
 
     public bool IsDirty => _isDirty;
     public bool IsSent  => _isSent;
@@ -237,8 +240,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             Attachments.Add(att);
 
         // Remember the original mode so the View can restore it after wiring up event handlers.
+        // A reply carries the original as quoted HTML too; it is used if the reply opens in
+        // HTML mode (the default mode decides), so the quote keeps the original's structure.
         _seededMode    = model.Mode;
-        _seededHtmlBody = model.Mode == ComposeMode.Html ? model.HtmlBody : null;
+        _seededHtmlBody = model.Mode == ComposeMode.Html || model.Kind is ComposeKind.Reply or ComposeKind.ReplyAll
+            ? model.HtmlBody
+            : null;
 
         // Loading existing data (reply, forward, or re-opened draft) is not itself a dirty edit
         _isDirty = false;
@@ -260,9 +267,19 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             if (!string.IsNullOrWhiteSpace(Body))
                 Body += "\n-- \n";
             Body += sig;
+            if (_seededHtmlBody != null)
+                _seededHtmlBody += SignatureHtml(sig);
             _isDirty = false; // signature insertion is not a user edit
         }
+
+        _seededHtmlForBody = Body;
     }
+
+    /// <summary>The plain-text signature as HTML, with the same "-- " separator line.</summary>
+    private static string SignatureHtml(string signature) =>
+        "<p>-- <br />"
+        + WebUtility.HtmlEncode(signature.Replace("\r\n", "\n").TrimEnd('\n')).Replace("\n", "<br />")
+        + "</p>";
 
     [RelayCommand]
     private async Task SaveDraftAsync()
@@ -673,8 +690,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 break; // plain text is valid Markdown source — pass through as-is
 
             case (ComposeMode.PlainText, ComposeMode.Html):
-                var htmlToLoad = _seededHtmlBody ?? _markdown.PlainTextToHtml(Body);
-                _seededHtmlBody = null; // consume: only used for the initial draft restore
+                var htmlToLoad = _seededHtmlBody != null && Body == _seededHtmlForBody
+                    ? _seededHtmlBody
+                    : _markdown.PlainTextToHtml(Body);
+                _seededHtmlBody = null; // consume: only used for the initial draft, forward or reply
                 LoadHtmlIntoEditorRequested?.Invoke(htmlToLoad);
                 break;
 
@@ -946,9 +965,32 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             To = string.IsNullOrEmpty(detail.ReplyTo) ? detail.From : detail.ReplyTo,
             Subject = subject,
             Body = attribution + quoted,
+            // Used only when the reply opens in HTML mode. A plain-text original needs no
+            // HTML of its own: PlainTextToHtml turns the "> " lines into a real quote.
+            HtmlBody = string.IsNullOrEmpty(detail.HtmlBody) ? null : BuildReplyHtmlBlock(detail),
             InReplyToMessageId = detail.InternetMessageId
         };
     }
+
+    /// <summary>
+    /// The HTML-mode reply body: an empty paragraph to type in, the attribution as a
+    /// paragraph of its own (spell check stops at it — see SpellCheckSources), and the
+    /// original's own HTML inside a blockquote, so its headings, lists, links and any
+    /// earlier quotes keep their structure instead of becoming "&gt;" characters.
+    /// </summary>
+    private static string BuildReplyHtmlBlock(MailMessageDetail detail)
+    {
+        var body = StripHtmlWrappers(detail.HtmlBody);
+        var date = detail.Date.ToLocalTime().ToString("f");
+        return $"""
+            <p></p>
+            <p>On {WebUtility.HtmlEncode(date)}, {WebUtility.HtmlEncode(detail.From)} wrote:</p>
+            <blockquote>
+            {body}
+            </blockquote>
+            """;
+    }
+
 
     /// <param name="ownAddress">The sender's own email address; excluded from the Cc list to avoid self-addressing.</param>
     public static ComposeModel CreateReplyAll(MailMessageDetail detail, Guid accountId, string ownAddress = "")
