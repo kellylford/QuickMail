@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.48 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.47.html">Older: 0.8.47</a></div>
+  <h1 id="quickmail-v0.8.48-release-notes">QuickMail v0.8.48 Release
+Notes</h1>
+<p class="version">Released September 22, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.48">downloads for this release</a></p>
+<h2 id="added">Added</h2>
+<h3 id="put-your-accounts-in-the-order-you-want">Put your accounts in
+the order you want</h3>
+<p>Accounts have always appeared in the order you added them. Now you
+can rearrange them. Move to the <strong>Accounts</strong> list, select
+an account, and press <strong>Alt+Up</strong>,
+<strong>Alt+Down</strong>, <strong>Alt+Home</strong> or
+<strong>Alt+End</strong> — or use the context menu
+(<strong>Shift+F10</strong>, the Applications key, or right-click),
+which offers <strong>Move Up</strong>, <strong>Move Down</strong>,
+<strong>Move to Start</strong> and <strong>Move to End</strong>.</p>
+<p>Each move says where the account landed — “Moved above Work” — and
+leaves you on the account you moved, so you can press the key again. At
+either end of the list QuickMail says so, rather than doing nothing.</p>
+<p>The order is not only the account list: it is the order the accounts
+appear in the folder tree, and the order of the <strong>From</strong>
+list when you compose a message. Putting the account you use most at the
+top puts it first everywhere. All four moves are in the command palette
+too, and you can give them different keys in <strong>File → Settings →
+Keyboard Shortcuts</strong>.</p>
+<h3 id="move-the-calendar-to-the-bottom-of-the-folder-list">Move the
+Calendar to the bottom of the folder list</h3>
+<p><strong>Calendar</strong> has always been the first thing in the
+folder tree, which puts it in the way if you reach your mail by arrowing
+down from the top. Open the context menu on the
+<strong>Calendar</strong> node and choose <strong>Calendar at Bottom of
+Folder List</strong> to move it below your accounts, or <strong>Calendar
+at Top of Folder List</strong> to put it back. Both items are checkable,
+so opening the menu tells you where the calendar is now, and the choice
+is remembered between sessions. Both are in the command palette as
+well.</p>
+<h3
+id="headings-4-to-6-normal-text-and-quotes-when-you-write-a-message">Headings
+4 to 6, Normal text, and quotes when you write a message</h3>
+<p>In Markdown and HTML modes you can now make a line a heading of any
+level from 1 to 6, with <strong>Ctrl+Alt+1</strong> to
+<strong>Ctrl+Alt+6</strong>, and turn headings or quoted lines back into
+ordinary paragraphs with <strong>Ctrl+Alt+0</strong>. Before, the only
+way out of a heading was to press its key again.</p>
+<p><strong>Ctrl+Shift+9</strong> — the same key Gmail uses — quotes the
+lines you are on or have selected, and takes them out of the quote when
+you press it again. Press Enter inside a quote to continue it, or Enter
+on an empty quoted line to end it. A quote can be inside another quote,
+and <strong>Ctrl+T</strong> tells you which level you are at (“Quote,
+level 2”). <strong>Ctrl+T</strong> also now tells you when you are in a
+link, with its address, and when you are in inline code.</p>
+<p>In HTML mode, the three heading buttons on the formatting toolbar are
+replaced by a <strong>Paragraph style</strong> box: it shows the style
+of the line you are on. Arrow to Normal text, a heading level or Quote
+and press Enter, or choose one from the open list, to apply it and
+return to your text. Arrowing through the box on its own changes
+nothing. <strong>Format → Paragraph Style</strong> has the same eight
+choices, with the current one checked.</p>
+<p>Pressing Enter at the end of a heading now starts a line of normal
+text, as in Word and Outlook.</p>
+<h2 id="fixed">Fixed</h2>
+<h3 id="replies-in-html-mode-sent-characters-instead-of-a-quote">Replies
+in HTML mode sent “&gt;” characters instead of a quote</h3>
+<p>When your default compose mode is HTML, a reply put the original
+message in as lines beginning with “&gt;”, and that is what the
+recipient got. The original is now a real quote, and when it was an HTML
+message it keeps its own headings, lists, links and earlier quotes.
+Quotes inside quotes stay nested. The plain text part of the message
+still marks quoted lines with “&gt;”, as plain text mail always has.
+Your signature now also appears when a reply or a forward opens in HTML
+mode.</p>
+<h3
+id="clear-formatting-cleared-only-the-first-and-last-line-of-a-selection">Clear
+Formatting cleared only the first and last line of a selection</h3>
+<p><strong>Ctrl+Space</strong> over several paragraphs left every
+heading in the middle alone. It now clears every line you selected, and
+takes them out of any quote.</p>
+<h3 id="undo-after-changing-a-heading">Undo after changing a
+heading</h3>
+<p>Undoing a heading change restored how the line looked but not what
+was sent, so a line that looked like normal text could still go out as a
+heading. Undo and Redo now change both.</p>
+<h3
+id="the-right-context-menu-on-an-account-and-on-the-toolbars-dropdown-buttons">The
+right context menu on an account, and on the toolbar’s dropdown
+buttons</h3>
+<p>Pressing Shift+F10 (or the Applications key) on an account in the
+<strong>Accounts</strong> list opened the message menu — Reply, Reply
+All, Move to Folder — rather than the account actions. The same thing
+happened on the toolbar’s <strong>Sync Range</strong> and <strong>View
+Mode</strong> buttons, where the gesture is the keyboard way to the
+dropdown those buttons open. All three now open their own menu.</p>
+<p>This is not new to this release; it goes back to the fix that gave
+the folder tree its own menu, which missed the other places. It became
+easy to notice now that the account menu has something on it worth
+reaching.</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.47.html">Older: 0.8.47</a></div>
+</body>
+</html>

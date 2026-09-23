@@ -159,9 +159,16 @@ HTML Modes)</h3>
 <td><code>Ctrl+Shift+X</code></td>
 </tr>
 <tr class="odd">
-<td>Heading 1 / 2 / 3</td>
-<td><code>Ctrl+Alt+1</code> / <code>Ctrl+Alt+2</code> /
-<code>Ctrl+Alt+3</code></td>
+<td>Normal text</td>
+<td><code>Ctrl+Alt+0</code></td>
+</tr>
+<tr class="even">
+<td>Heading 1 to 6</td>
+<td><code>Ctrl+Alt+1</code> to <code>Ctrl+Alt+6</code></td>
+</tr>
+<tr class="odd">
+<td>Quote</td>
+<td><code>Ctrl+Shift+9</code></td>
 </tr>
 <tr class="even">
 <td>Bullet list</td>
@@ -192,11 +199,52 @@ HTML Modes)</h3>
 <p><strong>Nested lists:</strong> In a list, press <strong>Tab</strong>
 to indent an item (creating a sub-list); press
 <strong>Shift+Tab</strong> to dedent.</p>
+<h3 id="headings-quotes-and-normal-text">Headings, Quotes and Normal
+Text</h3>
+<p>Every line of a message has a paragraph style: <strong>Normal
+text</strong>, <strong>Heading 1</strong> to <strong>Heading 6</strong>,
+or <strong>Quote</strong>. A recipient’s screen reader can move by the
+headings and quotes you create.</p>
+<ul>
+<li><strong>Headings.</strong> Press <code>Ctrl+Alt+1</code> to
+<code>Ctrl+Alt+6</code> to make the line you are on a heading of that
+level (in HTML mode, every line you have selected). Pressing the same
+key again makes them normal text again. When you press Enter at the end
+of a heading, the new line is normal text; pressing Enter in the middle
+of a heading splits it into two headings.</li>
+<li><strong>Normal text.</strong> Press <code>Ctrl+Alt+0</code> to turn
+headings or quoted lines back into ordinary paragraphs.</li>
+<li><strong>Quote.</strong> Press <code>Ctrl+Shift+9</code> (the same
+key Gmail uses) to quote the lines you are on or have selected. Press it
+again on quoted lines to take them out of the quote. Pressing Enter
+inside a quote continues the quote; pressing Enter on an empty quoted
+line ends it. Quotes can be inside other quotes, the way an earlier
+message is quoted in a reply chain; <code>Ctrl+Shift+9</code> on a quote
+inside another quote takes away one level.</li>
+<li>In HTML mode, the <strong>Paragraph style</strong> box on the
+formatting toolbar shows the style at the cursor. Arrow to a style and
+press Enter to apply it, or choose one from the open list; either way
+you are returned to your text. Arrowing on its own changes nothing, and
+leaving the box or pressing Escape in the open list puts it back. The
+same styles are in <strong>Format → Paragraph Style</strong>, where the
+current one is checked.</li>
+<li>In Markdown mode, these commands write the Markdown for you:
+<code>#</code> to <code>######</code> for headings and <code>&gt;</code>
+for quotes.</li>
+</ul>
+<p>When you reply in HTML mode, the message you are replying to is
+quoted as a real quote with its own formatting — headings, lists, links
+and any earlier quotes — instead of lines that begin with
+<code>&gt;</code>. The plain text part of the message still marks quoted
+lines with <code>&gt;</code>.</p>
 <h3 id="checking-formatting-html-mode">Checking Formatting (HTML
 Mode)</h3>
 <ul>
 <li><strong><code>Ctrl+T</code></strong> — announces a one-line summary:
-“Heading 2. Bold on, Italic off, Underline off.”</li>
+“Heading 2. Bold on, Italic off, Underline off.” Inside a quote it says
+so (“Quote”, or “Quote, level 2” inside a quote within a quote). In a
+link it adds the link’s address, and in inline code it adds “Code
+on”.</li>
 <li><strong><code>Ctrl+Shift+T</code></strong> — opens a small window
 listing the same details one per row. Arrow through them; press Escape
 or Enter to close.</li>
