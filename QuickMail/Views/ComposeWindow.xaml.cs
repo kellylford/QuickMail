@@ -829,6 +829,7 @@ public partial class ComposeWindow : Window
             if (Keyboard.FocusedElement is MenuItem
                 || FromCombo.IsDropDownOpen
                 || ModeSelector.IsDropDownOpen
+                || ParagraphStyleCombo.IsDropDownOpen
                 || AutoCompletePopup.IsOpen
                 || _previewWindow != null)
             {
@@ -910,24 +911,29 @@ public partial class ComposeWindow : Window
 
     private void RichBodyBox_SelectionChanged(object sender, RoutedEventArgs e)
     {
+        SyncParagraphStyleCombo();
         if (_suppressFormattingAnnouncement) return;
         if (_vm.CurrentMode != ComposeMode.Html) return;
 
         var config = _configService.Load();
-
-        if (config.AnnounceFormattingWhileNavigating)
-        {
-            var paragraph = RichBodyBox.Selection.Start.Paragraph;
-            var blockType = BlockTypeLabel(paragraph);
-            if (blockType != _lastAnnouncedBlockType)
-            {
-                _lastAnnouncedBlockType = blockType;
-                AccessibilityHelper.Announce(this, blockType, category: AnnouncementCategory.Result);
-            }
-        }
+        AnnounceBlockTypeIfChanged(config);
 
         if (!_caretMovedByTyping && config.AnnounceSpellingWhileNavigating)
             AnnounceSpellingAtCurrentPosition();
+    }
+
+    /// <summary>
+    /// Says the kind of block the caret is in ("Heading 2", "Quote") when it differs
+    /// from the last one said — only with the "announce formatting while navigating"
+    /// setting on.
+    /// </summary>
+    private void AnnounceBlockTypeIfChanged(ConfigModel config)
+    {
+        if (!config.AnnounceFormattingWhileNavigating) return;
+        var blockType = BlockTypeLabel(RichBodyBox.Selection.Start.Paragraph);
+        if (blockType == _lastAnnouncedBlockType) return;
+        _lastAnnouncedBlockType = blockType;
+        AccessibilityHelper.Announce(this, blockType, category: AnnouncementCategory.Result);
     }
 
     /// <summary>
@@ -1251,6 +1257,16 @@ public partial class ComposeWindow : Window
             }
         }
 
+        if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.None && RichBodyBox.Selection.IsEmpty)
+        {
+            if (HandleRichEnter())
+            {
+                e.Handled = true;
+                _vm.MarkBodyDirty();
+            }
+            return;
+        }
+
         if (e.Key != Key.Tab) return;
         if (Keyboard.Modifiers != ModifierKeys.None && Keyboard.Modifiers != ModifierKeys.Shift) return;
 
@@ -1282,6 +1298,63 @@ public partial class ComposeWindow : Window
         var label = BlockTypeLabel(newPara);
         _lastAnnouncedBlockType = label;
         AccessibilityHelper.Announce(this, label, category: AnnouncementCategory.Result);
+    }
+
+    /// <summary>
+    /// Enter in the rich editor where the default paragraph break is wrong. Returns
+    /// true when it handled the key.
+    /// <list type="bullet">
+    /// <item>On an empty line directly inside a quote, Enter ends the quote: the line
+    /// moves out of it (splitting the quote when it is in the middle), as in other
+    /// mail editors. Anywhere else in a quote, Enter continues the quote.</item>
+    /// <item>At the end of a heading, the new line is normal text, as in Word and
+    /// Outlook; splitting a heading elsewhere leaves both halves headings. WPF copies
+    /// the heading's size and weight to the new paragraph whether or not it copies
+    /// our tag, so both halves are set explicitly rather than trusting either.</item>
+    /// </list>
+    /// </summary>
+    internal bool HandleRichEnter()
+    {
+        var para = RichBodyBox.CaretPosition.Paragraph;
+        if (para is null) return false;
+
+        bool isEmpty = new TextRange(para.ContentStart, para.ContentEnd).Text.Length == 0;
+        if (isEmpty && RichTextDocumentConverter.IsQuote(para.Parent as Block))
+        {
+            // RemoveQuote changes nothing when it cannot; then Enter is left to the editor.
+            bool removed = false;
+            RunBlockEdit(() => removed = RichTextBlockEditing.RemoveQuote(para, para));
+            if (!removed) return false;
+            var depth = RichTextDocumentConverter.QuoteDepth(para);
+            AnnounceFormatting(depth == 0 ? "Quote off" : BlockLabels.WithQuote("Normal text", depth));
+            return true;
+        }
+
+        int level = RichTextBlockEditing.HeadingLevel(para);
+        if (level == 0) return false;
+
+        bool atEnd = new TextRange(RichBodyBox.CaretPosition, para.ContentEnd).Text.Length == 0;
+        bool atStart = !atEnd && new TextRange(para.ContentStart, RichBodyBox.CaretPosition).Text.Length == 0;
+
+        _suppressFormattingAnnouncement = true;
+        // One change block, so a single Undo takes back the break and the style fix-up together.
+        RichBodyBox.BeginChange();
+        try
+        {
+            EditingCommands.EnterParagraphBreak.Execute(null, RichBodyBox);
+            var after = RichBodyBox.CaretPosition.Paragraph;
+            var before = after?.PreviousBlock as Paragraph;
+            if (after != null) RichTextBlockEditing.SetHeading(after, atEnd ? 0 : level);
+            if (before != null) RichTextBlockEditing.SetHeading(before, atStart ? 0 : level);
+        }
+        finally
+        {
+            RichBodyBox.EndChange();
+            _suppressFormattingAnnouncement = false;
+        }
+        SyncParagraphStyleCombo();
+        AnnounceBlockTypeIfChanged(_configService.Load());
+        return true;
     }
 
     // ── Command Palette ──────────────────────────────────────────────────────
@@ -1754,6 +1827,11 @@ public partial class ComposeWindow : Window
 
     private void RichBodyBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        if (e.UndoAction is UndoAction.Undo or UndoAction.Redo)
+        {
+            RichTextBlockEditing.ReconcileHeadingTags(RichBodyBox.Document);
+            SyncParagraphStyleCombo();
+        }
         if (!_suppressRichTextChanged)
             _vm.MarkBodyDirty();
     }
@@ -1780,6 +1858,7 @@ public partial class ComposeWindow : Window
         BodyBox.FontFamily = mode == ComposeMode.Markdown ? new FontFamily("Consolas") : new FontFamily("Segoe UI");
 
         SyncModeSelector();
+        SyncParagraphStyleCombo();
         if (bodyHadFocus)
             FocusActiveEditor();
 
@@ -1906,21 +1985,27 @@ public partial class ComposeWindow : Window
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.heading1", category: "Compose", title: "Heading 1",
-            execute: () => ApplyHeading(1),
-            defaultKey: Key.D1, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
+            id: "compose.normalText", category: "Compose", title: "Normal Text",
+            execute: SetNormalText,
+            defaultKey: Key.D0, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
             isAvailable: InRichMode));
 
-        _registry.Register(new CommandDefinition(
-            id: "compose.heading2", category: "Compose", title: "Heading 2",
-            execute: () => ApplyHeading(2),
-            defaultKey: Key.D2, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
-            isAvailable: InRichMode));
+        Key[] headingKeys = [Key.D1, Key.D2, Key.D3, Key.D4, Key.D5, Key.D6];
+        for (int level = 1; level <= 6; level++)
+        {
+            int headingLevel = level;
+            _registry.Register(new CommandDefinition(
+                id: $"compose.heading{level}", category: "Compose", title: $"Heading {level}",
+                execute: () => ApplyHeading(headingLevel),
+                defaultKey: headingKeys[level - 1], defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
+                isAvailable: InRichMode));
+        }
 
+        // Ctrl+Shift+9 is Gmail's key for Quote.
         _registry.Register(new CommandDefinition(
-            id: "compose.heading3", category: "Compose", title: "Heading 3",
-            execute: () => ApplyHeading(3),
-            defaultKey: Key.D3, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
+            id: "compose.quote", category: "Compose", title: "Quote",
+            execute: ToggleQuote,
+            defaultKey: Key.D9, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
@@ -2071,8 +2156,11 @@ public partial class ComposeWindow : Window
         return value is TextDecorationCollection c && c.Any(d => d.Location == location);
     }
 
-    /// <summary>Toggles a heading on all paragraphs touched by the current selection. Applying the same level again returns to normal text.</summary>
-    private void ApplyHeading(int level)
+    /// <summary>
+    /// Toggles a heading on all paragraphs touched by the current selection.
+    /// Applying the same level again returns to normal text.
+    /// </summary>
+    internal void ApplyHeading(int level)
     {
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
@@ -2086,80 +2174,158 @@ public partial class ComposeWindow : Window
         var paragraphs = GetSelectedParagraphs();
         if (paragraphs.Count == 0) return;
 
-        var tag = "H" + level;
-        bool turnOff = paragraphs.All(p => p.Tag as string == tag);
-
-        foreach (var paragraph in paragraphs)
+        bool turnOff = paragraphs.All(p => RichTextBlockEditing.HeadingLevel(p) == level);
+        RunBlockEdit(() =>
         {
-            if (turnOff)
-            {
-                paragraph.Tag = null;
-                paragraph.ClearValue(TextElement.FontSizeProperty);
-                paragraph.ClearValue(TextElement.FontWeightProperty);
-            }
-            else
-            {
-                paragraph.Tag = tag;
-                paragraph.FontSize = RichTextDocumentConverter.HeadingFontSize(level);
-                paragraph.FontWeight = FontWeights.Bold;
-            }
-        }
-
+            foreach (var paragraph in paragraphs)
+                RichTextBlockEditing.SetHeading(paragraph, turnOff ? 0 : level);
+        });
         AnnounceFormatting(turnOff ? "Normal text" : $"Heading {level}");
-        _vm.MarkBodyDirty();
     }
 
     /// <summary>
-    /// Returns all Paragraphs touched by the current RichBodyBox selection.
-    /// When the caret has no selection this is the single caret paragraph.
-    /// When the selection ends exactly at a paragraph boundary (e.g. Shift+End
-    /// selected to the paragraph break but not into the next paragraph) that
-    /// trailing paragraph is excluded.
+    /// Makes the selected paragraphs plain paragraphs: no heading, no code block,
+    /// and out of any quote. Lists and character formatting are left alone.
     /// </summary>
-    private List<Paragraph> GetSelectedParagraphs()
+    internal void SetNormalText()
     {
-        var sel = RichBodyBox.Selection;
-        var startPara = sel.Start.Paragraph;
-        if (startPara == null) return [];
-
-        var endPara = sel.End.Paragraph;
-
-        // Selection entirely within one paragraph, or no selection.
-        if (endPara == null || startPara == endPara)
-            return [startPara];
-
-        // If the selection ends at or before the content start of the end paragraph,
-        // the user selected up to the paragraph break but didn't intend to include
-        // the next line. WPF places element-boundary positions between paragraphs,
-        // so sel.End can land in that structural gap (< 0) rather than exactly at
-        // ContentStart (== 0); both cases mean the end paragraph was not selected.
-        if (sel.End.CompareTo(endPara.ContentStart) <= 0)
-            return [startPara];
-
-        // Collect all paragraphs from startPara through endPara in document order.
-        var result = new List<Paragraph>();
-        bool inRange = false;
-        foreach (var block in EnumerateDocumentBlocks(RichBodyBox.Document))
+        if (_vm.CurrentMode == ComposeMode.Markdown)
         {
-            if (block == startPara) inRange = true;
-            if (inRange && block is Paragraph p) result.Add(p);
-            if (block == endPara) break;
+            ApplyMarkdownEdit(MarkdownEditing.SetNormalText(
+                BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength));
+            AnnounceFormatting("Normal text");
+            return;
         }
-        return result.Count > 0 ? result : [startPara];
+
+        EnsureRichEditorFocused();
+        ApplyParagraphStyle(ComposeParagraphStyle.Normal);
+        AnnounceFormatting("Normal text");
     }
 
-    /// <summary>Flattens top-level blocks and one level of List → ListItem → Block nesting.</summary>
-    private static IEnumerable<Block> EnumerateDocumentBlocks(FlowDocument doc)
+    /// <summary>
+    /// Puts the selected paragraphs in a quote, or — when they are all in one
+    /// already — takes them out of one level of it.
+    /// </summary>
+    internal void ToggleQuote()
     {
-        foreach (var block in doc.Blocks)
+        if (_vm.CurrentMode == ComposeMode.Markdown)
         {
-            yield return block;
-            if (block is System.Windows.Documents.List list)
-                foreach (var item in list.ListItems)
-                    foreach (var inner in item.Blocks)
-                        yield return inner;
+            var edit = MarkdownEditing.ToggleQuote(BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength);
+            ApplyMarkdownEdit(edit);
+            AnnounceFormatting(edit.TurnedOn ? "Quote on" : "Quote off");
+            return;
+        }
+
+        EnsureRichEditorFocused();
+        var paragraphs = GetSelectedParagraphs();
+        if (paragraphs.Count == 0) return;
+        var first = paragraphs[0];
+        var last = paragraphs[^1];
+
+        bool turnOff = RichTextBlockEditing.CommonQuote(first, last) != null;
+        bool changed = false;
+        RunBlockEdit(() => changed = turnOff
+            ? RichTextBlockEditing.RemoveQuote(first, last)
+            : RichTextBlockEditing.AddQuote(first, last));
+        if (!changed)
+        {
+            AnnounceFormatting("Quote cannot be changed here");
+            return;
+        }
+
+        var depth = RichTextDocumentConverter.QuoteDepth(first);
+        AnnounceFormatting(depth == 0 ? "Quote off"
+            : !turnOff && depth == 1 ? "Quote on"
+            : !turnOff ? $"Quote on, level {depth}"
+            : $"Quote, level {depth}");
+    }
+
+    /// <summary>
+    /// Sets one style on the selected paragraphs — the Paragraph style box and
+    /// menu path. Unlike the heading keys this never toggles: choosing Heading 2
+    /// on a Heading 2 leaves it one. Says nothing; the caller decides.
+    /// </summary>
+    private void ApplyParagraphStyle(ComposeParagraphStyle style)
+    {
+        var paragraphs = GetSelectedParagraphs();
+        if (paragraphs.Count == 0) return;
+
+        RunBlockEdit(() =>
+        {
+            switch (style)
+            {
+                case ComposeParagraphStyle.Normal:
+                    foreach (var paragraph in paragraphs)
+                    {
+                        RichTextBlockEditing.SetHeading(paragraph, 0);
+                        RichTextBlockEditing.RemoveAllQuotes(paragraph);
+                    }
+                    break;
+
+                case ComposeParagraphStyle.Quote:
+                    foreach (var paragraph in paragraphs)
+                        RichTextBlockEditing.SetHeading(paragraph, 0);
+                    if (RichTextBlockEditing.CommonQuote(paragraphs[0], paragraphs[^1]) is null)
+                        RichTextBlockEditing.AddQuote(paragraphs[0], paragraphs[^1]);
+                    break;
+
+                default:
+                    foreach (var paragraph in paragraphs)
+                        RichTextBlockEditing.SetHeading(paragraph, (int)style);
+                    break;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Runs a block-level edit as one undo step and keeps the selection on the same
+    /// text. Moving blocks in and out of a quote re-parents them, which would
+    /// otherwise leave the caret wherever WPF put it. The edit announces its own
+    /// result, so the navigation announcement is not repeated for it.
+    /// </summary>
+    private void RunBlockEdit(Action edit)
+    {
+        var (startPara, startOffset) = Anchor(RichBodyBox.Selection.Start);
+        var (endPara, endOffset) = Anchor(RichBodyBox.Selection.End);
+
+        _suppressFormattingAnnouncement = true;
+        RichBodyBox.BeginChange();
+        try
+        {
+            edit();
+        }
+        finally
+        {
+            RichBodyBox.EndChange();
+            if (startPara != null && endPara != null)
+                RichBodyBox.Selection.Select(Restore(startPara, startOffset), Restore(endPara, endOffset));
+            _suppressFormattingAnnouncement = false;
+        }
+
+        _lastAnnouncedBlockType = BlockTypeLabel(RichBodyBox.Selection.Start.Paragraph);
+        SyncParagraphStyleCombo();
+        _vm.MarkBodyDirty();
+
+        static (Paragraph? Paragraph, int Offset) Anchor(TextPointer position)
+        {
+            var paragraph = position.Paragraph;
+            return paragraph is null
+                ? (null, 0)
+                : (paragraph, Math.Max(0, paragraph.ContentStart.GetOffsetToPosition(position)));
+        }
+
+        static TextPointer Restore(Paragraph paragraph, int offset)
+        {
+            var position = paragraph.ContentStart.GetPositionAtOffset(offset);
+            return position is null || position.CompareTo(paragraph.ContentEnd) > 0
+                ? paragraph.ContentEnd
+                : position;
         }
     }
+
+    /// <summary>All paragraphs touched by the current selection — see <see cref="RichTextBlockEditing.ParagraphsInRange"/>.</summary>
+    private List<Paragraph> GetSelectedParagraphs() =>
+        RichTextBlockEditing.ParagraphsInRange(RichBodyBox.Document, RichBodyBox.Selection.Start, RichBodyBox.Selection.End);
 
     private static int ListDepthOf(Paragraph? para)
     {
@@ -2173,31 +2339,129 @@ public partial class ComposeWindow : Window
         return depth;
     }
 
-    private static string BlockTypeLabel(Paragraph? para)
+    internal static string BlockTypeLabel(Paragraph? para)
     {
-        if (para?.Tag is string tag)
-        {
-            return tag switch
-            {
-                "H1" => "Heading 1",
-                "H2" => "Heading 2",
-                "H3" => "Heading 3",
-                "H4" => "Heading 4",
-                "H5" => "Heading 5",
-                "H6" => "Heading 6",
-                "BLOCKQUOTE" => "Quote",
-                _ when RichTextDocumentConverter.IsPreTag(tag) => "Code block",
-                _ => "Normal text",
-            };
-        }
-        if (para?.Parent is ListItem item)
+        string label;
+        if (para is null)
+            label = "Normal text";
+        else if (RichTextBlockEditing.HeadingLevel(para) is > 0 and var level)
+            label = $"Heading {level}";
+        else if (RichTextDocumentConverter.IsPreTag(para.Tag as string))
+            label = "Code block";
+        else if (para.Parent is ListItem item)
         {
             var kind = item.Parent is System.Windows.Documents.List { MarkerStyle: System.Windows.TextMarkerStyle.Decimal }
                 ? "Numbered list item" : "Bullet list item";
             var depth = ListDepthOf(para);
-            return depth > 1 ? $"{kind}, level {depth}" : kind;
+            label = depth > 1 ? $"{kind}, level {depth}" : kind;
         }
-        return "Normal text";
+        else
+            label = "Normal text";
+        return BlockLabels.WithQuote(label, RichTextDocumentConverter.QuoteDepth(para));
+    }
+
+    /// <summary>Shows the caret paragraph's style in the Paragraph style box, without applying anything.</summary>
+    private void SyncParagraphStyleCombo()
+    {
+        if (_vm.CurrentMode != ComposeMode.Html) return;
+        var style = RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph);
+        var index = style is null ? -1 : (int)style.Value;
+        if (ParagraphStyleCombo.SelectedIndex != index)
+            ParagraphStyleCombo.SelectedIndex = index;
+    }
+
+    private bool _paragraphStyleCancelled;
+
+    // The Paragraph style box does not apply a style as its selection moves. On a
+    // closed combo box every arrow key changes the selection, and the styles do not
+    // undo one another — arrowing past Normal text would take a line out of a
+    // reply's quote, and it would stay out. So arrowing only chooses; the choice is
+    // committed by Enter or by closing the open list on it (mouse or keyboard), and
+    // then the user is back in the text, as with the toolbar buttons. Escape in the
+    // open list, or leaving the box, puts it back to the style at the caret.
+
+    private void ParagraphStyleCombo_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && ParagraphStyleCombo.IsDropDownOpen)
+            _paragraphStyleCancelled = true;
+        else if (e.Key == Key.Return && !ParagraphStyleCombo.IsDropDownOpen && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            CommitParagraphStyleChoice(returnToText: true);
+            e.Handled = true;
+        }
+    }
+
+    private void ParagraphStyleCombo_DropDownClosed(object? sender, EventArgs e)
+    {
+        if (_paragraphStyleCancelled)
+        {
+            _paragraphStyleCancelled = false;
+            SyncParagraphStyleCombo();
+            return;
+        }
+        CommitParagraphStyleChoice(returnToText: false);
+    }
+
+    private void ParagraphStyleCombo_IsKeyboardFocusWithinChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (!(bool)e.NewValue && !ParagraphStyleCombo.IsDropDownOpen)
+            SyncParagraphStyleCombo(); // left without committing
+    }
+
+    /// <summary>
+    /// Applies the box's style when any selected paragraph differs from it, and returns to the
+    /// text when it did, or when the user pressed Enter. Closing the list without
+    /// choosing anything new leaves focus in the box.
+    /// </summary>
+    internal void CommitParagraphStyleChoice(bool returnToText)
+    {
+        if (_vm.CurrentMode != ComposeMode.Html || ParagraphStyleCombo.SelectedIndex < 0) return;
+        var chosen = (ComposeParagraphStyle)ParagraphStyleCombo.SelectedIndex;
+        // Nothing is announced: the box already said the style as it was chosen.
+        if (GetSelectedParagraphs().Any(p => RichTextBlockEditing.StyleOf(p) != chosen))
+        {
+            ApplyParagraphStyle(chosen);
+            returnToText = true;
+        }
+        if (returnToText) FocusActiveEditor();
+    }
+
+    /// <summary>Check marks on Format → Paragraph Style show the style at the caret.</summary>
+    private void ParagraphStyleMenu_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource != ParagraphStyleMenu) return;
+        int current = -1;
+        if (_vm.CurrentMode == ComposeMode.Html)
+            current = RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph) is { } style ? (int)style : -1;
+        else if (_vm.CurrentMode == ComposeMode.Markdown)
+            current = MarkdownStyleAtCaret();
+        foreach (var item in ParagraphStyleMenu.Items.OfType<MenuItem>())
+            item.IsChecked = item.Tag is string tag && int.Parse(tag, System.Globalization.CultureInfo.InvariantCulture) == current;
+    }
+
+    private int MarkdownStyleAtCaret()
+    {
+        var block = MarkdownEditing.DescribeFormattingParts(BodyBox.Text, BodyBox.CaretIndex)[0];
+        if (block.StartsWith("Heading ", StringComparison.Ordinal) && block.Length > 8 && char.IsDigit(block[8]))
+            return block[8] - '0';
+        if (block.StartsWith("Quote", StringComparison.Ordinal)) return (int)ComposeParagraphStyle.Quote;
+        return block == "Normal text" ? 0 : -1;
+    }
+
+    /// <summary>
+    /// The menu dispatches to the same commands as the keys, so it toggles and
+    /// announces exactly as they do.
+    /// </summary>
+    private void MenuParagraphStyle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string tag }) return;
+        var style = (ComposeParagraphStyle)int.Parse(tag, System.Globalization.CultureInfo.InvariantCulture);
+        switch (style)
+        {
+            case ComposeParagraphStyle.Normal: SetNormalText(); break;
+            case ComposeParagraphStyle.Quote: ToggleQuote(); break;
+            default: ApplyHeading((int)style); break;
+        }
     }
 
     private void ToggleList(bool ordered)
@@ -2256,7 +2520,7 @@ public partial class ComposeWindow : Window
         AnnounceFormatting("Link inserted");
     }
 
-    private void ClearFormatting()
+    internal void ClearFormatting()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
@@ -2268,28 +2532,40 @@ public partial class ComposeWindow : Window
         }
 
         EnsureRichEditorFocused();
-        RichBodyBox.Selection.ClearAllProperties();
-        // ClearAllProperties resets character/paragraph formatting but not our
-        // heading tags — clear those on the paragraphs the selection touches.
-        foreach (var paragraph in new[] { RichBodyBox.Selection.Start.Paragraph, RichBodyBox.Selection.End.Paragraph })
+        // ClearAllProperties resets character and paragraph formatting but not our
+        // block structure — headings, code blocks and quotes are made normal text on
+        // every paragraph the selection touches, not only its first and last.
+        // ClearAllProperties merges runs, which would throw off RunBlockEdit's saved
+        // selection offsets, so it runs first; the outer change block keeps the whole
+        // command one undo step.
+        var paragraphs = GetSelectedParagraphs();
+        RichBodyBox.BeginChange();
+        try
         {
-            if (paragraph?.Tag is string)
+            RichBodyBox.Selection.ClearAllProperties();
+            RunBlockEdit(() =>
             {
-                paragraph.Tag = null;
-                paragraph.ClearValue(TextElement.FontSizeProperty);
-                paragraph.ClearValue(TextElement.FontWeightProperty);
-            }
+                foreach (var paragraph in paragraphs)
+                {
+                    RichTextBlockEditing.SetHeading(paragraph, 0);
+                    RichTextBlockEditing.RemoveAllQuotes(paragraph);
+                }
+            });
         }
-        _vm.MarkBodyDirty();
+        finally
+        {
+            RichBodyBox.EndChange();
+        }
         AnnounceFormatting("Formatting cleared");
     }
 
     /// <summary>
     /// The formatting at the cursor as one fact per entry — block type first,
-    /// then each inline attribute. Shared by the spoken announcement
-    /// (Ctrl+Shift+Space) and the Show Formatting list (Ctrl+Alt+Space).
+    /// then each inline attribute, then — only when present — inline code and the
+    /// link the caret is in, with its address. Shared by the spoken announcement
+    /// (Ctrl+T) and the Show Formatting list (Ctrl+Shift+T).
     /// </summary>
-    private System.Collections.Generic.List<string> GetFormattingParts()
+    internal System.Collections.Generic.List<string> GetFormattingParts()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown)
             return MarkdownEditing.DescribeFormattingParts(BodyBox.Text, BodyBox.CaretIndex);
@@ -2307,7 +2583,7 @@ public partial class ComposeWindow : Window
         var paragraph = selection.Start.Paragraph;
         var block = BlockTypeLabel(paragraph);
 
-        return
+        List<string> parts =
         [
             block,
             $"Bold {bold}",
@@ -2315,6 +2591,24 @@ public partial class ComposeWindow : Window
             $"Underline {underline}",
             $"Strikethrough {strike}",
         ];
+
+        var font = selection.GetPropertyValue(TextElement.FontFamilyProperty) as FontFamily;
+        if (RichTextDocumentConverter.IsCodeFont(font) && !RichTextDocumentConverter.IsPreTag(paragraph?.Tag as string))
+            parts.Add("Code on");
+
+        if (LinkAt(selection.Start) is { } link)
+        {
+            var address = link.Tag as string ?? link.NavigateUri?.ToString();
+            parts.Add(string.IsNullOrEmpty(address) ? "Link" : $"Link, {address}");
+        }
+        return parts;
+    }
+
+    private static Hyperlink? LinkAt(TextPointer position)
+    {
+        for (DependencyObject? el = position.Parent; el is TextElement te; el = te.Parent)
+            if (te is Hyperlink link) return link;
+        return null;
     }
 
     /// <summary>Announces the formatting at the cursor, e.g. "Heading 2. Bold on, Italic off, …".</summary>
@@ -2342,9 +2636,6 @@ public partial class ComposeWindow : Window
     private void ToolbarItalic_Click(object sender, RoutedEventArgs e)        { ToggleItalic(); FocusActiveEditor(); }
     private void ToolbarUnderline_Click(object sender, RoutedEventArgs e)     { ToggleUnderline(); FocusActiveEditor(); }
     private void ToolbarStrikethrough_Click(object sender, RoutedEventArgs e) { ToggleStrikethrough(); FocusActiveEditor(); }
-    private void ToolbarHeading1_Click(object sender, RoutedEventArgs e)      { ApplyHeading(1); FocusActiveEditor(); }
-    private void ToolbarHeading2_Click(object sender, RoutedEventArgs e)      { ApplyHeading(2); FocusActiveEditor(); }
-    private void ToolbarHeading3_Click(object sender, RoutedEventArgs e)      { ApplyHeading(3); FocusActiveEditor(); }
     private void ToolbarBulletList_Click(object sender, RoutedEventArgs e)    { ToggleList(ordered: false); FocusActiveEditor(); }
     private void ToolbarNumberedList_Click(object sender, RoutedEventArgs e)  { ToggleList(ordered: true); FocusActiveEditor(); }
     private void ToolbarInsertLink_Click(object sender, RoutedEventArgs e)    => InsertLink();

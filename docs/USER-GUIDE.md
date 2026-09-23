@@ -1011,7 +1011,9 @@ Messages composed in Markdown or HTML are sent with both an HTML part and a plai
 | Italic | `Ctrl+I` |
 | Underline (HTML only) | `Ctrl+U` |
 | Strikethrough | `Ctrl+Shift+X` |
-| Heading 1 / 2 / 3 | `Ctrl+Alt+1` / `Ctrl+Alt+2` / `Ctrl+Alt+3` |
+| Normal text | `Ctrl+Alt+0` |
+| Heading 1 to 6 | `Ctrl+Alt+1` to `Ctrl+Alt+6` |
+| Quote | `Ctrl+Shift+9` |
 | Bullet list | `Ctrl+Shift+L` |
 | Numbered list | `Ctrl+Shift+N` |
 | Insert link | `Ctrl+L` |
@@ -1021,9 +1023,21 @@ Messages composed in Markdown or HTML are sent with both an HTML part and a plai
 
 **Nested lists:** In a list, press **Tab** to indent an item (creating a sub-list); press **Shift+Tab** to dedent.
 
+### Headings, Quotes and Normal Text
+
+Every line of a message has a paragraph style: **Normal text**, **Heading 1** to **Heading 6**, or **Quote**. A recipient's screen reader can move by the headings and quotes you create.
+
+- **Headings.** Press `Ctrl+Alt+1` to `Ctrl+Alt+6` to make the line you are on a heading of that level (in HTML mode, every line you have selected). Pressing the same key again makes them normal text again. When you press Enter at the end of a heading, the new line is normal text; pressing Enter in the middle of a heading splits it into two headings.
+- **Normal text.** Press `Ctrl+Alt+0` to turn headings or quoted lines back into ordinary paragraphs.
+- **Quote.** Press `Ctrl+Shift+9` (the same key Gmail uses) to quote the lines you are on or have selected. Press it again on quoted lines to take them out of the quote. Pressing Enter inside a quote continues the quote; pressing Enter on an empty quoted line ends it. Quotes can be inside other quotes, the way an earlier message is quoted in a reply chain; `Ctrl+Shift+9` on a quote inside another quote takes away one level.
+- In HTML mode, the **Paragraph style** box on the formatting toolbar shows the style at the cursor. Arrow to a style and press Enter to apply it, or choose one from the open list; either way you are returned to your text. Arrowing on its own changes nothing, and leaving the box or pressing Escape in the open list puts it back. The same styles are in **Format → Paragraph Style**, where the current one is checked.
+- In Markdown mode, these commands write the Markdown for you: `#` to `######` for headings and `>` for quotes.
+
+When you reply in HTML mode, the message you are replying to is quoted as a real quote with its own formatting — headings, lists, links and any earlier quotes — instead of lines that begin with `>`. The plain text part of the message still marks quoted lines with `>`.
+
 ### Checking Formatting (HTML Mode)
 
-- **`Ctrl+T`** — announces a one-line summary: "Heading 2. Bold on, Italic off, Underline off."
+- **`Ctrl+T`** — announces a one-line summary: "Heading 2. Bold on, Italic off, Underline off." Inside a quote it says so ("Quote", or "Quote, level 2" inside a quote within a quote). In a link it adds the link's address, and in inline code it adds "Code on".
 - **`Ctrl+Shift+T`** — opens a small window listing the same details one per row. Arrow through them; press Escape or Enter to close.
 
 ### Preview (Markdown and HTML Modes)
@@ -2206,7 +2220,9 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+I` | Italic |
 | `Ctrl+U` | Underline (HTML only) |
 | `Ctrl+Shift+X` | Strikethrough |
-| `Ctrl+Alt+1/2/3` | Heading 1 / 2 / 3 |
+| `Ctrl+Alt+0` | Normal text |
+| `Ctrl+Alt+1` to `Ctrl+Alt+6` | Heading 1 to 6 |
+| `Ctrl+Shift+9` | Quote |
 | `Ctrl+Shift+L` | Bullet list |
 | `Ctrl+Shift+N` | Numbered list |
 | `Ctrl+L` | Insert link |

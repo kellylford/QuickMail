@@ -17,6 +17,11 @@
       "scale": 100
     },
     {
+      "surface": "compose-html",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
       "surface": "settings-appearance",
       "theme": "parchment",
       "scale": 100
@@ -97,6 +102,11 @@
       "scale": 100
     },
     {
+      "surface": "compose-html",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
       "surface": "settings-appearance",
       "theme": "dark",
       "scale": 100
@@ -173,6 +183,11 @@
     },
     {
       "surface": "compose",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "compose-html",
       "theme": "parchment",
       "scale": 150
     },

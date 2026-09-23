@@ -218,10 +218,6 @@
         <Setter Property="BorderBrush" Value="Transparent"/>
         <Setter Property="Margin" Value="1,0"/>
     </Style>
-    <Style x:Key="{x:Static ToolBar.CheckBoxStyleKey}" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}"/>
-    <Style x:Key="{x:Static ToolBar.RadioButtonStyleKey}" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}"/>
-    <Style x:Key="{x:Static ToolBar.TextBoxStyleKey}" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}"/>
-    <Style x:Key="{x:Static ToolBar.ComboBoxStyleKey}" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}"/>
     <Style x:Key="{x:Static ToolBar.SeparatorStyleKey}" TargetType="Separator">
         <Setter Property="Template">
             <Setter.Value>
@@ -521,6 +517,17 @@
             </Setter.Value>
         </Setter>
     </Style>
+
+    <!-- ToolBar keys for controls whose implicit styles are defined above this
+         point, and not near the Button keys. BasedOn is a StaticResource, which
+         only sees what is defined above it: declared before the implicit style, a
+         key silently bases itself on an earlier, unthemed one. The compose
+         toolbar's Paragraph style box rendered with light default chrome in the
+         dark theme that way (#729). -->
+    <Style x:Key="{x:Static ToolBar.CheckBoxStyleKey}" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}"/>
+    <Style x:Key="{x:Static ToolBar.RadioButtonStyleKey}" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}"/>
+    <Style x:Key="{x:Static ToolBar.TextBoxStyleKey}" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}"/>
+    <Style x:Key="{x:Static ToolBar.ComboBoxStyleKey}" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}"/>
 
     <!-- Bare separators outside menus/toolbars/status bars (those contexts use
          their own keyed styles above/below): a themed horizontal hairline. -->

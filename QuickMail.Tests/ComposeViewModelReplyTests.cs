@@ -131,6 +131,69 @@ public class ComposeViewModelReplyTests
         Assert.DoesNotContain("ignored html", model.Body);
     }
 
+    // ── HTML-mode replies quote the original as a real blockquote (#729) ────────
+
+    [Fact]
+    public void CreateReply_HtmlMessage_HtmlBodyQuotesTheOriginalInABlockquote()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "",
+            plainBody: "Hi", htmlBody: "<html><body><h2>Agenda</h2><p>Hi</p></body></html>");
+
+        var model = ComposeViewModel.CreateReply(detail, Guid.NewGuid());
+
+        Assert.NotNull(model.HtmlBody);
+        Assert.Contains("wrote:</p>", model.HtmlBody);
+        Assert.Contains("<blockquote>", model.HtmlBody);
+        Assert.Contains("<h2>Agenda</h2>", model.HtmlBody);
+        Assert.DoesNotContain("<body", model.HtmlBody);
+        Assert.Equal(ComposeMode.PlainText, model.Mode); // the default mode still decides
+    }
+
+    [Fact]
+    public void CreateReply_PlainOnlyMessage_HasNoHtmlBody()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "", plainBody: "Hi");
+        Assert.Null(ComposeViewModel.CreateReply(detail, Guid.NewGuid()).HtmlBody);
+    }
+
+    private static ComposeViewModel NewVm() => new(new StubSmtpService(), new StubAccountService(),
+        new StubCredentialService(), new StubImapMailService(), new StubTemplateService());
+
+    [Fact]
+    public void Reply_SwitchedToHtml_LoadsTheQuotedHtml()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "",
+            plainBody: "Hi", htmlBody: "<p>Hi <strong>there</strong></p>");
+        var vm = NewVm();
+        vm.Seed(ComposeViewModel.CreateReply(detail, Guid.NewGuid()));
+        string? loaded = null;
+        vm.LoadHtmlIntoEditorRequested += html => loaded = html;
+
+        vm.SetMode(ComposeMode.Html);
+
+        Assert.NotNull(loaded);
+        Assert.Contains("<blockquote>", loaded);
+        Assert.Contains("<strong>there</strong>", loaded);
+    }
+
+    [Fact]
+    public void Reply_EditedInPlainTextFirst_SwitchesToHtmlFromWhatWasWritten()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "",
+            plainBody: "Hi", htmlBody: "<p>Hi</p>");
+        var vm = NewVm();
+        vm.Seed(ComposeViewModel.CreateReply(detail, Guid.NewGuid()));
+        vm.Body = "My answer" + vm.Body;
+        string? loaded = null;
+        vm.LoadHtmlIntoEditorRequested += html => loaded = html;
+
+        vm.SetMode(ComposeMode.Html);
+
+        Assert.NotNull(loaded);
+        Assert.Contains("My answer", loaded);
+        Assert.Contains("<blockquote>", loaded); // the "> " lines still become a quote
+    }
+
     // ── CreateReplyAll tests ────────────────────────────────────────────────────
 
     [Fact]

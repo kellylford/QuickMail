@@ -19,8 +19,10 @@ namespace QuickMail.Helpers;
 /// table/tr/th/td, strong/em/u/del/code, a, img, br. Unknown elements degrade
 /// to their text content.
 ///
-/// Heading level, pre (with fence language), hr, and blockquote are tracked via
-/// <c>Paragraph.Tag</c> ("H1".."H6", "PRE" / "PRE:lang", "HR", "BLOCKQUOTE");
+/// Heading level, pre (with fence language), and hr are tracked via
+/// <c>Paragraph.Tag</c> ("H1".."H6", "PRE" / "PRE:lang", "HR"). A blockquote is
+/// a <see cref="Section"/> tagged "BLOCKQUOTE" that contains its blocks, so a
+/// quote can hold headings and lists, and quotes nest to any depth;
 /// table header cells and column alignment via <c>TableCell.Tag</c> ("TH"/"TD"
 /// with an optional ":L"/":C"/":R" suffix); images via <c>Run.Tag</c>
 /// ("IMG:src" with the alt text as the run text); and the author's original
@@ -38,6 +40,33 @@ public static class RichTextDocumentConverter
     public const string TagPre = "PRE";
     public const string TagHr = "HR";
     public const string TagBlockquote = "BLOCKQUOTE";
+
+    /// <summary>True when the block is a quote: a Section tagged <see cref="TagBlockquote"/>.</summary>
+    public static bool IsQuote(Block? block) => block is Section { Tag: TagBlockquote };
+
+    /// <summary>
+    /// A new, empty quote container. The rule on the left and the secondary
+    /// text color are how a sighted reader tells a quote apart; nested quotes
+    /// indent further because each Section adds its own margin.
+    /// </summary>
+    public static Section NewQuoteSection() => new()
+    {
+        Tag = TagBlockquote,
+        Margin = new Thickness(6, 0, 0, 0),
+        Padding = new Thickness(8, 0, 0, 0),
+        BorderThickness = new Thickness(2, 0, 0, 0),
+        BorderBrush = ThemeBrush(Theming.ThemeKeys.Border, Brushes.Gray),
+        Foreground = ThemeBrush(Theming.ThemeKeys.TextSecondary, Brushes.DarkSlateGray),
+    };
+
+    /// <summary>How many quotes contain this element (0 when it is not quoted).</summary>
+    public static int QuoteDepth(TextElement? element)
+    {
+        int depth = 0;
+        for (DependencyObject? el = element?.Parent; el is TextElement te; el = te.Parent)
+            if (IsQuote(te as Block)) depth++;
+        return depth;
+    }
 
     /// <summary>Run.Tag prefix marking an image placeholder; the rest is the src.</summary>
     public const string ImageTagPrefix = "IMG:";
@@ -167,6 +196,15 @@ public static class RichTextDocumentConverter
         {
             switch (node.Name)
             {
+                // Much HTML mail wraps everything in divs. A div holding blocks is a
+                // container, so the headings, lists and quotes inside it stay blocks
+                // instead of running together as one paragraph of text.
+                case "div" when node.Children.Any(c => BlockElements.Contains(c.Name)):
+                    foreach (var b in FlushPending()) yield return b;
+                    foreach (var inner in BuildBlocks(node.Children))
+                        yield return inner;
+                    break;
+
                 case "p" or "div":
                     foreach (var b in FlushPending()) yield return b;
                     var para = new Paragraph();
@@ -210,16 +248,13 @@ public static class RichTextDocumentConverter
 
                 case "blockquote":
                     foreach (var b in FlushPending()) yield return b;
+                    // A container, not a flag on each paragraph: nested quotes, and
+                    // headings or lists inside a quote, all keep their structure.
+                    var quote = NewQuoteSection();
                     foreach (var inner in BuildBlocks(node.Children))
-                    {
-                        inner.Tag = TagBlockquote;
-                        if (inner is Paragraph qp)
-                        {
-                            qp.Margin = new Thickness(20, qp.Margin.Top, 0, qp.Margin.Bottom);
-                            qp.Foreground = ThemeBrush(Theming.ThemeKeys.TextSecondary, Brushes.DarkSlateGray);
-                        }
-                        yield return inner;
-                    }
+                        quote.Blocks.Add(inner);
+                    if (quote.Blocks.Count > 0)
+                        yield return quote;
                     break;
 
                 case "pre":
@@ -269,6 +304,19 @@ public static class RichTextDocumentConverter
         }
 
         foreach (var b in FlushPending()) yield return b;
+    }
+
+    private static readonly HashSet<string> BlockElements =
+        ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "blockquote", "pre", "hr", "table"];
+
+    /// <summary>True for the fonts the converter treats as inline code.</summary>
+    public static bool IsCodeFont(FontFamily? font)
+    {
+        var source = font?.Source;
+        if (string.IsNullOrEmpty(source)) return false;
+        return source.Contains("Consolas", StringComparison.OrdinalIgnoreCase)
+            || source.Contains("Cascadia", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(source, CodeFont.Source, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? FenceLanguageOf(HtmlNode preNode)
@@ -478,36 +526,10 @@ public static class RichTextDocumentConverter
         return sb.ToString().TrimEnd('\n');
     }
 
-    /// <summary>
-    /// Emits a run of sibling blocks, merging consecutive blockquote paragraphs
-    /// into a single &lt;blockquote&gt; so multi-paragraph quotes keep their
-    /// structure instead of splitting into adjacent one-paragraph quotes.
-    /// </summary>
     private static void EmitBlocksHtml(StringBuilder sb, IEnumerable<Block> blocks)
     {
-        bool inQuote = false;
         foreach (var block in blocks)
-        {
-            bool isQuote = block.Tag as string == TagBlockquote;
-            if (inQuote && !isQuote) { sb.Append("</blockquote>\n"); inQuote = false; }
-            if (isQuote)
-            {
-                if (!inQuote) { sb.Append("<blockquote>\n"); inQuote = true; }
-                if (block is Paragraph qp)
-                {
-                    sb.Append("<p>");
-                    EmitInlinesHtml(sb, qp.Inlines, BaselineOf(qp));
-                    sb.Append("</p>\n");
-                }
-                else
-                {
-                    EmitBlockHtml(sb, block);
-                }
-                continue;
-            }
             EmitBlockHtml(sb, block);
-        }
-        if (inQuote) sb.Append("</blockquote>\n");
     }
 
     private static void EmitBlockHtml(StringBuilder sb, Block block)
@@ -589,6 +611,12 @@ public static class RichTextDocumentConverter
                 sb.Append("</table>\n");
                 break;
 
+            case Section quote when IsQuote(quote):
+                sb.Append("<blockquote>\n");
+                EmitBlocksHtml(sb, quote.Blocks);
+                sb.Append("</blockquote>\n");
+                break;
+
             case Section section:
                 EmitBlocksHtml(sb, section.Blocks);
                 break;
@@ -664,8 +692,9 @@ public static class RichTextDocumentConverter
             Italic: run.FontStyle == FontStyles.Italic && !baseline.Italic,
             Underline: Has(TextDecorations.Underline),
             Strike: Has(TextDecorations.Strikethrough),
-            Code: run.FontFamily?.Source?.Contains("Consolas", StringComparison.OrdinalIgnoreCase) == true
-                  || run.FontFamily?.Source?.Contains("Cascadia", StringComparison.OrdinalIgnoreCase) == true);
+            // The run's own font, not an inherited one, so a theme whose body font
+            // happened to be a code font could never make every run code.
+            Code: IsCodeFont(run.ReadLocalValue(TextElement.FontFamilyProperty) as FontFamily));
     }
 
     // ─────────────────────────── FlowDocument → Markdown ───────────────────────
@@ -677,34 +706,24 @@ public static class RichTextDocumentConverter
         return sb.ToString().Trim('\n');
     }
 
-    /// <summary>
-    /// Emits a run of sibling blocks, joining consecutive blockquote paragraphs
-    /// with a "&gt;" continuation line so they re-parse as one quote.
-    /// </summary>
     private static void EmitBlocksMarkdown(StringBuilder sb, IEnumerable<Block> blocks)
     {
-        bool prevQuote = false;
         foreach (var block in blocks)
-        {
-            bool isQuote = block is Paragraph { Tag: TagBlockquote };
-            if (isQuote)
-            {
-                if (prevQuote && sb.Length >= 2 && sb[^1] == '\n' && sb[^2] == '\n')
-                {
-                    // Replace the blank separator with a ">" continuation line.
-                    sb.Length -= 1;
-                    sb.Append(">\n");
-                }
-                var qp = (Paragraph)block;
-                sb.Append("> ");
-                EmitInlinesMarkdown(sb, qp.Inlines, BaselineOf(qp), "> ");
-                sb.Append("\n\n");
-                prevQuote = true;
-                continue;
-            }
-            prevQuote = false;
             EmitBlockMarkdown(sb, block);
-        }
+    }
+
+    /// <summary>
+    /// A quote is its content's Markdown with "&gt; " in front of every line.
+    /// Blank lines become a bare "&gt;" so a multi-paragraph quote re-parses as
+    /// one quote; a list or a nested quote inside it just gains the marker.
+    /// </summary>
+    private static void EmitQuoteMarkdown(StringBuilder sb, Section quote)
+    {
+        var inner = new StringBuilder();
+        EmitBlocksMarkdown(inner, quote.Blocks);
+        foreach (var line in inner.ToString().Trim('\n').Split('\n'))
+            sb.Append(line.Length == 0 ? ">" : "> " + line).Append('\n');
+        sb.Append('\n');
     }
 
     private static void EmitBlockMarkdown(StringBuilder sb, Block block)
@@ -728,11 +747,10 @@ public static class RichTextDocumentConverter
                     TagH4 => "#### ",
                     TagH5 => "##### ",
                     TagH6 => "###### ",
-                    TagBlockquote => "> ",
                     _ => string.Empty,
                 };
                 sb.Append(prefix);
-                EmitInlinesMarkdown(sb, p.Inlines, BaselineOf(p), prefix == "> " ? "> " : string.Empty);
+                EmitInlinesMarkdown(sb, p.Inlines, BaselineOf(p), string.Empty);
                 sb.Append("\n\n");
                 break;
 
@@ -758,6 +776,10 @@ public static class RichTextDocumentConverter
 
             case Table table:
                 EmitTableMarkdown(sb, table);
+                break;
+
+            case Section quote when IsQuote(quote):
+                EmitQuoteMarkdown(sb, quote);
                 break;
 
             case Section section:
@@ -910,7 +932,43 @@ public static class RichTextDocumentConverter
 
     // ─────────────────────────── Plain text & snapshot ─────────────────────────
 
-    public static string ToPlainText(FlowDocument doc) => HtmlStripper.ToPlainText(ToHtml(doc));
+    /// <summary>
+    /// The text/plain rendering. A quote gets "&gt; " in front of each line, the
+    /// way plain-text mail has always marked quoted text, so the plain part of a
+    /// reply still shows what was quoted. Everything else goes through
+    /// <see cref="HtmlStripper"/>.
+    /// </summary>
+    public static string ToPlainText(FlowDocument doc) => PlainTextOf(doc.Blocks);
+
+    private static string PlainTextOf(IEnumerable<Block> blocks)
+    {
+        var parts = new List<string>();
+        var pendingHtml = new StringBuilder();
+
+        void Flush()
+        {
+            if (pendingHtml.Length == 0) return;
+            var text = HtmlStripper.ToPlainText(pendingHtml.ToString());
+            if (text.Length > 0) parts.Add(text);
+            pendingHtml.Clear();
+        }
+
+        foreach (var block in blocks)
+        {
+            if (block is Section quote && IsQuote(quote))
+            {
+                Flush();
+                var inner = PlainTextOf(quote.Blocks);
+                if (inner.Length > 0)
+                    parts.Add(string.Join("\n", inner.Split('\n')
+                        .Select(line => line.Length == 0 ? ">" : "> " + line)));
+                continue;
+            }
+            EmitBlockHtml(pendingHtml, block);
+        }
+        Flush();
+        return string.Join("\n\n", parts);
+    }
 
     /// <summary>All three representations in one pass — handed to the ViewModel via RichBodyProvider.</summary>
     public static RichBodySnapshot Snapshot(FlowDocument doc) =>

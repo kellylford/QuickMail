@@ -77,14 +77,106 @@ public static class MarkdownEditing
     public static MarkdownEdit ToggleHeading(string text, int caretIndex, int level)
     {
         var (lineStart, lineEnd) = LineBoundsAt(text, caretIndex);
-        var line = text[lineStart..lineEnd];
+        // A heading inside a quote goes after the quote markers: "> ## Title".
+        var quotePrefix = QuotePrefixLength(text[lineStart..lineEnd], out _);
+        var headingStart = lineStart + quotePrefix;
+        var line = text[headingStart..lineEnd];
         var existing = HeadingPrefixLength(line, out int existingLevel);
         var newPrefix = existingLevel == level ? string.Empty : new string('#', level) + " ";
 
-        int caretInContent = Math.Max(0, caretIndex - lineStart - existing);
-        int newCaret = lineStart + newPrefix.Length + caretInContent;
-        return new MarkdownEdit(lineStart, existing, newPrefix, newCaret, 0,
+        int caretInContent = Math.Max(0, caretIndex - headingStart - existing);
+        int newCaret = headingStart + newPrefix.Length + caretInContent;
+        return new MarkdownEdit(headingStart, existing, newPrefix, newCaret, 0,
             TurnedOn: newPrefix.Length > 0);
+    }
+
+    // ── Quotes and normal text ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Toggles a quote on the lines the selection touches (the caret's line when
+    /// nothing is selected). When every non-empty line is already quoted, one
+    /// level of "&gt;" comes off each; otherwise every line gains "&gt; ", and a
+    /// blank line gains a bare "&gt;" so the quote stays one quote.
+    /// </summary>
+    public static MarkdownEdit ToggleQuote(string text, int selStart, int selLen)
+    {
+        var (blockStart, blockEnd) = CoveredLines(text, selStart, selLen);
+        var lines = text[blockStart..blockEnd].Split('\n');
+        bool allQuoted = lines.Where(l => l.Length > 0).DefaultIfEmpty(string.Empty)
+            .All(l => l.StartsWith('>'));
+
+        var edited = lines.Select(line =>
+        {
+            if (!allQuoted) return line.Length == 0 ? ">" : "> " + line;
+            if (line.StartsWith("> ", StringComparison.Ordinal)) return line[2..];
+            return line.StartsWith('>') ? line[1..] : line;
+        }).ToArray();
+
+        return ReplaceLines(text, blockStart, blockEnd, lines, edited, selStart, selLen, turnedOn: !allQuoted);
+    }
+
+    /// <summary>
+    /// Makes the lines the selection touches normal text: removes any heading
+    /// marker and every level of quote marker. Lists and inline emphasis are
+    /// left alone — that is Clear Formatting's job — and so are fence lines and
+    /// lines inside a fenced code block, where "#" and "&gt;" are code.
+    /// </summary>
+    public static MarkdownEdit SetNormalText(string text, int selStart, int selLen)
+    {
+        var (blockStart, blockEnd) = CoveredLines(text, selStart, selLen);
+        var lines = text[blockStart..blockEnd].Split('\n');
+        var edited = new string[lines.Length];
+        int lineStart = blockStart;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (!IsInsideFencedCodeBlock(text, lineStart)
+                && !line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+            {
+                line = line[QuotePrefixLength(line, out _)..];
+                line = line[HeadingPrefixLength(line, out _)..];
+            }
+            edited[i] = line;
+            lineStart += lines[i].Length + 1;
+        }
+
+        return ReplaceLines(text, blockStart, blockEnd, lines, edited, selStart, selLen, turnedOn: false);
+    }
+
+    /// <summary>
+    /// Builds the edit for a line-by-line rewrite. With a caret and one line, the
+    /// caret keeps its place in the line's text as the prefix grows or shrinks;
+    /// with a selection, the rewritten lines end up selected.
+    /// </summary>
+    private static MarkdownEdit ReplaceLines(string text, int blockStart, int blockEnd,
+        string[] before, string[] after, int selStart, int selLen, bool turnedOn)
+    {
+        var replacement = string.Join("\n", after);
+        if (selLen == 0 && before.Length == 1)
+        {
+            // Prefix edits only touch the start of the line, so the text after the
+            // caret is unchanged — measure from the end.
+            int fromEnd = blockEnd - selStart;
+            int caret = Math.Max(blockStart, blockStart + replacement.Length - fromEnd);
+            return new MarkdownEdit(blockStart, blockEnd - blockStart, replacement, caret, 0, turnedOn);
+        }
+        return new MarkdownEdit(blockStart, blockEnd - blockStart, replacement,
+            blockStart, replacement.Length, turnedOn);
+    }
+
+    /// <summary>Start of the first and end of the last line the selection touches.</summary>
+    private static (int Start, int End) CoveredLines(string text, int selStart, int selLen)
+    {
+        var (start, end) = LineBoundsAt(text, selStart);
+        if (selLen > 0)
+        {
+            int selEnd = Math.Min(selStart + selLen, text.Length);
+            // A selection that ends right after a line break (Shift+Down) does not
+            // include the line it ends on.
+            if (selEnd > selStart && text[selEnd - 1] == '\n') selEnd--;
+            (_, end) = LineBoundsAt(text, Math.Max(selEnd, start));
+        }
+        return (start, end);
     }
 
     // ── Lists ─────────────────────────────────────────────────────────────────
@@ -215,16 +307,16 @@ public static class MarkdownEditing
         int caretInLine = Math.Clamp(caretIndex - lineStart, 0, line.Length);
 
         string block;
+        var content = line[QuotePrefixLength(line, out int quoteDepth)..];
         if (IsInsideFencedCodeBlock(text, lineStart))
             block = "Code block";
-        else if (HeadingPrefixLength(line, out int level) > 0)
+        else if (HeadingPrefixLength(content, out int level) > 0)
             block = $"Heading {level}";
-        else if (ListPrefixLength(line, out bool isOrdered) > 0)
+        else if (ListPrefixLength(content, out bool isOrdered) > 0)
             block = isOrdered ? "Numbered list item" : "Bullet list item";
-        else if (line.StartsWith("> ", StringComparison.Ordinal))
-            block = "Quote";
         else
             block = "Normal text";
+        block = BlockLabels.WithQuote(block, quoteDepth);
 
         var bold = OddCountBefore(line, caretInLine, "**");
         var withoutBold = line.Replace("**", "\x01\x01"); // placeholder, keeps indices
@@ -280,6 +372,23 @@ public static class MarkdownEditing
         // A caret sitting on the '\n' itself belongs to the line before it.
         if (end < start) end = start;
         return (start, end);
+    }
+
+    /// <summary>
+    /// Length of the leading quote markers — "&gt;", each optionally followed by a
+    /// space, so both "&gt; &gt; " and "&gt;&gt; " count as two — with the depth; 0 when none.
+    /// </summary>
+    internal static int QuotePrefixLength(string line, out int depth)
+    {
+        depth = 0;
+        int i = 0;
+        while (i < line.Length && line[i] == '>')
+        {
+            depth++;
+            i++;
+            if (i < line.Length && line[i] == ' ') i++;
+        }
+        return i;
     }
 
     /// <summary>Length of a leading "#... " heading prefix, with its level; 0 when none.</summary>
