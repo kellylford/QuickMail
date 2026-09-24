@@ -238,6 +238,44 @@ WebView2 hazard in `CLAUDE.md` entirely, which argues for the dialog.
 - Retiring the portable exes. Worth discussing for the SmartScreen prevalence math, but it is
   a separate decision from this one.
 
+## The name (2026-09-22)
+
+**"QuickMail" cannot be reserved in the Store.** Kelly checked; Partner Center will not take
+it. No app by that name appears in a Store search, which per Microsoft's documentation usually
+means another developer reserved the name and never submitted anything.
+
+Nothing technical breaks. Package identity is separate from display name, so Phase 0 and the
+whole migration question are untouched. What the name decides is what appears on the Store
+listing and in the Start menu of a Store install — the app's own window titles and in-app text
+are ours regardless.
+
+Three facts that bound the choices:
+
+- **Reservations expire after three months without a submission**, and the holder is free to
+  renew. So the name may free up, on nobody's schedule but theirs.
+- **The only dispute path is a trademark or other legal right**, raised with Microsoft. That
+  is not a route here, and there is a commercial QuickMail in the email business, so the mark
+  is unlikely to be available either.
+- **A display name is not a one-way door.** Shipping as one name and later reserving the plain
+  one is a new submission with a changed display name, not a re-listing.
+
+Options, for Kelly to settle:
+
+1. **Ship under a variant** — "QuickMail for Windows" or similar. Reads naturally aloud and in
+   a list, keeps the app's own name intact, and does not block Phase 0.
+2. **Wait for the reservation to lapse.** Costs nothing but blocks the Store route for an
+   unknown time, possibly forever if the holder renews.
+3. **Rename the product.** Touches the UI, docs, site, profile directory, credential entries,
+   update feed and repository — by far the largest option, and it does not escape the
+   trademark question.
+4. **Drop the Store** and put the effort into winget, accepting that the SmartScreen prompt
+   stays for anyone downloading from the site.
+
+**This does not gate Phase 0.** The measurements — profile data, credential vault, WebView2 —
+are the same whatever the listing ends up being called, and their results are what decide
+whether the Store route is worth the migration work at all. Settle the name before submission,
+not before measurement.
+
 ## Open questions
 
 1. **Q1.** Does the Store build get its own profile, or should it deliberately use the same
@@ -249,7 +287,8 @@ WebView2 hazard in `CLAUDE.md` entirely, which argues for the dialog.
 3. **Q3.** Single-file or loose files for the packaged flavor, decided on what Phase 0 shows
    about differential updates and download size.
 4. **Q4.** WebView2: documented requirement, or bundle the fixed-version runtime?
-5. **Q5.** Does the Store listing name match "QuickMail" exactly, and is it available?
+5. **Q5 — answered, 2026-09-22: "QuickMail" is NOT available in the Store.** See *The name*
+   below. What remains open is which way round it.
 6. **Q6.** Certification review: does a mail client attract manual review, and does anything
    in the listing need to say what the app does with mail data beyond the privacy policy?
 
