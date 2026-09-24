@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Text.RegularExpressions;
 using QuickMail.Models;
@@ -136,12 +137,29 @@ public static class MessageBodyHtmlBuilder
     /// standalone MessageWindow shipped, so the obligation is not left to the call site. Null yields
     /// the card's fallback palette; no invite yields no card.
     /// </param>
+    /// <param name="embeddedPictureBase">
+    /// Where the host serves this message's embedded pictures, e.g.
+    /// <c>https://quickmail-images.invalid/&lt;key&gt;/</c>; the Content-ID is appended. Null keeps
+    /// every picture blocked, as before (#729, and the setting to turn pictures off).
+    /// </param>
     public static string BuildMessageHtml(MailMessageDetail detail, string? themeCss = null,
-        bool forcePlainText = false, IThemeService? themeService = null)
+        bool forcePlainText = false, IThemeService? themeService = null, string? embeddedPictureBase = null) =>
+        BuildMessageDocument(detail, themeCss, forcePlainText, themeService,
+            new PictureSources(embeddedPictureBase, null, false)).Html;
+
+    /// <summary>
+    /// As <see cref="BuildMessageHtml"/>, for a surface that also shows pictures from the web
+    /// (#508): the result lists the web addresses the document's pictures stand for, which the host
+    /// fetches and serves itself, and how many web pictures were left out.
+    /// </summary>
+    public static MessageDocument BuildMessageDocument(MailMessageDetail detail, string? themeCss,
+        bool forcePlainText, IThemeService? themeService, PictureSources pictures)
     {
-        var document = BuildBodyDocument(detail, themeCss, forcePlainText);
+        var document = BuildBodyDocument(detail, themeCss, forcePlainText, pictures,
+            out var webPictures, out var blockedWebPictures);
         var card = EventCardHtmlBuilder.Build(detail.CalendarInvite, themeService);
-        return card.Length == 0 ? document : InjectEventCard(document, card);
+        var html = card.Length == 0 ? document : InjectEventCard(document, card);
+        return new MessageDocument(html, webPictures, blockedWebPictures);
     }
 
     /// <summary>Injects the event card HTML just after the opening &lt;body&gt; tag.</summary>
@@ -157,8 +175,11 @@ public static class MessageBodyHtmlBuilder
         return html.Insert(closeIdx + 1, eventCardHtml);
     }
 
-    private static string BuildBodyDocument(MailMessageDetail detail, string? themeCss, bool forcePlainText)
+    private static string BuildBodyDocument(MailMessageDetail detail, string? themeCss, bool forcePlainText,
+        PictureSources pictures, out IReadOnlyList<string> webPictures, out int blockedWebPictures)
     {
+        webPictures = [];
+        blockedWebPictures = 0;
         var htmlBody = detail.HtmlBody ?? string.Empty;
 
         // Plain-text view (issue #34): the user asked to read this message as plain text.
@@ -179,8 +200,11 @@ public static class MessageBodyHtmlBuilder
         // sanitized, so fall through to the plain-text (reader mode) rendering instead
         // of showing partially stripped markup.
         if (!string.IsNullOrWhiteSpace(htmlBody) && !ShouldUseReaderMode(htmlBody)
-            && TryBuildSanitizedHtmlDocument(detail.Subject, htmlBody, themeCss, out var sanitized))
+            && TryBuildSanitizedHtmlDocument(detail.Subject, htmlBody, themeCss, HtmlRegexTimeout,
+                                             pictures, out var sanitized, out webPictures, out blockedWebPictures))
             return sanitized;
+        webPictures = [];
+        blockedWebPictures = 0;
 
         var text = !string.IsNullOrWhiteSpace(detail.PlainTextBody)
             ? detail.PlainTextBody
@@ -208,15 +232,246 @@ public static class MessageBodyHtmlBuilder
         TryBuildSanitizedHtmlDocument(subject, html, themeCss, HtmlRegexTimeout, out document);
 
     internal static bool TryBuildSanitizedHtmlDocument(
-        string? subject, string html, string? themeCss, TimeSpan timeout, out string document)
+        string? subject, string html, string? themeCss, TimeSpan timeout, out string document) =>
+        TryBuildSanitizedHtmlDocument(subject, html, themeCss, timeout, null, out document);
+
+    internal static bool TryBuildSanitizedHtmlDocument(
+        string? subject, string html, string? themeCss, TimeSpan timeout, string? embeddedPictureBase,
+        out string document) =>
+        TryBuildSanitizedHtmlDocument(subject, html, themeCss, timeout,
+            new PictureSources(embeddedPictureBase, null, false), out document, out _, out _);
+
+    internal static bool TryBuildSanitizedHtmlDocument(
+        string? subject, string html, string? themeCss, TimeSpan timeout, PictureSources sources,
+        out string document, out IReadOnlyList<string> webPictures, out int blockedWebPictures)
     {
+        webPictures = [];
+        blockedWebPictures = 0;
+        List<SetAsidePicture>? pictures = null;
+        if (sources.Any)
+        {
+            if (!SetAsidePictures(html, timeout, sources, out html, out pictures, out var web, out blockedWebPictures))
+            {
+                document = string.Empty;
+                return false;
+            }
+            webPictures = web;
+        }
         if (!TryStripHeavyHtml(html, timeout, out var body))
         {
             document = string.Empty;
+            webPictures = [];
+            blockedWebPictures = 0;
             return false;
         }
-        document = ComposeSanitizedDocument(subject, body, themeCss);
+        if (pictures is { Count: > 0 })
+            body = RestorePictures(body, pictures, sources);
+        // Written after the passes, like the pictures: QuickMail's own markup, never the sender's.
+        if (blockedWebPictures > 0 && sources.NoteBlockedWebPictures)
+            body = WebPicturesNotice + body;
+        document = ComposeSanitizedDocument(subject, body, themeCss,
+            pictures is { Count: > 0 } ? PictureOrigins(sources) : null);
         return true;
+    }
+
+    // ── Pictures sent inside the message (#729) ──────────────────────────────
+    //
+    // The stripping passes remove every <img>. A picture whose src is cid: — a part of this
+    // message — is set aside first: the whole tag is replaced by a marker made of private-use
+    // characters and digits, which no pass touches, and after the passes (and their final escape)
+    // the marker becomes an <img> QuickMail writes itself. Nothing of the sender's tag survives
+    // but the Content-ID, alt text and a numeric width and height: the src points at the host's
+    // own picture address, and every other attribute is dropped. A tag this does not recognise is
+    // left to the passes, which remove it — the failure mode is a picture not shown, never markup
+    // let through.
+    //
+    // Pictures from the web (#508) go the same way when the user has asked for them: the marker
+    // becomes an <img> whose src is again the host's own address, numbered, and the host fetches
+    // the real address itself. The sender's address never reaches the document, so the WebView2
+    // contacts nobody, and the CSP needs no web origin at all. A picture declared 2 pixels or
+    // smaller on a side is taken for a tracking pixel: never fetched, and not counted as a picture
+    // left out.
+
+    private const char PictureMarkOpen = '\uE000';
+    private const char PictureMarkClose = '\uE001';
+
+    /// <summary>Most distinct web addresses one message's pictures are fetched from.</summary>
+    public const int MaxWebPictures = 100;
+
+    /// <summary>The words a picture from the web is left out with, before the link that loads them.</summary>
+    public const string WebPicturesNoticeText = "Pictures from the web are not shown.";
+
+    /// <summary>The <c>quickmail:</c> action the notice's link carries.</summary>
+    public const string LoadPicturesAction = "load-pictures";
+
+    // No sender styling survives the passes (style blocks and style attributes are both removed),
+    // so nothing in the message can hide this notice, restyle its link, or lay it over other text.
+    private static string WebPicturesNotice =>
+        "<p class=\"qm-pictures-note\" style=\"margin:0 0 8px;padding:4px 8px;" +
+        "border-left:3px solid var(--qm-border, #777);\">" + WebPicturesNoticeText + " <a href=\"" +
+        QuickMailLinks.Build(LoadPicturesAction) + "\">Load pictures</a></p>";
+
+    private sealed record SetAsidePicture(string Src, bool Web, string? Alt, int? Width, int? Height);
+
+    private static readonly Regex ImgTag = new(@"<img\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Compiled, HtmlRegexTimeout);
+
+    private static readonly Regex ImgAttribute = new(
+        @"(?:^|[\s/])(src|alt|width|height)\s*=\s*(?:""(?<v>[^""]*)""|'(?<v>[^']*)'|(?<v>[^\s>]+))",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled, HtmlRegexTimeout);
+
+    private static readonly Regex PictureMarker = new(
+        "\uE000(\\d+)\uE001", RegexOptions.Compiled, HtmlRegexTimeout);
+
+    private static bool SetAsidePictures(string html, TimeSpan timeout, PictureSources sources, out string result,
+        out List<SetAsidePicture> pictures, out List<string> webPictures, out int blockedWebPictures)
+    {
+        var found = new List<SetAsidePicture>();
+        var web = new List<string>();
+        var blocked = 0;
+        pictures = found;
+        webPictures = web;
+        blockedWebPictures = 0;
+        // A marker already in the sender's text would be taken for one of ours; remove any first.
+        if (!TryRegexReplace(html, "\uE000\\d*\uE001", string.Empty, RegexOptions.None, timeout, out html))
+        {
+            result = html;
+            return false;
+        }
+        var source = html;
+        var ok = TryRegexReplace(html, ImgTag, match =>
+        {
+            // Only a picture that sits in text is set aside. One written inside another tag —
+            // "<sty<img src=cid:a>le>" — is left to the passes, which remove it: set aside, its
+            // marker would hide the tag name "style" from every pass, and dropping the marker
+            // later would join the halves back into a live <style> (#729 security review).
+            if (IsInsideTag(source, match.Index))
+                return match.Value;
+            string? src = null, alt = null, width = null, height = null;
+            foreach (Match a in ImgAttribute.Matches(match.Value[4..]))
+            {
+                var value = a.Groups["v"].Value;
+                switch (a.Groups[1].Value.ToLowerInvariant())
+                {
+                    case "src": src ??= value; break;
+                    case "alt": alt ??= value; break;
+                    case "width": width ??= value; break;
+                    case "height": height ??= value; break;
+                }
+            }
+            var decodedSrc = WebUtility.HtmlDecode(src ?? string.Empty).Trim();
+            var decodedAlt = alt is null ? null : WebUtility.HtmlDecode(alt);
+            if (decodedSrc.StartsWith("cid:", StringComparison.OrdinalIgnoreCase) && decodedSrc.Length > 4)
+            {
+                if (sources.EmbeddedBase is null)
+                    return match.Value; // embedded pictures are off: the passes remove it as before
+                found.Add(new SetAsidePicture(decodedSrc[4..].Trim('<', '>'), false, decodedAlt,
+                    PictureDimension(width), PictureDimension(height)));
+                return Marker(found.Count - 1);
+            }
+            if (WebPictureAddress(decodedSrc) is not { } address || IsTrackerSize(width) || IsTrackerSize(height))
+                return match.Value; // not a picture anyone is shown: the passes remove it as before
+            if (sources.WebBase is null)
+            {
+                blocked++;
+                return match.Value;
+            }
+            var index = web.IndexOf(address);
+            if (index < 0)
+            {
+                if (web.Count >= MaxWebPictures)
+                    return match.Value;
+                web.Add(address);
+                index = web.Count - 1;
+            }
+            found.Add(new SetAsidePicture(index.ToString(System.Globalization.CultureInfo.InvariantCulture), true,
+                decodedAlt, PictureDimension(width), PictureDimension(height)));
+            return Marker(found.Count - 1);
+        }, timeout, out result);
+        blockedWebPictures = blocked;
+        return ok;
+    }
+
+    private static string Marker(int index) =>
+        PictureMarkOpen + index.ToString(System.Globalization.CultureInfo.InvariantCulture) + PictureMarkClose;
+
+    /// <summary>
+    /// The absolute http or https address a picture's src names, or null: a relative or
+    /// protocol-relative address, another scheme, one carrying a user name or password, or one
+    /// longer than any real picture address.
+    /// </summary>
+    internal static string? WebPictureAddress(string src)
+    {
+        if (src.Length is 0 or > 2048
+            || !Uri.TryCreate(src, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)
+            || string.IsNullOrEmpty(uri.Host)
+            || !string.IsNullOrEmpty(uri.UserInfo))
+            return null;
+        return uri.AbsoluteUri;
+    }
+
+    /// <summary>True for a declared width or height of 2 pixels or less: a tracking pixel or spacer.</summary>
+    private static bool IsTrackerSize(string? value)
+    {
+        var v = value?.Trim();
+        if (string.IsNullOrEmpty(v)) return false;
+        if (v.EndsWith("px", StringComparison.OrdinalIgnoreCase)) v = v[..^2].TrimEnd();
+        return double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n)
+            && n <= 2;
+    }
+
+    private static int? PictureDimension(string? value) =>
+        int.TryParse(value?.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var n)
+        && n is > 0 and <= 10000 ? n : null;
+
+    private static string RestorePictures(string body, List<SetAsidePicture> pictures, PictureSources sources) =>
+        PictureMarker.Replace(body, m =>
+        {
+            if (!int.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var i) || i >= pictures.Count)
+                return " ";
+            // A picture goes back only where it is text content. A marker inside a tag — in an
+            // attribute value, or after an opening "<" whose ">" comes later — would put QuickMail's
+            // own <img> inside the sender's markup, where its quotes and ">" end the sender's
+            // attribute or close the sender's tag early. There the picture is dropped (#729
+            // security review).
+            // Dropped as a space, never as nothing: removing it outright would join the text on
+            // either side, and whatever the passes saw as two harmless pieces must stay two.
+            if (IsInsideTag(body, m.Index))
+                return " ";
+            var p = pictures[i];
+            var address = p.Web ? sources.WebBase + p.Src : sources.EmbeddedBase + Uri.EscapeDataString(p.Src);
+            var sb = new System.Text.StringBuilder("<img src=\"")
+                .Append(WebUtility.HtmlEncode(address)).Append('"');
+            // Described: its words. Decorative (alt="") and undescribed alike are alt="": before
+            // pictures were shown, a picture with no alt text was dropped without a word, and
+            // showing it to sighted readers should not add noise for everyone else.
+            sb.Append(" alt=\"").Append(WebUtility.HtmlEncode(p.Alt?.Trim() ?? string.Empty)).Append('"');
+            if (p.Width is { } w) sb.Append(" width=\"").Append(w).Append('"');
+            if (p.Height is { } h) sb.Append(" height=\"").Append(h).Append('"');
+            return sb.Append('>').ToString();
+        });
+
+    /// <summary>True when <paramref name="index"/> falls between a tag's "&lt;" and its "&gt;".</summary>
+    private static bool IsInsideTag(string body, int index)
+    {
+        var lastOpen = body.LastIndexOf('<', Math.Max(0, index - 1));
+        if (lastOpen < 0 || index == 0) return false;
+        var lastClose = body.LastIndexOf('>', index - 1);
+        return lastOpen > lastClose;
+    }
+
+    /// <summary>The scheme and host of each picture address, for the CSP's img-src.</summary>
+    private static string PictureOrigins(PictureSources sources)
+    {
+        var origins = new List<string>();
+        foreach (var pictureBase in new[] { sources.EmbeddedBase, sources.WebBase })
+        {
+            if (pictureBase is null) continue;
+            var origin = new Uri(pictureBase).GetLeftPart(UriPartial.Authority);
+            if (!origins.Contains(origin, StringComparer.OrdinalIgnoreCase)) origins.Add(origin);
+        }
+        return string.Join(' ', origins);
     }
 
     /// <summary>
@@ -260,11 +515,15 @@ public static class MessageBodyHtmlBuilder
     private static string ThemeStyleTag(string? themeCss) =>
         string.IsNullOrEmpty(themeCss) ? string.Empty : "<style>" + themeCss + "</style>";
 
-    private static string ComposeSanitizedDocument(string? subject, string body, string? themeCss)
+    private static string ComposeSanitizedDocument(string? subject, string body, string? themeCss, string? pictureOrigin = null)
     {
         var titleTag = $"<title>{WebUtility.HtmlEncode(subject ?? string.Empty)}</title>";
-        const string cspTag =
-            "<meta http-equiv=\"Content-Security-Policy\" content=\"" + StrictCspContent + "\">";
+        // Pictures sent inside the message may load from the host's own picture address and
+        // nowhere else; with none, nothing may load at all.
+        var csp = pictureOrigin is null
+            ? StrictCspContent
+            : StrictCspContent.Replace("img-src 'none';", "img-src " + pictureOrigin + ";", StringComparison.Ordinal);
+        var cspTag = "<meta http-equiv=\"Content-Security-Policy\" content=\"" + csp + "\">";
         // Defaults only — sender-styled HTML still wins unless the user opts into
         // force-theme (which arrives inside themeCss as !important rules). The
         // var() fallbacks are the CSS system colors, so with no theme CSS the
@@ -275,6 +534,7 @@ public static class MessageBodyHtmlBuilder
             "font-size:var(--qm-font-size, 13px);line-height:1.45;word-break:break-word;" +
             "background:var(--qm-bg, Canvas);color:var(--qm-text, CanvasText);}" +
             "table{max-width:100%;border-collapse:collapse;}td,th{vertical-align:top;}" +
+            "img{max-width:100%;height:auto;}" +
             "a{color:var(--qm-link, #0645ad);}</style>";
         var styleBlock = ThemeStyleTag(themeCss) + css;
 
@@ -471,9 +731,35 @@ public static class MessageBodyHtmlBuilder
         // the document into a stylesheet that can hide and replace everything around the message.
         // The escape is the guarantee; the rounds are what keep ordinary mail looking as it did.
         body = Step(body, ResidualForbiddenTag, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, "&lt;$1");
+        var settled = body;
+        body = StepEval(settled, TagOpener, m => ClosedTagAt(settled, m.Index) ? m.Value : "&lt;");
         stripped = body;
         return complete;
     }
+
+    /// <summary>A "&lt;" that begins a start or end tag, as the tokenizer reads one.</summary>
+    private static readonly Regex TagOpener = new(@"<(?=/?[A-Za-z])", RegexOptions.Compiled, HtmlRegexTimeout);
+
+    /// <summary>
+    /// A complete tag at the current position, by the same quote-aware reading as
+    /// <see cref="StartTagWithAttributes"/>: a "&gt;" inside a quoted value does not end it.
+    /// </summary>
+    private static readonly Regex ClosedTag = new(
+        @"\G</?[A-Za-z][^\s/>]*(?:[\s/](?:[^>""']|""[^""]*""|'[^']*')*)?>",
+        RegexOptions.Compiled, HtmlRegexTimeout);
+
+    /// <summary>
+    /// Every tag the passes left is one they could read whole — and a start tag they read whole
+    /// has been rebuilt from its allowed attributes. A tag they could NOT read whole (its "&gt;"
+    /// missing, or only inside a quoted value) was never rebuilt, so its attributes — a
+    /// <c>style</c> written after "/", say — would reach the parser untouched the moment anything
+    /// supplied a closing bracket: the host document's own "&lt;/body&gt;", or a restored picture.
+    /// A sender could end a message with <c>&lt;div/style="position:fixed;inset:0"</c> and lay a
+    /// page of their own over it. Each such "&lt;" is escaped, so it reads as text (#729
+    /// security review). After this no tag in the body is left open, which is what lets
+    /// <see cref="IsInsideTag"/> trust a plain "&lt;"/"&gt;" scan.
+    /// </summary>
+    private static bool ClosedTagAt(string body, int index) => ClosedTag.IsMatch(body, index);
 
     /// <summary>
     /// The text that stands in for an image: its alt text and nothing else, so a link whose content

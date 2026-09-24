@@ -62,6 +62,20 @@
                                           IsChecked="{Binding ReadAsPlainText, Mode=TwoWay}"
                                           Margin="0,8,0,0"
                                           AutomationProperties.Name="Read messages as plain text"/>
+
+                                <!-- Pictures sent inside a message: no server is contacted. -->
+                                <!-- No access key: pressing one on a checkbox also flips it. -->
+                                <CheckBox Content="Show pictures included in messages"
+                                          IsChecked="{Binding ShowEmbeddedPictures, Mode=TwoWay}"
+                                          Margin="0,8,0,0"
+                                          AutomationProperties.Name="Show pictures included in messages"/>
+
+                                <!-- Pictures from the web (#508): fetching one tells its server the
+                                     message was opened, so off by default. No free access key. -->
+                                <CheckBox Content="Load pictures from the web automatically"
+                                          IsChecked="{Binding LoadWebPictures, Mode=TwoWay}"
+                                          Margin="0,8,0,0"
+                                          AutomationProperties.Name="Load pictures from the web automatically"/>
                             </StackPanel>
                         </GroupBox>
 

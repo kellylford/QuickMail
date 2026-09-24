@@ -43,6 +43,40 @@ to always get one or the other.
 - Pictures stay with the message through drafts, the Outbox and reopening, and a forward or HTML
   reply brings the original message's pictures along.
 - In Plain Text mode, Insert Image offers to attach the picture as a file instead.
+- The information a phone or camera stores inside a photo, including where it was taken, is
+  removed as the photo goes in.
+
+The User Guide has a new [Pictures](https://kellylford.github.io/QuickMail/pictures.html) page covering
+putting pictures in, sending them, what QuickMail shows when you read mail, and how pictures are
+kept safe.
+
+### Pictures sent inside a message are now shown
+
+A picture that travels with a message — a photo in the body, a logo in a signature, or a picture you
+put in with QuickMail — now shows in the reading pane, in message tabs and in message windows.
+Showing it contacts no one but your own mail server, because it is part of the message itself, so
+the sender cannot tell you looked. Screen readers read it by its description, and pictures with no
+description or marked decorative are passed over, as before.
+
+To show descriptions only, as before, uncheck **Show pictures included in messages** in
+**Settings → General**.
+
+### Load pictures from the web when you choose to
+
+Pictures a message links to on the web are still not loaded on their own, because fetching them
+tells the sender you opened the message. Now, when a message has them, its first line says
+"Pictures from the web are not shown." with a **Load pictures** link. Activate the link, press
+**Ctrl+Shift+U**, or choose **View → Load Pictures** to show that message's pictures. This works in
+the reading pane, message tabs and message windows, and lasts while the message is open.
+
+To load them in every message, check **Load pictures from the web automatically** in **Settings →
+General**. It is off by default.
+
+QuickMail fetches these pictures itself rather than letting the message do it. It sends no cookies
+and does not say which message a picture is in. It contacts only public internet addresses, never
+your computer or local network. It keeps a file only if it really is a picture, and skips pictures
+sized like tracking pixels. See [Pictures](https://kellylford.github.io/QuickMail/pictures.html) in the User
+Guide.
 
 ## Fixed
 

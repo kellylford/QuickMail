@@ -14,6 +14,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 - [Main Window](#main-window)
 - [Reading Mail](#reading-mail)
 - [Composing Mail](#composing-mail)
+- [Pictures](#pictures)
 - [Address Book](#address-book)
 - [Grab Addresses from a Message](#grab-addresses-from-a-message)
 - [Flags](#flags)
@@ -826,7 +827,7 @@ The reading pane renders HTML messages with WebView2. Links open in your default
 
 That line is not usually spoken as it appears: it is written just as the menu closes, while your screen reader is announcing its way back into the message, so it arrives in the middle of that and is passed over. It is there to be found rather than to interrupt — which is the right trade for something that only happens when the clipboard is briefly held by another program. Copying the address is how you check where a link actually goes before following it, and comparing it with the link's text is how you spot one that does not go where it says it does. Closing the menu returns you to the link you opened it on, not to the top of the message. The menu is offered for ordinary web and email links; it does not appear on the **Accept** / **Tentative** / **Decline** buttons of a meeting invitation, which are internal to QuickMail.
 
-Images from remote sources are not loaded — fetching them tells the sender your address is live, which is what a tracking pixel in a newsletter is for. Where the sender wrote a description for a picture, QuickMail shows that description in its place, so a picture that is also a link reads by what it is ("Facebook link") rather than by its web address. A picture the sender marked as decorative contributes nothing, which is what marking it that way asks for.
+**Pictures.** Pictures sent inside a message are shown; pictures a message links to on the web are not loaded, and their descriptions are shown instead, so no message can tell its sender you opened it. See [Pictures](#pictures) for what is shown and when, the setting that controls it, and how pictures are kept safe.
 
 Press **F6** or **Shift+F6** to move between the reading pane and other panes.
 
@@ -1039,17 +1040,7 @@ When you reply in HTML mode, the message you are replying to is quoted as a real
 
 ### Pictures in a Message
 
-A picture can go in the body of a message, and every picture has to have a description (alternative text) or be marked decorative before it goes in. A recipient's screen reader reads the description; a decorative picture is skipped.
-
-- **Insert Image** (`Ctrl+Shift+I`, or **Insert → Image**) lets you choose one or more picture files. For each one, the **Image Description** window opens with the file name and size shown for reference. Type a description in **Alternative text**, or check **Decorative image (no description)**. **OK** is not available until you have done one or the other.
-- A picture wider than 1600 pixels, such as a phone photo, can be shrunk as it goes in. **Shrink to 1600 pixels wide** is checked for you; uncheck it to send the picture at full size.
-- **Paste** a picture (a screenshot, or a copied image) into the body, or **drop** picture files on the body, and the same window opens. Other files you paste or drop are attached as before.
-- **Image Properties** (`Alt+Enter`, or **Insert → Image Properties**) with the cursor on a picture opens the same window to change its description, mark it decorative, or remove the picture. With no picture at the cursor, QuickMail says so.
-- In HTML mode a picture is part of the text: arrow onto it to hear its description, and `Shift+Arrow` selects it like a character. Pictures cannot be copied or cut yet; QuickMail says so rather than losing the picture. To move one, remove it and insert it again. In Markdown mode a picture is written as `![description](cid:…)`, and you can edit the description in the brackets directly.
-- Plain Text mode cannot hold a picture. Insert Image offers to attach the picture as a file instead, and switching a message with pictures to Plain Text tells you how many pictures will be removed.
-- Pictures stay with the message when you save it as a draft, when it waits in the Outbox, and when you reopen it. Forwarding or replying in HTML mode to a message with pictures brings its pictures along: they appear as grey placeholders first and fill in as they are fetched from the original.
-- **F8** preview shows the pictures. QuickMail warns you once if the message grows past 10 MB, which some mail servers refuse, and pictures count toward the 25 MB limit along with attachments.
-- In HTML mode, the plain text part of the message shows a described picture as "[Image: description]" and leaves decorative pictures out. In Markdown mode the plain text part is your Markdown, as it always has been.
+A picture can go in the body of a message in Markdown or HTML mode (`Ctrl+Shift+I`, paste, or drop), and every picture has to have a description or be marked decorative before it goes in. See [Pictures](#pictures) for everything about putting pictures in, sending them, and how they are kept safe.
 
 ### Checking Formatting (HTML Mode)
 
@@ -1153,6 +1144,88 @@ The Outbox drains on its own when QuickMail connects at startup, when the connec
 ### Forwarding with Attachments
 
 When forwarding a message that has attachments, QuickMail opens an **Include Attachments** dialog before downloading. All attachments are checked by default. Arrow between files and press Space to toggle individual ones. Press Tab to reach Forward (include checked files) or Cancel.
+
+---
+
+## Pictures
+
+Pictures reach a message in two ways, and QuickMail treats them differently because they carry very different risks.
+
+- **Pictures sent inside the message.** The sender attached the picture to the message itself and placed it in the body — a photo in a family email, a logo in a signature, or a picture you put in with QuickMail. Showing it contacts no one but your own mail server, which is where the message already came from.
+- **Pictures on the web.** The message only links to a picture on the sender's server, and the picture is fetched when the message is shown. Newsletters and marketing mail work this way, and fetching the picture tells the sender that you opened the message, when, and roughly where — that is what a "tracking pixel" is for.
+
+### What QuickMail shows, and where
+
+| | Reading pane, message tabs and message windows |
+|---|---|
+| Pictures sent inside the message | **Shown** (unless you turn them off — see Settings below) |
+| Pictures on the web | **Not loaded** until you ask (see below). Their description is shown in their place, and a note at the top of the message says pictures were left out. |
+| Any picture, when reading as plain text | Not shown; the plain text is shown instead. |
+
+A picture is read by its description (alternative text). A picture that is also a link reads by that description, so a row of social icons reads "Facebook", "LinkedIn" rather than as web addresses. A picture the sender marked as decorative, or gave no description, is passed over, as it always has been.
+
+Pictures sent inside a message appear as the message opens; the text is shown at once and each picture fills in as it arrives, so reading is never interrupted. Showing them from the local copy of a message can mean reading that message again from your mail server. QuickMail does not download a large message again just for its pictures (more than 5 MB of attachments, or 10 MB in all), skips any single picture over 10 MB, and shows at most 40 pictures in one message; descriptions stand in for the rest.
+
+Only ordinary picture formats are shown: PNG, JPEG, GIF, WebP and BMP. SVG pictures are never shown, because an SVG file can carry script.
+
+### Loading pictures from the web
+
+When a message has pictures on the web, the first line of the message reads "Pictures from the web are not shown." followed by a **Load pictures** link. To see them:
+
+- Activate the **Load pictures** link, or
+- Press **Load Pictures** (`Ctrl+Shift+U`), or choose **View → Load Pictures**, or run it from the Command Palette.
+
+This works in the reading pane, message tabs and message windows. The message is shown again with its pictures, and focus stays in the message. QuickMail says "Loading pictures", or why there is nothing to load: no message is open, you are reading as plain text, the message has no pictures from the web, or they are already shown.
+
+Loading lasts while that message is open. The next message you open, or this one opened again later, starts with its web pictures left out again. To load them in every message, use the setting below.
+
+Even when you load pictures, a picture the message says is 2 pixels wide or high or smaller is never fetched. That is the usual size of a tracking pixel, and there is nothing to see. A tracker can still be disguised as an ordinary picture, so this is a courtesy, not a guarantee: once you load a message's pictures, assume the sender can tell you opened it.
+
+Loading a picture from the web tells its server that the message was opened, when, and your computer's internet (IP) address. That is unavoidable, and the reason they are not loaded unless you ask. QuickMail keeps what it tells the server to that:
+
+- QuickMail fetches each picture itself. The reading pane never contacts the web: it gets the picture from QuickMail, in the same way as a picture sent inside a message.
+- No cookies are sent or kept, and the server is not told which message or page the picture is in. Nothing lets the server connect one message you opened to another beyond your IP address.
+- Only public internet addresses are contacted. A picture pointing at your own computer or your local network, such as a router's settings page, is never requested, even if the server redirects to it. As a result, a picture on a company intranet does not load. If Windows is set to use a proxy server, pictures go through it, and the proxy decides what it will reach.
+- A picture at an encrypted (https) address is never followed to an unencrypted (http) one.
+- A picture server that is slow to answer is given up on after 30 seconds, and never holds up other pictures.
+- Whatever the server says a file is, QuickMail looks at the file itself and keeps it only if it really is a PNG, JPEG, GIF, WebP or BMP picture. A single picture over 10 MB is not shown, and at most 100 different pictures are loaded for one message.
+- Pictures you load are kept in memory while QuickMail runs, so going back to a message does not fetch them again. They are never saved to disk.
+
+### Settings
+
+- **Show pictures included in messages** (**Settings → General**, on by default). Uncheck it to show only descriptions, as QuickMail did before. It applies to the reading pane, message tabs and message windows, and an open message is shown again at once when you change it.
+- **Load pictures from the web automatically** (**Settings → General**, off by default). Check it to load pictures from the web in every message, as if you had chosen Load Pictures each time, with the same protections. The note at the top of the message no longer appears. Leave it off if you would rather senders not learn when you open their mail.
+- **Read messages as plain text** also hides every picture, since it shows the message's plain text.
+
+### Putting pictures in a message you write
+
+A picture can go in the body of a message in Markdown or HTML mode, and every picture has to have a description (alternative text) or be marked decorative before it goes in. The people you write to then always get one or the other: a screen reader reads the description, and skips a decorative picture.
+
+- **Insert Image** (`Ctrl+Shift+I`, or **Insert → Image**) lets you choose one or more picture files. For each one, the **Image Description** window opens with the file name and size shown for reference. Type a description in **Alternative text**, or check **Decorative image (no description)**. **OK** is not available until you have done one or the other. The file name is never used as the description.
+- A picture wider than 1600 pixels, such as a phone photo, can be shrunk as it goes in. **Shrink to 1600 pixels wide** is checked for you; uncheck it to send the picture at full size. A shrunk photo is turned the right way up.
+- **Paste** a picture (a screenshot, or a copied image) into the body, or **drop** picture files on the body, and the same window opens. Other files you paste or drop are attached as before.
+- **Image Properties** (`Alt+Enter`, or **Insert → Image Properties**) with the cursor on a picture opens the same window to change its description, mark it decorative, or remove the picture. With no picture at the cursor, QuickMail says so.
+- In HTML mode a picture is part of the text: arrow onto it to hear its description, and `Shift+Arrow` selects it like a character. `Ctrl+T` includes the picture at the cursor. Pictures cannot be copied or cut yet; QuickMail says so rather than losing the picture. To move one, remove it and insert it again.
+- In Markdown mode a picture is written as `![description](cid:…)`, and you can edit the description in the brackets directly. A picture that arrived with no description is written `![](cid:… "no description")` so that it is not mistaken for a decorative one.
+- Plain Text mode cannot hold a picture. Insert Image offers to attach the picture as a file instead, and switching a message with pictures to Plain Text tells you how many pictures will be removed.
+- Very large files (over 50 MB) and pictures that claim an enormous size are refused with a message rather than opened.
+- The information a camera or phone stores inside a photo — including where it was taken — is removed as the picture goes in. The picture itself is unchanged.
+
+**Sending.** Pictures travel inside the message, so the people you write to see them without their mail program fetching anything. A picture you deleted from the body is not sent. A described picture is sent with its description, a decorative one with an empty description, and one nobody described with none. In HTML mode, the plain text version of the message shows a described picture as "[Image: description]" and leaves decorative pictures out; in Markdown mode the plain text version is your Markdown, as it always has been.
+
+**Size.** QuickMail warns you once if the message grows past 10 MB, which some mail servers refuse, and pictures count toward the 25 MB limit along with attachments.
+
+**Drafts, the Outbox, replies and forwards.** Pictures stay with the message when you save it as a draft, when it waits in the Outbox, and when you reopen it. Forwarding a message with pictures, or replying to one in HTML mode, brings its pictures along: they appear as grey placeholders first and fill in as they are read from the original message. **F8** preview shows the pictures.
+
+### How pictures are kept safe
+
+- A picture on the web is never fetched unless you choose Load Pictures or turn on the setting that loads them. Even then the reading pane itself never contacts the web; QuickMail fetches the picture as described under "Loading pictures from the web". The compose window never fetches one.
+- The **Load pictures** link at the top of a message is QuickMail's own and works only in the copy of QuickMail that wrote it. A link a sender writes to look like it does nothing.
+- A picture sent inside a message is handed to the reading pane by QuickMail itself, from an address that never leaves your computer; the reading pane is allowed to load pictures from that address and nowhere else. The picture's own markup from the sender is discarded — QuickMail writes the picture into the page itself, keeping only its description and size.
+- Each message's pictures are served only while that message is shown, so one message can never show another's pictures.
+- Pictures that come with a reply or forward are brought across only if the original message actually shows them, and only in ordinary picture formats. A picture the sender merely named in the text is never fetched or sent on.
+- Pictures you put in a message, and ones kept for a draft or the Outbox, are stored in your QuickMail profile with the message and removed with it. Pictures shown while reading are kept in memory only, and only while QuickMail is running.
+- Replying keeps any picture the original linked to on the web as a link, as other mail programs do. QuickMail never fetches it, but the people you reply to may, depending on their mail program.
 
 ---
 
@@ -1920,6 +1993,8 @@ Press **Ctrl+,** to open Settings.
 - **Default compose mode** — Plain Text, Markdown, or HTML
 - **Auto-save drafts** — on/off and interval
 - **Read messages as plain text** — when on, display all messages as plain text instead of HTML
+- **Show pictures included in messages** — on by default. Shows pictures that travel with a message; nothing is fetched from the sender.
+- **Load pictures from the web automatically** — off by default. Loads the pictures a message links to on the web in every message, rather than only when you choose **Load Pictures**. See [Pictures](#pictures).
 - **Saving Messages** — the **Save format** and **Save folder** that **Save** (Ctrl+S) uses. **Choose Folder…** picks the folder and **Use Documents** goes back to your Documents folder. See [Saving and Printing Messages](#saving-and-printing-messages).
 - **Notifications** — two checkboxes:
   - **Show a notification when new mail arrives** — enable Windows notifications for new mail in inboxes (requires Windows 10 1809 or later)
@@ -2190,6 +2265,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+Shift+Y` | Search folders |
 | `Ctrl+Shift+V` | View menu |
 | `Ctrl+Shift+H` | Toggle Plain Text View |
+| `Ctrl+Shift+U` | Load Pictures (from the web, for the open message) |
 | `Ctrl+Shift+G` | Grab Addresses from Message |
 | `Ctrl+Shift+B` | Address Book |
 | `Ctrl+Shift+L` | Rules Manager |

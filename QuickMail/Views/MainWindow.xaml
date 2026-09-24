@@ -574,6 +574,9 @@
                           IsChecked="{Binding ReadAsPlainText, Mode=OneWay}"
                           Click="MenuPlainText_Click"
                           InputGestureText="Ctrl+Shift+H"/>
+                <MenuItem Header="_Load Pictures"
+                          Click="MenuLoadPictures_Click"
+                          InputGestureText="Ctrl+Shift+U"/>
                 <Separator/>
                 <!-- Only the four modes that apply are in the tree at all (#663) — see
                      ViewModeMenuItemStyle. -->

@@ -523,6 +523,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 PlainTextBody = plainText,
                 HtmlBody      = htmlText,
                 Attachments   = attachments,
+                InlineImages  = ExtractInlineImages(s.Body),
                 DraftComposeMode = ParseComposeMode(s.Headers?["X-QuickMail-Compose-Mode"]),
             };
 
@@ -1901,6 +1902,38 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Every picture part with a Content-ID — what an HTML body shows as <c>cid:</c> — as metadata
+    /// for a later download by part specifier (#729). Wherever it sits: usually inside
+    /// multipart/related, which <see cref="CollectAttachments"/> deliberately skips.
+    /// </summary>
+    internal static List<AttachmentModel> ExtractInlineImages(BodyPart? body)
+    {
+        var result = new List<AttachmentModel>();
+        void Walk(BodyPart? part)
+        {
+            switch (part)
+            {
+                case BodyPartMultipart multi:
+                    foreach (var child in multi.BodyParts) Walk(child);
+                    break;
+                case BodyPartBasic basic when !string.IsNullOrEmpty(basic.ContentId)
+                        && basic.ContentType.MediaType.Equals("image", StringComparison.OrdinalIgnoreCase):
+                    result.Add(new AttachmentModel
+                    {
+                        FileName      = basic.ContentDisposition?.FileName ?? basic.ContentType.Name ?? "image",
+                        ContentType   = basic.ContentType.MimeType,
+                        FileSize      = (long)basic.Octets,
+                        PartSpecifier = basic.PartSpecifier,
+                        ContentId     = basic.ContentId.Trim('<', '>'),
+                    });
+                    break;
+            }
+        }
+        Walk(body);
+        return result;
     }
 
     private static List<AttachmentModel> ExtractAttachments(BodyPart? body)

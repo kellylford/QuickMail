@@ -20,6 +20,14 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _readAsPlainText;
 
+    /// <summary>Show pictures sent inside a message (no server is contacted).</summary>
+    [ObservableProperty]
+    private bool _showEmbeddedPictures = true;
+
+    /// <summary>Load pictures from the web in every message, not only on request (#508).</summary>
+    [ObservableProperty]
+    private bool _loadWebPictures;
+
     [ObservableProperty]
     private string _viewMode = "messages";
 
@@ -487,6 +495,8 @@ public partial class SettingsViewModel : ObservableObject
 
         PreviewLines = cfg.PreviewLines;
         ReadAsPlainText = cfg.ReadAsPlainText;
+        ShowEmbeddedPictures = cfg.ShowEmbeddedPictures;
+        LoadWebPictures = cfg.LoadWebPictures;
         ViewMode = cfg.ViewMode;
         RememberViewPerFolder = cfg.RememberViewPerFolder;
         SyncDays = cfg.SyncDays;
@@ -574,6 +584,8 @@ public partial class SettingsViewModel : ObservableObject
 
         cfg.PreviewLines = PreviewLines;
         cfg.ReadAsPlainText = ReadAsPlainText;
+        cfg.ShowEmbeddedPictures = ShowEmbeddedPictures;
+        cfg.LoadWebPictures = LoadWebPictures;
         cfg.ViewMode = ViewMode;
         cfg.RememberViewPerFolder = RememberViewPerFolder;
         cfg.SyncDays = SyncDays;
