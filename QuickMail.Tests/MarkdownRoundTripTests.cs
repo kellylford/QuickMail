@@ -91,10 +91,13 @@ public class MarkdownRoundTripTests
         var doc = RichTextDocumentConverter.FromHtml(
             Svc.ToHtml("![Chart of Q3 results](https://example.com/q3.png)"));
 
-        // The alt text is what a screen reader user reads and edits in the editor.
+        // In the editor the picture is a real image named by its alt text (#729) — what a
+        // screen reader reads for it — and Image Properties edits that description.
         var para = doc.Blocks.OfType<Paragraph>().First();
-        var run = para.Inlines.OfType<Run>().First();
-        Assert.Equal("Chart of Q3 results", run.Text);
+        var picture = para.Inlines.OfType<InlineUIContainer>().Single();
+        Assert.Equal("Chart of Q3 results", RichTextDocumentConverter.ImageOf(picture)!.Alt);
+        Assert.Equal("Chart of Q3 results",
+            System.Windows.Automation.AutomationProperties.GetName(picture.Child));
 
         var html = RichTextDocumentConverter.ToHtml(doc);
         Assert.Contains("alt=\"Chart of Q3 results\"", html);

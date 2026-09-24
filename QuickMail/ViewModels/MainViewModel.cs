@@ -8673,6 +8673,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             model.Attachments = detail.Attachments;
 
+            // Pictures in the body (#729) are not attachments and the detail does not list them;
+            // read the ones the draft still refers to out of the stored message.
+            model.InlineImages = await Helpers.InlineImages.FetchAsync(
+                _imap, summary.AccountId, summary.FolderName, summary.MessageId,
+                Helpers.InlineImages.ReferencedContentIds(detail.HtmlBody, detail.PlainTextBody), ct);
+
             StatusText = string.Empty;
             ComposeRequested?.Invoke(model);
         }

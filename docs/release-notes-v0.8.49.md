@@ -14,6 +14,43 @@ To make room, **Search Folders** has moved from **Ctrl+Shift+F** to **Ctrl+Shift
 
 If you would rather keep the old keys, give either command the key you want in **File → Settings →
 Keyboard Shortcuts**. Keys you have already customized are not changed.
+
+### Ctrl+K inserts a link in the message body
+
+In the compose window, **Ctrl+K** now inserts a link when you are in the message body, as it does in
+Outlook. Anywhere else in the compose window, such as the To, Cc and Bcc fields, it still checks
+addresses. **Ctrl+L** still inserts a link too. Insert Link has moved from the Format menu to the new
+**Insert** menu.
+
+## Added
+
+### Pictures in messages, each with a description
+
+You can now put pictures in the body of a message in Markdown or HTML mode. Every picture has to have
+a description (alternative text) or be marked decorative before it goes in, so the people you write
+to always get one or the other.
+
+- **Insert → Image** (**Ctrl+Shift+I**) lets you choose picture files and opens the **Image
+  Description** window for each. **OK** is not available until you type a description or check
+  **Decorative image**.
+- Pasting a picture, or dropping picture files on the message body, opens the same window.
+- **Image Properties** (**Alt+Enter** on a picture) changes a picture's description, marks it
+  decorative, or removes it.
+- In HTML mode a picture is part of the text. Arrow onto it to hear its description; Shift+Arrow
+  selects it.
+- A photo wider than 1600 pixels is offered a shrink as it goes in, and QuickMail warns once if a
+  message grows past 10 MB.
+- Pictures stay with the message through drafts, the Outbox and reopening, and a forward or HTML
+  reply brings the original message's pictures along.
+- In Plain Text mode, Insert Image offers to attach the picture as a file instead.
+
+## Fixed
+
+### Forwarding a message with pictures sent broken pictures
+
+A forwarded HTML message kept its pictures' references but not the pictures themselves, so the
+people you forwarded to saw broken images. The pictures now travel with the forward.
+
 ---
 
 ## Reporting Issues

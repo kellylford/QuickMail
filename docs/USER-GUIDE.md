@@ -1016,7 +1016,9 @@ Messages composed in Markdown or HTML are sent with both an HTML part and a plai
 | Quote | `Ctrl+Shift+9` |
 | Bullet list | `Ctrl+Shift+L` |
 | Numbered list | `Ctrl+Shift+N` |
-| Insert link | `Ctrl+L` |
+| Insert link | `Ctrl+K` in the message body, or `Ctrl+L` |
+| Insert image | `Ctrl+Shift+I` |
+| Image properties | `Alt+Enter` on a picture |
 | Clear formatting | `Ctrl+Space` |
 | Announce formatting at cursor | `Ctrl+T` |
 | Show formatting in browsable list | `Ctrl+Shift+T` |
@@ -1034,6 +1036,20 @@ Every line of a message has a paragraph style: **Normal text**, **Heading 1** to
 - In Markdown mode, these commands write the Markdown for you: `#` to `######` for headings and `>` for quotes.
 
 When you reply in HTML mode, the message you are replying to is quoted as a real quote with its own formatting — headings, lists, links and any earlier quotes — instead of lines that begin with `>`. The plain text part of the message still marks quoted lines with `>`.
+
+### Pictures in a Message
+
+A picture can go in the body of a message, and every picture has to have a description (alternative text) or be marked decorative before it goes in. A recipient's screen reader reads the description; a decorative picture is skipped.
+
+- **Insert Image** (`Ctrl+Shift+I`, or **Insert → Image**) lets you choose one or more picture files. For each one, the **Image Description** window opens with the file name and size shown for reference. Type a description in **Alternative text**, or check **Decorative image (no description)**. **OK** is not available until you have done one or the other.
+- A picture wider than 1600 pixels, such as a phone photo, can be shrunk as it goes in. **Shrink to 1600 pixels wide** is checked for you; uncheck it to send the picture at full size.
+- **Paste** a picture (a screenshot, or a copied image) into the body, or **drop** picture files on the body, and the same window opens. Other files you paste or drop are attached as before.
+- **Image Properties** (`Alt+Enter`, or **Insert → Image Properties**) with the cursor on a picture opens the same window to change its description, mark it decorative, or remove the picture. With no picture at the cursor, QuickMail says so.
+- In HTML mode a picture is part of the text: arrow onto it to hear its description, and `Shift+Arrow` selects it like a character. Pictures cannot be copied or cut yet; QuickMail says so rather than losing the picture. To move one, remove it and insert it again. In Markdown mode a picture is written as `![description](cid:…)`, and you can edit the description in the brackets directly.
+- Plain Text mode cannot hold a picture. Insert Image offers to attach the picture as a file instead, and switching a message with pictures to Plain Text tells you how many pictures will be removed.
+- Pictures stay with the message when you save it as a draft, when it waits in the Outbox, and when you reopen it. Forwarding or replying in HTML mode to a message with pictures brings its pictures along: they appear as grey placeholders first and fill in as they are fetched from the original.
+- **F8** preview shows the pictures. QuickMail warns you once if the message grows past 10 MB, which some mail servers refuse, and pictures count toward the 25 MB limit along with attachments.
+- In HTML mode, the plain text part of the message shows a described picture as "[Image: description]" and leaves decorative pictures out. In Markdown mode the plain text part is your Markdown, as it always has been.
 
 ### Checking Formatting (HTML Mode)
 
@@ -1102,7 +1118,7 @@ Templates can include `{sender}`, `{date}`, and `{time}` placeholders, which are
 
 ### Checking Addresses
 
-Press `Ctrl+K` to check every address in the To, Cc, and Bcc fields. QuickMail looks up any bare name against your address book — if exactly one contact matches, it fills in that contact's address automatically. Addresses that are not valid and cannot be resolved are flagged as invalid. A screen reader announces how many addresses were resolved and how many are invalid.
+Press `Ctrl+K` in the To, Cc, or Bcc field (anywhere outside the message body, where `Ctrl+K` inserts a link, as in Outlook) to check every address in those fields. QuickMail looks up any bare name against your address book — if exactly one contact matches, it fills in that contact's address automatically. Addresses that are not valid and cannot be resolved are flagged as invalid. A screen reader announces how many addresses were resolved and how many are invalid.
 
 ### Sending
 
@@ -2225,13 +2241,15 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+Shift+9` | Quote |
 | `Ctrl+Shift+L` | Bullet list |
 | `Ctrl+Shift+N` | Numbered list |
-| `Ctrl+L` | Insert link |
+| `Ctrl+K` / `Ctrl+L` | Insert link (`Ctrl+K` in the message body) |
+| `Ctrl+Shift+I` | Insert image |
+| `Alt+Enter` | Image properties (on a picture) |
 | `Ctrl+Space` | Clear formatting |
 | `Ctrl+T` | Announce formatting at cursor |
 | `Ctrl+Shift+T` | Show formatting in browsable list |
 | `Ctrl+Shift+A` | Add attachment |
 | `Alt+A` | Focus attachment list |
-| `Ctrl+K` | Check addresses |
+| `Ctrl+K` | Check addresses (outside the message body) |
 | `Ctrl+Shift+P` | Command palette |
 | `Escape` | Close window (when no menu or dropdown is open) |
 

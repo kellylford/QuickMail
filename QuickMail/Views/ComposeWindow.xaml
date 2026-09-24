@@ -96,14 +96,22 @@
                 <MenuItem Header="_Numbered List" InputGestureText="Ctrl+Shift+N"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarNumberedList_Click"/>
                 <Separator/>
-                <MenuItem Header="Insert Lin_k…" InputGestureText="Ctrl+L"
-                          IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarInsertLink_Click"/>
                 <MenuItem Header="_Clear Formatting" InputGestureText="Ctrl+Space"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarClearFormatting_Click"/>
                 <MenuItem Header="_Announce Formatting" InputGestureText="Ctrl+T"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="MenuAnnounceFormatting_Click"/>
                 <MenuItem Header="Sho_w Formatting…" InputGestureText="Ctrl+Shift+T"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="MenuShowFormatting_Click"/>
+            </MenuItem>
+            <!-- Insert (#729). Link is Ctrl+K from the message body, as in Outlook; Ctrl+L
+                 also works. Image works in every mode: in Plain Text it offers to attach the
+                 picture instead, so it is never grayed. -->
+            <MenuItem Header="_Insert">
+                <MenuItem Header="_Link…" InputGestureText="Ctrl+K"
+                          IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarInsertLink_Click"/>
+                <MenuItem Header="_Image…" InputGestureText="Ctrl+Shift+I" Click="MenuInsertImage_Click"/>
+                <MenuItem Header="Image _Properties…" InputGestureText="Alt+Enter"
+                          IsEnabled="{Binding IsFormattingAvailable}" Click="MenuImageProperties_Click"/>
             </MenuItem>
             <MenuItem Header="_Tools">
                 <MenuItem Header="Check _Spelling…" InputGestureText="F7"
@@ -186,8 +194,12 @@
                 <Separator/>
                 <Button Content="Link" MinWidth="40"
                         AutomationProperties.Name="Insert link"
-                        AutomationProperties.AcceleratorKey="Ctrl+L"
-                        ToolTip="Insert Link (Ctrl+L)" Click="ToolbarInsertLink_Click"/>
+                        AutomationProperties.AcceleratorKey="Ctrl+K"
+                        ToolTip="Insert Link (Ctrl+K)" Click="ToolbarInsertLink_Click"/>
+                <Button Content="Image" MinWidth="40"
+                        AutomationProperties.Name="Insert image"
+                        AutomationProperties.AcceleratorKey="Ctrl+Shift+I"
+                        ToolTip="Insert Image (Ctrl+Shift+I)" Click="MenuInsertImage_Click"/>
                 <Button Content="Clear" MinWidth="40"
                         AutomationProperties.Name="Clear formatting"
                         AutomationProperties.AcceleratorKey="Ctrl+Space"
@@ -483,6 +495,8 @@
                          FontFamily="{DynamicResource Theme.FontFamily}"
                          Margin="0,4" TabIndex="7"
                          VerticalAlignment="Stretch"
+                         PreviewDragOver="Editor_PreviewDragOver"
+                         PreviewDrop="Editor_PreviewDrop"
                          PreviewKeyDown="BodyBox_PreviewKeyDown"/>
 
                 <RichTextBox Grid.Row="0"
@@ -496,6 +510,8 @@
                              FontFamily="{DynamicResource Theme.FontFamily}"
                              Margin="0,4" TabIndex="7"
                              VerticalAlignment="Stretch"
+                             PreviewDragOver="Editor_PreviewDragOver"
+                             PreviewDrop="Editor_PreviewDrop"
                              TextChanged="RichBodyBox_TextChanged"/>
             </Grid>
         </Grid>

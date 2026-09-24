@@ -3,7 +3,15 @@
 Status: Phase 1 implemented 2026-09-22 (issue #729). Decisions taken for it: a Paragraph style
 box replaces the heading buttons; Quote is Ctrl+Shift+9 (Gmail's key); Enter continues a quote and
 Enter on an empty quoted line ends it. A quote is a `Section` container in the editor rather than a
-tagged paragraph, so nesting and headings or lists inside quotes survive. Phases 2 to 8 are not started.
+tagged paragraph, so nesting and headings or lists inside quotes survive.
+
+Phase 2 implemented 2026-09-23. Decisions taken: in the editor a picture is a real image named by its
+alt text (listening-test option B); Ctrl+Shift+I inserts, Alt+Enter opens Image Properties; Ctrl+K
+inserts a link in the body and checks addresses elsewhere (as in Outlook); an image dropped or pasted on
+the body is embedded through the description dialog; pictures wider than 1600 pixels are offered a
+shrink and a message over 10 MB is warned about once. Pictures are fetched from a stored message's
+full original (`IMailService.CopyOriginalMessageToAsync`) rather than per-service part metadata, so the
+same path serves IMAP, Graph and POP. Phases 3 to 8 are not started.
 Tracking issue: [#729](https://github.com/kellylford/QuickMail/issues/729).
 
 Goal: support the things people commonly put in email today, and make each of them

@@ -206,6 +206,10 @@ public partial class ComposeWindow : Window
             // Whatever account the window opened on is already the baseline, so leaving
             // the From combo without changing anything stays silent.
             _announcedSenderAccountId = _vm.SenderAccount?.Id;
+            // A reply or forward quoting pictures fetches them when its HTML reaches the editor
+            // (the view model starts that); they replace their placeholders as they arrive (#729).
+            _vm.InlineImagesArrived += OnInlineImagesArrived;
+            Closed += (_, _) => _vm.InlineImagesArrived -= OnInlineImagesArrived;
             ApplyDefaultComposeMode();
             if (string.IsNullOrWhiteSpace(_vm.To))
             {
@@ -226,6 +230,8 @@ public partial class ComposeWindow : Window
         BodyBox.SelectionChanged += BodyBox_SelectionChanged;
         RichBodyBox.SelectionChanged += RichBodyBox_SelectionChanged;
         RichBodyBox.PreviewKeyDown += RichBodyBox_PreviewKeyDown;
+        DataObject.AddPastingHandler(RichBodyBox, RichBodyBox_Pasting);
+        DataObject.AddCopyingHandler(RichBodyBox, RichBodyBox_Copying);
         Closing += OnWindowClosing;
         ConfirmSaveOnClose = () =>
         {
@@ -661,6 +667,8 @@ public partial class ComposeWindow : Window
         // dialog silently, but close paths that bypass it must not leave the
         // owned dialog to fire its completion UI against this dead window.
         CloseSpellCheckDialogSilently();
+        _pendingImages.Clear();
+        _imageDialog?.Close();
         // Cancel before Dispose so a still-running autocomplete search unwinds via
         // OperationCanceledException rather than ObjectDisposedException.
         try { _autocompleteCts?.Cancel(); _autocompleteCts?.Dispose(); } catch { /* best effort */ }
@@ -760,23 +768,12 @@ public partial class ComposeWindow : Window
         e.Handled = true;
     }
 
+    // Files dropped on the message body are handled by Editor_PreviewDrop (#729); a handled
+    // preview event never reaches this one.
     private async void Window_Drop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
-        {
-            var validFiles = files.Where(f => f != null).ToList();
-            if (validFiles.Count > 0)
-            {
-                int before = _vm.Attachments.Count;
-                foreach (var f in validFiles)
-                    await _vm.AddAttachmentFromPathAsync(f);
-                int added = _vm.Attachments.Count - before;
-                if (added > 0)
-                    AccessibilityHelper.Announce(this,
-                        added == 1 ? "1 file attached" : $"{added} files attached",
-                        category: AnnouncementCategory.Result);
-            }
-        }
+            await AttachFilesAsync(files.Where(f => f != null).ToList());
     }
 
     // Alt+U → Subject field; Alt+M → From combo; Alt+Y → Body; Ctrl+V with files → add attachments; Escape → cancel.
@@ -805,17 +802,19 @@ public partial class ComposeWindow : Window
         if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
         {
             var files = Clipboard.GetFileDropList().Cast<string>().Where(f => f != null).ToList();
-            if (files.Count > 0)
-            {
-                int before = _vm.Attachments.Count;
-                foreach (string f in files)
-                    await _vm.AddAttachmentFromPathAsync(f);
-                int added = _vm.Attachments.Count - before;
-                if (added > 0)
-                    AccessibilityHelper.Announce(this,
-                        added == 1 ? "1 file attached" : $"{added} files attached",
-                        category: AnnouncementCategory.Result);
-            }
+            e.Handled = true;
+            // Pasted into the body of a rich message, pictures go in the body (#729); anything
+            // else, and every file pasted anywhere else, is attached as before.
+            if (BodyBox.IsKeyboardFocusWithin || RichBodyBox.IsKeyboardFocusWithin)
+                await TakeFilesIntoBodyAsync(files);
+            else
+                await AttachFilesAsync(files);
+            return;
+        }
+
+        // Ctrl+V with a picture alone on the clipboard, in the body: describe it and put it in.
+        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && TryPastePicture())
+        {
             e.Handled = true;
             return;
         }
@@ -1402,7 +1401,10 @@ public partial class ComposeWindow : Window
         _registry.Register(new CommandDefinition(
             id: "compose.checkAddresses", category: "Compose", title: "Check Addresses",
             execute: CheckAddresses,
-            defaultKey: Key.K, defaultModifiers: ModifierKeys.Control));
+            defaultKey: Key.K, defaultModifiers: ModifierKeys.Control,
+            // Ctrl+K is Outlook's key for both: Insert Link in the message body (#729), Check
+            // Addresses everywhere else. FindByGesture picks whichever is available.
+            isAvailable: () => !IsInRichBody()));
 
         // F7 is the full Check Spelling dialog (classic word-processor binding);
         // inline navigation moved to Ctrl+F7 / Ctrl+Shift+F7. User overrides in
@@ -1491,14 +1493,15 @@ public partial class ComposeWindow : Window
         (previousFocus ?? BodyBox).Focus();
     }
 
-    private void OpenPreview()
+    private async void OpenPreview()
     {
         if (_previewWindow != null)
         {
             _previewWindow.Close();
             return;
         }
-        var fragment = _vm.GetBodyHtml();
+        var fragment = await WithPreviewPicturesAsync(_vm.GetBodyHtml());
+        if (_previewWindow != null || !IsLoaded) return; // opened twice, or closed, while pictures were prepared
         _previewWindow = new MarkdownPreviewWindow(_vm.Subject, fragment,
             _themeService?.BuildMessageCss(forceOnContent: false)) { Owner = this };
         _previewWindow.Closed += (_, _) => { _previewWindow = null; FocusActiveEditor(); };
@@ -1745,7 +1748,7 @@ public partial class ComposeWindow : Window
             _lastAnnouncedBlockType = null;
             try
             {
-                RichTextDocumentConverter.LoadInto(RichBodyBox, html);
+                RichTextDocumentConverter.LoadInto(RichBodyBox, html, ResolveEditorImage);
                 RichBodyBox.CaretPosition = RichBodyBox.Document.ContentStart;
             }
             finally
@@ -1813,7 +1816,7 @@ public partial class ComposeWindow : Window
         _lastAnnouncedBlockType = null;
         try
         {
-            RichTextDocumentConverter.LoadInto(RichBodyBox, html);
+            RichTextDocumentConverter.LoadInto(RichBodyBox, html, ResolveEditorImage);
         }
         finally
         {
@@ -1829,6 +1832,7 @@ public partial class ComposeWindow : Window
     {
         if (e.UndoAction is UndoAction.Undo or UndoAction.Redo)
         {
+            RepairPictures();
             RichTextBlockEditing.ReconcileHeadingTags(RichBodyBox.Document);
             SyncParagraphStyleCombo();
         }
@@ -1939,6 +1943,14 @@ public partial class ComposeWindow : Window
             SyncModeSelector();   // user declined the confirmation — revert the selector
     }
 
+    /// <summary>
+    /// True when the caret is in the body of a Markdown or HTML message: where Ctrl+K inserts a link
+    /// (elsewhere it is Check Addresses, #729, as in Outlook) and Alt+Enter opens Image Properties.
+    /// </summary>
+    private bool IsInRichBody() =>
+        _vm.CurrentMode != ComposeMode.PlainText
+        && (RichBodyBox.IsKeyboardFocusWithin || BodyBox.IsKeyboardFocusWithin);
+
     private void RegisterRichComposeCommands()
     {
         // Formatting works in both rich modes: HTML applies real formatting,
@@ -2025,6 +2037,27 @@ public partial class ComposeWindow : Window
             execute: InsertLink,
             defaultKey: Key.L, defaultModifiers: ModifierKeys.Control,
             isAvailable: InRichMode));
+
+        // Ctrl+K inserts a link from the message body, as in Outlook (#729); outside the body
+        // the same key is Check Addresses. Ctrl+L above keeps working everywhere.
+        _registry.Register(new CommandDefinition(
+            id: "compose.insertLinkFromBody", category: "Compose", title: "Insert Link from the Message Body",
+            execute: InsertLink,
+            defaultKey: Key.K, defaultModifiers: ModifierKeys.Control,
+            isAvailable: IsInRichBody));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.insertImage", category: "Compose", title: "Insert Image…",
+            execute: InsertImage,
+            defaultKey: Key.I, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.imageProperties", category: "Compose", title: "Image Properties…",
+            execute: ShowImageProperties,
+            defaultKey: Key.Return, defaultModifiers: ModifierKeys.Alt,
+            // From the body only: elsewhere the body's caret is out of sight, and a picture there
+            // is not what the user is on.
+            isAvailable: IsInRichBody));
 
         _registry.Register(new CommandDefinition(
             id: "compose.clearFormatting", category: "Compose", title: "Clear Formatting",
@@ -2596,6 +2629,9 @@ public partial class ComposeWindow : Window
         if (RichTextDocumentConverter.IsCodeFont(font) && !RichTextDocumentConverter.IsPreTag(paragraph?.Tag as string))
             parts.Add("Code on");
 
+        if (ImageAtCaret()?.Tag is ComposeImage picture)
+            parts.Add(picture.Alt is { Length: > 0 } alt ? $"Image, {alt}" : picture.AccessibleName);
+
         if (LinkAt(selection.Start) is { } link)
         {
             var address = link.Tag as string ?? link.NavigateUri?.ToString();
@@ -2639,6 +2675,8 @@ public partial class ComposeWindow : Window
     private void ToolbarBulletList_Click(object sender, RoutedEventArgs e)    { ToggleList(ordered: false); FocusActiveEditor(); }
     private void ToolbarNumberedList_Click(object sender, RoutedEventArgs e)  { ToggleList(ordered: true); FocusActiveEditor(); }
     private void ToolbarInsertLink_Click(object sender, RoutedEventArgs e)    => InsertLink();
+    private void MenuInsertImage_Click(object sender, RoutedEventArgs e)      => InsertImage();
+    private void MenuImageProperties_Click(object sender, RoutedEventArgs e)  => ShowImageProperties();
     private void ToolbarClearFormatting_Click(object sender, RoutedEventArgs e) { ClearFormatting(); FocusActiveEditor(); }
 
 }
