@@ -284,7 +284,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // seeded HTML is consumed when the editor loads it.
         _sourcePictureIds = _sourceMessage is null
             ? []
-            : Helpers.InlineImages.ReferencedContentIds(_seededHtmlBody, Body);
+            : Helpers.InlineImages.ReferencedContentIds(_seededHtmlBody);
     }
 
     /// <summary>The plain-text signature as HTML, with the same "-- " separator line.</summary>
@@ -958,7 +958,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             DraftFolderName     = _draftFolderName,
             Attachments         = Attachments.ToList(),
             // Only the pictures the body still shows: one deleted from the body is not sent.
-            InlineImages        = PicturesReferencedBy(htmlBody, body),
+            InlineImages        = PicturesReferencedBy(htmlBody),
         };
     }
 
@@ -982,6 +982,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// their placeholders.
     /// </summary>
     public event Action? InlineImagesArrived;
+
+    /// <summary>
+    /// Set by the View: the Content-IDs of the pictures the editor actually shows. A reply's or
+    /// forward's fetch is limited to these, so a picture hidden in the original's markup — in a
+    /// comment, a style block or an attribute value — is never downloaded.
+    /// </summary>
+    public Func<IReadOnlySet<string>>? EditorPictureIdsProvider { get; set; }
 
     /// <summary>Stores a picture for the body and returns its Content-ID.</summary>
     public string AddInlineImage(byte[] bytes, string contentType, string fileName)
@@ -1007,17 +1014,18 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         return _inlineImages.TryGetValue(id, out var image) ? image.Content : null;
     }
 
-    private List<AttachmentModel> PicturesReferencedBy(params string?[] texts)
-    {
-        var ids = Helpers.InlineImages.ReferencedContentIds(texts);
-        return _inlineImages.Values.Where(i => ids.Contains(i.ContentId!)).ToList();
-    }
+    /// <summary>The stored pictures that the HTML's &lt;img&gt; tags show.</summary>
+    private List<AttachmentModel> PicturesReferencedBy(string? html) =>
+        PicturesWithIds(Helpers.InlineImages.ReferencedContentIds(html));
+
+    private List<AttachmentModel> PicturesWithIds(HashSet<string> ids) =>
+        _inlineImages.Values.Where(i => ids.Contains(i.ContentId!)).ToList();
 
     /// <summary>The pictures the body shows now, in whichever mode it is in.</summary>
     private List<AttachmentModel> ReferencedInlineImages() => CurrentMode switch
     {
         ComposeMode.Html => PicturesReferencedBy((RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).Html),
-        ComposeMode.Markdown => PicturesReferencedBy(Body),
+        ComposeMode.Markdown => PicturesWithIds(Helpers.InlineImages.ReferencedInMarkdown(Body)),
         _ => [],
     };
 
@@ -1045,6 +1053,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (_sourceMessage is not { } source || _sourceFetchStarted) return;
         _sourceFetchStarted = true;
         var wanted = new HashSet<string>(_sourcePictureIds, StringComparer.OrdinalIgnoreCase);
+        if (EditorPictureIdsProvider?.Invoke() is { } shown)
+            wanted.IntersectWith(shown);
         wanted.RemoveWhere(_inlineImages.ContainsKey);
         if (wanted.Count == 0) return;
 
@@ -1057,6 +1067,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException) { return; }
         catch (ObjectDisposedException) { return; }
 
+        // Only ordinary picture formats come across from a message someone else sent: anything
+        // else would be handed to a Windows image decoder in this process for no benefit.
+        fetched = fetched.Where(i => EmbeddedPictureLoader.IsDisplayable(i.ContentType)).ToList();
         foreach (var image in fetched)
             _inlineImages.TryAdd(image.ContentId!, image);
         if (fetched.Count > 0)

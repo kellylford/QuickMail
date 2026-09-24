@@ -1728,6 +1728,7 @@ public partial class ComposeWindow : Window
     private void WireRichCompose()
     {
         _vm.RichBodyProvider = () => RichTextDocumentConverter.Snapshot(RichBodyBox.Document);
+        _vm.EditorPictureIdsProvider = EditorPictureIds;
 
         // The editor keeps its original FlowDocument for the window's lifetime.
         // Replacing RichTextBox.Document breaks UIA: the automation peer stays

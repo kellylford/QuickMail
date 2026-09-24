@@ -58,8 +58,16 @@ public static class ImageProcessing
 
             rejection = ImageRejection.None;
             var (seenWidth, seenHeight) = SwapsAxes(orientation) ? (height, width) : (width, height);
+
+            // A photo turned by its orientation tag is re-encoded upright: its tag would go with
+            // the rest of the metadata below, and the photo would then arrive on its side.
+            if (type == "image/jpeg" && orientation != 1)
+            {
+                var turned = Upright(Decode(bytes), orientation);
+                return new PreparedImage(Encode(turned, "image/jpeg"), "image/jpeg", turned.PixelWidth, turned.PixelHeight);
+            }
             if (type is not null)
-                return new PreparedImage(bytes, type, seenWidth, seenHeight);
+                return new PreparedImage(WithoutMetadata(bytes, type), type, seenWidth, seenHeight);
 
             // Not a format mail clients show: decode (orientation applied) and send as PNG.
             var upright = Upright(Decode(bytes), orientation);
@@ -74,6 +82,68 @@ public static class ImageProcessing
 
     /// <inheritdoc cref="Prepare(byte[], out ImageRejection)"/>
     public static PreparedImage? Prepare(byte[] bytes) => Prepare(bytes, out _);
+
+    /// <summary>
+    /// The picture with the metadata a camera or editor stored in it removed — EXIF (which on a
+    /// phone photo includes where it was taken), XMP, IPTC and PNG text — so putting a photo in a
+    /// message does not also send its location. The pixels are untouched: JPEG and PNG are
+    /// rewritten segment by segment, not re-encoded. A file that cannot be read that way is
+    /// re-encoded instead, which keeps no metadata either. GIF carries none of these and is
+    /// returned as it is.
+    /// </summary>
+    public static byte[] WithoutMetadata(byte[] bytes, string contentType) => contentType switch
+    {
+        "image/jpeg" => JpegWithoutMetadata(bytes) ?? Encode(Decode(bytes), "image/jpeg"),
+        "image/png" => PngWithoutMetadata(bytes) ?? Encode(Decode(bytes), "image/png"),
+        _ => bytes,
+    };
+
+    /// <summary>JPEG without APP1 (EXIF, XMP) and APP13 (IPTC) segments; null if the file is not laid out as expected.</summary>
+    private static byte[]? JpegWithoutMetadata(byte[] b)
+    {
+        if (b.Length < 4 || b[0] != 0xFF || b[1] != 0xD8) return null;
+        using var output = new MemoryStream(b.Length);
+        output.Write(b, 0, 2);
+        int i = 2;
+        while (i + 4 <= b.Length)
+        {
+            if (b[i] != 0xFF) return null;
+            byte marker = b[i + 1];
+            if (marker == 0xDA)
+            {
+                // Start of scan: everything from here on is image data.
+                output.Write(b, i, b.Length - i);
+                return output.ToArray();
+            }
+            int length = (b[i + 2] << 8) | b[i + 3];
+            if (length < 2 || i + 2 + length > b.Length) return null;
+            if (marker is not (0xE1 or 0xED))
+                output.Write(b, i, 2 + length);
+            i += 2 + length;
+        }
+        return null;
+    }
+
+    /// <summary>PNG without eXIf, tEXt, iTXt, zTXt and tIME chunks; null if the file is not laid out as expected.</summary>
+    private static byte[]? PngWithoutMetadata(byte[] b)
+    {
+        ReadOnlySpan<byte> signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        if (b.Length < 8 || !b.AsSpan(0, 8).SequenceEqual(signature)) return null;
+        using var output = new MemoryStream(b.Length);
+        output.Write(b, 0, 8);
+        int i = 8;
+        while (i + 12 <= b.Length)
+        {
+            long length = ((long)b[i] << 24) | ((long)b[i + 1] << 16) | ((long)b[i + 2] << 8) | b[i + 3];
+            if (length < 0 || i + 12 + length > b.Length) return null;
+            var type = System.Text.Encoding.ASCII.GetString(b, i + 4, 4);
+            if (type is not ("eXIf" or "tEXt" or "iTXt" or "zTXt" or "tIME"))
+                output.Write(b, i, (int)(12 + length));
+            i += (int)(12 + length);
+            if (type == "IEND") return output.ToArray();
+        }
+        return null;
+    }
 
     /// <summary>A picture from the clipboard, as PNG.</summary>
     public static PreparedImage FromBitmap(BitmapSource bitmap) =>

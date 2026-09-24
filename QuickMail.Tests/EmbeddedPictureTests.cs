@@ -134,6 +134,32 @@ public class EmbeddedPictureTests
         Assert.Contains("Real message", body);
     }
 
+    /// <summary>
+    /// #729 security review: a picture written inside a tag name — "&lt;sty&lt;img src=cid:a&gt;le&gt;" —
+    /// hid the name from every pass, and dropping it afterwards joined "sty" and "le" back into a
+    /// live &lt;style&gt;. Every element the passes exist to remove, split that way.
+    /// </summary>
+    [Theory]
+    [InlineData("style")] [InlineData("script")] [InlineData("link")] [InlineData("iframe")]
+    [InlineData("object")] [InlineData("embed")] [InlineData("meta")] [InlineData("base")]
+    [InlineData("svg")] [InlineData("math")] [InlineData("form")] [InlineData("input")]
+    [InlineData("button")] [InlineData("video")] [InlineData("audio")] [InlineData("title")]
+    [InlineData("frame")] [InlineData("portal")] [InlineData("canvas")] [InlineData("source")]
+    public void APictureSplittingATagName_CannotRejoinIt(string element)
+    {
+        var head = element[..(element.Length / 2)];
+        var tail = element[(element.Length / 2)..];
+        var attack =
+            $"<p>Real</p><{head}<img src=cid:a>{tail} rel=preconnect href=https://evil.invalid/>x" +
+            $"</{head}<img src=cid:b>{tail}><{head}<img src=\"cid:c\" alt=\"q\">{tail}>body{{display:none}}";
+
+        var body = BodyOf(Render(attack));
+
+        Assert.DoesNotMatch($"<{element}[\\s/>]", body.ToLowerInvariant());
+        Assert.DoesNotMatch($"</{element}[\\s/>]", body.ToLowerInvariant());
+        Assert.Contains("Real", body);
+    }
+
     [Fact]
     public void AMarkerInsideATag_RestoresNoPicture()
     {
@@ -254,6 +280,86 @@ public class EmbeddedPictureTests
         var listed = Assert.Single(Pop3MailService.InlineImagesOf(message));
         Assert.Equal("a@x", listed.ContentId);
         Assert.Equal("cid:a@x", listed.PartSpecifier);
+    }
+
+    [Fact]
+    public void ACidTypedAsText_IsNotAPictureReference()
+    {
+        // #729 security review: a sender could write "cid:hidden@x" as words and have a part
+        // nobody saw fetched with a reply and forwarded on.
+        var ids = InlineImages.ReferencedContentIds(
+            "<p>see cid:h1@x, src=cid:h2@x and ](cid:h3@x) and ![t](cid:h4@x)</p>" +
+            "<p title=\"src=cid:h5@x\">x</p><img src=\"cid:shown@x\" alt=\"A\">");
+        Assert.Equal(["shown@x"], ids.ToArray());
+
+        // Markdown images count only in the user's own Markdown source.
+        Assert.Equal(["md@x"], InlineImages.ReferencedInMarkdown("text ![b](cid:md@x) and ](cid:no@x)").ToArray());
+    }
+
+    [Fact]
+    public void AMessageIsNotSentWithAPartOnlyNamedInItsText()
+    {
+        var message = MimeMessageBuilder.Build(new ComposeModel
+        {
+            To = "a@b.com", Body = "x",
+            HtmlBody = "<p>see cid:hidden@x, src=cid:hidden@x and ](cid:hidden@x)</p>",
+            InlineImages = [new AttachmentModel { FileName = "h.png", ContentType = "image/png", Content = [1], ContentId = "hidden@x" }],
+        }, new AccountModel { Username = "me@example.com" });
+
+        Assert.Empty(message.BodyParts.OfType<MimePart>().Where(p => p.ContentId == "hidden@x"));
+    }
+
+    [Fact]
+    public async Task ReadingAnOriginal_StopsAtTheSizeLimit()
+    {
+        var mail = new CountingMail(new byte[3 * 1024 * 1024]);
+        var wanted = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "a@x" };
+
+        var pictures = await InlineImages.FetchAsync(mail, Guid.NewGuid(), "Inbox", "1", wanted,
+            TestContext.Current.CancellationToken, maxBytes: 1024 * 1024);
+
+        Assert.Empty(pictures);
+    }
+
+    [Fact]
+    public async Task AnOversizedListedPart_IsNotDownloaded()
+    {
+        EmbeddedPictureLoader.ClearCache();
+        var mail = new CountingMail();
+        var detail = Detail("m3", new AttachmentModel
+        {
+            ContentId = "a@x", ContentType = "image/png", PartSpecifier = "2", FileSize = 200L * 1024 * 1024,
+        });
+
+        await EmbeddedPictureLoader.LoadAsync(mail, detail);
+
+        Assert.Equal(0, mail.PartDownloads);
+    }
+
+    [Fact]
+    public void Photos_LoseTheirLocationButKeepTheirPixels()
+    {
+        // A JPEG carrying EXIF with a GPS position, as a phone writes it.
+        var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(8, 6, 96, 96,
+            System.Windows.Media.PixelFormats.Bgr32, null, new byte[8 * 6 * 4], 8 * 4);
+        var metadata = new System.Windows.Media.Imaging.BitmapMetadata("jpg");
+        metadata.SetQuery("/app1/ifd/gps/{ushort=1}", "N");
+        metadata.SetQuery("/app1/ifd/{ushort=271}", "PhoneMaker");
+        var encoder = new System.Windows.Media.Imaging.JpegBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap, null, metadata, null));
+        using var ms = new MemoryStream();
+        encoder.Save(ms);
+        var photo = ms.ToArray();
+        Assert.Contains("PhoneMaker", System.Text.Encoding.ASCII.GetString(photo));
+
+        var prepared = ImageProcessing.Prepare(photo);
+
+        Assert.NotNull(prepared);
+        var text = System.Text.Encoding.ASCII.GetString(prepared.Bytes);
+        Assert.DoesNotContain("PhoneMaker", text);
+        Assert.DoesNotContain("Exif", text);
+        Assert.Equal((8, 6), (prepared.PixelWidth, prepared.PixelHeight));
+        Assert.NotNull(ImageProcessing.ForDisplay(prepared.Bytes)); // still a picture
     }
 
     // ── The setting ──────────────────────────────────────────────────────────

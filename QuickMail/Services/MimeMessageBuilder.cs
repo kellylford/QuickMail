@@ -76,9 +76,9 @@ public static class MimeMessageBuilder
             // Only pictures the HTML still refers to are sent: one the user deleted from the
             // body is gone from the message too.
             MimeEntity htmlEntity = new TextPart("html") { Text = compose.HtmlBody };
+            var shown = InlineImages.ReferencedContentIds(compose.HtmlBody);
             var inline = compose.InlineImages
-                .Where(i => i.IsLoaded && !string.IsNullOrEmpty(i.ContentId)
-                            && compose.HtmlBody.Contains("cid:" + i.ContentId, StringComparison.OrdinalIgnoreCase))
+                .Where(i => i.IsLoaded && !string.IsNullOrEmpty(i.ContentId) && shown.Contains(i.ContentId))
                 .GroupBy(i => i.ContentId, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First())
                 .ToList();

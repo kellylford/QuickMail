@@ -276,8 +276,15 @@ public static class MessageBodyHtmlBuilder
             result = html;
             return false;
         }
+        var source = html;
         var ok = TryRegexReplace(html, ImgTag, match =>
         {
+            // Only a picture that sits in text is set aside. One written inside another tag —
+            // "<sty<img src=cid:a>le>" — is left to the passes, which remove it: set aside, its
+            // marker would hide the tag name "style" from every pass, and dropping the marker
+            // later would join the halves back into a live <style> (#729 security review).
+            if (IsInsideTag(source, match.Index))
+                return match.Value;
             string? src = null, alt = null, width = null, height = null;
             foreach (Match a in ImgAttribute.Matches(match.Value[4..]))
             {
@@ -311,14 +318,16 @@ public static class MessageBodyHtmlBuilder
         {
             if (!int.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.None,
                     System.Globalization.CultureInfo.InvariantCulture, out var i) || i >= pictures.Count)
-                return string.Empty;
+                return " ";
             // A picture goes back only where it is text content. A marker inside a tag — in an
             // attribute value, or after an opening "<" whose ">" comes later — would put QuickMail's
             // own <img> inside the sender's markup, where its quotes and ">" end the sender's
             // attribute or close the sender's tag early. There the picture is dropped (#729
             // security review).
+            // Dropped as a space, never as nothing: removing it outright would join the text on
+            // either side, and whatever the passes saw as two harmless pieces must stay two.
             if (IsInsideTag(body, m.Index))
-                return string.Empty;
+                return " ";
             var p = pictures[i];
             var sb = new System.Text.StringBuilder("<img src=\"")
                 .Append(WebUtility.HtmlEncode(pictureBase + Uri.EscapeDataString(p.ContentId))).Append('"');

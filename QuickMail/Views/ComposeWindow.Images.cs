@@ -48,13 +48,34 @@ public partial class ComposeWindow
     }
 
     /// <summary>Draws pictures that arrived after the document was built — a reply's or forward's quoted pictures.</summary>
-    private void OnInlineImagesArrived()
+    private async void OnInlineImagesArrived()
     {
-        foreach (var container in EditorPictures())
+        // These came from a message someone else sent: decode them on the thread pool (the
+        // bitmaps are frozen), so a picture built to be slow to decode cannot freeze the window.
+        var waiting = EditorPictures()
+            .Where(c => c.Child is Image image && ReferenceEquals(image.Source, RichTextDocumentConverter.PlaceholderImage))
+            .Select(c => (Container: c, Info: (ComposeImage)c.Tag))
+            .ToList();
+        var sources = waiting.Select(w => w.Info.Src).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(src => (Src: src, Bytes: _vm.GetInlineImageBytes(src)))
+            .Where(s => s.Bytes is not null)
+            .ToList();
+        try
         {
-            if (container.Child is Image image && ReferenceEquals(image.Source, RichTextDocumentConverter.PlaceholderImage)
-                && container.Tag is ComposeImage info && ResolveEditorImage(info.Src) is { } source)
+            var decoded = await Task.Run(() => sources.ToDictionary(
+                s => s.Src, s => (ImageSource?)ImageProcessing.ForDisplay(s.Bytes!), StringComparer.OrdinalIgnoreCase));
+            if (!IsLoaded) return;
+            foreach (var (container, info) in waiting)
+            {
+                if (container.Child is not Image image || !decoded.TryGetValue(info.Src, out var source) || source is null)
+                    continue;
+                _displayImages[info.Src] = source;
                 RichTextDocumentConverter.SetImageSource(image, info, source);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Compose: drawing arrived pictures", ex);
         }
     }
 
@@ -82,6 +103,13 @@ public partial class ComposeWindow
             }
         }
     }
+
+    /// <summary>The Content-IDs of the pictures in the editor now, for the view model's reply/forward fetch.</summary>
+    private IReadOnlySet<string> EditorPictureIds() =>
+        EditorPictures()
+            .Select(c => ((ComposeImage)c.Tag).ContentId)
+            .OfType<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     private IEnumerable<InlineUIContainer> EditorPictures() =>
         RichTextBlockEditing.EnumerateBlocks(RichBodyBox.Document.Blocks)

@@ -43,13 +43,20 @@ to always get one or the other.
 - Pictures stay with the message through drafts, the Outbox and reopening, and a forward or HTML
   reply brings the original message's pictures along.
 - In Plain Text mode, Insert Image offers to attach the picture as a file instead.
+- The information a phone or camera stores inside a photo, including where it was taken, is
+  removed as the photo goes in.
+
+The User Guide has a new [Pictures](https://kellylford.github.io/QuickMail/pictures.html) page covering
+putting pictures in, sending them, what QuickMail shows when you read mail, and how pictures are
+kept safe.
 
 ### Pictures sent inside a message are now shown
 
 A picture that travels with a message — a photo in the body, a logo in a signature, or a picture you
 put in with QuickMail — now shows in the reading pane, in message tabs and in message windows.
-Showing it contacts no one but your own mail server, because it is part of the message itself, so the sender cannot tell you looked. Screen readers read it by its
-description, and pictures with no description or marked decorative are passed over, as before.
+Showing it contacts no one but your own mail server, because it is part of the message itself, so
+the sender cannot tell you looked. Screen readers read it by its description, and pictures with no
+description or marked decorative are passed over, as before.
 
 Pictures a message links to on the web are still not loaded, because fetching them tells the sender
 you opened the message. To show descriptions only, as before, uncheck **Display pictures sent inside

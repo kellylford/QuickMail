@@ -34,6 +34,15 @@ public static class EmbeddedPictureLoader
 
     /// <summary>Largest attachment total for which the whole original is downloaded to get at its pictures.</summary>
     private const long MaxOriginalBytesForPictures = 5L * 1024 * 1024;
+
+    /// <summary>The most of an original that is downloaded just to show its pictures.</summary>
+    private const long MaxOriginalDownload = 10L * 1024 * 1024;
+
+    /// <summary>A picture part larger than this is not downloaded; its description stands in.</summary>
+    private const long MaxPictureBytes = 10L * 1024 * 1024;
+
+    /// <summary>At most this many pictures are downloaded for one message.</summary>
+    private const int MaxPictures = 40;
     private static readonly object Gate = new();
     private static readonly LinkedList<(string Key, IReadOnlyDictionary<string, AttachmentModel> Pictures, long Bytes)> Cache = new();
     private static readonly Dictionary<string, Task<IReadOnlyDictionary<string, AttachmentModel>>> InFlight = new();
@@ -84,7 +93,9 @@ public static class EmbeddedPictureLoader
             List<AttachmentModel> pictures;
             bool complete = true;
             var listed = detail.InlineImages
-                .Where(p => p.ContentId is not null && wanted.Contains(p.ContentId) && IsDisplayable(p.ContentType))
+                .Where(p => p.ContentId is not null && wanted.Contains(p.ContentId) && IsDisplayable(p.ContentType)
+                            && p.FileSize <= MaxPictureBytes)
+                .Take(MaxPictures)
                 .ToList();
             if (listed.Count > 0)
             {
@@ -117,8 +128,10 @@ public static class EmbeddedPictureLoader
                 // large attachments — a signature logo is not worth 25 MB; its alt text stands in.
                 if (detail.Attachments.Sum(a => a.FileSize) > MaxOriginalBytesForPictures)
                     return None;
-                pictures = (await InlineImages.FetchAsync(mail, detail.AccountId, detail.FolderName, detail.MessageId, wanted, ct))
+                pictures = (await InlineImages.FetchAsync(mail, detail.AccountId, detail.FolderName, detail.MessageId,
+                        wanted, ct, MaxOriginalDownload))
                     .Where(p => IsDisplayable(p.ContentType))
+                    .Take(MaxPictures)
                     .ToList();
             }
 

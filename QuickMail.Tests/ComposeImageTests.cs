@@ -118,6 +118,43 @@ public class ComposeImageTests
         Assert.Contains("src=\"https://example.com/b.png\"", RichTextDocumentConverter.ToHtml(editor.Document));
     }
 
+    [StaFact]
+    public void AttributeValues_CannotPickThePicture()
+    {
+        // #729 security review: "src=" inside another attribute's value chose the part.
+        var doc = RichTextDocumentConverter.FromHtml(
+            "<p><img alt=\"a src=cid:alt1\" src=\"https://t.invalid/x.png\"></p>");
+        var info = RichTextDocumentConverter.ImageOf(OnlyPicture(doc))!;
+        Assert.Equal("https://t.invalid/x.png", info.Src);
+        Assert.Equal("a src=cid:alt1", info.Alt);
+    }
+
+    [StaFact]
+    public void AGreaterThanInAQuotedValue_DoesNotEndTheTag()
+    {
+        var doc = RichTextDocumentConverter.FromHtml("<p><img alt=\"1 > 0\" src=\"cid:a@x\">after</p>");
+        Assert.Equal("1 > 0", RichTextDocumentConverter.ImageOf(OnlyPicture(doc))!.Alt);
+    }
+
+    [StaFact]
+    public void TextThatLooksLikeAMarkdownPicture_StaysText()
+    {
+        var doc = RichTextDocumentConverter.FromHtml("<p>see ![x](cid:y@x) here</p>");
+        var markdown = RichTextDocumentConverter.ToMarkdown(doc);
+        Assert.Equal(@"see !\[x](cid:y@x) here", markdown);
+        Assert.Empty(InlineImages.ReferencedInMarkdown(markdown));
+    }
+
+    [StaFact]
+    public void ATinyPicture_IsStillVisibleInTheEditor()
+    {
+        var picture = OnlyPicture(RichTextDocumentConverter.FromHtml(
+            "<p><img src=\"cid:a@x\" alt=\"\" width=\"1\" height=\"1\"></p>"));
+        RichTextDocumentConverter.SetImageSource((Image)picture.Child,
+            RichTextDocumentConverter.ImageOf(picture)!, ImageProcessing.ForDisplay(Png(1, 1)));
+        Assert.True(((Image)picture.Child).MinWidth >= RichTextDocumentConverter.MinEditorImageSize);
+    }
+
     // ── The message ──────────────────────────────────────────────────────────
 
     private static AccountModel Account() => new() { DisplayName = "Me", Username = "me@example.com" };
@@ -190,8 +227,8 @@ public class ComposeImageTests
     [Fact]
     public void ReferencedContentIds_FindsHtmlAndMarkdownReferences()
     {
-        var ids = InlineImages.ReferencedContentIds("<img src=\"cid:a@x\">", "![b](cid:b@x)", null);
-        Assert.Equal(["a@x", "b@x"], ids.OrderBy(i => i).ToArray());
+        Assert.Equal(["a@x"], InlineImages.ReferencedContentIds("<img src=\"cid:a@x\">", null).ToArray());
+        Assert.Equal(["b@x"], InlineImages.ReferencedInMarkdown("![b](cid:b@x)").ToArray());
     }
 
     [Fact]

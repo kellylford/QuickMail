@@ -8630,6 +8630,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public Task<IReadOnlyDictionary<string, AttachmentModel>> LoadEmbeddedPicturesAsync(MailMessageDetail detail) =>
         EmbeddedPictureLoader.LoadAsync(_imap, detail);
 
+    /// <summary>
+    /// The pictures a draft shows: its HTML's &lt;img&gt; tags, and for a Markdown draft the
+    /// images in its Markdown source, which is what its text part holds.
+    /// </summary>
+    private static HashSet<string> DraftPictureIds(MailMessageDetail detail)
+    {
+        var ids = Helpers.InlineImages.ReferencedContentIds(detail.HtmlBody);
+        if (detail.DraftComposeMode == ComposeMode.Markdown)
+            ids.UnionWith(Helpers.InlineImages.ReferencedInMarkdown(detail.PlainTextBody));
+        return ids;
+    }
+
     [RelayCommand]
     private async Task OpenDraftAsync()
     {
@@ -8684,7 +8696,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // read the ones the draft still refers to out of the stored message.
             model.InlineImages = await Helpers.InlineImages.FetchAsync(
                 _imap, summary.AccountId, summary.FolderName, summary.MessageId,
-                Helpers.InlineImages.ReferencedContentIds(detail.HtmlBody, detail.PlainTextBody), ct);
+                DraftPictureIds(detail), ct);
 
             StatusText = string.Empty;
             ComposeRequested?.Invoke(model);

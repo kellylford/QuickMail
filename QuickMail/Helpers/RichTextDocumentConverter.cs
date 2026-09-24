@@ -76,6 +76,9 @@ public static class RichTextDocumentConverter
     /// </summary>
     public const string NoDescriptionTitle = "no description";
 
+    /// <summary>Smallest a picture is drawn in the editor, whatever size it declares.</summary>
+    public const double MinEditorImageSize = 16;
+
     /// <summary>Widest a picture is drawn in the editor; the message keeps its real size.</summary>
     public const double MaxEditorImageWidth = 480;
 
@@ -155,6 +158,10 @@ public static class RichTextDocumentConverter
             image.Width = Math.Min(info.Width.Value, MaxEditorImageWidth);
         else
             image.ClearValue(FrameworkElement.WidthProperty);
+        // Never too small to see: a picture sized 1 by 1 would otherwise go out with the message
+        // without anyone having noticed it in the editor (#729 security review).
+        image.MinWidth = MinEditorImageSize;
+        image.MinHeight = MinEditorImageSize;
     }
 
     /// <summary>The picture details when the inline is an editor picture; otherwise null.</summary>
@@ -999,7 +1006,10 @@ public static class RichTextDocumentConverter
                         };
                     var strike = style.Strike ? "~~" : string.Empty;
                     // Underline has no Markdown form — the text passes through unstyled.
-                    var text = run.Text;
+                    // Words that look like a Markdown image stay words: "![x](cid:y)" typed in a
+                    // message must not become a picture after a switch to Markdown mode (#729
+                    // security review).
+                    var text = run.Text.Replace("![", @"!\[", StringComparison.Ordinal);
                     if (marker.Length > 0 || strike.Length > 0)
                     {
                         // Emphasis markers don't survive leading/trailing spaces.
@@ -1148,7 +1158,7 @@ public static class RichTextDocumentConverter
                     continue;
                 }
 
-                int gt = html.IndexOf('>', lt + 1);
+                int gt = TagEnd(html, lt + 1);
                 if (gt < 0) { AppendText(stack.Peek(), html[lt..]); break; }
 
                 var raw = html[(lt + 1)..gt].Trim();
@@ -1182,15 +1192,15 @@ public static class RichTextDocumentConverter
                 }
 
                 var node = new HtmlNode { Name = name };
-                var attrs = body[nameEnd..];
-                node.Href = ExtractAttr(attrs, "href");
-                node.Alt = ExtractAttr(attrs, "alt");
-                node.Src = ExtractAttr(attrs, "src");
-                node.Class = ExtractAttr(attrs, "class");
-                node.Style = ExtractAttr(attrs, "style");
-                node.Width = ExtractAttr(attrs, "width");
-                node.Title = ExtractAttr(attrs, "title");
-                node.Height = ExtractAttr(attrs, "height");
+                var attrs = ParseAttributes(body[nameEnd..]);
+                node.Href = attrs.GetValueOrDefault("href");
+                node.Alt = attrs.GetValueOrDefault("alt");
+                node.Src = attrs.GetValueOrDefault("src");
+                node.Class = attrs.GetValueOrDefault("class");
+                node.Style = attrs.GetValueOrDefault("style");
+                node.Width = attrs.GetValueOrDefault("width");
+                node.Title = attrs.GetValueOrDefault("title");
+                node.Height = attrs.GetValueOrDefault("height");
                 stack.Peek().Children.Add(node);
 
                 if (!selfClosed && !VoidTags.Contains(name))
@@ -1209,21 +1219,71 @@ public static class RichTextDocumentConverter
             parent.Children.Add(new HtmlNode { Text = text });
         }
 
-        private static string? ExtractAttr(string attrs, string attribute)
+        /// <summary>
+        /// The index of the "&gt;" that ends the tag starting before <paramref name="from"/>, as the
+        /// tokenizer finds it: a "&gt;" inside a quoted attribute value does not count. -1 when none.
+        /// </summary>
+        private static int TagEnd(string html, int from)
         {
-            var idx = attrs.IndexOf(attribute + "=", StringComparison.OrdinalIgnoreCase);
-            if (idx < 0) return null;
-            if (idx > 0 && (char.IsLetterOrDigit(attrs[idx - 1]) || attrs[idx - 1] == '-')) return null;
-            int v = idx + attribute.Length + 1;
-            if (v >= attrs.Length) return null;
-            char quote = attrs[v];
-            if (quote is '"' or '\'')
+            char quote = '\0';
+            bool afterEquals = false;
+            for (int i = from; i < html.Length; i++)
             {
-                int endQuote = attrs.IndexOf(quote, v + 1);
-                return endQuote < 0 ? attrs[(v + 1)..] : attrs[(v + 1)..endQuote];
+                char c = html[i];
+                if (quote != '\0')
+                {
+                    if (c == quote) quote = '\0';
+                    continue;
+                }
+                if (c == '>') return i;
+                if (c == '=') { afterEquals = true; continue; }
+                if (afterEquals && c is '"' or '\'') { quote = c; afterEquals = false; continue; }
+                if (!char.IsWhiteSpace(c)) afterEquals = false;
             }
-            int endSpace = attrs.IndexOf(' ', v);
-            return endSpace < 0 ? attrs[v..] : attrs[v..endSpace];
+            return -1;
+        }
+
+        /// <summary>
+        /// A tag's attributes read as the HTML tokenizer reads them: a name runs to whitespace, "/"
+        /// or "="; a value is quoted, or runs to whitespace. The first of a repeated name wins, as
+        /// in a browser. Reading "src=" wherever it appeared let <c>alt="a src=cid:x"</c> choose a
+        /// picture that the real src did not (#729 security review).
+        /// </summary>
+        private static Dictionary<string, string> ParseAttributes(string rest)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            int i = 0;
+            while (i < rest.Length)
+            {
+                if (char.IsWhiteSpace(rest[i]) || rest[i] == '/') { i++; continue; }
+                int start = i;
+                i++;
+                while (i < rest.Length && !char.IsWhiteSpace(rest[i]) && rest[i] != '/' && rest[i] != '=') i++;
+                var name = rest[start..i];
+                while (i < rest.Length && char.IsWhiteSpace(rest[i])) i++;
+                string value = string.Empty;
+                if (i < rest.Length && rest[i] == '=')
+                {
+                    i++;
+                    while (i < rest.Length && char.IsWhiteSpace(rest[i])) i++;
+                    if (i < rest.Length && rest[i] is '"' or '\'')
+                    {
+                        char q = rest[i++];
+                        int end = rest.IndexOf(q, i);
+                        if (end < 0) end = rest.Length;
+                        value = rest[i..end];
+                        i = Math.Min(end + 1, rest.Length);
+                    }
+                    else
+                    {
+                        int vs = i;
+                        while (i < rest.Length && !char.IsWhiteSpace(rest[i])) i++;
+                        value = rest[vs..i];
+                    }
+                }
+                result.TryAdd(name, value);
+            }
+            return result;
         }
 
         public string InnerText()
