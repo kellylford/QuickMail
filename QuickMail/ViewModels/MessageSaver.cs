@@ -240,10 +240,10 @@ public sealed class MessageSaver
                 : $"Could not print: {ex.Message}");
         }
 
-        var html = await Task.Run(() => MessageExport.BuildHtmlDocument(detail, _context(detail)), ct);
         var title = string.IsNullOrWhiteSpace(detail.Subject) ? "Message" : detail.Subject.Trim();
         try
         {
+            var html = await HtmlDocumentAsync(detail, _context(detail), ct);
             return await ui.PrintAsync(html, title, ct)
                 ? new MessageSaveOutcome($"Sent {title} to the printer.")
                 : new MessageSaveOutcome(null);
@@ -291,8 +291,8 @@ public sealed class MessageSaver
             // UTF-8 with a byte-order mark, so Notepad and every other Windows editor reads a
             // non-English message correctly instead of guessing a code page.
             MessageSaveFormat.Text => WithBom(await Task.Run(() => MessageExport.BuildTextDocument(detail, context), ct)),
-            MessageSaveFormat.Html => Encoding.UTF8.GetBytes(await Task.Run(() => MessageExport.BuildHtmlDocument(detail, context), ct)),
-            _                      => await ui.RenderPdfAsync(await Task.Run(() => MessageExport.BuildHtmlDocument(detail, context), ct), ct),
+            MessageSaveFormat.Html => Encoding.UTF8.GetBytes(await HtmlDocumentAsync(detail, context, ct)),
+            _                      => await ui.RenderPdfAsync(await HtmlDocumentAsync(detail, context, ct), ct),
         };
 
         var (file, writingTo, finalPath) = CreateFile(folder, fileName, overwrite);
@@ -365,6 +365,45 @@ public sealed class MessageSaver
     {
         try { File.Delete(path); }
         catch (Exception ex) { LogService.Log($"MessageSaver: could not remove a partial file: {ex.GetType().Name}"); }
+    }
+
+    /// <summary>The web-page form of a message, with the pictures it shows written in.</summary>
+    private async Task<string> HtmlDocumentAsync(MailMessageDetail detail, MessageSaveContext context, CancellationToken ct)
+    {
+        var pictures = await PicturesForAsync(detail, ct);
+        return await Task.Run(() => MessageExport.BuildHtmlDocument(detail, context, pictures), ct);
+    }
+
+    private static readonly IReadOnlyDictionary<string, SavedPicture> NoPictures =
+        new Dictionary<string, SavedPicture>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The pictures a saved web page, PDF or printout shows, as the reading pane would (#728, #729):
+    /// the message's own pictures unless Show pictures included in messages is off, and pictures
+    /// from the web only if QuickMail already loaded them. Nothing new is fetched from the web.
+    /// A picture that cannot be had is simply left out; its description stands in.
+    /// </summary>
+    private async Task<SavedPictures> PicturesForAsync(MailMessageDetail detail, CancellationToken ct)
+    {
+        var embedded = NoPictures;
+        if (_config.Load().ShowEmbeddedPictures && InlineImages.HasReferences(detail.HtmlBody))
+        {
+            try
+            {
+                // The load is shared with the reading pane and is not cancelled; Cancel stops waiting.
+                var found = await EmbeddedPictureLoader.LoadAsync(_mail, detail).WaitAsync(ct);
+                embedded = found
+                    .Where(p => p.Value.Content is { Length: > 0 })
+                    .ToDictionary(p => p.Key, p => new SavedPicture(p.Value.Content!, p.Value.ContentType),
+                        StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
+            {
+                LogService.Log($"MessageSaver: the message's pictures could not be read: {ex.GetType().Name}");
+            }
+        }
+        return new SavedPictures(embedded, url =>
+            WebPictureFetcher.TryGetCached(url) is { } picture ? new SavedPicture(picture.Bytes, picture.ContentType) : null);
     }
 
     /// <summary>

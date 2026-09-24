@@ -905,7 +905,7 @@ All three are on the **File** menu, and Save As and Print are also on a message'
 
 The text, web page and PDF formats all start with the same details, in words rather than raw headers: subject, sender, reply-to address if it is different, recipients, date, the account and folder the message is in, whether it has been read, flagged, replied to or forwarded, and its attachments by name and size. Meeting invitations also list the meeting, its time and place, and the organizer.
 
-**Pictures.** A saved web page or PDF leaves pictures out, as the reading pane does, and shows each picture's description in its place. Nothing in a saved web page runs or loads from the internet when you open it.
+**Pictures.** A saved web page, a PDF and a printout show the same pictures the reading pane does. Pictures included in the message are written into the file itself, unless **Show pictures included in messages** is off. Pictures from the web are included only if QuickMail already loaded them this session, with **Load Pictures** or the setting; saving never fetches one. Any picture left out shows its description in its place. Nothing in a saved web page runs or loads from the internet when you open it: its pictures are part of the file. The Original format keeps the message exactly as it was sent, pictures and all, and Text keeps descriptions only. See [Pictures](#pictures).
 
 **Where Save puts files.** Save uses the format and folder set in **Settings → General → Saving Messages**. The default is **Email message** in your **Documents** folder. Each file is named from the subject, sender and date, for example *Your order has shipped - Jane Smith - 2026-09-17 1432.eml*. Save never replaces or duplicates a file without asking. If you have saved the message there before, Save opens the Save As dialog on that name, so you can pick another name or folder; choose the same name and Windows asks whether to replace it. If you save several messages and some were saved there before, QuickMail asks once: **Yes** replaces those copies, **No** keeps both and saves new copies beside them, and **Cancel** saves nothing. The status bar says what was saved and where.
 
@@ -1189,7 +1189,19 @@ Loading a picture from the web tells its server that the message was opened, whe
 - A picture at an encrypted (https) address is never followed to an unencrypted (http) one.
 - A picture server that is slow to answer is given up on after 30 seconds, and never holds up other pictures.
 - Whatever the server says a file is, QuickMail looks at the file itself and keeps it only if it really is a PNG, JPEG, GIF, WebP or BMP picture. A single picture over 10 MB is not shown, and at most 100 different pictures are loaded for one message.
-- Pictures you load are kept in memory while QuickMail runs, so going back to a message does not fetch them again. They are never saved to disk.
+- Pictures you load are kept in memory while QuickMail runs, so going back to a message does not fetch them again. QuickMail never saves them to disk on its own; they are only written to a file if you save the message as a web page or PDF (see below).
+
+### Saving and printing messages with pictures
+
+**Save** and **Print** show the pictures the reading pane shows:
+
+| Format | Pictures included in the message | Pictures from the web |
+|---|---|---|
+| Original (.eml) | Kept, as sent | Kept as links; nothing is fetched |
+| Text | Descriptions only | Descriptions only |
+| Web page, PDF, and Print | Written into the file, unless **Show pictures included in messages** is off | Written into the file only if QuickMail already loaded them this session |
+
+Saving and printing never fetch a picture from the web. To include web pictures, choose **Load Pictures** first, then save or print. A saved web page holds its pictures inside the file, so it opens anywhere without contacting anything.
 
 ### Settings
 

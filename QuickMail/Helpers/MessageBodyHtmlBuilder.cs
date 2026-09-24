@@ -105,6 +105,10 @@ public static class MessageBodyHtmlBuilder
         return sb.Append('>').ToString();
     }
 
+    /// <summary>An end tag with anything after its name, read quote-aware as the tokenizer does.</summary>
+    private const string EndTagWithAttributes =
+        @"</([A-Za-z][^\s/>]*)(?:[\s/](?:[^>""']|""[^""]*""|'[^']*')*)>";
+
     private static readonly Regex AutoLinkUrl = new(
         @"\b((?:https?|mailto):[^\s<>""']+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled,
@@ -265,7 +269,9 @@ public static class MessageBodyHtmlBuilder
             return false;
         }
         if (pictures is { Count: > 0 })
-            body = RestorePictures(body, pictures, sources);
+            body = RestorePictures(body, pictures, p => p.Web
+                ? sources.WebBase + p.Src
+                : sources.EmbeddedBase + Uri.EscapeDataString(p.Src));
         // Written after the passes, like the pictures: QuickMail's own markup, never the sender's.
         if (blockedWebPictures > 0 && sources.NoteBlockedWebPictures)
             body = WebPicturesNotice + body;
@@ -424,7 +430,11 @@ public static class MessageBodyHtmlBuilder
         int.TryParse(value?.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var n)
         && n is > 0 and <= 10000 ? n : null;
 
-    private static string RestorePictures(string body, List<SetAsidePicture> pictures, PictureSources sources) =>
+    /// <param name="srcFor">
+    /// The address to write for a picture, or null when it cannot be had — then its description
+    /// is written as text in its place, as when pictures are not shown at all.
+    /// </param>
+    private static string RestorePictures(string body, List<SetAsidePicture> pictures, Func<SetAsidePicture, string?> srcFor) =>
         PictureMarker.Replace(body, m =>
         {
             if (!int.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.None,
@@ -440,7 +450,12 @@ public static class MessageBodyHtmlBuilder
             if (IsInsideTag(body, m.Index))
                 return " ";
             var p = pictures[i];
-            var address = p.Web ? sources.WebBase + p.Src : sources.EmbeddedBase + Uri.EscapeDataString(p.Src);
+            if (srcFor(p) is not { } address)
+            {
+                // As the passes would have left it: its words, or — never nothing — a space.
+                var words = p.Alt?.Trim();
+                return string.IsNullOrEmpty(words) ? " " : WebUtility.HtmlEncode(words);
+            }
             var sb = new System.Text.StringBuilder("<img src=\"")
                 .Append(WebUtility.HtmlEncode(address)).Append('"');
             // Described: its words. Decorative (alt="") and undescribed alike are alt="": before
@@ -483,12 +498,44 @@ public static class MessageBodyHtmlBuilder
     /// <para>The same caveat applies as everywhere else: this is defence in depth. The host document
     /// must still carry the strict CSP.</para>
     /// </summary>
-    public static bool TryBuildSanitizedBodyFragment(string html, out string fragment)
+    public static bool TryBuildSanitizedBodyFragment(string html, out string fragment) =>
+        TryBuildSanitizedBodyFragment(html, null, null, out fragment);
+
+    /// <summary>
+    /// As <see cref="TryBuildSanitizedBodyFragment(string, out string)"/>, keeping the message's
+    /// pictures (#728, #729): each picture the message shows — one of its own parts, named by
+    /// Content-ID, or one on the web, named by its address — is written as an &lt;img&gt;
+    /// QuickMail builds itself, with the address <paramref name="embeddedSrc"/> or
+    /// <paramref name="webSrc"/> gives for it. A null resolver, or a null answer, writes the
+    /// picture's description as text instead. The sender's own &lt;img&gt; markup never survives;
+    /// only the Content-ID or address, the description and a numeric size are carried across.
+    /// </summary>
+    public static bool TryBuildSanitizedBodyFragment(string html, Func<string, string?>? embeddedSrc,
+        Func<string, string?>? webSrc, out string fragment)
     {
+        List<SetAsidePicture>? pictures = null;
+        List<string>? web = null;
+        if (embeddedSrc is not null || webSrc is not null)
+        {
+            // The bases only switch each kind on; the resolvers decide what is written.
+            var sources = new PictureSources(embeddedSrc is null ? null : "about:", webSrc is null ? null : "about:", false);
+            if (!SetAsidePictures(html, HtmlRegexTimeout, sources, out html, out pictures, out web, out _))
+            {
+                fragment = string.Empty;
+                return false;
+            }
+        }
         if (!TryStripHeavyHtml(html, HtmlRegexTimeout, out var body))
         {
             fragment = string.Empty;
             return false;
+        }
+        if (pictures is { Count: > 0 })
+        {
+            var addresses = web!;
+            body = RestorePictures(body, pictures, p => p.Web
+                ? webSrc?.Invoke(addresses[int.Parse(p.Src, System.Globalization.CultureInfo.InvariantCulture)])
+                : embeddedSrc?.Invoke(p.Src));
         }
         // The sender's title and html/head/body tags are already gone: TryStripHeavyHtml removes them
         // inside its rounds. Removing them here, after its final escape, is what let "<me<body>ta"
@@ -719,6 +766,10 @@ public static class MessageBodyHtmlBuilder
             // So every start tag is also re-read attribute by attribute, as the tokenizer reads it, and
             // rebuilt from the attributes that are allowed (#728 security review, third pass).
             body = StepEval(body, StartTagWithAttributes, RebuildStartTag);
+            // An end tag has no use for attributes, and a quoted one can hide a ">" that a plain
+            // "<"/">" scan takes for the end of the tag: "</a x=\"><img …>\">" then put a restored
+            // picture inside the tag, where its own quotes broke out of the attribute (#728 review).
+            body = Step(body, EndTagWithAttributes, RegexOptions.None, "</$1>");
             if (!complete || string.Equals(before, body, StringComparison.Ordinal)) break;
             // Still changing after the last round: markup nested to defeat the rounds. Fail closed —
             // the caller shows the message as plain text rather than trust what is left.

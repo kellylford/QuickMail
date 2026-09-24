@@ -127,6 +127,21 @@ public static class WebPictureFetcher
         }
     }
 
+    /// <summary>
+    /// The picture at <paramref name="url"/> if QuickMail already fetched it and still holds it,
+    /// else null. Never contacts the network: saving or printing a message uses this, so it
+    /// includes the web pictures the user already loaded and fetches nothing new.
+    /// </summary>
+    public static WebPicture? TryGetCached(string url)
+    {
+        lock (Gate)
+        {
+            for (var node = Cache.First; node != null; node = node.Next)
+                if (node.Value.Url == url) return node.Value.Picture;
+        }
+        return null;
+    }
+
     private static async Task<WebPicture?> FetchAndRememberAsync(string url)
     {
         try
