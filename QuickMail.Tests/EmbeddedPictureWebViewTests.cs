@@ -75,13 +75,16 @@ public class EmbeddedPictureWebViewTests
                     {
                         ["logo@x"] = new() { ContentId = "logo@x", ContentType = "image/png", Content = Png(37, 21) },
                     };
-                var pictureBase = host.BeginMessage(true, detail, () => Task.FromResult(pictures));
-                Assert.NotNull(pictureBase);
+                var sources = host.BeginMessage(embedded: true, web: false, plainText: false, detail, () => Task.FromResult(pictures));
+                Assert.NotNull(sources.EmbeddedBase);
+                Assert.Null(sources.WebBase);
 
                 var loaded = new TaskCompletionSource<bool>();
                 void OnDone(object? s, CoreWebView2NavigationCompletedEventArgs e) => loaded.TrySetResult(true);
                 core.NavigationCompleted += OnDone;
-                core.NavigateToString(MessageBodyHtmlBuilder.BuildMessageHtml(detail, embeddedPictureBase: pictureBase));
+                var document = MessageBodyHtmlBuilder.BuildMessageDocument(detail, null, false, null, sources);
+                Assert.Equal(1, document.BlockedWebPictures);
+                core.NavigateToString(document.Html);
                 await loaded.Task;
                 core.NavigationCompleted -= OnDone;
 
@@ -101,6 +104,96 @@ public class EmbeddedPictureWebViewTests
         }
         finally
         {
+            controller?.Close();
+            window.Close();
+            try { Directory.Delete(dir, recursive: true); } catch { /* WebView2 may still hold its data folder */ }
+        }
+    }
+
+    /// <summary>
+    /// Load Pictures (#508), end to end: the picture shows, fetched by QuickMail — and the WebView2
+    /// itself never asks the picture's own server for anything. A tracking pixel is not fetched.
+    /// </summary>
+    [StaFact]
+    public void WebPictureLoads_ThroughQuickMail_NeverFromTheWebView()
+    {
+        WpfTestHost.EnsureApplication();
+        var dir = Path.Combine(Path.GetTempPath(), $"QuickMailPics-{Guid.NewGuid():N}");
+        var window = new Window
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+            Width = 400, Height = 300, Left = -10000, Top = -10000,
+        };
+        window.Show();
+        CoreWebView2Controller? controller = null;
+        var fetched = new List<string>();
+        var png = Png(41, 9);
+        WebPictureFetcherTests.UseNetwork(request =>
+        {
+            lock (fetched) fetched.Add(request.RequestUri!.AbsoluteUri);
+            return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new System.Net.Http.ByteArrayContent(png),
+            };
+        });
+        try
+        {
+            string? widths = null;
+            var requested = new List<string>();
+            Run(async () =>
+            {
+                var env = await CoreWebView2Environment.CreateAsync(null, dir);
+                controller = await env.CreateCoreWebView2ControllerAsync(new WindowInteropHelper(window).Handle);
+                controller.Bounds = new System.Drawing.Rectangle(0, 0, 400, 300);
+                controller.IsVisible = true;
+                var core = controller.CoreWebView2;
+                core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+                core.WebResourceRequested += (_, e) => { lock (requested) requested.Add(e.Request.Uri); };
+                var host = EmbeddedPictureHost.Attach(core, env);
+
+                var detail = new MailMessageDetail
+                {
+                    Subject = "Newsletter",
+                    HtmlBody = "<p><img src=\"https://pictures.example/banner.png\" alt=\"Banner\"> " +
+                               "<img src=\"https://tracker.example/open.gif\" width=\"1\" height=\"1\"></p>",
+                };
+                var sources = host.BeginMessage(embedded: true, web: true, plainText: false, detail,
+                    () => Task.FromResult<IReadOnlyDictionary<string, AttachmentModel>>(
+                        new Dictionary<string, AttachmentModel>()));
+                Assert.NotNull(sources.WebBase);
+                var document = MessageBodyHtmlBuilder.BuildMessageDocument(detail, null, false, null, sources);
+                Assert.Equal(["https://pictures.example/banner.png"], document.WebPictures);
+                Assert.DoesNotContain("pictures.example", document.Html, StringComparison.Ordinal);
+                host.ServeWebPictures(sources, document.WebPictures);
+
+                var loaded = new TaskCompletionSource<bool>();
+                void OnDone(object? s, CoreWebView2NavigationCompletedEventArgs e) => loaded.TrySetResult(true);
+                core.NavigationCompleted += OnDone;
+                core.NavigateToString(document.Html);
+                await loaded.Task;
+                core.NavigationCompleted -= OnDone;
+
+                var until = DateTime.UtcNow.AddSeconds(10);
+                do
+                {
+                    widths = await core.ExecuteScriptAsync(
+                        "Array.from(document.images).map(i => i.complete + ':' + i.naturalWidth + ':' + i.alt).join('|')");
+                    if (widths.Contains("true:41:Banner", StringComparison.Ordinal)) break;
+                    await Task.Delay(100);
+                } while (DateTime.UtcNow < until);
+            }, TimeSpan.FromSeconds(60));
+
+            Assert.Contains("true:41:Banner", widths);
+            lock (fetched) Assert.Equal(["https://pictures.example/banner.png"], fetched);
+            lock (requested)
+            {
+                Assert.DoesNotContain(requested, u => u.Contains("pictures.example", StringComparison.Ordinal));
+                Assert.DoesNotContain(requested, u => u.Contains("tracker.example", StringComparison.Ordinal));
+            }
+        }
+        finally
+        {
+            WebPictureFetcherTests.UseRealNetwork();
             controller?.Close();
             window.Close();
             try { Directory.Delete(dir, recursive: true); } catch { /* WebView2 may still hold its data folder */ }

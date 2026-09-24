@@ -127,6 +127,11 @@ public partial class MessageWindow : Window
             defaultKey: Key.H, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _localRegistry.Register(new CommandDefinition(
+            id: "window.loadPictures", category: "View", title: "Load Pictures",
+            execute: LoadWebPictures,
+            defaultKey: Key.U, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _localRegistry.Register(new CommandDefinition(
             id: "window.previousMessage", category: "Mail", title: "Previous Message",
             execute: () => _vm.PreviousMessageCommand.Execute(null),
             isAvailable: () => _vm.CanNavigatePrevious));
@@ -447,14 +452,74 @@ public partial class MessageWindow : Window
 
     private EmbeddedPictureHost? _pictureHost;
 
+    /// <summary>The message the user chose Load Pictures for (#508); it lasts while that message is open.</summary>
+    private string? _webPicturesAllowedFor;
+
+    /// <summary>How many pictures from the web the document on show left out.</summary>
+    private int _blockedWebPictures;
+
+    private static string PictureKey(MailMessageDetail detail) =>
+        $"{detail.AccountId:N}|{detail.FolderName}|{detail.MessageId}";
+
     /// <summary>
-    /// The address this message's embedded pictures are served from, or null when they are not
-    /// shown: the setting is off, the message is read as plain text, or it has none (#729).
+    /// Builds the message document off the UI thread, with the pictures this message may show: its
+    /// own (#729) unless that setting is off, and those from the web (#508) when the setting says
+    /// so or the user chose Load Pictures for it. Hands the host the web addresses to serve.
     /// </summary>
-    private string? BeginMessagePictures(MailMessageDetail detail, bool plainText) =>
-        _pictureHost?.BeginMessage(
-            enabled: !plainText && (_configService?.Load().ShowEmbeddedPictures ?? true),
-            detail, () => EmbeddedPictureLoader.LoadAsync(_imap, detail));
+    private async Task<string> BuildMessageDocumentAsync(MailMessageDetail detail, bool plainText)
+    {
+        var cfg = _configService?.Load();
+        var web = (cfg?.LoadWebPictures ?? false) || _webPicturesAllowedFor == PictureKey(detail);
+        var sources = _pictureHost?.BeginMessage(cfg?.ShowEmbeddedPictures ?? true, web, plainText, detail,
+                          () => EmbeddedPictureLoader.LoadAsync(_imap, detail))
+                      ?? PictureSources.None;
+        var themeCss = BuildThemeCss();
+        var document = await Task.Run(() =>
+            MessageBodyHtmlBuilder.BuildMessageDocument(detail, themeCss, plainText, _themeService, sources));
+        _pictureHost?.ServeWebPictures(sources, document.WebPictures);
+        _blockedWebPictures = document.BlockedWebPictures;
+        return document.Html;
+    }
+
+    /// <summary>Re-renders the open message in place. Never moves focus.</summary>
+    private void RerenderInPlace()
+    {
+        // A re-render replaces the document, so any menu it belonged to is gone with it.
+        _linkMenu?.Released();
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            if (!_webViewReady || _vm.MessageDetail is not { } detail) return;
+            var version = Interlocked.Increment(ref _renderVersion);
+            var html = await BuildMessageDocumentAsync(detail, ReadAsPlainText());
+            if (version != _renderVersion) return;
+            try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
+            MessageBody.CoreWebView2.NavigateToString(html);
+        });
+    }
+
+    /// <summary>
+    /// Load Pictures (#508): shows this message's pictures from the web, re-rendering it in place.
+    /// Lasts while this message is open; Previous and Next start the next one blocked again.
+    /// </summary>
+    private void LoadWebPictures()
+    {
+        string text;
+        if (_vm.MessageDetail is not { } detail)
+            text = "No message is open.";
+        else if (ReadAsPlainText())
+            text = "Pictures are not shown in plain text view.";
+        else if ((_configService?.Load().LoadWebPictures ?? false) || _webPicturesAllowedFor == PictureKey(detail))
+            text = "Pictures from the web are already shown.";
+        else if (_blockedWebPictures == 0)
+            text = "This message has no pictures from the web.";
+        else
+        {
+            _webPicturesAllowedFor = PictureKey(detail);
+            RerenderInPlace();
+            text = "Loading pictures.";
+        }
+        AccessibilityHelper.Announce(this, text, interrupt: true, category: AnnouncementCategory.Result);
+    }
 
     /// <summary>
     /// UID of the invite the in-flight RSVP belongs to. A send takes seconds, and this window has
@@ -502,6 +567,7 @@ public partial class MessageWindow : Window
             case "ics-accept":    RespondToInvite(InviteResponse.Accept);    break;
             case "ics-tentative": RespondToInvite(InviteResponse.Tentative); break;
             case "ics-decline":   RespondToInvite(InviteResponse.Decline);   break;
+            case MessageBodyHtmlBuilder.LoadPicturesAction: LoadWebPictures(); break;
         }
     }
 
@@ -523,17 +589,7 @@ public partial class MessageWindow : Window
         // A re-render replaces the document, so any menu it belonged to is gone with it.
         _linkMenu?.Released();
         ApplyWebViewColorScheme();
-        _ = Dispatcher.InvokeAsync(async () =>
-        {
-            if (!_webViewReady || _vm.MessageDetail is not { } detail) return;
-            var version = Interlocked.Increment(ref _renderVersion);
-            var plainText = ReadAsPlainText();
-            var pictureBase = BeginMessagePictures(detail, plainText);
-            var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService, pictureBase));
-            if (version != _renderVersion) return;
-            try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
-            MessageBody.CoreWebView2.NavigateToString(html);
-        });
+        RerenderInPlace();
     }
 
     /// <summary>
@@ -555,9 +611,7 @@ public partial class MessageWindow : Window
             if (_webViewReady && _vm.MessageDetail is { } detail)
             {
                 var version = Interlocked.Increment(ref _renderVersion);
-                var plainText = cfg.ReadAsPlainText;
-                var pictureBase = BeginMessagePictures(detail, plainText);
-                var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService, pictureBase));
+                var html = await BuildMessageDocumentAsync(detail, cfg.ReadAsPlainText);
                 if (version != _renderVersion) return;
                 try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
                 MessageBody.CoreWebView2.NavigateToString(html);
@@ -593,9 +647,10 @@ public partial class MessageWindow : Window
 
         var version = Interlocked.Increment(ref _renderVersion);
         var plainText = ReadAsPlainText();
+        // A newly shown message starts with its pictures from the web blocked again.
+        if (_webPicturesAllowedFor != PictureKey(detail)) _webPicturesAllowedFor = null;
         // The builder prepends the calendar invite event card when this message is an invitation.
-        var pictureBase = BeginMessagePictures(detail, plainText);
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService, pictureBase));
+        var html = await BuildMessageDocumentAsync(detail, plainText);
         if (version != _renderVersion) return;
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -881,6 +936,11 @@ public partial class MessageWindow : Window
         else if (key == Key.H && mod == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             TogglePlainTextView();
+            e.Handled = true;
+        }
+        else if (key == Key.U && mod == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            LoadWebPictures();
             e.Handled = true;
         }
         else if (key == Key.A && mod == ModifierKeys.Alt)

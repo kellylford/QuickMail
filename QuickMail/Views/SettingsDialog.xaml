@@ -68,6 +68,13 @@
                                           IsChecked="{Binding ShowEmbeddedPictures, Mode=TwoWay}"
                                           Margin="0,8,0,0"
                                           AutomationProperties.Name="Display pictures sent inside messages"/>
+
+                                <!-- Pictures from the web (#508): fetching one tells its server the
+                                     message was opened, so off by default. No free access key. -->
+                                <CheckBox Content="Load pictures from the web automatically"
+                                          IsChecked="{Binding LoadWebPictures, Mode=TwoWay}"
+                                          Margin="0,8,0,0"
+                                          AutomationProperties.Name="Load pictures from the web automatically"/>
                             </StackPanel>
                         </GroupBox>
 

@@ -143,11 +143,23 @@ public static class MessageBodyHtmlBuilder
     /// every picture blocked, as before (#729, and the setting to turn pictures off).
     /// </param>
     public static string BuildMessageHtml(MailMessageDetail detail, string? themeCss = null,
-        bool forcePlainText = false, IThemeService? themeService = null, string? embeddedPictureBase = null)
+        bool forcePlainText = false, IThemeService? themeService = null, string? embeddedPictureBase = null) =>
+        BuildMessageDocument(detail, themeCss, forcePlainText, themeService,
+            new PictureSources(embeddedPictureBase, null, false)).Html;
+
+    /// <summary>
+    /// As <see cref="BuildMessageHtml"/>, for a surface that also shows pictures from the web
+    /// (#508): the result lists the web addresses the document's pictures stand for, which the host
+    /// fetches and serves itself, and how many web pictures were left out.
+    /// </summary>
+    public static MessageDocument BuildMessageDocument(MailMessageDetail detail, string? themeCss,
+        bool forcePlainText, IThemeService? themeService, PictureSources pictures)
     {
-        var document = BuildBodyDocument(detail, themeCss, forcePlainText, embeddedPictureBase);
+        var document = BuildBodyDocument(detail, themeCss, forcePlainText, pictures,
+            out var webPictures, out var blockedWebPictures);
         var card = EventCardHtmlBuilder.Build(detail.CalendarInvite, themeService);
-        return card.Length == 0 ? document : InjectEventCard(document, card);
+        var html = card.Length == 0 ? document : InjectEventCard(document, card);
+        return new MessageDocument(html, webPictures, blockedWebPictures);
     }
 
     /// <summary>Injects the event card HTML just after the opening &lt;body&gt; tag.</summary>
@@ -164,8 +176,10 @@ public static class MessageBodyHtmlBuilder
     }
 
     private static string BuildBodyDocument(MailMessageDetail detail, string? themeCss, bool forcePlainText,
-        string? embeddedPictureBase)
+        PictureSources pictures, out IReadOnlyList<string> webPictures, out int blockedWebPictures)
     {
+        webPictures = [];
+        blockedWebPictures = 0;
         var htmlBody = detail.HtmlBody ?? string.Empty;
 
         // Plain-text view (issue #34): the user asked to read this message as plain text.
@@ -187,8 +201,10 @@ public static class MessageBodyHtmlBuilder
         // of showing partially stripped markup.
         if (!string.IsNullOrWhiteSpace(htmlBody) && !ShouldUseReaderMode(htmlBody)
             && TryBuildSanitizedHtmlDocument(detail.Subject, htmlBody, themeCss, HtmlRegexTimeout,
-                                             embeddedPictureBase, out var sanitized))
+                                             pictures, out var sanitized, out webPictures, out blockedWebPictures))
             return sanitized;
+        webPictures = [];
+        blockedWebPictures = 0;
 
         var text = !string.IsNullOrWhiteSpace(detail.PlainTextBody)
             ? detail.PlainTextBody
@@ -221,23 +237,40 @@ public static class MessageBodyHtmlBuilder
 
     internal static bool TryBuildSanitizedHtmlDocument(
         string? subject, string html, string? themeCss, TimeSpan timeout, string? embeddedPictureBase,
-        out string document)
+        out string document) =>
+        TryBuildSanitizedHtmlDocument(subject, html, themeCss, timeout,
+            new PictureSources(embeddedPictureBase, null, false), out document, out _, out _);
+
+    internal static bool TryBuildSanitizedHtmlDocument(
+        string? subject, string html, string? themeCss, TimeSpan timeout, PictureSources sources,
+        out string document, out IReadOnlyList<string> webPictures, out int blockedWebPictures)
     {
-        List<EmbeddedPicture>? pictures = null;
-        if (embeddedPictureBase is not null && !SetAsidePictures(html, timeout, out html, out pictures))
+        webPictures = [];
+        blockedWebPictures = 0;
+        List<SetAsidePicture>? pictures = null;
+        if (sources.Any)
         {
-            document = string.Empty;
-            return false;
+            if (!SetAsidePictures(html, timeout, sources, out html, out pictures, out var web, out blockedWebPictures))
+            {
+                document = string.Empty;
+                return false;
+            }
+            webPictures = web;
         }
         if (!TryStripHeavyHtml(html, timeout, out var body))
         {
             document = string.Empty;
+            webPictures = [];
+            blockedWebPictures = 0;
             return false;
         }
         if (pictures is { Count: > 0 })
-            body = RestorePictures(body, pictures, embeddedPictureBase!);
+            body = RestorePictures(body, pictures, sources);
+        // Written after the passes, like the pictures: QuickMail's own markup, never the sender's.
+        if (blockedWebPictures > 0 && sources.NoteBlockedWebPictures)
+            body = WebPicturesNotice + body;
         document = ComposeSanitizedDocument(subject, body, themeCss,
-            pictures is { Count: > 0 } ? PictureOrigin(embeddedPictureBase!) : null);
+            pictures is { Count: > 0 } ? PictureOrigins(sources) : null);
         return true;
     }
 
@@ -251,11 +284,34 @@ public static class MessageBodyHtmlBuilder
     // own picture address, and every other attribute is dropped. A tag this does not recognise is
     // left to the passes, which remove it — the failure mode is a picture not shown, never markup
     // let through.
+    //
+    // Pictures from the web (#508) go the same way when the user has asked for them: the marker
+    // becomes an <img> whose src is again the host's own address, numbered, and the host fetches
+    // the real address itself. The sender's address never reaches the document, so the WebView2
+    // contacts nobody, and the CSP needs no web origin at all. A picture declared 2 pixels or
+    // smaller on a side is taken for a tracking pixel: never fetched, and not counted as a picture
+    // left out.
 
     private const char PictureMarkOpen = '\uE000';
     private const char PictureMarkClose = '\uE001';
 
-    private sealed record EmbeddedPicture(string ContentId, string? Alt, int? Width, int? Height);
+    /// <summary>Most distinct web addresses one message's pictures are fetched from.</summary>
+    public const int MaxWebPictures = 100;
+
+    /// <summary>The words a picture from the web is left out with, before the link that loads them.</summary>
+    public const string WebPicturesNoticeText = "Pictures from the web are not shown.";
+
+    /// <summary>The <c>quickmail:</c> action the notice's link carries.</summary>
+    public const string LoadPicturesAction = "load-pictures";
+
+    // No sender styling survives the passes (style blocks and style attributes are both removed),
+    // so nothing in the message can hide this notice, restyle its link, or lay it over other text.
+    private static string WebPicturesNotice =>
+        "<p class=\"qm-pictures-note\" style=\"margin:0 0 8px;padding:4px 8px;" +
+        "border-left:3px solid var(--qm-border, #777);\">" + WebPicturesNoticeText + " <a href=\"" +
+        QuickMailLinks.Build(LoadPicturesAction) + "\">Load pictures</a></p>";
+
+    private sealed record SetAsidePicture(string Src, bool Web, string? Alt, int? Width, int? Height);
 
     private static readonly Regex ImgTag = new(@"<img\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Compiled, HtmlRegexTimeout);
 
@@ -266,10 +322,15 @@ public static class MessageBodyHtmlBuilder
     private static readonly Regex PictureMarker = new(
         "\uE000(\\d+)\uE001", RegexOptions.Compiled, HtmlRegexTimeout);
 
-    private static bool SetAsidePictures(string html, TimeSpan timeout, out string result, out List<EmbeddedPicture> pictures)
+    private static bool SetAsidePictures(string html, TimeSpan timeout, PictureSources sources, out string result,
+        out List<SetAsidePicture> pictures, out List<string> webPictures, out int blockedWebPictures)
     {
-        var found = new List<EmbeddedPicture>();
+        var found = new List<SetAsidePicture>();
+        var web = new List<string>();
+        var blocked = 0;
         pictures = found;
+        webPictures = web;
+        blockedWebPictures = 0;
         // A marker already in the sender's text would be taken for one of ours; remove any first.
         if (!TryRegexReplace(html, "\uE000\\d*\uE001", string.Empty, RegexOptions.None, timeout, out html))
         {
@@ -298,22 +359,72 @@ public static class MessageBodyHtmlBuilder
                 }
             }
             var decodedSrc = WebUtility.HtmlDecode(src ?? string.Empty).Trim();
-            if (!decodedSrc.StartsWith("cid:", StringComparison.OrdinalIgnoreCase) || decodedSrc.Length <= 4)
-                return match.Value; // not a picture in this message: the passes remove it as before
-            found.Add(new EmbeddedPicture(
-                decodedSrc[4..].Trim('<', '>'),
-                alt is null ? null : WebUtility.HtmlDecode(alt),
-                PictureDimension(width), PictureDimension(height)));
-            return PictureMarkOpen + (found.Count - 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + PictureMarkClose;
+            var decodedAlt = alt is null ? null : WebUtility.HtmlDecode(alt);
+            if (decodedSrc.StartsWith("cid:", StringComparison.OrdinalIgnoreCase) && decodedSrc.Length > 4)
+            {
+                if (sources.EmbeddedBase is null)
+                    return match.Value; // embedded pictures are off: the passes remove it as before
+                found.Add(new SetAsidePicture(decodedSrc[4..].Trim('<', '>'), false, decodedAlt,
+                    PictureDimension(width), PictureDimension(height)));
+                return Marker(found.Count - 1);
+            }
+            if (WebPictureAddress(decodedSrc) is not { } address || IsTrackerSize(width) || IsTrackerSize(height))
+                return match.Value; // not a picture anyone is shown: the passes remove it as before
+            if (sources.WebBase is null)
+            {
+                blocked++;
+                return match.Value;
+            }
+            var index = web.IndexOf(address);
+            if (index < 0)
+            {
+                if (web.Count >= MaxWebPictures)
+                    return match.Value;
+                web.Add(address);
+                index = web.Count - 1;
+            }
+            found.Add(new SetAsidePicture(index.ToString(System.Globalization.CultureInfo.InvariantCulture), true,
+                decodedAlt, PictureDimension(width), PictureDimension(height)));
+            return Marker(found.Count - 1);
         }, timeout, out result);
+        blockedWebPictures = blocked;
         return ok;
+    }
+
+    private static string Marker(int index) =>
+        PictureMarkOpen + index.ToString(System.Globalization.CultureInfo.InvariantCulture) + PictureMarkClose;
+
+    /// <summary>
+    /// The absolute http or https address a picture's src names, or null: a relative or
+    /// protocol-relative address, another scheme, one carrying a user name or password, or one
+    /// longer than any real picture address.
+    /// </summary>
+    internal static string? WebPictureAddress(string src)
+    {
+        if (src.Length is 0 or > 2048
+            || !Uri.TryCreate(src, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)
+            || string.IsNullOrEmpty(uri.Host)
+            || !string.IsNullOrEmpty(uri.UserInfo))
+            return null;
+        return uri.AbsoluteUri;
+    }
+
+    /// <summary>True for a declared width or height of 2 pixels or less: a tracking pixel or spacer.</summary>
+    private static bool IsTrackerSize(string? value)
+    {
+        var v = value?.Trim();
+        if (string.IsNullOrEmpty(v)) return false;
+        if (v.EndsWith("px", StringComparison.OrdinalIgnoreCase)) v = v[..^2].TrimEnd();
+        return double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n)
+            && n <= 2;
     }
 
     private static int? PictureDimension(string? value) =>
         int.TryParse(value?.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var n)
         && n is > 0 and <= 10000 ? n : null;
 
-    private static string RestorePictures(string body, List<EmbeddedPicture> pictures, string pictureBase) =>
+    private static string RestorePictures(string body, List<SetAsidePicture> pictures, PictureSources sources) =>
         PictureMarker.Replace(body, m =>
         {
             if (!int.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.None,
@@ -329,8 +440,9 @@ public static class MessageBodyHtmlBuilder
             if (IsInsideTag(body, m.Index))
                 return " ";
             var p = pictures[i];
+            var address = p.Web ? sources.WebBase + p.Src : sources.EmbeddedBase + Uri.EscapeDataString(p.Src);
             var sb = new System.Text.StringBuilder("<img src=\"")
-                .Append(WebUtility.HtmlEncode(pictureBase + Uri.EscapeDataString(p.ContentId))).Append('"');
+                .Append(WebUtility.HtmlEncode(address)).Append('"');
             // Described: its words. Decorative (alt="") and undescribed alike are alt="": before
             // pictures were shown, a picture with no alt text was dropped without a word, and
             // showing it to sighted readers should not add noise for everyone else.
@@ -349,11 +461,17 @@ public static class MessageBodyHtmlBuilder
         return lastOpen > lastClose;
     }
 
-    /// <summary>The scheme and host of the picture address, for the CSP's img-src.</summary>
-    private static string PictureOrigin(string pictureBase)
+    /// <summary>The scheme and host of each picture address, for the CSP's img-src.</summary>
+    private static string PictureOrigins(PictureSources sources)
     {
-        var uri = new Uri(pictureBase);
-        return uri.GetLeftPart(UriPartial.Authority);
+        var origins = new List<string>();
+        foreach (var pictureBase in new[] { sources.EmbeddedBase, sources.WebBase })
+        {
+            if (pictureBase is null) continue;
+            var origin = new Uri(pictureBase).GetLeftPart(UriPartial.Authority);
+            if (!origins.Contains(origin, StringComparer.OrdinalIgnoreCase)) origins.Add(origin);
+        }
+        return string.Join(' ', origins);
     }
 
     /// <summary>

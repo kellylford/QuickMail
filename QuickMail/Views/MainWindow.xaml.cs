@@ -1094,6 +1094,11 @@ public partial class MainWindow : Window
             defaultKey: Key.H, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
+            id: "view.loadPictures", category: "View", title: "Load Pictures",
+            execute: LoadWebPictures,
+            defaultKey: Key.U, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _registry.Register(new CommandDefinition(
             id: "mail.markRead", category: "Mail", title: "Mark as Read",
             execute: async () => await MarkReadCommand(),
             defaultKey: Key.Q, defaultModifiers: ModifierKeys.Control));
@@ -3921,8 +3926,7 @@ public partial class MainWindow : Window
         var detail   = _vm.MessageDetail;
         var themeCss = BuildReadingPaneThemeCss();
         var plainText = _vm.ReadAsPlainText;
-        var pictureBase = BeginMessagePictures(detail, plainText);
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText, _themeService, pictureBase));
+        var html = await BuildMessageDocumentAsync(detail, themeCss, plainText);
         if (renderVersion != _messageBodyRenderVersion) return;
 
         try { MessageBody.CoreWebView2.Stop(); }
@@ -3932,14 +3936,58 @@ public partial class MainWindow : Window
 
     private EmbeddedPictureHost? _pictureHost;
 
+    /// <summary>The message the user chose Load Pictures for (#508); it lasts while that message is open.</summary>
+    private string? _webPicturesAllowedFor;
+
+    /// <summary>How many pictures from the web the document on show left out.</summary>
+    private int _blockedWebPictures;
+
+    private static string PictureKey(MailMessageDetail detail) =>
+        $"{detail.AccountId:N}|{detail.FolderName}|{detail.MessageId}";
+
     /// <summary>
-    /// The address this message's embedded pictures are served from, or null when they are not
-    /// shown: the setting is off, the message is read as plain text, or it has none (#729).
+    /// Builds the message document off the UI thread, with the pictures this message may show: its
+    /// own (#729) unless that setting is off, and those from the web (#508) when the setting says
+    /// so or the user chose Load Pictures for it. Hands the host the web addresses to serve.
     /// </summary>
-    private string? BeginMessagePictures(MailMessageDetail detail, bool plainText) =>
-        _pictureHost?.BeginMessage(
-            enabled: !plainText && _configService.Load().ShowEmbeddedPictures,
-            detail, () => _vm.LoadEmbeddedPicturesAsync(detail));
+    private async Task<string> BuildMessageDocumentAsync(MailMessageDetail detail, string? themeCss, bool plainText)
+    {
+        var cfg = _configService.Load();
+        var web = cfg.LoadWebPictures || _webPicturesAllowedFor == PictureKey(detail);
+        var sources = _pictureHost?.BeginMessage(cfg.ShowEmbeddedPictures, web, plainText, detail,
+                          () => _vm.LoadEmbeddedPicturesAsync(detail))
+                      ?? PictureSources.None;
+        var document = await Task.Run(() =>
+            MessageBodyHtmlBuilder.BuildMessageDocument(detail, themeCss, plainText, _themeService, sources));
+        _pictureHost?.ServeWebPictures(sources, document.WebPictures);
+        _blockedWebPictures = document.BlockedWebPictures;
+        return document.Html;
+    }
+
+    /// <summary>
+    /// Load Pictures (#508): shows the open message's pictures from the web, re-rendering it in
+    /// place without moving focus. Lasts while this message is open; the next one starts blocked
+    /// again unless the setting loads them everywhere.
+    /// </summary>
+    private void LoadWebPictures()
+    {
+        string text;
+        if (!_vm.IsMessageOpen || _vm.MessageDetail is not { } detail)
+            text = "No message is open.";
+        else if (_vm.ReadAsPlainText)
+            text = "Pictures are not shown in plain text view.";
+        else if (_configService.Load().LoadWebPictures || _webPicturesAllowedFor == PictureKey(detail))
+            text = "Pictures from the web are already shown.";
+        else if (_blockedWebPictures == 0)
+            text = "This message has no pictures from the web.";
+        else
+        {
+            _webPicturesAllowedFor = PictureKey(detail);
+            _ = RerenderReadingPaneAsync();
+            text = "Loading pictures.";
+        }
+        AccessibilityHelper.Announce(this, text, interrupt: true, category: AnnouncementCategory.Result);
+    }
 
     // Render the message body in the browser and move focus into it
     private async Task ShowMessageBodyAsync(MailMessageDetail detail)
@@ -3950,9 +3998,10 @@ public partial class MainWindow : Window
         var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
         var themeCss = BuildReadingPaneThemeCss();
         var plainText = _vm.ReadAsPlainText;
-        var pictureBase = BeginMessagePictures(detail, plainText);
+        // A newly opened message starts with its pictures from the web blocked again.
+        if (_webPicturesAllowedFor != PictureKey(detail)) _webPicturesAllowedFor = null;
         // The builder prepends the calendar invite event card when this message is an invitation.
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText, _themeService, pictureBase));
+        var html = await BuildMessageDocumentAsync(detail, themeCss, plainText);
         if (renderVersion != _messageBodyRenderVersion)
             return;
 
@@ -4120,6 +4169,7 @@ public partial class MainWindow : Window
             case "ics-accept":    _vm.AcceptInviteCommand.Execute(null);    break;
             case "ics-tentative": _vm.TentativeInviteCommand.Execute(null); break;
             case "ics-decline":   _vm.DeclineInviteCommand.Execute(null);   break;
+            case MessageBodyHtmlBuilder.LoadPicturesAction: LoadWebPictures(); break;
         }
     }
 
@@ -7254,6 +7304,8 @@ public partial class MainWindow : Window
     }
 
     private void MenuPlainText_Click(object sender, RoutedEventArgs e) => TogglePlainTextView();
+
+    private void MenuLoadPictures_Click(object sender, RoutedEventArgs e) => LoadWebPictures();
 
     private async void MenuNewFolder_Click(object sender, RoutedEventArgs e)
         => await NewFolderFromSelectionAsync();

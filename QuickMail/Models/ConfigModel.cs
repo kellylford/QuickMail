@@ -22,10 +22,19 @@ public class ConfigModel
     /// <summary>
     /// Show pictures that travel inside a message (<c>cid:</c> parts) in the reading pane, message
     /// tabs and message windows. They contact no server, so there is no tracking or privacy cost;
-    /// on by default. Pictures a message links to on the web are a separate matter and stay
-    /// blocked (#508). Off shows each picture's alt text instead, as before.
+    /// on by default. Pictures a message links to on the web are a separate matter; see
+    /// <see cref="LoadWebPictures"/>. Off shows each picture's alt text instead, as before.
     /// </summary>
     public bool ShowEmbeddedPictures { get; set; } = true;
+
+    /// <summary>
+    /// Load the pictures a message links to on the web for every message, rather than only when the
+    /// user asks for them with Load Pictures (#508). Off by default: fetching a picture tells its
+    /// server that the message was opened, when, and from which IP address — which is what a
+    /// tracking pixel is for. QuickMail fetches them itself, without cookies, from public
+    /// addresses only.
+    /// </summary>
+    public bool LoadWebPictures { get; set; }
 
     /// <summary>
     /// How to display the message list.

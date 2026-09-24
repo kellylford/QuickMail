@@ -1159,7 +1159,7 @@ Pictures reach a message in two ways, and QuickMail treats them differently beca
 | | Reading pane, message tabs and message windows |
 |---|---|
 | Pictures sent inside the message | **Shown** (unless you turn them off — see Settings below) |
-| Pictures on the web | **Not loaded.** Their description is shown in their place. |
+| Pictures on the web | **Not loaded** until you ask (see below). Their description is shown in their place, and a note at the top of the message says pictures were left out. |
 | Any picture, when reading as plain text | Not shown; the plain text is shown instead. |
 
 A picture is read by its description (alternative text). A picture that is also a link reads by that description, so a row of social icons reads "Facebook", "LinkedIn" rather than as web addresses. A picture the sender marked as decorative, or gave no description, is passed over, as it always has been.
@@ -1168,12 +1168,32 @@ Pictures sent inside a message appear as the message opens; the text is shown at
 
 Only ordinary picture formats are shown: PNG, JPEG, GIF, WebP and BMP. SVG pictures are never shown, because an SVG file can carry script.
 
+### Loading pictures from the web
+
+When a message has pictures on the web, the first line of the message reads "Pictures from the web are not shown." followed by a **Load pictures** link. To see them:
+
+- Activate the **Load pictures** link, or
+- Press **Load Pictures** (`Ctrl+Shift+U`), or choose **View → Load Pictures**, or run it from the Command Palette.
+
+This works in the reading pane, message tabs and message windows. The message is shown again with its pictures, and focus stays in the message. QuickMail says "Loading pictures", or why there is nothing to load: no message is open, you are reading as plain text, the message has no pictures from the web, or they are already shown.
+
+Loading lasts while that message is open. The next message you open, or this one opened again later, starts with its web pictures left out again. To load them in every message, use the setting below.
+
+Even when you load pictures, a picture 2 pixels wide or high or smaller is never fetched. That size is used almost only for tracking pixels, and there is nothing to see.
+
+Loading a picture from the web tells its server that the message was opened, when, and your computer's internet (IP) address. That is unavoidable, and the reason they are not loaded unless you ask. QuickMail keeps what it tells the server to that:
+
+- QuickMail fetches each picture itself. The reading pane never contacts the web: it gets the picture from QuickMail, in the same way as a picture sent inside a message.
+- No cookies are sent or kept, and the server is not told which message or page the picture is in. Nothing lets the server connect one message you opened to another beyond your IP address.
+- Only public internet addresses are contacted. A picture pointing at your own computer or your local network, such as a router's settings page, is never requested, even if the server redirects to it. As a result, a picture on a company intranet does not load.
+- Whatever the server says a file is, QuickMail looks at the file itself and keeps it only if it really is a PNG, JPEG, GIF, WebP or BMP picture. A single picture over 10 MB is not shown, and at most 100 different pictures are loaded for one message.
+- Pictures you load are kept in memory while QuickMail runs, so going back to a message does not fetch them again. They are never saved to disk.
+
 ### Settings
 
 - **Display pictures sent inside messages** (**Settings → General**, on by default). Uncheck it to show only descriptions, as QuickMail did before. It applies to the reading pane, message tabs and message windows, and an open message is shown again at once when you change it.
+- **Load pictures from the web automatically** (**Settings → General**, off by default). Check it to load pictures from the web in every message, as if you had chosen Load Pictures each time, with the same protections. The note at the top of the message no longer appears. Leave it off if you would rather senders not learn when you open their mail.
 - **Read messages as plain text** also hides every picture, since it shows the message's plain text.
-
-Pictures on the web are not loaded in this version, whatever the settings. A way to load them for a message you trust is planned.
 
 ### Putting pictures in a message you write
 
@@ -1197,7 +1217,8 @@ A picture can go in the body of a message in Markdown or HTML mode, and every pi
 
 ### How pictures are kept safe
 
-- A picture on the web is never fetched, in the reading pane or in the compose window, so no message can tell its sender you opened it.
+- A picture on the web is never fetched unless you choose Load Pictures or turn on the setting that loads them. Even then the reading pane itself never contacts the web; QuickMail fetches the picture as described under "Loading pictures from the web". The compose window never fetches one.
+- The **Load pictures** link at the top of a message is QuickMail's own and works only in the copy of QuickMail that wrote it. A link a sender writes to look like it does nothing.
 - A picture sent inside a message is handed to the reading pane by QuickMail itself, from an address that never leaves your computer; the reading pane is allowed to load pictures from that address and nowhere else. The picture's own markup from the sender is discarded — QuickMail writes the picture into the page itself, keeping only its description and size.
 - Each message's pictures are served only while that message is shown, so one message can never show another's pictures.
 - Pictures that come with a reply or forward are brought across only if the original message actually shows them, and only in ordinary picture formats. A picture the sender merely named in the text is never fetched or sent on.
@@ -2241,6 +2262,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+Shift+Y` | Search folders |
 | `Ctrl+Shift+V` | View menu |
 | `Ctrl+Shift+H` | Toggle Plain Text View |
+| `Ctrl+Shift+U` | Load Pictures (from the web, for the open message) |
 | `Ctrl+Shift+G` | Grab Addresses from Message |
 | `Ctrl+Shift+B` | Address Book |
 | `Ctrl+Shift+L` | Rules Manager |

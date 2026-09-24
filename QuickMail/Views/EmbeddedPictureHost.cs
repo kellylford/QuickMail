@@ -10,7 +10,9 @@ using QuickMail.Services;
 namespace QuickMail.Views;
 
 /// <summary>
-/// Serves the pictures sent inside the message a WebView2 is showing (#729). The sanitized body
+/// Serves the pictures of the message a WebView2 is showing: those sent inside it (#729), and —
+/// when the user has asked for them — pictures from the web (#508), which it fetches itself through
+/// <see cref="WebPictureFetcher"/> so the WebView2 never contacts a web server. The sanitized body
 /// refers to each as <c>https://quickmail-images.invalid/&lt;key&gt;/&lt;Content-ID&gt;</c>; this
 /// answers those requests itself from the message's own parts, so nothing leaves the computer. A
 /// <c>.invalid</c> host never resolves, so a request this does not answer fails rather than
@@ -31,6 +33,8 @@ internal sealed class EmbeddedPictureHost
     private string? _key;
     private Func<Task<IReadOnlyDictionary<string, AttachmentModel>>>? _load;
     private Task<IReadOnlyDictionary<string, AttachmentModel>>? _pictures;
+    private string? _webKey;
+    private IReadOnlyList<string> _webPictures = [];
 
     private EmbeddedPictureHost(CoreWebView2Environment environment) => _environment = environment;
 
@@ -44,23 +48,48 @@ internal sealed class EmbeddedPictureHost
     }
 
     /// <summary>
-    /// The picture address for the next message rendered, with its pictures fetched by
-    /// <paramref name="load"/> on the first request; or null — and nothing served — when pictures
-    /// are off, the message is shown as plain text, or its HTML shows no picture of its own.
+    /// The picture addresses for the next message rendered. Embedded pictures are fetched by
+    /// <paramref name="load"/> on the first request, and served only when <paramref name="embedded"/>
+    /// is on and the HTML shows one; pictures from the web are served only when <paramref name="web"/>
+    /// is on, once <see cref="ServeWebPictures"/> has been told their addresses. A plain-text
+    /// rendering gets nothing, and no notice.
     /// </summary>
-    public string? BeginMessage(bool enabled, MailMessageDetail detail,
+    public Helpers.PictureSources BeginMessage(bool embedded, bool web, bool plainText, MailMessageDetail detail,
         Func<Task<IReadOnlyDictionary<string, AttachmentModel>>> load)
     {
         _pictures = null;
-        if (!enabled || !Helpers.InlineImages.HasReferences(detail.HtmlBody))
+        _webPictures = [];
+        if (plainText)
+        {
+            _key = _webKey = null;
+            _load = null;
+            return Helpers.PictureSources.None;
+        }
+        if (embedded && Helpers.InlineImages.HasReferences(detail.HtmlBody))
+        {
+            _key = Guid.NewGuid().ToString("N");
+            _load = load;
+        }
+        else
         {
             _key = null;
             _load = null;
-            return null;
         }
-        _key = Guid.NewGuid().ToString("N");
-        _load = load;
-        return $"{Origin}/{_key}/";
+        _webKey = web ? Guid.NewGuid().ToString("N") : null;
+        return new Helpers.PictureSources(
+            _key is null ? null : $"{Origin}/{_key}/",
+            _webKey is null ? null : $"{Origin}/{_webKey}/",
+            NoteBlockedWebPictures: !web);
+    }
+
+    /// <summary>
+    /// The web addresses the document built for <paramref name="sources"/> numbers its pictures
+    /// by. Ignored when another message has begun since.
+    /// </summary>
+    public void ServeWebPictures(Helpers.PictureSources sources, IReadOnlyList<string> addresses)
+    {
+        if (_webKey is not null && sources.WebBase == $"{Origin}/{_webKey}/")
+            _webPictures = addresses;
     }
 
     private async void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
@@ -73,6 +102,12 @@ internal sealed class EmbeddedPictureHost
                 return; // not ours: the filter should not have sent it
 
             var segments = uri.AbsolutePath.Trim('/').Split('/', 2);
+            if (segments.Length == 2 && _webKey is { } webKey && segments[0] == webKey)
+            {
+                deferral = e.GetDeferral();
+                await ServeWebPictureAsync(e, webKey, segments[1]);
+                return;
+            }
             var key = _key;
             if (segments.Length != 2 || key is null || segments[0] != key || _load is null)
             {
@@ -110,6 +145,28 @@ internal sealed class EmbeddedPictureHost
             try { deferral?.Complete(); } catch (Exception ex) { LogService.Debug($"EmbeddedPictureHost: {ex.Message}"); }
         }
     }
+
+    private async Task ServeWebPictureAsync(CoreWebView2WebResourceRequestedEventArgs e, string webKey, string number)
+    {
+        var addresses = _webPictures;
+        if (!int.TryParse(number, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var index)
+            || index >= addresses.Count)
+        {
+            e.Response = NotFound();
+            return;
+        }
+        var picture = await WebPictureFetcher.FetchAsync(addresses[index]);
+        // The message may have changed while the picture was fetched.
+        e.Response = picture is not null && webKey == _webKey
+            ? Picture(picture.Bytes, picture.ContentType)
+            : NotFound();
+    }
+
+    private CoreWebView2WebResourceResponse Picture(byte[] bytes, string contentType) =>
+        _environment.CreateWebResourceResponse(
+            new MemoryStream(bytes, writable: false), 200, "OK",
+            $"Content-Type: {contentType}\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-store");
 
     private CoreWebView2WebResourceResponse NotFound() =>
         _environment.CreateWebResourceResponse(null, 404, "Not Found", "Cache-Control: no-store");
