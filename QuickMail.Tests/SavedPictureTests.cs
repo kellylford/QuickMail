@@ -121,6 +121,48 @@ public class SavedPictureTests
     }
 
     [Fact]
+    public void ARepeatedPicture_IsEncodedOnce_AndThePageHasALimit()
+    {
+        var html = string.Concat(System.Linq.Enumerable.Repeat("<img src=\"cid:a@x\" alt=\"Dog\">", 5));
+        var picture = new SavedPicture(Png, "image/png");
+        var page = MessageExport.BuildHtmlDocument(new MailMessageDetail { Subject = "s", HtmlBody = html }, Context,
+            With(new() { ["a@x"] = picture }), maxPictureChars: PngData.Length * 3L);
+
+        // Three fit under the limit; the other two are their description.
+        Assert.Equal(3, CountOf(page, PngData));
+        Assert.Equal(2, CountOf(page, "Dog") - 3);
+    }
+
+    private static int CountOf(string text, string part)
+    {
+        var count = 0;
+        for (var i = text.IndexOf(part, StringComparison.Ordinal); i >= 0; i = text.IndexOf(part, i + part.Length, StringComparison.Ordinal))
+            count++;
+        return count;
+    }
+
+    [Fact]
+    public void APictureHiddenInAnEndTagsAttribute_CannotBreakOut()
+    {
+        // #728 review: an end tag kept its quoted attributes, whose ">" fooled the check that a
+        // picture sits in text, and the restored picture's quotes ended the attribute early.
+        var page = Page("<a href=\"x\">t</a foo=\"><img src=cid:a@x alt=Q> \">z",
+            With(new() { ["a@x"] = new SavedPicture(Png, "image/png") }));
+
+        Assert.DoesNotContain("foo=", page);
+        Assert.DoesNotContain("\">z", page);
+    }
+
+    [Fact]
+    public void AContentIdWrittenInAngleBrackets_IsTheSamePicture()
+    {
+        Assert.Equal(["a@x"], InlineImages.ReferencedContentIds("<img src=\"cid:&lt;a@x&gt;\">"));
+        var page = Page("<img src=\"cid:&lt;a@x&gt;\" alt=\"Dog\">",
+            With(new() { ["a@x"] = new SavedPicture(Png, "image/png") }));
+        Assert.Contains(PngData, page);
+    }
+
+    [Fact]
     public void ADescriptionCannotBecomeMarkup()
     {
         var page = Page("<img src=\"cid:gone@x\" alt=\"&lt;script&gt;alert(1)&lt;/script&gt;\">", With());

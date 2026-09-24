@@ -105,6 +105,10 @@ public static class MessageBodyHtmlBuilder
         return sb.Append('>').ToString();
     }
 
+    /// <summary>An end tag with anything after its name, read quote-aware as the tokenizer does.</summary>
+    private const string EndTagWithAttributes =
+        @"</([A-Za-z][^\s/>]*)(?:[\s/](?:[^>""']|""[^""]*""|'[^']*')*)>";
+
     private static readonly Regex AutoLinkUrl = new(
         @"\b((?:https?|mailto):[^\s<>""']+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled,
@@ -762,6 +766,10 @@ public static class MessageBodyHtmlBuilder
             // So every start tag is also re-read attribute by attribute, as the tokenizer reads it, and
             // rebuilt from the attributes that are allowed (#728 security review, third pass).
             body = StepEval(body, StartTagWithAttributes, RebuildStartTag);
+            // An end tag has no use for attributes, and a quoted one can hide a ">" that a plain
+            // "<"/">" scan takes for the end of the tag: "</a x=\"><img …>\">" then put a restored
+            // picture inside the tag, where its own quotes broke out of the attribute (#728 review).
+            body = Step(body, EndTagWithAttributes, RegexOptions.None, "</$1>");
             if (!complete || string.Equals(before, body, StringComparison.Ordinal)) break;
             // Still changing after the last round: markup nested to defeat the rounds. Fail closed —
             // the caller shows the message as plain text rather than trust what is left.

@@ -66,8 +66,10 @@ public static partial class InlineImages
                 var src = SrcAttribute().Match(tag.Value[4..]);
                 if (!src.Success) continue;
                 var value = System.Net.WebUtility.HtmlDecode(src.Groups["v"].Value).Trim();
-                if (value.StartsWith("cid:", StringComparison.OrdinalIgnoreCase) && value.Length > 4)
-                    ids.Add(value[4..]);
+                // "cid:<a@x>" names the same part as "cid:a@x", as the reading pane reads it.
+                if (value.StartsWith("cid:", StringComparison.OrdinalIgnoreCase)
+                    && value[4..].Trim('<', '>') is { Length: > 0 } id)
+                    ids.Add(id);
             }
         }
         return ids;

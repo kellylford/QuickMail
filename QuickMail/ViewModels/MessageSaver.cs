@@ -240,11 +240,10 @@ public sealed class MessageSaver
                 : $"Could not print: {ex.Message}");
         }
 
-        var pictures = await PicturesForAsync(detail);
-        var html = await Task.Run(() => MessageExport.BuildHtmlDocument(detail, _context(detail), pictures), ct);
         var title = string.IsNullOrWhiteSpace(detail.Subject) ? "Message" : detail.Subject.Trim();
         try
         {
+            var html = await HtmlDocumentAsync(detail, _context(detail), ct);
             return await ui.PrintAsync(html, title, ct)
                 ? new MessageSaveOutcome($"Sent {title} to the printer.")
                 : new MessageSaveOutcome(null);
@@ -368,13 +367,10 @@ public sealed class MessageSaver
         catch (Exception ex) { LogService.Log($"MessageSaver: could not remove a partial file: {ex.GetType().Name}"); }
     }
 
-    /// <summary>
-    /// The readable parts: the cached copy when there is one, else the server — without marking the
-    /// message read (the prefetch path), since saving a message is not reading it.
-    /// </summary>
+    /// <summary>The web-page form of a message, with the pictures it shows written in.</summary>
     private async Task<string> HtmlDocumentAsync(MailMessageDetail detail, MessageSaveContext context, CancellationToken ct)
     {
-        var pictures = await PicturesForAsync(detail);
+        var pictures = await PicturesForAsync(detail, ct);
         return await Task.Run(() => MessageExport.BuildHtmlDocument(detail, context, pictures), ct);
     }
 
@@ -387,20 +383,21 @@ public sealed class MessageSaver
     /// from the web only if QuickMail already loaded them. Nothing new is fetched from the web.
     /// A picture that cannot be had is simply left out; its description stands in.
     /// </summary>
-    private async Task<SavedPictures> PicturesForAsync(MailMessageDetail detail)
+    private async Task<SavedPictures> PicturesForAsync(MailMessageDetail detail, CancellationToken ct)
     {
         var embedded = NoPictures;
         if (_config.Load().ShowEmbeddedPictures && InlineImages.HasReferences(detail.HtmlBody))
         {
             try
             {
-                var found = await EmbeddedPictureLoader.LoadAsync(_mail, detail);
+                // The load is shared with the reading pane and is not cancelled; Cancel stops waiting.
+                var found = await EmbeddedPictureLoader.LoadAsync(_mail, detail).WaitAsync(ct);
                 embedded = found
                     .Where(p => p.Value.Content is { Length: > 0 })
                     .ToDictionary(p => p.Key, p => new SavedPicture(p.Value.Content!, p.Value.ContentType),
                         StringComparer.OrdinalIgnoreCase);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
             {
                 LogService.Log($"MessageSaver: the message's pictures could not be read: {ex.GetType().Name}");
             }
@@ -409,6 +406,10 @@ public sealed class MessageSaver
             WebPictureFetcher.TryGetCached(url) is { } picture ? new SavedPicture(picture.Bytes, picture.ContentType) : null);
     }
 
+    /// <summary>
+    /// The readable parts: the cached copy when there is one, else the server — without marking the
+    /// message read (the prefetch path), since saving a message is not reading it.
+    /// </summary>
     private async Task<MailMessageDetail> LoadDetailAsync(MailMessageSummary message, CancellationToken ct)
     {
         MailMessageDetail? detail = message as MailMessageDetail;

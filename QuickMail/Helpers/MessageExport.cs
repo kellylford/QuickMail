@@ -305,18 +305,34 @@ public static class MessageExport
     /// <para>Sender HTML that cannot be sanitized in time falls back to the plain-text body, with a
     /// note, rather than writing a partially stripped document (the reading pane's own rule).</para>
     /// </summary>
+    /// <summary>Most characters of picture data one saved page carries: about 60 MB of pictures.</summary>
+    internal const long MaxPicturePageChars = 80L * 1024 * 1024;
+
     public static string BuildHtmlDocument(MailMessageDetail detail, MessageSaveContext context,
-        SavedPictures? pictures = null)
+        SavedPictures? pictures = null, long maxPictureChars = MaxPicturePageChars)
     {
         var e = (Func<string?, string>)(s => WebUtility.HtmlEncode(s ?? string.Empty));
         var title = string.IsNullOrWhiteSpace(detail.Subject) ? "(no subject)" : detail.Subject.Trim();
 
+        // Each picture is encoded once, however often the message shows it, and the pictures
+        // written into one page stop at MaxPicturePageChars: a message repeating one large picture
+        // thousands of times would otherwise build a page too large to hold in memory (#728
+        // review). Past the limit a picture's description stands in, as for one not to hand.
         var wrotePicture = false;
+        long written = 0;
+        var encoded = new Dictionary<SavedPicture, string>(ReferenceEqualityComparer.Instance);
         string? DataUri(SavedPicture? picture)
         {
             if (picture is null || !EmbeddedPictureLoader.IsDisplayable(picture.ContentType)) return null;
+            if (!encoded.TryGetValue(picture, out var uri))
+            {
+                uri = $"data:{picture.ContentType.Split(';')[0].Trim().ToLowerInvariant()};base64,{Convert.ToBase64String(picture.Bytes)}";
+                encoded[picture] = uri;
+            }
+            if (written + uri.Length > maxPictureChars) return null;
+            written += uri.Length;
             wrotePicture = true;
-            return $"data:{picture.ContentType.Split(';')[0].Trim().ToLowerInvariant()};base64,{Convert.ToBase64String(picture.Bytes)}";
+            return uri;
         }
         string? fragment = null;
         var sanitized = !string.IsNullOrWhiteSpace(detail.HtmlBody)
