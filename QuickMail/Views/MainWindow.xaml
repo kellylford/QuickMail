@@ -461,7 +461,7 @@
                           InputGestureText="Ctrl+Shift+R"/>
                 <MenuItem Header="_Forward"
                           Command="{Binding ForwardCommand}"
-                          InputGestureText="Ctrl+F"/>
+                          InputGestureText="Ctrl+Shift+F"/>
                 <Separator/>
                 <MenuItem Header="_Delete"
                           Command="{Binding DeleteMessageCommand}"
@@ -754,7 +754,7 @@
                           Click="MenuFolderPicker_Click"/>
                 <MenuItem Header="_Search Folders…"
                           Click="MenuSearchFolders_Click"
-                          InputGestureText="Ctrl+Shift+F"/>
+                          InputGestureText="Ctrl+Shift+Y"/>
                 <MenuItem Header="_Advanced Search…"
                           Click="MenuAdvancedSearch_Click"
                           InputGestureText="Ctrl+/"/>
@@ -854,8 +854,8 @@
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ForwardCommand}"
                     AutomationProperties.Name="Forward"
-                    AutomationProperties.AcceleratorKey="Ctrl+F"
-                    ToolTip="Forward (Ctrl+F)"
+                    AutomationProperties.AcceleratorKey="Ctrl+Shift+F"
+                    ToolTip="Forward (Ctrl+Shift+F)"
                     Content="Forward"/>
             <Separator/>
             <Button Style="{DynamicResource ToolbarButton}"

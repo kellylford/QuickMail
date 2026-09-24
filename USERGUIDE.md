@@ -252,9 +252,9 @@ If you experience frequent connection errors, check your network, firewall, and 
 
 Press `Ctrl+2` or `Ctrl+Y` to move focus to the main folder tree (when no tabs are open). Use **Up/Down** to choose a folder, **Right/Left** to expand or collapse account and folder nodes, and **Enter** to open the selected folder.
 
-### Search folders (Ctrl+Shift+F)
+### Search folders (Ctrl+Shift+Y)
 
-Press `Ctrl+Shift+F` or activate **View > Search Folders...** to open the flat folder list. Focus starts on the folder list, so you can use **Up/Down** and **Enter** immediately. Press `/` to move to the search field, type to filter folders, and press **Enter** to open the selected folder.
+Press `Ctrl+Shift+Y` or activate **View > Search Folders...** to open the flat folder list. Focus starts on the folder list, so you can use **Up/Down** and **Enter** immediately. Press `/` to move to the search field, type to filter folders, and press **Enter** to open the selected folder.
 
 ### Load More (Ctrl+M)
 
@@ -346,7 +346,7 @@ All the mail actions you'd use from the main window are available directly in th
 |----------|--------|
 | `Ctrl+R` | Reply |
 | `Ctrl+Shift+R` | Reply All |
-| `Ctrl+F` | Forward |
+| `Ctrl+Shift+F` | Forward |
 | `Delete` | Delete (closes the window after deleting) |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+Shift+G` | Grab Addresses from Message |
@@ -1096,7 +1096,7 @@ With a message selected in the list or open in the reading pane:
 |--------|----------|
 | Reply | `Ctrl+R` |
 | Reply All | `Ctrl+Shift+R` |
-| Forward | `Ctrl+F` |
+| Forward | `Ctrl+Shift+F` |
 
 These are also available as buttons in the toolbar.
 
@@ -1330,7 +1330,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Ctrl+N | New message |
 | Ctrl+R | Reply |
 | Ctrl+Shift+R | Reply All |
-| Ctrl+F | Forward |
+| Ctrl+Shift+F | Forward |
 | Ctrl+Enter | Open selected message in a new window |
 | Delete | Delete selected message(s) |
 | K | Toggle flag on selected message or group |
@@ -1339,7 +1339,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Ctrl+Shift+T | Create Rule from Message |
 | Ctrl+Shift+V | Cycle view mode (Messages / From / To / Conversations) |
 | Ctrl+Shift+C | Toggle conversation view |
-| Ctrl+Shift+F | Search folders |
+| Ctrl+Shift+Y | Search folders |
 | Ctrl+Shift+P | Open command palette |
 | Ctrl+, | Open Settings |
 | Ctrl+M | Load more messages |

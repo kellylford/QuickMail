@@ -57,7 +57,7 @@
                 <MenuItem Header="_Forward"
                           AutomationProperties.Name="Forward"
                           Command="{Binding ForwardCommand}"
-                          InputGestureText="Ctrl+F"/>
+                          InputGestureText="Ctrl+Shift+F"/>
                 <Separator/>
                 <MenuItem Header="_Delete"
                           AutomationProperties.Name="Delete"
@@ -118,7 +118,7 @@
                 <Button Content="Forward"
                         Command="{Binding ForwardCommand}"
                         Padding="6,2"
-                        ToolTip="Forward (Ctrl+F)"
+                        ToolTip="Forward (Ctrl+Shift+F)"
                         AutomationProperties.Name="Forward"/>
                 <Separator/>
                 <Button Content="Delete"

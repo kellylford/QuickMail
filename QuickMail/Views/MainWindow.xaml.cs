@@ -988,7 +988,7 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "view.searchFolders", category: "View", title: "Search Folders…",
             execute: OpenFolderPicker,
-            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+            defaultKey: Key.Y, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
             id: "view.openViewMenu", category: "View", title: "Open View Menu",
@@ -2949,7 +2949,7 @@ public partial class MainWindow : Window
         picker.Show();
     }
 
-    // ── Calendar search (Ctrl+F while the calendar list has focus) ──
+    // ── Calendar search (Ctrl+Shift+S while the calendar is open) ──
 
     private System.Windows.Threading.DispatcherTimer? _calSearchAnnounceTimer;
 
@@ -3735,7 +3735,7 @@ public partial class MainWindow : Window
                 "window.addEventListener('keydown',function(e){"
                 +"if(e.key==='Escape'){window.chrome.webview.postMessage('escape');e.preventDefault();}"
                 +"else if(e.key==='F6'){window.chrome.webview.postMessage(e.shiftKey?'shift-f6':'f6');e.preventDefault();}"
-                +"else if(e.ctrlKey&&(e.key==='2'||e.key==='y'||e.key==='Y')){window.chrome.webview.postMessage('focus-folders');e.preventDefault();}"
+                +"else if(e.ctrlKey&&!e.shiftKey&&(e.key==='2'||e.key==='y'||e.key==='Y')){window.chrome.webview.postMessage('focus-folders');e.preventDefault();}"
                 +"else if(e.key==='Tab'&&e.shiftKey){window.chrome.webview.postMessage('shift-tab');e.preventDefault();}"
                 +"else if(e.altKey&&(e.key==='a'||e.key==='A')){window.chrome.webview.postMessage('focus-attachments');e.preventDefault();}"
                 // Not with Shift held: this branch runs before Ctrl+Shift+W's, and with Caps Lock on that key
