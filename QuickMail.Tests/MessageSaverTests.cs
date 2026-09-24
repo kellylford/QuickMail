@@ -514,4 +514,65 @@ public sealed class MessageSaverTests : IDisposable
         var outcome = await saver.PrintAsync(Summary(), new FakeUi { PrintAnswer = false }, TestContext.Current.CancellationToken);
         Assert.Null(outcome.Text);
     }
+
+    // ── Pictures (#728, #729) ────────────────────────────────────────────────
+
+    private static readonly byte[] Png =
+        [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, (byte)'I', (byte)'H', (byte)'D', (byte)'R'];
+
+    /// <summary>A stored message whose body shows one picture of its own, and the original it came from.</summary>
+    private (StubLocalStoreService Store, Func<string, byte[]> Original) MessageWithPicture()
+    {
+        const string html = "<p>Look <img src=\"cid:pic@x\" alt=\"Our dog\"></p>";
+        var builder = new MimeKit.BodyBuilder { HtmlBody = html };
+        var part = builder.LinkedResources.Add("dog.png", Png, new MimeKit.ContentType("image", "png"));
+        part.ContentId = "pic@x";
+        var message = new MimeKit.MimeMessage { Subject = "Dog", Body = builder.ToMessageBody() };
+        message.From.Add(new MimeKit.MailboxAddress("Jane", "jane@example.com"));
+        using var ms = new MemoryStream();
+        message.WriteTo(ms);
+        var bytes = ms.ToArray();
+        var store = new StubLocalStoreService
+        {
+            SeededDetail = new MailMessageDetail
+            {
+                MessageId = Guid.NewGuid().ToString("N"), AccountId = Guid.NewGuid(), FolderName = "INBOX",
+                Subject = "Dog", From = "Jane <jane@example.com>", HtmlBody = html,
+            },
+        };
+        return (store, _ => bytes);
+    }
+
+    [Fact]
+    public async Task Print_IncludesTheMessagesOwnPictures_AsDataInsideThePage()
+    {
+        var (store, original) = MessageWithPicture();
+        var (saver, mail, _) = NewSaver("eml", store);
+        mail.Original = original;
+        var ui = new FakeUi();
+
+        await saver.PrintAsync(Summary(store.SeededDetail!.MessageId), ui, TestContext.Current.CancellationToken);
+
+        Assert.Contains($"<img src=\"data:image/png;base64,{Convert.ToBase64String(Png)}\" alt=\"Our dog\">", ui.PrintedHtml);
+        Assert.Contains("img-src data:;", ui.PrintedHtml);
+        Assert.DoesNotContain("cid:", ui.PrintedHtml);
+    }
+
+    [Fact]
+    public async Task SavedWebPage_WithPicturesTurnedOff_KeepsOnlyTheDescription()
+    {
+        var (store, original) = MessageWithPicture();
+        var (saver, mail, config) = NewSaver("html", store);
+        mail.Original = original;
+        config.Load().ShowEmbeddedPictures = false;
+
+        var outcome = await saver.SaveAsync([Summary(store.SeededDetail!.MessageId)], chooseLocation: false, new FakeUi(),
+            ct: TestContext.Current.CancellationToken);
+
+        var saved = File.ReadAllText(Assert.Single(Directory.GetFiles(_dir, "*.html")));
+        Assert.DoesNotContain("<img", saved);
+        Assert.Contains("Our dog", saved);
+        Assert.Contains("img-src 'none'", saved);
+        Assert.NotNull(outcome.Text);
+    }
 }

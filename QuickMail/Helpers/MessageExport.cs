@@ -7,6 +7,7 @@ using System.Net;
 using System.Text;
 using MimeKit;
 using QuickMail.Models;
+using QuickMail.Services;
 
 namespace QuickMail.Helpers;
 
@@ -19,6 +20,16 @@ namespace QuickMail.Helpers;
 /// <param name="FlagName">The flag's name when the message is flagged, else null.</param>
 /// <param name="SavedAt">When the copy was made.</param>
 public sealed record MessageSaveContext(string AccountLabel, string FolderPath, string? FlagName, DateTimeOffset SavedAt);
+
+/// <summary>A picture a saved message carries inside its own file: its bytes, and the picture type they are.</summary>
+public sealed record SavedPicture(byte[] Bytes, string ContentType);
+
+/// <summary>
+/// The pictures a saved web page, PDF or printout may show: the message's own, by Content-ID, and
+/// pictures from the web that QuickMail already holds, by address. Saving never fetches anything
+/// from the web; <see cref="Web"/> answers only from what was already loaded.
+/// </summary>
+public sealed record SavedPictures(IReadOnlyDictionary<string, SavedPicture> Embedded, Func<string, SavedPicture?> Web);
 
 /// <summary>
 /// Pure builders for a saved message: its file name, and its text and web-page forms (#728). No I/O,
@@ -288,20 +299,40 @@ public static class MessageExport
     /// The web-page form: one self-contained file, the details as a table, then the body as the
     /// reading pane renders it. The sender's HTML goes through the reading pane's own sanitizer, and
     /// the page carries the reading pane's strict Content-Security-Policy, so opening it in a browser
-    /// runs nothing and fetches nothing. Images are left out, as they are in the reading pane — their
-    /// alt text stands in for them.
+    /// runs nothing and fetches nothing. Pictures in <paramref name="pictures"/> are written into the
+    /// file itself, as data, so the page stays one self-contained file that contacts nothing; any
+    /// other picture is left out and its alt text stands in for it.
     /// <para>Sender HTML that cannot be sanitized in time falls back to the plain-text body, with a
     /// note, rather than writing a partially stripped document (the reading pane's own rule).</para>
     /// </summary>
-    public static string BuildHtmlDocument(MailMessageDetail detail, MessageSaveContext context)
+    public static string BuildHtmlDocument(MailMessageDetail detail, MessageSaveContext context,
+        SavedPictures? pictures = null)
     {
         var e = (Func<string?, string>)(s => WebUtility.HtmlEncode(s ?? string.Empty));
         var title = string.IsNullOrWhiteSpace(detail.Subject) ? "(no subject)" : detail.Subject.Trim();
 
+        var wrotePicture = false;
+        string? DataUri(SavedPicture? picture)
+        {
+            if (picture is null || !EmbeddedPictureLoader.IsDisplayable(picture.ContentType)) return null;
+            wrotePicture = true;
+            return $"data:{picture.ContentType.Split(';')[0].Trim().ToLowerInvariant()};base64,{Convert.ToBase64String(picture.Bytes)}";
+        }
+        string? fragment = null;
+        var sanitized = !string.IsNullOrWhiteSpace(detail.HtmlBody)
+            && MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(detail.HtmlBody,
+                pictures is { Embedded.Count: > 0 } ? cid => DataUri(pictures.Embedded.GetValueOrDefault(cid)) : null,
+                pictures is null ? null : url => DataUri(pictures.Web(url)),
+                out fragment);
+        // Pictures written into the page are allowed as data and nothing else: still nothing is fetched.
+        var csp = wrotePicture
+            ? MessageBodyHtmlBuilder.StrictCspContent.Replace("img-src 'none';", "img-src data:;", StringComparison.Ordinal)
+            : MessageBodyHtmlBuilder.StrictCspContent;
+
         var sb = new StringBuilder();
         sb.Append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">");
         sb.Append("<meta http-equiv=\"Content-Security-Policy\" content=\"")
-          .Append(MessageBodyHtmlBuilder.StrictCspContent).Append("\">");
+          .Append(csp).Append("\">");
         sb.Append("<meta name=\"referrer\" content=\"no-referrer\">");
         sb.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
         sb.Append("<title>").Append(e(title)).Append("</title>");
@@ -319,6 +350,7 @@ public static class MessageExport
           // absolutely and fixed-positioned content, so the details above cannot be covered.
           .Append("main{contain:paint;position:relative;}")
           .Append("main table{max-width:100%;border-collapse:collapse;}main td,main th{vertical-align:top;}")
+          .Append("main img{max-width:100%;height:auto;}")
           .Append("a{color:#0645ad;}")
           .Append("@media print{body{max-width:none;padding:0;}}")
           .Append("</style></head><body>");
@@ -334,8 +366,7 @@ public static class MessageExport
         }
         sb.Append("</tbody></table></header><hr><main>");
 
-        if (!string.IsNullOrWhiteSpace(detail.HtmlBody)
-            && MessageBodyHtmlBuilder.TryBuildSanitizedBodyFragment(detail.HtmlBody, out var fragment))
+        if (sanitized)
         {
             sb.Append(fragment);
         }

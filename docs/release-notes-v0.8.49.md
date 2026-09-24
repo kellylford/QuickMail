@@ -78,6 +78,13 @@ your computer or local network. It keeps a file only if it really is a picture, 
 sized like tracking pixels. See [Pictures](https://kellylford.github.io/QuickMail/pictures.html) in the User
 Guide.
 
+### Saved and printed messages keep their pictures
+
+Saving a message as a web page or PDF, or printing it, now shows the same pictures as the reading
+pane. Pictures included in the message are written into the file itself, so a saved web page still
+opens anywhere without contacting anything. Pictures from the web are included only if you already
+loaded them; saving and printing never fetch one.
+
 ## Fixed
 
 ### Forwarding a message with pictures sent broken pictures
