@@ -58,9 +58,25 @@ Showing it contacts no one but your own mail server, because it is part of the m
 the sender cannot tell you looked. Screen readers read it by its description, and pictures with no
 description or marked decorative are passed over, as before.
 
-Pictures a message links to on the web are still not loaded, because fetching them tells the sender
-you opened the message. To show descriptions only, as before, uncheck **Display pictures sent inside
-messages** in **Settings → General**.
+To show descriptions only, as before, uncheck **Show pictures included in messages** in
+**Settings → General**.
+
+### Load pictures from the web when you choose to
+
+Pictures a message links to on the web are still not loaded on their own, because fetching them
+tells the sender you opened the message. Now, when a message has them, its first line says
+"Pictures from the web are not shown." with a **Load pictures** link. Activate the link, press
+**Ctrl+Shift+U**, or choose **View → Load Pictures** to show that message's pictures. This works in
+the reading pane, message tabs and message windows, and lasts while the message is open.
+
+To load them in every message, check **Load pictures from the web automatically** in **Settings →
+General**. It is off by default.
+
+QuickMail fetches these pictures itself rather than letting the message do it. It sends no cookies
+and does not say which message a picture is in. It contacts only public internet addresses, never
+your computer or local network. It keeps a file only if it really is a picture, and skips pictures
+sized like tracking pixels. See [Pictures](https://kellylford.github.io/QuickMail/pictures.html) in the User
+Guide.
 
 ## Fixed
 

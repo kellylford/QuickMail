@@ -316,7 +316,7 @@ public class EmbeddedPictureTests
         var wanted = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "a@x" };
 
         var pictures = await InlineImages.FetchAsync(mail, Guid.NewGuid(), "Inbox", "1", wanted,
-            TestContext.Current.CancellationToken, maxBytes: 1024 * 1024);
+            maxBytes: 1024 * 1024, ct: TestContext.Current.CancellationToken);
 
         Assert.Empty(pictures);
     }

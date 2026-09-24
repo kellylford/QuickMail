@@ -147,13 +147,22 @@
   <li><strong>Contact sync and calendar sync are opt-in per account.</strong> If you do not turn them on, QuickMail does not request permission for them and does not read them.</li>
 </ul>
 <p>
-  <strong>Remote content in messages is blocked.</strong> The reading pane renders HTML mail under a strict
+  <strong>Remote content in messages is blocked by default.</strong> The reading pane renders HTML mail under a strict
   Content Security Policy that permits no remote images, scripts, frames, forms, media, or network
-  connections of any kind. A message cannot load a tracking pixel, phone home, or report that you opened it.
+  connections of any kind. On its own, a message cannot load a tracking pixel, phone home, or report that you opened it.
   Pictures sent <em>inside</em> a message are shown: QuickMail reads them from the message's own parts and
   hands them to the reading pane itself, from an address that never leaves your computer. The only server
-  involved is your own mail provider, from which the message was read; the sender is never contacted. A setting turns this off. Links you activate deliberately open in your default browser,
-  which is the only way remote content is ever fetched on behalf of a message.
+  involved is your own mail provider, from which the message was read; the sender is never contacted. A setting turns this off.
+</p>
+<p>
+  <strong>Pictures on the web, only when you ask.</strong> A message can link to pictures on another server.
+  QuickMail does not fetch them unless you choose <strong>Load Pictures</strong> for that message, or turn on
+  <strong>Load pictures from the web automatically</strong> in Settings (off by default). When it does,
+  QuickMail itself requests each picture from the server the message names, and that server learns your IP
+  address, the time, and the picture's address — which may identify the message. QuickMail sends no cookies
+  and no referrer, keeps no cookies it is given, contacts public internet addresses only, keeps the file only
+  if it is a picture, never fetches pictures declared 2 pixels or smaller (the usual size of a tracking pixel), and keeps what it fetched in memory only while
+  it runs. The reading pane still contacts nothing itself. Links you activate deliberately open in your default browser.
 </p>
 
 <h2>Google user data — specific disclosures</h2>
@@ -322,6 +331,11 @@
       <td>QuickMail's bug-report relay (a Cloudflare Worker)</td>
       <td><strong>Only</strong> when you choose <strong>Send</strong> in Report a Bug</td>
       <td>The report you wrote and previewed — see <a href="#bug-reports">Bug reports</a></td>
+    </tr>
+    <tr>
+      <td>The servers a message's pictures are on</td>
+      <td><strong>Only</strong> when you choose <strong>Load Pictures</strong> for a message, or have turned on <strong>Load pictures from the web automatically</strong> (off by default)</td>
+      <td>A plain request for each picture's address, from your IP address, with no cookies and no referrer. Only public internet addresses are contacted.</td>
     </tr>
     <tr>
       <td>Your default browser</td>

@@ -105,7 +105,7 @@ public partial class ComposeWindow
     }
 
     /// <summary>The Content-IDs of the pictures in the editor now, for the view model's reply/forward fetch.</summary>
-    private IReadOnlySet<string> EditorPictureIds() =>
+    private HashSet<string> EditorPictureIds() =>
         EditorPictures()
             .Select(c => ((ComposeImage)c.Tag).ContentId)
             .OfType<string>()

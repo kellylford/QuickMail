@@ -121,7 +121,7 @@ public static partial class InlineImages
     /// </param>
     public static async Task<List<AttachmentModel>> FetchAsync(
         IMailService mail, Guid accountId, string folderName, string messageId,
-        IReadOnlySet<string> wanted, CancellationToken ct = default, long maxBytes = 50L * 1024 * 1024)
+        IReadOnlySet<string> wanted, long maxBytes = 50L * 1024 * 1024, CancellationToken ct = default)
     {
         if (wanted.Count == 0) return [];
         try

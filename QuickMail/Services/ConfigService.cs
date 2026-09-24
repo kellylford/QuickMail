@@ -202,6 +202,9 @@ public class ConfigService : IConfigService
                     case "showembeddedpictures":
                         config.ShowEmbeddedPictures = ParseBool(value);
                         break;
+                    case "loadwebpictures":
+                        config.LoadWebPictures = ParseBool(value);
+                        break;
                     case "viewmode":
                         config.ViewMode = value.ToLowerInvariant() switch
                         {
@@ -424,7 +427,13 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"ShowEmbeddedPictures = {(config.ShowEmbeddedPictures ? "on" : "off")}");
         sb.AppendLine("# Show pictures sent inside a message. They contact no server. Pictures a message");
-        sb.AppendLine("# links to on the web are not affected and stay blocked. Values: on, off.");
+        sb.AppendLine("# links to on the web are not affected; see LoadWebPictures. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"LoadWebPictures = {(config.LoadWebPictures ? "on" : "off")}");
+        sb.AppendLine("# Load pictures from the web in every message. Off: they load only when you ask,");
+        sb.AppendLine("# with Load Pictures. Loading one tells its server you opened the message.");
+        sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"ViewMode = {config.ViewMode}");
