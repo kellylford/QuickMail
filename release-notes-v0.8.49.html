@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.49 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.48.html">Older: 0.8.48</a></div>
+  <h1 id="quickmail-v0.8.49-release-notes">QuickMail v0.8.49 Release
+Notes</h1>
+<p class="version">Released September 24, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.49">downloads for this release</a></p>
+<h2 id="changed">Changed</h2>
+<h3 id="forward-is-now-ctrlshiftf">Forward is now Ctrl+Shift+F</h3>
+<p>Forward has moved from <strong>Ctrl+F</strong> to
+<strong>Ctrl+Shift+F</strong>, in the main window, the reading pane, and
+a message opened in its own window. A message body is web content, and
+some screen readers use <strong>Ctrl+F</strong> there for their own find
+command, so pressing it while reading a message never reached QuickMail.
+<strong>Ctrl+Shift+F</strong> works wherever you are.</p>
+<p>To make room, <strong>Search Folders</strong> has moved from
+<strong>Ctrl+Shift+F</strong> to <strong>Ctrl+Shift+Y</strong>, next to
+<strong>Ctrl+Y</strong>, which moves to the folder tree.</p>
+<p>If you would rather keep the old keys, give either command the key
+you want in <strong>File → Settings → Keyboard Shortcuts</strong>. Keys
+you have already customized are not changed.</p>
+<h3 id="ctrlk-inserts-a-link-in-the-message-body">Ctrl+K inserts a link
+in the message body</h3>
+<p>In the compose window, <strong>Ctrl+K</strong> now inserts a link
+when you are in the message body, as it does in Outlook. Anywhere else
+in the compose window, such as the To, Cc and Bcc fields, it still
+checks addresses. <strong>Ctrl+L</strong> still inserts a link too.
+Insert Link has moved from the Format menu to the new
+<strong>Insert</strong> menu.</p>
+<h2 id="added">Added</h2>
+<h3 id="pictures-in-messages-each-with-a-description">Pictures in
+messages, each with a description</h3>
+<p>You can now put pictures in the body of a message in Markdown or HTML
+mode. Every picture has to have a description (alternative text) or be
+marked decorative before it goes in, so the people you write to always
+get one or the other.</p>
+<ul>
+<li><strong>Insert → Image</strong> (<strong>Ctrl+Shift+I</strong>) lets
+you choose picture files and opens the <strong>Image
+Description</strong> window for each. <strong>OK</strong> is not
+available until you type a description or check <strong>Decorative
+image</strong>.</li>
+<li>Pasting a picture, or dropping picture files on the message body,
+opens the same window.</li>
+<li><strong>Image Properties</strong> (<strong>Alt+Enter</strong> on a
+picture) changes a picture’s description, marks it decorative, or
+removes it.</li>
+<li>In HTML mode a picture is part of the text. Arrow onto it to hear
+its description; Shift+Arrow selects it.</li>
+<li>A photo wider than 1600 pixels is offered a shrink as it goes in,
+and QuickMail warns once if a message grows past 10 MB.</li>
+<li>Pictures stay with the message through drafts, the Outbox and
+reopening, and a forward or HTML reply brings the original message’s
+pictures along.</li>
+<li>In Plain Text mode, Insert Image offers to attach the picture as a
+file instead.</li>
+<li>The information a phone or camera stores inside a photo, including
+where it was taken, is removed as the photo goes in.</li>
+</ul>
+<p>The User Guide has a new <a
+href="https://kellylford.github.io/QuickMail/pictures.html">Pictures</a>
+page covering putting pictures in, sending them, what QuickMail shows
+when you read mail, and how pictures are kept safe.</p>
+<h3 id="pictures-sent-inside-a-message-are-now-shown">Pictures sent
+inside a message are now shown</h3>
+<p>A picture that travels with a message — a photo in the body, a logo
+in a signature, or a picture you put in with QuickMail — now shows in
+the reading pane, in message tabs and in message windows. Showing it
+contacts no one but your own mail server, because it is part of the
+message itself, so the sender cannot tell you looked. Screen readers
+read it by its description, and pictures with no description or marked
+decorative are passed over, as before.</p>
+<p>To show descriptions only, as before, uncheck <strong>Show pictures
+included in messages</strong> in <strong>Settings →
+General</strong>.</p>
+<h3 id="load-pictures-from-the-web-when-you-choose-to">Load pictures
+from the web when you choose to</h3>
+<p>Pictures a message links to on the web are still not loaded on their
+own, because fetching them tells the sender you opened the message. Now,
+when a message has them, its first line says “Pictures from the web are
+not shown.” with a <strong>Load pictures</strong> link. Activate the
+link, press <strong>Ctrl+Shift+U</strong>, or choose <strong>View → Load
+Pictures</strong> to show that message’s pictures. This works in the
+reading pane, message tabs and message windows, and lasts while the
+message is open.</p>
+<p>To load them in every message, check <strong>Load pictures from the
+web automatically</strong> in <strong>Settings → General</strong>. It is
+off by default.</p>
+<p>QuickMail fetches these pictures itself rather than letting the
+message do it. It sends no cookies and does not say which message a
+picture is in. It contacts only public internet addresses, never your
+computer or local network. It keeps a file only if it really is a
+picture, and skips pictures sized like tracking pixels. See <a
+href="https://kellylford.github.io/QuickMail/pictures.html">Pictures</a>
+in the User Guide.</p>
+<h3 id="saved-and-printed-messages-keep-their-pictures">Saved and
+printed messages keep their pictures</h3>
+<p>Saving a message as a web page or PDF, or printing it, now shows the
+same pictures as the reading pane. Pictures included in the message are
+written into the file itself, so a saved web page still opens anywhere
+without contacting anything. Pictures from the web are included only if
+you already loaded them; saving and printing never fetch one.</p>
+<h2 id="fixed">Fixed</h2>
+<h3
+id="forwarding-a-message-with-pictures-sent-broken-pictures">Forwarding
+a message with pictures sent broken pictures</h3>
+<p>A forwarded HTML message kept its pictures’ references but not the
+pictures themselves, so the people you forwarded to saw broken images.
+The pictures now travel with the forward.</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.48.html">Older: 0.8.48</a></div>
+</body>
+</html>

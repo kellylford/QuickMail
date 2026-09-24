@@ -25,7 +25,7 @@
 
 </head>
 <body>
-  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="reading-mail.html">Previous: Reading Mail</a> | <a href="address-book.html">Next: Address Book</a></div>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="reading-mail.html">Previous: Reading Mail</a> | <a href="pictures.html">Next: Pictures</a></div>
   <h1 id="composing-mail">Composing Mail</h1>
 <h3 id="opening-a-compose-window">Opening a Compose Window</h3>
 <table>
@@ -49,7 +49,7 @@
 <td>Reply All</td>
 </tr>
 <tr class="even">
-<td><code>Ctrl+F</code></td>
+<td><code>Ctrl+Shift+F</code></td>
 <td>Forward</td>
 </tr>
 </tbody>
@@ -180,7 +180,15 @@ HTML Modes)</h3>
 </tr>
 <tr class="even">
 <td>Insert link</td>
-<td><code>Ctrl+L</code></td>
+<td><code>Ctrl+K</code> in the message body, or <code>Ctrl+L</code></td>
+</tr>
+<tr class="odd">
+<td>Insert image</td>
+<td><code>Ctrl+Shift+I</code></td>
+</tr>
+<tr class="even">
+<td>Image properties</td>
+<td><code>Alt+Enter</code> on a picture</td>
 </tr>
 <tr class="odd">
 <td>Clear formatting</td>
@@ -237,6 +245,12 @@ quoted as a real quote with its own formatting — headings, lists, links
 and any earlier quotes — instead of lines that begin with
 <code>&gt;</code>. The plain text part of the message still marks quoted
 lines with <code>&gt;</code>.</p>
+<h3 id="pictures-in-a-message">Pictures in a Message</h3>
+<p>A picture can go in the body of a message in Markdown or HTML mode
+(<code>Ctrl+Shift+I</code>, paste, or drop), and every picture has to
+have a description or be marked decorative before it goes in. See <a
+href="#pictures">Pictures</a> for everything about putting pictures in,
+sending them, and how they are kept safe.</p>
 <h3 id="checking-formatting-html-mode">Checking Formatting (HTML
 Mode)</h3>
 <ul>
@@ -410,12 +424,14 @@ composing.</li>
 name and today’s date and time when the template is inserted. Templates
 are plain text; in HTML mode, only the text is inserted.</p>
 <h3 id="checking-addresses">Checking Addresses</h3>
-<p>Press <code>Ctrl+K</code> to check every address in the To, Cc, and
-Bcc fields. QuickMail looks up any bare name against your address book —
-if exactly one contact matches, it fills in that contact’s address
-automatically. Addresses that are not valid and cannot be resolved are
-flagged as invalid. A screen reader announces how many addresses were
-resolved and how many are invalid.</p>
+<p>Press <code>Ctrl+K</code> in the To, Cc, or Bcc field (anywhere
+outside the message body, where <code>Ctrl+K</code> inserts a link, as
+in Outlook) to check every address in those fields. QuickMail looks up
+any bare name against your address book — if exactly one contact
+matches, it fills in that contact’s address automatically. Addresses
+that are not valid and cannot be resolved are flagged as invalid. A
+screen reader announces how many addresses were resolved and how many
+are invalid.</p>
 <h3 id="sending">Sending</h3>
 <table>
 <thead>
@@ -519,6 +535,6 @@ to toggle individual ones. Press Tab to reach Forward (include checked
 files) or Cancel.</p>
 <hr />
 
-  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="reading-mail.html">Previous: Reading Mail</a> | <a href="address-book.html">Next: Address Book</a></div>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="reading-mail.html">Previous: Reading Mail</a> | <a href="pictures.html">Next: Pictures</a></div>
 </body>
 </html>

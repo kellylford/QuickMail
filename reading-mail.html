@@ -63,13 +63,11 @@ the top of the message. The menu is offered for ordinary web and email
 links; it does not appear on the <strong>Accept</strong> /
 <strong>Tentative</strong> / <strong>Decline</strong> buttons of a
 meeting invitation, which are internal to QuickMail.</p>
-<p>Images from remote sources are not loaded — fetching them tells the
-sender your address is live, which is what a tracking pixel in a
-newsletter is for. Where the sender wrote a description for a picture,
-QuickMail shows that description in its place, so a picture that is also
-a link reads by what it is (“Facebook link”) rather than by its web
-address. A picture the sender marked as decorative contributes nothing,
-which is what marking it that way asks for.</p>
+<p><strong>Pictures.</strong> Pictures sent inside a message are shown;
+pictures a message links to on the web are not loaded, and their
+descriptions are shown instead, so no message can tell its sender you
+opened it. See <a href="#pictures">Pictures</a> for what is shown and
+when, the setting that controls it, and how pictures are kept safe.</p>
 <p>Press <strong>F6</strong> or <strong>Shift+F6</strong> to move
 between the reading pane and other panes.</p>
 <h3 id="plain-text-view">Plain Text View</h3>
@@ -140,7 +138,7 @@ work the same as in the main window:</p>
 <td>Reply All</td>
 </tr>
 <tr class="odd">
-<td><code>Ctrl+F</code></td>
+<td><code>Ctrl+Shift+F</code></td>
 <td>Forward</td>
 </tr>
 <tr class="even">
@@ -287,10 +285,17 @@ it is different, recipients, date, the account and folder the message is
 in, whether it has been read, flagged, replied to or forwarded, and its
 attachments by name and size. Meeting invitations also list the meeting,
 its time and place, and the organizer.</p>
-<p><strong>Pictures.</strong> A saved web page or PDF leaves pictures
-out, as the reading pane does, and shows each picture’s description in
-its place. Nothing in a saved web page runs or loads from the internet
-when you open it.</p>
+<p><strong>Pictures.</strong> A saved web page, a PDF and a printout
+show the same pictures the reading pane does. Pictures included in the
+message are written into the file itself, unless <strong>Show pictures
+included in messages</strong> is off. Pictures from the web are included
+only if QuickMail already loaded them this session, with <strong>Load
+Pictures</strong> or the setting; saving never fetches one. Any picture
+left out shows its description in its place. Nothing in a saved web page
+runs or loads from the internet when you open it: its pictures are part
+of the file. The Original format keeps the message exactly as it was
+sent, pictures and all, and Text keeps descriptions only. See <a
+href="#pictures">Pictures</a>.</p>
 <p><strong>Where Save puts files.</strong> Save uses the format and
 folder set in <strong>Settings → General → Saving Messages</strong>. The
 default is <strong>Email message</strong> in your
