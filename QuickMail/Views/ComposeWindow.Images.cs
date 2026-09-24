@@ -412,7 +412,7 @@ public partial class ComposeWindow
             await QueueImageFilesAsync(pictures);
     }
 
-    private async Task AttachFilesAsync(IReadOnlyList<string> files)
+    private async Task AttachFilesAsync(List<string> files)
     {
         if (files.Count == 0) return;
         int before = _vm.Attachments.Count;

@@ -169,7 +169,7 @@ public static class ImageProcessing
         }
     }
 
-    private static BitmapSource Decode(byte[] bytes)
+    private static BitmapFrame Decode(byte[] bytes)
     {
         using var stream = new MemoryStream(bytes);
         var frame = BitmapDecoder.Create(stream, BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.OnLoad).Frames[0];

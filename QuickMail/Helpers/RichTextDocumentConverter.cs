@@ -91,7 +91,7 @@ public static class RichTextDocumentConverter
     /// <summary>A plain grey frame with a mountain shape, drawn for a picture whose bytes are not here.</summary>
     public static ImageSource PlaceholderImage => _placeholder ??= MakePlaceholder();
 
-    private static ImageSource MakePlaceholder()
+    private static DrawingImage MakePlaceholder()
     {
         var group = new DrawingGroup();
         using (var dc = group.Open())
