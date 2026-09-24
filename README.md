@@ -1,10 +1,10 @@
 # QuickMail
 
-A keyboard-first WPF desktop email client for Windows. Multi-account IMAP/SMTP with a unified inbox, conversation threading, and an HTML reading pane.
+A screen reader friendly, keyboard-first email program for Windows. It works with Gmail, Outlook.com, Microsoft 365, iCloud, and any IMAP or POP3 account, and includes a unified inbox, conversation threading, a calendar, and an address book.
 
 ## Features
 
-- **Multi-account** — connect any number of IMAP/SMTP accounts simultaneously
+- **Multi-account** — connect any number of Gmail, Outlook.com, Microsoft 365, iCloud, IMAP, or POP3 accounts at once
 - **Unified inbox** — all mail from all accounts in one sorted view
 - **Conversation view** — threads grouped by subject with collapsible tree
 - **Pooled IMAP connections** — background sync, previews, attachment downloads, and message opening can run without reusing a busy IMAP connection
