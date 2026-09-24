@@ -8696,7 +8696,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // read the ones the draft still refers to out of the stored message.
             model.InlineImages = await Helpers.InlineImages.FetchAsync(
                 _imap, summary.AccountId, summary.FolderName, summary.MessageId,
-                DraftPictureIds(detail), ct);
+                DraftPictureIds(detail), ct: ct);
 
             StatusText = string.Empty;
             ComposeRequested?.Invoke(model);

@@ -129,7 +129,7 @@ public static class EmbeddedPictureLoader
                 if (detail.Attachments.Sum(a => a.FileSize) > MaxOriginalBytesForPictures)
                     return None;
                 pictures = (await InlineImages.FetchAsync(mail, detail.AccountId, detail.FolderName, detail.MessageId,
-                        wanted, ct, MaxOriginalDownload))
+                        wanted, MaxOriginalDownload, ct))
                     .Where(p => IsDisplayable(p.ContentType))
                     .Take(MaxPictures)
                     .ToList();

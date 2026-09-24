@@ -1062,7 +1062,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         try
         {
             fetched = await Helpers.InlineImages.FetchAsync(
-                _imap, source.AccountId, source.FolderName, source.MessageId, wanted, _sourceImagesCts.Token);
+                _imap, source.AccountId, source.FolderName, source.MessageId, wanted, ct: _sourceImagesCts.Token);
         }
         catch (OperationCanceledException) { return; }
         catch (ObjectDisposedException) { return; }

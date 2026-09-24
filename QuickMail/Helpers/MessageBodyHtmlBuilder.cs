@@ -759,7 +759,7 @@ public static class MessageBodyHtmlBuilder
     /// security review). After this no tag in the body is left open, which is what lets
     /// <see cref="IsInsideTag"/> trust a plain "&lt;"/"&gt;" scan.
     /// </summary>
-    private static bool ClosedTagAt(string body, int index) => ClosedTag.Match(body, index).Success;
+    private static bool ClosedTagAt(string body, int index) => ClosedTag.IsMatch(body, index);
 
     /// <summary>
     /// The text that stands in for an image: its alt text and nothing else, so a link whose content
