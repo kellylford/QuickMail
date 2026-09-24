@@ -71,11 +71,34 @@ public static class MimeMessageBuilder
             var plainText = string.IsNullOrWhiteSpace(compose.Body)
                 ? HtmlStripper.ToPlainText(compose.HtmlBody)
                 : compose.Body;
+            // Pictures in the body travel with the HTML in multipart/related, marked inline,
+            // so the HTML's cid: references resolve and they are not listed as attachments.
+            // Only pictures the HTML still refers to are sent: one the user deleted from the
+            // body is gone from the message too.
+            MimeEntity htmlEntity = new TextPart("html") { Text = compose.HtmlBody };
+            var inline = compose.InlineImages
+                .Where(i => i.IsLoaded && !string.IsNullOrEmpty(i.ContentId)
+                            && compose.HtmlBody.Contains("cid:" + i.ContentId, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(i => i.ContentId, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+            if (inline.Count > 0)
+            {
+                var related = new MultipartRelated { Root = htmlEntity };
+                foreach (var image in inline)
+                {
+                    var part = MimePartFor(image, ContentDisposition.Inline);
+                    part.ContentId = image.ContentId;
+                    related.Add(part);
+                }
+                htmlEntity = related;
+            }
+
             var alternative = new MultipartAlternative
             {
                 // Least-faithful first per RFC 2046 — clients pick the last part they support.
                 new TextPart("plain") { Text = plainText },
-                new TextPart("html")  { Text = compose.HtmlBody },
+                htmlEntity,
             };
             bodyEntity = alternative;
         }
@@ -90,19 +113,7 @@ public static class MimeMessageBuilder
             var multipart = new Multipart("mixed");
             multipart.Add(bodyEntity);
             foreach (var att in loadedAttachments)
-            {
-                var slash = att.ContentType.IndexOf('/');
-                var mediaType    = slash >= 0 ? att.ContentType[..slash] : "application";
-                var mediaSubtype = slash >= 0 ? att.ContentType[(slash + 1)..] : "octet-stream";
-                var mimePart = new MimePart(mediaType, mediaSubtype)
-                {
-                    Content                 = new MimeContent(new MemoryStream(att.Content!)),
-                    ContentDisposition      = new ContentDisposition(ContentDisposition.Attachment),
-                    ContentTransferEncoding = ContentEncoding.Base64,
-                    FileName                = att.FileName,
-                };
-                multipart.Add(mimePart);
-            }
+                multipart.Add(MimePartFor(att, ContentDisposition.Attachment));
             message.Body = multipart;
         }
         else
@@ -111,6 +122,20 @@ public static class MimeMessageBuilder
         }
 
         return message;
+    }
+
+    private static MimePart MimePartFor(AttachmentModel att, string disposition)
+    {
+        var slash = att.ContentType.IndexOf('/');
+        var mediaType    = slash >= 0 ? att.ContentType[..slash] : "application";
+        var mediaSubtype = slash >= 0 ? att.ContentType[(slash + 1)..] : "octet-stream";
+        return new MimePart(mediaType, mediaSubtype)
+        {
+            Content                 = new MimeContent(new MemoryStream(att.Content!)),
+            ContentDisposition      = new ContentDisposition(disposition),
+            ContentTransferEncoding = ContentEncoding.Base64,
+            FileName                = att.FileName,
+        };
     }
 
     /// <summary>

@@ -208,6 +208,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             _isDirty = true;
             OnPropertyChanged(nameof(AttachmentSummaryText));
+            WarnIfMessageIsLarge();
         };
     }
 
@@ -224,6 +225,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         _draftMessageId     = model.DraftMessageId;
         _draftFolderName    = model.DraftFolderName;
         _outboxId           = model.OutboxId;
+        _inlineImages.Clear();
+        foreach (var image in model.InlineImages.Where(i => i.IsLoaded && !string.IsNullOrEmpty(i.ContentId)))
+            _inlineImages[image.ContentId!] = image;
+        _sourceMessage = model.SourceMessageId is { } sourceId && model.SourceAccountId is { } sourceAccount
+            ? (sourceAccount, model.SourceFolderName ?? string.Empty, sourceId)
+            : null;
         // Reopened from the Outbox: the row is ours until this window closes (#637).
         if (_outboxId != null) _outbox?.Hold(_outboxId);
         ComposeKind         = model.Kind;
@@ -273,6 +280,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
 
         _seededHtmlForBody = Body;
+        // Which of the original's pictures a reply or forward quotes — captured now, because the
+        // seeded HTML is consumed when the editor loads it.
+        _sourcePictureIds = _sourceMessage is null
+            ? []
+            : Helpers.InlineImages.ReferencedContentIds(_seededHtmlBody, Body);
     }
 
     /// <summary>The plain-text signature as HTML, with the same "-- " separator line.</summary>
@@ -295,7 +307,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (Attachments.Sum(a => a.FileSize) > 25_000_000)
+        if (CurrentMessageBytes() > 25_000_000)
         {
             LastSaveOutcome = DraftSaveOutcome.Failed;
             SetStatusOutcome("Total attachment size exceeds 25 MB. Please remove some attachments.");
@@ -433,6 +445,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     {
         _autoSaveCts.Cancel();
         _autoSaveCts.Dispose();
+        _sourceImagesCts.Cancel();
+        _sourceImagesCts.Dispose();
         // The window is gone; whatever row it held can be drained now (#637).
         if (_outboxId != null) _outbox?.Release(_outboxId);
         GC.SuppressFinalize(this);
@@ -531,7 +545,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (Attachments.Sum(a => a.FileSize) > 25_000_000)
+        if (CurrentMessageBytes() > 25_000_000)
         {
             SetStatusOutcome("Total attachment size exceeds 25 MB. Please remove some attachments.");
             return;
@@ -678,9 +692,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // switch is never silently impossible.
         if (newMode == ComposeMode.PlainText && HasFormattingWorthConfirming())
         {
-            var confirmed = ConfirmationRequested?.Invoke(
-                "Formatting will be lost when switching to Plain Text. Continue?",
-                "Switch to Plain Text") ?? true;
+            // Plain text cannot hold a picture; say how many will go (#729).
+            var pictures = ReferencedInlineImages().Count;
+            var message = pictures == 0
+                ? "Formatting will be lost when switching to Plain Text. Continue?"
+                : $"Formatting will be lost when switching to Plain Text, and {pictures} " +
+                  $"{(pictures == 1 ? "picture" : "pictures")} will be removed from the message. Continue?";
+            var confirmed = ConfirmationRequested?.Invoke(message, "Switch to Plain Text") ?? true;
             if (!confirmed) return false;
         }
 
@@ -690,11 +708,15 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 break; // plain text is valid Markdown source — pass through as-is
 
             case (ComposeMode.PlainText, ComposeMode.Html):
-                var htmlToLoad = _seededHtmlBody != null && Body == _seededHtmlForBody
-                    ? _seededHtmlBody
-                    : _markdown.PlainTextToHtml(Body);
+                bool useSeeded = _seededHtmlBody != null && Body == _seededHtmlForBody;
+                var htmlToLoad = useSeeded ? _seededHtmlBody! : _markdown.PlainTextToHtml(Body);
                 _seededHtmlBody = null; // consume: only used for the initial draft, forward or reply
                 LoadHtmlIntoEditorRequested?.Invoke(htmlToLoad);
+                // The seeded HTML of a reply or forward shows the original's pictures. They are
+                // fetched when that HTML reaches the editor — at open, or later when a reply that
+                // opened in Plain Text or Markdown is switched to HTML (#729).
+                if (useSeeded)
+                    _ = FetchSourcePicturesAsync();
                 break;
 
             case (ComposeMode.Markdown, ComposeMode.Html):
@@ -902,7 +924,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         switch (CurrentMode)
         {
             case ComposeMode.Markdown when !string.IsNullOrWhiteSpace(Body):
-                htmlBody = _markdown.WrapDocument(_markdown.ToHtml(Body), Subject);
+                htmlBody = _markdown.WrapDocument(
+                    Helpers.InlineImages.RestoreUndescribed(_markdown.ToHtml(Body)), Subject);
                 break;
 
             case ComposeMode.Html:
@@ -934,7 +957,110 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             DraftMessageId      = _draftMessageId,
             DraftFolderName     = _draftFolderName,
             Attachments         = Attachments.ToList(),
+            // Only the pictures the body still shows: one deleted from the body is not sent.
+            InlineImages        = PicturesReferencedBy(htmlBody, body),
         };
+    }
+
+    // ── Pictures in the body (#729) ──────────────────────────────────────────
+    //
+    // The bytes of every picture put into the body, keyed by Content-ID. Both rich editors refer
+    // to a picture as cid:<Content-ID> (an <img> in HTML mode, ![alt](cid:…) in Markdown), so a
+    // mode switch keeps them. Deleting a picture from the body leaves its bytes here — Undo can
+    // bring it back — and BuildComposeModel sends only the ones still referenced.
+
+    private readonly Dictionary<string, AttachmentModel> _inlineImages = new(StringComparer.OrdinalIgnoreCase);
+    private (Guid AccountId, string FolderName, string MessageId)? _sourceMessage;
+    private HashSet<string> _sourcePictureIds = [];
+    private bool _sourceFetchStarted;
+    private readonly CancellationTokenSource _sourceImagesCts = new();
+    private bool _largeMessageWarned;
+
+    /// <summary>
+    /// Raised when pictures arrive after the window opened — a reply's or forward's quoted
+    /// pictures, fetched from the original message — so the editor can draw them in place of
+    /// their placeholders.
+    /// </summary>
+    public event Action? InlineImagesArrived;
+
+    /// <summary>Stores a picture for the body and returns its Content-ID.</summary>
+    public string AddInlineImage(byte[] bytes, string contentType, string fileName)
+    {
+        var contentId = Helpers.InlineImages.NewContentId();
+        _inlineImages[contentId] = new AttachmentModel
+        {
+            FileName = string.IsNullOrWhiteSpace(fileName) ? "image" : fileName,
+            ContentType = contentType,
+            FileSize = bytes.LongLength,
+            Content = bytes,
+            ContentId = contentId,
+        };
+        _isDirty = true;
+        WarnIfMessageIsLarge();
+        return contentId;
+    }
+
+    /// <summary>The bytes of a body picture by its <c>src</c> (<c>cid:…</c>) or bare Content-ID; null when unknown.</summary>
+    public byte[]? GetInlineImageBytes(string srcOrContentId)
+    {
+        var id = srcOrContentId.StartsWith("cid:", StringComparison.OrdinalIgnoreCase) ? srcOrContentId[4..] : srcOrContentId;
+        return _inlineImages.TryGetValue(id, out var image) ? image.Content : null;
+    }
+
+    private List<AttachmentModel> PicturesReferencedBy(params string?[] texts)
+    {
+        var ids = Helpers.InlineImages.ReferencedContentIds(texts);
+        return _inlineImages.Values.Where(i => ids.Contains(i.ContentId!)).ToList();
+    }
+
+    /// <summary>The pictures the body shows now, in whichever mode it is in.</summary>
+    private List<AttachmentModel> ReferencedInlineImages() => CurrentMode switch
+    {
+        ComposeMode.Html => PicturesReferencedBy((RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).Html),
+        ComposeMode.Markdown => PicturesReferencedBy(Body),
+        _ => [],
+    };
+
+    /// <summary>Attachments plus the pictures in the body — what the 25 MB limit and the 10 MB warning count.</summary>
+    private long CurrentMessageBytes() =>
+        Attachments.Sum(a => a.FileSize) + ReferencedInlineImages().Sum(i => i.FileSize);
+
+    /// <summary>Says once, when the message first grows past 10 MB, that some servers refuse that much.</summary>
+    private void WarnIfMessageIsLarge()
+    {
+        if (_largeMessageWarned) return;
+        var total = Attachments.Sum(a => a.FileSize) + _inlineImages.Values.Sum(i => i.FileSize);
+        if (total <= Helpers.ImageProcessing.LargeMessageBytes) return;
+        _largeMessageWarned = true;
+        SetStatusOutcome("This message is now over 10 MB. Some mail servers refuse messages that large.");
+    }
+
+    /// <summary>
+    /// For a reply or forward whose quoted HTML shows pictures: fetches them from the original
+    /// message and raises <see cref="InlineImagesArrived"/>. Called by the window once it is
+    /// listening. A failure leaves the placeholders; the message is still sendable.
+    /// </summary>
+    public async Task FetchSourcePicturesAsync()
+    {
+        if (_sourceMessage is not { } source || _sourceFetchStarted) return;
+        _sourceFetchStarted = true;
+        var wanted = new HashSet<string>(_sourcePictureIds, StringComparer.OrdinalIgnoreCase);
+        wanted.RemoveWhere(_inlineImages.ContainsKey);
+        if (wanted.Count == 0) return;
+
+        List<AttachmentModel> fetched;
+        try
+        {
+            fetched = await Helpers.InlineImages.FetchAsync(
+                _imap, source.AccountId, source.FolderName, source.MessageId, wanted, _sourceImagesCts.Token);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (ObjectDisposedException) { return; }
+
+        foreach (var image in fetched)
+            _inlineImages.TryAdd(image.ContentId!, image);
+        if (fetched.Count > 0)
+            InlineImagesArrived?.Invoke();
     }
 
     // ── Factory helpers ────────────────────────────────────────────────────────
@@ -968,7 +1094,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // Used only when the reply opens in HTML mode. A plain-text original needs no
             // HTML of its own: PlainTextToHtml turns the "> " lines into a real quote.
             HtmlBody = string.IsNullOrEmpty(detail.HtmlBody) ? null : BuildReplyHtmlBlock(detail),
-            InReplyToMessageId = detail.InternetMessageId
+            InReplyToMessageId = detail.InternetMessageId,
+            SourceAccountId  = detail.AccountId,
+            SourceFolderName = detail.FolderName,
+            SourceMessageId  = detail.MessageId,
         };
     }
 
@@ -1051,6 +1180,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             AccountId = accountId,
             Subject   = subject,
             Body      = header + plainBody,
+            // So the forward can carry the original's pictures, not just their cid: references.
+            SourceAccountId  = detail.AccountId,
+            SourceFolderName = detail.FolderName,
+            SourceMessageId  = detail.MessageId,
         };
 
         if (!string.IsNullOrEmpty(detail.HtmlBody))

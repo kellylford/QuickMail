@@ -23,7 +23,13 @@ public static class HtmlStripper
     /// string. The destination is not lost: it is still in the body, where activating the link is
     /// what the user would do with it.</para>
     /// </param>
-    public static string ToPlainText(string? html, bool includeLinkTargets = true)
+    /// <param name="labelImages">
+    /// Whether a described picture reads "[Image: alt text]" rather than "[alt text]". True for the
+    /// text/plain part of a message written in compose (#729), where the reader of the plain part
+    /// should know a picture was there; false for received mail and previews, which keep the
+    /// shorter form. A picture with empty or no alt text is left out either way.
+    /// </param>
+    public static string ToPlainText(string? html, bool includeLinkTargets = true, bool labelImages = false)
     {
         if (string.IsNullOrEmpty(html)) return string.Empty;
 
@@ -132,7 +138,7 @@ public static class HtmlStripper
                 case "img":
                     var alt = ExtractAttribute(tag, "alt");
                     if (!string.IsNullOrWhiteSpace(alt))
-                        sb.Append('[').Append(WebUtility.HtmlDecode(alt)).Append(']');
+                        sb.Append(labelImages ? "[Image: " : "[").Append(WebUtility.HtmlDecode(alt)).Append(']');
                     break;
             }
         }

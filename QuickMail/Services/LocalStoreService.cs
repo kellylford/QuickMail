@@ -232,10 +232,15 @@ public partial class LocalStoreService : ILocalStoreService
                 content_type TEXT    NOT NULL DEFAULT 'application/octet-stream',
                 size         INTEGER NOT NULL DEFAULT 0,
                 content      BLOB    NOT NULL,
+                content_id   TEXT    DEFAULT NULL,
                 PRIMARY KEY (outbox_id, ordinal)
             );
             """;
         cmd.ExecuteNonQuery();
+
+        // A picture in the body (#729) is a row with its Content-ID; an attachment has none.
+        // After the CREATE so a fresh database is not asked to alter a table it lacks.
+        RunMigration(conn, "ALTER TABLE OutboxAttachment ADD COLUMN content_id TEXT DEFAULT NULL;");
 
         RunDataMigrations(conn);
 

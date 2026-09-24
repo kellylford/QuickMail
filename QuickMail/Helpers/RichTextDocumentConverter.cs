@@ -24,8 +24,8 @@ namespace QuickMail.Helpers;
 /// a <see cref="Section"/> tagged "BLOCKQUOTE" that contains its blocks, so a
 /// quote can hold headings and lists, and quotes nest to any depth;
 /// table header cells and column alignment via <c>TableCell.Tag</c> ("TH"/"TD"
-/// with an optional ":L"/":C"/":R" suffix); images via <c>Run.Tag</c>
-/// ("IMG:src" with the alt text as the run text); and the author's original
+/// with an optional ":L"/":C"/":R" suffix); pictures as a real <c>Image</c> in an
+/// <c>InlineUIContainer</c> whose Tag is a <see cref="ComposeImage"/>; and the author's original
 /// link target via <c>Hyperlink.Tag</c> — all so content round-trips without
 /// guessing from visual formatting.
 /// </summary>
@@ -68,11 +68,108 @@ public static class RichTextDocumentConverter
         return depth;
     }
 
-    /// <summary>Run.Tag prefix marking an image placeholder; the rest is the src.</summary>
-    public const string ImageTagPrefix = "IMG:";
+    /// <summary>
+    /// Markdown has no way to write a picture without alt text — <c>![](…)</c> is the decorative
+    /// one — so a picture nobody has described is written with this title,
+    /// <c>![](cid:… "no description")</c>, and read back as undescribed. Without it, one trip
+    /// through Markdown mode would quietly turn a forwarded picture into a decorative one.
+    /// </summary>
+    public const string NoDescriptionTitle = "no description";
 
-    /// <summary>Run text shown for images whose alt text is empty (round-trips back to alt="").</summary>
-    public const string ImageAltPlaceholder = "(image)";
+    /// <summary>Widest a picture is drawn in the editor; the message keeps its real size.</summary>
+    public const double MaxEditorImageWidth = 480;
+
+    /// <summary>
+    /// Supplies the picture for a <c>src</c> while a document is being built — the compose
+    /// window's store of <c>cid:</c> pictures. Null (or a null answer) draws a placeholder; the
+    /// editor never fetches a picture from the web.
+    /// </summary>
+    [ThreadStatic] private static Func<string, ImageSource?>? _imageResolver;
+
+    private static ImageSource? _placeholder;
+
+    /// <summary>A plain grey frame with a mountain shape, drawn for a picture whose bytes are not here.</summary>
+    public static ImageSource PlaceholderImage => _placeholder ??= MakePlaceholder();
+
+    private static ImageSource MakePlaceholder()
+    {
+        var group = new DrawingGroup();
+        using (var dc = group.Open())
+        {
+            dc.DrawRectangle(Brushes.Gainsboro, new Pen(Brushes.Gray, 1), new Rect(0, 0, 64, 48));
+            var mountain = new StreamGeometry();
+            using (var g = mountain.Open())
+            {
+                g.BeginFigure(new Point(8, 40), true, true);
+                g.LineTo(new Point(26, 18), true, false);
+                g.LineTo(new Point(38, 30), true, false);
+                g.LineTo(new Point(46, 22), true, false);
+                g.LineTo(new Point(58, 40), true, false);
+            }
+            mountain.Freeze();
+            dc.DrawGeometry(Brushes.Gray, null, mountain);
+            dc.DrawEllipse(Brushes.Gray, null, new Point(48, 12), 4, 4);
+        }
+        var image = new DrawingImage(group);
+        image.Freeze();
+        return image;
+    }
+
+    /// <summary>
+    /// The editor element for a picture: an <c>Image</c> named for screen readers by its
+    /// description, inside an <c>InlineUIContainer</c> tagged with the picture's details. A
+    /// screen reader reads it as a picture with that name, and Shift+Arrow selects it as one
+    /// unit (#729 listening test, option B).
+    /// </summary>
+    /// <param name="insertAt">Where to put it in a live document; null for a detached element.</param>
+    public static InlineUIContainer CreateImageElement(ComposeImage info, ImageSource? source, TextPointer? insertAt = null)
+    {
+        var image = new Image
+        {
+            Stretch = Stretch.Uniform,
+            MaxWidth = MaxEditorImageWidth,
+        };
+        SetImageSource(image, info, source);
+        System.Windows.Automation.AutomationProperties.SetName(image, info.AccessibleName);
+        var container = insertAt is null ? new InlineUIContainer(image) : new InlineUIContainer(image, insertAt);
+        container.Tag = info;
+        container.BaselineAlignment = BaselineAlignment.Bottom;
+        return container;
+    }
+
+    /// <summary>
+    /// Shows <paramref name="source"/> in an editor picture, or the placeholder when it is null —
+    /// also how a picture that arrives after the document was built is filled in.
+    /// </summary>
+    public static void SetImageSource(Image image, ComposeImage info, ImageSource? source)
+    {
+        image.Source = source ?? PlaceholderImage;
+        if (source is null)
+        {
+            image.Width = 64;
+            image.Height = 48;
+            return;
+        }
+        image.ClearValue(FrameworkElement.HeightProperty);
+        if (info.Width is > 0)
+            image.Width = Math.Min(info.Width.Value, MaxEditorImageWidth);
+        else
+            image.ClearValue(FrameworkElement.WidthProperty);
+    }
+
+    /// <summary>The picture details when the inline is an editor picture; otherwise null.</summary>
+    public static ComposeImage? ImageOf(Inline? inline) => (inline as InlineUIContainer)?.Tag as ComposeImage;
+
+    /// <summary>
+    /// Changes an editor picture's description in place, keeping the same element so the caret
+    /// and undo stay put.
+    /// </summary>
+    public static void UpdateImage(InlineUIContainer element, ComposeImage info)
+    {
+        element.Tag = info;
+        if (element.Child is Image image)
+            System.Windows.Automation.AutomationProperties.SetName(image, info.AccessibleName);
+    }
 
     private static readonly FontFamily FallbackCodeFont = new("Consolas");
 
@@ -155,15 +252,18 @@ public static class RichTextDocumentConverter
     /// which can wedge the STA thread mid-load (issue #181). Batched, the
     /// whole load raises exactly one event after the document is complete.
     /// </summary>
-    public static void LoadInto(RichTextBox editor, string html)
+    public static void LoadInto(RichTextBox editor, string html, Func<string, ImageSource?>? resolveImage = null)
     {
         editor.BeginChange();
+        var previous = _imageResolver;
+        _imageResolver = resolveImage;
         try
         {
             LoadInto(editor.Document, html);
         }
         finally
         {
+            _imageResolver = previous;
             editor.EndChange();
         }
     }
@@ -459,16 +559,18 @@ public static class RichTextDocumentConverter
                     break;
 
                 case "img":
-                    var alt = WebUtility.HtmlDecode(node.Alt ?? string.Empty);
+                    // Null alt (no attribute) is kept apart from empty alt (decorative).
+                    var alt = node.Alt is null ? null : WebUtility.HtmlDecode(node.Alt);
+                    if (string.IsNullOrEmpty(alt)
+                        && string.Equals(WebUtility.HtmlDecode(node.Title ?? string.Empty), NoDescriptionTitle, StringComparison.Ordinal))
+                        alt = null;
                     var src = WebUtility.HtmlDecode(node.Src ?? string.Empty);
                     if (src.Length > 0 && !IsDangerousHref(src))
                     {
-                        // The alt text is the editable run text; the src rides on Tag.
-                        var imgRun = StyleRun(new Run(alt.Length > 0 ? alt : ImageAltPlaceholder), style);
-                        imgRun.Tag = ImageTagPrefix + src;
-                        target.Add(imgRun);
+                        var info = new ComposeImage(src, alt, PixelsOf(node.Width), PixelsOf(node.Height));
+                        target.Add(CreateImageElement(info, _imageResolver?.Invoke(src)));
                     }
-                    else if (alt.Length > 0)
+                    else if (!string.IsNullOrEmpty(alt))
                     {
                         target.Add(StyleRun(new Run($"[{alt}]"), style));
                     }
@@ -480,6 +582,10 @@ public static class RichTextDocumentConverter
             }
         }
     }
+
+    private static int? PixelsOf(string? value) =>
+        int.TryParse(value?.Trim().TrimEnd('x', 'p', 'X', 'P'), System.Globalization.NumberStyles.None,
+                     System.Globalization.CultureInfo.InvariantCulture, out var n) && n > 0 ? n : null;
 
     private static bool IsDangerousHref(string href)
     {
@@ -638,14 +744,16 @@ public static class RichTextDocumentConverter
                     sb.Append("<br />\n");
                     break;
 
-                case Run imgRun when imgRun.Tag is string imgTag
-                                     && imgTag.StartsWith(ImageTagPrefix, StringComparison.Ordinal):
-                    var imgAlt = imgRun.Text == ImageAltPlaceholder ? string.Empty : imgRun.Text;
-                    sb.Append("<img src=\"")
-                      .Append(WebUtility.HtmlEncode(imgTag[ImageTagPrefix.Length..]))
-                      .Append("\" alt=\"")
-                      .Append(WebUtility.HtmlEncode(imgAlt))
-                      .Append("\" />");
+                case InlineUIContainer { Tag: ComposeImage img }:
+                    sb.Append("<img src=\"").Append(WebUtility.HtmlEncode(img.Src)).Append('"');
+                    // Decorative is alt="" so assistive technology skips the picture. A picture
+                    // nobody has described keeps no alt at all rather than claiming to be decorative.
+                    if (img.Alt is not null)
+                        sb.Append(" alt=\"").Append(WebUtility.HtmlEncode(img.Alt)).Append('"');
+                    if (img.Width is > 0 && img.Height is > 0)
+                        sb.Append(" width=\"").Append(img.Width.Value).Append("\" height=\"").Append(img.Height.Value)
+                          .Append("\" style=\"max-width: 100%; height: auto;\"");
+                    sb.Append(" />");
                     break;
 
                 case Run run:
@@ -871,11 +979,12 @@ public static class RichTextDocumentConverter
                     sb.Append('\n').Append(continuationPrefix);
                     break;
 
-                case Run mdImg when mdImg.Tag is string mdImgTag
-                                    && mdImgTag.StartsWith(ImageTagPrefix, StringComparison.Ordinal):
-                    var mdAlt = mdImg.Text == ImageAltPlaceholder ? string.Empty : mdImg.Text;
-                    sb.Append("![").Append(mdAlt.Replace("]", @"\]")).Append("](")
-                      .Append(mdImgTag[ImageTagPrefix.Length..]).Append(')');
+                case InlineUIContainer { Tag: ComposeImage mdImg }:
+                    sb.Append("![").Append((mdImg.Alt ?? string.Empty).Replace("]", @"\]")).Append("](")
+                      .Append(mdImg.Src);
+                    if (mdImg.Alt is null)
+                        sb.Append(" \"").Append(NoDescriptionTitle).Append('"');
+                    sb.Append(')');
                     break;
 
                 case Run run:
@@ -948,7 +1057,7 @@ public static class RichTextDocumentConverter
         void Flush()
         {
             if (pendingHtml.Length == 0) return;
-            var text = HtmlStripper.ToPlainText(pendingHtml.ToString());
+            var text = HtmlStripper.ToPlainText(pendingHtml.ToString(), labelImages: true);
             if (text.Length > 0) parts.Add(text);
             pendingHtml.Clear();
         }
@@ -1005,6 +1114,9 @@ public static class RichTextDocumentConverter
         public string? Src;
         public string? Class;
         public string? Style;
+        public string? Width;
+        public string? Height;
+        public string? Title;
         public List<HtmlNode> Children = [];
 
         private static readonly HashSet<string> VoidTags =
@@ -1076,6 +1188,9 @@ public static class RichTextDocumentConverter
                 node.Src = ExtractAttr(attrs, "src");
                 node.Class = ExtractAttr(attrs, "class");
                 node.Style = ExtractAttr(attrs, "style");
+                node.Width = ExtractAttr(attrs, "width");
+                node.Title = ExtractAttr(attrs, "title");
+                node.Height = ExtractAttr(attrs, "height");
                 stack.Peek().Children.Add(node);
 
                 if (!selfClosed && !VoidTags.Contains(name))

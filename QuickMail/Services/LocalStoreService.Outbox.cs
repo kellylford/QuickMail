@@ -33,8 +33,12 @@ public partial class LocalStoreService
 
         // Only attachments whose bytes are in memory can be sent later; an unloaded one (a forward
         // whose download never completed) would be dropped by MimeMessageBuilder anyway.
-        var loaded = compose.Attachments.Where(a => a.IsLoaded).ToList();
-        item.HasAttachments = loaded.Count > 0;
+        var attachments = compose.Attachments.Where(a => a.IsLoaded).ToList();
+        item.HasAttachments = attachments.Count > 0;
+        // Pictures in the body share the table, told apart by their Content-ID (#729).
+        var loaded = attachments
+            .Concat(compose.InlineImages.Where(i => i.IsLoaded && !string.IsNullOrEmpty(i.ContentId)))
+            .ToList();
         item.UpdatedUtc = DateTimeOffset.UtcNow;
         if (item.CreatedUtc == default) item.CreatedUtc = item.UpdatedUtc;
 
@@ -98,14 +102,15 @@ public partial class LocalStoreService
             var att = loaded[i];
             await using var ins = conn.CreateCommand();
             ins.CommandText =
-                "INSERT INTO OutboxAttachment(outbox_id, ordinal, file_name, content_type, size, content) " +
-                "VALUES ($id, $ord, $name, $type, $size, $bytes);";
+                "INSERT INTO OutboxAttachment(outbox_id, ordinal, file_name, content_type, size, content, content_id) " +
+                "VALUES ($id, $ord, $name, $type, $size, $bytes, $cid);";
             ins.Parameters.AddWithValue("$id",    item.Id);
             ins.Parameters.AddWithValue("$ord",   i);
             ins.Parameters.AddWithValue("$name",  att.FileName ?? string.Empty);
             ins.Parameters.AddWithValue("$type",  att.ContentType ?? "application/octet-stream");
             ins.Parameters.AddWithValue("$size",  att.FileSize > 0 ? att.FileSize : att.Content!.LongLength);
             ins.Parameters.AddWithValue("$bytes", att.Content!);
+            ins.Parameters.AddWithValue("$cid",   (object?)att.ContentId ?? DBNull.Value);
             await ins.ExecuteNonQueryAsync();
         }
 
@@ -151,23 +156,26 @@ public partial class LocalStoreService
         if (compose == null) return null;
         compose.OutboxId = id;
         compose.Attachments = [];
+        compose.InlineImages = [];
 
         await using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText =
-                "SELECT file_name, content_type, size, content FROM OutboxAttachment " +
+                "SELECT file_name, content_type, size, content, content_id FROM OutboxAttachment " +
                 "WHERE outbox_id = $id ORDER BY ordinal;";
             cmd.Parameters.AddWithValue("$id", id);
             await using var r = await cmd.ExecuteReaderAsync();
             while (await r.ReadAsync())
             {
-                compose.Attachments.Add(new AttachmentModel
+                var row = new AttachmentModel
                 {
                     FileName    = r.GetString(0),
                     ContentType = r.GetString(1),
                     FileSize    = r.GetInt64(2),
                     Content     = (byte[])r[3],
-                });
+                    ContentId   = r.IsDBNull(4) ? null : r.GetString(4),
+                };
+                (row.ContentId is null ? compose.Attachments : compose.InlineImages).Add(row);
             }
         }
         return compose;

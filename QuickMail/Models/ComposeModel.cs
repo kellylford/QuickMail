@@ -53,6 +53,22 @@ public class ComposeModel
 
     public List<AttachmentModel> Attachments { get; set; } = [];
 
+    /// <summary>
+    /// Pictures inside the HTML body, each with its bytes and a <see cref="AttachmentModel.ContentId"/>
+    /// that the HTML references as <c>cid:</c>. Sent as <c>multipart/related</c> parts, not as
+    /// attachments, and never listed with them (#729).
+    /// </summary>
+    public List<AttachmentModel> InlineImages { get; set; } = [];
+
+    /// <summary>
+    /// For a reply or forward: the message it came from. When the quoted HTML refers to pictures
+    /// (<c>cid:</c>), the compose window fetches them from that message after it opens, so they
+    /// are not lost from the quote. Not stored in the Outbox.
+    /// </summary>
+    public Guid? SourceAccountId { get; set; }
+    public string? SourceFolderName { get; set; }
+    public string? SourceMessageId { get; set; }
+
     /// <summary>A shallow copy with no attachments — what the Outbox stores as JSON, keeping the bytes in their own rows.</summary>
     public ComposeModel WithoutAttachments() => new()
     {
