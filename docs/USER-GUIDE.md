@@ -1179,13 +1179,15 @@ This works in the reading pane, message tabs and message windows. The message is
 
 Loading lasts while that message is open. The next message you open, or this one opened again later, starts with its web pictures left out again. To load them in every message, use the setting below.
 
-Even when you load pictures, a picture 2 pixels wide or high or smaller is never fetched. That size is used almost only for tracking pixels, and there is nothing to see.
+Even when you load pictures, a picture the message says is 2 pixels wide or high or smaller is never fetched. That is the usual size of a tracking pixel, and there is nothing to see. A tracker can still be disguised as an ordinary picture, so this is a courtesy, not a guarantee: once you load a message's pictures, assume the sender can tell you opened it.
 
 Loading a picture from the web tells its server that the message was opened, when, and your computer's internet (IP) address. That is unavoidable, and the reason they are not loaded unless you ask. QuickMail keeps what it tells the server to that:
 
 - QuickMail fetches each picture itself. The reading pane never contacts the web: it gets the picture from QuickMail, in the same way as a picture sent inside a message.
 - No cookies are sent or kept, and the server is not told which message or page the picture is in. Nothing lets the server connect one message you opened to another beyond your IP address.
-- Only public internet addresses are contacted. A picture pointing at your own computer or your local network, such as a router's settings page, is never requested, even if the server redirects to it. As a result, a picture on a company intranet does not load.
+- Only public internet addresses are contacted. A picture pointing at your own computer or your local network, such as a router's settings page, is never requested, even if the server redirects to it. As a result, a picture on a company intranet does not load. If Windows is set to use a proxy server, pictures go through it, and the proxy decides what it will reach.
+- A picture at an encrypted (https) address is never followed to an unencrypted (http) one.
+- A picture server that is slow to answer is given up on after 30 seconds, and never holds up other pictures.
 - Whatever the server says a file is, QuickMail looks at the file itself and keeps it only if it really is a PNG, JPEG, GIF, WebP or BMP picture. A single picture over 10 MB is not shown, and at most 100 different pictures are loaded for one message.
 - Pictures you load are kept in memory while QuickMail runs, so going back to a message does not fetch them again. They are never saved to disk.
 

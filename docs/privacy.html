@@ -149,7 +149,7 @@
 <p>
   <strong>Remote content in messages is blocked by default.</strong> The reading pane renders HTML mail under a strict
   Content Security Policy that permits no remote images, scripts, frames, forms, media, or network
-  connections of any kind. A message cannot load a tracking pixel, phone home, or report that you opened it.
+  connections of any kind. On its own, a message cannot load a tracking pixel, phone home, or report that you opened it.
   Pictures sent <em>inside</em> a message are shown: QuickMail reads them from the message's own parts and
   hands them to the reading pane itself, from an address that never leaves your computer. The only server
   involved is your own mail provider, from which the message was read; the sender is never contacted. A setting turns this off.
@@ -161,7 +161,7 @@
   QuickMail itself requests each picture from the server the message names, and that server learns your IP
   address, the time, and the picture's address — which may identify the message. QuickMail sends no cookies
   and no referrer, keeps no cookies it is given, contacts public internet addresses only, keeps the file only
-  if it is a picture, never fetches pictures 2 pixels or smaller (tracking pixels), and keeps what it fetched in memory only while
+  if it is a picture, never fetches pictures declared 2 pixels or smaller (the usual size of a tracking pixel), and keeps what it fetched in memory only while
   it runs. The reading pane still contacts nothing itself. Links you activate deliberately open in your default browser.
 </p>
 

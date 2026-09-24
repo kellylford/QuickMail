@@ -409,6 +409,81 @@ public class WebPictureFetcherTests
         finally { UseRealNetwork(); }
     }
 
+    /// <summary>A body that never arrives: headers sent, then silence.</summary>
+    private sealed class StalledStream : System.IO.Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => 0; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+        public override long Seek(long offset, System.IO.SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task StalledServers_GiveUp_AndDoNotBlockOtherPictures()
+    {
+        // #508 security review: six servers that send headers and then nothing held every fetch
+        // slot for good, and no web picture loaded anywhere until QuickMail restarted.
+        var saved = WebPictureFetcher.DownloadDeadline;
+        try
+        {
+            WebPictureFetcher.DownloadDeadline = TimeSpan.FromSeconds(1);
+            UseNetwork(r => r.RequestUri!.Host == "slow.example"
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledStream()) }
+                : Ok(PngBytes));
+
+            var slow = Enumerable.Range(0, 8).Select(i => Fetch($"https://slow.example/{i}.png")).ToArray();
+            var started = DateTime.UtcNow;
+            var ordinary = await Fetch("https://fine.example/a.png");
+
+            Assert.NotNull(ordinary);
+            Assert.All(await Task.WhenAll(slow), Assert.Null);
+            Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(15));
+        }
+        finally
+        {
+            WebPictureFetcher.DownloadDeadline = saved;
+            UseRealNetwork();
+        }
+    }
+
+    [Fact]
+    public async Task AnEncryptedPicture_NeverRedirectsToPlainHttp()
+    {
+        try
+        {
+            UseNetwork(r => r.RequestUri!.Scheme == "https"
+                ? RedirectTo("http://x.example/a.png")
+                : Ok(PngBytes));
+            Assert.Null(await Fetch("https://x.example/a.png"));
+            // Plain to encrypted is fine.
+            UseNetwork(r => r.RequestUri!.Scheme == "http"
+                ? RedirectTo("https://x.example/b.png")
+                : Ok(PngBytes));
+            Assert.NotNull(await Fetch("http://x.example/b.png"));
+        }
+        finally { UseRealNetwork(); }
+
+        static HttpResponseMessage RedirectTo(string location)
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Found);
+            response.Headers.Location = new Uri(location);
+            return response;
+        }
+    }
+
     [Fact]
     public async Task AFailure_IsNull_NotAnException()
     {

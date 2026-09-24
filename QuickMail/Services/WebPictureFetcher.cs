@@ -40,6 +40,14 @@ public static class WebPictureFetcher
     private const long CacheBytes = 32L * 1024 * 1024;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
 
+    /// <summary>
+    /// The longest one picture may take, redirects and body included. HttpClient.Timeout covers
+    /// only the wait for headers; a server that then sends its body a byte a minute would hold one
+    /// of the few fetch slots for ever, and six of them would stop web pictures loading anywhere
+    /// until QuickMail restarted (#508 security review).
+    /// </summary>
+    internal static TimeSpan DownloadDeadline { get; set; } = TimeSpan.FromSeconds(30);
+
     /// <summary>A picture fetched from the web: its bytes, and the type they were found to be.</summary>
     public sealed record WebPicture(byte[] Bytes, string ContentType);
 
@@ -66,8 +74,7 @@ public static class WebPictureFetcher
     })
     { Timeout = RequestTimeout });
 
-    private static HttpClient? _testClient;
-    private static HttpMessageHandler? _testHandler;
+    private static (HttpMessageHandler Handler, HttpClient Client)? _test;
 
     private static HttpClient Client
     {
@@ -75,12 +82,15 @@ public static class WebPictureFetcher
         {
             var handler = HandlerOverride;
             if (handler is null) return RealClient.Value;
-            if (!ReferenceEquals(handler, _testHandler))
+            // One field holding both, so a fetch on another thread never pairs the new handler
+            // with the previous client.
+            var test = _test;
+            if (test is not { } t || !ReferenceEquals(t.Handler, handler))
             {
-                _testHandler = handler;
-                _testClient = new HttpClient(handler, disposeHandler: false) { Timeout = RequestTimeout };
+                t = (handler, new HttpClient(handler, disposeHandler: false) { Timeout = RequestTimeout });
+                _test = t;
             }
-            return _testClient!;
+            return t.Client;
         }
     }
 
@@ -140,6 +150,8 @@ public static class WebPictureFetcher
     private static async Task<WebPicture?> DownloadAsync(string url)
     {
         await Concurrency.WaitAsync().ConfigureAwait(false);
+        using var deadline = new CancellationTokenSource(DownloadDeadline);
+        var token = deadline.Token;
         try
         {
             var current = url;
@@ -153,23 +165,31 @@ public static class WebPictureFetcher
                 using var request = new HttpRequestMessage(HttpMethod.Get, uri);
                 request.Headers.Accept.ParseAdd("image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8");
                 request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-                using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
+                using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
                     .ConfigureAwait(false);
 
                 if ((int)response.StatusCode is >= 300 and < 400)
                 {
                     if (response.Headers.Location is not { } location) return null;
-                    current = (location.IsAbsoluteUri ? location : new Uri(uri, location)).AbsoluteUri;
+                    var next = location.IsAbsoluteUri ? location : new Uri(uri, location);
+                    // Never from encrypted to plain: the address often carries who the message was for.
+                    if (uri.Scheme == Uri.UriSchemeHttps && next.Scheme != Uri.UriSchemeHttps) return null;
+                    current = next.AbsoluteUri;
                     continue;
                 }
                 if (!response.IsSuccessStatusCode) return null;
                 if (response.Content.Headers.ContentLength > MaxPictureBytes) return null;
 
-                var bytes = await ReadCappedAsync(response.Content).ConfigureAwait(false);
+                var bytes = await ReadCappedAsync(response.Content, token).ConfigureAwait(false);
                 if (bytes is null) return null;
                 return PictureType(bytes) is { } type ? new WebPicture(bytes, type) : null;
             }
             return null; // too many redirects
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            LogService.Debug($"WebPictureFetcher: {HostOf(url)}: gave up after {DownloadDeadline.TotalSeconds:0} s");
+            return null;
         }
         finally
         {
@@ -177,13 +197,13 @@ public static class WebPictureFetcher
         }
     }
 
-    private static async Task<byte[]?> ReadCappedAsync(HttpContent content)
+    private static async Task<byte[]?> ReadCappedAsync(HttpContent content, CancellationToken token)
     {
-        await using var stream = await content.ReadAsStreamAsync().ConfigureAwait(false);
+        await using var stream = await content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var buffer = new MemoryStream();
         var chunk = new byte[81920];
         int read;
-        while ((read = await stream.ReadAsync(chunk).ConfigureAwait(false)) > 0)
+        while ((read = await stream.ReadAsync(chunk, token).ConfigureAwait(false)) > 0)
         {
             if (buffer.Length + read > MaxPictureBytes) return null;
             buffer.Write(chunk, 0, read);
@@ -268,6 +288,10 @@ public static class WebPictureFetcher
     /// When the request goes through a proxy, the connection check above sees only the proxy; the
     /// address the proxy will reach is checked here instead, by resolving it the same way.
     /// Direct requests pass straight through to the connection check.
+    /// <para>Weaker than the direct check: the proxy resolves the name again for itself, so a name
+    /// that answers differently the second time reaches whatever the proxy can reach. A proxy is
+    /// the user's (or their organisation's) own choice and decides for itself what it will
+    /// fetch; this check only stops the plain cases (#508 security review).</para>
     /// </summary>
     private static async Task<bool> ProxiedTargetIsPublicAsync(Uri uri)
     {

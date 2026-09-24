@@ -74,8 +74,8 @@ General**. It is off by default.
 
 QuickMail fetches these pictures itself rather than letting the message do it. It sends no cookies
 and does not say which message a picture is in. It contacts only public internet addresses, never
-your computer or local network. It keeps a file only if it really is a picture, and never fetches
-a tracking pixel. See [Pictures](https://kellylford.github.io/QuickMail/pictures.html) in the User
+your computer or local network. It keeps a file only if it really is a picture, and skips pictures
+sized like tracking pixels. See [Pictures](https://kellylford.github.io/QuickMail/pictures.html) in the User
 Guide.
 
 ## Fixed
