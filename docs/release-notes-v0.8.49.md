@@ -92,6 +92,11 @@ loaded them; saving and printing never fetch one.
 A forwarded HTML message kept its pictures' references but not the pictures themselves, so the
 people you forwarded to saw broken images. The pictures now travel with the forward.
 
+### A malformed message could hide its own text
+
+A message whose formatting ended with an unclosed tag could cover itself with a blank or different
+page in the reading pane. Such tags are now shown as plain text.
+
 ---
 
 ## Reporting Issues
