@@ -35,10 +35,10 @@ A few to get started:
 | Ctrl+1 / Ctrl+2 / Ctrl+3 | Account list / folder tree / message list |
 | Ctrl+N | New message |
 | Ctrl+R / Ctrl+Shift+R | Reply / reply all |
-| Ctrl+F | Forward |
+| Ctrl+Shift+F | Forward |
 | Delete | Delete |
 | Ctrl+Shift+S | Search messages |
-| Ctrl+Shift+F | Search folders |
+| Ctrl+Shift+Y | Search folders |
 | Ctrl+Shift+B | Address book |
 | Ctrl+Shift+C | Calendar |
 | Ctrl+Shift+P | Command palette — every command, searchable |

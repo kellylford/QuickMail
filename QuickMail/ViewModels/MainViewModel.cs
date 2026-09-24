@@ -2804,7 +2804,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "mail.forward", category: "Mail", title: "Forward",
             execute: () => ForwardCommand.Execute(null),
-            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control,
+            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: CanActOnSelection));
 
         registry.Register(new CommandDefinition(
