@@ -21,7 +21,7 @@
 | Ctrl+N | `mail.new` | New Message |
 | Ctrl+R | `mail.reply` | Reply |
 | Ctrl+Shift+R | `mail.replyAll` | Reply All |
-| Ctrl+F | `mail.forward` | Forward |
+| Ctrl+Shift+F | `mail.forward` | Forward |
 | Delete | `mail.delete` | Delete |
 | Ctrl+Shift+M | `mail.archive` | Move to Archive (the account's Archive folder) |
 | Ctrl+Q | `mail.markRead` | Mark as Read |
@@ -35,7 +35,7 @@
 | *(unassigned)* | `mail.watchManager` | Watched Conversations… (review, rename, stop watching) |
 | *(unassigned)* | `view.filterWatched` | Show Watched Conversations Only |
 | Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
-| Ctrl+Shift+F | `view.searchFolders` | Search Folders… |
+| Ctrl+Shift+Y | `view.searchFolders` | Search Folders… |
 | Ctrl+Shift+S | `view.search` | Search Messages… |
 | *(unassigned)* | `mail.searchServer` | Search the Server Too — in Search Results, asks each account's server for the same search and adds what it finds (#717) |
 | *(unassigned)* | `mail.saveSearch` | Save Search as View… — in Search Results, opens the view manager to save the search (#717) |

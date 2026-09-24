@@ -104,7 +104,7 @@ public partial class MessageWindow : Window
         _localRegistry.Register(new CommandDefinition(
             id: "message.forward", category: "Mail", title: "Forward",
             execute: () => _vm.ForwardCommand.Execute(null),
-            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control));
+            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _localRegistry.Register(new CommandDefinition(
             id: "message.delete", category: "Mail", title: "Delete",
@@ -832,7 +832,7 @@ public partial class MessageWindow : Window
             _vm.ReplyAllCommand.Execute(null);
             e.Handled = true;
         }
-        else if (key == Key.F && mod == ModifierKeys.Control)
+        else if (key == Key.F && mod == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             _vm.ForwardCommand.Execute(null);
             e.Handled = true;

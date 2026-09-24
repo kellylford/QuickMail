@@ -759,7 +759,7 @@ The first time you start a version of QuickMail with this search, it builds its 
 
 ### Searching Folders
 
-Press `Ctrl+Shift+F` to search folder names. Type to filter the tree, press Enter to navigate to the matching folder.
+Press `Ctrl+Shift+Y` to search folder names. Type to filter the tree, press Enter to navigate to the matching folder.
 
 ### Refreshing
 
@@ -853,7 +853,7 @@ When Reading Mode is set to **Window**, messages open in a separate window. Each
 |----------|--------|
 | `Ctrl+R` | Reply |
 | `Ctrl+Shift+R` | Reply All |
-| `Ctrl+F` | Forward |
+| `Ctrl+Shift+F` | Forward |
 | `Delete` | Delete |
 | `Ctrl+Shift+M` | Move to Archive |
 | `Ctrl+Q` | Mark as Read |
@@ -965,7 +965,7 @@ QuickMail can open messages in tabs, keeping multiple messages visible at once.
 | `Ctrl+N` | New message |
 | `Ctrl+R` | Reply |
 | `Ctrl+Shift+R` | Reply All |
-| `Ctrl+F` | Forward |
+| `Ctrl+Shift+F` | Forward |
 
 ### Compose Panes
 
@@ -2156,7 +2156,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+N` | New message |
 | `Ctrl+R` | Reply |
 | `Ctrl+Shift+R` | Reply All |
-| `Ctrl+F` | Forward |
+| `Ctrl+Shift+F` | Forward |
 | `Delete` | Delete |
 | `Ctrl+Shift+M` | Move to Archive (the account's Archive folder) |
 | `Ctrl+Q` | Mark as Read |
@@ -2171,7 +2171,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `K` | Toggle flag |
 | `Ctrl+Shift+K` | Pick flag |
 | `Ctrl+Shift+S` | Search messages |
-| `Ctrl+Shift+F` | Search folders |
+| `Ctrl+Shift+Y` | Search folders |
 | `Ctrl+Shift+V` | View menu |
 | `Ctrl+Shift+H` | Toggle Plain Text View |
 | `Ctrl+Shift+G` | Grab Addresses from Message |
