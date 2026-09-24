@@ -1,3 +1,4 @@
+using System.Net.Http;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -17,6 +18,22 @@ public sealed class CalDavTests
     // Fetch window covering every event these tests seed (all in Sep 2026).
     private static readonly DateTime RangeStart = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime RangeEnd   = new(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    // One connection per request. Radicale's server can drop a kept-alive connection between
+    // back-to-back requests (a PUT then the REPORT that checks it); when the close races the
+    // pool's reuse check, the second request fails with "The response ended prematurely" —
+    // a test-server artefact seen in CI, not a client defect. AllowAutoRedirect=false matches
+    // the client's own default handler, which re-issues redirects itself with auth attached.
+    private static readonly HttpClient NoKeepAliveHttp = CreateNoKeepAliveHttp();
+
+    private static HttpClient CreateNoKeepAliveHttp()
+    {
+        var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+        http.DefaultRequestHeaders.ConnectionClose = true;
+        return http;
+    }
+
+    private static CalDavCalendarClient NewClient() => new(NoKeepAliveHttp);
 
     public CalDavTests(RadicaleFixture radicale) => _radicale = radicale;
 
@@ -41,7 +58,7 @@ public sealed class CalDavTests
         var work = await _radicale.CreateCalendarAsync(user, "work", ct);
         var home = await _radicale.CreateCalendarAsync(user, "home", ct);
 
-        using var client = new CalDavCalendarClient();
+        using var client = NewClient();
         var calendars = await client.DiscoverCalendarsAsync(
             RadicaleFixture.ServerUrl, user, RadicaleFixture.Password, ct);
 
@@ -60,7 +77,7 @@ public sealed class CalDavTests
         await _radicale.PutResourceAsync($"{calendar}seeded-1.ics",
             MakeIcs("seeded-1@quickmail.test", "Seeded Event"), "text/calendar", user, ct);
 
-        using var client = new CalDavCalendarClient();
+        using var client = NewClient();
         var events = await client.FetchEventIcsAsync(calendar, user, RadicaleFixture.Password, RangeStart, RangeEnd, ct);
 
         var (href, ics) = Assert.Single(events);
@@ -84,7 +101,7 @@ public sealed class CalDavTests
         // target. Aim the client's write at the SECONDARY calendar and assert it landed there
         // and only there.
         const string uid = "targeted-1@quickmail.test";
-        using var client = new CalDavCalendarClient();
+        using var client = NewClient();
         var resourceUrl = CalDavCalendarClient.EventResourceUrl(secondary, uid);
         await client.PutEventAsync(resourceUrl, MakeIcs(uid, "Targeted Event"),
             user, RadicaleFixture.Password, ifNoneMatch: true, ct);
@@ -109,7 +126,7 @@ public sealed class CalDavTests
         var calendar = await _radicale.CreateCalendarAsync(user, "cal", ct);
 
         const string uid = "edit-1@quickmail.test";
-        using var client = new CalDavCalendarClient();
+        using var client = NewClient();
         var resourceUrl = CalDavCalendarClient.EventResourceUrl(calendar, uid);
         await client.PutEventAsync(resourceUrl, MakeIcs(uid, "Before"), user, RadicaleFixture.Password, ifNoneMatch: true, ct);
         await client.PutEventAsync(resourceUrl, MakeIcs(uid, "After"), user, RadicaleFixture.Password, ifNoneMatch: false, ct);
