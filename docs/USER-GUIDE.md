@@ -1193,7 +1193,7 @@ Loading a picture from the web tells its server that the message was opened, whe
 
 ### Settings
 
-- **Display pictures sent inside messages** (**Settings → General**, on by default). Uncheck it to show only descriptions, as QuickMail did before. It applies to the reading pane, message tabs and message windows, and an open message is shown again at once when you change it.
+- **Show pictures included in messages** (**Settings → General**, on by default). Uncheck it to show only descriptions, as QuickMail did before. It applies to the reading pane, message tabs and message windows, and an open message is shown again at once when you change it.
 - **Load pictures from the web automatically** (**Settings → General**, off by default). Check it to load pictures from the web in every message, as if you had chosen Load Pictures each time, with the same protections. The note at the top of the message no longer appears. Leave it off if you would rather senders not learn when you open their mail.
 - **Read messages as plain text** also hides every picture, since it shows the message's plain text.
 
@@ -1993,7 +1993,8 @@ Press **Ctrl+,** to open Settings.
 - **Default compose mode** — Plain Text, Markdown, or HTML
 - **Auto-save drafts** — on/off and interval
 - **Read messages as plain text** — when on, display all messages as plain text instead of HTML
-- **Display pictures sent inside messages** — on by default. Shows pictures that travel with a message; nothing is fetched from the sender. Pictures a message links to on the web stay blocked either way.
+- **Show pictures included in messages** — on by default. Shows pictures that travel with a message; nothing is fetched from the sender.
+- **Load pictures from the web automatically** — off by default. Loads the pictures a message links to on the web in every message, rather than only when you choose **Load Pictures**. See [Pictures](#pictures).
 - **Saving Messages** — the **Save format** and **Save folder** that **Save** (Ctrl+S) uses. **Choose Folder…** picks the folder and **Use Documents** goes back to your Documents folder. See [Saving and Printing Messages](#saving-and-printing-messages).
 - **Notifications** — two checkboxes:
   - **Show a notification when new mail arrives** — enable Windows notifications for new mail in inboxes (requires Windows 10 1809 or later)

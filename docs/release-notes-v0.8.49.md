@@ -58,7 +58,7 @@ Showing it contacts no one but your own mail server, because it is part of the m
 the sender cannot tell you looked. Screen readers read it by its description, and pictures with no
 description or marked decorative are passed over, as before.
 
-To show descriptions only, as before, uncheck **Display pictures sent inside messages** in
+To show descriptions only, as before, uncheck **Show pictures included in messages** in
 **Settings → General**.
 
 ### Load pictures from the web when you choose to
