@@ -75,7 +75,7 @@
 </div>
 
 <h1>QuickMail Privacy Policy</h1>
-<p class="effective">Effective date: August 27, 2026. Replaces the version dated August 25, 2026.</p>
+<p class="effective">Effective date: September 24, 2026. Replaces the version dated August 27, 2026.</p>
 
 <div class="callout">
   <strong>Short version:</strong> QuickMail is a Windows desktop application with no servers of its own.
@@ -148,10 +148,12 @@
 </ul>
 <p>
   <strong>Remote content in messages is blocked.</strong> The reading pane renders HTML mail under a strict
-  Content Security Policy that permits no images, scripts, frames, forms, media, or network connections of
-  any kind. A message cannot load a tracking pixel, phone home, or report that you opened it. Links you
-  activate deliberately open in your default browser, which is the only way remote content is ever fetched
-  on behalf of a message.
+  Content Security Policy that permits no remote images, scripts, frames, forms, media, or network
+  connections of any kind. A message cannot load a tracking pixel, phone home, or report that you opened it.
+  Pictures sent <em>inside</em> a message are shown: QuickMail reads them from the message's own parts and
+  hands them to the reading pane itself, from an address that never leaves your computer. The only server
+  involved is your own mail provider, from which the message was read; the sender is never contacted. A setting turns this off. Links you activate deliberately open in your default browser,
+  which is the only way remote content is ever fetched on behalf of a message.
 </p>
 
 <h2>Google user data — specific disclosures</h2>

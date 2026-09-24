@@ -3702,6 +3702,8 @@ public partial class MainWindow : Window
         {
             await MessageBody.EnsureCoreWebView2Async(_webViewEnvironment);
             _webViewReady = true;
+            // Pictures sent inside a message are served from the message itself (#729).
+            _pictureHost = EmbeddedPictureHost.Attach(MessageBody.CoreWebView2, _webViewEnvironment);
 
             // Closed until the link-menu handler is attached below; see the note there.
             MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
@@ -3919,13 +3921,25 @@ public partial class MainWindow : Window
         var detail   = _vm.MessageDetail;
         var themeCss = BuildReadingPaneThemeCss();
         var plainText = _vm.ReadAsPlainText;
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText, _themeService));
+        var pictureBase = BeginMessagePictures(detail, plainText);
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText, _themeService, pictureBase));
         if (renderVersion != _messageBodyRenderVersion) return;
 
         try { MessageBody.CoreWebView2.Stop(); }
         catch (Exception ex) { LogService.Log("RerenderReadingPane/Stop", ex); }
         MessageBody.CoreWebView2.NavigateToString(html);
     }
+
+    private EmbeddedPictureHost? _pictureHost;
+
+    /// <summary>
+    /// The address this message's embedded pictures are served from, or null when they are not
+    /// shown: the setting is off, the message is read as plain text, or it has none (#729).
+    /// </summary>
+    private string? BeginMessagePictures(MailMessageDetail detail, bool plainText) =>
+        _pictureHost?.BeginMessage(
+            enabled: !plainText && _configService.Load().ShowEmbeddedPictures,
+            detail, () => _vm.LoadEmbeddedPicturesAsync(detail));
 
     // Render the message body in the browser and move focus into it
     private async Task ShowMessageBodyAsync(MailMessageDetail detail)
@@ -3936,8 +3950,9 @@ public partial class MainWindow : Window
         var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
         var themeCss = BuildReadingPaneThemeCss();
         var plainText = _vm.ReadAsPlainText;
+        var pictureBase = BeginMessagePictures(detail, plainText);
         // The builder prepends the calendar invite event card when this message is an invitation.
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText, _themeService));
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText, _themeService, pictureBase));
         if (renderVersion != _messageBodyRenderVersion)
             return;
 

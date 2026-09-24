@@ -826,7 +826,9 @@ The reading pane renders HTML messages with WebView2. Links open in your default
 
 That line is not usually spoken as it appears: it is written just as the menu closes, while your screen reader is announcing its way back into the message, so it arrives in the middle of that and is passed over. It is there to be found rather than to interrupt — which is the right trade for something that only happens when the clipboard is briefly held by another program. Copying the address is how you check where a link actually goes before following it, and comparing it with the link's text is how you spot one that does not go where it says it does. Closing the menu returns you to the link you opened it on, not to the top of the message. The menu is offered for ordinary web and email links; it does not appear on the **Accept** / **Tentative** / **Decline** buttons of a meeting invitation, which are internal to QuickMail.
 
-Images from remote sources are not loaded — fetching them tells the sender your address is live, which is what a tracking pixel in a newsletter is for. Where the sender wrote a description for a picture, QuickMail shows that description in its place, so a picture that is also a link reads by what it is ("Facebook link") rather than by its web address. A picture the sender marked as decorative contributes nothing, which is what marking it that way asks for.
+**Pictures sent inside a message are shown.** A picture that travels with the message itself — a photo someone put in the body, a logo in a signature — is shown in the reading pane, in a message tab and in a message window. Showing it contacts no one but your own mail server: it is part of the message itself, not something the sender can track. A screen reader reads it by its description; a picture with no description, or one marked decorative, is passed over as before. To go back to descriptions only, uncheck **Display pictures sent inside messages** in **Settings → General**.
+
+**Pictures on the web are not loaded.** Many messages, newsletters especially, link to pictures on the sender's server instead of sending them. Fetching one tells the sender your address is live, which is what a tracking pixel is for, so these stay blocked. Where the sender wrote a description for such a picture, QuickMail shows that description in its place, so a picture that is also a link reads by what it is ("Facebook link") rather than by its web address. A picture the sender marked as decorative contributes nothing, which is what marking it that way asks for.
 
 Press **F6** or **Shift+F6** to move between the reading pane and other panes.
 
@@ -1920,6 +1922,7 @@ Press **Ctrl+,** to open Settings.
 - **Default compose mode** — Plain Text, Markdown, or HTML
 - **Auto-save drafts** — on/off and interval
 - **Read messages as plain text** — when on, display all messages as plain text instead of HTML
+- **Display pictures sent inside messages** — on by default. Shows pictures that travel with a message; nothing is fetched from the sender. Pictures a message links to on the web stay blocked either way.
 - **Saving Messages** — the **Save format** and **Save folder** that **Save** (Ctrl+S) uses. **Choose Folder…** picks the folder and **Use Documents** goes back to your Documents folder. See [Saving and Printing Messages](#saving-and-printing-messages).
 - **Notifications** — two checkboxes:
   - **Show a notification when new mail arrives** — enable Windows notifications for new mail in inboxes (requires Windows 10 1809 or later)

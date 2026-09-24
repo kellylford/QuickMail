@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Text.RegularExpressions;
 using QuickMail.Models;
@@ -136,10 +137,15 @@ public static class MessageBodyHtmlBuilder
     /// standalone MessageWindow shipped, so the obligation is not left to the call site. Null yields
     /// the card's fallback palette; no invite yields no card.
     /// </param>
+    /// <param name="embeddedPictureBase">
+    /// Where the host serves this message's embedded pictures, e.g.
+    /// <c>https://quickmail-images.invalid/&lt;key&gt;/</c>; the Content-ID is appended. Null keeps
+    /// every picture blocked, as before (#729, and the setting to turn pictures off).
+    /// </param>
     public static string BuildMessageHtml(MailMessageDetail detail, string? themeCss = null,
-        bool forcePlainText = false, IThemeService? themeService = null)
+        bool forcePlainText = false, IThemeService? themeService = null, string? embeddedPictureBase = null)
     {
-        var document = BuildBodyDocument(detail, themeCss, forcePlainText);
+        var document = BuildBodyDocument(detail, themeCss, forcePlainText, embeddedPictureBase);
         var card = EventCardHtmlBuilder.Build(detail.CalendarInvite, themeService);
         return card.Length == 0 ? document : InjectEventCard(document, card);
     }
@@ -157,7 +163,8 @@ public static class MessageBodyHtmlBuilder
         return html.Insert(closeIdx + 1, eventCardHtml);
     }
 
-    private static string BuildBodyDocument(MailMessageDetail detail, string? themeCss, bool forcePlainText)
+    private static string BuildBodyDocument(MailMessageDetail detail, string? themeCss, bool forcePlainText,
+        string? embeddedPictureBase)
     {
         var htmlBody = detail.HtmlBody ?? string.Empty;
 
@@ -179,7 +186,8 @@ public static class MessageBodyHtmlBuilder
         // sanitized, so fall through to the plain-text (reader mode) rendering instead
         // of showing partially stripped markup.
         if (!string.IsNullOrWhiteSpace(htmlBody) && !ShouldUseReaderMode(htmlBody)
-            && TryBuildSanitizedHtmlDocument(detail.Subject, htmlBody, themeCss, out var sanitized))
+            && TryBuildSanitizedHtmlDocument(detail.Subject, htmlBody, themeCss, HtmlRegexTimeout,
+                                             embeddedPictureBase, out var sanitized))
             return sanitized;
 
         var text = !string.IsNullOrWhiteSpace(detail.PlainTextBody)
@@ -208,15 +216,135 @@ public static class MessageBodyHtmlBuilder
         TryBuildSanitizedHtmlDocument(subject, html, themeCss, HtmlRegexTimeout, out document);
 
     internal static bool TryBuildSanitizedHtmlDocument(
-        string? subject, string html, string? themeCss, TimeSpan timeout, out string document)
+        string? subject, string html, string? themeCss, TimeSpan timeout, out string document) =>
+        TryBuildSanitizedHtmlDocument(subject, html, themeCss, timeout, null, out document);
+
+    internal static bool TryBuildSanitizedHtmlDocument(
+        string? subject, string html, string? themeCss, TimeSpan timeout, string? embeddedPictureBase,
+        out string document)
     {
+        List<EmbeddedPicture>? pictures = null;
+        if (embeddedPictureBase is not null && !SetAsidePictures(html, timeout, out html, out pictures))
+        {
+            document = string.Empty;
+            return false;
+        }
         if (!TryStripHeavyHtml(html, timeout, out var body))
         {
             document = string.Empty;
             return false;
         }
-        document = ComposeSanitizedDocument(subject, body, themeCss);
+        if (pictures is { Count: > 0 })
+            body = RestorePictures(body, pictures, embeddedPictureBase!);
+        document = ComposeSanitizedDocument(subject, body, themeCss,
+            pictures is { Count: > 0 } ? PictureOrigin(embeddedPictureBase!) : null);
         return true;
+    }
+
+    // ── Pictures sent inside the message (#729) ──────────────────────────────
+    //
+    // The stripping passes remove every <img>. A picture whose src is cid: — a part of this
+    // message — is set aside first: the whole tag is replaced by a marker made of private-use
+    // characters and digits, which no pass touches, and after the passes (and their final escape)
+    // the marker becomes an <img> QuickMail writes itself. Nothing of the sender's tag survives
+    // but the Content-ID, alt text and a numeric width and height: the src points at the host's
+    // own picture address, and every other attribute is dropped. A tag this does not recognise is
+    // left to the passes, which remove it — the failure mode is a picture not shown, never markup
+    // let through.
+
+    private const char PictureMarkOpen = '\uE000';
+    private const char PictureMarkClose = '\uE001';
+
+    private sealed record EmbeddedPicture(string ContentId, string? Alt, int? Width, int? Height);
+
+    private static readonly Regex ImgTag = new(@"<img\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Compiled, HtmlRegexTimeout);
+
+    private static readonly Regex ImgAttribute = new(
+        @"(?:^|[\s/])(src|alt|width|height)\s*=\s*(?:""(?<v>[^""]*)""|'(?<v>[^']*)'|(?<v>[^\s>]+))",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled, HtmlRegexTimeout);
+
+    private static readonly Regex PictureMarker = new(
+        "\uE000(\\d+)\uE001", RegexOptions.Compiled, HtmlRegexTimeout);
+
+    private static bool SetAsidePictures(string html, TimeSpan timeout, out string result, out List<EmbeddedPicture> pictures)
+    {
+        var found = new List<EmbeddedPicture>();
+        pictures = found;
+        // A marker already in the sender's text would be taken for one of ours; remove any first.
+        if (!TryRegexReplace(html, "\uE000\\d*\uE001", string.Empty, RegexOptions.None, timeout, out html))
+        {
+            result = html;
+            return false;
+        }
+        var ok = TryRegexReplace(html, ImgTag, match =>
+        {
+            string? src = null, alt = null, width = null, height = null;
+            foreach (Match a in ImgAttribute.Matches(match.Value[4..]))
+            {
+                var value = a.Groups["v"].Value;
+                switch (a.Groups[1].Value.ToLowerInvariant())
+                {
+                    case "src": src ??= value; break;
+                    case "alt": alt ??= value; break;
+                    case "width": width ??= value; break;
+                    case "height": height ??= value; break;
+                }
+            }
+            var decodedSrc = WebUtility.HtmlDecode(src ?? string.Empty).Trim();
+            if (!decodedSrc.StartsWith("cid:", StringComparison.OrdinalIgnoreCase) || decodedSrc.Length <= 4)
+                return match.Value; // not a picture in this message: the passes remove it as before
+            found.Add(new EmbeddedPicture(
+                decodedSrc[4..].Trim('<', '>'),
+                alt is null ? null : WebUtility.HtmlDecode(alt),
+                PictureDimension(width), PictureDimension(height)));
+            return PictureMarkOpen + (found.Count - 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + PictureMarkClose;
+        }, timeout, out result);
+        return ok;
+    }
+
+    private static int? PictureDimension(string? value) =>
+        int.TryParse(value?.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var n)
+        && n is > 0 and <= 10000 ? n : null;
+
+    private static string RestorePictures(string body, List<EmbeddedPicture> pictures, string pictureBase) =>
+        PictureMarker.Replace(body, m =>
+        {
+            if (!int.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var i) || i >= pictures.Count)
+                return string.Empty;
+            // A picture goes back only where it is text content. A marker inside a tag — in an
+            // attribute value, or after an opening "<" whose ">" comes later — would put QuickMail's
+            // own <img> inside the sender's markup, where its quotes and ">" end the sender's
+            // attribute or close the sender's tag early. There the picture is dropped (#729
+            // security review).
+            if (IsInsideTag(body, m.Index))
+                return string.Empty;
+            var p = pictures[i];
+            var sb = new System.Text.StringBuilder("<img src=\"")
+                .Append(WebUtility.HtmlEncode(pictureBase + Uri.EscapeDataString(p.ContentId))).Append('"');
+            // Described: its words. Decorative (alt="") and undescribed alike are alt="": before
+            // pictures were shown, a picture with no alt text was dropped without a word, and
+            // showing it to sighted readers should not add noise for everyone else.
+            sb.Append(" alt=\"").Append(WebUtility.HtmlEncode(p.Alt?.Trim() ?? string.Empty)).Append('"');
+            if (p.Width is { } w) sb.Append(" width=\"").Append(w).Append('"');
+            if (p.Height is { } h) sb.Append(" height=\"").Append(h).Append('"');
+            return sb.Append('>').ToString();
+        });
+
+    /// <summary>True when <paramref name="index"/> falls between a tag's "&lt;" and its "&gt;".</summary>
+    private static bool IsInsideTag(string body, int index)
+    {
+        var lastOpen = body.LastIndexOf('<', Math.Max(0, index - 1));
+        if (lastOpen < 0 || index == 0) return false;
+        var lastClose = body.LastIndexOf('>', index - 1);
+        return lastOpen > lastClose;
+    }
+
+    /// <summary>The scheme and host of the picture address, for the CSP's img-src.</summary>
+    private static string PictureOrigin(string pictureBase)
+    {
+        var uri = new Uri(pictureBase);
+        return uri.GetLeftPart(UriPartial.Authority);
     }
 
     /// <summary>
@@ -260,11 +388,15 @@ public static class MessageBodyHtmlBuilder
     private static string ThemeStyleTag(string? themeCss) =>
         string.IsNullOrEmpty(themeCss) ? string.Empty : "<style>" + themeCss + "</style>";
 
-    private static string ComposeSanitizedDocument(string? subject, string body, string? themeCss)
+    private static string ComposeSanitizedDocument(string? subject, string body, string? themeCss, string? pictureOrigin = null)
     {
         var titleTag = $"<title>{WebUtility.HtmlEncode(subject ?? string.Empty)}</title>";
-        const string cspTag =
-            "<meta http-equiv=\"Content-Security-Policy\" content=\"" + StrictCspContent + "\">";
+        // Pictures sent inside the message may load from the host's own picture address and
+        // nowhere else; with none, nothing may load at all.
+        var csp = pictureOrigin is null
+            ? StrictCspContent
+            : StrictCspContent.Replace("img-src 'none';", "img-src " + pictureOrigin + ";", StringComparison.Ordinal);
+        var cspTag = "<meta http-equiv=\"Content-Security-Policy\" content=\"" + csp + "\">";
         // Defaults only — sender-styled HTML still wins unless the user opts into
         // force-theme (which arrives inside themeCss as !important rules). The
         // var() fallbacks are the CSS system colors, so with no theme CSS the
@@ -275,6 +407,7 @@ public static class MessageBodyHtmlBuilder
             "font-size:var(--qm-font-size, 13px);line-height:1.45;word-break:break-word;" +
             "background:var(--qm-bg, Canvas);color:var(--qm-text, CanvasText);}" +
             "table{max-width:100%;border-collapse:collapse;}td,th{vertical-align:top;}" +
+            "img{max-width:100%;height:auto;}" +
             "a{color:var(--qm-link, #0645ad);}</style>";
         var styleBlock = ThemeStyleTag(themeCss) + css;
 
@@ -471,9 +604,35 @@ public static class MessageBodyHtmlBuilder
         // the document into a stylesheet that can hide and replace everything around the message.
         // The escape is the guarantee; the rounds are what keep ordinary mail looking as it did.
         body = Step(body, ResidualForbiddenTag, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, "&lt;$1");
+        var settled = body;
+        body = StepEval(settled, TagOpener, m => ClosedTagAt(settled, m.Index) ? m.Value : "&lt;");
         stripped = body;
         return complete;
     }
+
+    /// <summary>A "&lt;" that begins a start or end tag, as the tokenizer reads one.</summary>
+    private static readonly Regex TagOpener = new(@"<(?=/?[A-Za-z])", RegexOptions.Compiled, HtmlRegexTimeout);
+
+    /// <summary>
+    /// A complete tag at the current position, by the same quote-aware reading as
+    /// <see cref="StartTagWithAttributes"/>: a "&gt;" inside a quoted value does not end it.
+    /// </summary>
+    private static readonly Regex ClosedTag = new(
+        @"\G</?[A-Za-z][^\s/>]*(?:[\s/](?:[^>""']|""[^""]*""|'[^']*')*)?>",
+        RegexOptions.Compiled, HtmlRegexTimeout);
+
+    /// <summary>
+    /// Every tag the passes left is one they could read whole — and a start tag they read whole
+    /// has been rebuilt from its allowed attributes. A tag they could NOT read whole (its "&gt;"
+    /// missing, or only inside a quoted value) was never rebuilt, so its attributes — a
+    /// <c>style</c> written after "/", say — would reach the parser untouched the moment anything
+    /// supplied a closing bracket: the host document's own "&lt;/body&gt;", or a restored picture.
+    /// A sender could end a message with <c>&lt;div/style="position:fixed;inset:0"</c> and lay a
+    /// page of their own over it. Each such "&lt;" is escaped, so it reads as text (#729
+    /// security review). After this no tag in the body is left open, which is what lets
+    /// <see cref="IsInsideTag"/> trust a plain "&lt;"/"&gt;" scan.
+    /// </summary>
+    private static bool ClosedTagAt(string body, int index) => ClosedTag.Match(body, index).Success;
 
     /// <summary>
     /// The text that stands in for an image: its alt text and nothing else, so a link whose content

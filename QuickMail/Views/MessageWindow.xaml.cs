@@ -232,6 +232,8 @@ public partial class MessageWindow : Window
                              "QuickMail", "WebView2"));
             await MessageBody.EnsureCoreWebView2Async(env);
             _webViewReady = true;
+            // Pictures sent inside a message are served from the message itself (#729).
+            _pictureHost = EmbeddedPictureHost.Attach(MessageBody.CoreWebView2, env);
 
             // Off, then on again once the handler that empties the menu is attached. The setting
             // DEFAULTS to true, so without turning it off first a throw before the handler was
@@ -443,6 +445,17 @@ public partial class MessageWindow : Window
     /// <summary>The sticky "read as plain text" preference (issue #34), read live at render time.</summary>
     private bool ReadAsPlainText() => _configService?.Load().ReadAsPlainText ?? false;
 
+    private EmbeddedPictureHost? _pictureHost;
+
+    /// <summary>
+    /// The address this message's embedded pictures are served from, or null when they are not
+    /// shown: the setting is off, the message is read as plain text, or it has none (#729).
+    /// </summary>
+    private string? BeginMessagePictures(MailMessageDetail detail, bool plainText) =>
+        _pictureHost?.BeginMessage(
+            enabled: !plainText && (_configService?.Load().ShowEmbeddedPictures ?? true),
+            detail, () => EmbeddedPictureLoader.LoadAsync(_imap, detail));
+
     /// <summary>
     /// UID of the invite the in-flight RSVP belongs to. A send takes seconds, and this window has
     /// Previous/Next navigation, so the user can be on another message by the time the reply lands.
@@ -515,7 +528,8 @@ public partial class MessageWindow : Window
             if (!_webViewReady || _vm.MessageDetail is not { } detail) return;
             var version = Interlocked.Increment(ref _renderVersion);
             var plainText = ReadAsPlainText();
-            var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService));
+            var pictureBase = BeginMessagePictures(detail, plainText);
+            var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService, pictureBase));
             if (version != _renderVersion) return;
             try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
             MessageBody.CoreWebView2.NavigateToString(html);
@@ -542,7 +556,8 @@ public partial class MessageWindow : Window
             {
                 var version = Interlocked.Increment(ref _renderVersion);
                 var plainText = cfg.ReadAsPlainText;
-                var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService));
+                var pictureBase = BeginMessagePictures(detail, plainText);
+                var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService, pictureBase));
                 if (version != _renderVersion) return;
                 try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
                 MessageBody.CoreWebView2.NavigateToString(html);
@@ -579,7 +594,8 @@ public partial class MessageWindow : Window
         var version = Interlocked.Increment(ref _renderVersion);
         var plainText = ReadAsPlainText();
         // The builder prepends the calendar invite event card when this message is an invitation.
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService));
+        var pictureBase = BeginMessagePictures(detail, plainText);
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService, pictureBase));
         if (version != _renderVersion) return;
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);

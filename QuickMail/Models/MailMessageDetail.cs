@@ -42,6 +42,16 @@ public partial class MailMessageDetail : MailMessageSummary
 
     private List<AttachmentModel> _attachments = [];
 
+    /// <summary>
+    /// Pictures sent inside the message — the parts its HTML shows as <c>cid:</c> — as metadata
+    /// only: each has a <see cref="AttachmentModel.ContentId"/> and a
+    /// <see cref="AttachmentModel.PartSpecifier"/> for <c>DownloadAttachmentAsync</c>, and no bytes.
+    /// Not attachments: they never set <see cref="MailMessageSummary.HasAttachments"/>. Filled by
+    /// the IMAP and POP backends from the message structure; empty from Graph and from the local
+    /// cache, where the pictures are read from the stored original instead (#729).
+    /// </summary>
+    public List<AttachmentModel> InlineImages { get; set; } = [];
+
     /// <summary>Parsed calendar invite, if this message contains a text/calendar MIME part.</summary>
     public IcsModel? CalendarInvite { get; set; }
 

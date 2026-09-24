@@ -8623,6 +8623,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         (SelectedFolder.Kind == SpecialFolderKind.Drafts ||
          string.Equals(SelectedFolder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal));
 
+    /// <summary>
+    /// The pictures sent inside <paramref name="detail"/>, for the reading pane (#729). Fetched
+    /// through the account's mail service and cached; a failure leaves them out.
+    /// </summary>
+    public Task<IReadOnlyDictionary<string, AttachmentModel>> LoadEmbeddedPicturesAsync(MailMessageDetail detail) =>
+        EmbeddedPictureLoader.LoadAsync(_imap, detail);
+
     [RelayCommand]
     private async Task OpenDraftAsync()
     {

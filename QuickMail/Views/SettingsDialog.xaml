@@ -62,6 +62,12 @@
                                           IsChecked="{Binding ReadAsPlainText, Mode=TwoWay}"
                                           Margin="0,8,0,0"
                                           AutomationProperties.Name="Read messages as plain text"/>
+
+                                <!-- Pictures sent inside a message: no server is contacted. -->
+                                <CheckBox Content="Displa_y pictures sent inside messages"
+                                          IsChecked="{Binding ShowEmbeddedPictures, Mode=TwoWay}"
+                                          Margin="0,8,0,0"
+                                          AutomationProperties.Name="Display pictures sent inside messages"/>
                             </StackPanel>
                         </GroupBox>
 

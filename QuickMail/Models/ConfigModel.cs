@@ -20,6 +20,14 @@ public class ConfigModel
     public bool ReadAsPlainText { get; set; } = false;
 
     /// <summary>
+    /// Show pictures that travel inside a message (<c>cid:</c> parts) in the reading pane, message
+    /// tabs and message windows. They contact no server, so there is no tracking or privacy cost;
+    /// on by default. Pictures a message links to on the web are a separate matter and stay
+    /// blocked (#508). Off shows each picture's alt text instead, as before.
+    /// </summary>
+    public bool ShowEmbeddedPictures { get; set; } = true;
+
+    /// <summary>
     /// How to display the message list.
     /// Values: "messages" (flat list), "conversations" (grouped by subject), "from" (grouped by sender).
     /// </summary>

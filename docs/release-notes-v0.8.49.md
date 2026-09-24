@@ -44,6 +44,17 @@ to always get one or the other.
   reply brings the original message's pictures along.
 - In Plain Text mode, Insert Image offers to attach the picture as a file instead.
 
+### Pictures sent inside a message are now shown
+
+A picture that travels with a message — a photo in the body, a logo in a signature, or a picture you
+put in with QuickMail — now shows in the reading pane, in message tabs and in message windows.
+Showing it contacts no one but your own mail server, because it is part of the message itself, so the sender cannot tell you looked. Screen readers read it by its
+description, and pictures with no description or marked decorative are passed over, as before.
+
+Pictures a message links to on the web are still not loaded, because fetching them tells the sender
+you opened the message. To show descriptions only, as before, uncheck **Display pictures sent inside
+messages** in **Settings → General**.
+
 ## Fixed
 
 ### Forwarding a message with pictures sent broken pictures

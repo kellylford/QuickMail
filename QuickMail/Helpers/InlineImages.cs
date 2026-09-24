@@ -56,13 +56,17 @@ public static partial class InlineImages
         return ids;
     }
 
-    /// <summary>The picture parts of a message that have a Content-ID, with their bytes.</summary>
-    public static List<AttachmentModel> FromMime(MimeMessage message)
+    /// <summary>
+    /// The picture parts of a message that have a Content-ID, with their bytes — only those in
+    /// <paramref name="wanted"/> when it is given, so unwanted parts are never decoded.
+    /// </summary>
+    public static List<AttachmentModel> FromMime(MimeMessage message, IReadOnlySet<string>? wanted = null)
     {
         var result = new List<AttachmentModel>();
         foreach (var part in message.BodyParts.OfType<MimePart>())
         {
             if (string.IsNullOrEmpty(part.ContentId) || part.Content is null) continue;
+            if (wanted is not null && !wanted.Contains(part.ContentId)) continue;
             if (!part.ContentType.MediaType.Equals("image", StringComparison.OrdinalIgnoreCase)) continue;
             using var buffer = new MemoryStream();
             part.Content.DecodeTo(buffer);
@@ -95,7 +99,7 @@ public static partial class InlineImages
             await mail.CopyOriginalMessageToAsync(accountId, folderName, messageId, raw, ct);
             raw.Position = 0;
             var message = await MimeMessage.LoadAsync(raw, ct);
-            return FromMime(message).Where(i => wanted.Contains(i.ContentId!)).ToList();
+            return FromMime(message, wanted);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)

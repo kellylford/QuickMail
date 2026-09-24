@@ -390,6 +390,20 @@ public class Pop3MailService : IMailService
 
         using var ms = new MemoryStream(mimeBytes);
         var message  = await MimeMessage.LoadAsync(ms, ct);
+
+        // A picture sent inside the message is addressed by its Content-ID (#729; see InlineImagesOf).
+        if (partSpecifier.StartsWith(InlinePartPrefix, StringComparison.Ordinal))
+        {
+            var cid = partSpecifier[InlinePartPrefix.Length..];
+            var inlinePart = message.BodyParts.OfType<MimePart>()
+                .FirstOrDefault(p => string.Equals(p.ContentId, cid, StringComparison.OrdinalIgnoreCase)
+                                     && p.Content is not null)
+                ?? throw new InvalidOperationException($"Picture '{cid}' is not in POP3 message {messageId}.");
+            using var inlineBuf = new MemoryStream();
+            await inlinePart.Content!.DecodeToAsync(inlineBuf, ct);
+            return inlineBuf.ToArray();
+        }
+
         var parts    = message.Attachments.ToList();
 
         if (!int.TryParse(partSpecifier, out var idx) || idx < 0 || idx >= parts.Count)
@@ -927,6 +941,24 @@ public class Pop3MailService : IMailService
             IsMailingList     = !string.IsNullOrEmpty(msg.Headers["List-Id"]),
         };
 
+    /// <summary>Part-specifier prefix for a picture sent inside the message: the rest is its Content-ID.</summary>
+    internal const string InlinePartPrefix = "cid:";
+
+    /// <summary>Pictures sent inside the message (image parts with a Content-ID), as metadata for a later download.</summary>
+    internal static List<AttachmentModel> InlineImagesOf(MimeMessage msg) =>
+        msg.BodyParts.OfType<MimePart>()
+            .Where(p => !string.IsNullOrEmpty(p.ContentId)
+                        && p.ContentType.MediaType.Equals("image", StringComparison.OrdinalIgnoreCase))
+            .Select(p => new AttachmentModel
+            {
+                FileName      = p.FileName ?? "image",
+                ContentType   = p.ContentType.MimeType,
+                FileSize      = DecodedSize(p),
+                ContentId     = p.ContentId,
+                PartSpecifier = InlinePartPrefix + p.ContentId,
+            })
+            .ToList();
+
     internal static MailMessageDetail BuildDetail(
         Guid accountId, string messageId, MimeMessage msg, string folderName, bool isRead)
     {
@@ -964,6 +996,7 @@ public class Pop3MailService : IMailService
             PlainTextBody     = msg.TextBody ?? string.Empty,
             HtmlBody          = msg.HtmlBody ?? string.Empty,
             Attachments       = attachments,
+            InlineImages      = InlineImagesOf(msg),
             DraftComposeMode  = ImapMailService.ParseComposeMode(msg.Headers["X-QuickMail-Compose-Mode"]),
         };
 
