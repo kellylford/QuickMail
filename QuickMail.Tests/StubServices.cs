@@ -901,6 +901,17 @@ sealed class StubCalendarService : ICalendarService
         return Task.CompletedTask;
     }
 
+    public int BatchUpsertCallCount { get; private set; }
+
+    public Task UpsertEventsAsync(IReadOnlyCollection<CalendarEvent> events, CancellationToken ct = default)
+    {
+        BatchUpsertCallCount++;
+        foreach (var evt in events)
+            Upsert(evt);
+        _loaded = StoredEvents.ToList();   // one reload for the whole batch, as the real service does
+        return Task.CompletedTask;
+    }
+
     /// <summary>
     /// The same store write, callable from a stub whose own body is not async — the calendar sync
     /// stub writes the server's copy here the way the real sync service writes it to SQLite.

@@ -25,6 +25,12 @@ public interface ICalendarService
     /// </summary>
     Task UpsertEventAsync(CalendarEvent evt, CancellationToken ct = default);
 
+    /// <summary>
+    /// Inserts or updates several events, then reloads the in-memory list ONCE — the .ics
+    /// import path, where a year-long file must not reload the list per event.
+    /// </summary>
+    Task UpsertEventsAsync(IReadOnlyCollection<CalendarEvent> events, CancellationToken ct = default);
+
     /// <summary>Updates the response status for an event and persists it.</summary>
     Task SetResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status, CancellationToken ct = default);
 
