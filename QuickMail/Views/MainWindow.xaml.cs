@@ -434,6 +434,7 @@ public partial class MainWindow : Window
             vm.CalendarVm.ListFocusRequested += () =>
                 Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
             vm.CalendarVm.ExportRequested += SaveAppointmentIcs;
+            vm.CalendarVm.ImportRequested += ImportCalendarFiles;
         }
 
         vm.PropertyChanged += async (_, e) =>
@@ -1475,6 +1476,12 @@ public partial class MainWindow : Window
             id: "calendar.exportEvent", category: "Calendar", title: "Export Appointment as .ics",
             execute: () => _vm.CalendarVm?.ExportEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
             isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
+
+        // #762. No default key; the File menu and the Calendar node's context menu carry it too.
+        _registry.Register(new CommandDefinition(
+            id: "calendar.importIcs", category: "Calendar", title: "Import Calendar File (.ics)…",
+            execute: () => _vm.CalendarVm?.ImportIcsCommand.Execute(null),
+            isAvailable: () => _vm.CalendarVm != null));
 
         // ── Default calendar for new appointments (issue #497) ──────────────────
         // No default key: both act on the folder tree's calendar selection, and the context menu on
@@ -3042,6 +3049,60 @@ public partial class MainWindow : Window
                 "Could not save the file. See the log for details.",
                 category: AnnouncementCategory.Result);
         }
+    }
+
+    /// <summary>
+    /// Shows the Open dialog for .ics files and passes their text to the calendar VM (#762).
+    /// Cancelling announces nothing and leaves focus where it was. A file that could not be read,
+    /// or held no event, is reported in a message box rather than spoken.
+    /// </summary>
+    private async void ImportCalendarFiles()
+    {
+        var calendarVm = _vm.CalendarVm;
+        if (calendarVm == null) return;
+
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import Calendar File",
+            Filter = "Calendar files (*.ics;*.ical;*.ifb)|*.ics;*.ical;*.ifb|All files (*.*)|*.*",
+            Multiselect = true,
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        var files = new List<(string FileName, string Text)>();
+        var problems = new List<string>();
+        foreach (var path in dialog.FileNames)
+        {
+            try
+            {
+                files.Add((System.IO.Path.GetFileName(path), await System.IO.File.ReadAllTextAsync(path)));
+            }
+            catch (Exception ex)
+            {
+                LogService.Log("Import calendar .ics read", ex);
+                problems.Add($"Could not read {System.IO.Path.GetFileName(path)}.");
+            }
+        }
+
+        try
+        {
+            var error = await calendarVm.ImportFilesAsync(files, async () =>
+            {
+                // Started from the File menu somewhere else: show the calendar the events went into.
+                if (!_vm.IsCalendarView)
+                    await _vm.OpenCalendarCommand.ExecuteAsync(null);
+            });
+            if (error != null) problems.Add(error);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Import calendar .ics", ex);
+            problems.Add("The import failed. See the log for details.");
+        }
+
+        if (problems.Count > 0)
+            MessageBox.Show(this, string.Join("\n\n", problems), "Import Calendar File",
+                            MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     /// <summary>Confirms deleting an appointment (View concern); invokes the callback on Yes.</summary>
@@ -6619,6 +6680,9 @@ public partial class MainWindow : Window
 
     private void CalendarContextMenu_ClearDefault_Click(object sender, RoutedEventArgs e)
         => Report(_vm.ClearDefaultCalendar());
+
+    private void MenuImportCalendarFile_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ImportIcsCommand.Execute(null);
 
     // Entry point for the calendar.setDefaultCalendar command (Command Palette / customizable
     // hotkey), acting on the folder tree's selection. The context menu must not be the only way in:

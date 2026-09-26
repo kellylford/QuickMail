@@ -1703,6 +1703,20 @@ There is a single reminder lead time for all appointments; per-appointment remin
 
 To share an appointment as a standard calendar file, select it and choose **Export Appointment as .ics** from the command palette (**Ctrl+Shift+P**) or the toolbar/menu. QuickMail writes a `.ics` file you can send to someone or import elsewhere. (Exporting one occurrence of a repeating appointment exports the whole series.) This action has no default keyboard shortcut, but you can assign one in **File → Settings → Keyboard Shortcuts**.
 
+### Importing a .ics file
+
+To bring appointments from a `.ics` file into QuickMail — a booking confirmation, a conference or school schedule, or an export from another calendar program — choose **File → Import Calendar File (.ics)…**, the same item on the Calendar node's context menu in the folder tree, or **Import Calendar File (.ics)…** from the command palette (**Ctrl+Shift+P**). Choose one or more files in the Open dialog and press **Enter**.
+
+The appointments go into the **Local Calendar**, where you can edit and delete them like any appointment you created. When the import finishes, QuickMail shows the calendar with the first imported appointment selected and tells you how many were imported, for example "Imported 12 appointments to Local Calendar. 1 skipped."
+
+- **Importing the same file again is safe.** An appointment that is already in the Local Calendar is updated rather than added a second time, and QuickMail says how many were updated.
+- **Repeating appointments keep their pattern**, and any occurrences the file leaves out stay left out. When the file moves one occurrence to another time, that occurrence appears on its new day.
+- **Cancelled appointments are skipped**, and counted in the "skipped" number.
+- **Nothing is sent to anyone.** A file that contains a meeting invitation is imported as a plain appointment; QuickMail does not reply to the organizer.
+- If a file contains no appointments QuickMail can use, a message says so and nothing changes.
+
+Import is a one-time copy: later changes to the original calendar do not follow. Reminders use your usual reminder setting, not any alarms in the file. This action has no default keyboard shortcut, but you can assign one in **File → Settings → Keyboard Shortcuts**.
+
 ### Searching your appointments
 
 Press **Ctrl+Shift+S** while the calendar is open to search. Type to filter the list by title, location, or notes; the count of matches is announced as you type. Press **Escape** to clear the search and return to the full list.
@@ -1740,6 +1754,7 @@ To set expectations clearly:
 - Respond to meeting invitations and keep your reply in sync.
 - Download events from Microsoft, Google, and iCloud calendars, and create, edit, and delete single (non-repeating) events on any of them.
 - Export any appointment as a `.ics` file.
+- Import `.ics` files into the Local Calendar.
 
 **It does not (yet):**
 

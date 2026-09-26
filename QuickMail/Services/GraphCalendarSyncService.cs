@@ -451,59 +451,15 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     internal static CalendarEvent MapCalDavEvent(IcsModel ics, Guid accountId,
         string calendarId = "", string calendarName = "", string resourceUrl = "")
     {
-        long? startTicks, endTicks;
-        if (ics.IsAllDay)
-        {
-            // ICS all-day: date values with an EXCLUSIVE DTEND. Re-anchor at LOCAL midnight /
-            // 23:59:59 of the last day, matching Graph, Google, and locally-authored all-day rows.
-            var startDay = ics.StartTime?.Date;
-            var endDay   = ics.EndTime?.Date.AddDays(-1) ?? startDay;
-            if (endDay.HasValue && startDay.HasValue && endDay.Value < startDay.Value)
-                endDay = startDay;
-            startTicks = startDay.HasValue
-                ? DateTime.SpecifyKind(startDay.Value, DateTimeKind.Local).ToUniversalTime().Ticks
-                : null;
-            endTicks = endDay.HasValue
-                ? DateTime.SpecifyKind(endDay.Value.AddDays(1).AddSeconds(-1), DateTimeKind.Local).ToUniversalTime().Ticks
-                : null;
-        }
-        else
-        {
-            // IcsModel start/end are Kind-carrying (Utc for Z stamps, Local otherwise);
-            // ToUniversalTime handles both.
-            startTicks = ics.StartTime?.ToUniversalTime().Ticks;
-            endTicks   = ics.EndTime?.ToUniversalTime().Ticks;
-        }
-
-        var uid = !string.IsNullOrWhiteSpace(ics.Uid)
-            ? ics.Uid
-            : CalDavCalendarClient.SyntheticUid($"{ics.Summary}|{startTicks}");
-
-        var evt = new CalendarEvent
-        {
-            Uid             = uid,
-            AccountId       = accountId,
-            IsGraph         = true, // "server-synced row" — read-only in UI, replace-slice owned
-            CalendarId      = calendarId,
-            CalendarName    = calendarName,
-            ResourceUrl     = resourceUrl,
-            Summary         = ics.Summary?.Trim() ?? string.Empty,
-            Description     = ics.Description?.Trim() ?? string.Empty,
-            Location        = ics.Location?.Trim() ?? string.Empty,
-            Organizer       = ics.Organizer?.Trim() ?? string.Empty,
-            OrganizerName   = ics.OrganizerName?.Trim() ?? string.Empty,
-            StartTimeTicks  = startTicks,
-            EndTimeTicks    = endTicks,
-            IsAllDay        = ics.IsAllDay,
-            // The user's own calendar; CalDAV v1 does not resolve per-attendee RSVP state.
-            ResponseStatus  = CalendarResponseStatus.Accepted,
-            SourceMessageId = string.Empty, // not an invite email
-            SourceFolder    = string.Empty,
-            Sequence        = ics.Sequence,
-            RecurrenceRule  = string.IsNullOrWhiteSpace(ics.RecurrenceRule) ? null : ics.RecurrenceRule,
-        };
-        foreach (var exDate in ics.ExDates)
-            evt.AddExDate(exDate);
+        var evt = ics.ToCalendarEvent(accountId);
+        if (string.IsNullOrWhiteSpace(evt.Uid))
+            evt.Uid = CalDavCalendarClient.SyntheticUid($"{ics.Summary}|{evt.StartTimeTicks}");
+        evt.IsGraph      = true; // "server-synced row" — read-only in UI, replace-slice owned
+        evt.CalendarId   = calendarId;
+        evt.CalendarName = calendarName;
+        evt.ResourceUrl  = resourceUrl;
+        // The user's own calendar; CalDAV v1 does not resolve per-attendee RSVP state.
+        evt.ResponseStatus = CalendarResponseStatus.Accepted;
         return evt;
     }
 

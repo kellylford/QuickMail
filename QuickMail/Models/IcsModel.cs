@@ -37,6 +37,11 @@ public class IcsModel
     /// recurring series (not the series master). Null for masters and one-offs.</summary>
     public string? RecurrenceId { get; set; }
 
+    /// <summary>The RECURRENCE-ID parsed honoring its TZID, normalized to machine-local
+    /// wall-clock like <see cref="ExDates"/> — the start of the series occurrence this
+    /// VEVENT replaces. Null for masters, one-offs, and unparseable values.</summary>
+    public DateTime? RecurrenceIdTime { get; set; }
+
     /// <summary>ICS STATUS value (CONFIRMED, TENTATIVE, CANCELLED), or null when absent.</summary>
     public string? Status { get; set; }
 
@@ -121,6 +126,10 @@ public class IcsModel
             var lines = UnfoldLines(icsContent);
             string? calendarMethod = null;
             IcsModel? current = null;
+            // Depth of sub-components (VALARM) inside the current VEVENT. Their properties are the
+            // alarm's, not the event's: a Google export's "DESCRIPTION:This is an event reminder"
+            // must not replace the appointment's own description.
+            var nestedDepth = 0;
 
             void FlushCurrent()
             {
@@ -140,11 +149,24 @@ public class IcsModel
                 {
                     FlushCurrent(); // defensive: unterminated previous VEVENT
                     current = new IcsModel();
+                    nestedDepth = 0;
                     continue;
                 }
                 if (line.StartsWith("END:VEVENT", StringComparison.OrdinalIgnoreCase))
                 {
                     FlushCurrent();
+                    nestedDepth = 0;
+                    continue;
+                }
+                if (current != null && line.StartsWith("BEGIN:", StringComparison.OrdinalIgnoreCase))
+                {
+                    nestedDepth++;
+                    continue;
+                }
+                if (current != null && nestedDepth > 0)
+                {
+                    if (line.StartsWith("END:", StringComparison.OrdinalIgnoreCase))
+                        nestedDepth--;
                     continue;
                 }
                 if (current == null)
@@ -221,6 +243,10 @@ public class IcsModel
                 break;
             case "RECURRENCE-ID":
                 model.RecurrenceId = value;
+                var rid = ParseIcsDateTime(value, ExtractTzidParam(prop));
+                model.RecurrenceIdTime = rid.HasValue && rid.Value.Kind == DateTimeKind.Utc
+                    ? rid.Value.ToLocalTime()
+                    : rid;
                 break;
             case "STATUS":
                 model.Status = value.Trim();
@@ -331,6 +357,62 @@ public class IcsModel
         sb.AppendLine("END:VEVENT");
         sb.AppendLine("END:VCALENDAR");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Converts this parsed VEVENT to a calendar row for <paramref name="accountId"/> — the one
+    /// copy of the ICS → <see cref="CalendarEvent"/> mapping, shared by CalDAV sync and .ics
+    /// import (issue #762). Carries times, text fields, RRULE and EXDATE. The caller owns
+    /// identity and tagging: a missing UID is left empty, and <see cref="CalendarEvent.IsGraph"/>,
+    /// calendar and resource tags are not set.
+    /// </summary>
+    public CalendarEvent ToCalendarEvent(Guid accountId)
+    {
+        long? startTicks, endTicks;
+        if (IsAllDay)
+        {
+            // ICS all-day: date values with an EXCLUSIVE DTEND. Re-anchor at LOCAL midnight /
+            // 23:59:59 of the last day, matching Graph, Google, and locally-authored all-day rows.
+            var startDay = StartTime?.Date;
+            var endDay   = EndTime?.Date.AddDays(-1) ?? startDay;
+            if (endDay.HasValue && startDay.HasValue && endDay.Value < startDay.Value)
+                endDay = startDay;
+            startTicks = startDay.HasValue
+                ? DateTime.SpecifyKind(startDay.Value, DateTimeKind.Local).ToUniversalTime().Ticks
+                : null;
+            endTicks = endDay.HasValue
+                ? DateTime.SpecifyKind(endDay.Value.AddDays(1).AddSeconds(-1), DateTimeKind.Local).ToUniversalTime().Ticks
+                : null;
+        }
+        else
+        {
+            // Start/end are Kind-carrying (Utc for Z stamps, Local otherwise); ToUniversalTime
+            // handles both.
+            startTicks = StartTime?.ToUniversalTime().Ticks;
+            endTicks   = EndTime?.ToUniversalTime().Ticks;
+        }
+
+        var evt = new CalendarEvent
+        {
+            Uid             = Uid?.Trim() ?? string.Empty,
+            AccountId       = accountId,
+            Summary         = Summary?.Trim() ?? string.Empty,
+            Description     = Description?.Trim() ?? string.Empty,
+            Location        = Location?.Trim() ?? string.Empty,
+            Organizer       = Organizer?.Trim() ?? string.Empty,
+            OrganizerName   = OrganizerName?.Trim() ?? string.Empty,
+            StartTimeTicks  = startTicks,
+            EndTimeTicks    = endTicks,
+            IsAllDay        = IsAllDay,
+            ResponseStatus  = CalendarResponseStatus.Accepted,
+            SourceMessageId = string.Empty,
+            SourceFolder    = string.Empty,
+            Sequence        = Sequence,
+            RecurrenceRule  = string.IsNullOrWhiteSpace(RecurrenceRule) ? null : RecurrenceRule,
+        };
+        foreach (var exDate in ExDates)
+            evt.AddExDate(exDate);
+        return evt;
     }
 
     // ── Parsing helpers ────────────────────────────────────────────────────────

@@ -76,6 +76,12 @@ public partial class CalendarViewModel : ObservableObject
     /// </summary>
     public event Action<string, string>? ExportRequested;
 
+    /// <summary>
+    /// Raised to import .ics files (issue #762). The View shows an Open dialog, reads the chosen
+    /// files, and hands their text to <see cref="ImportFilesAsync"/>.
+    /// </summary>
+    public event Action? ImportRequested;
+
     [ObservableProperty]
     private BatchObservableCollection<CalendarEvent> _events = [];
 
@@ -606,6 +612,93 @@ public partial class CalendarViewModel : ObservableObject
         foreach (var c in System.IO.Path.GetInvalidFileNameChars())
             baseName = baseName.Replace(c, '_');
         ExportRequested?.Invoke(baseName + ".ics", ics);
+    }
+
+    /// <summary>Starts an import of .ics files into the Local Calendar (issue #762).</summary>
+    [RelayCommand]
+    private void ImportIcs()
+    {
+        if (_onlineMode) { Announce("Calendar is unavailable in online mode.", AnnouncementCategory.Result); return; }
+        ImportRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Imports the text of one or more .ics files into the Local Calendar: stores every event in
+    /// one batch, rebuilds the list once, selects the first imported appointment, announces the
+    /// counts, and asks for list focus. Returns an error message naming each file that held no
+    /// usable event (for the View to show), or null when every file contributed something.
+    /// </summary>
+    /// <param name="beforeStore">Run once something importable was found, before it is stored —
+    /// the View uses it to bring the calendar into view when the import started elsewhere (the
+    /// File menu), so a file with nothing in it does not move the user.</param>
+    internal async Task<string?> ImportFilesAsync(IReadOnlyList<(string FileName, string Text)> files,
+                                                  Func<Task>? beforeStore = null)
+    {
+        if (_onlineMode || files.Count == 0) return null;
+
+        var existingLocalUids = _calendarService.Events
+            .Where(e => e.AccountId == CalendarEvent.LocalAccountId)
+            .Select(e => e.Uid)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var pending = new Dictionary<string, CalendarEvent>(StringComparer.Ordinal);
+        var emptyFiles = new List<string>();
+        var skipped = 0;
+        foreach (var (fileName, text) in files)
+        {
+            // Earlier files in the same import count as "already there", so a series in one file
+            // and its moved occurrence in another still meet.
+            var plan = CalendarIcsImporter.Plan(text, _calendarService.Events
+                .Where(e => !pending.ContainsKey(e.Uid) || e.AccountId != CalendarEvent.LocalAccountId)
+                .Concat(pending.Values));
+            skipped += plan.Skipped;
+            if (plan.IsEmpty) { emptyFiles.Add(fileName); continue; }
+            foreach (var evt in plan.Events)
+                pending[evt.Uid] = evt;
+        }
+
+        string? error = emptyFiles.Count switch
+        {
+            0 => null,
+            1 => $"No calendar events were found in {emptyFiles[0]}.",
+            _ => "No calendar events were found in these files:\n" + string.Join("\n", emptyFiles),
+        };
+        if (pending.Count == 0) return error;
+
+        if (beforeStore != null) await beforeStore();
+        try
+        {
+            await _calendarService.UpsertEventsAsync(pending.Values.ToList());
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Calendar .ics import", ex);
+            return "The appointments could not be saved to the Local Calendar. See the log for details.";
+        }
+
+        ApplyFilters();
+        SelectedEvent = Events.FirstOrDefault(e => e.AccountId == CalendarEvent.LocalAccountId
+                                                   && pending.ContainsKey(e.Uid))
+                        ?? SelectedEvent;
+
+        var updated = pending.Keys.Count(existingLocalUids.Contains);
+        var added = pending.Count - updated;
+        Announce(ImportSummary(added, updated, skipped), AnnouncementCategory.Result);
+        ListFocusRequested?.Invoke();
+        return error;
+    }
+
+    /// <summary>The Result announcement for an import: "Imported 12 appointments to Local Calendar. 1 skipped."</summary>
+    internal static string ImportSummary(int added, int updated, int skipped)
+    {
+        static string Appts(int n) => n == 1 ? "1 appointment" : $"{n} appointments";
+        var text = (added, updated) switch
+        {
+            (> 0, 0) => $"Imported {Appts(added)} to Local Calendar.",
+            (0, > 0) => $"Updated {Appts(updated)} in Local Calendar.",
+            _        => $"Imported {Appts(added)} to Local Calendar and updated {updated}.",
+        };
+        return skipped > 0 ? $"{text} {skipped} skipped." : text;
     }
 
     /// <summary>Deletes the selected local event (with confirmation). Bound to Delete.</summary>

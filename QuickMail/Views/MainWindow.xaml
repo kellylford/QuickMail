@@ -336,6 +336,9 @@
             <MenuItem Header="_Clear Default Calendar"
                       AutomationProperties.Name="Clear Default Calendar"
                       Click="CalendarContextMenu_ClearDefault_Click"/>
+            <MenuItem Header="_Import Calendar File (.ics)…"
+                      AutomationProperties.Name="Import Calendar File (.ics)…"
+                      Click="MenuImportCalendarFile_Click"/>
             <Separator/>
             <!-- #590. Calendar nodes sit in the same tree and nest the same way, so they get the
                  same expansion actions — worded for a calendar, since "Expand Folder" on the
@@ -439,6 +442,10 @@
                         </Style>
                     </MenuItem.Style>
                 </MenuItem>
+                <Separator/>
+                <MenuItem Header="_Import Calendar File (.ics)…"
+                          AutomationProperties.Name="Import Calendar File (.ics)…"
+                          Click="MenuImportCalendarFile_Click"/>
                 <Separator/>
                 <MenuItem Header="_Manage Accounts…"
                           Command="{Binding ManageAccountsCommand}"/>
