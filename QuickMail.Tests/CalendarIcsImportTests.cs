@@ -222,6 +222,29 @@ public class CalendarIcsImportTests
     }
 
     [Fact]
+    public void CancelledSeries_TakesItsMovedOccurrencesWithIt()
+    {
+        var result = Plan(Cal(
+            VEvent("UID:s", "STATUS:CANCELLED", "SUMMARY:Master", "DTSTART:20261005T090000", "RRULE:FREQ=WEEKLY"),
+            VEvent("UID:s", "RECURRENCE-ID:20261019T090000", "SUMMARY:Moved", "DTSTART:20261020T090000")));
+
+        Assert.True(result.IsEmpty);
+        Assert.Equal(2, result.Skipped);
+    }
+
+    [Fact]
+    public void OverrideForAStoredSeries_DoesNotTouchTheLiveRow()
+    {
+        var stored = Plan(Cal(VEvent("UID:s", "SUMMARY:M", "DTSTART:20261005T090000", "RRULE:FREQ=WEEKLY"))).Events[0];
+
+        var result = Plan(Cal(VEvent("UID:s", "RECURRENCE-ID:20261019T090000", "SUMMARY:Moved",
+                                     "DTSTART:20261020T090000")), stored);
+
+        Assert.Empty(stored.GetExDates());
+        Assert.Single(result.Events.Single(e => e.Uid == "s").GetExDates());
+    }
+
+    [Fact]
     public void Reimport_OfSeriesWithOverride_DoesNotDuplicateExDates()
     {
         var ics = Cal(

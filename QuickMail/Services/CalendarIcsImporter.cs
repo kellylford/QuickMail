@@ -47,11 +47,17 @@ public static class CalendarIcsImporter
         var parsed = IcsModel.ParseAllEvents(icsText);
         var byUid = new Dictionary<string, CalendarEvent>(StringComparer.Ordinal);
         var skipped = 0;
+        var cancelledSeries = new HashSet<string>(StringComparer.Ordinal);
 
         // Pass 1: series masters and one-offs.
         foreach (var ics in parsed.Where(p => string.IsNullOrEmpty(p.RecurrenceId)))
         {
-            if (IsCancelled(ics)) { skipped++; continue; }
+            if (IsCancelled(ics))
+            {
+                skipped++;
+                if (!string.IsNullOrWhiteSpace(ics.Uid)) cancelledSeries.Add(ics.Uid.Trim());
+                continue;
+            }
             if (!ics.StartTime.HasValue) { skipped++; continue; }
 
             var evt = ics.ToCalendarEvent(CalendarEvent.LocalAccountId);
@@ -73,11 +79,15 @@ public static class CalendarIcsImporter
         {
             var masterUid = ics.Uid?.Trim() ?? string.Empty;
             if (!ics.RecurrenceIdTime.HasValue || masterUid.Length == 0) { skipped++; continue; }
+            // The whole series was cancelled: its moved occurrences go with it.
+            if (cancelledSeries.Contains(masterUid)) { skipped++; continue; }
 
             var master = byUid.GetValueOrDefault(masterUid);
             if (master == null && existingLocal.TryGetValue(masterUid, out var stored) && stored.IsRecurring)
             {
-                master = stored;
+                // A copy: the stored row is the calendar service's live in-memory object, and it
+                // must not gain the EXDATE unless the import is actually saved.
+                master = Copy(stored);
                 byUid[masterUid] = master; // re-store it with the new EXDATE
             }
             if (master != null && master.IsRecurring)
@@ -110,6 +120,19 @@ public static class CalendarIcsImporter
 
     private static bool IsCancelled(IcsModel ics)
         => string.Equals(ics.Status, "CANCELLED", StringComparison.OrdinalIgnoreCase);
+
+    private static CalendarEvent Copy(CalendarEvent e) => new()
+    {
+        Uid = e.Uid, AccountId = e.AccountId, IsAllDay = e.IsAllDay, IsGraph = e.IsGraph,
+        CalendarId = e.CalendarId, CalendarName = e.CalendarName, ResourceUrl = e.ResourceUrl,
+        RecurrenceRule = e.RecurrenceRule, ExDates = e.ExDates,
+        Summary = e.Summary, Description = e.Description, Location = e.Location,
+        Organizer = e.Organizer, OrganizerName = e.OrganizerName,
+        StartTimeTicks = e.StartTimeTicks, EndTimeTicks = e.EndTimeTicks,
+        Sequence = e.Sequence, Method = e.Method,
+        SourceMessageId = e.SourceMessageId, SourceFolder = e.SourceFolder,
+        ResponseStatus = e.ResponseStatus,
+    };
 
     private static void AddExDateOnce(CalendarEvent evt, DateTime occurrenceStartLocal)
     {
