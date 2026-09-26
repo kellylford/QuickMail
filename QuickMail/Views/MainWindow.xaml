@@ -337,7 +337,7 @@
                       AutomationProperties.Name="Clear Default Calendar"
                       Click="CalendarContextMenu_ClearDefault_Click"/>
             <MenuItem Header="_Import Calendar File (.ics)…"
-                      AutomationProperties.Name="Import Calendar File (.ics)…"
+                      AutomationProperties.Name="Import Calendar File"
                       Click="MenuImportCalendarFile_Click"/>
             <Separator/>
             <!-- #590. Calendar nodes sit in the same tree and nest the same way, so they get the
@@ -444,7 +444,7 @@
                 </MenuItem>
                 <Separator/>
                 <MenuItem Header="_Import Calendar File (.ics)…"
-                          AutomationProperties.Name="Import Calendar File (.ics)…"
+                          AutomationProperties.Name="Import Calendar File"
                           Click="MenuImportCalendarFile_Click"/>
                 <Separator/>
                 <MenuItem Header="_Manage Accounts…"
