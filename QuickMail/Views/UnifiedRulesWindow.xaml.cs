@@ -153,12 +153,12 @@ public partial class UnifiedRulesWindow : Window
         => MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
 
     private void OnAnnouncement(string text, AnnouncementCategory category)
-        // Results and status are action outcomes the user should hear promptly, so they interrupt. A Hint
-        // is ambient and queues instead, so it can't cut off the platform's own announcement of whatever
-        // just took focus. Nothing in this window raises a Hint today — the rule-mode cue that did now
-        // lives in the status line (#550) — but the policy is per-category, not per-call-site, so it
-        // stays correct for the next one rather than being a branch about one deleted announcement.
-        => AccessibilityHelper.Announce(this, text, interrupt: category != AnnouncementCategory.Hint, category: category);
+        // Results are action outcomes the user should hear promptly, so they interrupt. Status and Hints
+        // queue instead, so they can't cut off the platform's own announcement of whatever just changed:
+        // an account's rule count is a Status said as the Account list moves (#734), and interrupting
+        // would cut off the account name the list itself is saying. Nothing in this window raises a Hint
+        // today, but the policy is per-category, not per-call-site, so it stays correct for the next one.
+        => AccessibilityHelper.Announce(this, text, interrupt: category == AnnouncementCategory.Result, category: category);
 
     // Enter = edit, Space = enable/disable, Delete = delete. Each honours the command's CanExecute, so
     // a key does nothing where the button/menu item is disabled (e.g. Move on a client rule).

@@ -869,31 +869,56 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
-    public async Task MovingThroughTheAccountPicker_SaysNothing()   // #550
+    public async Task MovingThroughTheAccountPicker_SaysEachAccountsRuleCount_NotItsMode()   // #550, #734
     {
         // Arrowing down the account list changes the selection once per account, and each change
-        // reloads. When the mode was spoken, passing a client-only account on the way to a
-        // server-capable one produced "supports only client-side" then "supports both" — two correct
-        // announcements that read as one wrong one. Landing on an account must now say nothing at all.
+        // reloads. Each account now says how many rules it has (#734), as a Status announcement. It must
+        // not say the mode: passing a client-only account on the way to a server-capable one produced
+        // "supports only client-side" then "supports both" — two correct announcements that read as one
+        // wrong one (#550). The mode stays on the status line.
         var work = Guid.NewGuid();
         var personal = Guid.NewGuid();
-        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(),
+        var client = new StubRuleService { LoadedRules = [Client("C1", personal), Client("C2", personal)] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(),
             [Graph(work), PersonalGraph(personal)], preferredAccountId: work);
         await vm.RefreshCommand.ExecuteAsync(null);
-        var announces = new List<string>();
-        vm.AnnouncementRequested += (t, _) => announces.Add(t);
+        var announces = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (t, c) => announces.Add((t, c));
 
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == personal);
         // Anchor on the FIRST switch, where the expected status differs from the one the initial refresh
         // left behind. OnSelectedAccountChanged is fire-and-forget, so asserting the work account's own
         // status after switching away and back proves nothing — deleting the auto-refresh wiring outright
         // would leave that same value in place and pass. This value can only be here if the switch ran.
-        Assert.Equal(UnifiedRulesViewModel.NoRulesStatus(false), vm.StatusText);
+        Assert.StartsWith("2 rules. ", vm.StatusText, StringComparison.Ordinal);
 
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
         Assert.Equal(UnifiedRulesViewModel.NoRulesStatus(true), vm.StatusText);
 
-        Assert.Empty(announces);
+        Assert.Equal(
+            [("2 rules.", AnnouncementCategory.Status), ("No rules yet.", AnnouncementCategory.Status)],
+            announces);
+    }
+
+    [Fact]
+    public async Task ASaveReturningToItsAccount_DoesNotAlsoSayTheCount()   // #734
+    {
+        // The list moving back to a saved rule's account is the save's doing, not the user arrowing; the
+        // count is for the user moving the list, and the status line already says where the rule went.
+        var home = Guid.NewGuid();
+        var work = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(),
+            [Imap(home), Graph(work)], preferredAccountId: home);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
+        var announces = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (t, c) => announces.Add((t, c));
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(home, vm.SelectedAccount!.Id);
+        Assert.DoesNotContain(announces, a => a.Text == "1 rule.");
     }
 
     [Fact]

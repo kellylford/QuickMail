@@ -46,6 +46,14 @@ public partial class UnifiedRulesViewModel : ObservableObject
     // save's reload only.
     private string? _savedToAccountLabel;
 
+    // Set when the user moves the Account list, so the load that follows says how many rules the account
+    // has (#734). Cleared by the load that says it; a load superseded by a newer switch leaves it for that one.
+    private bool _announceCountOnLoad;
+
+    // Set while the view model moves the Account list itself (a save returning to its rule's account, or a
+    // rule made from a message), which is not the user arrowing and says what it has to say its own way.
+    private bool _movingAccountForAction;
+
     // Opened from a shared mailbox, the title names the account shown for the life of the window.
     private readonly bool _openedFromSharedMailbox;
 
@@ -192,7 +200,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 Announce(StatusText, AnnouncementCategory.Result);
                 return;
             }
-            SelectedAccount = opt;
+            MoveAccountForAction(opt);
         }
         OpenNewEditor(ServerRuleEditorViewModel.ForNewFromTemplate(template));
     }
@@ -478,7 +486,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     {
         if (SelectedAccount?.Id != accountId && AccountOptions.FirstOrDefault(o => o.Id == accountId) is { } option)
         {
-            SelectedAccount = option;
+            MoveAccountForAction(option);
             // After the switch, whose change handler clears it: this change is the save's, not the user's.
             _savedToAccountLabel = option.DisplayName;
         }
@@ -666,7 +674,15 @@ public partial class UnifiedRulesViewModel : ObservableObject
         // Choosing an account answers the shared-mailbox notice: it was about where the window opened.
         _sharedMailboxLabel = null;
         _savedToAccountLabel = null;
+        _announceCountOnLoad = !_movingAccountForAction;
         RefreshCommand.ExecuteAsync(null).LogFaults("UnifiedRules: account-change refresh");
+    }
+
+    private void MoveAccountForAction(AccountOption option)
+    {
+        _movingAccountForAction = true;
+        try { SelectedAccount = option; }
+        finally { _movingAccountForAction = false; }
     }
 
     /// <summary>
@@ -782,6 +798,17 @@ public partial class UnifiedRulesViewModel : ObservableObject
             StatusText = (_savedToAccountLabel is { } savedTo ? $"Rule saved to {savedTo}. " : string.Empty)
                          + SharedMailboxPreamble()
                          + BuildStatus(rows, failures, AccountSupportsServerRules, serverFailed, clientFailed);
+
+            // Moving through the Account list says each account's rule count (#734), which used to be heard
+            // only by moving on to the list. The count, not the whole status line: the mode clause spoken on
+            // every account read as a contradiction when passing between kinds (#550), and it is still on
+            // the status line. A failed load is said whole, so it can't pass for "no rules".
+            if (_announceCountOnLoad)
+            {
+                _announceCountOnLoad = false;
+                Announce(failures.Count > 0 ? StatusText : CountSentence(rows, AccountSupportsServerRules),
+                    AnnouncementCategory.Status);
+            }
         }
         finally
         {
@@ -864,7 +891,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// <summary>The status line for an account with no rules: there are none to count, so the mode is
     /// the whole message.</summary>
     internal static string NoRulesStatus(bool supportsServerRules)
-        => "No rules yet. " + ModeClause(supportsServerRules);
+        => CountSentence([], supportsServerRules) + " " + ModeClause(supportsServerRules);
 
     /// <summary>
     /// The window's title. Opened from a shared mailbox it names the account shown (#678): with one account
@@ -936,15 +963,22 @@ public partial class UnifiedRulesViewModel : ObservableObject
             // pass said "N client-side rules." and let the ABSENCE of the server split mean "client-only",
             // then said the presence of "0 on server" meant "server rules are possible here". Both are the
             // same trick, and the mode used to be spoken outright on every load (#550).
-            var head = supportsServer
+            return CountSentence(r, supportsServer) + " " + ModeClause(supportsServer);
+        }
+    }
+
+    /// <summary>
+    /// How many rules a loaded account has, in the status line's own words but without its mode clause:
+    /// what moving through the Account list says (#734).
+    /// </summary>
+    internal static string CountSentence(IReadOnlyCollection<UnifiedRuleRow> r, bool supportsServer)
+        => r.Count == 0
+            ? "No rules yet."
+            : supportsServer
                 ? $"{r.Count} rule{(r.Count == 1 ? "" : "s")}: " +
                   $"{r.Count(x => x.RunsWhere == RuleRunsWhere.Server)} on server, " +
                   $"{r.Count(x => x.RunsWhere == RuleRunsWhere.Client)} on client."
                 // A client-only account can't have server rules, so the split would be "0 on server"
-                // clutter; the clause that follows says the same thing in words.
+                // clutter; the status line's mode clause says the same thing in words.
                 : $"{r.Count} rule{(r.Count == 1 ? "" : "s")}.";
-
-            return head + " " + ModeClause(supportsServer);
-        }
-    }
 }
