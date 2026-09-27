@@ -451,6 +451,38 @@ elsewhere. (Exporting one occurrence of a repeating appointment exports
 the whole series.) This action has no default keyboard shortcut, but you
 can assign one in <strong>File → Settings → Keyboard
 Shortcuts</strong>.</p>
+<h3 id="importing-a-.ics-file">Importing a .ics file</h3>
+<p>To bring appointments from a <code>.ics</code> file into QuickMail —
+a booking confirmation, a conference or school schedule, or an export
+from another calendar program — choose <strong>File → Import Calendar
+File (.ics)…</strong>, the same item on the Calendar node’s context menu
+in the folder tree, or <strong>Import Calendar File (.ics)…</strong>
+from the command palette (<strong>Ctrl+Shift+P</strong>). Choose one or
+more files in the Open dialog and press <strong>Enter</strong>.</p>
+<p>The appointments go into the <strong>Local Calendar</strong>, where
+you can edit and delete them like any appointment you created. When the
+import finishes, QuickMail shows the calendar with the first imported
+appointment selected and tells you how many were imported, for example
+“Imported 12 appointments to Local Calendar. 1 skipped.”</p>
+<ul>
+<li><strong>Importing the same file again is safe.</strong> An
+appointment that is already in the Local Calendar is updated rather than
+added a second time, and QuickMail says how many were updated.</li>
+<li><strong>Repeating appointments keep their pattern</strong>, and any
+occurrences the file leaves out stay left out. When the file moves one
+occurrence to another time, that occurrence appears on its new day.</li>
+<li><strong>Cancelled appointments are skipped</strong>, and counted in
+the “skipped” number.</li>
+<li><strong>Nothing is sent to anyone.</strong> A file that contains a
+meeting invitation is imported as a plain appointment; QuickMail does
+not reply to the organizer.</li>
+<li>If a file contains no appointments QuickMail can use, a message says
+so and nothing changes.</li>
+</ul>
+<p>Import is a one-time copy: later changes to the original calendar do
+not follow. Reminders use your usual reminder setting, not any alarms in
+the file. This action has no default keyboard shortcut, but you can
+assign one in <strong>File → Settings → Keyboard Shortcuts</strong>.</p>
 <h3 id="searching-your-appointments">Searching your appointments</h3>
 <p>Press <strong>Ctrl+Shift+S</strong> while the calendar is open to
 search. Type to filter the list by title, location, or notes; the count
@@ -561,6 +593,7 @@ date.</li>
 create, edit, and delete single (non-repeating) events on any of
 them.</li>
 <li>Export any appointment as a <code>.ics</code> file.</li>
+<li>Import <code>.ics</code> files into the Local Calendar.</li>
 </ul>
 <p><strong>It does not (yet):</strong></p>
 <ul>

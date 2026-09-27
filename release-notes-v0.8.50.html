@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.50 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.49.html">Older: 0.8.49</a></div>
+  <h1 id="quickmail-v0.8.50-release-notes">QuickMail v0.8.50 Release
+Notes</h1>
+<p class="version">Released September 27, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.50">downloads for this release</a></p>
+<h2 id="added">Added</h2>
+<h3 id="import-.ics-files-into-your-calendar">Import .ics files into
+your calendar</h3>
+<p>QuickMail could export an appointment as a <code>.ics</code> file but
+could not bring one in. Now it can. Choose <strong>File → Import
+Calendar File (.ics)…</strong> (it is also on the Calendar node’s
+context menu and in the command palette), pick one or more
+<code>.ics</code> files, and the appointments go into the <strong>Local
+Calendar</strong>. QuickMail then shows the calendar with the first
+imported appointment selected and tells you how many were imported and
+how many were skipped.</p>
+<ul>
+<li>Importing the same file twice updates the appointments instead of
+adding copies.</li>
+<li>Repeating appointments keep their pattern. An occurrence the file
+moved to another time shows on its new day, and occurrences the file
+removed stay removed.</li>
+<li>Cancelled appointments are skipped. A file with a meeting invitation
+in it is imported as a plain appointment, and nothing is sent to the
+organizer.</li>
+<li>A file with nothing QuickMail can use gets a message saying so.</li>
+</ul>
+<p>The command has no default key; you can assign one in <strong>File →
+Settings → Keyboard Shortcuts</strong>.</p>
+<h2 id="fixed">Fixed</h2>
+<h3
+id="the-rules-manager-says-each-accounts-rule-count-as-you-move-through-the-account-list">The
+Rules Manager says each account’s rule count as you move through the
+Account list</h3>
+<p>Moving through the <strong>Account</strong> list in the Rules Manager
+said only the account’s name; you heard how many rules it had only by
+moving on to the rules list. Now each account says its count as you
+reach it, for example “3 rules.” or “No rules yet.” For a work or school
+Microsoft 365 account it also says how many are on the server and how
+many on the client. This is a status announcement, so it follows the
+<strong>Announce status</strong> setting, and it waits for the account
+name rather than cutting it off. If an account’s rules could not be
+loaded, that is what you hear instead. (#734)</p>
+<h3
+id="reminder-text-no-longer-replaces-an-appointments-description">Reminder
+text no longer replaces an appointment’s description</h3>
+<p>Calendar files from Google and Outlook carry a reminder inside each
+appointment, and the reminder has its own description (“This is an event
+reminder”). QuickMail read that as the appointment’s description, so an
+appointment from such a file lost its real notes. This affected iCloud
+calendar sync as well as the new import.</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.49.html">Older: 0.8.49</a></div>
+</body>
+</html>
