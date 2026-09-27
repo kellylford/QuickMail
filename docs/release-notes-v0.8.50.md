@@ -21,6 +21,15 @@ The command has no default key; you can assign one in **File → Settings → Ke
 
 ## Fixed
 
+### The Rules Manager says each account's rule count as you move through the Account list
+
+Moving through the **Account** list in the Rules Manager said only the account's name; you heard how
+many rules it had only by moving on to the rules list. Now each account says its count as you reach it,
+for example "3 rules." or "No rules yet." For a work or school Microsoft 365 account it also says how
+many are on the server and how many on the client. This is a status announcement, so it follows the
+**Announce status** setting, and it waits for the account name rather than cutting it off. If an
+account's rules could not be loaded, that is what you hear instead. (#734)
+
 ### Reminder text no longer replaces an appointment's description
 
 Calendar files from Google and Outlook carry a reminder inside each appointment, and the reminder has
