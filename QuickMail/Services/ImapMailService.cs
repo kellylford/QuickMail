@@ -167,7 +167,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
         // #613: Exchange and Outlook.com expose the mailbox's calendar, contacts and task folders as
         // ordinary selectable IMAP folders, which then fail to open as mail (Graph's mail folder list
-        // leaves them out), along with some housekeeping folders. See ExchangeNonMailFolders.
+        // leaves them out). Some housekeeping folders are hidden too; see ExchangeNonMailFolders.
         var isMicrosoft = _accounts.TryGetValue(accountId, out var folderAccount) && IsMicrosoftImapAccount(folderAccount);
 
         foreach (var folder in folders)
@@ -2032,7 +2032,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
     // #613: top-level folders Exchange creates that are not the user's mail. Calendar, Contacts and
     // Tasks report their items over IMAP but cannot be opened as mail; Suggested Contacts and
-    // Journal hold the same kinds of items. Outbox, Sync Issues and Conversation History are mailbox
+    // Journal hold non-mail items too. Outbox, Sync Issues and Conversation History are mailbox
     // housekeeping rather than mail (QuickMail has its own Outbox). Notes and RSS Feeds open like
     // mail and are deliberately left visible. RFC 6154 has no special-use flag for any of these, so
     // the name is all there is. Only the top-level segment is matched, where Exchange puts these
