@@ -41,9 +41,10 @@ sync as well as the new import.
 
 A Microsoft 365 or Outlook.com account set up with IMAP listed the mailbox's calendar, contacts and
 task folders in the folder tree as if they held mail, and they could not be opened. Calendar,
-Contacts, Suggested Contacts, Tasks, Journal, Conversation History, Outbox and the Sync Issues
-folders are now left out, as they already were for accounts that use Microsoft's own connection.
-Notes and RSS Feeds stay, since their items open like mail. Only the English folder names are
+Contacts, Suggested Contacts, Tasks and Journal are now left out, as calendar, contacts and task
+folders already were for accounts that use Microsoft's own connection, and so are the Outbox, Sync
+Issues and Conversation History folders, which are mailbox housekeeping rather than mail. Notes and
+RSS Feeds stay, since their items open like mail. Only the English folder names are
 recognized so far, so a mailbox set to another language still shows them. Other IMAP servers are not
 affected. (#613)
 
