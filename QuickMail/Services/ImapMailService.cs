@@ -2038,7 +2038,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
     private static readonly HashSet<string> ExchangeNonMailFolders = new(StringComparer.OrdinalIgnoreCase)
     {
         "Calendar", "Contacts", "Tasks", "Notes", "Journal", "Conversation History",
-        "Sync Issues", "Outbox", "RSS Feeds",
+        "Sync Issues", "Outbox", "RSS Feeds", "Suggested Contacts",
     };
 
     // Hosts that serve Exchange Online and Outlook.com over IMAP.

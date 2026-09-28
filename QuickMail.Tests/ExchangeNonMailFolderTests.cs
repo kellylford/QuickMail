@@ -21,6 +21,7 @@ public class ExchangeNonMailFolderTests
     [InlineData("Sync Issues")]
     [InlineData("Outbox")]
     [InlineData("RSS Feeds")]
+    [InlineData("Suggested Contacts")]
     public void WellKnownTopLevelName_IsNonMail(string name)
         => Assert.True(ImapMailService.IsExchangeNonMailFolder(name, '/'));
 
