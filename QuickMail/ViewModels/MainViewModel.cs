@@ -2887,6 +2887,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             id: "account.manage", category: "Account", title: "Manage Accounts",
             execute: () => ManageAccountsCommand.Execute(null)));
 
+        // #615: no default key. Acts on the account selected in the account list; the account list's
+        // context menu passes its row explicitly. Always available: on a connected account, or with
+        // none selected, it says so rather than a bound key silently doing nothing.
+        registry.Register(new CommandDefinition(
+            id: "account.reconnect", category: "Account", title: "Reconnect Account",
+            execute: () => ReconnectAccountCommand.Execute(null)));
+
         registry.Register(new CommandDefinition(
             id: "help.userGuide", category: "Help", title: "Open User Guide",
             execute: () => ViewUserGuideCommand.Execute(null),
@@ -4897,7 +4904,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task<(Guid Id, List<MailFolderModel>? Folders)> ConnectOneAccountAsync(AccountModel account)
+    // maxAttempts: startup and the automatic reconnects retry with backoff (up to three attempts),
+    // which suits a server still coming up. A reconnect the user asked for (#615) makes one attempt
+    // and reports straight away rather than leaving them waiting minutes on "Reconnecting…".
+    private async Task<(Guid Id, List<MailFolderModel>? Folders)> ConnectOneAccountAsync(AccountModel account, int maxAttempts = 3)
     {
         string? password = null;
         if (account.AuthType == Models.AuthType.Password)
@@ -4924,7 +4934,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Startup retry: up to 3 attempts with backoff (30s, 45s, 60s timeouts).
-        for (int attempt = 1; attempt <= 3; attempt++)
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
             if (attempt > 1 && !loopback && _connectivity is { IsNetworkAvailable: false })
             {
@@ -4964,7 +4974,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 _lastConnectFailure[account.Id] = ConnectFailureKind.NotAttempted;
                 return (account.Id, null);
             }
-            catch (OperationCanceledException) when (attempt < 3)
+            catch (OperationCanceledException) when (attempt < maxAttempts)
             {
                 // Per-attempt timeout — retry with jittered backoff
                 var delaySeconds = JitteredBackoffSeconds(attempt == 1 ? 15 : 30);
@@ -4973,7 +4983,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 catch { /* best effort */ }
                 continue;
             }
-            catch (Exception ex) when (attempt < 3)
+            catch (Exception ex) when (attempt < maxAttempts)
             {
                 // Transient error — retry with jittered backoff
                 var delaySeconds = JitteredBackoffSeconds(attempt == 1 ? 15 : 30);
@@ -10192,9 +10202,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // be offline": _cachedFolders stopped answering the first half in #516 (restored from SQLite at
         // launch), and the connectivity service answers the second so a dropped account reconnects.
         List<AccountModel> accountsToConnect = [];
+        // An account the user is reconnecting by hand (#615) is left to that: two connects for one
+        // account race, and whichever finishes last decides what the account list shows.
         _ui.Invoke(() => accountsToConnect = AccountsNeedingConnect(
             Accounts, _imap.IsConnected,
-            id => _connectedAccountIds.Contains(id) && (_connectivity?.IsAccountOnline(id) ?? true)));
+            id => _connectedAccountIds.Contains(id) && (_connectivity?.IsAccountOnline(id) ?? true))
+            .Where(a => !_reconnecting.Contains(a.Id)).ToList());
         if (accountsToConnect.Count == 0) return 0;
 
         var connected = 0;
