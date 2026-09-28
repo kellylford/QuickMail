@@ -2037,8 +2037,8 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
     // mail. The names are English; a mailbox in another language keeps showing its translated ones.
     private static readonly HashSet<string> ExchangeNonMailFolders = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Calendar", "Contacts", "Tasks", "Notes", "Journal", "Conversation History",
-        "Sync Issues", "Outbox", "RSS Feeds", "Suggested Contacts",
+        "Calendar", "Contacts", "Suggested Contacts", "Tasks", "Journal", "Conversation History",
+        "Sync Issues", "Outbox",
     };
 
     // Hosts that serve Exchange Online and Outlook.com over IMAP.

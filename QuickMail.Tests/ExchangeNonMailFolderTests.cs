@@ -15,18 +15,17 @@ public class ExchangeNonMailFolderTests
     [InlineData("Calendar")]
     [InlineData("Contacts")]
     [InlineData("Tasks")]
-    [InlineData("Notes")]
     [InlineData("Journal")]
     [InlineData("Conversation History")]
     [InlineData("Sync Issues")]
     [InlineData("Outbox")]
-    [InlineData("RSS Feeds")]
     [InlineData("Suggested Contacts")]
     public void WellKnownTopLevelName_IsNonMail(string name)
         => Assert.True(ImapMailService.IsExchangeNonMailFolder(name, '/'));
 
     [Theory]
     [InlineData("Calendar/Birthdays")]
+    [InlineData("Suggested Contacts/Old")]
     [InlineData("Contacts/Recipient Cache")]
     [InlineData("Sync Issues/Conflicts")]
     [InlineData("Sync Issues/Local Failures")]
@@ -40,6 +39,9 @@ public class ExchangeNonMailFolderTests
 
     [Theory]
     [InlineData("Inbox/Notes")]        // a user's own folder under Inbox is mail
+    [InlineData("Notes")]              // its items open over IMAP, so it stays
+    [InlineData("RSS Feeds")]          // its items open over IMAP, so it stays
+    [InlineData("RSS Feeds/Thurrott.com")]
     [InlineData("Projects/Calendar")]
     [InlineData("Archive")]
     [InlineData("Sent Items")]
