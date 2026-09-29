@@ -52,10 +52,17 @@ public sealed class OutboxItem
     public string Bcc { get; set; } = string.Empty;
     public bool HasAttachments { get; set; }
 
+    /// <summary>
+    /// The <see cref="LastError"/> a row is left with while it waits for its account to be signed in
+    /// (#614), so the Outbox can say why it is waiting rather than a plain "Waiting to send".
+    /// </summary>
+    public const string AwaitingSignInReason = "Waiting for its account to be signed in";
+
     /// <summary>What the Outbox folder shows for this row's state.</summary>
     public string StateDisplay => (Kind, State) switch
     {
         (_, OutboxState.Failed)             => string.IsNullOrWhiteSpace(LastError) ? "Failed" : $"Failed: {LastError}",
+        (_, OutboxState.Pending) when LastError == AwaitingSignInReason => AwaitingSignInReason,
         (OutboxKind.Send, OutboxState.Sending)  => "Sending…",
         (OutboxKind.Draft, OutboxState.Sending) => "Uploading draft…",
         (OutboxKind.Send, _)                => "Waiting to send",

@@ -32,6 +32,18 @@ command has no default key; you can assign one in **File → Settings → Keyboa
 
 ## Fixed
 
+### Sending from a disconnected shared mailbox queues the message instead of failing
+
+A shared mailbox sends through the sign-in of the account it belongs to. While that account was signed
+out, sending from the shared mailbox failed in the compose window. Now the message waits in the
+**Outbox** — you hear "Message queued. It will be sent when" followed by the shared mailbox's name and
+"is connected again." — and it goes out once the account it belongs to is signed in again, for
+example after you reconnect the shared mailbox from the **Accounts** list. The message waits in the
+one **Outbox** QuickMail keeps for all accounts, at the end of the **All Mail** group in the folder
+tree, not in a folder of the shared mailbox; its row names the account it will be sent from. A
+queued message waiting for a sign-in is not marked Failed, and **Send Outbox Now** says what it is
+waiting for. (#614)
+
 ### The Rules Manager says each account's rule count as you move through the Account list
 
 Moving through the **Account** list in the Rules Manager said only the account's name; you heard how

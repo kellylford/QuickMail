@@ -261,7 +261,8 @@ public partial class MainViewModel
         // Anything that reached an outcome is announced by the FlushCompleted handler, once.
         if (result.Any) return;
         SetStatus(
-            result.Deferred > 0 ? "Could not reach the server. The Outbox will try again when you're online."
+            result.AwaitingSignIn > 0 ? "A message in the Outbox is waiting for its account to be signed in. Reconnect the account from the Accounts list."
+            : result.Deferred > 0 ? "Could not reach the server. The Outbox will try again when you're online."
             : result.Skipped > 0 ? "Outbox is busy: a drain is already running, or every item is open in a compose window."
             : "Outbox is empty.",
             AnnouncementCategory.Result);
@@ -304,6 +305,8 @@ public partial class MainViewModel
         var text = parts.Count > 0 ? $"Outbox: {string.Join(", ", parts)}." : "Outbox:";
         if (r.Failed > 0)
             text += $" {r.Failed} failed. See the Outbox folder.";
+        if (r.AwaitingSignIn > 0)
+            text += $" {r.AwaitingSignIn} waiting for {(r.AwaitingSignIn == 1 ? "its account" : "their accounts")} to be signed in.";
         return text;
     }
 }

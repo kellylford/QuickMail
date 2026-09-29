@@ -11,7 +11,9 @@ namespace QuickMail.Services;
 /// held open in a compose window, or a drain already running); Deferred counts rows it attempted
 /// and could not reach the server for.
 /// </summary>
-public sealed record OutboxFlushResult(int Sent, int DraftsUploaded, int Failed, int Skipped, int Deferred = 0)
+// AwaitingSignIn (#614): items left waiting because their account needs a sign-in, which a drain
+// never prompts for. Kept apart from Deferred, which means the server could not be reached.
+public sealed record OutboxFlushResult(int Sent, int DraftsUploaded, int Failed, int Skipped, int Deferred = 0, int AwaitingSignIn = 0)
 {
     public static readonly OutboxFlushResult Nothing = new(0, 0, 0, 0);
 

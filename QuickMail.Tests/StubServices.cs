@@ -733,8 +733,13 @@ sealed class StubOutboxService : IOutboxService
         if (RaiseFlushCompletedDuringFlush && NextFlushResult.Any) FlushCompleted?.Invoke(NextFlushResult);
         return Task.FromResult(NextFlushResult);
     }
+    /// <summary>The account each FlushAccountAsync call was for, in order (#614).</summary>
+    public List<Guid> AccountFlushes { get; } = [];
     public Task<OutboxFlushResult> FlushAccountAsync(Guid accountId, bool force = false, CancellationToken ct = default)
-        => FlushAsync(force, ct);
+    {
+        AccountFlushes.Add(accountId);
+        return FlushAsync(force, ct);
+    }
 }
 
 /// <summary>

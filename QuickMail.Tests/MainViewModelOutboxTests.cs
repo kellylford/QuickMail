@@ -251,6 +251,48 @@ public class MainViewModelOutboxTests
     }
 
     [Fact]
+    public async Task ConnectingASharedMailboxDrainsTheOutbox_ConnectingOthersDoesNot()
+    {
+        // #614: a shared mailbox disconnected for want of a sign-in (its parent signed out) comes back
+        // without the network ever having gone, so the connectivity-driven drain never runs for it.
+        // Connecting it must send what was waiting — with a drain of every account, because a drain
+        // that arrives while another runs is skipped. Ordinary accounts add no drains of their own.
+        var f = new Fixture();
+        var shared = new AccountModel
+        {
+            Id = Guid.NewGuid(), AccountName = "Support", Username = "support@example.com",
+            AuthType = AuthType.OAuth2Microsoft, BackendKind = BackendKind.MicrosoftGraph,
+            IsShared = true, ParentAccountId = Work, SharedAddress = "support@example.com",
+        };
+        f.Vm.Accounts.Add(shared);
+
+        await f.ConnectAsync();
+
+        Assert.True(shared.IsConnected);
+        Assert.Equal([false], f.Outbox.Flushes);        // one automatic, all-accounts drain
+        Assert.Empty(f.Outbox.AccountFlushes);
+    }
+
+    [Fact]
+    public void ADrainThatLeftMailWaitingForASignInSaysSo()
+    {
+        Assert.Equal("Outbox: 1 message sent. 1 waiting for its account to be signed in.",
+            MainViewModel.SummariseFlush(new OutboxFlushResult(1, 0, 0, 0, AwaitingSignIn: 1)));
+        Assert.Equal("Outbox: 1 message sent. 2 waiting for their accounts to be signed in.",
+            MainViewModel.SummariseFlush(new OutboxFlushResult(1, 0, 0, 0, AwaitingSignIn: 2)));
+    }
+
+    [Fact]
+    public void AWaitingRowSaysWhatItIsWaitingFor()
+    {
+        var waiting = new OutboxItem { Kind = OutboxKind.Send, State = OutboxState.Pending, LastError = OutboxItem.AwaitingSignInReason };
+        var offline = new OutboxItem { Kind = OutboxKind.Send, State = OutboxState.Pending, LastError = "Host unreachable" };
+
+        Assert.Equal("Waiting for its account to be signed in", waiting.StateDisplay);
+        Assert.Equal("Waiting to send", offline.StateDisplay);
+    }
+
+    [Fact]
     public async Task ADrainIsAnnouncedOnceAsAWhole()
     {
         var f = new Fixture();

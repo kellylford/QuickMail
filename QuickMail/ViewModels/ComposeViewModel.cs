@@ -25,6 +25,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private readonly IMarkdownService _markdown;
     private readonly IOutboxService? _outbox;
     private readonly IConnectivityService? _connectivity;
+    // Whether an account is connected right now (#614). The accounts in SenderAccounts come from disk,
+    // where IsConnected is always false, so the live answer has to come from the main window.
+    private readonly Func<Guid, bool>? _isAccountConnected;
 
     [ObservableProperty] private string _to = string.Empty;
     [ObservableProperty] private string _cc = string.Empty;
@@ -194,8 +197,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public IAccountService AccountService => _accountService;
 
     public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null,
-        IOutboxService? outbox = null, IConnectivityService? connectivity = null)
+        IOutboxService? outbox = null, IConnectivityService? connectivity = null, Func<Guid, bool>? isAccountConnected = null)
     {
+        _isAccountConnected = isAccountConnected;
         _smtp = smtp;
         _accountService = accountService;
         _credentials = credentials;
@@ -393,7 +397,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// Queues the message in the local Outbox to be sent when the server is reachable (#637).
     /// Supersedes any draft row this compose owns. False when there is no Outbox or it failed.
     /// </summary>
-    private async Task<bool> QueueSendAsync(ComposeModel compose, AccountModel account)
+    private async Task<bool> QueueSendAsync(ComposeModel compose, AccountModel account, string? queuedMessage = null)
     {
         if (_outbox?.IsAvailable != true) return false;
         try
@@ -407,10 +411,14 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
         _isSent = true;
         _isDirty = false;
-        SetStatusOutcome("Message queued. It will be sent when you're online.");
+        SetStatusOutcome(queuedMessage ?? "Message queued. It will be sent when you're online.");
         CloseRequested?.Invoke();
         return true;
     }
+
+    /// <summary>What the user is told when a message from a disconnected shared mailbox is queued (#614).</summary>
+    internal static string SharedMailboxQueuedMessage(AccountModel account)
+        => $"Message queued. It will be sent when {account.AccountLabel} is connected again.";
 
     /// <summary>Uploads the current compose state as a draft, replacing any previous draft.</summary>
     private async Task SaveDraftCoreAsync(AccountModel account, CancellationToken externalCt = default)
@@ -575,6 +583,15 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             var compose = BuildComposeModel(account.Id);
 
+            // A shared mailbox sends through its parent's sign-in (#31), so while it is disconnected
+            // the send can only fail. Queue it instead; it goes out when the mailbox reconnects (#614).
+            // Checked before "known offline": a disconnected shared mailbox can also be marked offline
+            // (a failed folder load counts as unreachable), and "when you're online" would then send
+            // someone who is online looking for a network problem instead of a sign-in.
+            if (account.IsShared && _isAccountConnected?.Invoke(account.Id) == false
+                && await QueueSendAsync(compose, account, SharedMailboxQueuedMessage(account)))
+                return;
+
             // Known offline: no point holding the window for a 30-second timeout (#637).
             if (_connectivity?.IsAccountOnline(account.Id) == false && _outbox?.IsAvailable == true
                 && await QueueSendAsync(compose, account))
@@ -598,6 +615,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 // The server never answered. A rejection (bad address, refused login) is not
                 // caught here and still fails in the window, where the user can fix it.
                 if (await QueueSendAsync(compose, account))
+                    return;
+                throw;
+            }
+            catch (InteractiveSignInRequiredException) when (account.IsShared)
+            {
+                // The parent's sign-in lapsed between the check above and the send (#614).
+                if (await QueueSendAsync(compose, account, SharedMailboxQueuedMessage(account)))
                     return;
                 throw;
             }
