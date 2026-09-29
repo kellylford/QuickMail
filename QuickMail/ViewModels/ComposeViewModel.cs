@@ -583,15 +583,18 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             var compose = BuildComposeModel(account.Id);
 
+            // A shared mailbox sends through its parent's sign-in (#31), so while it is disconnected
+            // the send can only fail. Queue it instead; it goes out when the mailbox reconnects (#614).
+            // Checked before "known offline": a disconnected shared mailbox can also be marked offline
+            // (a failed folder load counts as unreachable), and "when you're online" would then send
+            // someone who is online looking for a network problem instead of a sign-in.
+            if (account.IsShared && _isAccountConnected?.Invoke(account.Id) == false
+                && await QueueSendAsync(compose, account, SharedMailboxQueuedMessage(account)))
+                return;
+
             // Known offline: no point holding the window for a 30-second timeout (#637).
             if (_connectivity?.IsAccountOnline(account.Id) == false && _outbox?.IsAvailable == true
                 && await QueueSendAsync(compose, account))
-                return;
-
-            // A shared mailbox sends through its parent's sign-in (#31), so while it is disconnected
-            // the send can only fail. Queue it instead; it goes out when the mailbox reconnects (#614).
-            if (account.IsShared && _isAccountConnected?.Invoke(account.Id) == false
-                && await QueueSendAsync(compose, account, SharedMailboxQueuedMessage(account)))
                 return;
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));

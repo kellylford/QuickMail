@@ -24,6 +24,8 @@ public class ComposeSharedMailboxQueueTests
         public StatusAnnouncementRecorder Status { get; }
         public int CloseRequests { get; private set; }
 
+        public StubConnectivityService Connectivity { get; } = new();
+
         public Harness(bool shared, bool? connected, bool withOutbox = true)
         {
             Account = new AccountModel
@@ -37,7 +39,7 @@ public class ComposeSharedMailboxQueueTests
             Func<Guid, bool>? isConnected = connected is { } c ? _ => c : null;
             Vm = new ComposeViewModel(Smtp, new StubAccountService(), new StubCredentialService(),
                 new StubImapMailService(), new StubTemplateService(),
-                outbox: withOutbox ? Outbox : null, isAccountConnected: isConnected);
+                outbox: withOutbox ? Outbox : null, connectivity: Connectivity, isAccountConnected: isConnected);
             Status = StatusAnnouncementRecorder.Watch(Vm);
             Vm.CloseRequested += () => CloseRequests++;
             Vm.SenderAccount = Account;
@@ -61,6 +63,20 @@ public class ComposeSharedMailboxQueueTests
         Assert.Equal(("Message queued. It will be sent when Support is connected again.", AnnouncementCategory.Result), h.Status.Last);
         Assert.True(h.Vm.IsSent);
         Assert.Equal(1, h.CloseRequests);
+    }
+
+    [Fact]
+    public async Task DisconnectedSharedMailbox_AlsoMarkedOffline_SaysItIsWaitingForTheMailbox()
+    {
+        // Found live: moving into a disconnected shared mailbox's folder fails the folder load, which
+        // marks the account offline. The message must still name the mailbox, not "when you're online".
+        var h = new Harness(shared: true, connected: false);
+        h.Connectivity.SetAccount(h.Account.Id, false);
+
+        await h.Vm.SendCommand.ExecuteAsync(null);
+
+        Assert.Single(h.Outbox.Enqueued);
+        Assert.Equal("Message queued. It will be sent when Support is connected again.", h.Status.Last.Text);
     }
 
     [Fact]
