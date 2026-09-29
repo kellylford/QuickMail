@@ -189,8 +189,21 @@ sealed class StubOAuthService : IOAuthService
         if (ThrowOnGetAccessToken is { } ex) throw ex;
         return Task.FromResult(string.Empty);
     }
-    public Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default) => Task.FromResult(string.Empty);
-    public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+    public Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
+    {
+        SilentChecks++;
+        return ThrowOnEnsureSilent is { } ex ? Task.FromException<string>(ex) : Task.FromResult(string.Empty);
+    }
+    /// <summary>When set, EnsureSilentTokenAsync and GetAccessTokenSilentAsync throw it — e.g. an
+    /// InteractiveSignInRequiredException to simulate a lapsed sign-in (#615 Reconnect).</summary>
+    public Exception? ThrowOnEnsureSilent { get; set; }
+    /// <summary>How many silent sign-in checks were made (EnsureSilentTokenAsync + GetAccessTokenSilentAsync).</summary>
+    public int SilentChecks { get; private set; }
+    public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default)
+    {
+        SilentChecks++;
+        return ThrowOnEnsureSilent is { } ex ? Task.FromException(ex) : Task.CompletedTask;
+    }
     /// <summary>
     /// Username interactive sign-in completes as. Left null, sign-in returns an empty username —
     /// which the editor VMs treat as a wrong-identity mismatch (#202) and abandon, so any test that
@@ -201,7 +214,16 @@ sealed class StubOAuthService : IOAuthService
     /// <summary>What the token's tenant id says about the signed-in account (#233).</summary>
     public bool SignInIsPersonalAccount { get; set; }
 
-    public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(SignInResult());
+    /// <summary>Accounts SignInInteractiveAsync was called for, in order (#615).</summary>
+    public List<AccountModel> InteractiveSignIns { get; } = [];
+    public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
+    {
+        InteractiveSignIns.Add(account);
+        // Signing in as the account itself puts its sign-in in the cache, so the next silent check passes.
+        if (string.Equals(SignInUsername, account.Username, StringComparison.OrdinalIgnoreCase))
+            ThrowOnEnsureSilent = null;
+        return Task.FromResult(SignInResult());
+    }
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(SignInResult());
     private OAuthResult SignInResult() => new(string.Empty, SignInUsername ?? string.Empty, SignInIsPersonalAccount);
     public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;

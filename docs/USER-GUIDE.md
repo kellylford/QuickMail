@@ -391,6 +391,27 @@ Press **Save** — the default button, so Enter is enough — to keep the change
 
 Server settings sit behind the same **Advanced settings** expander as in Add Account, so an account that is working needs no scrolling past hosts and ports to reach the settings people actually change. The **Provider** at the top is fixed when the account is created; to change it, remove the account and add it again.
 
+### Reconnecting an account
+
+An account that shows as disconnected can be reconnected where you are. Move to the
+**Accounts** list in the main window, select the account, open the context menu (**Shift+F10** or
+the Applications key), and choose **Reconnect**. You can also open the Command Palette
+(**Ctrl+Shift+P**) and choose **Reconnect Account**, which acts on the account selected in the
+**Accounts** list. It has no keyboard shortcut to begin with; you can give it one under **File → Settings → Keyboard Shortcuts**.
+
+- If the account's sign-in has expired, the Microsoft sign-in window opens, or for a Google account a
+  sign-in page in your browser. Finish a Google sign-in within five minutes. Connecting at
+  startup opens neither, so an account whose sign-in has expired stays disconnected until you
+  reconnect it here or sign in again from **Manage Accounts**.
+- A shared mailbox reads its mail through the account it belongs to, so reconnecting a shared mailbox
+  signs that account in and connects it first.
+- Sign in as the account itself. If you sign in as someone else, for example an administrator
+  approving permissions, the account is not connected, and QuickMail tells you who you signed in as.
+
+The status bar says how it went: "Work reconnected.", or "Could not reconnect Work." followed by the
+reason, such as no saved password, no network connection, or a server that could not be reached. A
+reconnect you ask for tries once and reports straight away.
+
 ### Changing the order of your accounts
 
 Accounts appear in the order you added them, and you can rearrange them. Move to the **Accounts**

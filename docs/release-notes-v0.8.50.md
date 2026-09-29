@@ -19,6 +19,17 @@ you how many were imported and how many were skipped.
 
 The command has no default key; you can assign one in **File → Settings → Keyboard Shortcuts**.
 
+### Reconnect a disconnected account from the account list
+
+An account whose sign-in had expired stayed disconnected, even after a restart, until you signed in
+again from **Manage Accounts**. Now you can reconnect it where you are: select it in the **Accounts** list and choose
+**Reconnect** from its context menu (**Shift+F10** or the Applications key), or choose **Reconnect
+Account** in the command palette. If the sign-in has expired, the Microsoft sign-in window opens, or
+for a Google account a sign-in page in your browser. A shared mailbox reads its mail through the account it belongs to, so reconnecting one signs
+that account in and connects it first. If you sign in as someone else, for example an administrator
+approving permissions, the account is not connected and QuickMail tells you who you signed in as. The
+command has no default key; you can assign one in **File → Settings → Keyboard Shortcuts**. (#615)
+
 ## Fixed
 
 ### Sending from a disconnected shared mailbox queues the message instead of failing
