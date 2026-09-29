@@ -180,7 +180,7 @@ public sealed class OutboxService : IOutboxService, IDisposable
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, ct);
         var token = linked.Token;
-        int sent = 0, drafts = 0, failed = 0, skipped = 0, deferred = 0;
+        int sent = 0, drafts = 0, failed = 0, skipped = 0, deferred = 0, awaitingSignIn = 0;
         var touched = false;
         try
         {
@@ -215,6 +215,7 @@ public sealed class OutboxService : IOutboxService, IDisposable
                     case Outcome.DraftUploaded: drafts++;   break;
                     case Outcome.Failed:        failed++;   break;
                     case Outcome.Deferred:      deferred++; break;
+                    case Outcome.AwaitingSignIn: awaitingSignIn++; break;
                     default:                    skipped++;  break;
                 }
             }
@@ -224,7 +225,7 @@ public sealed class OutboxService : IOutboxService, IDisposable
             _drain.Release();
         }
 
-        var result = new OutboxFlushResult(sent, drafts, failed, skipped, deferred);
+        var result = new OutboxFlushResult(sent, drafts, failed, skipped, deferred, awaitingSignIn);
         if (touched) RaiseChanged();
         if (result.Any)
         {
@@ -246,7 +247,7 @@ public sealed class OutboxService : IOutboxService, IDisposable
         return true;
     }
 
-    private enum Outcome { Sent, DraftUploaded, Failed, Deferred, Vanished }
+    private enum Outcome { Sent, DraftUploaded, Failed, Deferred, AwaitingSignIn, Vanished }
 
     private async Task<Outcome> ProcessOneAsync(OutboxItem item, bool force, CancellationToken token)
     {
@@ -274,6 +275,16 @@ public sealed class OutboxService : IOutboxService, IDisposable
             // Shutdown or the caller gave up: leave the row exactly as it was.
             await _store.UpdateOutboxStateAsync(item.Id, OutboxState.Pending, item.Attempts, item.LastError, item.NextAttemptUtc);
             throw;
+        }
+        catch (InteractiveSignInRequiredException ex)
+        {
+            // Nothing was sent: the account (for a shared mailbox, the account it belongs to) needs
+            // the user to sign in, which a drain must never prompt for (#206). That is not a strike
+            // against the row, and backing off would only delay it: leave it waiting, and the drain
+            // that follows the account connecting again sends it (#614).
+            await _store.UpdateOutboxStateAsync(item.Id, OutboxState.Pending, item.Attempts, OutboxItem.AwaitingSignInReason, null);
+            LogService.Log($"Outbox: {item.Kind} {item.Id} waiting for a sign-in: {ex.Message}");
+            return Outcome.AwaitingSignIn;
         }
         catch (PermanentOutboxFailure ex)
         {

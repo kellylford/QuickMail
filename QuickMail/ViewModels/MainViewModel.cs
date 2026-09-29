@@ -4848,6 +4848,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _connectivity?.NoteAccountReachable(account.Id, source);
 
         account.IsConnected = true;
+        // A shared mailbox's queued mail goes out now (#614). One disconnected for want of a sign-in
+        // (its parent signed out) comes back without the network ever having gone, so the Outbox's
+        // own network-returned drain never runs for it. Shared mailboxes only: every other account's
+        // queue is covered by the startup and network-returned drains, and an extra drain started
+        // here would hold the drain lock and make those skip, stranding other accounts' mail.
+        if (!was && account.IsShared)
+            _outbox?.FlushAccountAsync(account.Id).LogFaults($"Outbox drain after {account.AccountLabel} connected");
         // Exclude Gmail's virtual folders (All Mail / Important / Starred): their counts overlap the
         // Inbox and labels, so summing them double-counts and inflates the account total (#227).
         account.TotalUnread = folders.Where(f => !f.SuppressUnreadCount).Sum(f => f.UnreadCount);

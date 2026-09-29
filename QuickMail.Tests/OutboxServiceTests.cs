@@ -166,6 +166,32 @@ public class OutboxServiceTests
     }
 
     [Fact]
+    public async Task ASendThatNeedsASignIn_WaitsWithoutAStrike()
+    {
+        // #614: a shared mailbox whose parent is signed out cannot send, and a drain must never prompt
+        // for a sign-in. The row waits, unpenalised and with no backoff, for the account to connect.
+        var f = new Fixture();
+        using var svc = f.Build();
+        await svc.EnqueueSendAsync(f.Compose(), f.Account.Id, null);
+        f.Smtp.SendFailure = new InteractiveSignInRequiredException("Shared mailbox 'support@example.com' is disconnected — sign in to its parent account.");
+
+        var result = await svc.FlushAsync();
+
+        Assert.Equal(new OutboxFlushResult(0, 0, 0, 0, Deferred: 0, AwaitingSignIn: 1), result);
+        Assert.False(result.Any);
+        var row = Assert.Single(await svc.ListAsync());
+        Assert.Equal(OutboxState.Pending, row.State);
+        Assert.Equal(0, row.Attempts);
+        Assert.Null(row.NextAttemptUtc);
+        Assert.Equal(OutboxItem.AwaitingSignInReason, row.LastError);
+
+        // Once the account can send, the next drain sends it.
+        f.Smtp.SendFailure = null;
+        Assert.Equal(1, (await svc.FlushAccountAsync(f.Account.Id)).Sent);
+        Assert.Empty(await svc.ListAsync());
+    }
+
+    [Fact]
     public async Task FlushUploadsADraftReplacingTheServerCopy()
     {
         var f = new Fixture();
