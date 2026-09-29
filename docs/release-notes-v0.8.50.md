@@ -37,6 +37,17 @@ its own description ("This is an event reminder"). QuickMail read that as the ap
 description, so an appointment from such a file lost its real notes. This affected iCloud calendar
 sync as well as the new import.
 
+### Calendar, Contacts and Tasks no longer appear as mail folders on Microsoft accounts over IMAP
+
+A Microsoft 365 or Outlook.com account set up with IMAP listed the mailbox's calendar, contacts and
+task folders in the folder tree as if they held mail, and they could not be opened. Calendar,
+Contacts, Suggested Contacts, Tasks and Journal are now left out, as calendar, contacts and task
+folders already were for accounts that use Microsoft's own connection. The Outbox, Sync Issues and
+Conversation History folders are left out too, as mailbox housekeeping rather than mail. Notes and
+RSS Feeds stay, since their items open like mail. Only the English folder names are recognized so
+far, so a mailbox set to another language still shows them. Other IMAP servers are not affected.
+(#613)
+
 ---
 
 ## Reporting Issues
