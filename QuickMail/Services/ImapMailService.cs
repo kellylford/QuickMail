@@ -165,11 +165,21 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         var folders = await client.GetFoldersAsync(client.PersonalNamespaces[0], cancellationToken: ct);
         LogService.Log($"GetFoldersAsync returned {folders.Count} folders");
 
+        // #613: Exchange and Outlook.com expose the mailbox's calendar, contacts and task folders as
+        // ordinary selectable IMAP folders, which then fail to open as mail (Graph's mail folder list
+        // leaves them out). Some housekeeping folders are hidden too; see ExchangeNonMailFolders.
+        var isMicrosoft = _accounts.TryGetValue(accountId, out var folderAccount) && IsMicrosoftImapAccount(folderAccount);
+
         foreach (var folder in folders)
         {
             if ((folder.Attributes & FolderAttributes.NonExistent) != 0) continue;
             if ((folder.Attributes & FolderAttributes.NoSelect)    != 0) continue;
             if (folder.FullName == client.Inbox!.FullName)              continue;
+            if (isMicrosoft && IsExchangeNonMailFolder(folder.FullName, folder.DirectorySeparator))
+            {
+                LogService.Debug($"  Skipping Exchange non-mail folder: {folder.FullName}");
+                continue;
+            }
 
             try
             {
@@ -2019,6 +2029,49 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             .Select(l => l.Trim())
             .Where(l => l.Length > 0)
             .Take(maxLines));
+
+    // #613: top-level folders Exchange creates that are not the user's mail. Calendar, Contacts and
+    // Tasks report their items over IMAP but cannot be opened as mail; Suggested Contacts and
+    // Journal hold non-mail items too. Outbox, Sync Issues and Conversation History are mailbox
+    // housekeeping rather than mail (QuickMail has its own Outbox). Notes and RSS Feeds open like
+    // mail and are deliberately left visible. RFC 6154 has no special-use flag for any of these, so
+    // the name is all there is. Only the top-level segment is matched, where Exchange puts these
+    // folders: a user's "Inbox/Notes" is theirs and stays. A user could still make a top-level mail
+    // folder with one of these names in a mailbox that lacks the default one, and it would be hidden
+    // too. The names are English; a mailbox in another language keeps showing its translated ones.
+    private static readonly HashSet<string> ExchangeNonMailFolders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Calendar", "Contacts", "Suggested Contacts", "Tasks", "Journal", "Conversation History",
+        "Sync Issues", "Outbox",
+    };
+
+    // Hosts that serve Exchange Online and Outlook.com over IMAP.
+    private static readonly string[] MicrosoftImapHosts =
+        ["outlook.office365.com", "outlook.office.com", "imap-mail.outlook.com", "imap.outlook.com"];
+
+    /// <summary>
+    /// Whether this IMAP account is an Exchange Online or Outlook.com mailbox — the only servers whose
+    /// folder list is filtered by <see cref="IsExchangeNonMailFolder"/>, so a folder called "Calendar"
+    /// on any other server is left alone.
+    /// </summary>
+    internal static bool IsMicrosoftImapAccount(AccountModel account)
+    {
+        if (account.AuthType == AuthType.OAuth2Microsoft) return true;
+        var host = account.ImapHost?.Trim().TrimEnd('.');
+        return !string.IsNullOrEmpty(host)
+            && MicrosoftImapHosts.Any(h => string.Equals(host, h, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// True for a folder under one of Exchange's non-mail top-level folders, or that folder itself
+    /// (<c>Calendar</c>, <c>Calendar/Birthdays</c>, <c>Sync Issues/Conflicts</c>).
+    /// </summary>
+    internal static bool IsExchangeNonMailFolder(string fullName, char separator)
+    {
+        if (string.IsNullOrEmpty(fullName)) return false;
+        var top = separator == '\0' ? fullName : fullName.Split(separator)[0];
+        return ExchangeNonMailFolders.Contains(top);
+    }
 
     private static bool IsExcludedFromAllMail(FolderAttributes attrs, string fullName)
     {
