@@ -450,7 +450,7 @@ Shared mailboxes are a **Microsoft 365 work or school** feature. You add one thr
 
 **Reading and sending.** A shared mailbox reads like any other: select it in the folder tree and open its folders. To send from it, choose the shared address in the **From** list when composing — the message goes out as the shared mailbox, not as you.
 
-**Sending while it is disconnected.** A shared mailbox sends through the sign-in of the account it belongs to, so while that account is signed out the shared mailbox is disconnected and cannot send. A message you send from it then waits in the **Outbox** instead of failing: you hear "Message queued. It will be sent when Support is connected again." (with your shared mailbox's name), the window closes, and the message goes out as soon as the shared mailbox connects. To connect it now, reconnect it from the **Accounts** list.
+**Sending while it is disconnected.** A shared mailbox sends through the sign-in of the account it belongs to, so while that account is signed out the shared mailbox is disconnected and cannot send. A message you send from it then waits in the **Outbox** instead of failing: you hear "Message queued. It will be sent when Support is connected again." (with your shared mailbox's name), the window closes, and the message goes out once the account it belongs to is signed in again. To do that now, reconnect the shared mailbox from the **Accounts** list.
 
 **Freshness.** A shared mailbox updates on a timer rather than the instant new mail arrives: **shared mailboxes update every few minutes, not instantly.** Your own mailboxes still update live; only the shared one waits for the next check.
 
@@ -1162,7 +1162,7 @@ Everything waiting lives in the **Outbox**, the last entry in the All Mail group
 | `Delete` on a row | Asks first, then removes it from the queue. There is no Trash to recover from: the message has never been anywhere but this computer. |
 | **Send Outbox Now** (Message menu, or `Ctrl+Shift+P` → Send Outbox Now) | Tries every queued item right away, including any marked Failed. |
 
-The Outbox drains on its own when QuickMail connects at startup, when the connection returns, when an account connects again, and on each background sync. A message from a shared mailbox whose account is signed out is not marked Failed: its row says "Waiting for its account to be signed in", and it goes out once the shared mailbox is reconnected. A drain is announced once as a whole, for example "Outbox: 2 messages sent, 1 draft uploaded." A message the server refused stays in the Outbox marked "Failed" with the reason, until you reopen and fix it, or remove it. The Outbox is not available in `--online` mode, which runs without the local store.
+The Outbox drains on its own when QuickMail connects at startup, when the connection returns, when a shared mailbox connects again, and on each background sync. A message from a shared mailbox whose account is signed out is not marked Failed: once the Outbox has tried it, its row says "Waiting for its account to be signed in", and it goes out once that account is signed in again. A drain is announced once as a whole, for example "Outbox: 2 messages sent, 1 draft uploaded." A message the server refused stays in the Outbox marked "Failed" with the reason, until you reopen and fix it, or remove it. The Outbox is not available in `--online` mode, which runs without the local store.
 
 ### Forwarding with Attachments
 

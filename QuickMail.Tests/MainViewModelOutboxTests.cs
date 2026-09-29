@@ -251,12 +251,12 @@ public class MainViewModelOutboxTests
     }
 
     [Fact]
-    public async Task ConnectingASharedMailboxDrainsItsQueue_AndOnlyThat()
+    public async Task ConnectingASharedMailboxDrainsTheOutbox_ConnectingOthersDoesNot()
     {
         // #614: a shared mailbox disconnected for want of a sign-in (its parent signed out) comes back
         // without the network ever having gone, so the connectivity-driven drain never runs for it.
-        // Connecting it must send what was waiting. Ordinary accounts get no drain of their own here:
-        // one would hold the drain lock and make the all-accounts drains skip.
+        // Connecting it must send what was waiting — with a drain of every account, because a drain
+        // that arrives while another runs is skipped. Ordinary accounts add no drains of their own.
         var f = new Fixture();
         var shared = new AccountModel
         {
@@ -269,7 +269,8 @@ public class MainViewModelOutboxTests
         await f.ConnectAsync();
 
         Assert.True(shared.IsConnected);
-        Assert.Equal([shared.Id], f.Outbox.AccountFlushes);
+        Assert.Equal([false], f.Outbox.Flushes);        // one automatic, all-accounts drain
+        Assert.Empty(f.Outbox.AccountFlushes);
     }
 
     [Fact]
