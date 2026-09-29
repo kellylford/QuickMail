@@ -1028,6 +1028,10 @@
 
                     <ListBox.ContextMenu>
                         <ContextMenu AutomationProperties.Name="Account actions">
+                            <MenuItem Header="Re_connect"
+                                      AutomationProperties.Name="Reconnect"
+                                      Command="{Binding PlacementTarget.DataContext.ReconnectAccountCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                             <MenuItem Header="_Delete Account"
                                       AutomationProperties.Name="Delete Account"
                                       Command="{Binding PlacementTarget.DataContext.DeleteAccountCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -1041,8 +1045,8 @@
                                  moving here also moves the folder tree's account roots and the
                                  compose window's From list. Click handlers, not Command bindings:
                                  each move returns a sentence the window reports to the status bar
-                                 and announces, and it re-focuses the moved row. Access keys D and
-                                 S are taken above; U, W, R and N are free. -->
+                                 and announces, and it re-focuses the moved row. Access keys C, D
+                                 and S are taken above; U, W, R and N are free. -->
                             <MenuItem Header="Move _Up"
                                       AutomationProperties.Name="Move Up"
                                       InputGestureText="Alt+Up"
