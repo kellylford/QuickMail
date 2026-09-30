@@ -3529,6 +3529,9 @@ public partial class MainWindow : Window
     private void MenuWatchConversation_Click(object sender, RoutedEventArgs e) =>
         _vm.ToggleWatchConversation();
 
+    private void MenuCreateRule_Click(object sender, RoutedEventArgs e) =>
+        _vm.CreateRuleFromMessageOrSayWhy();
+
     private void MenuWatchedConversations_Click(object sender, RoutedEventArgs e) =>
         OpenWatchedConversationsWindow();
 
@@ -6268,6 +6271,21 @@ public partial class MainWindow : Window
         };
         winVm.ComposeToAction = address => _vm.ComposeToAddress(address);
 
+        // Rules from the message being read: its own message and account, not the main list's
+        // selection, and focus comes back to this window when the Rules Manager closes. A refusal
+        // (a shared mailbox's message) is spoken here, where the user is.
+        winVm.CreateRuleAction = () =>
+        {
+            _announceTarget = win;
+            MailRule? template;
+            try { template = _vm.RuleTemplateForOpenMessage(winVm.SelectedMessage); }
+            finally { _announceTarget = null; }
+            if (template != null)
+                OpenRulesManager(template, returnTo: win, accountContext: template.AccountId);
+        };
+        winVm.ManageRulesAction = () =>
+            OpenRulesManager(returnTo: win, accountContext: _vm.RulesAccountContextFor(winVm.SelectedMessage));
+
         winVm.GrabAddressesAction = () =>
         {
             if (winVm.MessageDetail is not { } detail) return;
@@ -7768,7 +7786,12 @@ public partial class MainWindow : Window
 
     private Window? _rulesWindow;
 
-    private void OpenRulesManager(MailRule? template = null)
+    /// <param name="returnTo">
+    /// The window to give focus back to when the Rules Manager closes, when it was opened from one
+    /// other than this — a message window. Null returns to this window.
+    /// </param>
+    /// <param name="accountContext">The account to open on; null uses the main window's view.</param>
+    private void OpenRulesManager(MailRule? template = null, Window? returnTo = null, Guid? accountContext = null)
     {
         // Single-instance: this window is modeless (see below), so a second open request
         // would otherwise stack another copy. Bring the existing one forward — and if this
@@ -7865,7 +7888,7 @@ public partial class MainWindow : Window
         // loads for them). Seed the picker with the account the user is in; from a view that spans
         // accounts this is null, and the VM falls back to the default account, then the first.
         var unifiedVm = new UnifiedRulesViewModel(
-            _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.RulesAccountContext,
+            _ruleService, _serverRuleService, accounts, _vm.CachedFolders, accountContext ?? _vm.RulesAccountContext,
             selectedMessagesForTest: selectedMessages, configService: _configService);
         unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
         // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.
@@ -7885,9 +7908,18 @@ public partial class MainWindow : Window
             _rulesWindow = null;
 
             // Return focus to where it was before opening (falling back to the message list);
-            // Show() does not restore owner focus the way ShowDialog() did.
-            Activate();
-            (previousFocus ?? MessageList).Focus();
+            // Show() does not restore owner focus the way ShowDialog() did. Opened from a message
+            // window that is still open, that window is where the user goes back to.
+            if (returnTo is { IsLoaded: true })
+            {
+                returnTo.Activate();
+                previousFocus?.Focus();
+            }
+            else
+            {
+                Activate();
+                (previousFocus is DependencyObject d && GetWindow(d) == this ? previousFocus : MessageList).Focus();
+            }
 
             // Refresh the rules status text now that the window has closed.
             _vm.UpdateRulesStatusText();

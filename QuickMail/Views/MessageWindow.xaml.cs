@@ -121,6 +121,18 @@ public partial class MessageWindow : Window
             execute: () => _vm.GrabAddressesCommand.Execute(null),
             defaultKey: Key.G, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
+        // The main window's gestures for the same two actions. Neither was here, so a message read in
+        // its own window could not become a rule, nor could the Rules Manager be reached from it.
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.createRule", category: "Mail", title: "Create Rule from Message",
+            execute: () => _vm.CreateRuleFromMessageCommand.Execute(null),
+            defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "window.manageRules", category: "Mail", title: "Manage Rules",
+            execute: () => _vm.ManageRulesCommand.Execute(null),
+            defaultKey: Key.L, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
         _localRegistry.Register(new CommandDefinition(
             id: "window.togglePlainText", category: "View", title: "Toggle Plain Text View",
             execute: TogglePlainTextView,
@@ -921,6 +933,16 @@ public partial class MessageWindow : Window
         else if (key == Key.G && mod == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             _vm.GrabAddressesCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (key == Key.T && mod == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            _vm.CreateRuleFromMessageCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (key == Key.L && mod == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            _vm.ManageRulesCommand.Execute(null);
             e.Handled = true;
         }
         else if (key == Key.F6 && mod == ModifierKeys.None)

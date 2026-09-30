@@ -37,6 +37,14 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     public Action? GrabAddressesAction { get; set; }
 
     /// <summary>
+    /// Create Rule from Message and Manage Rules. A message you have just read is where a rule starts,
+    /// and a message window had neither; both are routed to the main window, which owns the Rules
+    /// Manager and keeps it to one copy.
+    /// </summary>
+    public Action? CreateRuleAction  { get; set; }
+    public Action? ManageRulesAction { get; set; }
+
+    /// <summary>
     /// Opens a new message addressed to the given address — the link menu's "Compose to This
     /// Address" on a mailto: link (issue #671). Wired to MainViewModel so the compose window is
     /// created the same way it is everywhere else.
@@ -100,6 +108,12 @@ public sealed partial class MessageWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void GrabAddresses() => GrabAddressesAction?.Invoke();
+
+    [RelayCommand]
+    private void CreateRuleFromMessage() => CreateRuleAction?.Invoke();
+
+    [RelayCommand]
+    private void ManageRules() => ManageRulesAction?.Invoke();
 
     [RelayCommand]
     private Task OpenAttachment(AttachmentModel? attachment) =>
