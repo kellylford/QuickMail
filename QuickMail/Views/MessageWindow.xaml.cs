@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -85,8 +87,59 @@ public partial class MessageWindow : Window
         vm.PropertyChanged += _vmPropertyChangedHandler;
 
         RegisterLocalCommands();
+        if (_configService != null)
+            _localRegistry.ApplyUserOverrides(TranslateMainOverrides(_configService.Load().CustomHotkeys));
 
         Loaded += OnLoaded;
+    }
+
+    /// <summary>
+    /// This window's commands that are the main window's commands for the same action, keyed by this
+    /// window's id. Keys are customized in Settings against the main window's ids, so a key the user
+    /// reassigned there is carried over to the same action here through this table. Without it the
+    /// message window kept the default keys whatever the user had chosen.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, string> MainCommandIds =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["message.reply"]           = "mail.reply",
+            ["message.replyAll"]        = "mail.replyAll",
+            ["message.forward"]         = "mail.forward",
+            ["message.delete"]          = "mail.delete",
+            ["message.markRead"]        = "mail.markRead",
+            ["message.grabAddresses"]   = "contacts.grabAddresses",
+            ["message.createRule"]      = "mail.createRuleFromMessage",
+            ["window.manageRules"]      = "mail.rules",
+            ["window.togglePlainText"]  = "view.togglePlainText",
+            ["window.loadPictures"]     = "view.loadPictures",
+            ["window.focusAttachments"] = "view.focusAttachments",
+            ["message.save"]            = "mail.save",
+            ["message.saveAs"]          = "mail.saveAs",
+            ["message.print"]           = "mail.print",
+            ["window.toggleWatch"]      = "mail.toggleWatch",
+            ["window.acceptInvite"]     = "mail.acceptInvite",
+            ["window.tentativeInvite"]  = "mail.tentativeInvite",
+            ["window.declineInvite"]    = "mail.declineInvite",
+            ["window.close"]            = "mail.closeMessage",
+        };
+
+    /// <summary>The user's key assignments for the main window's commands, re-keyed to this window's ids.</summary>
+    internal static List<HotkeyBinding> TranslateMainOverrides(IEnumerable<HotkeyBinding> mainBindings)
+    {
+        var byMainId = mainBindings
+            .Where(b => !string.IsNullOrEmpty(b.CommandId))
+            .GroupBy(b => b.CommandId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+        var local = new List<HotkeyBinding>();
+        foreach (var (localId, mainId) in MainCommandIds)
+        {
+            if (!byMainId.TryGetValue(mainId, out var bindings)) continue;
+            local.AddRange(bindings.Select(b => new HotkeyBinding
+            {
+                CommandId = localId, Gesture = b.Gesture, Key = b.Key, Modifiers = b.Modifiers,
+            }));
+        }
+        return local;
     }
 
     private void RegisterLocalCommands()
@@ -146,11 +199,13 @@ public partial class MessageWindow : Window
         _localRegistry.Register(new CommandDefinition(
             id: "window.previousMessage", category: "Mail", title: "Previous Message",
             execute: () => _vm.PreviousMessageCommand.Execute(null),
+            defaultKey: Key.Left, defaultModifiers: ModifierKeys.Alt,
             isAvailable: () => _vm.CanNavigatePrevious));
 
         _localRegistry.Register(new CommandDefinition(
             id: "window.nextMessage", category: "Mail", title: "Next Message",
             execute: () => _vm.NextMessageCommand.Execute(null),
+            defaultKey: Key.Right, defaultModifiers: ModifierKeys.Alt,
             isAvailable: () => _vm.CanNavigateNext));
 
         _localRegistry.Register(new CommandDefinition(
@@ -290,6 +345,9 @@ public partial class MessageWindow : Window
                 "else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}" +
                 "else if(e.ctrlKey&&!e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}" +
                 "else if(e.ctrlKey&&e.shiftKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-shift-p');e.preventDefault();}" +
+                // Create Rule from Message and Manage Rules, for the same reason as Ctrl+Shift+W.
+                "else if(e.ctrlKey&&e.shiftKey&&!e.altKey&&(e.key==='t'||e.key==='T')){window.chrome.webview.postMessage('ctrl-shift-t');e.preventDefault();}" +
+                "else if(e.ctrlKey&&e.shiftKey&&!e.altKey&&(e.key==='l'||e.key==='L')){window.chrome.webview.postMessage('ctrl-shift-l');e.preventDefault();}" +
                 // Save, Save As and Print (#728); see the reading pane's copy of this script.
                 "else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='s'||e.key==='S')){window.chrome.webview.postMessage('ctrl-s');e.preventDefault();}" +
                 "else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-p');e.preventDefault();}" +
@@ -309,12 +367,16 @@ public partial class MessageWindow : Window
                     // saw the keydown, and while a native context menu owns input the page sees
                     // nothing. So this can only be a real "close the window" Escape.
                     case "escape":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
-                    case "ctrl-w":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
-                    case "ctrl-shift-w": Dispatcher.InvokeAsync(RequestWatchToggle, DispatcherPriority.Input); break;
+                    // The relayed gestures run whatever the registry has on that key, so a key the user
+                    // reassigned in Settings means here what it means everywhere else in the window.
+                    case "ctrl-w":       RelayGesture(Key.W, ModifierKeys.Control); break;
+                    case "ctrl-shift-w": RelayGesture(Key.W, ModifierKeys.Control | ModifierKeys.Shift); break;
+                    case "ctrl-shift-t": RelayGesture(Key.T, ModifierKeys.Control | ModifierKeys.Shift); break;
+                    case "ctrl-shift-l": RelayGesture(Key.L, ModifierKeys.Control | ModifierKeys.Shift); break;
                     case "ctrl-shift-p": Dispatcher.InvokeAsync(OpenCommandPalette, DispatcherPriority.Input); break;
-                    case "ctrl-s": Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.S, ModifierKeys.Control)?.Execute(), DispatcherPriority.Input); break;
-                    case "ctrl-p": Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.P, ModifierKeys.Control)?.Execute(), DispatcherPriority.Input); break;
-                    case "f12":    Dispatcher.InvokeAsync(() => _localRegistry.FindByGesture(Key.F12, ModifierKeys.None)?.Execute(), DispatcherPriority.Input); break;
+                    case "ctrl-s":       RelayGesture(Key.S, ModifierKeys.Control); break;
+                    case "ctrl-p":       RelayGesture(Key.P, ModifierKeys.Control); break;
+                    case "f12":          RelayGesture(Key.F12, ModifierKeys.None); break;
                     case { } alt when alt.StartsWith(MenuBarAccess.AltKeyMessagePrefix, StringComparison.Ordinal)
                                       && alt.Length == MenuBarAccess.AltKeyMessagePrefix.Length + 1:
                         var altLetter = alt[^1];
@@ -890,59 +952,9 @@ public partial class MessageWindow : Window
         {
             // Deliberately not handled.
         }
-        else if (key == Key.Escape || (key == Key.W && mod == ModifierKeys.Control))
+        else if (key == Key.Escape)
         {
             Close();
-            e.Handled = true;
-        }
-        else if (key == Key.Left && mod == ModifierKeys.Alt)
-        {
-            _vm.PreviousMessageCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.Right && mod == ModifierKeys.Alt)
-        {
-            _vm.NextMessageCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.R && mod == ModifierKeys.Control)
-        {
-            _vm.ReplyCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.R && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            _vm.ReplyAllCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.F && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            _vm.ForwardCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.Delete && mod == ModifierKeys.None)
-        {
-            _vm.DeleteMessageCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.Q && mod == ModifierKeys.Control)
-        {
-            _vm.MarkReadCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.G && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            _vm.GrabAddressesCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.T && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            _vm.CreateRuleFromMessageCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.L && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            _vm.ManageRulesCommand.Execute(null);
             e.Handled = true;
         }
         else if (key == Key.F6 && mod == ModifierKeys.None)
@@ -955,35 +967,29 @@ public partial class MessageWindow : Window
             CycleFocus(false);
             e.Handled = true;
         }
-        else if (key == Key.H && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            TogglePlainTextView();
-            e.Handled = true;
-        }
-        else if (key == Key.U && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            LoadWebPictures();
-            e.Handled = true;
-        }
-        else if (key == Key.A && mod == ModifierKeys.Alt)
-        {
-            FocusAttachmentList();
-            e.Handled = true;
-        }
-        // Before the Ctrl+W branch would ever be reached: this window dispatches gestures with a
-        // hand-written ladder rather than through the registry, and the branches test `mod` for
-        // equality, so Ctrl+Shift+W cannot fall through to Ctrl+W. Kept adjacent so that stays true.
-        else if (key == Key.W && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            RequestWatchToggle();
-            e.Handled = true;
-        }
         else if (key == Key.P && mod == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             OpenCommandPalette();
             e.Handled = true;
         }
+        // Everything else through the registry, so the keys the user assigned in Settings apply here.
+        // Handled whenever a command owns the key, available or not, as the hand-written ladder this
+        // replaces did: Alt+Left on the first message must not fall through to the page.
+        else if (_localRegistry.FindByGesture(key, mod) is { } command)
+        {
+            if (command.IsAvailable?.Invoke() ?? true)
+                command.Execute();
+            e.Handled = true;
+        }
     }
+
+    /// <summary>A gesture relayed out of the message body: run what the registry has on it, once input settles.</summary>
+    private void RelayGesture(Key key, ModifierKeys modifiers) =>
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (_localRegistry.FindByGesture(key, modifiers) is { } command && (command.IsAvailable?.Invoke() ?? true))
+                command.Execute();
+        }, DispatcherPriority.Input);
 
     private void OpenCommandPalette()
     {

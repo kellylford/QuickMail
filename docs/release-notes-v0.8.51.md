@@ -33,6 +33,15 @@ does in the main window.
 The main window's **Message** menu now has **Create Rule from Message…** too. Until now it was only on
 the message list's context menu and its key.
 
+### Keys you reassign apply in a message window too
+
+A key you reassigned in **File → Settings → Keyboard Shortcuts** worked in the main window, but a
+message open in its own window kept the original key. The message window now uses your keys for the
+actions it shares with the main window: reply, forward, delete, save, print, watch, rules and the
+rest. **Save**, **Print** and **Save As** also now work while focus is on the window's toolbar or
+headers, not only in the message itself. A change in Settings applies to message windows you open
+afterwards.
+
 ### Sending from a disconnected shared mailbox queues the message instead of failing
 
 A shared mailbox sends through the sign-in of the account it belongs to. While that account was signed

@@ -169,6 +169,63 @@ public class RulesFromMessageWindowTests
         }
     }
 
+    [StaFact]
+    public void AKeyReassignedInSettings_IsTheKeyInTheMessageWindow()
+    {
+        // Keys are customized against the main window's ids; the message window used to keep its
+        // defaults whatever the user chose there.
+        var config = new StubConfigService();
+        config.Save(new ConfigModel
+        {
+            CustomHotkeys = [new HotkeyBinding { CommandId = "mail.createRuleFromMessage", Gesture = "Ctrl+Alt+R" }],
+        });
+        var created = 0;
+        var winVm = new MessageWindowViewModel { CreateRuleAction = () => created++ };
+        var win = new MessageWindow(winVm, new StubImapMailService(), new StubLocalStoreService(), configService: config);
+        try
+        {
+            var registry = (CommandRegistry)typeof(MessageWindow)
+                .GetField("_localRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(win)!;
+
+            Assert.Equal("message.createRule", registry.FindByGesture(Key.R, ModifierKeys.Control | ModifierKeys.Alt)?.Id);
+            Assert.Null(registry.FindByGesture(Key.T, ModifierKeys.Control | ModifierKeys.Shift));
+            // Untouched commands keep their defaults.
+            Assert.Equal("window.manageRules", registry.FindByGesture(Key.L, ModifierKeys.Control | ModifierKeys.Shift)?.Id);
+        }
+        finally
+        {
+            win.Close();
+        }
+    }
+
+    [Fact]
+    public void EveryMainCommandTheMessageWindowMirrors_IsARealMainCommand()
+    {
+        // A typo in the table would quietly stop a reassigned key from carrying over. The main
+        // window's commands are registered in two files (MainViewModel and MainWindow), and standing
+        // up MainWindow in a test is not practical, so this reads the registrations from source.
+        var root = RepoRoot();
+        var source = File.ReadAllText(Path.Combine(root, "QuickMail", "ViewModels", "MainViewModel.cs"))
+                   + File.ReadAllText(Path.Combine(root, "QuickMail", "Views", "MainWindow.xaml.cs"));
+
+        foreach (var (localId, mainId) in MessageWindow.MainCommandIds)
+            Assert.True(source.Contains($"id: \"{mainId}\"", StringComparison.Ordinal),
+                $"{localId} mirrors {mainId}, which the main window does not register.");
+    }
+
+    [Fact]
+    public void TranslateMainOverrides_RekeysOnlyMirroredCommands()
+    {
+        var local = MessageWindow.TranslateMainOverrides(
+        [
+            new HotkeyBinding { CommandId = "mail.reply", Gesture = "Ctrl+Alt+Y" },
+            new HotkeyBinding { CommandId = "view.calendar", Gesture = "Ctrl+Alt+C" },
+        ]);
+
+        var only = Assert.Single(local);
+        Assert.Equal(("message.reply", "Ctrl+Alt+Y"), (only.CommandId, only.Gesture));
+    }
+
     [Fact]
     public void TheMainMessageMenu_OffersCreateRule()
     {
