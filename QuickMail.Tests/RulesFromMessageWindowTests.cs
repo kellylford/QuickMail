@@ -64,16 +64,24 @@ public class RulesFromMessageWindowTests
     [Fact]
     public void OnASharedMailboxsMessage_ThereIsNoTemplate_AndItSaysWhy_AsAResult()
     {
+        // The refusal must go through AnnouncementRequested, synchronously, so the main window can aim it
+        // at the message window. The status bar's own announcement is debounced onto the MAIN window, so it
+        // has to stay silent here or the user hears it twice, once from a window they are not in.
         var vm = Vm();
-        AnnouncementCategory? category = null;
+        var announced = new System.Collections.Generic.List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (_, a) => announced.Add(a);
+        AnnouncementCategory? statusCategory = null;
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(MainViewModel.StatusText)) category = vm.StatusAnnouncementCategory;
+            if (e.PropertyName == nameof(MainViewModel.StatusText)) statusCategory = vm.StatusAnnouncementCategory;
         };
 
         Assert.Null(vm.RuleTemplateForOpenMessage(MessageIn(Team)));
-        Assert.Equal("Rules for the shared mailbox Team are managed in Outlook.", vm.StatusText);
-        Assert.Equal(AnnouncementCategory.Result, category);
+
+        const string why = "Rules for the shared mailbox Team are managed in Outlook.";
+        Assert.Equal([(why, AnnouncementCategory.Result)], announced);
+        Assert.Equal(why, vm.StatusText);
+        Assert.Equal(AnnouncementCategory.Silent, statusCategory);
     }
 
     [Fact]

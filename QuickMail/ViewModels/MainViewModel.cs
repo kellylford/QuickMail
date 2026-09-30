@@ -8619,17 +8619,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Create Rule from Message for a message the main window's selection is not on: the one open in a
     /// message window, which has its own Prev/Next. The same template as the command, and the same refusal
-    /// on a shared mailbox's message (#678), said on the status bar as a result — the caller points the
-    /// announcement at its own window. Returns null when there is no rule to start.
+    /// on a shared mailbox's message (#678). The refusal is announced synchronously, so the caller can point
+    /// it at its own window; the status bar gets it silently, since the status bar's own announcement is
+    /// debounced onto the main window, which is not where the user is. Returns null when there is no rule to start.
     /// </summary>
     public MailRule? RuleTemplateForOpenMessage(MailMessageSummary? message)
     {
         if (message is null) return null;
         if (ResolveAccountById(message.AccountId) is { IsShared: true } shared)
         {
-            SetStatusEvenIfUnchanged(
-                $"Rules for the shared mailbox {shared.AccountLabel} are managed in Outlook.",
-                AnnouncementCategory.Result);
+            var why = $"Rules for the shared mailbox {shared.AccountLabel} are managed in Outlook.";
+            SetStatusSilently(why);
+            Announce(why, AnnouncementCategory.Result);
             return null;
         }
         return RuleTemplateFrom(message);
