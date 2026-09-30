@@ -3529,6 +3529,9 @@ public partial class MainWindow : Window
     private void MenuWatchConversation_Click(object sender, RoutedEventArgs e) =>
         _vm.ToggleWatchConversation();
 
+    private void MenuCreateRule_Click(object sender, RoutedEventArgs e) =>
+        _vm.CreateRuleFromMessageOrSayWhy();
+
     private void MenuWatchedConversations_Click(object sender, RoutedEventArgs e) =>
         OpenWatchedConversationsWindow();
 
@@ -6268,6 +6271,28 @@ public partial class MainWindow : Window
         };
         winVm.ComposeToAction = address => _vm.ComposeToAddress(address);
 
+        // Rules from the message being read: its own message and account, not the main list's
+        // selection, and focus comes back to this window when the Rules Manager closes. A refusal
+        // (a shared mailbox's message) is announced synchronously, so it is spoken here, where the user is.
+        // Deferred to Input priority: the keys usually arrive from the WebView2 body, inside its
+        // accelerator callback, and opening a window from there is the re-entrancy #181 is about —
+        // the same reason OpenComposeWindow defers.
+        winVm.CreateRuleAction = () => Dispatcher.InvokeAsync(() =>
+        {
+            if (!win.IsLoaded) return;
+            _announceTarget = win;
+            MailRule? template;
+            try { template = _vm.RuleTemplateForOpenMessage(winVm.SelectedMessage); }
+            finally { _announceTarget = null; }
+            if (template != null)
+                OpenRulesManager(template, returnTo: win, accountContext: template.AccountId);
+        }, DispatcherPriority.Input);
+        winVm.ManageRulesAction = () => Dispatcher.InvokeAsync(() =>
+        {
+            if (!win.IsLoaded) return;
+            OpenRulesManager(returnTo: win, accountContext: _vm.RulesAccountContextFor(winVm.SelectedMessage));
+        }, DispatcherPriority.Input);
+
         winVm.GrabAddressesAction = () =>
         {
             if (winVm.MessageDetail is not { } detail) return;
@@ -7768,7 +7793,18 @@ public partial class MainWindow : Window
 
     private Window? _rulesWindow;
 
-    private void OpenRulesManager(MailRule? template = null)
+    // Where focus goes when the Rules Manager closes. Fields, not locals captured by its Closed handler:
+    // a request that finds it already open (Tools > Rules here, then Ctrl+Shift+T in a message window)
+    // moves the return point to where that request came from.
+    private Window? _rulesReturnTo;
+    private IInputElement? _rulesPreviousFocus;
+
+    /// <param name="returnTo">
+    /// The window to give focus back to when the Rules Manager closes, when it was opened from one
+    /// other than this — a message window. Null returns to this window.
+    /// </param>
+    /// <param name="accountContext">The account to open on; null uses the main window's view.</param>
+    private void OpenRulesManager(MailRule? template = null, Window? returnTo = null, Guid? accountContext = null)
     {
         // Single-instance: this window is modeless (see below), so a second open request
         // would otherwise stack another copy. Bring the existing one forward — and if this
@@ -7778,6 +7814,8 @@ public partial class MainWindow : Window
         {
             // Forward first: the rule editor the template opens then keeps focus, instead of the owner taking
             // activation back, and anything the window announces comes from the active window.
+            _rulesReturnTo = returnTo;
+            _rulesPreviousFocus = Keyboard.FocusedElement as IInputElement;
             existing.Activate();
             if (template != null && existing is UnifiedRulesWindow urw)
                 urw.PrefillFromTemplate(template);
@@ -7786,7 +7824,8 @@ public partial class MainWindow : Window
 
         // Remember what had focus so we can restore it when the (modeless) window closes;
         // modal ShowDialog() returned focus to the owner automatically, Show() does not.
-        var previousFocus = Keyboard.FocusedElement as IInputElement;
+        _rulesReturnTo = returnTo;
+        _rulesPreviousFocus = Keyboard.FocusedElement as IInputElement;
 
         var accounts = _vm.Accounts.ToList();
 
@@ -7865,7 +7904,7 @@ public partial class MainWindow : Window
         // loads for them). Seed the picker with the account the user is in; from a view that spans
         // accounts this is null, and the VM falls back to the default account, then the first.
         var unifiedVm = new UnifiedRulesViewModel(
-            _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.RulesAccountContext,
+            _ruleService, _serverRuleService, accounts, _vm.CachedFolders, accountContext ?? _vm.RulesAccountContext,
             selectedMessagesForTest: selectedMessages, configService: _configService);
         unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
         // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.
@@ -7883,11 +7922,25 @@ public partial class MainWindow : Window
         dialog.Closed += (_, _) =>
         {
             _rulesWindow = null;
+            var returnTo = _rulesReturnTo;
+            var previousFocus = _rulesPreviousFocus;
+            _rulesReturnTo = null;
+            _rulesPreviousFocus = null;
 
             // Return focus to where it was before opening (falling back to the message list);
-            // Show() does not restore owner focus the way ShowDialog() did.
-            Activate();
-            (previousFocus ?? MessageList).Focus();
+            // Show() does not restore owner focus the way ShowDialog() did. Opened from a message
+            // window that is still open, that window is where the user goes back to.
+            if (returnTo is { IsLoaded: true })
+            {
+                returnTo.Activate();
+                if (previousFocus is DependencyObject rd && GetWindow(rd) == returnTo)
+                    previousFocus.Focus();
+            }
+            else
+            {
+                Activate();
+                (previousFocus is DependencyObject d && GetWindow(d) == this ? previousFocus : MessageList).Focus();
+            }
 
             // Refresh the rules status text now that the window has closed.
             _vm.UpdateRulesStatusText();

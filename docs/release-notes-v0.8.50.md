@@ -19,30 +19,7 @@ you how many were imported and how many were skipped.
 
 The command has no default key; you can assign one in **File → Settings → Keyboard Shortcuts**.
 
-### Reconnect a disconnected account from the account list
-
-An account whose sign-in had expired stayed disconnected, even after a restart, until you signed in
-again from **Manage Accounts**. Now you can reconnect it where you are: select it in the **Accounts** list and choose
-**Reconnect** from its context menu (**Shift+F10** or the Applications key), or choose **Reconnect
-Account** in the command palette. If the sign-in has expired, the Microsoft sign-in window opens, or
-for a Google account a sign-in page in your browser. A shared mailbox reads its mail through the account it belongs to, so reconnecting one signs
-that account in and connects it first. If you sign in as someone else, for example an administrator
-approving permissions, the account is not connected and QuickMail tells you who you signed in as. The
-command has no default key; you can assign one in **File → Settings → Keyboard Shortcuts**. (#615)
-
 ## Fixed
-
-### Sending from a disconnected shared mailbox queues the message instead of failing
-
-A shared mailbox sends through the sign-in of the account it belongs to. While that account was signed
-out, sending from the shared mailbox failed in the compose window. Now the message waits in the
-**Outbox** — you hear "Message queued. It will be sent when" followed by the shared mailbox's name and
-"is connected again." — and it goes out once the account it belongs to is signed in again, for
-example after you reconnect the shared mailbox from the **Accounts** list. The message waits in the
-one **Outbox** QuickMail keeps for all accounts, at the end of the **All Mail** group in the folder
-tree, not in a folder of the shared mailbox; its row names the account it will be sent from. A
-queued message waiting for a sign-in is not marked Failed, and **Send Outbox Now** says what it is
-waiting for. (#614)
 
 ### The Rules Manager says each account's rule count as you move through the Account list
 
@@ -59,17 +36,6 @@ Calendar files from Google and Outlook carry a reminder inside each appointment,
 its own description ("This is an event reminder"). QuickMail read that as the appointment's
 description, so an appointment from such a file lost its real notes. This affected iCloud calendar
 sync as well as the new import.
-
-### Calendar, Contacts and Tasks no longer appear as mail folders on Microsoft accounts over IMAP
-
-A Microsoft 365 or Outlook.com account set up with IMAP listed the mailbox's calendar, contacts and
-task folders in the folder tree as if they held mail, and they could not be opened. Calendar,
-Contacts, Suggested Contacts, Tasks and Journal are now left out, as calendar, contacts and task
-folders already were for accounts that use Microsoft's own connection. The Outbox, Sync Issues and
-Conversation History folders are left out too, as mailbox housekeeping rather than mail. Notes and
-RSS Feeds stay, since their items open like mail. Only the English folder names are recognized so
-far, so a mailbox set to another language still shows them. Other IMAP servers are not affected.
-(#613)
 
 ---
 

@@ -72,6 +72,10 @@
                           AutomationProperties.Name="Grab Addresses from Message"
                           Command="{Binding GrabAddressesCommand}"
                           InputGestureText="Ctrl+Shift+G"/>
+                <MenuItem Header="Crea_te Rule from Message…"
+                          AutomationProperties.Name="Create Rule from Message"
+                          Command="{Binding CreateRuleFromMessageCommand}"
+                          InputGestureText="Ctrl+Shift+T"/>
             </MenuItem>
             <MenuItem Header="_Navigate">
                 <MenuItem Header="_Previous Message"
@@ -86,6 +90,14 @@
                 <MenuItem Header="Move to _Main Window"
                           AutomationProperties.Name="Move to Main Window"
                           Command="{Binding MoveToMainWindowCommand}"/>
+            </MenuItem>
+            <!-- The main window's Tools > Rules…, so the Rules Manager is reachable from the message
+                 you have just read. -->
+            <MenuItem Header="_Tools">
+                <MenuItem Header="_Rules…"
+                          AutomationProperties.Name="Manage Rules"
+                          Command="{Binding ManageRulesCommand}"
+                          InputGestureText="Ctrl+Shift+L"/>
             </MenuItem>
         </Menu>
 

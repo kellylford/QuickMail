@@ -546,6 +546,23 @@
                         </Style>
                     </MenuItem.Style>
                 </MenuItem>
+                <!-- Until now only on the message list's context menu. Click, not Command, so it stays
+                     keyboard-navigable when it cannot act, and says why (a shared mailbox's message, #678)
+                     rather than doing nothing. "u" because Empty Trash already has "t" on this menu. -->
+                <MenuItem Header="Create R_ule from Message…"
+                          Click="MenuCreateRule_Click"
+                          InputGestureText="Ctrl+Shift+T"
+                          AutomationProperties.Name="Create Rule from Message">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasMessageTarget}" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
             </MenuItem>
 
             <!-- Folder -->

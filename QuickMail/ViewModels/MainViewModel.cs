@@ -6937,7 +6937,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// result. With nothing selected, which only the palette can reach, it says to select a message.
     /// (<c>RelayCommand.Execute</c> does not check CanExecute, so this does.)
     /// </summary>
-    private void CreateRuleFromMessageOrSayWhy()
+    public void CreateRuleFromMessageOrSayWhy()
     {
         if (CreateRuleFromMessageCommand.CanExecute(null))
         {
@@ -8613,6 +8613,37 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var source = SelectedMessage;
         if (source == null) return;
 
+        CreateRuleFromMessageRequested?.Invoke(this, RuleTemplateFrom(source));
+    }
+
+    /// <summary>
+    /// Create Rule from Message for a message the main window's selection is not on: the one open in a
+    /// message window, which has its own Prev/Next. The same template as the command, and the same refusal
+    /// on a shared mailbox's message (#678). The refusal is announced synchronously, so the caller can point
+    /// it at its own window; the status bar gets it silently, since the status bar's own announcement is
+    /// debounced onto the main window, which is not where the user is. Returns null when there is no rule to start.
+    /// </summary>
+    public MailRule? RuleTemplateForOpenMessage(MailMessageSummary? message)
+    {
+        if (message is null) return null;
+        if (ResolveAccountById(message.AccountId) is { IsShared: true } shared)
+        {
+            var why = $"Rules for the shared mailbox {shared.AccountLabel} are managed in Outlook.";
+            SetStatusSilently(why);
+            Announce(why, AnnouncementCategory.Result);
+            return null;
+        }
+        return RuleTemplateFrom(message);
+    }
+
+    /// <summary>The account the Rules Manager opens on from a message window: the message's own, unless shared.</summary>
+    public Guid? RulesAccountContextFor(MailMessageSummary? message) =>
+        message is not null && ResolveAccountById(message.AccountId) is not { IsShared: true }
+            ? message.AccountId
+            : RulesAccountContext;
+
+    internal static MailRule RuleTemplateFrom(MailMessageSummary source)
+    {
         // The subject comes across so it is there to switch on, but the condition starts OFF (#665):
         // "Rule for <sender>" that also has to match one exact subject line matches, in practice, the
         // single thread it was made from. The editor shows it in a cleared checkbox, one keystroke
@@ -8622,7 +8653,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // sender's DISPLAY NAME where there is one, an Exchange address book routinely makes that
         // "Last, First", and the address fields read a comma as a separator. A rule for "Ford, Kelly"
         // would become a rule for anyone called Ford OR anyone called Kelly (#682).
-        var template = new MailRule
+        return new MailRule
         {
             Name = $"Rule for {source.From}",
             SenderContains = source.From,
@@ -8631,8 +8662,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             UseSubjectCondition = false,
             AccountId = source.AccountId,
         };
-
-        CreateRuleFromMessageRequested?.Invoke(this, template);
     }
 
     /// <summary>True when the currently selected folder is a Drafts folder.</summary>
