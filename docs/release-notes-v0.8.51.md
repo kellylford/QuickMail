@@ -13,19 +13,6 @@ that account in and connects it first. If you sign in as someone else, for examp
 approving permissions, the account is not connected and QuickMail tells you who you signed in as. The
 command has no default key; you can assign one in **File → Settings → Keyboard Shortcuts**. (#615)
 
-### Start QuickMail when you sign in to Windows
-
-QuickMail can now start by itself when you sign in to Windows. It is off unless you turn it on: in
-**File → Settings → Startup**, check **Start QuickMail automatically when I sign in to Windows**. With
-**Start minimized** (on by default) it starts without opening its window over what you are doing — in
-the notification area if you keep QuickMail running there, otherwise minimized on the taskbar.
-
-QuickMail uses the standard Windows startup list, so it appears in Task Manager's **Startup apps** and
-in Windows **Settings → Apps → Startup**, and you can turn it off from either. When you do,
-QuickMail's own setting shows it as off. Uninstalling QuickMail removes the startup entry. This is
-available in the installed version; a portable copy can be moved, which would leave Windows pointing at
-nothing. (#770)
-
 ## Fixed
 
 ### Rules are on hand when a message is open in its own window
