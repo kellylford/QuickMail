@@ -767,12 +767,15 @@ public partial class MainWindow : Window
     /// </summary>
     public void HandleNotificationActivation(Services.NotificationActivation act)
     {
-        // Activated is raised synchronously inside RestoreFromTray when the restore takes the
-        // foreground, so the flag is bracketed around it: it marks that one activation and can
-        // never swallow a later one. Only a toast that opens a message counts (#770).
-        _quietStartToastOpen = _quietStartGate is { HasBeenActivated: false } && OpensMessage(act);
-        try { RestoreFromTray(); }
-        finally { _quietStartToastOpen = false; }
+        // During a quiet start (#770), a toast that opens a message supersedes the held-back focus
+        // and startup notices (see QuietStartGate). Before the restore, so its activation finds
+        // nothing to run.
+        if (_quietStartGate is not null && OpensMessage(act))
+        {
+            _quietStartGate.Supersede();
+            Activated -= OnQuietStartActivated;
+        }
+        RestoreFromTray();
         _pendingActivation = act;
         TryProcessPendingActivation();
     }
@@ -1756,7 +1759,6 @@ public partial class MainWindow : Window
     // slow load is never missed and the window is never hidden from under a user who just opened it.
 
     private QuietStartGate? _quietStartGate;   // non-null only for a quiet start
-    private bool _quietStartToastOpen;         // true only while a toast that opens a message restores us
 
     private bool IsQuietStart => _quietStartGate is not null;
 
@@ -1766,7 +1768,7 @@ public partial class MainWindow : Window
         if (IsActive)
         {
             // Already brought up between Show and Loaded: nothing to hide, nothing to wait for.
-            _quietStartGate.Activated(opensMessageFromNotification: false);
+            _quietStartGate.Activated();
             return;
         }
         Activated += OnQuietStartActivated;
@@ -1780,10 +1782,8 @@ public partial class MainWindow : Window
 
     private void OnQuietStartActivated(object? sender, EventArgs e)
     {
-        var gate = _quietStartGate!;
-        RunQuietStartWork(gate.Activated(opensMessageFromNotification: _quietStartToastOpen));
-        if (gate.HasBeenActivated)
-            Activated -= OnQuietStartActivated;
+        Activated -= OnQuietStartActivated;
+        RunQuietStartWork(_quietStartGate!.Activated());
     }
 
     private void CompleteQuietStartLoad(Action work) =>
