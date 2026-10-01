@@ -102,8 +102,7 @@ public class AddressBookFilterMenuTests
             vm.SelectAccountFilter(vm.AccountFilterOptions.Single(o => o.Name == "Work"));
             DoEvents();
 
-            Click(button);
-            DoEvents();
+            OpenMenu(button, menu!);
 
             Assert.True(menu!.IsOpen);
             Assert.Equal(
@@ -134,6 +133,7 @@ public class AddressBookFilterMenuTests
             // would need a foreground-gated test under QUICKMAIL_RUN_INPUT_TESTS.
             var active = ItemFor(menu, vm.SelectedAccountFilter);
             Assert.NotNull(active);
+            PumpUntil(() => FocusManager.GetFocusedElement(menu) == active);
             Assert.Same(active, FocusManager.GetFocusedElement(menu));
 
             menu.IsOpen = false;
@@ -151,8 +151,7 @@ public class AddressBookFilterMenuTests
         {
             var button = (Button)window!.FindName("AccountFilterButton");
             var menu   = button.ContextMenu!;
-            Click(button);
-            DoEvents();
+            OpenMenu(button, menu!);
 
             var all  = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "All accounts"))!;
             var work = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "Work"))!;
@@ -178,8 +177,7 @@ public class AddressBookFilterMenuTests
         {
             var button = (Button)window!.FindName("AccountFilterButton");
             var menu   = button.ContextMenu!;
-            Click(button);
-            DoEvents();
+            OpenMenu(button, menu!);
 
             var work = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "Work"))!;
             var all  = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "All accounts"))!;
@@ -215,8 +213,7 @@ public class AddressBookFilterMenuTests
         {
             var button = (Button)window!.FindName("AccountFilterButton");
             var menu   = button.ContextMenu!;
-            Click(button);
-            DoEvents();
+            OpenMenu(button, menu!);
 
             var item = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "work_mail"))!;
 
@@ -238,6 +235,32 @@ public class AddressBookFilterMenuTests
 
     private static void Click(Button button) =>
         button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+    /// <summary>
+    /// Activates the button and pumps until the menu is open with its items generated. One
+    /// DoEvents is not enough: on a slow CI runner the popup's containers were still missing
+    /// after it, so ItemFor returned null (the v0.8.51 release run).
+    /// </summary>
+    private static void OpenMenu(Button button, ContextMenu menu)
+    {
+        Click(button);
+        PumpUntil(() => menu.IsOpen
+            && menu.ItemContainerGenerator.Status
+               == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated);
+    }
+
+    /// <summary>Pumps the dispatcher until <paramref name="condition"/> holds, or five seconds pass.
+    /// Returns without failing on timeout; the caller's assertions report what is missing.</summary>
+    private static void PumpUntil(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        DoEvents();
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            System.Threading.Thread.Sleep(10);
+            DoEvents();
+        }
+    }
 
     /// <summary>
     /// Runs the same code path pressing Enter on a menu item does. Raising ClickEvent is

@@ -185,11 +185,26 @@ public partial class AddressBookWindow : Window
         // Land on the filter that is currently in effect rather than on the first item,
         // so the menu opens where the user left it and the check state is read out.
         var menu = (ContextMenu)sender;
-        if (menu.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) is MenuItem item)
-            item.Focus();
-        else
-            menu.Focus();
+        if (FocusActiveFilterItem(menu)) return;
+        menu.Focus();
+
+        // Opened can fire before the popup has generated its items — seen on a slow CI runner,
+        // where focus then stayed on the menu itself rather than the filter in effect. Finish
+        // the job once the containers exist, provided the menu is still open by then.
+        var generator = menu.ItemContainerGenerator;
+        if (generator.Status == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated) return;
+        void OnStatusChanged(object? s, EventArgs args)
+        {
+            if (generator.Status != System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated) return;
+            generator.StatusChanged -= OnStatusChanged;
+            if (menu.IsOpen) FocusActiveFilterItem(menu);
+        }
+        generator.StatusChanged += OnStatusChanged;
     }
+
+    private bool FocusActiveFilterItem(ContextMenu menu) =>
+        menu.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) is MenuItem item
+        && item.Focus();
 
     // No Closed handler restores focus. WPF already returns focus to the placement target
     // on both the Escape and the Enter path, and ContextMenu.Closed does not fire until the
