@@ -23,7 +23,7 @@ Or directly: `dotnet run --project QuickMail`.
 
 The `installer` target requires the Velopack CLI (`dotnet tool install -g vpk`). See `docs/INSTALLER.md` for packaging and auto-update details. Packaging constraint: `App.xaml.cs` declares an explicit `Main` that must call `VelopackApp.Build().Run()` first — `vpk pack` verifies this via IL inspection and refuses to pack without it.
 
-Startup flags: `/debug` enables verbose file logging. `--profileDir <path>` overrides the data directory (default `%APPDATA%\QuickMail`); useful for isolated testing. `--updateFeed <path>` points the update check at a local folder of `vpk pack` output instead of GitHub Releases (see `docs/INSTALLER.md` for the local update-cycle test procedure).
+Startup flags: `/debug` enables verbose file logging. `--profileDir <path>` overrides the data directory (default `%APPDATA%\QuickMail`); useful for isolated testing. `--updateFeed <path>` points the update check at a local folder of `vpk pack` output instead of GitHub Releases (see `docs/INSTALLER.md` for the local update-cycle test procedure). `--startup` is what the Windows Run entry passes when Settings → Startup → *Start QuickMail automatically when I sign in to Windows* is on (#770); with *Start minimized* it starts minimized / in the tray and defers focus and startup dialogs to the first activation. That setting is installed-copies-only (`VelopackRuntime.IsInstalled`), lives in `HKCU\…\Run` rather than `config.ini`, and honors Task Manager's disable mark under `Explorer\StartupApproved\Run`.
 
 ## Tests
 

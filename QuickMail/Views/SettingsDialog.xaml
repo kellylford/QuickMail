@@ -672,7 +672,7 @@
 
                         <!-- Startup sync -->
                         <!-- Access keys across this whole dialog: G A K U W P (tabs), S (Save),
-                             C (Cancel). This tab therefore uses F I H L Y J X D, all otherwise
+                             C (Cancel). This tab therefore uses F I H L Y J X D N O M, all otherwise
                              unused. WPF cycles between duplicates rather than activating, so a
                              collision costs the user the keystroke entirely. -->
                         <GroupBox Header="Startup S_ync" Padding="10" Margin="0,0,0,15"
@@ -702,6 +702,36 @@
                                                  AutomationProperties.Name="Every folder"
                                                  AutomationProperties.HelpText="Checks every folder on every account before settling. Slowest start, and how QuickMail behaved before this setting existed."/>
                                 </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Start at Windows sign-in (#770). Installed copies only: a portable or
+                             development copy can move, which would leave Windows a dead entry. -->
+                        <GroupBox Header="Windows Sig_n-In" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Windows sign-in settings">
+                            <StackPanel>
+                                <StackPanel Visibility="{Binding IsLaunchAtSignInSupported, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <CheckBox Content="Start QuickMail aut_omatically when I sign in to Windows"
+                                              IsChecked="{Binding LaunchAtSignIn, Mode=TwoWay}"
+                                              AutomationProperties.Name="Start QuickMail automatically when I sign in to Windows"
+                                              AutomationProperties.HelpText="{Binding LaunchAtSignInHelp}"/>
+                                    <TextBlock Text="{Binding LaunchAtSignInHelp}"
+                                               FontWeight="SemiBold" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Off unless you turn it on. QuickMail is then listed in Task Manager's Startup apps and in Windows Settings under Apps, Startup, where you can also turn it off. Applied when settings are saved."
+                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,8" TextWrapping="Wrap"/>
+
+                                    <CheckBox Content="Start _minimized"
+                                              IsChecked="{Binding StartMinimizedAtSignIn, Mode=TwoWay}"
+                                              AutomationProperties.Name="Start minimized"/>
+                                    <TextBlock Text="When Windows starts QuickMail, it does not open its window over what you are doing: it starts in the notification area if Keep running in the notification area is on (General tab), and otherwise minimized on the taskbar."
+                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <!-- Read-only rather than a disabled check box: a disabled control is
+                                     skipped by Tab, so the reason would be unreachable from the keyboard. -->
+                                <TextBox Text="Available in the installed version of QuickMail. This copy is portable or a development build, and Windows would lose track of it if it were moved."
+                                         IsReadOnly="True" TextWrapping="Wrap"
+                                         AutomationProperties.Name="Start at sign-in"
+                                         Visibility="{Binding IsLaunchAtSignInUnsupported, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>

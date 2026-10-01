@@ -1695,7 +1695,13 @@ public partial class MainWindow : Window
 
         // Show local cache immediately so the UI is never blank on startup.
         await _vm.InitialLoadAsync();
-        FocusActiveMessagePanel();
+
+        // Started by Windows at sign-in with Start minimized on (#770): the window is minimized and
+        // was shown without activation. Focusing into it now risks activating it over whatever the
+        // user is doing, so focus waits for the first activation along with the startup dialogs.
+        var startQuietly = (Application.Current as App)?.StartQuietly == true;
+        if (!startQuietly)
+            FocusActiveMessagePanel();
 
         // Populate the Views menu from saved views loaded at startup.
         RebuildViewsMenu();
@@ -1712,6 +1718,42 @@ public partial class MainWindow : Window
         // Connect accounts and sync new mail in the background; messages trickle in via FolderSynced.
         _ = _vm.StartBackgroundSyncAsync();
 
+        if (startQuietly)
+        {
+            DeferStartupUntilFirstActivation();
+            return;
+        }
+
+        RunStartupNotices();
+    }
+
+    // A quiet start at sign-in (#770) holds the window's focus and its one-time startup dialogs
+    // until the user first brings QuickMail up — from the taskbar, Alt+Tab, the tray icon, a
+    // notification, or launching it again. A dialog at sign-in would land over whatever the user
+    // had started doing, and focus would be asked for a window they have not looked at yet.
+    private void DeferStartupUntilFirstActivation()
+    {
+        void OnFirstActivated(object? sender, EventArgs e)
+        {
+            Activated -= OnFirstActivated;
+            // Out of the Activated handler, so a startup dialog never opens inside activation.
+            Dispatcher.BeginInvoke(() =>
+            {
+                FocusActiveMessagePanel();
+                RunStartupNotices();
+            }, System.Windows.Threading.DispatcherPriority.Background);
+        }
+        Activated += OnFirstActivated;
+
+        // With close-to-tray on, the notification area is where a background QuickMail lives;
+        // otherwise it stays minimized on the taskbar.
+        var cfg = _configService.Load();
+        if (cfg.CloseToTray)
+            HideToTray(cfg);
+    }
+
+    private void RunStartupNotices()
+    {
         // One-time desktop shortcut offer for installed copies — after the window is up and
         // the background sync has been kicked off, so the dialog does not delay startup;
         // the offer handler restores focus to the message panel explicitly on close.
@@ -7407,7 +7449,8 @@ public partial class MainWindow : Window
             .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
         var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
-            (Application.Current as App)?.ScreenshotCapture);
+            (Application.Current as App)?.ScreenshotCapture,
+            (Application.Current as App)?.LaunchAtSignIn);
         var dialog = new SettingsDialog(vm) { Owner = this };
 
         // Picking a startup folder needs a window, which is the View's job — the VM asks and gets a
