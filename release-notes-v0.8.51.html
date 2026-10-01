@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.51 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.50.html">Older: 0.8.50</a></div>
+  <h1 id="quickmail-v0.8.51-release-notes">QuickMail v0.8.51 Release
+Notes</h1>
+<p class="version">Released October 1, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.51">downloads for this release</a></p>
+<h2 id="added">Added</h2>
+<h3
+id="reconnect-a-disconnected-account-from-the-account-list">Reconnect a
+disconnected account from the account list</h3>
+<p>An account whose sign-in had expired stayed disconnected, even after
+a restart, until you signed in again from <strong>Manage
+Accounts</strong>. Now you can reconnect it where you are: select it in
+the <strong>Accounts</strong> list and choose <strong>Reconnect</strong>
+from its context menu (<strong>Shift+F10</strong> or the Applications
+key), or choose <strong>Reconnect Account</strong> in the command
+palette. If the sign-in has expired, the Microsoft sign-in window opens,
+or for a Google account a sign-in page in your browser. A shared mailbox
+reads its mail through the account it belongs to, so reconnecting one
+signs that account in and connects it first. If you sign in as someone
+else, for example an administrator approving permissions, the account is
+not connected and QuickMail tells you who you signed in as. The command
+has no default key; you can assign one in <strong>File → Settings →
+Keyboard Shortcuts</strong>. (#615)</p>
+<h2 id="fixed">Fixed</h2>
+<h3
+id="rules-are-on-hand-when-a-message-is-open-in-its-own-window">Rules
+are on hand when a message is open in its own window</h3>
+<p>With messages set to open in a new window, the message window had no
+way to make a rule from the message or to open the Rules Manager — not
+on a menu, not on a key, and not in its command palette. Both are there
+now, with the same keys as the main window:</p>
+<ul>
+<li><strong>Message → Create Rule from Message…</strong>
+(<strong>Ctrl+Shift+T</strong>) starts a rule for the sender of the
+message you are reading. After <strong>Previous</strong> or
+<strong>Next</strong> in the window, it is the message now shown, not
+the one selected in the main window’s message list.</li>
+<li><strong>Tools → Rules…</strong> (<strong>Ctrl+Shift+L</strong>)
+opens the Rules Manager on that message’s account.</li>
+</ul>
+<p>When you close the Rules Manager, you are back in the message window.
+On a message in a shared mailbox, Create Rule from Message says that the
+shared mailbox’s rules are managed in Outlook, as it does in the main
+window.</p>
+<p>The main window’s <strong>Message</strong> menu now has
+<strong>Create Rule from Message…</strong> too. Until now it was only on
+the message list’s context menu and its key.</p>
+<h3 id="keys-you-reassign-apply-in-a-message-window-too">Keys you
+reassign apply in a message window too</h3>
+<p>A key you reassigned in <strong>File → Settings → Keyboard
+Shortcuts</strong> worked in the main window, but a message open in its
+own window kept the original key. The message window now uses your keys
+for the actions it shares with the main window: reply, forward, delete,
+save, print, watch, rules and the rest. <strong>Save</strong>,
+<strong>Print</strong> and <strong>Save As</strong> also now work while
+focus is on the window’s toolbar or headers, not only in the message
+itself. A change in Settings applies to message windows you open
+afterwards.</p>
+<h3
+id="sending-from-a-disconnected-shared-mailbox-queues-the-message-instead-of-failing">Sending
+from a disconnected shared mailbox queues the message instead of
+failing</h3>
+<p>A shared mailbox sends through the sign-in of the account it belongs
+to. While that account was signed out, sending from the shared mailbox
+failed in the compose window. Now the message waits in the
+<strong>Outbox</strong> — you hear “Message queued. It will be sent
+when” followed by the shared mailbox’s name and “is connected again.” —
+and it goes out once the account it belongs to is signed in again, for
+example after you reconnect the shared mailbox from the
+<strong>Accounts</strong> list. The message waits in the one
+<strong>Outbox</strong> QuickMail keeps for all accounts, at the end of
+the <strong>All Mail</strong> group in the folder tree, not in a folder
+of the shared mailbox; its row names the account it will be sent from. A
+queued message waiting for a sign-in is not marked Failed, and
+<strong>Send Outbox Now</strong> says what it is waiting for. (#614)</p>
+<h3
+id="calendar-contacts-and-tasks-no-longer-appear-as-mail-folders-on-microsoft-accounts-over-imap">Calendar,
+Contacts and Tasks no longer appear as mail folders on Microsoft
+accounts over IMAP</h3>
+<p>A Microsoft 365 or Outlook.com account set up with IMAP listed the
+mailbox’s calendar, contacts and task folders in the folder tree as if
+they held mail, and they could not be opened. Calendar, Contacts,
+Suggested Contacts, Tasks and Journal are now left out, as calendar,
+contacts and task folders already were for accounts that use Microsoft’s
+own connection. The Outbox, Sync Issues and Conversation History folders
+are left out too, as mailbox housekeeping rather than mail. Notes and
+RSS Feeds stay, since their items open like mail. Only the English
+folder names are recognized so far, so a mailbox set to another language
+still shows them. Other IMAP servers are not affected. (#613)</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.50.html">Older: 0.8.50</a></div>
+</body>
+</html>

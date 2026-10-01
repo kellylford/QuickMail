@@ -521,12 +521,15 @@ Failed.</td>
 </tbody>
 </table>
 <p>The Outbox drains on its own when QuickMail connects at startup, when
-the connection returns, and on each background sync. A drain is
-announced once as a whole, for example “Outbox: 2 messages sent, 1 draft
-uploaded.” A message the server refused stays in the Outbox marked
-“Failed” with the reason, until you reopen and fix it, or remove it. The
-Outbox is not available in <code>--online</code> mode, which runs
-without the local store.</p>
+the connection returns, when a shared mailbox connects again, and on
+each background sync. A message from a shared mailbox whose account is
+signed out is not marked Failed: once the Outbox has tried it, its row
+says “Waiting for its account to be signed in”, and it goes out once
+that account is signed in again. A drain is announced once as a whole,
+for example “Outbox: 2 messages sent, 1 draft uploaded.” A message the
+server refused stays in the Outbox marked “Failed” with the reason,
+until you reopen and fix it, or remove it. The Outbox is not available
+in <code>--online</code> mode, which runs without the local store.</p>
 <h3 id="forwarding-with-attachments">Forwarding with Attachments</h3>
 <p>When forwarding a message that has attachments, QuickMail opens an
 <strong>Include Attachments</strong> dialog before downloading. All

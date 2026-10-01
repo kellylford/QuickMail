@@ -557,6 +557,34 @@ working needs no scrolling past hosts and ports to reach the settings
 people actually change. The <strong>Provider</strong> at the top is
 fixed when the account is created; to change it, remove the account and
 add it again.</p>
+<h3 id="reconnecting-an-account">Reconnecting an account</h3>
+<p>An account that shows as disconnected can be reconnected where you
+are. Move to the <strong>Accounts</strong> list in the main window,
+select the account, open the context menu (<strong>Shift+F10</strong> or
+the Applications key), and choose <strong>Reconnect</strong>. You can
+also open the Command Palette (<strong>Ctrl+Shift+P</strong>) and choose
+<strong>Reconnect Account</strong>, which acts on the account selected
+in the <strong>Accounts</strong> list. It has no keyboard shortcut to
+begin with; you can give it one under <strong>File → Settings → Keyboard
+Shortcuts</strong>.</p>
+<ul>
+<li>If the account’s sign-in has expired, the Microsoft sign-in window
+opens, or for a Google account a sign-in page in your browser. Finish a
+Google sign-in within five minutes. Connecting at startup opens neither,
+so an account whose sign-in has expired stays disconnected until you
+reconnect it here or sign in again from <strong>Manage
+Accounts</strong>.</li>
+<li>A shared mailbox reads its mail through the account it belongs to,
+so reconnecting a shared mailbox signs that account in and connects it
+first.</li>
+<li>Sign in as the account itself. If you sign in as someone else, for
+example an administrator approving permissions, the account is not
+connected, and QuickMail tells you who you signed in as.</li>
+</ul>
+<p>The status bar says how it went: “Work reconnected.”, or “Could not
+reconnect Work.” followed by the reason, such as no saved password, no
+network connection, or a server that could not be reached. A reconnect
+you ask for tries once and reports straight away.</p>
 <h3 id="changing-the-order-of-your-accounts">Changing the order of your
 accounts</h3>
 <p>Accounts appear in the order you added them, and you can rearrange
@@ -638,6 +666,15 @@ grants.</p>
 other: select it in the folder tree and open its folders. To send from
 it, choose the shared address in the <strong>From</strong> list when
 composing — the message goes out as the shared mailbox, not as you.</p>
+<p><strong>Sending while it is disconnected.</strong> A shared mailbox
+sends through the sign-in of the account it belongs to, so while that
+account is signed out the shared mailbox is disconnected and cannot
+send. A message you send from it then waits in the
+<strong>Outbox</strong> instead of failing: you hear “Message queued. It
+will be sent when Support is connected again.” (with your shared
+mailbox’s name), the window closes, and the message goes out once the
+account it belongs to is signed in again. To do that now, reconnect the
+shared mailbox from the <strong>Accounts</strong> list.</p>
 <p><strong>Freshness.</strong> A shared mailbox updates on a timer
 rather than the instant new mail arrives: <strong>shared mailboxes
 update every few minutes, not instantly.</strong> Your own mailboxes
