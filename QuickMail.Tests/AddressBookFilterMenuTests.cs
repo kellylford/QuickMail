@@ -102,6 +102,9 @@ public class AddressBookFilterMenuTests
             vm.SelectAccountFilter(vm.AccountFilterOptions.Single(o => o.Name == "Work"));
             DoEvents();
 
+            Assert.True(window.IsActive,
+                "The address book window is not active, so the menu would keep focus on itself "
+                + "whatever AccountFilterMenu_Opened does. See the comment at the focus assertion.");
             OpenMenu(button, menu!);
 
             Assert.True(menu!.IsOpen);
@@ -128,12 +131,16 @@ public class AddressBookFilterMenuTests
             //
             // A ContextMenu is a focus scope by default, and one element per scope holds focus, so
             // this is the same claim as the Keyboard form — every other item excluded — without the
-            // dependency on foreground state. What it cannot speak for is whether the popup takes
-            // keyboard focus in a real, foreground session; that was never covered here either, and
-            // would need a foreground-gated test under QUICKMAIL_RUN_INPUT_TESTS.
+            // dependency on foreground state. It does still depend on the window being active in
+            // WPF's sense: in an inactive window WPF makes the ContextMenu its own focused element
+            // before Opened runs, item.Focus() then returns false, and the scope stays on the menu.
+            // That is exactly the failure the v0.8.51 release run recorded, so BuildWindow
+            // activates the window and the precondition is asserted up front, where a failure
+            // names the real cause instead of a focus mismatch. What this cannot speak for is
+            // whether the popup takes keyboard focus in a real, foreground session; that would
+            // need a foreground-gated test under QUICKMAIL_RUN_INPUT_TESTS.
             var active = ItemFor(menu, vm.SelectedAccountFilter);
             Assert.NotNull(active);
-            PumpUntil(() => FocusManager.GetFocusedElement(menu) == active);
             Assert.Same(active, FocusManager.GetFocusedElement(menu));
 
             menu.IsOpen = false;
@@ -253,9 +260,9 @@ public class AddressBookFilterMenuTests
     /// Returns without failing on timeout; the caller's assertions report what is missing.</summary>
     private static void PumpUntil(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         DoEvents();
-        while (!condition() && DateTime.UtcNow < deadline)
+        while (!condition() && clock.Elapsed < TimeSpan.FromSeconds(5))
         {
             System.Threading.Thread.Sleep(10);
             DoEvents();
@@ -300,7 +307,11 @@ public class AddressBookFilterMenuTests
         var window = new AddressBookWindow(vm);
         vm.LoadAsync().GetAwaiter().GetResult();
         window.Show();
+        // Show() normally activates, but a window left over from an earlier test, or another
+        // process, can hold activation; the filter menu's focus depends on it.
+        window.Activate();
         window.UpdateLayout();
+        PumpUntil(() => window.IsActive);
         cleanup = DeleteDir;
         return (vm, window, dir);
     }
