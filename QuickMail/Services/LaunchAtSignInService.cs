@@ -49,6 +49,7 @@ public sealed class LaunchAtSignInService : ILaunchAtSignInService
         _runKeyPath = runKeyPath;
         _approvedKeyPath = approvedKeyPath;
         IsSupported = isSupported && !string.IsNullOrEmpty(exePath);
+        customProfileDir = NormalizeProfileDir(customProfileDir);
         ValueName = BuildValueName(customProfileDir);
         Command = string.IsNullOrEmpty(exePath) ? "" : BuildCommand(exePath, customProfileDir);
     }
@@ -114,6 +115,15 @@ public sealed class LaunchAtSignInService : ILaunchAtSignInService
     }
 
     // ── Pure helpers (unit-tested directly) ─────────────────────────────────────
+
+    /// <summary>An explicit --profileDir naming the default profile is the default profile: one
+    /// entry, plain "QuickMail", not a second one for the same mail.</summary>
+    internal static string? NormalizeProfileDir(string? customProfileDir) =>
+        customProfileDir is not null
+        && SingleInstanceService.ProfileKey(new[] { "--profileDir", customProfileDir })
+           == SingleInstanceService.ProfileKey(Array.Empty<string>())
+            ? null
+            : customProfileDir;
 
     internal static string BuildValueName(string? customProfileDir)
     {

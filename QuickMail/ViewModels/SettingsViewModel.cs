@@ -154,6 +154,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _launchAtSignInHelp = "";
 
+    // The box as loaded from Windows, so Save acts only on a change the user made.
+    private bool _launchAtSignInAsLoaded;
+
     [ObservableProperty]
     private bool _autoUpdate;
 
@@ -805,8 +808,9 @@ public partial class SettingsViewModel : ObservableObject
     {
         var state = ReadLaunchAtSignInState();
         LaunchAtSignIn = state == LaunchAtSignInState.On;
+        _launchAtSignInAsLoaded = LaunchAtSignIn;
         LaunchAtSignInHelp = state == LaunchAtSignInState.DisabledInWindows
-            ? "Turned off in Windows startup apps settings. Check this and save to turn it back on."
+            ? "Turned off in Windows startup apps settings, so Windows will not start QuickMail. Checking this turns it back on."
             : "";
     }
 
@@ -814,9 +818,19 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (!IsLaunchAtSignInSupported) return;
 
-        // Re-read at save time: Task Manager may have changed it while this dialog was open.
-        var isOn = ReadLaunchAtSignInState() == LaunchAtSignInState.On;
-        if (LaunchAtSignIn == isOn) return;
+        // Only a change the user made to the box is acted on. Saving some other setting must not
+        // undo a choice made in Task Manager while this dialog was open: the box still shows the
+        // state from when the dialog opened, and Windows' later "off" would be read as a request
+        // to turn it back on.
+        if (LaunchAtSignIn == _launchAtSignInAsLoaded) return;
+
+        // Then reconcile against Windows now, which may already be where the user asked to be.
+        var state = ReadLaunchAtSignInState();
+        if (LaunchAtSignIn ? state == LaunchAtSignInState.On : state == LaunchAtSignInState.Off)
+        {
+            RefreshLaunchAtSignIn();
+            return;
+        }
         try
         {
             if (LaunchAtSignIn) _launchAtSignInService!.Enable();

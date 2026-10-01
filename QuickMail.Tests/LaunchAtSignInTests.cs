@@ -66,6 +66,18 @@ public class LaunchAtSignInHelperTests
         Assert.True(LaunchAtSignInService.IsOurValueName(a));
     }
 
+    [Fact]
+    public void ExplicitProfileDir_NamingTheDefaultProfile_IsTheDefaultProfile()
+    {
+        var defaultDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
+        var svc = new LaunchAtSignInService(Exe, defaultDir + @"\", isSupported: true);
+
+        Assert.Equal("QuickMail", svc.ValueName);
+        Assert.Equal($"\"{Exe}\" --startup", svc.Command);
+        Assert.Equal(@"C:\Data\Other", LaunchAtSignInService.NormalizeProfileDir(@"C:\Data\Other"));
+    }
+
     [Theory]
     [InlineData("QuickMail", true)]
     [InlineData("quickmail", true)]
@@ -120,7 +132,18 @@ public sealed class LaunchAtSignInRegistryTests : IDisposable
     private string RunPath => _root + @"\Run";
     private string ApprovedPath => _root + @"\StartupApproved\Run";
 
-    public void Dispose() => Registry.CurrentUser.DeleteSubKeyTree(_root, throwOnMissingSubKey: false);
+    public void Dispose()
+    {
+        Registry.CurrentUser.DeleteSubKeyTree(_root, throwOnMissingSubKey: false);
+
+        // Leave no empty parent behind once the last test class instance is done with it.
+        using var parent = Registry.CurrentUser.OpenSubKey(@"Software\QuickMail.Tests");
+        if (parent is { SubKeyCount: 0, ValueCount: 0 })
+        {
+            try { Registry.CurrentUser.DeleteSubKey(@"Software\QuickMail.Tests", throwOnMissingSubKey: false); }
+            catch (InvalidOperationException) { } // a parallel test created a child meanwhile
+        }
+    }
 
     private LaunchAtSignInService Make(string? exe = Exe, string? profileDir = null, bool supported = true) =>
         new(exe, profileDir, supported, RunPath, ApprovedPath);
@@ -381,14 +404,60 @@ public class LaunchAtSignInSettingsTests
     }
 
     [Fact]
-    public void ChangedInTaskManagerWhileTheDialogWasOpen_SaveReconcilesAgainstWindowsNow()
+    public void TurnedOffInTaskManagerWhileTheDialogWasOpen_SavingOtherSettings_LeavesItOff()
     {
-        // Opened while on; the user leaves the box checked; meanwhile Task Manager disables it.
-        // Saving a still-checked box is then a request to be on, and must turn it back on.
+        // Opened while on; meanwhile the user disables QuickMail in Task Manager, then saves some
+        // unrelated setting. The box still shows "on" from when the dialog opened — that is not a
+        // request to undo what they just did in Windows.
         var svc = new StubLaunchAtSignIn { State = LaunchAtSignInState.On };
         var vm = MakeVm(svc);
         svc.State = LaunchAtSignInState.DisabledInWindows;
 
+        vm.StartMinimizedAtSignIn = false;
+        vm.SaveCommand.Execute(null);
+
+        Assert.Empty(svc.Calls);
+        Assert.Equal(LaunchAtSignInState.DisabledInWindows, svc.State);
+    }
+
+    [Fact]
+    public void UserChecksTheBox_AfterWindowsAlreadyTurnedItOn_DoesNothingMore()
+    {
+        // Opened while off; turned on elsewhere meanwhile; the user checks the box. Already there.
+        var svc = new StubLaunchAtSignIn { State = LaunchAtSignInState.Off };
+        var vm = MakeVm(svc);
+        svc.State = LaunchAtSignInState.On;
+
+        vm.LaunchAtSignIn = true;
+        vm.SaveCommand.Execute(null);
+
+        Assert.Empty(svc.Calls);
+        Assert.True(vm.LaunchAtSignIn);
+    }
+
+    [Fact]
+    public void UserUnchecksTheBox_AfterTaskManagerDisabledIt_RemovesTheEntry()
+    {
+        // The user asked for off; an entry Windows is merely skipping is still an entry.
+        var svc = new StubLaunchAtSignIn { State = LaunchAtSignInState.On };
+        var vm = MakeVm(svc);
+        svc.State = LaunchAtSignInState.DisabledInWindows;
+
+        vm.LaunchAtSignIn = false;
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal(new[] { "Disable" }, svc.Calls);
+    }
+
+    [Fact]
+    public void SavingTwice_AfterAChange_ActsOnce()
+    {
+        // After a save the box is the new baseline; the dialog's Save may run more than once.
+        var svc = new StubLaunchAtSignIn { State = LaunchAtSignInState.Off };
+        var vm = MakeVm(svc);
+
+        vm.LaunchAtSignIn = true;
+        vm.SaveCommand.Execute(null);
         vm.SaveCommand.Execute(null);
 
         Assert.Equal(new[] { "Enable" }, svc.Calls);
