@@ -3,11 +3,11 @@
 ## Service Layer
 
 **App.xaml.cs** is the manual DI composition root — no container. Services are wired in `OnStartup` in dependency order:
-`ProfileContext` → `AccountService` → `CredentialService` → `ConfigService` → `ProviderCatalog` → `AutoDiscoverService` → `OAuthService` → `ImapService` → `SmtpService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ConnectivityService` → `OutboxService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
+`ProfileContext` → `AccountService` → `CredentialService` → `ConfigService` → `ProviderCatalog` → `AutoDiscoverService` → `OAuthService` → `ImapMailService` → `SmtpService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ConnectivityService` → `OutboxService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
 
 Every service has a matching interface in `Services/I*.cs`, making them fully substitutable in tests.
 
-**ImapService** uses MailKit and leases `ImapClient` instances from a bounded per-account pool. Foreground operations (message open, attachment download, mutating user actions) use foreground leases. Background work (sync, UID checks, polling, preview fetches, prefetch) uses background leases capped below the full pool so sync cannot starve interactive work. `MaxImapConnectionsPerAccount` defaults to 6 and is clamped to 1-15.
+**ImapMailService** uses MailKit and leases `ImapClient` instances from a bounded per-account pool. Foreground operations (message open, attachment download, mutating user actions) use foreground leases. Background work (sync, UID checks, polling, preview fetches, prefetch) uses background leases capped below the full pool so sync cannot starve interactive work. `MaxImapConnectionsPerAccount` defaults to 6 and is clamped to 1-15.
 
 **LocalStoreService** (SQLite via `Microsoft.Data.Sqlite`) caches messages in `mail.db` with WAL journaling. It stores `MessageSummary` rows for list panes and `MessageDetail` rows for body/attachment metadata, and handles column-addition migrations at startup. Schema version is tracked via `PRAGMA user_version` so data migrations run exactly once.
 
@@ -52,7 +52,7 @@ Groups (`GroupModel`) are flat, local-only, and keyed by an incrementing integer
 **Static utilities** (no DI required):
 - `ConversationBuilder` — groups messages by normalized subject (strips all leading Re:/Fwd: chains); used for Conversations view mode
 - `SenderGroupBuilder` — groups messages by From or To; used for From/To view modes
-- `MimeMessageBuilder` — builds a `MimeMessage` from `ComposeModel` + `AccountModel`; shared by `SmtpService` and `ImapService` (draft saving)
+- `MimeMessageBuilder` — builds a `MimeMessage` from `ComposeModel` + `AccountModel`; shared by `SmtpService` and `ImapMailService` (draft saving)
 - `AddressParser` — splits comma/semicolon-delimited address strings into `MailboxAddress` objects
 - `MessagePropertiesBuilder`, `FolderPropertiesBuilder`, `AccountPropertiesBuilder`, `ContactPropertiesBuilder`, `GroupPropertiesBuilder`, `AttachmentPropertiesBuilder` — transform model objects into `(title, sections[])` for `PropertiesViewModel`. Pure static functions, no DI, testable without UI. Each takes the relevant model(s) and returns a list of `PropertySection` records containing `PropertyItem` (label/value) rows.
 - `FolderTreeBuilder` — builds `FolderTreeNode` hierarchy from a flat `MailFolderModel` list; auto-detects IMAP path separator (`.` or `/`)
