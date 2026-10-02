@@ -71,6 +71,49 @@ the background check — the <strong>Check for new mail every</strong>
 setting on the <strong>General</strong> tab. If you have set that to
 <strong>Off</strong>, other folders are only checked when you open
 them.</p>
+<h3 id="start-quickmail-when-you-sign-in-to-windows">Start QuickMail
+when you sign in to Windows</h3>
+<p>QuickMail can start by itself each time you sign in to Windows. This
+is <strong>off</strong> unless you turn it on.</p>
+<ol type="1">
+<li>Open <strong>File → Settings</strong> and go to the
+<strong>Startup</strong> tab.</li>
+<li>Under <strong>Windows Sign-In</strong>, check <strong>Start
+QuickMail automatically when I sign in to Windows</strong>.</li>
+<li>Choose <strong>Save</strong>.</li>
+</ol>
+<p><strong>Start minimized</strong>, just below, decides how QuickMail
+appears when Windows starts it. It is on by default, so QuickMail does
+not open its window over whatever you have started doing: it starts in
+the notification area if <strong>Keep running in the notification area
+when I close the window</strong> is on (<strong>General</strong> tab),
+and otherwise minimized on the taskbar. Mail is checked and
+notifications arrive as usual; open QuickMail from the taskbar,
+<strong>Alt+Tab</strong>, the tray icon, or the Start menu when you want
+it. Turn <strong>Start minimized</strong> off to have QuickMail open
+normally instead.</p>
+<p>QuickMail uses the standard Windows startup list, so it also appears
+in <strong>Task Manager</strong> under <strong>Startup apps</strong> and
+in Windows <strong>Settings → Apps → Startup</strong>. You can turn it
+off from either place, and QuickMail respects that: its own check box
+then reads unchecked, with a note that Windows’ startup settings have it
+turned off. Checking it in QuickMail and saving turns it back on.</p>
+<p>Some things to know:</p>
+<ul>
+<li><strong>Installed copies only.</strong> The installed QuickMail
+stays in the same place across updates, so the startup entry always
+works. A portable copy can be moved, which would leave Windows pointing
+at nothing, so on a portable copy the Startup tab explains this instead
+of offering the setting.</li>
+<li><strong>Uninstalling QuickMail removes the startup entry.</strong>
+Nothing is left behind in your startup list.</li>
+<li><strong>If QuickMail is already open</strong> when Windows gets
+round to starting it — you opened it yourself right after signing in —
+nothing happens; your window is not brought to the front.</li>
+<li><strong>Each profile is separate.</strong> If you run QuickMail with
+<code>--profileDir</code>, turning this on starts that profile, and it
+has its own entry in the startup list.</li>
+</ul>
 <hr />
 
   <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="saved-views.html">Previous: Saved Views</a> | <a href="calendar.html">Next: Calendar</a></div>
