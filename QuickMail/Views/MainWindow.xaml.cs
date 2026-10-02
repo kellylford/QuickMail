@@ -767,10 +767,21 @@ public partial class MainWindow : Window
     /// </summary>
     public void HandleNotificationActivation(Services.NotificationActivation act)
     {
+        // During a quiet start (#770), a toast that opens a message supersedes the held-back focus
+        // and startup notices (see QuietStartGate). Before the restore, so its activation finds
+        // nothing to run.
+        if (_quietStartGate is not null && OpensMessage(act))
+        {
+            _quietStartGate.Supersede();
+            Activated -= OnQuietStartActivated;
+        }
         RestoreFromTray();
         _pendingActivation = act;
         TryProcessPendingActivation();
     }
+
+    private static bool OpensMessage(Services.NotificationActivation act) =>
+        !string.IsNullOrEmpty(act.MessageId) && !string.IsNullOrEmpty(act.Folder) && act.AccountId != Guid.Empty;
 
     private void TryProcessPendingActivation()
     {
@@ -974,6 +985,10 @@ public partial class MainWindow : Window
     // On startup: initialise WebView2, connect to first account, open INBOX, focus message list
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // First, before any await: see the quiet-start notes by BeginQuietStart.
+        if ((Application.Current as App)?.StartQuietly == true)
+            BeginQuietStart();
+
         AccessibilityHelper.RegisterDebugInputTrace(this);
 
         // Register commands that require UI access (must run after InitializeComponent).
@@ -1689,13 +1704,21 @@ public partial class MainWindow : Window
             // the Account Manager is already up) so an update applied before the first
             // account exists still gets its one installed notice later.
             _vm.MaybeShowUpdateInstalledNotice(dialogAllowed: false);
-            OpenAccountManager();
+            // A quiet start (#770) must not open a modal at sign-in over a window never shown.
+            if (IsQuietStart)
+                CompleteQuietStartLoad(OpenAccountManager);
+            else
+                OpenAccountManager();
             return;
         }
 
         // Show local cache immediately so the UI is never blank on startup.
         await _vm.InitialLoadAsync();
-        FocusActiveMessagePanel();
+
+        // A quiet start (#770) was shown minimized without activation; focusing into it now risks
+        // activating it over whatever the user is doing, so focus waits with the startup dialogs.
+        if (!IsQuietStart)
+            FocusActiveMessagePanel();
 
         // Populate the Views menu from saved views loaded at startup.
         RebuildViewsMenu();
@@ -1712,6 +1735,69 @@ public partial class MainWindow : Window
         // Connect accounts and sync new mail in the background; messages trickle in via FolderSynced.
         _ = _vm.StartBackgroundSyncAsync();
 
+        if (IsQuietStart)
+        {
+            CompleteQuietStartLoad(() =>
+            {
+                FocusActiveMessagePanel();
+                RunStartupNotices();
+            });
+            return;
+        }
+
+        RunStartupNotices();
+    }
+
+    // ── Quiet start at sign-in (#770) ───────────────────────────────────────────
+    //
+    // Started by Windows at sign-in with Start minimized on, the window holds its focus and its
+    // one-time startup dialogs (or, with no accounts, the Account Manager) until the user first
+    // brings QuickMail up — from the taskbar, Alt+Tab, the tray icon, a notification, or launching
+    // it again. A dialog at sign-in would land over whatever the user had started doing. When that
+    // work runs is QuietStartGate's decision; this is only the wiring. The listener and the tray
+    // hide are set up at the very start of OnLoaded, before any await, so an activation during a
+    // slow load is never missed and the window is never hidden from under a user who just opened it.
+
+    private QuietStartGate? _quietStartGate;   // non-null only for a quiet start
+
+    private bool IsQuietStart => _quietStartGate is not null;
+
+    private void BeginQuietStart()
+    {
+        _quietStartGate = new QuietStartGate();
+        if (IsActive)
+        {
+            // Already brought up between Show and Loaded: nothing to hide, nothing to wait for.
+            _quietStartGate.Activated();
+            return;
+        }
+        Activated += OnQuietStartActivated;
+
+        // With close-to-tray on, the notification area is where a background QuickMail lives;
+        // otherwise it stays minimized on the taskbar.
+        var cfg = _configService.Load();
+        if (cfg.CloseToTray)
+            HideToTray(cfg);
+    }
+
+    private void OnQuietStartActivated(object? sender, EventArgs e)
+    {
+        Activated -= OnQuietStartActivated;
+        RunQuietStartWork(_quietStartGate!.Activated());
+    }
+
+    private void CompleteQuietStartLoad(Action work) =>
+        RunQuietStartWork(_quietStartGate!.LoadCompleted(work));
+
+    private void RunQuietStartWork(Action? work)
+    {
+        // Out of the Activated handler, so a startup dialog never opens inside activation.
+        if (work is not null)
+            Dispatcher.BeginInvoke(work, System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void RunStartupNotices()
+    {
         // One-time desktop shortcut offer for installed copies — after the window is up and
         // the background sync has been kicked off, so the dialog does not delay startup;
         // the offer handler restores focus to the message panel explicitly on close.
@@ -7407,7 +7493,8 @@ public partial class MainWindow : Window
             .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
         var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
-            (Application.Current as App)?.ScreenshotCapture);
+            (Application.Current as App)?.ScreenshotCapture,
+            (Application.Current as App)?.LaunchAtSignIn);
         var dialog = new SettingsDialog(vm) { Owner = this };
 
         // Picking a startup folder needs a window, which is the View's job — the VM asks and gets a

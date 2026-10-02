@@ -1519,6 +1519,25 @@ Also under **File → Settings → Startup**, **Startup Sync** controls how much
 
 New mail still arrives in your inboxes straight away whichever you choose, so notifications are unaffected. Other folders are caught up by the background check — the **Check for new mail every** setting on the **General** tab. If you have set that to **Off**, other folders are only checked when you open them.
 
+### Start QuickMail when you sign in to Windows
+
+QuickMail can start by itself each time you sign in to Windows. This is **off** unless you turn it on.
+
+1. Open **File → Settings** and go to the **Startup** tab.
+2. Under **Windows Sign-In**, check **Start QuickMail automatically when I sign in to Windows**.
+3. Choose **Save**.
+
+**Start minimized**, just below, decides how QuickMail appears when Windows starts it. It is on by default, so QuickMail does not open its window over whatever you have started doing: it starts in the notification area if **Keep running in the notification area when I close the window** is on (**General** tab), and otherwise minimized on the taskbar. Mail is checked and notifications arrive as usual; open QuickMail from the taskbar, **Alt+Tab**, the tray icon, or the Start menu when you want it. Turn **Start minimized** off to have QuickMail open normally instead.
+
+QuickMail uses the standard Windows startup list, so it also appears in **Task Manager** under **Startup apps** and in Windows **Settings → Apps → Startup**. You can turn it off from either place, and QuickMail respects that: its own check box then reads unchecked, with a note that Windows' startup settings have it turned off. Checking it in QuickMail and saving turns it back on.
+
+Some things to know:
+
+- **Installed copies only.** The installed QuickMail stays in the same place across updates, so the startup entry always works. A portable copy can be moved, which would leave Windows pointing at nothing, so on a portable copy the Startup tab explains this instead of offering the setting.
+- **Uninstalling QuickMail removes the startup entry.** Nothing is left behind in your startup list.
+- **If QuickMail is already open** when Windows gets round to starting it — you opened it yourself right after signing in — nothing happens; your window is not brought to the front.
+- **Each profile is separate.** If you run QuickMail with `--profileDir`, turning this on starts that profile, and it has its own entry in the startup list.
+
 ---
 
 ## Calendar

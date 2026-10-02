@@ -31,6 +31,17 @@ public partial class App : Application
     /// </summary>
     public ProfileContext? Profile { get; private set; }
 
+    /// <summary>Start at Windows sign-in (#770). Exposed for Settings, like <see cref="Profile"/>.</summary>
+    public ILaunchAtSignInService? LaunchAtSignIn { get; private set; }
+
+    /// <summary>
+    /// True when Windows started this process at sign-in and the user wants that to be unobtrusive
+    /// (StartMinimizedAtSignIn): the main window starts minimized without taking focus, moves to the
+    /// notification area if close-to-tray is on, and holds its one-time startup dialogs until the
+    /// user first brings it up.
+    /// </summary>
+    public bool StartQuietly { get; private set; }
+
     // Held so OnExit can dispose them.
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
@@ -64,7 +75,11 @@ public partial class App : Application
     public static void Main(string[] args)
     {
         Velopack.VelopackApp.Build()
-            .OnBeforeUninstallFastCallback(_ => LaunchUninstallDataPrompt())
+            .OnBeforeUninstallFastCallback(_ =>
+            {
+                RemoveStartupEntries();
+                LaunchUninstallDataPrompt();
+            })
             .Run();
 
         // One instance per profile (issue #240): with close-to-tray the process can be running
@@ -72,9 +87,12 @@ public partial class App : Application
         // rather than pile up processes sharing one SQLite store. When another instance owns
         // this profile, TryAcquire has already signaled it to come to the foreground, so this
         // launch simply ends. --help is exempt so usage is always available.
+        // A launch by Windows at sign-in (#770) that finds QuickMail already running — the user
+        // opened it before Windows got round to its startup apps — ends without signaling, so
+        // it never pulls that window to the front.
         if (!IsHelpRequest(args))
         {
-            _singleInstance = SingleInstanceService.TryAcquire(args);
+            _singleInstance = SingleInstanceService.TryAcquire(args, signalExisting: !IsSignInLaunch(args));
             if (_singleInstance is null) return;
         }
 
@@ -85,6 +103,33 @@ public partial class App : Application
             app.Run();
         }
     }
+
+    // Uninstall cleanup for start at sign-in (#770): an uninstalled QuickMail must not leave an
+    // entry in Task Manager's Startup apps. Removes every profile's entry that starts this copy.
+    // Runs before the data prompt and, like it, must never fail the uninstall.
+    private static void RemoveStartupEntries()
+    {
+        try
+        {
+            if (Environment.ProcessPath is { } exe)
+                LaunchAtSignInService.RemoveAllFor(exe);
+        }
+        catch (Exception ex)
+        {
+#pragma warning disable RCS1075 // last-resort diagnostics writer in the uninstall hook — LogService is not configured here, and a failure to write the diagnostic has no further channel
+            try
+            {
+                System.IO.File.AppendAllText(
+                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall.log"),
+                    $"{DateTime.Now:s} startup entry removal failed: {ex}\r\n");
+            }
+            catch (Exception) { }
+#pragma warning restore RCS1075
+        }
+    }
+
+    private static bool IsSignInLaunch(string[] args) =>
+        args.Contains(LaunchAtSignInService.StartupArg, StringComparer.OrdinalIgnoreCase);
 
     // Uninstall-time offer to remove user data, mirroring the old installer's prompt.
     // Update.exe kills hook processes after ~30 seconds — far too short to leave a question
@@ -170,6 +215,9 @@ public partial class App : Application
                 "  --updateFeed <path>   Check for updates in <path> (a folder or URL of\n" +
                 "                        Velopack packages) instead of GitHub Releases.\n" +
                 "                        For testing update delivery.\n\n" +
+                "  --startup             Passed by Windows when it starts QuickMail as you\n" +
+                "                        sign in (Settings > Startup). Starts minimized if\n" +
+                "                        that option is on.\n\n" +
                 "  --help                Show this message and exit.\n\n" +
                 "  /debug                Write verbose debug output to quickmail.log.",
                 "QuickMail",
@@ -224,6 +272,13 @@ public partial class App : Application
         }
         if (onlineMode)
             LogService.Log("Online mode enabled — SQLite cache bypassed.");
+
+        // Start at sign-in (#770): installed copies only — their path survives updates, so the
+        // entry never goes stale. Never from a ui-probe run, which must not touch the registry.
+        LaunchAtSignIn = new LaunchAtSignInService(
+            Environment.ProcessPath,
+            ProfileContext.ParseProfileDir(e.Args) is null ? null : profile.ProfileDir,
+            isSupported: VelopackRuntime.IsInstalled && UiProbe == null);
 
         // Left/Right/Home/End through a wrapped tab strip (#528). A class handler so a window
         // with tabs added later cannot be left out.
@@ -530,6 +585,19 @@ public partial class App : Application
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
             _notificationService.Activated += act =>
                 mainWindow.Dispatcher.BeginInvoke(() => mainWindow.HandleNotificationActivation(act));
+
+            if (IsSignInLaunch(e.Args) && UiProbe == null)
+            {
+                StartQuietly = startupCfg.StartMinimizedAtSignIn;
+                LogService.Log(StartQuietly
+                    ? "Started by Windows at sign-in; starting minimized."
+                    : "Started by Windows at sign-in.");
+            }
+            if (StartQuietly)
+            {
+                mainWindow.ShowActivated = false;
+                mainWindow.WindowState = WindowState.Minimized;
+            }
 
             mainWindow.Show();
 

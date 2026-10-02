@@ -303,6 +303,7 @@ public class ConfigService : IConfigService
                 case "notifyonwatchedconversation": config.NotifyOnWatchedConversation = ParseBool(value); break;
                     case "closetotray":          config.CloseToTray          = ParseBool(value); break;
                     case "trayhintshown":        config.TrayHintShown        = ParseBool(value); break;
+                    case "startminimizedatsignin": config.StartMinimizedAtSignIn = ParseBool(value); break;
                     case "logformat":
                         config.LogFormat = string.Equals(value, "timefirst", StringComparison.OrdinalIgnoreCase) ? "timeFirst" : "actionFirst";
                         break;
@@ -647,6 +648,13 @@ public class ConfigService : IConfigService
         sb.AppendLine("# When you close the main window, keep QuickMail running in the notification");
         sb.AppendLine("# area (system tray) instead of exiting, so new-mail notifications keep arriving.");
         sb.AppendLine("# Restore it from the tray icon or a notification. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"StartMinimizedAtSignIn = {(config.StartMinimizedAtSignIn ? "on" : "off")}");
+        sb.AppendLine("# When Windows starts QuickMail as you sign in, start without opening the window:");
+        sb.AppendLine("# in the notification area if CloseToTray is on, otherwise minimized on the");
+        sb.AppendLine("# taskbar. Whether it starts at sign-in is set in Settings > Startup, and lives");
+        sb.AppendLine("# in Windows' startup apps list rather than in this file. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"TrayHintShown = {(config.TrayHintShown ? "on" : "off")}");
