@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace QuickMail.Tests;
 
@@ -35,6 +35,17 @@ internal static class InputTests
         "Synthesized-input test — set QUICKMAIL_RUN_INPUT_TESTS=1 to run. Skipped by default because "
       + "it depends on focus and real elapsed time in a shown window; the wiring it covers is asserted "
       + "deterministically by TypeAheadWiringTests. See issue #380.";
+
+    /// <summary>
+    /// The same gate, worded for the mouse tests: those drive real OS-level clicks through
+    /// <c>SendInput</c>, so they move the machine's actual pointer and depend on the window they
+    /// clicked being the one under it.
+    /// </summary>
+    public const string MouseSkipReason =
+        "Real-mouse test - set QUICKMAIL_RUN_INPUT_TESTS=1 to run. Skipped by default because it "
+      + "moves the machine's real pointer and clicks wherever it lands; it needs an unlocked, "
+      + "otherwise-idle desktop. The logic it exercises is asserted deterministically by "
+      + "MouseActivationTests. See issue #380.";
 
     /// <summary>
     /// Read by xUnit's <c>SkipUnless</c> at execution time. Must stay public and static.
