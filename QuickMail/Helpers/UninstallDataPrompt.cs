@@ -20,12 +20,12 @@ namespace QuickMail.Helpers;
 /// Setup.exe install) involves no Windows Installer, so it asks once the files are gone and the
 /// quiet window passes.
 ///
-/// What the install-path matrix measured on real MSI upgrades (scenario 6): the old copy's files
-/// are gone for under a second before the new copy's arrive, and Global\_MSIExecute is held from
-/// before they go until well after they are back (run 37328565215 — x64: held 1.9-10.8 s, files gone
-/// 3.4-4.8 s; ARM64: held 1.8-24.8 s, gone 20.4-21.0 s). So the files coming back, or never being seen gone ("still installed"), decide an
-/// upgrade, and the mutex keeps a slower one from being misread; the Add/Remove Programs check is
-/// behind all three.
+/// What the install-path matrix measured on real MSI upgrades (scenario 6): the old copy's
+/// files are gone for under a second before the new copy's arrive, and Global\_MSIExecute is
+/// held from before they go until well after they are back (run 37328565215 — x64: held
+/// 1.9-10.8 s, files gone 3.4-4.8 s; ARM64: held 1.8-24.8 s, gone 20.4-21.0 s). So the files
+/// coming back, or never being seen gone ("still installed"), decide an upgrade, and the mutex
+/// keeps a slower one from being misread; the Add/Remove Programs check is behind all three.
 ///
 /// Everything the script needs is a parameter, so the tests can run it against a scratch folder,
 /// a scratch Uninstall key and a mutex of their own, with short waits and <c>-DryRun</c>, which
