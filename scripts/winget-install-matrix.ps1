@@ -309,9 +309,10 @@ function Wait-HookLog([string]$Pattern, [int]$Seconds) {
 
 function Set-StartupEntryOff([string]$Exe) {
     # Start at sign-in turned on, then off again in Task Manager: both the Run value and
-    # Windows' off mark (first byte odd) must survive an upgrade. Never New-Item -Force on these
-    # keys -- on an existing key that recreates it, wiping every other app's entry.
-    foreach ($k in $RunKey, $ApprovedKey) { if (-not (Test-Path $k)) { New-Item -Path $k | Out-Null } }
+    # Windows' off mark (first byte odd) must survive an upgrade. -Force only where the key is
+    # absent: it creates missing parents (StartupApproved does not exist on a fresh runner), but
+    # on an existing key it recreates it, wiping every other app's entry.
+    foreach ($k in $RunKey, $ApprovedKey) { if (-not (Test-Path $k)) { New-Item -Path $k -Force | Out-Null } }
     Set-ItemProperty -Path $RunKey -Name 'QuickMail' -Value "`"$Exe`" --startup"
     Set-ItemProperty -Path $ApprovedKey -Name 'QuickMail' -Value ([byte[]](3,0,0,0,0,0,0,0,0,0,0,0)) -Type Binary
 }
