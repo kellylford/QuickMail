@@ -143,7 +143,7 @@ Users access the guide via **Help** → **Open User Guide** (F1). The link in `M
 ## Architecture
 
 Manual DI root in `App.xaml.cs` — no container. Services wired in `OnStartup`:
-`ProfileContext` → `AccountService` → `CredentialService` → `OAuthService` → `ImapService` → `SmtpService` → `ConfigService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ConnectivityService` → `OutboxService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
+`ProfileContext` → `AccountService` → `CredentialService` → `OAuthService` → `ImapMailService` → `SmtpService` → `ConfigService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ConnectivityService` → `OutboxService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
 
 Every service has a matching interface in `Services/I*.cs`. See `docs/ARCHITECTURE.md` for full service descriptions, runtime modes, and virtual folder sentinels.
 
@@ -343,7 +343,7 @@ Permitted in `.xaml.cs`:
 
 Not permitted in `.xaml.cs`:
 - Business logic, data transformation, or validation
-- Direct calls to services (`ImapService`, `ContactService`, etc.)
+- Direct calls to services (`ImapMailService`, `ContactService`, etc.)
 - State decisions ("if account has unread messages, do X")
 
 ### Async event handlers in Views
