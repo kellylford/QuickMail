@@ -980,8 +980,12 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
     $nodeDir = Join-Path $work 'node-manifest'
     New-Item -ItemType Directory -Force $nodeDir | Out-Null
     $api = 'https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/o/OpenJS/NodeJS/LTS'
-    $nodeVersion = (Invoke-RestMethod $api -UseBasicParsing | Where-Object { $_.type -eq 'dir' -and $_.name -match '^\d+(\.\d+)+$' } | ForEach-Object { $_.name } | Sort-Object { [version]$_ } | Select-Object -Last 1)
-    foreach ($item in (Invoke-RestMethod "$api/$nodeVersion" -UseBasicParsing | Where-Object { $_.name -like '*.yaml' })) {
+    # Authenticated when the workflow provides a token: runners share IP addresses, and the
+    # unauthenticated API limit ran out mid-run once (run 37317154467).
+    $apiHeaders = @{ 'User-Agent' = 'quickmail-ci' }
+    if ($env:GH_TOKEN) { $apiHeaders['Authorization'] = "Bearer $env:GH_TOKEN" }
+    $nodeVersion = (Invoke-RestMethod $api -Headers $apiHeaders -UseBasicParsing | Where-Object { $_.type -eq 'dir' -and $_.name -match '^\d+(\.\d+)+$' } | ForEach-Object { $_.name } | Sort-Object { [version]$_ } | Select-Object -Last 1)
+    foreach ($item in (Invoke-RestMethod "$api/$nodeVersion" -Headers $apiHeaders -UseBasicParsing | Where-Object { $_.name -like '*.yaml' })) {
         Invoke-WebRequest $item.download_url -OutFile (Join-Path $nodeDir $item.name) -UseBasicParsing
     }
     if (-not (Test-Path (Join-Path $nodeDir 'OpenJS.NodeJS.LTS.installer.yaml'))) { throw "Fetching the Node.js LTS $nodeVersion manifest failed." }

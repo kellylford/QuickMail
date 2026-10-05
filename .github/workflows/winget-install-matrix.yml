@@ -199,6 +199,9 @@ jobs:
 
       - name: Run the install-path matrix
         shell: pwsh
+        env:
+          # Read-only GitHub API calls (scenario 7's control manifest); contents: read is enough.
+          GH_TOKEN: ${{ github.token }}
         run: |
           ./scripts/winget-install-matrix.ps1 `
             -OldDir packs/1.0.0 -NewDir packs/1.0.1 `
