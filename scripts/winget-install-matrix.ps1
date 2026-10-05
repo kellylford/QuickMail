@@ -796,80 +796,110 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
     }
     $null = & winget settings --enable LocalManifestFiles 2>&1
 
-    # Bounded, and run as its own process so a hang is a measurement rather than a lost job:
-    # the first attempt at this scenario sat for 50 minutes inside winget until the job
-    # timeout killed it, taking the whole report with it. On a timeout winget is stopped but
-    # msiexec is NOT -- killing it mid-transaction wedges the Windows Installer service for
-    # every later step (#536's harness history) -- and the final reset is skipped.
+    # Each attempt is bounded, and run as its own process so a hang is a measurement rather
+    # than a lost job: the first attempt at this scenario sat for 50 minutes inside winget
+    # until the job timeout killed it, taking the whole report with it. On a timeout winget is
+    # stopped but msiexec is NOT -- killing it mid-transaction wedges the Windows Installer
+    # service for every later step (#536's harness history) -- and if one is still running the
+    # final reset is skipped.
+    #
+    # Three attempts, because the second run of this scenario found winget hanging at
+    # "Starting package install..." on both architectures with no msiexec running and no MSI
+    # log written: (a) the template as committed, winget's default /passive; (b) the same with
+    # --silent, i.e. /quiet; (c) a control -- a widely installed MSI package from the real
+    # winget catalog, installed the same default way. If (c) hangs too, the hang is this
+    # runner's, not QuickMail's.
     $diag = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
-    $logsBefore = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
-    $stdout = Join-Path $work 'winget-install.out.txt'
-    $winget = (Get-Command winget).Source
-    $wargs = @('install', '--manifest', "`"$dir`"", '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity', '--verbose-logs')
-    $sw = [Diagnostics.Stopwatch]::StartNew()
-    $proc = Start-Process -FilePath $winget -ArgumentList $wargs -PassThru -NoNewWindow -RedirectStandardOutput $stdout
-    # Touch the handle at once: without it, Start-Process -PassThru leaves ExitCode empty
-    # after a timed WaitForExit (checked: `winget --version` reported no exit code at all).
-    $null = $proc.Handle
-    $finished = $proc.WaitForExit(600000)
-    if ($finished) { $proc.WaitForExit() }
-    $sw.Stop()
-    $running = @()
-    if (-not $finished) {
-        $running = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'msiexec|QuickMail|Update|winget|powershell' } | ForEach-Object { "$($_.ProcessId) $($_.Name) $($_.CommandLine)" })
-        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-        $script:SkipFinalReset = $true
-    }
-    Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    $code = if ($finished) { $proc.ExitCode } else { $null }
-
     $logOut = Join-Path $PWD 'winget-logs'
     New-Item -ItemType Directory -Force $logOut | Out-Null
-    $newLogs = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Where-Object { $logsBefore -notcontains $_.FullName })
-    foreach ($l in $newLogs) { Copy-Item $l.FullName (Join-Path $logOut $l.Name) }
-    if (Test-Path $stdout) { Copy-Item $stdout (Join-Path $logOut 'winget-install.out.txt') }
-
-    $raw = if (Test-Path $stdout) { Get-Content $stdout -Raw } else { '' }
-    # winget redraws progress with carriage returns; keep each line's last state, and only
-    # lines with something to read in them (the spinner and bar are punctuation).
-    $clean = (("$raw" -split "`r?`n") | ForEach-Object { ($_ -split "`r")[-1].Trim() } | Where-Object { $_ -match '[A-Za-z0-9]' }) -join "`n"
-    if ($finished) {
-        Write-Section "``winget install --manifest`` -> exit $code (0x$('{0:X8}' -f $code)) in $([math]::Round($sw.Elapsed.TotalSeconds, 1))s"
-    } else {
-        Write-Section "``winget install --manifest`` **did not finish in 10 minutes** and was stopped. Processes still running at that moment:"
-        Write-Section ''
-        Write-Section '```'
-        Write-Section ($running -join "`n")
-        Write-Section '```'
+    $winget = (Get-Command winget).Source
+    $common = @('--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity', '--verbose-logs')
+    $attempts = [ordered]@{
+        'a -- QuickMail, default (/passive)' = @('install', '--manifest', "`"$dir`"") + $common
+        'b -- QuickMail, --silent (/quiet)'  = @('install', '--manifest', "`"$dir`"", '--silent') + $common
+        'c -- control: OpenJS.NodeJS.LTS from the winget catalog, default' = @('install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--source', 'winget') + $common
     }
-    Write-Section ''
-    Write-Section '```'
-    Write-Section $clean
-    Write-Section '```'
-    Write-Section ''
-    # The installer command line winget built, which is what decides UI level and location.
-    $cmdLines = @($newLogs | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'msiexec|Installer args|Starting installer|Installer \[|InstallerArgs|Successfully installed|Install failed|exit code' } | Select-Object -Last 12)
-    if ($cmdLines.Count) {
-        Write-Section 'From winget''s verbose log (the full log is in the `winget-logs` artifact):'
-        Write-Section ''
-        Write-Section '```'
-        Write-Section ($cmdLines -join "`n")
-        Write-Section '```'
-        Write-Section ''
-    }
-
-    $after = Get-Snapshot 'after winget install'
-    Write-Section (Format-Snapshot $after)
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
-    $vis = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
-    if (-not $finished) {
-        Add-Finding "On $Arch, ``winget install --manifest`` of the shipped $ShippedNew MSI hung for 10 minutes. See Scenario 7 for what was still running."
-    } elseif ($code -ne 0) {
-        Add-Finding "On $Arch, ``winget install --manifest`` of the shipped $ShippedNew MSI exited 0x$('{0:X8}' -f $code)."
-    } elseif ($vis.Count -ne 1 -or $vis[0].KeyName -ne 'MSI:QuickMail' -or $vis[0].DisplayVersion -ne $ShippedNew -or @($after.Dirs).Count -ne 1 -or $after.Dirs[0].Path -ne $target) {
-        Add-Finding "On $Arch, ``winget install --manifest`` exited 0 but left visible rows [$(($vis | ForEach-Object { "$($_.KeyName) $($_.DisplayVersion)" }) -join ', ')] and directories [$(($after.Dirs | ForEach-Object { $_.Path }) -join ', ')]; expected one MSI:QuickMail $ShippedNew row and $target alone."
-    } else {
-        Write-Section "**Pass:** winget installed $ShippedNew from the template: one visible ``MSI:QuickMail`` row at $ShippedNew, installed in ``%LocalAppData%\QuickMail`` only."
+    $n = 0
+    foreach ($label in $attempts.Keys) {
+        $n++
+        $isQuickMail = $label -like '*QuickMail*'
+        if ($isQuickMail) { $null = Reset-Machine }
+        $logsBefore = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+        $stdout = Join-Path $work "winget-attempt$n.out.txt"
+        $began = Get-Date
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $proc = Start-Process -FilePath $winget -ArgumentList $attempts[$label] -PassThru -NoNewWindow -RedirectStandardOutput $stdout
+        # Touch the handle at once: without it, Start-Process -PassThru leaves ExitCode empty
+        # after a timed WaitForExit (checked: `winget --version` reported no exit code at all).
+        $null = $proc.Handle
+        $finished = $proc.WaitForExit(300000)
+        if ($finished) { $proc.WaitForExit() }
+        $sw.Stop()
+        $spawned = @()
+        if (-not $finished) {
+            # Everything started since this attempt began: whatever winget is waiting on, a
+            # prompt or a child, is in here.
+            $spawned = @(Get-CimInstance Win32_Process | Where-Object { $_.CreationDate -ge $began } | ForEach-Object { "$($_.ProcessId) (parent $($_.ParentProcessId)) $($_.Name) $($_.CommandLine)" })
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            if (Get-Process msiexec -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -ge $began }) { $script:SkipFinalReset = $true }
+        }
+        Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        $code = if ($finished) { $proc.ExitCode } else { $null }
+
+        $newLogs = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Where-Object { $logsBefore -notcontains $_.FullName })
+        foreach ($l in $newLogs) { Copy-Item $l.FullName (Join-Path $logOut "attempt$n-$($l.Name)") }
+        if (Test-Path $stdout) { Copy-Item $stdout (Join-Path $logOut "attempt$n.out.txt") }
+        $raw = if (Test-Path $stdout) { Get-Content $stdout -Raw } else { '' }
+        # winget redraws progress with carriage returns; keep each line's last state, and only
+        # lines with something to read in them (the spinner and bar are punctuation).
+        $clean = (("$raw" -split "`r?`n") | ForEach-Object { ($_ -split "`r")[-1].Trim() } | Where-Object { $_ -match '[A-Za-z0-9]' }) -join "`n"
+
+        Write-Section "### Attempt $label"
+        Write-Section ''
+        if ($finished) {
+            Write-Section "Exit $code (0x$('{0:X8}' -f $code)) in $([math]::Round($sw.Elapsed.TotalSeconds, 1))s."
+        } else {
+            Write-Section "**Did not finish in 5 minutes** and was stopped. Processes started during the attempt:"
+            Write-Section ''
+            Write-Section '```'
+            Write-Section ($spawned -join "`n")
+            Write-Section '```'
+        }
+        Write-Section ''
+        Write-Section '```'
+        Write-Section $clean
+        Write-Section '```'
+        Write-Section ''
+        $cmdLines = @($newLogs | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'Installer args|Starting:|Installer \[.*best choice|Successfully installed|failed|exit code|ShellExecute' } | Select-Object -Last 10)
+        if ($cmdLines.Count) {
+            Write-Section 'From winget''s verbose log (full logs in the `winget-logs` artifact):'
+            Write-Section ''
+            Write-Section '```'
+            Write-Section ($cmdLines -join "`n")
+            Write-Section '```'
+            Write-Section ''
+        }
+
+        if ($isQuickMail) {
+            $after = Get-Snapshot "after attempt $label"
+            Write-Section (Format-Snapshot $after)
+            $vis = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
+            if (-not $finished) {
+                Add-Finding "On $Arch, ``winget install --manifest`` attempt $label hung for 5 minutes. See Scenario 7 for what was running."
+            } elseif ($code -ne 0) {
+                Add-Finding "On $Arch, ``winget install --manifest`` attempt $label exited 0x$('{0:X8}' -f $code)."
+            } elseif ($vis.Count -ne 1 -or $vis[0].KeyName -ne 'MSI:QuickMail' -or $vis[0].DisplayVersion -ne $ShippedNew -or @($after.Dirs).Count -ne 1 -or $after.Dirs[0].Path -ne $target) {
+                Add-Finding "On $Arch, attempt $label exited 0 but left visible rows [$(($vis | ForEach-Object { "$($_.KeyName) $($_.DisplayVersion)" }) -join ', ')] and directories [$(($after.Dirs | ForEach-Object { $_.Path }) -join ', ')]; expected one MSI:QuickMail $ShippedNew row and $target alone."
+            } else {
+                Write-Section "**Pass ($label):** one visible ``MSI:QuickMail`` row at $ShippedNew, installed in ``%LocalAppData%\QuickMail`` only."
+            }
+        } else {
+            $verdict = if (-not $finished) { 'hung too -- so the hang is this runner''s, and the QuickMail attempts above say nothing about real machines' } elseif ($code -eq 0) { 'installed normally -- so a QuickMail hang above is specific to QuickMail''s package' } else { "exited 0x$('{0:X8}' -f $code), so it neither confirms nor rules out the runner" }
+            Write-Section "**Control:** $verdict."
+            Add-Finding "On $Arch the control package $verdict."
+        }
+        Write-Section ''
     }
 }
 
