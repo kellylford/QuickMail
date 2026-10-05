@@ -385,9 +385,14 @@ jobs:
             }
           }
 
+      # vpk is pinned in .github/vpk-version, read by every workflow that packs. Unpinned, it
+      # moved under us: 0.8.47 packed with 1.2.0 and 0.8.48 with 1.2.158, and nobody noticed
+      # (#536). A bump is a deliberate change: run the winget install-matrix workflow with the
+      # new version as its input, re-check the feed listing below, then edit the file.
       - name: Install vpk
         if: startsWith(github.ref, 'refs/tags/v')
-        run: dotnet tool install -g vpk
+        shell: pwsh
+        run: dotnet tool install -g vpk --version (Get-Content .github/vpk-version -Raw).Trim()
 
       # Fetch the previous release's Velopack assets so vpk pack can generate a delta
       # package. If this step is skipped or fails, packing still succeeds but ships a

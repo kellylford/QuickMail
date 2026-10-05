@@ -505,7 +505,7 @@ function Invoke-Scenario {
 }
 
 Invoke-Scenario 'Scenario 1 -- silent MSI, fresh machine' `
-    'Does `msiexec /qn` land in C:\QuickMail on this architecture too (issue #554 was only ever measured on ARM64)?' {
+    'Does `msiexec /qn` land in %LocalAppData%\QuickMail, as the wizard does? vpk 1.2.0 put it in a drive root (#554); vpk 1.2.158 carries the upstream fix (velopack#945). This is the install `winget install` runs when the package points at the MSI.' {
     $r = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/qn', '/l*v', "$PWD\msi-fresh.log")
     Write-Section "``msiexec /i ... /qn`` -> exit $($r.ExitCode) in $($r.Seconds)s"
     Write-Section ''
@@ -526,7 +526,9 @@ Invoke-Scenario 'Scenario 1 -- silent MSI, fresh machine' `
             (($stray | ForEach-Object { $_.Path }) -join ', ') +
             ", not %LocalAppData%. Issue #554 is neither architecture-specific nor specific to C: -- Windows Installer resolves TARGETDIR to a drive root, and which drive is the runner's choice.")
     } elseif ($snap.Dirs.Count) {
-        Add-Finding "On $Arch a silent MSI install landed in %LocalAppData% -- the opposite of the ARM64 Phase 1 result. Issue #554 may be fixed in this vpk, or architecture-specific."
+        # The expected result since vpk 1.2.158 -- reported as a pass in the scenario body, not
+        # as a finding, so the findings list stays a list of things that are wrong.
+        Write-Section "**Pass:** the silent MSI install landed in ``%LocalAppData%\QuickMail`` and nowhere else."
     } else {
         Add-Finding "On $Arch a silent MSI install produced no QuickMail install directory anywhere this probe looks. The scenario measured nothing; do not read its silence as a pass."
     }
@@ -696,6 +698,65 @@ Invoke-Scenario 'Scenario 5 -- MSI over a Setup.exe install (the reverse migrati
     $visible = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
     if ($visible.Count -gt 1 -and $onTop) {
         Add-Finding "MSI over a Setup.exe install leaves $($visible.Count) visible ARP rows ($(($visible | ForEach-Object { $_.KeyName }) -join ', ')) over a single install directory -- the reverse migration is as messy as the forward one."
+    }
+}
+
+Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget upgrade path)' `
+    'With the winget package pointing at the MSI, `winget upgrade` runs a newer MSI with /quiet over the older one. Does it stay in %LocalAppData%, leave one visible row at the new version, and run the old copy''s uninstall hook (which is what raises the "remove your data?" prompt, #245)?' {
+    $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
+    # /quiet, not /qn: it is what winget passes for an MSI installer. Both are UILevel 2, so
+    # the quiet-install default location applies the same way to each.
+    $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldMsi`"", '/quiet', '/norestart')
+    Write-Section "Step 1 -- MSI $OldVersion, silent, fresh: exit $($r1.ExitCode) in $($r1.Seconds)s"
+    Write-Section ''
+    $before = Get-Snapshot "after silent MSI $OldVersion"
+    Write-Section (Format-Snapshot $before)
+    if ($r1.ExitCode -ne 0) {
+        throw "Premise failed: the first silent MSI install exited $($r1.ExitCode), so there is nothing to upgrade."
+    }
+    if (@($before.Dirs).Count -ne 1 -or $before.Dirs[0].Path -ne $target) {
+        throw "Premise failed: the first silent MSI did not install to $target and nowhere else (scenario 1 says why). Directories found: $(($before.Dirs | ForEach-Object { $_.Path }) -join ', ')"
+    }
+
+    $log = "$PWD\msi-upgrade.log"
+    $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/quiet', '/norestart', '/l*v', "`"$log`"")
+    Write-Section "Step 2 -- MSI $NewVersion, silent, over it: exit $($r2.ExitCode) in $($r2.Seconds)s"
+    Write-Section ''
+    $after = Get-Snapshot "after silent MSI $NewVersion over silent MSI $OldVersion"
+    Write-Section (Format-Snapshot $after)
+
+    if ($r2.ExitCode -ne 0) {
+        Add-Finding "On $Arch a silent MSI upgrade exited $($r2.ExitCode). winget would report the upgrade as failed. See msi-upgrade.log."
+    }
+    if (@($after.Dirs).Count -ne 1 -or $after.Dirs[0].Path -ne $target) {
+        Add-Finding "On $Arch a silent MSI upgrade moved the install: directories afterwards are $(($after.Dirs | ForEach-Object { $_.Path }) -join ', '), not $target alone. That is the relocation half of #554."
+    }
+    $visible = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
+    if ($visible.Count -ne 1) {
+        Add-Finding "On $Arch a silent MSI upgrade left $($visible.Count) visible Add/Remove Programs rows ($(($visible | ForEach-Object { $_.KeyName }) -join ', ')); exactly one was expected."
+    } elseif ($visible[0].DisplayVersion -ne $NewVersion) {
+        Add-Finding "On $Arch after a silent MSI upgrade to $NewVersion the visible row's DisplayVersion reads '$($visible[0].DisplayVersion)'. winget correlates on it, so it would keep offering an upgrade already applied."
+    }
+    if (@($after.MsiProducts).Count -ne 1) {
+        Add-Finding "On $Arch a silent MSI upgrade left $(@($after.MsiProducts).Count) Windows Installer product registrations; a major upgrade should leave exactly one."
+    }
+
+    # Whether the old copy was uninstalled first, read from the verbose log rather than
+    # inferred. RemoveExistingProducts running an uninstall of the old ProductCode is what
+    # fires QuickMail's uninstall hook, and the hook is what offers to delete the user's data
+    # (#245). A CI machine has no profile, so the prompt itself returns early here and cannot
+    # be observed -- the log line is the evidence that, on a real machine, it would appear.
+    if (Test-Path $log) {
+        $text = Get-Content $log -Raw -Encoding Unicode
+        if (-not $text) { $text = Get-Content $log -Raw }
+        $rep = [regex]::Matches($text, 'Doing action: RemoveExistingProducts').Count
+        $removed = $text -match 'Removing product \{' -or $text -match 'RemoveExistingProducts.*Return value 1'
+        Write-Section "Verbose log: RemoveExistingProducts ran $rep time(s)$(if ($removed) { '; the older product was removed as part of the upgrade' })."
+        if ($rep -gt 0) {
+            Add-Finding "On $Arch a silent MSI upgrade runs RemoveExistingProducts, i.e. uninstalls $OldVersion before installing $NewVersion (#245). On a machine with a QuickMail profile that uninstall fires the 'remove your data?' prompt mid-upgrade. Default is keep, so nothing is lost, but it is why the winget manifest sets RequireExplicitUpgrade."
+        }
+    } else {
+        Add-Finding "On $Arch the silent MSI upgrade wrote no verbose log, so whether it uninstalled the old copy first is unmeasured."
     }
 }
 
