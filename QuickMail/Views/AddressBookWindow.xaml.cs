@@ -185,7 +185,16 @@ public partial class AddressBookWindow : Window
         // Land on the filter that is currently in effect rather than on the first item,
         // so the menu opens where the user left it and the check state is read out.
         var menu = (ContextMenu)sender;
-        if (menu.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) is MenuItem item)
+        var item = menu.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) as MenuItem;
+        if (item is null)
+        {
+            // Defensive: the popup normally measures its content, generating every container,
+            // before Opened is raised. If a container is ever missing anyway, force one layout
+            // pass; the menu's panel is a plain StackPanel, so that generates them all.
+            menu.UpdateLayout();
+            item = menu.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) as MenuItem;
+        }
+        if (item is not null)
             item.Focus();
         else
             menu.Focus();
