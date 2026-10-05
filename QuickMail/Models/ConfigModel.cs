@@ -407,6 +407,14 @@ public class ConfigModel
     /// Maintained automatically the first time the window hides to the tray.</summary>
     public bool TrayHintShown { get; set; } = false;
 
+    /// <summary>
+    /// When Windows starts QuickMail at sign-in (issue #770), start without opening the window over
+    /// whatever the user is doing: in the notification area when <see cref="CloseToTray"/> is on,
+    /// otherwise minimized on the taskbar. Default on. Whether QuickMail starts at sign-in at all
+    /// is not stored here — the Windows Run key is the source of truth (LaunchAtSignInService).
+    /// </summary>
+    public bool StartMinimizedAtSignIn { get; set; } = true;
+
     /// <summary>Whether the user has completed the first-run keyboard tutorial.</summary>
     public bool TutorialCompleted { get; set; } = false;
 

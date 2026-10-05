@@ -130,6 +130,33 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _desktopShortcut;
 
+    // Start at Windows sign-in (#770): like the desktop shortcut, the source of truth is outside
+    // config — the Windows Run key, which Task Manager and Settings > Apps > Startup can also
+    // change. Loaded from the registry and applied on save only when it differs from what Windows
+    // will do at that moment. A "disabled in Windows" entry reads as off and is left alone unless
+    // the user checks the box, which is the one thing that turns it back on.
+    [ObservableProperty]
+    private bool _launchAtSignIn;
+
+    [ObservableProperty]
+    private bool _startMinimizedAtSignIn;
+
+    private readonly ILaunchAtSignInService? _launchAtSignInService;
+
+    /// <summary>False for portable copies and development builds — and when no service is wired —
+    /// in which case the dialog explains instead of offering the check box.</summary>
+    public bool IsLaunchAtSignInSupported => _launchAtSignInService?.IsSupported == true;
+
+    public bool IsLaunchAtSignInUnsupported => !IsLaunchAtSignInSupported;
+
+    /// <summary>Help text for the check box: says so when Windows' startup settings have QuickMail
+    /// turned off, since that is why the box reads unchecked despite an entry in Task Manager.</summary>
+    [ObservableProperty]
+    private string _launchAtSignInHelp = "";
+
+    // The box as loaded from Windows, so Save acts only on a change the user made.
+    private bool _launchAtSignInAsLoaded;
+
     [ObservableProperty]
     private bool _autoUpdate;
 
@@ -460,10 +487,12 @@ public partial class SettingsViewModel : ObservableObject
         ICommandRegistry registry,
         IThemeService? themeService = null,
         System.Collections.Generic.IEnumerable<string>? fontFamilies = null,
-        IScreenshotCaptureService? screenshotCapture = null)
+        IScreenshotCaptureService? screenshotCapture = null,
+        ILaunchAtSignInService? launchAtSignIn = null)
     {
         _configService = configService;
         _screenshotCapture = screenshotCapture;
+        _launchAtSignInService = launchAtSignIn;
         var cfg = configService.Load();
 
         // Appearance: themes from the service; installed fonts from the View
@@ -527,6 +556,8 @@ public partial class SettingsViewModel : ObservableObject
         NotifyOnWatchedConversation      = cfg.NotifyOnWatchedConversation;
         CloseToTray                      = cfg.CloseToTray;
         DesktopShortcut                  = Helpers.DesktopShortcut.Exists();
+        StartMinimizedAtSignIn           = cfg.StartMinimizedAtSignIn;
+        RefreshLaunchAtSignIn();
         AutoUpdate                       = cfg.AutoUpdate;
         ShowUpdateInstalledAlerts        = cfg.ShowUpdateInstalledAlerts;
         GoogleSignIn                     = ReadFeature(cfg, FeatureFlag.GoogleAuth, false);
@@ -615,6 +646,8 @@ public partial class SettingsViewModel : ObservableObject
         cfg.NotifyOnNewMail                  = NotifyOnNewMail;
         cfg.NotifyOnWatchedConversation      = NotifyOnWatchedConversation;
         cfg.CloseToTray                      = CloseToTray;
+        cfg.StartMinimizedAtSignIn           = StartMinimizedAtSignIn;
+        ApplyLaunchAtSignIn();
         cfg.AutoUpdate                       = AutoUpdate;
         cfg.ShowUpdateInstalledAlerts        = ShowUpdateInstalledAlerts;
         // Written both ways round, never removed when false: an explicit "false" in the file is how
@@ -756,5 +789,59 @@ public partial class SettingsViewModel : ObservableObject
 
         internal bool MatchesBinding(Key key, ModifierKeys modifiers)
             => _customKey == key && _customModifiers == modifiers;
+    }
+
+    // ── Start at Windows sign-in (#770) ────────────────────────────────────────
+
+    private LaunchAtSignInState ReadLaunchAtSignInState()
+    {
+        if (!IsLaunchAtSignInSupported) return LaunchAtSignInState.Off;
+        try { return _launchAtSignInService!.GetState(); }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or System.IO.IOException)
+        {
+            LogService.Log("Start at sign-in: could not read the Windows startup entry.", ex);
+            return LaunchAtSignInState.Off;
+        }
+    }
+
+    private void RefreshLaunchAtSignIn()
+    {
+        var state = ReadLaunchAtSignInState();
+        LaunchAtSignIn = state == LaunchAtSignInState.On;
+        _launchAtSignInAsLoaded = LaunchAtSignIn;
+        LaunchAtSignInHelp = state == LaunchAtSignInState.DisabledInWindows
+            ? "Turned off in Windows startup apps settings, so Windows will not start QuickMail. Checking this turns it back on."
+            : "";
+    }
+
+    private void ApplyLaunchAtSignIn()
+    {
+        if (!IsLaunchAtSignInSupported) return;
+
+        // Only a change the user made to the box is acted on. Saving some other setting must not
+        // undo a choice made in Task Manager while this dialog was open: the box still shows the
+        // state from when the dialog opened, and Windows' later "off" would be read as a request
+        // to turn it back on.
+        if (LaunchAtSignIn == _launchAtSignInAsLoaded) return;
+
+        // Then reconcile against Windows now, which may already be where the user asked to be.
+        var state = ReadLaunchAtSignInState();
+        if (LaunchAtSignIn ? state == LaunchAtSignInState.On : state == LaunchAtSignInState.Off)
+        {
+            RefreshLaunchAtSignIn();
+            return;
+        }
+        try
+        {
+            if (LaunchAtSignIn) _launchAtSignInService!.Enable();
+            else _launchAtSignInService!.Disable();
+            LogService.Log($"Start at sign-in turned {(LaunchAtSignIn ? "on" : "off")}.");
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or System.IO.IOException)
+        {
+            LogService.Log("Start at sign-in: could not change the Windows startup entry.", ex);
+        }
+        // Show what Windows will actually do, not what was asked for.
+        RefreshLaunchAtSignIn();
     }
 }

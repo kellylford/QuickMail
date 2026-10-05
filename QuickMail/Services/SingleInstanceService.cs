@@ -29,16 +29,18 @@ public sealed class SingleInstanceService : IDisposable
     /// Tries to claim single-instance ownership for the profile selected by <paramref name="args"/>.
     /// Returns the guard on success. Returns null when another instance already owns the profile;
     /// in that case the running instance has been signaled to bring its window to the foreground
-    /// and the caller should end the process immediately.
+    /// and the caller should end the process immediately — unless <paramref name="signalExisting"/>
+    /// is false, as for a launch by Windows at sign-in (#770), which must not pull an already-open
+    /// window to the front.
     /// </summary>
-    public static SingleInstanceService? TryAcquire(string[] args)
+    public static SingleInstanceService? TryAcquire(string[] args, bool signalExisting = true)
     {
         var key = ProfileKey(args);
         var mutex = new Mutex(initiallyOwned: true, $@"Local\QuickMail-{key}", out var createdNew);
         if (!createdNew)
         {
             mutex.Dispose();
-            SignalExistingInstance(key);
+            if (signalExisting) SignalExistingInstance(key);
             return null;
         }
 

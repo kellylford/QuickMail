@@ -103,4 +103,26 @@ public class SingleInstanceServiceTests
         Assert.True(activated.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken),
             "the running instance was not signaled by the second launch");
     }
+
+    [Fact]
+    public void SignInLaunch_WhenAlreadyRunning_EndsWithoutSignaling()
+    {
+        // #770: Windows starting QuickMail at sign-in after the user already opened it must not
+        // pull that window to the front.
+        var args = UniqueProfileArgs();
+
+        using var first = SingleInstanceService.TryAcquire(args)!;
+        Assert.NotNull(first);
+
+        using var activated = new ManualResetEventSlim(false);
+        first.ListenForActivation(activated.Set);
+
+        Assert.Null(SingleInstanceService.TryAcquire(args, signalExisting: false));
+        Assert.False(activated.Wait(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken),
+            "a sign-in launch signaled the running instance");
+
+        // Control: the listener is live, so the silence above is real.
+        Assert.Null(SingleInstanceService.TryAcquire(args));
+        Assert.True(activated.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+    }
 }
