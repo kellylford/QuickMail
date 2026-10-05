@@ -139,7 +139,7 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
     {
         try
         {
-            // Velopack 1.2.0's CheckForUpdatesAsync takes no CancellationToken, so honor the
+            // Velopack's CheckForUpdatesAsync (1.2.0 through 1.2.161) takes no CancellationToken, so honor the
             // caller's bound (and Dispose-time cancellation) by abandoning the wait — the
             // underlying request is orphaned but the contract that the check is time-bounded
             // holds, matching the GitHub API path below.
