@@ -824,7 +824,7 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
         $t = [regex]::Replace($t, '(?m)^InstallerSwitches:\r?\n  SilentWithProgress: [^\r\n]*\r?\n', '')
         [IO.File]::WriteAllText((Join-Path $dirPlain $f.Name), $t, (New-Object Text.UTF8Encoding $false))
     }
-    if ((Get-Content (Join-Path $dirPlain 'KellyLford.QuickMail.installer.yaml') -Raw) -match 'SilentWithProgress') {
+    if ((Get-Content (Join-Path $dirPlain 'KellyLford.QuickMail.installer.yaml') -Raw) -cmatch '(?m)^  SilentWithProgress:') {
         throw 'Building the no-override manifest failed: SilentWithProgress is still present.'
     }
     $attempts = [ordered]@{
