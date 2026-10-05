@@ -24,6 +24,11 @@ on:
     branches:
       - 'test/winget-**'
   workflow_dispatch:
+    inputs:
+      vpk_version:
+        description: 'vpk version to measure. Empty = the pinned one in .github/vpk-version. Set it to try a bump before editing that file.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -100,12 +105,18 @@ jobs:
       - name: Publish
         run: dotnet publish QuickMail/QuickMail.csproj -c Release -r ${{ matrix.rid }} -o publish/
 
-      # Record the version rather than pin it: the release workflow installs vpk unpinned, so
+      # The release workflow's pinned vpk (.github/vpk-version) unless the dispatch names
+      # another, which is how a bump is measured before it ships. Recorded either way, since
       # whatever this run measured is only true for the version named here.
       - name: Install vpk
         shell: pwsh
+        env:
+          VPK_REQUESTED: ${{ github.event.inputs.vpk_version }}
         run: |
-          dotnet tool install -g vpk
+          $requested = "$env:VPK_REQUESTED".Trim()
+          $want = if ($requested) { $requested } else { (Get-Content .github/vpk-version -Raw).Trim() }
+          dotnet tool install -g vpk --version $want
+          if ($LASTEXITCODE -ne 0) { throw "dotnet tool install vpk $want failed." }
           # vpk has no --version; the installed version comes from the tool manifest. Kept to
           # one line because GITHUB_ENV rejects a multi-line value written this way.
           $v = ((dotnet tool list -g | Select-String '^vpk\s') -split '\s+')[1]
@@ -204,6 +215,8 @@ jobs:
           path: |
             winget-matrix-${{ matrix.arch }}.md
             msi-fresh.log
+            msi-upgrade.log
+            winget-logs/
             packs/vpk-emitted-*.txt
           if-no-files-found: warn
           retention-days: 14

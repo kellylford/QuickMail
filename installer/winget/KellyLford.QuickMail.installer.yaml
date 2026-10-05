@@ -2,43 +2,69 @@
 # Installer manifest. See README.md in this folder for why each choice is what it is.
 PackageIdentifier: KellyLford.QuickMail
 PackageVersion: <VERSION>
-InstallerType: exe
+# The release MSI -- the same file the download page offers. Velopack builds it with WiX.
+# Not Setup.exe: run over an existing MSI install, Setup.exe leaves two Add/Remove Programs
+# rows and removing the stale one deletes the working install (#536, Phase 1c of the plan).
+# Every existing user installed from the MSI, so the MSI is the only installer that meets
+# their machines without that hazard.
+InstallerType: wix
 Scope: user
 InstallModes:
 - interactive
 - silent
 - silentWithProgress
-InstallerSwitches:
-  # Velopack Setup.exe: --silent hides all UI, answers yes to the overwrite prompt when an
-  # older copy is present, and does not launch the app afterwards.
-  Silent: --silent
-  SilentWithProgress: --silent
-# Never uninstallPrevious: that would run Update.exe --uninstall (and the data-removal
-# prompt) before every upgrade. Setup.exe over an existing install is the upgrade.
-UpgradeBehavior: install
-ReleaseDate: <RELEASE-DATE>
-# Velopack's own Add/Remove Programs entry (HKCU\...\Uninstall\QuickMail).
+# No InstallerSwitches: winget supplies an MSI's own -- /passive by default, /quiet under -h.
+# Both are UI level < 5, which since vpk 1.2.158 sets the per-user default location,
+# %LocalAppData%\QuickMail, the same as the wizard (measured on both architectures).
 #
-# ProductCode is load-bearing, not belt-and-braces. On a machine upgraded from an MSI
-# install -- which is every existing user -- there are TWO Add/Remove Programs rows both
-# named QuickMail: Velopack's `QuickMail` and the MSI's leftover `MSI:QuickMail`, which
-# Setup.exe does not remove. Measured on both architectures, see the Phase 1b table in
-# docs/planning/winget-distribution-plan.md; `winget list` shows the app twice there.
-# For a non-MSI entry winget's ProductCode IS the Add/Remove Programs key name (its
-# identifier reads `ARP\User\X64\QuickMail`), so naming it here selects Velopack's row and
-# excludes the MSI one. Without it this manifest matches both, and `winget upgrade` may act
-# on the stale row -- whose uninstall string is `msiexec /x` against the directory the
-# Velopack install now owns.
+# SmartScreen (install-matrix scenario 7, run 37294314907): installed from a LOCAL manifest,
+# QuickMail's MSI makes Windows start SmartScreen and msiexec never runs, in either mode.
+# Node.js installed the same way, from a local manifest copied from the catalog, gets past.
+# So it is QuickMail's file reputation, the problem #746 is about. A catalog install moves the
+# download to zone 2; whether that avoids the prompt for a low-reputation file is unmeasured
+# until the package is published (README, step 6). It may well prompt.
+UpgradeBehavior: install
+# QuickMail updates itself through Velopack and keeps the Add/Remove Programs version
+# current as it does, so winget rarely has anything to upgrade. When it does (a copy that has
+# not been run since the last release), a newer MSI over an older one is a Windows Installer
+# major upgrade: it uninstalls the old copy first, running QuickMail's uninstall hook. That
+# hook offers to delete the user's data with a prompt saying QuickMail has been uninstalled
+# (#245; default keep, but Yes deletes the profile of a working install) and removes the
+# start-at-sign-in entry (#770), which the new install does not put back. Keeping the
+# package out of an unattended `winget upgrade --all` means nobody meets that from a command
+# they did not aim at QuickMail. `winget upgrade quickmail` still works.
+RequireExplicitUpgrade: true
+ReleaseDate: <RELEASE-DATE>
+# How winget recognises an installed copy. The MSI writes two Add/Remove Programs rows:
+# a hidden per-version {ProductCode} row that Velopack's self-updates never touch (#244), and
+# Velopack's visible HKCU\...\Uninstall\MSI:QuickMail, whose DisplayVersion self-updates DO
+# keep current (measured: registration 0.8.44.0, row and exe 0.8.52). winget identifies
+# that row as ARP\User\<arch>\MSI:QuickMail, i.e. its ProductCode is the key name. Correlate on it alone. Deliberately no UpgradeCode and no
+# installer-level ProductCode: both lead winget to the Windows Installer registration, which
+# reports the version originally installed, not the one running -- so `winget upgrade` would
+# offer an upgrade that self-update applied long ago. wingetcreate adds both automatically;
+# remove them (README, step 1).
+#
+# InstallerType: exe is load-bearing too. winget types an Add/Remove Programs row as an MSI
+# only when the row has WindowsInstaller=1, and Velopack's row is plain registry values
+# without it, so winget sees an installed `exe`. It then refuses a `wix` installer as a
+# different technology unless an entry here says the installed type is exe. Read from
+# winget-cli's source (ARPHelper.cpp, ManifestComparator.cpp), not measured: an upgrade
+# cannot be exercised until the package is in the catalog, because `winget upgrade` finds
+# the installed copy through the catalog. The line only widens what winget accepts (wix
+# installers stay acceptable over an MSI-typed install), so it is safe either way. Check
+# `winget upgrade quickmail` against a real install once the first version is published.
 AppsAndFeaturesEntries:
 - DisplayName: QuickMail
   Publisher: Kelly Ford
-  ProductCode: QuickMail
+  ProductCode: MSI:QuickMail
+  InstallerType: exe
 Installers:
 - Architecture: x64
-  InstallerUrl: https://github.com/kellylford/QuickMail/releases/download/v<VERSION>/QuickMail-<VERSION>-win-Setup.exe
+  InstallerUrl: https://github.com/kellylford/QuickMail/releases/download/v<VERSION>/QuickMail-<VERSION>-win.msi
   InstallerSha256: <X64-SHA256>
 - Architecture: arm64
-  InstallerUrl: https://github.com/kellylford/QuickMail/releases/download/v<VERSION>/QuickMail-<VERSION>-win-arm64-Setup.exe
+  InstallerUrl: https://github.com/kellylford/QuickMail/releases/download/v<VERSION>/QuickMail-<VERSION>-win-arm64.msi
   InstallerSha256: <ARM64-SHA256>
 ManifestType: installer
 ManifestVersion: 1.10.0

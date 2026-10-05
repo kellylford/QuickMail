@@ -73,7 +73,7 @@ Or run it directly:
 dotnet run --project QuickMail
 ```
 
-The `installer` target needs the Velopack CLI (`dotnet tool install -g vpk`). See [`docs/INSTALLER.md`](docs/INSTALLER.md) for packaging and automatic updates.
+The `installer` target needs the Velopack CLI, at the version pinned in `.github/vpk-version` (`dotnet tool install -g vpk --version <that version>`). See [`docs/INSTALLER.md`](docs/INSTALLER.md) for packaging and automatic updates.
 
 Run the tests with:
 

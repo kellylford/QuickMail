@@ -276,6 +276,48 @@ are the same whatever the listing ends up being called, and their results are wh
 whether the Store route is worth the migration work at all. Settle the name before submission,
 not before measurement.
 
+## Revisited 2026-10-05: list the existing MSI instead of building an MSIX
+
+This plan's non-goals dismiss a Store listing that points at the MSI. Two facts found since
+make that the option to try first, and MSIX the fallback.
+
+- **Store policy 10.2.9 allows it without giving up self-update.** Non-game products may
+  submit an HTTPS, versioned URL to a signed `.msi` or `.exe` that installs silently. The
+  "install and update only through the Store" rule (10.2.5) is for games. The release MSI
+  meets the requirements checked so far: a versioned URL on GitHub Releases,
+  Authenticode-signed through a Trusted Root chain, and, since 0.8.48, a silent install that
+  lands in `%LocalAppData%\QuickMail` (measured, winget plan *Phase 1d*). One is open: 10.2.9
+  also requires a standalone installer, "not a downloader stub/web installer that downloads
+  bits when run". The MSI is packed with `--framework webview2`. If it fetches the WebView2
+  runtime when that is missing, certification may object. Find out what the MSI does on a
+  machine without WebView2 before submitting.
+- **That removes most of this plan's cost.** No package identity means no `%APPDATA%`
+  redirection (0a), no credential-vault isolation (0b), WebView2 installed on demand as
+  today (0c), Velopack left on (Phase 2), and no migration dialog (Phase 3). An existing user
+  who installs the Store listing gets the MSI they already have. That is not an in-place
+  upgrade. It is a Windows Installer major upgrade, which uninstalls the old copy first and
+  runs the uninstall hook: the "remove your data?" prompt, worded as if QuickMail had been
+  uninstalled, and the loss of the start-at-sign-in entry. Both are the same as for winget
+  (winget plan *Phase 1d*), and both are fixed by making the hook upgrade-aware.
+
+**What is not known, and is the whole question:** whether a Store-delivered MSI is free of
+the SmartScreen prompt. Microsoft's SmartScreen page says Store-distributed apps are never
+subject to the download warning. It explains that by Microsoft's re-signing, which an MSI
+listing does not get. This plan's non-goal assumed the warning stays. Neither is measured.
+The test is one install of a submitted listing on a machine that has never run QuickMail.
+
+**Winget does not settle it either.** On CI, SmartScreen engaged on QuickMail's MSI under
+`winget install` from a local manifest and not on Node.js's installed the same way, so
+SmartScreen is acting on QuickMail's file reputation. Whether a catalog install avoids it is
+unknown until the package is published (winget plan, *Phase 1d*). Until one of these
+measurements says otherwise, the Store is the only route Microsoft documents as free of the
+prompt.
+
+**Order:** settle the name (still Kelly's), submit the MSI listing, and measure. Return to
+Phase 0 and MSIX only if the MSI listing still warns. A Store listing also makes QuickMail
+installable from winget's `msstore` source, which does not replace the community package
+(#536) but costs nothing extra.
+
 ## Open questions
 
 1. **Q1.** Does the Store build get its own profile, or should it deliberately use the same

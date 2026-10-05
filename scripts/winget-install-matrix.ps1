@@ -51,6 +51,10 @@ param(
     [Parameter(Mandatory)][ValidateSet('x64', 'arm64')][string]$Arch,
     [string]$Report = 'winget-matrix-report.md',
     [string]$EmittedListing,
+    # A SHIPPED release packed with vpk 1.2.158 or later, for scenario 7's real winget
+    # install. A real release rather than this run's synthetic packs because winget needs an
+    # https InstallerUrl, and GitHub Releases is where the manifest points anyway.
+    [string]$ShippedNew = '0.8.52',
     [switch]$Force
 )
 
@@ -505,7 +509,7 @@ function Invoke-Scenario {
 }
 
 Invoke-Scenario 'Scenario 1 -- silent MSI, fresh machine' `
-    'Does `msiexec /qn` land in C:\QuickMail on this architecture too (issue #554 was only ever measured on ARM64)?' {
+    'Does `msiexec /qn` land in %LocalAppData%\QuickMail, as the wizard does? vpk 1.2.0 put it in a drive root (#554); vpk 1.2.158 carries the upstream fix (velopack#945). This is the install `winget install` runs when the package points at the MSI.' {
     $r = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/qn', '/l*v', "$PWD\msi-fresh.log")
     Write-Section "``msiexec /i ... /qn`` -> exit $($r.ExitCode) in $($r.Seconds)s"
     Write-Section ''
@@ -526,7 +530,9 @@ Invoke-Scenario 'Scenario 1 -- silent MSI, fresh machine' `
             (($stray | ForEach-Object { $_.Path }) -join ', ') +
             ", not %LocalAppData%. Issue #554 is neither architecture-specific nor specific to C: -- Windows Installer resolves TARGETDIR to a drive root, and which drive is the runner's choice.")
     } elseif ($snap.Dirs.Count) {
-        Add-Finding "On $Arch a silent MSI install landed in %LocalAppData% -- the opposite of the ARM64 Phase 1 result. Issue #554 may be fixed in this vpk, or architecture-specific."
+        # The expected result since vpk 1.2.158 -- reported as a pass in the scenario body, not
+        # as a finding, so the findings list stays a list of things that are wrong.
+        Write-Section "**Pass:** the silent MSI install landed in ``%LocalAppData%\QuickMail`` and nowhere else."
     } else {
         Add-Finding "On $Arch a silent MSI install produced no QuickMail install directory anywhere this probe looks. The scenario measured nothing; do not read its silence as a pass."
     }
@@ -699,9 +705,243 @@ Invoke-Scenario 'Scenario 5 -- MSI over a Setup.exe install (the reverse migrati
     }
 }
 
+Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget upgrade path)' `
+    'With the winget package pointing at the MSI, `winget upgrade` runs a newer MSI over the older one -- with /passive by default (winget''s silentWithProgress), /quiet only under -h. Does it stay in %LocalAppData%, leave one visible row at the new version, and run the old copy''s uninstall hook (which is what raises the "remove your data?" prompt, #245)?' {
+    $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
+    # Step 1 stands in for any earlier silent install; step 2 uses /passive because that is
+    # winget's default. Both are UI level < 5, which is the condition on Velopack's
+    # quiet-install default location, so both should land in the same place.
+    $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldMsi`"", '/quiet', '/norestart')
+    Write-Section "Step 1 -- MSI $OldVersion, silent, fresh: exit $($r1.ExitCode) in $($r1.Seconds)s"
+    Write-Section ''
+    $before = Get-Snapshot "after silent MSI $OldVersion"
+    Write-Section (Format-Snapshot $before)
+    if ($r1.ExitCode -ne 0) {
+        throw "Premise failed: the first silent MSI install exited $($r1.ExitCode), so there is nothing to upgrade."
+    }
+    if (@($before.Dirs).Count -ne 1 -or $before.Dirs[0].Path -ne $target) {
+        throw "Premise failed: the first silent MSI did not install to $target and nowhere else (scenario 1 says why). Directories found: $(($before.Dirs | ForEach-Object { $_.Path }) -join ', ')"
+    }
+
+    $log = "$PWD\msi-upgrade.log"
+    $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/passive', '/norestart', '/l*v', "`"$log`"")
+    Write-Section "Step 2 -- MSI $NewVersion, ``/passive``, over it: exit $($r2.ExitCode) in $($r2.Seconds)s"
+    Write-Section ''
+    $after = Get-Snapshot "after silent MSI $NewVersion over silent MSI $OldVersion"
+    Write-Section (Format-Snapshot $after)
+
+    if ($r2.ExitCode -ne 0) {
+        Add-Finding "On $Arch a silent MSI upgrade exited $($r2.ExitCode). winget would report the upgrade as failed. See msi-upgrade.log."
+    }
+    if (@($after.Dirs).Count -ne 1 -or $after.Dirs[0].Path -ne $target) {
+        Add-Finding "On $Arch a silent MSI upgrade moved the install: directories afterwards are $(($after.Dirs | ForEach-Object { $_.Path }) -join ', '), not $target alone. That is the relocation half of #554."
+    }
+    $visible = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
+    if ($visible.Count -ne 1) {
+        Add-Finding "On $Arch a silent MSI upgrade left $($visible.Count) visible Add/Remove Programs rows ($(($visible | ForEach-Object { $_.KeyName }) -join ', ')); exactly one was expected."
+    } elseif ($visible[0].DisplayVersion -ne $NewVersion) {
+        Add-Finding "On $Arch after a silent MSI upgrade to $NewVersion the visible row's DisplayVersion reads '$($visible[0].DisplayVersion)'. winget correlates on it, so it would keep offering an upgrade already applied."
+    }
+    if (@($after.MsiProducts).Count -ne 1) {
+        Add-Finding "On $Arch a silent MSI upgrade left $(@($after.MsiProducts).Count) Windows Installer product registrations; a major upgrade should leave exactly one."
+    }
+
+    # Whether the old copy was uninstalled first, read from the verbose log rather than
+    # inferred. NOT from "Doing action: RemoveExistingProducts": that action runs, and returns
+    # 1, on a fresh install with nothing to remove (Scenario 1's log has it too), so it proves
+    # nothing. Two lines only an upgrade writes: the nested uninstall's command line, which
+    # carries UPGRADINGPRODUCTCODE and REMOVE=ALL, and Velopack's uninstall hook action
+    # running -- the hook that raises the "remove your data?" prompt (#245) and deletes the
+    # start-at-sign-in Run entry (#770). A CI machine has no profile, so the prompt returns
+    # early and is not observed here; the hook running is the evidence it would appear.
+    if (Test-Path $log) {
+        # msiexec writes verbose logs as UTF-16LE with a byte-order mark; let it decide.
+        $text = Get-Content $log -Raw
+        $nested = $text -match 'UPGRADINGPRODUCTCODE=\{[^}]+\}[^\r\n]*REMOVE=ALL'
+        $hook   = $text -match 'Doing action: UninstallHookDeferred'
+        Write-Section "Verbose log: nested uninstall of the old product $(if ($nested) { 'ran' } else { 'NOT found' }); Velopack's uninstall hook (``UninstallHookDeferred``) $(if ($hook) { 'ran' } else { 'NOT found' })."
+        if ($nested -and $hook) {
+            Write-Section "**Expected (#245, accepted):** the upgrade uninstalls $OldVersion, hook included, before installing $NewVersion."
+        } elseif ($nested -or $hook) {
+            Add-Finding "On $Arch a silent MSI upgrade's log has $(if ($nested) { 'the nested uninstall but not the uninstall hook' } else { 'the uninstall hook but not the nested uninstall' }). One without the other means the log markers this scenario relies on have changed; re-read msi-upgrade.log."
+        } else {
+            Add-Finding "On $Arch a silent MSI upgrade did not uninstall $OldVersion first. That would be a change from #245 -- check msi-upgrade.log before relying on it."
+        }
+    } else {
+        Add-Finding "On $Arch the silent MSI upgrade wrote no verbose log, so whether it uninstalled the old copy first is unmeasured."
+    }
+}
+
+Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine, from a shipped release" `
+    "What a new user runs: winget installs the shipped $ShippedNew MSI from installer/winget's template, from a local manifest. Does SmartScreen engage, and is that QuickMail's file reputation or the local manifest's download zone? (Upgrade is not measurable here: ``winget upgrade --manifest`` finds the installed copy through the package's catalog Id, which does not exist until the package is published -- see the plan, Phase 1d.)" {
+    if (-not $script:WingetAvailable) { throw 'winget is not available on this runner.' }
+    $work = Join-Path $PWD 'shipped'
+    New-Item -ItemType Directory -Force $work | Out-Null
+    $msi = Join-Path $work "QuickMail-$ShippedNew-$suffix.msi"
+    if (-not (Test-Path $msi)) {
+        Invoke-WebRequest "https://github.com/kellylford/QuickMail/releases/download/v$ShippedNew/QuickMail-$ShippedNew-$suffix.msi" -OutFile $msi -UseBasicParsing
+    }
+    $hash = (Get-FileHash $msi -Algorithm SHA256).Hash
+    # Both installer entries need a hash to validate; only this leg's is real, and winget only
+    # ever downloads this leg's.
+    $other = '0' * 64
+    $dir = Join-Path $work 'manifest'
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    foreach ($f in Get-ChildItem (Join-Path $PSScriptRoot '..\installer\winget') -Filter '*.yaml') {
+        $t = [IO.File]::ReadAllText($f.FullName)
+        $t = $t.Replace('<VERSION>', $ShippedNew).Replace('<RELEASE-DATE>', (Get-Date -Format 'yyyy-MM-dd'))
+        $t = $t.Replace('<X64-SHA256>', $(if ($Arch -eq 'x64') { $hash } else { $other }))
+        $t = $t.Replace('<ARM64-SHA256>', $(if ($Arch -eq 'arm64') { $hash } else { $other }))
+        [IO.File]::WriteAllText((Join-Path $dir $f.Name), $t, (New-Object Text.UTF8Encoding $false))
+    }
+    $null = & winget settings --enable LocalManifestFiles 2>&1
+
+    # Each attempt is bounded, and run as its own process so a hang is a measurement rather
+    # than a lost job: the first attempt at this scenario sat for 50 minutes inside winget
+    # until the job timeout killed it, taking the whole report with it. On a timeout winget is
+    # stopped but msiexec is NOT -- killing it mid-transaction wedges the Windows Installer
+    # service for every later step (#536's harness history) -- and if one is still running the
+    # final reset is skipped.
+    #
+    # What earlier runs of this scenario established, both architectures:
+    # - Launching QuickMail's MSI from a local-manifest install, Windows starts SmartScreen
+    #   (smartscreen.exe / CHXSmartScreen.exe) and msiexec never starts: winget waits until
+    #   stopped. /passive and /quiet alike. Nobody on a runner can see whether a dialog is up;
+    #   that SmartScreen started and msiexec did not is what is measured.
+    # - Node.js LTS from the real catalog installed without that. But its download was moved
+    #   to zone 2 (winget treats its catalog as trusted) while QuickMail's local-manifest
+    #   download stayed in zone 3, so that control varied the zone and the file's reputation
+    #   at once.
+    # So the control here holds the zone equal: Node.js LTS installed from a LOCAL manifest,
+    # a copy of its catalog manifest -- the same zone-3 path as QuickMail, with a file that
+    # has plenty of reputation. If it waits on SmartScreen too, the zone is the trigger and a
+    # catalog install of QuickMail is expected not to prompt. If it gets past SmartScreen
+    # (any exit, even the 1603 Node's machine-wide install hits on the ARM64 runner),
+    # QuickMail's own reputation is what SmartScreen is acting on.
+    $diag = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
+    $logOut = Join-Path $PWD 'winget-logs'
+    New-Item -ItemType Directory -Force $logOut | Out-Null
+    $winget = (Get-Command winget).Source
+    $common = @('--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity', '--verbose-logs')
+    # The control's manifest, fetched from microsoft/winget-pkgs at its newest version.
+    $nodeDir = Join-Path $work 'node-manifest'
+    New-Item -ItemType Directory -Force $nodeDir | Out-Null
+    $api = 'https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/o/OpenJS/NodeJS/LTS'
+    $nodeVersion = (Invoke-RestMethod $api -UseBasicParsing | Where-Object { $_.type -eq 'dir' -and $_.name -match '^\d+(\.\d+)+$' } | ForEach-Object { $_.name } | Sort-Object { [version]$_ } | Select-Object -Last 1)
+    foreach ($item in (Invoke-RestMethod "$api/$nodeVersion" -UseBasicParsing | Where-Object { $_.name -like '*.yaml' })) {
+        Invoke-WebRequest $item.download_url -OutFile (Join-Path $nodeDir $item.name) -UseBasicParsing
+    }
+    if (-not (Test-Path (Join-Path $nodeDir 'OpenJS.NodeJS.LTS.installer.yaml'))) { throw "Fetching the Node.js LTS $nodeVersion manifest failed." }
+    Write-Section "Control: Node.js LTS $nodeVersion, manifest copied from microsoft/winget-pkgs and installed with ``--manifest``."
+    Write-Section ''
+
+    $attempts = [ordered]@{
+        'a -- QuickMail, local manifest' = @{ Args = @('install', '--manifest', "`"$dir`"") + $common; Seconds = 180 }
+        'd -- control: Node.js LTS, local manifest copied from the catalog' = @{ Args = @('install', '--manifest', "`"$nodeDir`"") + $common; Seconds = 300 }
+    }
+    $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
+    $n = 0
+    foreach ($label in $attempts.Keys) {
+        $n++
+        $spec = $attempts[$label]
+        $isQuickMail = $label -like '*QuickMail*'
+        if ($isQuickMail) { $null = Reset-Machine }
+        $logsBefore = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+        $stdout = Join-Path $work "winget-attempt$n.out.txt"
+        $began = Get-Date
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $proc = Start-Process -FilePath $winget -ArgumentList $spec.Args -PassThru -NoNewWindow -RedirectStandardOutput $stdout
+        # Touch the handle at once: without it, Start-Process -PassThru leaves ExitCode empty
+        # after a timed WaitForExit (checked: `winget --version` reported no exit code at all).
+        $null = $proc.Handle
+        $finished = $proc.WaitForExit($spec.Seconds * 1000)
+        if ($finished) { $proc.WaitForExit() }
+        $sw.Stop()
+        $spawned = @()
+        if (-not $finished) {
+            # Everything started since this attempt began: whatever winget is waiting on, a
+            # prompt or a child, is in here.
+            $spawned = @(Get-CimInstance Win32_Process | Where-Object { $_.CreationDate -ge $began } | ForEach-Object { "$($_.ProcessId) (parent $($_.ParentProcessId)) $($_.Name) $($_.CommandLine)" })
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            # The unanswered prompt outlives winget and blocked the next attempt's launch on an
+            # earlier run (and, on ARM64, the rest of the job). Clear it.
+            Get-Process smartscreen, CHXSmartScreen -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            if (Get-Process msiexec -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -ge $began }) { $script:SkipFinalReset = $true }
+        }
+        Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        $code = if ($finished) { $proc.ExitCode } else { $null }
+
+        $newLogs = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Where-Object { $logsBefore -notcontains $_.FullName })
+        foreach ($l in $newLogs) { Copy-Item $l.FullName (Join-Path $logOut "attempt$n-$($l.Name)") }
+        if (Test-Path $stdout) { Copy-Item $stdout (Join-Path $logOut "attempt$n.out.txt") }
+        $raw = if (Test-Path $stdout) { Get-Content $stdout -Raw } else { '' }
+        # winget redraws progress with carriage returns; keep each line's last state, and only
+        # lines with something to read in them (the spinner and bar are punctuation).
+        $clean = (("$raw" -split "`r?`n") | ForEach-Object { ($_ -split "`r")[-1].Trim() } | Where-Object { $_ -match '[A-Za-z0-9]' }) -join "`n"
+
+        Write-Section "### Attempt $label"
+        Write-Section ''
+        if ($finished) {
+            Write-Section "Exit $code (0x$('{0:X8}' -f $code)) in $([math]::Round($sw.Elapsed.TotalSeconds, 1))s."
+        } else {
+            Write-Section "**Did not finish in $($spec.Seconds) seconds** and was stopped. Processes started during the attempt:"
+            Write-Section ''
+            Write-Section '```'
+            Write-Section ($spawned -join "`n")
+            Write-Section '```'
+        }
+        Write-Section ''
+        Write-Section '```'
+        Write-Section $clean
+        Write-Section '```'
+        Write-Section ''
+        $cmdLines = @($newLogs | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'Installer args|Starting:|Installer \[.*best choice|Successfully installed|failed|exit code|ShellExecute' } | Select-Object -Last 10)
+        if ($cmdLines.Count) {
+            Write-Section 'From winget''s verbose log (full logs in the `winget-logs` artifact):'
+            Write-Section ''
+            Write-Section '```'
+            Write-Section ($cmdLines -join "`n")
+            Write-Section '```'
+            Write-Section ''
+        }
+
+        if ($isQuickMail) {
+            $after = Get-Snapshot "after attempt $label"
+            Write-Section (Format-Snapshot $after)
+            $vis = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
+            $smartScreenRan = @($spawned | Where-Object { $_ -match 'smartscreen' }).Count -gt 0
+            if (-not $finished -and $smartScreenRan) {
+                Write-Section "**Expected:** waiting on a SmartScreen prompt, as on every earlier run. Not a finding by itself; see the plan's Phase 1d."
+            } elseif (-not $finished) {
+                Add-Finding "On $Arch, ``winget install --manifest`` attempt $label hung for $($spec.Seconds) seconds$(if ($smartScreenRan) { ' (SmartScreen ran)' } else { ' with no SmartScreen process -- a different hang from the known one' }). See Scenario 7."
+            } elseif ($code -ne 0) {
+                Add-Finding "On $Arch, ``winget install --manifest`` attempt $label exited 0x$('{0:X8}' -f $code)."
+            } elseif ($vis.Count -ne 1 -or $vis[0].KeyName -ne 'MSI:QuickMail' -or $vis[0].DisplayVersion -ne $ShippedNew -or @($after.Dirs).Count -ne 1 -or $after.Dirs[0].Path -ne $target) {
+                Add-Finding "On $Arch, attempt $label exited 0 but left visible rows [$(($vis | ForEach-Object { "$($_.KeyName) $($_.DisplayVersion)" }) -join ', ')] and directories [$(($after.Dirs | ForEach-Object { $_.Path }) -join ', ')]; expected one MSI:QuickMail $ShippedNew row and $target alone."
+            } else {
+                Write-Section "**Pass ($label):** one visible ``MSI:QuickMail`` row at $ShippedNew, installed in ``%LocalAppData%\QuickMail`` only."
+            }
+        } else {
+            $controlSmartScreen = @($spawned | Where-Object { $_ -match 'smartscreen' }).Count -gt 0
+            $verdict = if (-not $finished -and $controlSmartScreen) {
+                'Node.js from a local manifest ALSO waited on SmartScreen -- with the zone held equal, a popular file is treated the same, so the zone is the trigger, and a catalog install of QuickMail (moved to zone 2 like the catalog Node.js was) is expected not to prompt'
+            } elseif (-not $finished) {
+                'Node.js from a local manifest hung WITHOUT SmartScreen starting -- a different hang; this control says nothing about the zone'
+            } else {
+                "Node.js from a local manifest got past SmartScreen (exit 0x$('{0:X8}' -f $code)) -- with the zone held equal, QuickMail's own file reputation is what SmartScreen acts on, so a catalog install may well prompt too"
+            }
+            Write-Section "**Control:** $verdict."
+            if (-not $finished -and -not $controlSmartScreen) { Add-Finding "On $Arch the control: $verdict." }
+        }
+        Write-Section ''
+    }
+}
+
 # --- report --------------------------------------------------------------------------
 
-$null = Reset-Machine
+# Skipped after a stopped winget: an msiexec may still hold the Windows Installer service,
+# and a reset that blocks on it would lose this report to the job timeout.
+if (-not (Get-Variable SkipFinalReset -Scope Script -ErrorAction SilentlyContinue)) { $null = Reset-Machine }
 
 $header = @()
 $header += "# QuickMail installer path matrix -- $Arch"

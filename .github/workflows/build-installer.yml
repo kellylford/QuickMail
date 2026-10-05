@@ -124,8 +124,11 @@ jobs:
           }
           Write-Host "publish/QuickMail.exe -> 0x$('{0:X4}' -f $machine) OK for ${{ matrix.arch }}"
 
+      # Same pinned vpk as the release workflow, so a test installer is packed the way a
+      # release would be. See .github/vpk-version.
       - name: Install vpk
-        run: dotnet tool install -g vpk
+        shell: pwsh
+        run: dotnet tool install -g vpk --version (Get-Content .github/vpk-version -Raw).Trim()
 
       # No tag to read from on a manual run, so the base version comes from the csproj
       # <Version> — but a test build must never carry that version bare.
