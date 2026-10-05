@@ -13,17 +13,19 @@ InstallModes:
 - interactive
 - silent
 - silentWithProgress
-# No InstallerSwitches: winget passes /quiet (or /passive) and /norestart to an MSI itself.
-# Both are UI level < 5, which since vpk 1.2.158 sets the per-user default location --
-# %LocalAppData%\QuickMail, the same as the wizard (measured on both architectures).
+# No InstallerSwitches: winget supplies an MSI's own -- /passive by default (progress shown),
+# /quiet under -h. Both are UI level < 5, which since vpk 1.2.158 sets the per-user default
+# location, %LocalAppData%\QuickMail, the same as the wizard (measured on both architectures).
 UpgradeBehavior: install
 # QuickMail updates itself through Velopack and keeps the Add/Remove Programs version
 # current as it does, so winget rarely has anything to upgrade. When it does (a copy that has
 # not been run since the last release), a newer MSI over an older one is a Windows Installer
-# major upgrade: it uninstalls the old copy first, and that uninstall fires QuickMail's
-# "remove your data?" prompt mid-upgrade (#245; default keep, nothing is lost). Keeping the
-# package out of an unattended `winget upgrade --all` means nobody meets that prompt from a
-# command they did not aim at QuickMail. `winget upgrade quickmail` still works.
+# major upgrade: it uninstalls the old copy first, running QuickMail's uninstall hook. That
+# hook offers to delete the user's data with a prompt saying QuickMail has been uninstalled
+# (#245; default keep, but Yes deletes the profile of a working install) and removes the
+# start-at-sign-in entry (#770), which the new install does not put back. Keeping the
+# package out of an unattended `winget upgrade --all` means nobody meets that from a command
+# they did not aim at QuickMail. `winget upgrade quickmail` still works.
 RequireExplicitUpgrade: true
 ReleaseDate: <RELEASE-DATE>
 # How winget recognises an installed copy. The MSI writes two Add/Remove Programs rows:
@@ -35,10 +37,17 @@ ReleaseDate: <RELEASE-DATE>
 # reports the version originally installed, not the one running -- so `winget upgrade` would
 # offer an upgrade that self-update applied long ago. wingetcreate adds both automatically;
 # remove them (README, step 1).
+#
+# InstallerType: exe is load-bearing too. winget types an Add/Remove Programs row as an MSI
+# only when the row has WindowsInstaller=1, and Velopack's row is plain registry values
+# without it, so winget sees an installed `exe`. It then refuses a `wix` installer as a
+# different technology unless an entry here says the installed type is exe. Measured both
+# ways by the install matrix (scenario 7).
 AppsAndFeaturesEntries:
 - DisplayName: QuickMail
   Publisher: Kelly Ford
   ProductCode: MSI:QuickMail
+  InstallerType: exe
 Installers:
 - Architecture: x64
   InstallerUrl: https://github.com/kellylford/QuickMail/releases/download/v<VERSION>/QuickMail-<VERSION>-win.msi

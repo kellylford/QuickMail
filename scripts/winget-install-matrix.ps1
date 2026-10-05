@@ -51,6 +51,11 @@ param(
     [Parameter(Mandatory)][ValidateSet('x64', 'arm64')][string]$Arch,
     [string]$Report = 'winget-matrix-report.md',
     [string]$EmittedListing,
+    # Two SHIPPED releases, both packed with vpk 1.2.158 or later, for scenario 7's real
+    # winget upgrade. Real releases rather than this run's synthetic packs because winget
+    # needs an https InstallerUrl, and GitHub Releases is where the manifest points anyway.
+    [string]$ShippedOld = '0.8.51',
+    [string]$ShippedNew = '0.8.52',
     [switch]$Force
 )
 
@@ -702,10 +707,11 @@ Invoke-Scenario 'Scenario 5 -- MSI over a Setup.exe install (the reverse migrati
 }
 
 Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget upgrade path)' `
-    'With the winget package pointing at the MSI, `winget upgrade` runs a newer MSI with /quiet over the older one. Does it stay in %LocalAppData%, leave one visible row at the new version, and run the old copy''s uninstall hook (which is what raises the "remove your data?" prompt, #245)?' {
+    'With the winget package pointing at the MSI, `winget upgrade` runs a newer MSI over the older one -- with /passive by default (winget''s silentWithProgress), /quiet only under -h. Does it stay in %LocalAppData%, leave one visible row at the new version, and run the old copy''s uninstall hook (which is what raises the "remove your data?" prompt, #245)?' {
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
-    # /quiet, not /qn: it is what winget passes for an MSI installer. Both are UILevel 2, so
-    # the quiet-install default location applies the same way to each.
+    # Step 1 stands in for any earlier silent install; step 2 uses /passive because that is
+    # winget's default. Both are UI level < 5, which is the condition on Velopack's
+    # quiet-install default location, so both should land in the same place.
     $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldMsi`"", '/quiet', '/norestart')
     Write-Section "Step 1 -- MSI $OldVersion, silent, fresh: exit $($r1.ExitCode) in $($r1.Seconds)s"
     Write-Section ''
@@ -719,8 +725,8 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
     }
 
     $log = "$PWD\msi-upgrade.log"
-    $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/quiet', '/norestart', '/l*v', "`"$log`"")
-    Write-Section "Step 2 -- MSI $NewVersion, silent, over it: exit $($r2.ExitCode) in $($r2.Seconds)s"
+    $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/passive', '/norestart', '/l*v', "`"$log`"")
+    Write-Section "Step 2 -- MSI $NewVersion, ``/passive``, over it: exit $($r2.ExitCode) in $($r2.Seconds)s"
     Write-Section ''
     $after = Get-Snapshot "after silent MSI $NewVersion over silent MSI $OldVersion"
     Write-Section (Format-Snapshot $after)
@@ -742,21 +748,115 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
     }
 
     # Whether the old copy was uninstalled first, read from the verbose log rather than
-    # inferred. RemoveExistingProducts running an uninstall of the old ProductCode is what
-    # fires QuickMail's uninstall hook, and the hook is what offers to delete the user's data
-    # (#245). A CI machine has no profile, so the prompt itself returns early here and cannot
-    # be observed -- the log line is the evidence that, on a real machine, it would appear.
+    # inferred. NOT from "Doing action: RemoveExistingProducts": that action runs, and returns
+    # 1, on a fresh install with nothing to remove (Scenario 1's log has it too), so it proves
+    # nothing. Two lines only an upgrade writes: the nested uninstall's command line, which
+    # carries UPGRADINGPRODUCTCODE and REMOVE=ALL, and Velopack's uninstall hook action
+    # running -- the hook that raises the "remove your data?" prompt (#245) and deletes the
+    # start-at-sign-in Run entry (#770). A CI machine has no profile, so the prompt returns
+    # early and is not observed here; the hook running is the evidence it would appear.
     if (Test-Path $log) {
-        $text = Get-Content $log -Raw -Encoding Unicode
-        if (-not $text) { $text = Get-Content $log -Raw }
-        $rep = [regex]::Matches($text, 'Doing action: RemoveExistingProducts').Count
-        $removed = $text -match 'Removing product \{' -or $text -match 'RemoveExistingProducts.*Return value 1'
-        Write-Section "Verbose log: RemoveExistingProducts ran $rep time(s)$(if ($removed) { '; the older product was removed as part of the upgrade' })."
-        if ($rep -gt 0) {
-            Add-Finding "On $Arch a silent MSI upgrade runs RemoveExistingProducts, i.e. uninstalls $OldVersion before installing $NewVersion (#245). On a machine with a QuickMail profile that uninstall fires the 'remove your data?' prompt mid-upgrade. Default is keep, so nothing is lost, but it is why the winget manifest sets RequireExplicitUpgrade."
+        # msiexec writes verbose logs as UTF-16LE with a byte-order mark; let it decide.
+        $text = Get-Content $log -Raw
+        $nested = $text -match 'UPGRADINGPRODUCTCODE=\{[^}]+\}[^\r\n]*REMOVE=ALL'
+        $hook   = $text -match 'Doing action: UninstallHookDeferred'
+        Write-Section "Verbose log: nested uninstall of the old product $(if ($nested) { 'ran' } else { 'NOT found' }); Velopack's uninstall hook (``UninstallHookDeferred``) $(if ($hook) { 'ran' } else { 'NOT found' })."
+        if ($nested -and $hook) {
+            Write-Section "**Expected (#245, accepted):** the upgrade uninstalls $OldVersion, hook included, before installing $NewVersion."
+        } elseif ($nested -or $hook) {
+            Add-Finding "On $Arch a silent MSI upgrade's log shows the nested uninstall $(if ($nested) { 'but not' } else { 'is missing, yet' }) the uninstall hook $(if ($hook) { 'ran' } else { '' }). One without the other means the log markers this scenario relies on have changed; re-read msi-upgrade.log."
+        } else {
+            Add-Finding "On $Arch a silent MSI upgrade did not uninstall $OldVersion first. That would be a change from #245 -- check msi-upgrade.log before relying on it."
         }
     } else {
         Add-Finding "On $Arch the silent MSI upgrade wrote no verbose log, so whether it uninstalled the old copy first is unmeasured."
+    }
+}
+
+Invoke-Scenario "Scenario 7 -- a real ``winget upgrade`` between two shipped releases" `
+    "Installs the shipped $ShippedOld MSI, then runs ``winget upgrade --manifest`` with installer/winget's template filled for $ShippedNew. Twice: as committed, and with the AppsAndFeaturesEntries InstallerType line removed. Does winget accept the upgrade, and does the line matter?" {
+    if (-not $script:WingetAvailable) { throw 'winget is not available on this runner.' }
+    $work = Join-Path $PWD 'shipped'
+    New-Item -ItemType Directory -Force $work | Out-Null
+    $base = "https://github.com/kellylford/QuickMail/releases/download"
+    $oldShipped = Join-Path $work "QuickMail-$ShippedOld-$suffix.msi"
+    $newShipped = Join-Path $work "QuickMail-$ShippedNew-$suffix.msi"
+    foreach ($pair in @(@($ShippedOld, $oldShipped), @($ShippedNew, $newShipped))) {
+        if (-not (Test-Path $pair[1])) {
+            Invoke-WebRequest "$base/v$($pair[0])/QuickMail-$($pair[0])-$suffix.msi" -OutFile $pair[1] -UseBasicParsing
+        }
+    }
+    $hash = (Get-FileHash $newShipped -Algorithm SHA256).Hash
+    # The x64 and ARM64 entries both need a hash to validate; only this leg's is real, and
+    # winget only ever downloads this leg's.
+    $other = '0' * 64
+
+    $null = & winget settings --enable LocalManifestFiles 2>&1
+    $templateDir = Join-Path $PSScriptRoot '..\installer\winget'
+    $variants = [ordered]@{ 'as committed' = $true; 'without InstallerType: exe' = $false }
+    foreach ($name in $variants.Keys) {
+        $keepType = $variants[$name]
+        $dir = Join-Path $work ("manifest-" + ($name -replace '[^a-z]', ''))
+        New-Item -ItemType Directory -Force $dir | Out-Null
+        foreach ($f in Get-ChildItem $templateDir -Filter '*.yaml') {
+            $t = [IO.File]::ReadAllText($f.FullName)
+            $t = $t.Replace('<VERSION>', $ShippedNew).Replace('<RELEASE-DATE>', (Get-Date -Format 'yyyy-MM-dd'))
+            $t = $t.Replace('<X64-SHA256>', $(if ($Arch -eq 'x64') { $hash } else { $other }))
+            $t = $t.Replace('<ARM64-SHA256>', $(if ($Arch -eq 'arm64') { $hash } else { $other }))
+            if (-not $keepType) { $t = [regex]::Replace($t, '(?m)^  InstallerType: exe\r?\n', '') }
+            [IO.File]::WriteAllText((Join-Path $dir $f.Name), $t, (New-Object Text.UTF8Encoding $false))
+        }
+        $hasType = (Get-Content (Join-Path $dir 'KellyLford.QuickMail.installer.yaml') -Raw) -match '(?m)^  InstallerType: exe'
+        if ($hasType -ne $keepType) { throw "Building the '$name' variant failed: the InstallerType line is $(if ($hasType) { 'present' } else { 'absent' })." }
+
+        $null = Reset-Machine
+        $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldShipped`"", '/qn', '/norestart')
+        if ($r1.ExitCode -ne 0) { throw "Premise failed: the shipped $ShippedOld MSI exited $($r1.ExitCode)." }
+        $before = Get-Snapshot "$name -- shipped $ShippedOld installed"
+        $row = @($before.Arp | Where-Object { $_.SystemComponent -ne 1 -and $_.KeyName -eq 'MSI:QuickMail' })
+        if ($row.Count -ne 1 -or $row[0].DisplayVersion -ne $ShippedOld) {
+            throw "Premise failed: expected one visible MSI:QuickMail row at $ShippedOld after installing it."
+        }
+
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $out = (& winget upgrade --manifest $dir --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1 | Out-String)
+        $code = $LASTEXITCODE
+        $sw.Stop()
+        Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        # winget redraws progress with carriage returns; keep each line's last state, and only
+        # lines with something to read in them (the spinner and bar are punctuation).
+        $clean = (($out -split "`r?`n") | ForEach-Object { ($_ -split "`r")[-1].Trim() } | Where-Object { $_ -match '[A-Za-z0-9]' }) -join "`n"
+        Write-Section "### Variant: $name"
+        Write-Section ''
+        Write-Section "``winget upgrade --manifest`` -> exit $code (0x$('{0:X8}' -f $code)) in $([math]::Round($sw.Elapsed.TotalSeconds, 1))s"
+        Write-Section ''
+        Write-Section '```'
+        Write-Section $clean
+        Write-Section '```'
+        Write-Section ''
+        $after = Get-Snapshot "$name -- after winget upgrade to $ShippedNew"
+        Write-Section (Format-Snapshot $after)
+        $vis = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
+        $upgraded = $code -eq 0 -and $vis.Count -eq 1 -and $vis[0].DisplayVersion -eq $ShippedNew
+        if ($upgraded) {
+            Write-Section "**Pass ($name):** winget upgraded $ShippedOld to $ShippedNew; one visible row at $ShippedNew."
+        } else {
+            Add-Finding "On $Arch, ``winget upgrade --manifest`` with the template $name did NOT upgrade $ShippedOld to $ShippedNew (exit $code; visible rows: $(($vis | ForEach-Object { "$($_.KeyName) $($_.DisplayVersion)" }) -join ', ')). See its section for winget's output."
+        }
+
+        if ($keepType) {
+            # Uninstall through winget too, against the same manifest: it must find the row
+            # and run its QuietUninstallString, leaving nothing behind.
+            $u = (& winget uninstall --manifest $dir --silent --accept-source-agreements --disable-interactivity 2>&1 | Out-String)
+            $ucode = $LASTEXITCODE
+            $gone = Get-Snapshot "$name -- after winget uninstall"
+            Write-Section "``winget uninstall --manifest`` -> exit $ucode"
+            Write-Section ''
+            Write-Section (Format-Snapshot $gone)
+            if ($ucode -ne 0 -or @($gone.Arp).Count -ne 0 -or @($gone.Dirs).Count -ne 0) {
+                Add-Finding "On $Arch, ``winget uninstall`` against the committed manifest exited $ucode and left $(@($gone.Arp).Count) ARP row(s) and $(@($gone.Dirs).Count) install director(ies)."
+            }
+        }
     }
 }
 
