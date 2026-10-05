@@ -301,7 +301,141 @@ public sealed class LaunchAtSignInRegistryTests : IDisposable
     [Fact]
     public void RemoveAllFor_NoRunKey_DoesNotThrow()
     {
-        LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
+        Assert.Empty(LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath));
+    }
+
+    // ── Carrying entries across an MSI upgrade (#245, #770) ───────────────────────
+
+    [Fact]
+    public void RemoveAllFor_ReturnsWhatItRemoved_WindowsMarkIncluded()
+    {
+        Make().Enable();
+        var test = Make(profileDir: @"C:\Data\TestProfile");
+        test.Enable();
+        SetApproved(test.ValueName, 0x03);
+        SetRun("QuickMail (FFFFFFFF)", $"\"{OtherExe}\" --startup");   // another copy's: not removed
+
+        var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath)
+                                           .OrderBy(e => e.Name, StringComparer.Ordinal).ToList();
+
+        Assert.Equal(new[] { "QuickMail", test.ValueName }, removed.Select(e => e.Name));
+        Assert.Equal($"\"{Exe}\" --startup", removed[0].Command);
+        Assert.Null(removed[0].Approval);
+        Assert.Equal(test.Command, removed[1].Command);
+        Assert.NotNull(removed[1].Approval);
+        Assert.Equal((byte)0x03, removed[1].Approval![0]);
+    }
+
+    [Fact]
+    public void Restore_PutsTheEntriesBack_WithWindowsOffMark()
+    {
+        Make().Enable();
+        var test = Make(profileDir: @"C:\Data\TestProfile");
+        test.Enable();
+        SetApproved(test.ValueName, 0x03);
+        var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
+
+        var restored = LaunchAtSignInService.Restore(removed, RunPath, ApprovedPath, _ => true);
+
+        Assert.Equal(2, restored);
+        Assert.Equal(LaunchAtSignInState.On, Make().GetState());
+        Assert.Equal(LaunchAtSignInState.DisabledInWindows, test.GetState());
+    }
+
+    [Fact]
+    public void Restore_SkipsAnEntryWhoseExecutableIsGone()
+    {
+        // The executable not existing means the uninstall was real after all.
+        Make().Enable();
+        var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
+
+        Assert.Equal(0, LaunchAtSignInService.Restore(removed, RunPath, ApprovedPath, _ => false));
+        Assert.Null(RunValue("QuickMail"));
+    }
+
+    [Fact]
+    public void Restore_NeverOverwritesAValueThatExistsAgain()
+    {
+        Make().Enable();
+        var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
+        SetRun("QuickMail", $"\"{OtherExe}\" --startup");   // set since, by something newer
+
+        Assert.Equal(0, LaunchAtSignInService.Restore(removed, RunPath, ApprovedPath, _ => true));
+        Assert.Equal($"\"{OtherExe}\" --startup", RunValue("QuickMail"));
+    }
+
+    [Fact]
+    public void Restore_IgnoresNamesThatAreNotQuickMails()
+    {
+        var foreign = new StartupEntry("SomeOtherApp", $"\"{Exe}\" --startup", null);
+
+        Assert.Equal(0, LaunchAtSignInService.Restore(new[] { foreign }, RunPath, ApprovedPath, _ => true));
+        Assert.Null(RunValue("SomeOtherApp"));
+    }
+}
+
+public sealed class StartupEntryHandoffTests : IDisposable
+{
+    private readonly string _path = Path.Combine(Path.GetTempPath(), $"quickmail-handoff-test-{Guid.NewGuid():N}.json");
+    private static readonly DateTimeOffset Now = new(2026, 10, 5, 12, 0, 0, TimeSpan.Zero);
+    private static readonly StartupEntry Entry = new("QuickMail", "\"C:\\q\\QuickMail.exe\" --startup", new byte[] { 3, 0, 0, 0 });
+
+    public void Dispose() => File.Delete(_path);
+
+    [Fact]
+    public void SaveThenTake_RoundTrips_AndConsumesTheFile()
+    {
+        StartupEntryHandoff.Save(_path, new[] { Entry }, Now);
+
+        var taken = Assert.Single(StartupEntryHandoff.Take(_path, Now.AddSeconds(20)));
+
+        Assert.Equal(Entry.Name, taken.Name);
+        Assert.Equal(Entry.Command, taken.Command);
+        Assert.Equal(Entry.Approval, taken.Approval);
+        Assert.False(File.Exists(_path));
+        Assert.Empty(StartupEntryHandoff.Take(_path, Now.AddSeconds(21)));
+    }
+
+    [Fact]
+    public void Take_IgnoresAStaleHandoff_AndDeletesIt()
+    {
+        // A real uninstall's hand-off must not turn start at sign-in back on for a reinstall weeks later.
+        StartupEntryHandoff.Save(_path, new[] { Entry }, Now);
+
+        Assert.Empty(StartupEntryHandoff.Take(_path, Now + StartupEntryHandoff.MaxAge + TimeSpan.FromSeconds(1)));
+        Assert.False(File.Exists(_path));
+    }
+
+    [Fact]
+    public void Take_IgnoresAHandoffDatedInTheFuture()
+    {
+        StartupEntryHandoff.Save(_path, new[] { Entry }, Now);
+        Assert.Empty(StartupEntryHandoff.Take(_path, Now.AddMinutes(-5)));
+    }
+
+    [Fact]
+    public void Take_IgnoresAnUnreadableHandoff_AndDeletesIt()
+    {
+        File.WriteAllText(_path, "{ not json");
+
+        Assert.Empty(StartupEntryHandoff.Take(_path, Now));
+        Assert.False(File.Exists(_path));
+    }
+
+    [Fact]
+    public void Take_WithNoHandoff_IsEmpty()
+    {
+        Assert.Empty(StartupEntryHandoff.Take(_path, Now));
+    }
+
+    [Fact]
+    public void SavingNothing_ClearsAnOlderHandoff()
+    {
+        // An uninstall with start at sign-in off must not leave an earlier hand-off for the next install.
+        StartupEntryHandoff.Save(_path, new[] { Entry }, Now);
+        StartupEntryHandoff.Save(_path, Array.Empty<StartupEntry>(), Now.AddMinutes(1));
+
+        Assert.False(File.Exists(_path));
     }
 }
 

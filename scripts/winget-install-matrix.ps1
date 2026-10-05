@@ -275,6 +275,53 @@ function Format-Snapshot {
 
 # --- machine reset -------------------------------------------------------------------
 
+# --- the uninstall hook's own evidence (#245) ----------------------------------------------
+# QuickMail's uninstall hook decides, in a detached PowerShell process, whether an uninstall is
+# really the first half of an MSI upgrade (Helpers/UninstallDataPrompt.cs), and carries the
+# start-at-sign-in entries across one (Services/StartupEntryHandoff.cs). Both write to
+# quickmail-uninstall.log in the hook's temp folder. The hook runs inside a Windows Installer
+# custom-action process, so read both candidate temp folders rather than assume which it got.
+$HookLogs = @((Join-Path $env:TEMP 'quickmail-uninstall.log'), (Join-Path $env:WINDIR 'Temp\quickmail-uninstall.log')) | Select-Object -Unique
+$HookHandoffs = @((Join-Path $env:TEMP 'quickmail-startup-handoff.json'), (Join-Path $env:WINDIR 'Temp\quickmail-startup-handoff.json')) | Select-Object -Unique
+$RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+$ApprovedKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
+
+function Clear-HookState {
+    Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match 'quickmail-uninstall-prompt' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    foreach ($f in @($HookLogs) + @($HookHandoffs)) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
+    foreach ($k in $RunKey, $ApprovedKey) {
+        if (Test-Path $k) { Remove-ItemProperty -Path $k -Name 'QuickMail' -ErrorAction SilentlyContinue }
+    }
+}
+
+function Read-HookLog { (@($HookLogs | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content $_ })) -join "`n" }
+
+function Wait-HookLog([string]$Pattern, [int]$Seconds) {
+    $until = (Get-Date).AddSeconds($Seconds)
+    while ((Get-Date) -lt $until) {
+        if ((Read-HookLog) -match $Pattern) { return $true }
+        Start-Sleep -Seconds 1
+    }
+    return $false
+}
+
+function Set-StartupEntryOff([string]$Exe) {
+    # Start at sign-in turned on, then off again in Task Manager: both the Run value and
+    # Windows' off mark (first byte odd) must survive an upgrade. Never New-Item -Force on these
+    # keys -- on an existing key that recreates it, wiping every other app's entry.
+    foreach ($k in $RunKey, $ApprovedKey) { if (-not (Test-Path $k)) { New-Item -Path $k | Out-Null } }
+    Set-ItemProperty -Path $RunKey -Name 'QuickMail' -Value "`"$Exe`" --startup"
+    Set-ItemProperty -Path $ApprovedKey -Name 'QuickMail' -Value ([byte[]](3,0,0,0,0,0,0,0,0,0,0,0)) -Type Binary
+}
+
+function Get-StartupEntry {
+    $run = (Get-ItemProperty -Path $RunKey -Name 'QuickMail' -ErrorAction SilentlyContinue).QuickMail
+    $mark = (Get-ItemProperty -Path $ApprovedKey -Name 'QuickMail' -ErrorAction SilentlyContinue).QuickMail
+    [pscustomobject]@{ Run = $run; FirstMarkByte = $(if ($mark) { $mark[0] } else { $null }) }
+}
+
 function Reset-Machine {
     <#  Return to a clean state so the next scenario measures only its own actions.
         Uninstalls through the product's own strings first (the supported path), then
@@ -286,6 +333,7 @@ function Reset-Machine {
         into a finding when it is not true. A reset that silently fails is the one way this
         probe can report a previous scenario's residue as the current scenario's result. #>
     Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Clear-HookState
 
     foreach ($row in Get-ArpRows) {
         try {
@@ -723,6 +771,32 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
         throw "Premise failed: the first silent MSI did not install to $target and nowhere else (scenario 1 says why). Directories found: $(($before.Dirs | ForEach-Object { $_.Path }) -join ', ')"
     }
 
+    # What a real machine has and CI does not: a profile (without one the hook does not offer
+    # to delete anything) and a start-at-sign-in entry. Both are what the upgrade must not
+    # disturb (#245, #770).
+    $exePath = Join-Path $target 'current\QuickMail.exe'
+    Clear-HookState
+    New-Item -ItemType Directory -Force (Join-Path $env:APPDATA 'QuickMail') | Out-Null
+    Set-StartupEntryOff $exePath
+
+    # Timeline of QuickMail's exe against Windows Installer's Global\_MSIExecute mutex through
+    # the upgrade, sampled every 100 ms. The prompt script waits for the mutex to be gone for
+    # UninstallDataPrompt.DefaultQuietSeconds before deciding "uninstalled"; this measures
+    # whether the mutex ever lapses between the old copy's removal and the new copy's install.
+    $sampler = Start-Job -ArgumentList $exePath -ScriptBlock {
+        param($Exe)
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $last = ''
+        while ($sw.Elapsed.TotalSeconds -lt 90) {
+            $m = $null
+            $busy = try { $f = [System.Threading.Mutex]::TryOpenExisting('Global\_MSIExecute', [System.Security.AccessControl.MutexRights]::Synchronize, [ref]$m); if ($m) { $m.Dispose() }; $f } catch [System.UnauthorizedAccessException] { $true } catch { $false }
+            $state = "exe=$([int](Test-Path -LiteralPath $Exe)) msi=$([int]$busy)"
+            if ($state -ne $last) { "{0,6} ms  {1}" -f $sw.ElapsedMilliseconds, $state; $last = $state }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    Start-Sleep -Seconds 2
+
     $log = "$PWD\msi-upgrade.log"
     $r2 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/passive', '/norestart', '/l*v', "`"$log`"")
     Write-Section "Step 2 -- MSI $NewVersion, ``/passive``, over it: exit $($r2.ExitCode) in $($r2.Seconds)s"
@@ -770,6 +844,81 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
     } else {
         Add-Finding "On $Arch the silent MSI upgrade wrote no verbose log, so whether it uninstalled the old copy first is unmeasured."
     }
+
+    # The hook's decisions. The prompt script logs its decision once Windows Installer has been
+    # quiet for its window, so give it time.
+    $decided = Wait-HookLog 'not asking|asking' 60
+    Start-Sleep -Seconds 3
+    Stop-Job $sampler -ErrorAction SilentlyContinue
+    $timeline = @(Receive-Job $sampler -ErrorAction SilentlyContinue)
+    Remove-Job $sampler -Force -ErrorAction SilentlyContinue
+    Write-Section 'Timeline through step 2 (exe = QuickMail''s current\QuickMail.exe present, msi = Windows Installer executing):'
+    Write-Section ''
+    Write-Section '```'
+    Write-Section ($timeline -join "`n")
+    Write-Section '```'
+    Write-Section ''
+    $hookLog = Read-HookLog
+    Write-Section 'Hook log (quickmail-uninstall.log):'
+    Write-Section ''
+    Write-Section '```'
+    Write-Section $hookLog
+    Write-Section '```'
+    Write-Section ''
+    if (-not $decided) {
+        Add-Finding "On $Arch the uninstall hook's prompt script logged no decision within 60 s of the MSI upgrade. See the hook log in Scenario 6."
+    } elseif ($hookLog -match 'installed again \(an upgrade\); not asking' -and $hookLog -notmatch '(?m)T\d\d:\d\d:\d\d asking$') {
+        Write-Section '**Pass:** the data prompt recognised the upgrade and did not ask.'
+    } else {
+        Add-Finding "On $Arch the uninstall hook's prompt script did NOT recognise the MSI upgrade -- it would have offered to delete the user's data mid-upgrade (#245). See the hook log in Scenario 6."
+    }
+    $entry = Get-StartupEntry
+    if ($entry.Run -eq "`"$exePath`" --startup" -and $entry.FirstMarkByte -eq 3) {
+        Write-Section '**Pass:** the start-at-sign-in entry came through the upgrade, Task Manager''s off mark included.'
+    } else {
+        Add-Finding "On $Arch the start-at-sign-in entry did not come through the MSI upgrade intact (Run value: '$($entry.Run)', off-mark first byte: '$($entry.FirstMarkByte)'; expected the original command and 3). #770's setting would change on upgrade."
+    }
+}
+
+Invoke-Scenario 'Scenario 6b -- a real MSI uninstall, with a profile and start at sign-in' `
+    'The other half of the hook''s decision: a genuine uninstall must still offer to remove the data, and must remove the start-at-sign-in entry and leave it removed.' {
+    $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
+    $exePath = Join-Path $target 'current\QuickMail.exe'
+    $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$newMsi`"", '/quiet', '/norestart')
+    if ($r1.ExitCode -ne 0) { throw "Premise failed: the silent MSI install exited $($r1.ExitCode)." }
+    if (-not (Test-Path $exePath)) { throw "Premise failed: no $exePath after the install." }
+    Clear-HookState
+    New-Item -ItemType Directory -Force (Join-Path $env:APPDATA 'QuickMail') | Out-Null
+    Set-StartupEntryOff $exePath
+
+    $hidden = @(Get-ArpRows | Where-Object { $_.KeyName -match '^\{[0-9A-Fa-f-]+\}$' })
+    if ($hidden.Count -ne 1) { throw "Premise failed: expected one Windows Installer product row, found $($hidden.Count)." }
+    $r2 = Invoke-Installer 'msiexec.exe' @('/x', $hidden[0].KeyName, '/qn', '/norestart')
+    Write-Section "``msiexec /x $($hidden[0].KeyName) /qn`` -> exit $($r2.ExitCode) in $($r2.Seconds)s"
+    Write-Section ''
+
+    # The real prompt would now be on screen -- on a runner, on a desktop nobody sees, so the
+    # script logs "asking" and waits; Clear-HookState stops it.
+    $decided = Wait-HookLog 'not asking|asking' 60
+    $hookLog = Read-HookLog
+    Write-Section 'Hook log (quickmail-uninstall.log):'
+    Write-Section ''
+    Write-Section '```'
+    Write-Section $hookLog
+    Write-Section '```'
+    Write-Section ''
+    if ($decided -and $hookLog -match '(?m)T\d\d:\d\d:\d\d asking$' -and $hookLog -notmatch 'not asking') {
+        Write-Section '**Pass:** a genuine uninstall still offers to remove the data.'
+    } else {
+        Add-Finding "On $Arch a genuine MSI uninstall did not reach the data prompt (decided: $decided). The offer to remove data would silently never appear. See the hook log in Scenario 6b."
+    }
+    $entry = Get-StartupEntry
+    if ($null -eq $entry.Run) {
+        Write-Section '**Pass:** the start-at-sign-in entry is gone after the uninstall.'
+    } else {
+        Add-Finding "On $Arch a genuine MSI uninstall left the start-at-sign-in entry behind: '$($entry.Run)'."
+    }
+    Clear-HookState
 }
 
 Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine, from a shipped release" `
