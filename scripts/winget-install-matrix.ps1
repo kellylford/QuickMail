@@ -792,8 +792,10 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
         $last = ''
         while ($sw.Elapsed.TotalSeconds -lt 90) {
             $m = $null
-            $busy = try { $f = [System.Threading.Mutex]::TryOpenExisting('Global\_MSIExecute', [System.Security.AccessControl.MutexRights]::Synchronize, [ref]$m); if ($m) { $m.Dispose() }; $f } catch [System.UnauthorizedAccessException] { $true } catch { $false }
-            $state = "exe=$([int](Test-Path -LiteralPath $Exe)) msi=$([int]$busy)"
+            # Two-argument overload: this job is pwsh 7, where the MutexRights overload does not
+            # exist -- an earlier version of this sampler threw on every call and logged msi=0.
+            $busy = try { $f = [System.Threading.Mutex]::TryOpenExisting('Global\_MSIExecute', [ref]$m); if ($m) { $m.Dispose() }; $f } catch [System.UnauthorizedAccessException] { $true } catch { 'ERR' }
+            $state = "exe=$([int](Test-Path -LiteralPath $Exe)) msi=$(if ($busy -is [bool]) { [int]$busy } else { $busy })"
             if ($state -ne $last) { "{0,6} ms  {1}" -f $sw.ElapsedMilliseconds, $state; $last = $state }
             Start-Sleep -Milliseconds 100
         }
@@ -872,7 +874,8 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
     if (-not $decided) {
         Add-Finding "On $Arch the uninstall hook's prompt script logged no decision within 150 s of the MSI upgrade. See the hook log in Scenario 6."
     } elseif ($hookLog -match 'not asking' -and $hookLog -notmatch '(?m)T\d\d:\d\d:\d\d asking$') {
-        Write-Section '**Pass:** the data prompt did not ask during the upgrade.'
+        $reason = ([regex]::Match($hookLog, '[^\n]*not asking')).Value -replace '^\S+ ', ''
+        Write-Section "**Pass:** the data prompt did not ask during the upgrade ($reason)."
     } else {
         Add-Finding "On $Arch the uninstall hook's prompt script did NOT recognise the MSI upgrade -- it would have offered to delete the user's data mid-upgrade (#245). See the hook log in Scenario 6."
     }

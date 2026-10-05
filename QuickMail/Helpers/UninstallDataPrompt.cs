@@ -21,11 +21,9 @@ namespace QuickMail.Helpers;
 /// quiet window passes.
 ///
 /// What the install-path matrix measured on real MSI upgrades (scenario 6, x64 and ARM64): the old
-/// copy's files are gone for about a second before the new copy's arrive, and Global\_MSIExecute
-/// was never seen from the user's session. So in practice the upgrade is recognised by the files
-/// coming back, or — when the script misses that second — by them never having been seen gone
-/// ("still installed"), with the Add/Remove Programs check behind both. The mutex check stays: it
-/// costs nothing where the mutex is absent, and covers a slower upgrade where it is present.
+/// copy's files are gone for under a second before the new copy's arrive, so the upgrade is
+/// recognised by the files coming back or — when the script misses that moment — by them never
+/// having been seen gone ("still installed"), with the Add/Remove Programs check behind both.
 ///
 /// Everything the script needs is a parameter, so the tests can run it against a scratch folder,
 /// a scratch Uninstall key and a mutex of their own, with short waits and <c>-DryRun</c>, which
@@ -53,17 +51,31 @@ internal static class UninstallDataPrompt
             [switch]$DryRun
         )
         function Write-Log([string]$Text) { Add-Content -Path $Log -Value "$(Get-Date -Format s) $Text" }
+        $script:busyCheckFailed = $false
         function Test-InstallerBusy {
             # The mutex exists while Windows Installer is executing an installation. Opening it may
-            # be refused to a standard user; refused still means it exists.
+            # be refused to a standard user; refused still means it exists. The two-argument
+            # overload, because it is the one every .NET has (the MutexRights one is .NET
+            # Framework only, and a check that always throws reads as "never busy").
             $m = $null
             try {
-                $found = [System.Threading.Mutex]::TryOpenExisting($MutexName,
-                    [System.Security.AccessControl.MutexRights]::Synchronize, [ref]$m)
+                $found = [System.Threading.Mutex]::TryOpenExisting($MutexName, [ref]$m)
                 if ($m) { $m.Dispose() }
                 return $found
             } catch [System.UnauthorizedAccessException] { return $true }
-            catch { return $false }
+            catch {
+                if (-not $script:busyCheckFailed) { Write-Log "installer check failed, treating as idle: $($_.Exception.Message)"; $script:busyCheckFailed = $true }
+                return $false
+            }
+        }
+        function Test-LiveInstallRow([string]$Row) {
+            # A row counts only while the install it names is really there: an orphaned row (one
+            # of the two left by an MSI and a Setup.exe install over each other) must not suppress
+            # the offer for good, since removing it later runs no hook at all.
+            $key = "$UninstallRoot\$Row"
+            if (-not (Test-Path -LiteralPath $key)) { return $false }
+            $loc = (Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue).InstallLocation
+            return [bool]($loc -and (Test-Path -LiteralPath (Join-Path $loc 'current\QuickMail.exe')))
         }
         Write-Log 'prompt script started'
         try {
@@ -80,9 +92,10 @@ internal static class UninstallDataPrompt
             }
             if (Test-Path -LiteralPath $Exe) { Write-Log 'QuickMail was installed again (an upgrade); not asking'; exit }
             # Velopack's own Add/Remove Programs entries: MSI:QuickMail for an MSI install,
-            # QuickMail for a Setup.exe one. Either still there means a copy that uses this data.
+            # QuickMail for a Setup.exe one. Either naming a live install (installed again in
+            # another folder, or a second copy) means a copy that still uses this data.
             foreach ($row in 'MSI:QuickMail', 'QuickMail') {
-                if (Test-Path -LiteralPath "$UninstallRoot\$row") {
+                if (Test-LiveInstallRow $row) {
                     Write-Log "QuickMail is still installed ($row); not asking"; exit
                 }
             }

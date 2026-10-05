@@ -17,6 +17,12 @@ using Xunit;
 
 namespace QuickMail.Tests;
 
+// Serial, and opt-in (ProcessTests: CI runs them). Each test starts a powershell.exe that runs for
+// seconds and is timed against it; one at a time keeps them from competing with each other.
+[CollectionDefinition(nameof(UninstallDataPromptTests), DisableParallelization = true)]
+public sealed class UninstallDataPromptCollection { }
+
+[Collection(nameof(UninstallDataPromptTests))]
 public sealed class UninstallDataPromptTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"quickmail-prompt-test-{Guid.NewGuid():N}");
@@ -70,7 +76,23 @@ public sealed class UninstallDataPromptTests : IDisposable
     {
         Assert.True(p.WaitForExit(90_000), "the prompt script did not finish");
         p.Dispose();
-        return File.Exists(_log) ? File.ReadAllText(_log) : "";
+        return ReadLog();
+    }
+
+    // The script appends to the log while a test may be reading it: open it the way that tolerates
+    // a writer, and treat a momentary sharing clash as "nothing yet".
+    private string ReadLog()
+    {
+        try
+        {
+            using var stream = new FileStream(_log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+        catch (IOException)
+        {
+            return "";
+        }
     }
 
     private async Task WaitForStart()
@@ -79,7 +101,7 @@ public sealed class UninstallDataPromptTests : IDisposable
         var until = DateTime.UtcNow.AddSeconds(30);
         while (DateTime.UtcNow < until)
         {
-            if (File.Exists(_log) && File.ReadAllText(_log).Contains("prompt script started")) return;
+            if (ReadLog().Contains("prompt script started")) return;
             await Task.Delay(100, TestContext.Current.CancellationToken);
         }
         Assert.Fail("the prompt script did not start within 30 seconds");
@@ -87,7 +109,7 @@ public sealed class UninstallDataPromptTests : IDisposable
 
     private static Task Delay(int ms) => Task.Delay(ms, TestContext.Current.CancellationToken);
 
-    [Fact]
+    [Fact(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
     public async Task Uninstall_FilesStayGone_Asks()
     {
         var p = Start();
@@ -100,7 +122,7 @@ public sealed class UninstallDataPromptTests : IDisposable
         Assert.DoesNotContain("not asking", log);
     }
 
-    [Fact]
+    [Fact(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
     public async Task Upgrade_FilesComeBack_DoesNotAsk()
     {
         var p = Start(quiet: 8);
@@ -115,7 +137,7 @@ public sealed class UninstallDataPromptTests : IDisposable
         Assert.DoesNotContain("would ask", log);
     }
 
-    [Fact]
+    [Fact(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
     public async Task Upgrade_InstallerBusyPastTheQuietWindow_StillDoesNotAsk()
     {
         // The case the mutex is for: the new copy arrives later than the quiet window, but the
@@ -133,7 +155,7 @@ public sealed class UninstallDataPromptTests : IDisposable
         Assert.DoesNotContain("would ask", log);
     }
 
-    [Fact]
+    [Fact(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
     public async Task InstallerBusyForever_GivesUpWaiting_AndAsks()
     {
         // Some unrelated installation holding Windows Installer must delay the question, never
@@ -146,13 +168,22 @@ public sealed class UninstallDataPromptTests : IDisposable
         Assert.Contains("would ask", Finish(p));
     }
 
-    [Theory]
+    private void AddRow(string row, string installLocation)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey($@"{_uninstallKey}\{row}");
+        key.SetValue("InstallLocation", installLocation);
+    }
+
+    [Theory(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
     [InlineData("MSI:QuickMail")]
     [InlineData("QuickMail")]
-    public async Task StillInAddRemovePrograms_DoesNotAsk(string row)
+    public async Task LiveInstallInAddRemovePrograms_DoesNotAsk(string row)
     {
         // Installed again somewhere else, or a second copy remains: the data is still in use.
-        Registry.CurrentUser.CreateSubKey($@"{_uninstallKey}\{row}").Dispose();
+        var other = Path.Combine(_root, "OtherInstall");
+        Directory.CreateDirectory(Path.Combine(other, "current"));
+        File.WriteAllText(Path.Combine(other, "current", "QuickMail.exe"), "another copy");
+        AddRow(row, other + "\\");
         var p = Start();
         await WaitForStart();
         File.Delete(_exe);
@@ -163,7 +194,22 @@ public sealed class UninstallDataPromptTests : IDisposable
         Assert.DoesNotContain("would ask", log);
     }
 
-    [Fact]
+    [Fact(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
+    public async Task OrphanedRowInAddRemovePrograms_StillAsks()
+    {
+        // The leftover of an MSI and a Setup.exe install over each other names a folder with no
+        // QuickMail in it. Counting it would suppress the offer for good: removing that row later
+        // runs no hook, because the hook needs QuickMail's exe to run at all.
+        AddRow("QuickMail", _root + "\\");   // the install being uninstalled: its exe is gone
+        AddRow("MSI:QuickMail", Path.Combine(_root, "Gone") + "\\");
+        var p = Start();
+        await WaitForStart();
+        File.Delete(_exe);
+
+        Assert.Contains("would ask", Finish(p));
+    }
+
+    [Fact(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
     public void FilesNeverRemoved_DoesNotAsk()
     {
         // The uninstall failed or was cancelled: QuickMail is still there, so nothing to offer.
@@ -172,7 +218,7 @@ public sealed class UninstallDataPromptTests : IDisposable
         Assert.Contains("still installed; not asking", log);
     }
 
-    [Fact]
+    [Fact(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
     public async Task NoDataFolder_DoesNotAsk()
     {
         Directory.Delete(_dataDir, recursive: true);
@@ -183,7 +229,7 @@ public sealed class UninstallDataPromptTests : IDisposable
         Assert.Contains("no data folder; not asking", Finish(p));
     }
 
-    [Fact]
+    [Fact(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
     public async Task Script_DeletesItself()
     {
         var p = Start();

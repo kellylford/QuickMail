@@ -71,6 +71,8 @@ Tests that drive real keystrokes at a shown window are gated behind `QUICKMAIL_R
 
 Do **not** subclass `FactAttribute` to do this — that trips `xUnit3003` (losing the source-file/line info IDE test navigation uses) and is evaluated at discovery rather than execution.
 
+Tests that launch a child process and time it (`UninstallDataPromptTests`, which runs the uninstall prompt's script through `powershell.exe`) are opt-in the same way, behind `QUICKMAIL_RUN_PROCESS_TESTS=1` (`ProcessTests`), which CI also sets and guards. With them in full local runs the test host crashed (0xC0000602) about half the time on a machine with a screen reader running.
+
 ## User Guide Publishing
 
 The user guide (`docs/USER-GUIDE.md`) is automatically converted to HTML and published to GitHub Pages via `.github/workflows/publish-user-guide.yml`.

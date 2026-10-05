@@ -149,10 +149,10 @@ leaves ARM64 output in `bin/Release` until the next ordinary build.
   start at sign-in, since the hand-off cannot tell that from an upgrade.
   Install-matrix scenarios 6 and 6b check both halves on real MSIs: across an upgrade the
   startup entry comes back with its Task Manager mark, and a genuine uninstall still asks
-  (about 11 s after removal). The upgrade's file gap measured about a second, and the
-  `Global\_MSIExecute` mutex was never visible from the user's session, so the files coming
-  back and the Add/Remove Programs check are what the decision rests on in practice. The
-  in-app updater is still the upgrade path; the MSI is for first installs.
+  (about 11 s after removal). The upgrade's file gap measured under a second, so the files
+  coming back (or never being seen gone) decide an upgrade in practice, with the Add/Remove
+  Programs check behind them. The in-app updater is still the upgrade path; the MSI is for
+  first installs.
   `Setup.exe --silent` installs to the same place and overwrites in place without the
   uninstall hook, which is why winget was first going to use it. It is not shipped, and the
   bullet below is why.

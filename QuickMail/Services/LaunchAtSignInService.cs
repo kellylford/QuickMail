@@ -188,7 +188,7 @@ public sealed class LaunchAtSignInService : ILaunchAtSignInService
         }
 
         var rest = c[exeToken.Length..];
-        var match = System.Text.RegularExpressions.Regex.Match(rest, "^ --startup(?: --profileDir \"([^\"]+)\")?$");
+        var match = System.Text.RegularExpressions.Regex.Match(rest, "^ --startup(?: --profileDir \"([^\"]+)\")?\\z");
         if (!match.Success) return null;
         return BuildCommand(exePath, match.Groups[1].Success ? match.Groups[1].Value : null);
     }
