@@ -17,12 +17,12 @@ InstallModes:
 # Both are UI level < 5, which since vpk 1.2.158 sets the per-user default location,
 # %LocalAppData%\QuickMail, the same as the wizard (measured on both architectures).
 #
-# SmartScreen, measured with a LOCAL manifest (install-matrix scenario 7): winget keeps the
-# download's Mark of the Web, and Windows then shows SmartScreen's reputation prompt before
-# msiexec starts, in either mode -- the browser-download problem of #746. A popular MSI from
-# the catalog installs the same way without one. A catalog install is a trusted source, which
-# removes the Mark of the Web, so it is expected not to prompt; that can only be checked once
-# the package is published (README, step 6).
+# SmartScreen (install-matrix scenario 7, run 37294314907): installed from a LOCAL manifest,
+# QuickMail's MSI makes Windows start SmartScreen and msiexec never runs, in either mode.
+# Node.js installed the same way, from a local manifest copied from the catalog, gets past.
+# So it is QuickMail's file reputation, the problem #746 is about. A catalog install moves the
+# download to zone 2; whether that avoids the prompt for a low-reputation file is unmeasured
+# until the package is published (README, step 6). It may well prompt.
 UpgradeBehavior: install
 # QuickMail updates itself through Velopack and keeps the Add/Remove Programs version
 # current as it does, so winget rarely has anything to upgrade. When it does (a copy that has

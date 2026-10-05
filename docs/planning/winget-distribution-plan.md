@@ -342,8 +342,9 @@ upgrade-aware would remove the cost altogether. That is an app change, tracked s
 
 Not measured anywhere yet: a copy that self-updated *before* the MSI upgrade, so its files no
 longer match the old MSI's file table. That is the state winget actually meets, since it only
-offers an upgrade to a copy whose visible row is behind the catalog. The README's Sandbox
-recipe includes it.
+offers an upgrade to a copy whose visible row is behind the catalog. No recipe covers it yet,
+including the README's (its step 7 says so). Setting it up means letting an MSI install
+self-update partway and then holding it back from the newest release.
 
 ### A real `winget upgrade`
 
@@ -361,25 +362,32 @@ architectures established:
    over `[X64,...]` on ARM64), downloads, verifies the hash, and an install that reached
    msiexec landed in `%LocalAppData%\QuickMail` with one visible `MSI:QuickMail` row at
    0.8.52, exit 0, about 6 s. Run [37282130525](https://github.com/kellylford/QuickMail/actions/runs/37282130525).
-3. **A local-manifest install meets SmartScreen.** winget keeps the download's Mark of the
-   Web (`RemoveMotwIfApplicable failed`), and when it launches QuickMail's MSI Windows
-   starts `smartscreen.exe` / `CHXSmartScreen.exe` and msiexec never starts: a reputation
-   prompt is waiting that nobody on a runner can answer. That happened with `/passive` and
-   `/quiet` alike, whichever ran first. The install in point 2 reached msiexec only because
-   it followed an unanswered prompt. A widely installed MSI from the real catalog (Node.js
-   LTS) installed the same way with no prompt (x64; the ARM64 runner fails Node's
-   machine-wide install for an unrelated reason). So this is QuickMail's file reputation, the
-   same thing #746 is about, not winget and not the runner. Runs
-   [37285324978](https://github.com/kellylford/QuickMail/actions/runs/37285324978) and
-   [37291476011](https://github.com/kellylford/QuickMail/actions/runs/37291476011).
+3. **SmartScreen engages on QuickMail's MSI, and it is the file's reputation.** Launching
+   QuickMail's MSI from a local-manifest install, Windows starts `smartscreen.exe` /
+   `CHXSmartScreen.exe` and msiexec never starts: winget waits until stopped, with `/passive`
+   and `/quiet` alike. (That SmartScreen started and msiexec did not is what is measured;
+   nobody on a runner can see whether a dialog is up.) The control holds the download zone
+   equal: Node.js LTS installed from a *local manifest* copied from winget-pkgs, so its
+   download takes the same Internet-zone path as QuickMail's. It got past SmartScreen on
+   both architectures (x64 installed; on ARM64 it reached msiexec and failed with Node's own
+   1603). Run [37294314907](https://github.com/kellylford/QuickMail/actions/runs/37294314907).
+   An earlier control, Node.js from the catalog, could not separate the two, because winget
+   moved that download to zone 2.
 
-What point 3 means for real users is **not measured and cannot be yet.** A catalog install
-comes from a trusted source, which removes the Mark of the Web before the installer runs,
-so it is expected not to prompt. If it does prompt, the user sees the same SmartScreen
-dialog a browser download gets, and can choose to run the installer anyway. That is
-unpleasant but not destructive. Checking this is the first thing to do once the package is
-published (README, step 6). Turning SmartScreen off by policy on the runner, to measure past
-the prompt, did not take effect without a reboot (run 37291476011).
+**What this means for a published package: a catalog install of QuickMail may well show the
+SmartScreen prompt.** The catalog moves a download to zone 2 rather than the Internet zone.
+Whether SmartScreen still checks a low-reputation file there has not been measured. It
+cannot be until the package is published, because a popular file passes in either zone. If
+it does prompt, the user sees the same "isn't commonly downloaded" choice a browser download
+gives, and can run the installer anyway. That is not destructive, but it means winget does
+not get around the problem #746 exists for, and the Store is still the only route Microsoft
+documents as free of it. This is the first thing to check after publication (README, step 6).
+In an unattended `winget install` the prompt would leave winget waiting, as on CI.
+
+Turning SmartScreen off by policy on the runner, to measure past the prompt, did not take
+effect without a reboot (run 37291476011). Point 2's install is therefore the only view past
+the prompt, and it is an observation from one ordering, not an explanation of why it got
+past.
 
 ### What changes in Phases 2-5
 

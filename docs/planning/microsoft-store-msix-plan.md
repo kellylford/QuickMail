@@ -306,6 +306,13 @@ subject to the download warning. It explains that by Microsoft's re-signing, whi
 listing does not get. This plan's non-goal assumed the warning stays. Neither is measured.
 The test is one install of a submitted listing on a machine that has never run QuickMail.
 
+**Winget does not settle it either.** On CI, SmartScreen engaged on QuickMail's MSI under
+`winget install` from a local manifest and not on Node.js's installed the same way, so
+SmartScreen is acting on QuickMail's file reputation. Whether a catalog install avoids it is
+unknown until the package is published (winget plan, *Phase 1d*). Until one of these
+measurements says otherwise, the Store is the only route Microsoft documents as free of the
+prompt.
+
 **Order:** settle the name (still Kelly's), submit the MSI listing, and measure. Return to
 Phase 0 and MSIX only if the MSI listing still warns. A Store listing also makes QuickMail
 installable from winget's `msstore` source, which does not replace the community package
