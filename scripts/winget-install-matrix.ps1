@@ -763,7 +763,7 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
         if ($nested -and $hook) {
             Write-Section "**Expected (#245, accepted):** the upgrade uninstalls $OldVersion, hook included, before installing $NewVersion."
         } elseif ($nested -or $hook) {
-            Add-Finding "On $Arch a silent MSI upgrade's log shows the nested uninstall $(if ($nested) { 'but not' } else { 'is missing, yet' }) the uninstall hook $(if ($hook) { 'ran' } else { '' }). One without the other means the log markers this scenario relies on have changed; re-read msi-upgrade.log."
+            Add-Finding "On $Arch a silent MSI upgrade's log has $(if ($nested) { 'the nested uninstall but not the uninstall hook' } else { 'the uninstall hook but not the nested uninstall' }). One without the other means the log markers this scenario relies on have changed; re-read msi-upgrade.log."
         } else {
             Add-Finding "On $Arch a silent MSI upgrade did not uninstall $OldVersion first. That would be a change from #245 -- check msi-upgrade.log before relying on it."
         }
@@ -773,7 +773,7 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
 }
 
 Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine, from a shipped release" `
-    "What a new user runs: winget installs the shipped $ShippedNew MSI from installer/winget's template. Does it finish, and does it leave one row in %LocalAppData% that winget lists? (Upgrade is not measurable here: ``winget upgrade --manifest`` finds the installed copy through the package's catalog Id, which does not exist until the package is published -- see the plan, Phase 1d.)" {
+    "What a new user runs: winget installs the shipped $ShippedNew MSI from installer/winget's template, from a local manifest. Does SmartScreen engage, and is that QuickMail's file reputation or the local manifest's download zone? (Upgrade is not measurable here: ``winget upgrade --manifest`` finds the installed copy through the package's catalog Id, which does not exist until the package is published -- see the plan, Phase 1d.)" {
     if (-not $script:WingetAvailable) { throw 'winget is not available on this runner.' }
     $work = Join-Path $PWD 'shipped'
     New-Item -ItemType Directory -Force $work | Out-Null
@@ -804,28 +804,40 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
     # final reset is skipped.
     #
     # What earlier runs of this scenario established, both architectures:
-    # - winget installs a local-manifest download with its Mark of the Web intact (its log:
-    #   "RemoveMotwIfApplicable failed"), and on launching QuickMail's MSI Windows starts
-    #   SmartScreen, whose reputation prompt nobody on a runner can answer: winget waits
-    #   forever and msiexec never starts. /passive and /quiet alike, whichever runs first.
-    # - A widely installed MSI from the real catalog (Node.js LTS) installs the same way
-    #   without a prompt. So it is QuickMail's low file reputation -- the browser-download
-    #   problem of #746 -- not winget, and not the runner.
-    # So this scenario records (a) QuickMail, bounded short, and (c) the control. Turning
-    # SmartScreen off by policy on the runner does not take effect without a reboot (tried:
-    # run 37291476011, smartscreen.exe still ran), so the install mechanics are not
-    # re-measured here; run 37282130525 measured them, when a /quiet attempt that ran after
-    # an unanswered prompt installed into %LocalAppData%\QuickMail with one row.
-    # Whether a CATALOG install (a trusted source, which removes the Mark of the Web) meets
-    # the prompt is not measurable until the package is published; README step 6.
+    # - Launching QuickMail's MSI from a local-manifest install, Windows starts SmartScreen
+    #   (smartscreen.exe / CHXSmartScreen.exe) and msiexec never starts: winget waits until
+    #   stopped. /passive and /quiet alike. Nobody on a runner can see whether a dialog is up;
+    #   that SmartScreen started and msiexec did not is what is measured.
+    # - Node.js LTS from the real catalog installed without that. But its download was moved
+    #   to zone 2 (winget treats its catalog as trusted) while QuickMail's local-manifest
+    #   download stayed in zone 3, so that control varied the zone and the file's reputation
+    #   at once.
+    # So the control here holds the zone equal: Node.js LTS installed from a LOCAL manifest,
+    # a copy of its catalog manifest -- the same zone-3 path as QuickMail, with a file that
+    # has plenty of reputation. If it waits on SmartScreen too, the zone is the trigger and a
+    # catalog install of QuickMail is expected not to prompt. If it gets past SmartScreen
+    # (any exit, even the 1603 Node's machine-wide install hits on the ARM64 runner),
+    # QuickMail's own reputation is what SmartScreen is acting on.
     $diag = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
     $logOut = Join-Path $PWD 'winget-logs'
     New-Item -ItemType Directory -Force $logOut | Out-Null
     $winget = (Get-Command winget).Source
     $common = @('--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity', '--verbose-logs')
+    # The control's manifest, fetched from microsoft/winget-pkgs at its newest version.
+    $nodeDir = Join-Path $work 'node-manifest'
+    New-Item -ItemType Directory -Force $nodeDir | Out-Null
+    $api = 'https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/o/OpenJS/NodeJS/LTS'
+    $nodeVersion = (Invoke-RestMethod $api -UseBasicParsing | Where-Object { $_.type -eq 'dir' -and $_.name -match '^\d+(\.\d+)+$' } | ForEach-Object { $_.name } | Sort-Object { [version]$_ } | Select-Object -Last 1)
+    foreach ($item in (Invoke-RestMethod "$api/$nodeVersion" -UseBasicParsing | Where-Object { $_.name -like '*.yaml' })) {
+        Invoke-WebRequest $item.download_url -OutFile (Join-Path $nodeDir $item.name) -UseBasicParsing
+    }
+    if (-not (Test-Path (Join-Path $nodeDir 'OpenJS.NodeJS.LTS.installer.yaml'))) { throw "Fetching the Node.js LTS $nodeVersion manifest failed." }
+    Write-Section "Control: Node.js LTS $nodeVersion, manifest copied from microsoft/winget-pkgs and installed with ``--manifest``."
+    Write-Section ''
+
     $attempts = [ordered]@{
-        'a -- QuickMail, SmartScreen as shipped' = @{ Args = @('install', '--manifest', "`"$dir`"") + $common; Seconds = 180 }
-        'c -- control: OpenJS.NodeJS.LTS from the winget catalog, SmartScreen as shipped' = @{ Args = @('install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--source', 'winget') + $common; Seconds = 300 }
+        'a -- QuickMail, local manifest' = @{ Args = @('install', '--manifest', "`"$dir`"") + $common; Seconds = 180 }
+        'd -- control: Node.js LTS, local manifest copied from the catalog' = @{ Args = @('install', '--manifest', "`"$nodeDir`"") + $common; Seconds = 300 }
     }
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
     $n = 0
@@ -910,9 +922,16 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
                 Write-Section "**Pass ($label):** one visible ``MSI:QuickMail`` row at $ShippedNew, installed in ``%LocalAppData%\QuickMail`` only."
             }
         } else {
-            $verdict = if (-not $finished) { 'hung too -- so the hang is this runner''s, and attempt a says nothing about real machines' } elseif ($code -eq 0) { 'installed normally with SmartScreen on -- so attempt a''s prompt is about QuickMail''s file reputation' } else { "exited 0x$('{0:X8}' -f $code), so it neither confirms nor rules out the runner" }
+            $controlSmartScreen = @($spawned | Where-Object { $_ -match 'smartscreen' }).Count -gt 0
+            $verdict = if (-not $finished -and $controlSmartScreen) {
+                'Node.js from a local manifest ALSO waited on SmartScreen -- with the zone held equal, a popular file is treated the same, so the zone is the trigger, and a catalog install of QuickMail (moved to zone 2 like the catalog Node.js was) is expected not to prompt'
+            } elseif (-not $finished) {
+                'Node.js from a local manifest hung WITHOUT SmartScreen starting -- a different hang; this control says nothing about the zone'
+            } else {
+                "Node.js from a local manifest got past SmartScreen (exit 0x$('{0:X8}' -f $code)) -- with the zone held equal, QuickMail's own file reputation is what SmartScreen acts on, so a catalog install may well prompt too"
+            }
             Write-Section "**Control:** $verdict."
-            if ($code -ne 0) { Add-Finding "On $Arch the control package $verdict." }
+            if (-not $finished -and -not $controlSmartScreen) { Add-Finding "On $Arch the control: $verdict." }
         }
         Write-Section ''
     }
