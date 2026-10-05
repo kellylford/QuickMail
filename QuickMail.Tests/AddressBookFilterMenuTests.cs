@@ -118,8 +118,8 @@ public class AddressBookFilterMenuTests
             // What AddressBookWindow.AccountFilterMenu_Opened does is call item.Focus(); whether
             // Win32 keyboard focus then follows into the popup's own HWND depends on the test
             // process holding the foreground, which it does not. Measured mid-test, and again in an
-            // isolated probe: Window.IsActive was true — that is WPF's own notion, true of any shown
-            // window — while the process was not foreground, and so Keyboard.FocusedElement stayed
+            // isolated probe: Window.IsActive was true — that is WPF's own notion, separate from
+            // foreground state — while the process was not foreground, and so Keyboard.FocusedElement stayed
             // on the window's search box even though the right MenuItem held focus in the menu's
             // scope. The Keyboard form of this assertion therefore passed or failed on how the run
             // happened to be launched, which is what made it the suite's one flaky test.
@@ -244,29 +244,35 @@ public class AddressBookFilterMenuTests
         button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
 
     /// <summary>
-    /// Activates the button and pumps until the menu is open with its items generated. One
-    /// DoEvents is not enough: on a slow CI runner the popup's containers were still missing
-    /// after it, so ItemFor returned null (the v0.8.51 release run).
+    /// Activates the button and pumps until the menu is open with its items generated. A single
+    /// DoEvents left ItemFor returning null on the v0.8.51 release run's slow CI runner, whether
+    /// because the popup had not opened yet or its items were not generated.
     /// </summary>
     private static void OpenMenu(Button button, ContextMenu menu)
     {
         Click(button);
-        PumpUntil(() => menu.IsOpen
-            && menu.ItemContainerGenerator.Status
-               == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated);
+        Assert.True(
+            PumpUntil(() => menu.IsOpen
+                && menu.ItemContainerGenerator.Status
+                   == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated),
+            "The filter menu did not open with its items generated within 5 seconds.");
     }
 
     /// <summary>Pumps the dispatcher until <paramref name="condition"/> holds, or five seconds pass.
-    /// Returns without failing on timeout; the caller's assertions report what is missing.</summary>
-    private static void PumpUntil(Func<bool> condition)
+    /// Returns whether the condition held, so a timeout fails with a reason rather than as a
+    /// NullReferenceException further on.</summary>
+    private static bool PumpUntil(Func<bool> condition)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
         DoEvents();
-        while (!condition() && clock.Elapsed < TimeSpan.FromSeconds(5))
+        while (!condition())
         {
+            if (clock.Elapsed >= TimeSpan.FromSeconds(5))
+                return false;
             System.Threading.Thread.Sleep(10);
             DoEvents();
         }
+        return true;
     }
 
     /// <summary>
@@ -311,7 +317,8 @@ public class AddressBookFilterMenuTests
         // process, can hold activation; the filter menu's focus depends on it.
         window.Activate();
         window.UpdateLayout();
-        PumpUntil(() => window.IsActive);
+        // Only the focus test depends on activation, and it asserts IsActive itself with a reason.
+        _ = PumpUntil(() => window.IsActive);
         cleanup = DeleteDir;
         return (vm, window, dir);
     }

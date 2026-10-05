@@ -188,8 +188,9 @@ public partial class AddressBookWindow : Window
         var item = menu.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) as MenuItem;
         if (item is null)
         {
-            // In case Opened arrives before the popup has laid out its items: the menu's panel is
-            // a plain StackPanel, so one forced layout pass generates every container.
+            // Defensive: the popup normally measures its content, generating every container,
+            // before Opened is raised. If a container is ever missing anyway, force one layout
+            // pass; the menu's panel is a plain StackPanel, so that generates them all.
             menu.UpdateLayout();
             item = menu.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) as MenuItem;
         }
