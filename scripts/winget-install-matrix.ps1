@@ -318,8 +318,10 @@ function Set-StartupEntryOff([string]$Exe) {
 }
 
 function Get-StartupEntry {
-    $run = (Get-ItemProperty -Path $RunKey -Name 'QuickMail' -ErrorAction SilentlyContinue).QuickMail
-    $mark = (Get-ItemProperty -Path $ApprovedKey -Name 'QuickMail' -ErrorAction SilentlyContinue).QuickMail
+    # Get-ItemPropertyValue, not (Get-ItemProperty).QuickMail: under strict mode the latter
+    # throws when the value is absent -- which is exactly the state a genuine uninstall leaves.
+    $run = try { Get-ItemPropertyValue -Path $RunKey -Name 'QuickMail' -ErrorAction Stop } catch { $null }
+    $mark = try { Get-ItemPropertyValue -Path $ApprovedKey -Name 'QuickMail' -ErrorAction Stop } catch { $null }
     [pscustomobject]@{ Run = $run; FirstMarkByte = $(if ($mark) { $mark[0] } else { $null }) }
 }
 
@@ -846,9 +848,10 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
         Add-Finding "On $Arch the silent MSI upgrade wrote no verbose log, so whether it uninstalled the old copy first is unmeasured."
     }
 
-    # The hook's decisions. The prompt script logs its decision once Windows Installer has been
-    # quiet for its window, so give it time.
-    $decided = Wait-HookLog 'not asking|asking' 60
+    # The hook's decisions. The upgrade's file gap measured about a second (timeline below), so
+    # the script may never see the files gone; it then decides "still installed" only when its
+    # 120 s removal wait runs out. Wait past that.
+    $decided = Wait-HookLog 'not asking|asking' 150
     Start-Sleep -Seconds 3
     Stop-Job $sampler -ErrorAction SilentlyContinue
     $timeline = @(Receive-Job $sampler -ErrorAction SilentlyContinue)
@@ -867,9 +870,9 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
     Write-Section '```'
     Write-Section ''
     if (-not $decided) {
-        Add-Finding "On $Arch the uninstall hook's prompt script logged no decision within 60 s of the MSI upgrade. See the hook log in Scenario 6."
-    } elseif ($hookLog -match 'installed again \(an upgrade\); not asking' -and $hookLog -notmatch '(?m)T\d\d:\d\d:\d\d asking$') {
-        Write-Section '**Pass:** the data prompt recognised the upgrade and did not ask.'
+        Add-Finding "On $Arch the uninstall hook's prompt script logged no decision within 150 s of the MSI upgrade. See the hook log in Scenario 6."
+    } elseif ($hookLog -match 'not asking' -and $hookLog -notmatch '(?m)T\d\d:\d\d:\d\d asking$') {
+        Write-Section '**Pass:** the data prompt did not ask during the upgrade.'
     } else {
         Add-Finding "On $Arch the uninstall hook's prompt script did NOT recognise the MSI upgrade -- it would have offered to delete the user's data mid-upgrade (#245). See the hook log in Scenario 6."
     }

@@ -20,6 +20,13 @@ namespace QuickMail.Helpers;
 /// Setup.exe install) involves no Windows Installer, so it asks once the files are gone and the
 /// quiet window passes.
 ///
+/// What the install-path matrix measured on real MSI upgrades (scenario 6, x64 and ARM64): the old
+/// copy's files are gone for about a second before the new copy's arrive, and Global\_MSIExecute
+/// was never seen from the user's session. So in practice the upgrade is recognised by the files
+/// coming back, or — when the script misses that second — by them never having been seen gone
+/// ("still installed"), with the Add/Remove Programs check behind both. The mutex check stays: it
+/// costs nothing where the mutex is absent, and covers a slower upgrade where it is present.
+///
 /// Everything the script needs is a parameter, so the tests can run it against a scratch folder,
 /// a scratch Uninstall key and a mutex of their own, with short waits and <c>-DryRun</c>, which
 /// logs the decision instead of showing the question.
@@ -27,9 +34,9 @@ namespace QuickMail.Helpers;
 internal static class UninstallDataPrompt
 {
     /// <summary>
-    /// How long Windows Installer must stay idle, in seconds, before "still gone" is believed.
-    /// It covers any gap between the old copy's removal and the new copy's install inside one
-    /// upgrade; the install-path matrix (scenario 6) measures that gap.
+    /// How long, in seconds, QuickMail must stay gone with Windows Installer idle before "still
+    /// gone" is believed. Ten times the gap the install-path matrix measured between the old
+    /// copy's removal and the new copy's install inside one upgrade (scenario 6).
     /// </summary>
     internal const int DefaultQuietSeconds = 10;
 
