@@ -41,8 +41,12 @@ ReleaseDate: <RELEASE-DATE>
 # InstallerType: exe is load-bearing too. winget types an Add/Remove Programs row as an MSI
 # only when the row has WindowsInstaller=1, and Velopack's row is plain registry values
 # without it, so winget sees an installed `exe`. It then refuses a `wix` installer as a
-# different technology unless an entry here says the installed type is exe. Measured both
-# ways by the install matrix (scenario 7).
+# different technology unless an entry here says the installed type is exe. Read from
+# winget-cli's source (ARPHelper.cpp, ManifestComparator.cpp), not measured: an upgrade
+# cannot be exercised until the package is in the catalog, because `winget upgrade` finds
+# the installed copy through the catalog. The line only widens what winget accepts (wix
+# installers stay acceptable over an MSI-typed install), so it is safe either way. Check
+# `winget upgrade quickmail` against a real install once the first version is published.
 AppsAndFeaturesEntries:
 - DisplayName: QuickMail
   Publisher: Kelly Ford

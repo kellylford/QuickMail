@@ -51,10 +51,9 @@ param(
     [Parameter(Mandatory)][ValidateSet('x64', 'arm64')][string]$Arch,
     [string]$Report = 'winget-matrix-report.md',
     [string]$EmittedListing,
-    # Two SHIPPED releases, both packed with vpk 1.2.158 or later, for scenario 7's real
-    # winget upgrade. Real releases rather than this run's synthetic packs because winget
-    # needs an https InstallerUrl, and GitHub Releases is where the manifest points anyway.
-    [string]$ShippedOld = '0.8.51',
+    # A SHIPPED release packed with vpk 1.2.158 or later, for scenario 7's real winget
+    # install. A real release rather than this run's synthetic packs because winget needs an
+    # https InstallerUrl, and GitHub Releases is where the manifest points anyway.
     [string]$ShippedNew = '0.8.52',
     [switch]$Force
 )
@@ -773,134 +772,112 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
     }
 }
 
-Invoke-Scenario "Scenario 7 -- a real ``winget upgrade`` between two shipped releases" `
-    "Installs the shipped $ShippedOld MSI, then runs ``winget upgrade --manifest`` with installer/winget's template filled for $ShippedNew. Once per correlation variant of the manifest. Which variants does winget match to the installed copy and upgrade?" {
+Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine, from a shipped release" `
+    "What a new user runs: winget installs the shipped $ShippedNew MSI from installer/winget's template. Does it finish, and does it leave one row in %LocalAppData% that winget lists? (Upgrade is not measurable here: ``winget upgrade --manifest`` finds the installed copy through the package's catalog Id, which does not exist until the package is published -- see the plan, Phase 1d.)" {
     if (-not $script:WingetAvailable) { throw 'winget is not available on this runner.' }
     $work = Join-Path $PWD 'shipped'
     New-Item -ItemType Directory -Force $work | Out-Null
-    $base = "https://github.com/kellylford/QuickMail/releases/download"
-    $oldShipped = Join-Path $work "QuickMail-$ShippedOld-$suffix.msi"
-    $newShipped = Join-Path $work "QuickMail-$ShippedNew-$suffix.msi"
-    foreach ($pair in @(@($ShippedOld, $oldShipped), @($ShippedNew, $newShipped))) {
-        if (-not (Test-Path $pair[1])) {
-            Invoke-WebRequest "$base/v$($pair[0])/QuickMail-$($pair[0])-$suffix.msi" -OutFile $pair[1] -UseBasicParsing
-        }
+    $msi = Join-Path $work "QuickMail-$ShippedNew-$suffix.msi"
+    if (-not (Test-Path $msi)) {
+        Invoke-WebRequest "https://github.com/kellylford/QuickMail/releases/download/v$ShippedNew/QuickMail-$ShippedNew-$suffix.msi" -OutFile $msi -UseBasicParsing
     }
-    $hash = (Get-FileHash $newShipped -Algorithm SHA256).Hash
-    # The x64 and ARM64 entries both need a hash to validate; only this leg's is real, and
-    # winget only ever downloads this leg's.
+    $hash = (Get-FileHash $msi -Algorithm SHA256).Hash
+    # Both installer entries need a hash to validate; only this leg's is real, and winget only
+    # ever downloads this leg's.
     $other = '0' * 64
-
-    $null = & winget settings --enable LocalManifestFiles 2>&1
-    $templateDir = Join-Path $PSScriptRoot '..\installer\winget'
-    # Variants of the committed template, each a transformation of the installer manifest's
-    # text. The first run of this scenario found winget could not match the installed copy to
-    # the manifest at all ("No installed package found matching input criteria") with or
-    # without the entry's InstallerType, so this measures which correlation fields winget
-    # actually uses for an MSI whose visible row is Velopack's MSI:QuickMail.
-    $entryProduct = '(?m)^  ProductCode: MSI:QuickMail\r?\n'
-    $entryType    = '(?m)^  InstallerType: exe\r?\n'
-    $variants = [ordered]@{
-        'as committed' = { param($t) $t }
-        'entry without InstallerType' = { param($t) [regex]::Replace($t, $entryType, '') }
-        'entry with DisplayName and Publisher only' = { param($t) [regex]::Replace([regex]::Replace($t, $entryType, ''), $entryProduct, '') }
-        'installer-level ProductCode MSI:QuickMail' = { param($t) [regex]::Replace($t, '(?m)^(  InstallerSha256: .*)$', "`$1`n  ProductCode: MSI:QuickMail") }
-        'entry UpgradeCode added' = { param($t) [regex]::Replace($t, $entryType, "  InstallerType: exe`n  UpgradeCode: '{4F6E83C5-E7FB-5BBD-A3C3-6D78A4720D5E}'`n") }
+    $dir = Join-Path $work 'manifest'
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    foreach ($f in Get-ChildItem (Join-Path $PSScriptRoot '..\installer\winget') -Filter '*.yaml') {
+        $t = [IO.File]::ReadAllText($f.FullName)
+        $t = $t.Replace('<VERSION>', $ShippedNew).Replace('<RELEASE-DATE>', (Get-Date -Format 'yyyy-MM-dd'))
+        $t = $t.Replace('<X64-SHA256>', $(if ($Arch -eq 'x64') { $hash } else { $other }))
+        $t = $t.Replace('<ARM64-SHA256>', $(if ($Arch -eq 'arm64') { $hash } else { $other }))
+        [IO.File]::WriteAllText((Join-Path $dir $f.Name), $t, (New-Object Text.UTF8Encoding $false))
     }
+    $null = & winget settings --enable LocalManifestFiles 2>&1
+
+    # Bounded, and run as its own process so a hang is a measurement rather than a lost job:
+    # the first attempt at this scenario sat for 50 minutes inside winget until the job
+    # timeout killed it, taking the whole report with it. On a timeout winget is stopped but
+    # msiexec is NOT -- killing it mid-transaction wedges the Windows Installer service for
+    # every later step (#536's harness history) -- and the final reset is skipped.
     $diag = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
+    $logsBefore = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+    $stdout = Join-Path $work 'winget-install.out.txt'
+    $winget = (Get-Command winget).Source
+    $wargs = @('install', '--manifest', "`"$dir`"", '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity', '--verbose-logs')
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $proc = Start-Process -FilePath $winget -ArgumentList $wargs -PassThru -NoNewWindow -RedirectStandardOutput $stdout
+    # Touch the handle at once: without it, Start-Process -PassThru leaves ExitCode empty
+    # after a timed WaitForExit (checked: `winget --version` reported no exit code at all).
+    $null = $proc.Handle
+    $finished = $proc.WaitForExit(600000)
+    if ($finished) { $proc.WaitForExit() }
+    $sw.Stop()
+    $running = @()
+    if (-not $finished) {
+        $running = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'msiexec|QuickMail|Update|winget|powershell' } | ForEach-Object { "$($_.ProcessId) $($_.Name) $($_.CommandLine)" })
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        $script:SkipFinalReset = $true
+    }
+    Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    $code = if ($finished) { $proc.ExitCode } else { $null }
+
     $logOut = Join-Path $PWD 'winget-logs'
     New-Item -ItemType Directory -Force $logOut | Out-Null
-    $uninstalled = $false
-    $i = 0
-    foreach ($name in $variants.Keys) {
-        $i++
-        $dir = Join-Path $work "manifest-$i"
-        New-Item -ItemType Directory -Force $dir | Out-Null
-        foreach ($f in Get-ChildItem $templateDir -Filter '*.yaml') {
-            $t = [IO.File]::ReadAllText($f.FullName).Replace("`r`n", "`n")
-            $t = $t.Replace('<VERSION>', $ShippedNew).Replace('<RELEASE-DATE>', (Get-Date -Format 'yyyy-MM-dd'))
-            $t = $t.Replace('<X64-SHA256>', $(if ($Arch -eq 'x64') { $hash } else { $other }))
-            $t = $t.Replace('<ARM64-SHA256>', $(if ($Arch -eq 'arm64') { $hash } else { $other }))
-            if ($f.Name -like '*.installer.yaml') {
-                $before = $t
-                $t = & $variants[$name] $t
-                if ($i -gt 1 -and $t -eq $before) { throw "Building the '$name' variant changed nothing; its pattern no longer matches the template." }
-            }
-            [IO.File]::WriteAllText((Join-Path $dir $f.Name), $t, (New-Object Text.UTF8Encoding $false))
-        }
+    $newLogs = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Where-Object { $logsBefore -notcontains $_.FullName })
+    foreach ($l in $newLogs) { Copy-Item $l.FullName (Join-Path $logOut $l.Name) }
+    if (Test-Path $stdout) { Copy-Item $stdout (Join-Path $logOut 'winget-install.out.txt') }
 
-        $null = Reset-Machine
-        $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldShipped`"", '/qn', '/norestart')
-        if ($r1.ExitCode -ne 0) { throw "Premise failed: the shipped $ShippedOld MSI exited $($r1.ExitCode)." }
-        $before = Get-Snapshot "$name -- shipped $ShippedOld installed"
-        $row = @($before.Arp | Where-Object { $_.SystemComponent -ne 1 -and $_.KeyName -eq 'MSI:QuickMail' })
-        if ($row.Count -ne 1 -or $row[0].DisplayVersion -ne $ShippedOld) {
-            throw "Premise failed: expected one visible MSI:QuickMail row at $ShippedOld after installing it."
-        }
-
-        $logsBefore = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
-        $sw = [Diagnostics.Stopwatch]::StartNew()
-        $out = (& winget upgrade --manifest $dir --accept-package-agreements --accept-source-agreements --disable-interactivity --verbose-logs 2>&1 | Out-String)
-        $code = $LASTEXITCODE
-        $sw.Stop()
-        Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        # winget redraws progress with carriage returns; keep each line's last state, and only
-        # lines with something to read in them (the spinner and bar are punctuation).
-        $clean = (($out -split "`r?`n") | ForEach-Object { ($_ -split "`r")[-1].Trim() } | Where-Object { $_ -match '[A-Za-z0-9]' }) -join "`n"
-        Write-Section "### Variant $i -- $name"
-        Write-Section ''
-        Write-Section '```yaml'
-        Write-Section ((Get-Content (Join-Path $dir 'KellyLford.QuickMail.installer.yaml') | Where-Object { $_ -notmatch '^\s*#' -and $_.Trim() }) -join "`n")
-        Write-Section '```'
-        Write-Section ''
-        Write-Section "``winget upgrade --manifest`` -> exit $code (0x$('{0:X8}' -f $code)) in $([math]::Round($sw.Elapsed.TotalSeconds, 1))s"
+    $raw = if (Test-Path $stdout) { Get-Content $stdout -Raw } else { '' }
+    # winget redraws progress with carriage returns; keep each line's last state, and only
+    # lines with something to read in them (the spinner and bar are punctuation).
+    $clean = (("$raw" -split "`r?`n") | ForEach-Object { ($_ -split "`r")[-1].Trim() } | Where-Object { $_ -match '[A-Za-z0-9]' }) -join "`n"
+    if ($finished) {
+        Write-Section "``winget install --manifest`` -> exit $code (0x$('{0:X8}' -f $code)) in $([math]::Round($sw.Elapsed.TotalSeconds, 1))s"
+    } else {
+        Write-Section "``winget install --manifest`` **did not finish in 10 minutes** and was stopped. Processes still running at that moment:"
         Write-Section ''
         Write-Section '```'
-        Write-Section $clean
+        Write-Section ($running -join "`n")
+        Write-Section '```'
+    }
+    Write-Section ''
+    Write-Section '```'
+    Write-Section $clean
+    Write-Section '```'
+    Write-Section ''
+    # The installer command line winget built, which is what decides UI level and location.
+    $cmdLines = @($newLogs | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'msiexec|Installer args|Starting installer|Installer \[|InstallerArgs|Successfully installed|Install failed|exit code' } | Select-Object -Last 12)
+    if ($cmdLines.Count) {
+        Write-Section 'From winget''s verbose log (the full log is in the `winget-logs` artifact):'
+        Write-Section ''
+        Write-Section '```'
+        Write-Section ($cmdLines -join "`n")
         Write-Section '```'
         Write-Section ''
-        # winget's own account of the correlation, so a failure says why rather than only that.
-        $newLogs = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Where-Object { $logsBefore -notcontains $_.FullName })
-        foreach ($l in $newLogs) { Copy-Item $l.FullName (Join-Path $logOut "variant$i-$($l.Name)") }
-        if ($newLogs.Count) {
-            $lines = @($newLogs | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'QuickMail|correlat|ProductCode|UpgradeCode|[Ii]nstalled|[Mm]atch' } | Select-Object -Last 25)
-            Write-Section "winget verbose log (lines mentioning matching; full logs in the ``winget-logs`` artifact):"
-            Write-Section ''
-            Write-Section '```'
-            Write-Section ($lines -join "`n")
-            Write-Section '```'
-            Write-Section ''
-        }
-        $after = Get-Snapshot "$name -- after winget upgrade to $ShippedNew"
-        $vis = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
-        Write-Section "After: exit $code; visible rows $(($vis | ForEach-Object { "$($_.KeyName) $($_.DisplayVersion)" }) -join ', '); install directories $(($after.Dirs | ForEach-Object { $_.Path }) -join ', ')."
-        Write-Section ''
-        $upgraded = $code -eq 0 -and $vis.Count -eq 1 -and $vis[0].DisplayVersion -eq $ShippedNew
-        if ($upgraded) {
-            Write-Section "**Pass (variant $i, $name):** winget upgraded $ShippedOld to $ShippedNew; one visible row at $ShippedNew."
-        } else {
-            Add-Finding "On $Arch, ``winget upgrade --manifest`` with variant $i ($name) did NOT upgrade $ShippedOld to $ShippedNew (exit 0x$('{0:X8}' -f $code))."
-        }
+    }
 
-        if ($upgraded -and -not $uninstalled) {
-            # The first variant that upgrades also gets winget's uninstall, against the same
-            # manifest: it must find the row and run its QuietUninstallString.
-            $u = (& winget uninstall --manifest $dir --silent --accept-source-agreements --disable-interactivity 2>&1 | Out-String)
-            $ucode = $LASTEXITCODE
-            $uninstalled = $true
-            $gone = Get-Snapshot "$name -- after winget uninstall"
-            Write-Section "``winget uninstall --manifest`` (variant $i) -> exit 0x$('{0:X8}' -f $ucode); afterwards $(@($gone.Arp).Count) ARP row(s), $(@($gone.Dirs).Count) install director(ies), $(@($gone.Shortcuts).Count) shortcut(s)."
-            Write-Section ''
-            if ($ucode -ne 0 -or @($gone.Arp).Count -ne 0 -or @($gone.Dirs).Count -ne 0) {
-                Add-Finding "On $Arch, ``winget uninstall`` against variant $i exited 0x$('{0:X8}' -f $ucode) and left $(@($gone.Arp).Count) ARP row(s) and $(@($gone.Dirs).Count) install director(ies)."
-            }
-        }
+    $after = Get-Snapshot 'after winget install'
+    Write-Section (Format-Snapshot $after)
+    $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
+    $vis = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
+    if (-not $finished) {
+        Add-Finding "On $Arch, ``winget install --manifest`` of the shipped $ShippedNew MSI hung for 10 minutes. See Scenario 7 for what was still running."
+    } elseif ($code -ne 0) {
+        Add-Finding "On $Arch, ``winget install --manifest`` of the shipped $ShippedNew MSI exited 0x$('{0:X8}' -f $code)."
+    } elseif ($vis.Count -ne 1 -or $vis[0].KeyName -ne 'MSI:QuickMail' -or $vis[0].DisplayVersion -ne $ShippedNew -or @($after.Dirs).Count -ne 1 -or $after.Dirs[0].Path -ne $target) {
+        Add-Finding "On $Arch, ``winget install --manifest`` exited 0 but left visible rows [$(($vis | ForEach-Object { "$($_.KeyName) $($_.DisplayVersion)" }) -join ', ')] and directories [$(($after.Dirs | ForEach-Object { $_.Path }) -join ', ')]; expected one MSI:QuickMail $ShippedNew row and $target alone."
+    } else {
+        Write-Section "**Pass:** winget installed $ShippedNew from the template: one visible ``MSI:QuickMail`` row at $ShippedNew, installed in ``%LocalAppData%\QuickMail`` only."
     }
 }
 
 # --- report --------------------------------------------------------------------------
 
-$null = Reset-Machine
+# Skipped after a stopped winget: an msiexec may still hold the Windows Installer service,
+# and a reset that blocks on it would lose this report to the job timeout.
+if (-not (Get-Variable SkipFinalReset -Scope Script -ErrorAction SilentlyContinue)) { $null = Reset-Machine }
 
 $header = @()
 $header += "# QuickMail installer path matrix -- $Arch"

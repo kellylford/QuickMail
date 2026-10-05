@@ -61,9 +61,13 @@ of install it already has.
   that has already happened, forever.
   The entry's `InstallerType: exe` is needed because that row has no `WindowsInstaller=1`, so
   winget treats the installed copy as an `exe`. Without the entry saying so, winget refuses
-  a `wix` installer over it as a different installer technology. The install matrix's
-  scenario 7 runs a real `winget upgrade` between two shipped releases with and without the
-  line.
+  a `wix` installer over it as a different installer technology. That is read from
+  winget-cli's source, not measured, and cannot be measured yet: `winget upgrade`, even with
+  `--manifest`, finds the installed copy by looking the package Id up in the catalog
+  sources, so before the package is published it reports "No installed package found"
+  whatever the manifest says (install-matrix run 37274030522, verbose log). The line only
+  widens what winget accepts, so it is safe either way. After the first version is
+  published, run `winget upgrade quickmail` on a machine with an older release installed.
 - **`Moniker: quickmail`** — makes `winget install quickmail` resolve without the full id.
 - **Two `Installers` entries** — x64 and arm64. winget picks the native one.
 
@@ -80,15 +84,9 @@ Prerequisite: Kelly's go. Any release from 0.8.48 on qualifies; use the newest.
    MSI upgrade over the copy you use is an uninstall and reinstall of it. winget-pkgs ships
    `Tools/SandboxTest.ps1` for this. Inside: `winget install --manifest <folder>`, launch,
    add an account, then check `winget list quickmail` shows one row at the manifest's
-   version and `winget upgrade` does not list it. Then `winget uninstall quickmail`.
-   In a second Sandbox, test the upgrade the way a user meets it: install the previous
-   release's manifest, launch and add an account (so a profile exists), turn on
-   start-at-sign-in, then `winget upgrade --manifest <this folder>`. Listen for the
-   "remove your data?" prompt, note when it appears and whether it takes focus, answer No,
-   and check whether start-at-sign-in is still on afterwards. What CI cannot cover: a copy
-   that **self-updated** before the MSI upgrade, so its files no longer match the old MSI's
-   file table. That is the state winget will actually meet. Scenario 7 upgrades an
-   untouched install.
+   version. Then `winget uninstall quickmail`. A fresh `winget install --manifest` is also
+   measured on CI by install-matrix scenario 7; the Sandbox run adds a launch, an account,
+   and what you hear.
 4. Fork microsoft/winget-pkgs, add the folder as
    `manifests/k/KellyLford/QuickMail/<version>/`, open the PR — or
    `wingetcreate submit --token <classic PAT with public_repo> <folder>`.
@@ -96,6 +94,16 @@ Prerequisite: Kelly's go. Any release from 0.8.48 on qualifies; use the newest.
 6. After it merges, on a machine that has never had QuickMail: `winget search quickmail`,
    `winget install quickmail`, launch, then let it self-update once and confirm
    `winget upgrade` still does not list it.
+7. **The upgrade, which cannot be tested before this point.** `winget upgrade` finds the
+   installed copy through the catalog (see the `InstallerType: exe` note above), so it is
+   only testable once a version is published. In a Sandbox: install the *previous* release's
+   MSI, then launch it as `QuickMail.exe --updateFeed C:\empty` (an empty folder, so it
+   finds no update to apply on exit), add an account, turn on start-at-sign-in, close it,
+   and run `winget upgrade quickmail`. Listen for the "remove your data?" prompt: note
+   when it appears and whether it takes focus, answer No, and check whether
+   start-at-sign-in is still on afterwards. Not covered even then: a copy that
+   **self-updated** before the MSI upgrade, so its files no longer match the old MSI's file
+   table — the state winget will usually meet, and the hardest to set up on purpose.
 
 ## Every later release
 
