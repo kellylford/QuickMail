@@ -774,7 +774,7 @@ Invoke-Scenario 'Scenario 6 -- silent MSI over a silent MSI install (the winget 
 }
 
 Invoke-Scenario "Scenario 7 -- a real ``winget upgrade`` between two shipped releases" `
-    "Installs the shipped $ShippedOld MSI, then runs ``winget upgrade --manifest`` with installer/winget's template filled for $ShippedNew. Twice: as committed, and with the AppsAndFeaturesEntries InstallerType line removed. Does winget accept the upgrade, and does the line matter?" {
+    "Installs the shipped $ShippedOld MSI, then runs ``winget upgrade --manifest`` with installer/winget's template filled for $ShippedNew. Once per correlation variant of the manifest. Which variants does winget match to the installed copy and upgrade?" {
     if (-not $script:WingetAvailable) { throw 'winget is not available on this runner.' }
     $work = Join-Path $PWD 'shipped'
     New-Item -ItemType Directory -Force $work | Out-Null
@@ -793,21 +793,41 @@ Invoke-Scenario "Scenario 7 -- a real ``winget upgrade`` between two shipped rel
 
     $null = & winget settings --enable LocalManifestFiles 2>&1
     $templateDir = Join-Path $PSScriptRoot '..\installer\winget'
-    $variants = [ordered]@{ 'as committed' = $true; 'without InstallerType: exe' = $false }
+    # Variants of the committed template, each a transformation of the installer manifest's
+    # text. The first run of this scenario found winget could not match the installed copy to
+    # the manifest at all ("No installed package found matching input criteria") with or
+    # without the entry's InstallerType, so this measures which correlation fields winget
+    # actually uses for an MSI whose visible row is Velopack's MSI:QuickMail.
+    $entryProduct = '(?m)^  ProductCode: MSI:QuickMail\r?\n'
+    $entryType    = '(?m)^  InstallerType: exe\r?\n'
+    $variants = [ordered]@{
+        'as committed' = { param($t) $t }
+        'entry without InstallerType' = { param($t) [regex]::Replace($t, $entryType, '') }
+        'entry with DisplayName and Publisher only' = { param($t) [regex]::Replace([regex]::Replace($t, $entryType, ''), $entryProduct, '') }
+        'installer-level ProductCode MSI:QuickMail' = { param($t) [regex]::Replace($t, '(?m)^(  InstallerSha256: .*)$', "`$1`n  ProductCode: MSI:QuickMail") }
+        'entry UpgradeCode added' = { param($t) [regex]::Replace($t, $entryType, "  InstallerType: exe`n  UpgradeCode: '{4F6E83C5-E7FB-5BBD-A3C3-6D78A4720D5E}'`n") }
+    }
+    $diag = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
+    $logOut = Join-Path $PWD 'winget-logs'
+    New-Item -ItemType Directory -Force $logOut | Out-Null
+    $uninstalled = $false
+    $i = 0
     foreach ($name in $variants.Keys) {
-        $keepType = $variants[$name]
-        $dir = Join-Path $work ("manifest-" + ($name -replace '[^a-z]', ''))
+        $i++
+        $dir = Join-Path $work "manifest-$i"
         New-Item -ItemType Directory -Force $dir | Out-Null
         foreach ($f in Get-ChildItem $templateDir -Filter '*.yaml') {
-            $t = [IO.File]::ReadAllText($f.FullName)
+            $t = [IO.File]::ReadAllText($f.FullName).Replace("`r`n", "`n")
             $t = $t.Replace('<VERSION>', $ShippedNew).Replace('<RELEASE-DATE>', (Get-Date -Format 'yyyy-MM-dd'))
             $t = $t.Replace('<X64-SHA256>', $(if ($Arch -eq 'x64') { $hash } else { $other }))
             $t = $t.Replace('<ARM64-SHA256>', $(if ($Arch -eq 'arm64') { $hash } else { $other }))
-            if (-not $keepType) { $t = [regex]::Replace($t, '(?m)^  InstallerType: exe\r?\n', '') }
+            if ($f.Name -like '*.installer.yaml') {
+                $before = $t
+                $t = & $variants[$name] $t
+                if ($i -gt 1 -and $t -eq $before) { throw "Building the '$name' variant changed nothing; its pattern no longer matches the template." }
+            }
             [IO.File]::WriteAllText((Join-Path $dir $f.Name), $t, (New-Object Text.UTF8Encoding $false))
         }
-        $hasType = (Get-Content (Join-Path $dir 'KellyLford.QuickMail.installer.yaml') -Raw) -match '(?m)^  InstallerType: exe'
-        if ($hasType -ne $keepType) { throw "Building the '$name' variant failed: the InstallerType line is $(if ($hasType) { 'present' } else { 'absent' })." }
 
         $null = Reset-Machine
         $r1 = Invoke-Installer 'msiexec.exe' @('/i', "`"$oldShipped`"", '/qn', '/norestart')
@@ -818,15 +838,20 @@ Invoke-Scenario "Scenario 7 -- a real ``winget upgrade`` between two shipped rel
             throw "Premise failed: expected one visible MSI:QuickMail row at $ShippedOld after installing it."
         }
 
+        $logsBefore = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
         $sw = [Diagnostics.Stopwatch]::StartNew()
-        $out = (& winget upgrade --manifest $dir --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1 | Out-String)
+        $out = (& winget upgrade --manifest $dir --accept-package-agreements --accept-source-agreements --disable-interactivity --verbose-logs 2>&1 | Out-String)
         $code = $LASTEXITCODE
         $sw.Stop()
         Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         # winget redraws progress with carriage returns; keep each line's last state, and only
         # lines with something to read in them (the spinner and bar are punctuation).
         $clean = (($out -split "`r?`n") | ForEach-Object { ($_ -split "`r")[-1].Trim() } | Where-Object { $_ -match '[A-Za-z0-9]' }) -join "`n"
-        Write-Section "### Variant: $name"
+        Write-Section "### Variant $i -- $name"
+        Write-Section ''
+        Write-Section '```yaml'
+        Write-Section ((Get-Content (Join-Path $dir 'KellyLford.QuickMail.installer.yaml') | Where-Object { $_ -notmatch '^\s*#' -and $_.Trim() }) -join "`n")
+        Write-Section '```'
         Write-Section ''
         Write-Section "``winget upgrade --manifest`` -> exit $code (0x$('{0:X8}' -f $code)) in $([math]::Round($sw.Elapsed.TotalSeconds, 1))s"
         Write-Section ''
@@ -834,27 +859,40 @@ Invoke-Scenario "Scenario 7 -- a real ``winget upgrade`` between two shipped rel
         Write-Section $clean
         Write-Section '```'
         Write-Section ''
+        # winget's own account of the correlation, so a failure says why rather than only that.
+        $newLogs = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Where-Object { $logsBefore -notcontains $_.FullName })
+        foreach ($l in $newLogs) { Copy-Item $l.FullName (Join-Path $logOut "variant$i-$($l.Name)") }
+        if ($newLogs.Count) {
+            $lines = @($newLogs | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'QuickMail|correlat|ProductCode|UpgradeCode|[Ii]nstalled|[Mm]atch' } | Select-Object -Last 25)
+            Write-Section "winget verbose log (lines mentioning matching; full logs in the ``winget-logs`` artifact):"
+            Write-Section ''
+            Write-Section '```'
+            Write-Section ($lines -join "`n")
+            Write-Section '```'
+            Write-Section ''
+        }
         $after = Get-Snapshot "$name -- after winget upgrade to $ShippedNew"
-        Write-Section (Format-Snapshot $after)
         $vis = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
+        Write-Section "After: exit $code; visible rows $(($vis | ForEach-Object { "$($_.KeyName) $($_.DisplayVersion)" }) -join ', '); install directories $(($after.Dirs | ForEach-Object { $_.Path }) -join ', ')."
+        Write-Section ''
         $upgraded = $code -eq 0 -and $vis.Count -eq 1 -and $vis[0].DisplayVersion -eq $ShippedNew
         if ($upgraded) {
-            Write-Section "**Pass ($name):** winget upgraded $ShippedOld to $ShippedNew; one visible row at $ShippedNew."
+            Write-Section "**Pass (variant $i, $name):** winget upgraded $ShippedOld to $ShippedNew; one visible row at $ShippedNew."
         } else {
-            Add-Finding "On $Arch, ``winget upgrade --manifest`` with the template $name did NOT upgrade $ShippedOld to $ShippedNew (exit $code; visible rows: $(($vis | ForEach-Object { "$($_.KeyName) $($_.DisplayVersion)" }) -join ', ')). See its section for winget's output."
+            Add-Finding "On $Arch, ``winget upgrade --manifest`` with variant $i ($name) did NOT upgrade $ShippedOld to $ShippedNew (exit 0x$('{0:X8}' -f $code))."
         }
 
-        if ($keepType) {
-            # Uninstall through winget too, against the same manifest: it must find the row
-            # and run its QuietUninstallString, leaving nothing behind.
+        if ($upgraded -and -not $uninstalled) {
+            # The first variant that upgrades also gets winget's uninstall, against the same
+            # manifest: it must find the row and run its QuietUninstallString.
             $u = (& winget uninstall --manifest $dir --silent --accept-source-agreements --disable-interactivity 2>&1 | Out-String)
             $ucode = $LASTEXITCODE
+            $uninstalled = $true
             $gone = Get-Snapshot "$name -- after winget uninstall"
-            Write-Section "``winget uninstall --manifest`` -> exit $ucode"
+            Write-Section "``winget uninstall --manifest`` (variant $i) -> exit 0x$('{0:X8}' -f $ucode); afterwards $(@($gone.Arp).Count) ARP row(s), $(@($gone.Dirs).Count) install director(ies), $(@($gone.Shortcuts).Count) shortcut(s)."
             Write-Section ''
-            Write-Section (Format-Snapshot $gone)
             if ($ucode -ne 0 -or @($gone.Arp).Count -ne 0 -or @($gone.Dirs).Count -ne 0) {
-                Add-Finding "On $Arch, ``winget uninstall`` against the committed manifest exited $ucode and left $(@($gone.Arp).Count) ARP row(s) and $(@($gone.Dirs).Count) install director(ies)."
+                Add-Finding "On $Arch, ``winget uninstall`` against variant $i exited 0x$('{0:X8}' -f $ucode) and left $(@($gone.Arp).Count) ARP row(s) and $(@($gone.Dirs).Count) install director(ies)."
             }
         }
     }

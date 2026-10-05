@@ -31,8 +31,8 @@ ReleaseDate: <RELEASE-DATE>
 # How winget recognises an installed copy. The MSI writes two Add/Remove Programs rows:
 # a hidden per-version {ProductCode} row that Velopack's self-updates never touch (#244), and
 # Velopack's visible HKCU\...\Uninstall\MSI:QuickMail, whose DisplayVersion self-updates DO
-# keep current (measured: registration 0.8.44.0, row and exe 0.8.52). winget identifies that row as ARP\User\<arch>\MSI:QuickMail, i.e. its
-# ProductCode is the key name. Correlate on it alone. Deliberately no UpgradeCode and no
+# keep current (measured: registration 0.8.44.0, row and exe 0.8.52). winget identifies
+# that row as ARP\User\<arch>\MSI:QuickMail, i.e. its ProductCode is the key name. Correlate on it alone. Deliberately no UpgradeCode and no
 # installer-level ProductCode: both lead winget to the Windows Installer registration, which
 # reports the version originally installed, not the one running -- so `winget upgrade` would
 # offer an upgrade that self-update applied long ago. wingetcreate adds both automatically;

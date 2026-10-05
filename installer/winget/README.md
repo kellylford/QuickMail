@@ -28,18 +28,28 @@ of install it already has.
 - **`InstallerType: wix`, the release MSI** — the same `QuickMail-<version>-win.msi` /
   `-win-arm64.msi` the download page offers. Never `Setup.exe` (above). Both MSIs carry the
   right `Template` architecture (`x64`, `Arm64`), so winget's architecture check agrees with
-  the manifest. No `InstallerSwitches`: winget passes `/quiet /norestart` itself.
+  the manifest. No `InstallerSwitches`: winget supplies the MSI's own, `/passive` by
+  default (a progress window) and `/quiet` under `-h`.
 - **`Scope: user`** — per-user, no elevation. The MSI has no `ALLUSERS`; it is per-user only.
 - **`RequireExplicitUpgrade: true`** — QuickMail updates itself, and keeps its Add/Remove
   Programs version current while doing so, so winget seldom has an upgrade to offer. When it
   does, a newer MSI over an older one is a Windows Installer major upgrade that uninstalls the
-  old copy first, firing the "remove your data?" prompt mid-upgrade (#245, won't-fix; default
-  keep). This keeps that out of an unattended `winget upgrade --all`.
+  old copy first (#245, won't-fix upstream). That uninstall runs QuickMail's uninstall hook,
+  which does two things nobody wants during an upgrade:
+  - **It offers to delete the user's data**, with a prompt saying QuickMail has been
+    uninstalled. The prompt runs detached, so it can appear after the new version is already
+    in place. The default answer keeps everything. Answering Yes, believing the message,
+    deletes the profile and saved passwords of a working install.
+  - **It removes the start-at-sign-in entry (#770)**, and the new install does not put it
+    back.
+
+  `RequireExplicitUpgrade` keeps all of that out of an unattended `winget upgrade --all`.
   `winget upgrade quickmail` still works when someone asks for it by name.
 - **`UpgradeBehavior: install`** — winget runs the newer MSI, and Windows Installer's major
   upgrade is the upgrade. `uninstallPrevious` would add a second uninstall, and prompt, of
   its own.
-- **`AppsAndFeaturesEntries` with `ProductCode: MSI:QuickMail` only** — that is Velopack's
+- **`AppsAndFeaturesEntries` with `ProductCode: MSI:QuickMail` and `InstallerType: exe`** —
+  that is Velopack's
   visible `HKCU\…\Uninstall\MSI:QuickMail` row, which winget lists as
   `ARP\User\<arch>\MSI:QuickMail`. Self-updates keep its `DisplayVersion` current. Measured
   on Kelly's machine, 2026-10-05: installed from the 0.8.44 MSI on 2026-09-03 and
@@ -49,6 +59,11 @@ of install it already has.
   they point winget at the Windows Installer registration, whose version is the one first
   installed and is never updated by self-update (#244). winget would then offer an upgrade
   that has already happened, forever.
+  The entry's `InstallerType: exe` is needed because that row has no `WindowsInstaller=1`, so
+  winget treats the installed copy as an `exe`. Without the entry saying so, winget refuses
+  a `wix` installer over it as a different installer technology. The install matrix's
+  scenario 7 runs a real `winget upgrade` between two shipped releases with and without the
+  line.
 - **`Moniker: quickmail`** — makes `winget install quickmail` resolve without the full id.
 - **Two `Installers` entries** — x64 and arm64. winget picks the native one.
 
@@ -66,6 +81,14 @@ Prerequisite: Kelly's go. Any release from 0.8.48 on qualifies; use the newest.
    `Tools/SandboxTest.ps1` for this. Inside: `winget install --manifest <folder>`, launch,
    add an account, then check `winget list quickmail` shows one row at the manifest's
    version and `winget upgrade` does not list it. Then `winget uninstall quickmail`.
+   In a second Sandbox, test the upgrade the way a user meets it: install the previous
+   release's manifest, launch and add an account (so a profile exists), turn on
+   start-at-sign-in, then `winget upgrade --manifest <this folder>`. Listen for the
+   "remove your data?" prompt, note when it appears and whether it takes focus, answer No,
+   and check whether start-at-sign-in is still on afterwards. What CI cannot cover: a copy
+   that **self-updated** before the MSI upgrade, so its files no longer match the old MSI's
+   file table. That is the state winget will actually meet. Scenario 7 upgrades an
+   untouched install.
 4. Fork microsoft/winget-pkgs, add the folder as
    `manifests/k/KellyLford/QuickMail/<version>/`, open the PR — or
    `wingetcreate submit --token <classic PAT with public_repo> <folder>`.

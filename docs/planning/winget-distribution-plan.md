@@ -310,8 +310,9 @@ where it was (#244). The manifest therefore correlates on the visible row's key 
 
 ### Upgrade path
 
-Scenario 6 (new): a newer MSI with `/quiet` over an older one installed the same way, which
-is what `winget upgrade quickmail` runs. Run
+Scenario 6 (new): a newer MSI over an older one installed silently, which is what
+`winget upgrade quickmail` runs. (That run used `/quiet`; the scenario now uses `/passive`,
+winget's default. Both are UI level < 5.) Run
 [37271290766](https://github.com/kellylford/QuickMail/actions/runs/37271290766), vpk 1.2.161:
 
 | | x64 | ARM64 |
@@ -320,15 +321,33 @@ is what `winget upgrade quickmail` runs. Run
 | Install directories | `%LocalAppData%\QuickMail` only, before and after | same |
 | Visible ARP rows | one, `MSI:QuickMail`, DisplayVersion advances 1.0.0 -> 1.0.1 | same |
 | Windows Installer registrations | one, at the new ProductCode | same |
-| Verbose log | `RemoveExistingProducts` runs; the older product is removed during the upgrade | same |
+| Verbose log | the old product's nested uninstall runs (see the note below) | same |
 
 So the upgrade does not relocate the app, which was the other half of #554, and leaves
-nothing behind. It is still uninstall-then-install (#245, won't-fix upstream). On a machine
-with a QuickMail profile, that uninstall fires the "remove your data?" prompt partway through
-(default keep). CI has no profile, so the prompt itself is not observed here, only the
-uninstall that triggers it. That is why the manifest sets `RequireExplicitUpgrade: true`:
+nothing behind. It is still uninstall-then-install (#245, won't-fix upstream). The review
+of this change caught that the first version of the scenario proved that from
+`Doing action: RemoveExistingProducts`, which a fresh install also logs. It now looks for
+the nested uninstall's `UPGRADINGPRODUCTCODE=… REMOVE=ALL` command line and the
+`UninstallHookDeferred` action, and the upgrade log of the run above has both.
+
+That hook is the cost. On a real machine it (a) offers to delete the user's data with a
+prompt saying QuickMail has been uninstalled, detached, so it can appear after the new
+version is in place, and Yes deletes the profile and saved passwords of a working install;
+and (b) removes the start-at-sign-in Run entry (#770), which the new install does not put
+back. CI has no profile and no Run entry, so neither is observed there, only the hook
+running. That is why the manifest sets `RequireExplicitUpgrade: true`:
 `winget upgrade --all` skips QuickMail, which updates itself anyway, and only
-`winget upgrade quickmail`, asked for by name, can reach the prompt.
+`winget upgrade quickmail`, asked for by name, can reach the prompt. Making the hook
+upgrade-aware would remove the cost altogether. That is an app change, tracked separately.
+
+Not measured anywhere yet: a copy that self-updated *before* the MSI upgrade, so its files no
+longer match the old MSI's file table. That is the state winget actually meets, since it only
+offers an upgrade to a copy whose visible row is behind the catalog. The README's Sandbox
+recipe includes it.
+
+### A real `winget upgrade`
+
+<!-- SCENARIO7 -->
 
 ### What changes in Phases 2-5
 

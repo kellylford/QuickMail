@@ -22,11 +22,18 @@ containing:
   remains the portable download
 
 The `vpk` CLI is a .NET global tool. CI installs the version pinned in `.github/vpk-version`
-(`dotnet tool install -g vpk --version <that>`); match it locally. It was unpinned until
+(`dotnet tool install -g vpk --version <that>`); match it locally. It was unpinned through
 0.8.52, and moved from 1.2.0 to 1.2.158 between 0.8.47 and 0.8.48 without anyone noticing.
 To bump it: run the *Winget install-path matrix* workflow with the new version as its
 `vpk_version` input, re-check the channel filename listing below against that run's
 Scenario 0, then edit the file.
+
+The `Velopack` NuGet package the app references is a separate pin
+(`QuickMail/QuickMail.csproj`) and is still 1.2.0, so packing logs
+`Velopack library version is lower than vpk version (1.2.0.0 < 1.2.161.0)`. Releases from 0.8.48
+on have shipped with that mismatch and self-updated normally. Bringing the package up to
+the CLI is an app change that needs its own update-cycle test (*Testing updates locally*
+below), not a side effect of a CLI bump.
 
 ## Two architectures, two channels
 
@@ -132,8 +139,10 @@ leaves ARM64 output in `bin/Release` until the next ordinary build.
   ```
 
   What did not change: a newer MSI over an older one is still a Windows Installer major
-  upgrade that uninstalls the old copy first, data-removal prompt included (#245). The
-  in-app updater is the upgrade path; the MSI is for first installs.
+  upgrade that uninstalls the old copy first (#245; measured again in install-matrix
+  scenario 6). The uninstall runs the uninstall hook, which offers to delete the user's
+  data, saying QuickMail has been uninstalled, and removes the start-at-sign-in entry (#770).
+  The in-app updater is the upgrade path; the MSI is for first installs.
   `Setup.exe --silent` installs to the same place and overwrites in place without the
   uninstall hook, which is why winget was first going to use it. It is not shipped, and the
   bullet below is why.

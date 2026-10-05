@@ -113,7 +113,8 @@ jobs:
         env:
           VPK_REQUESTED: ${{ github.event.inputs.vpk_version }}
         run: |
-          $want = if ($env:VPK_REQUESTED) { $env:VPK_REQUESTED.Trim() } else { (Get-Content .github/vpk-version -Raw).Trim() }
+          $requested = "$env:VPK_REQUESTED".Trim()
+          $want = if ($requested) { $requested } else { (Get-Content .github/vpk-version -Raw).Trim() }
           dotnet tool install -g vpk --version $want
           if ($LASTEXITCODE -ne 0) { throw "dotnet tool install vpk $want failed." }
           # vpk has no --version; the installed version comes from the tool manifest. Kept to
@@ -215,6 +216,7 @@ jobs:
             winget-matrix-${{ matrix.arch }}.md
             msi-fresh.log
             msi-upgrade.log
+            winget-logs/
             packs/vpk-emitted-*.txt
           if-no-files-found: warn
           retention-days: 14

@@ -284,14 +284,21 @@ make that the option to try first, and MSIX the fallback.
 - **Store policy 10.2.9 allows it without giving up self-update.** Non-game products may
   submit an HTTPS, versioned URL to a signed `.msi` or `.exe` that installs silently. The
   "install and update only through the Store" rule (10.2.5) is for games. The release MSI
-  meets every requirement as it stands: versioned URL on GitHub Releases, Authenticode-signed
-  through a Trusted Root chain, and since 0.8.48 a silent install that lands in
-  `%LocalAppData%\QuickMail` (measured, winget plan *Phase 1d*).
+  meets the requirements checked so far: a versioned URL on GitHub Releases,
+  Authenticode-signed through a Trusted Root chain, and, since 0.8.48, a silent install that
+  lands in `%LocalAppData%\QuickMail` (measured, winget plan *Phase 1d*). One is open: 10.2.9
+  also requires a standalone installer, "not a downloader stub/web installer that downloads
+  bits when run". The MSI is packed with `--framework webview2`. If it fetches the WebView2
+  runtime when that is missing, certification may object. Find out what the MSI does on a
+  machine without WebView2 before submitting.
 - **That removes most of this plan's cost.** No package identity means no `%APPDATA%`
   redirection (0a), no credential-vault isolation (0b), WebView2 installed on demand as
   today (0c), Velopack left on (Phase 2), and no migration dialog (Phase 3). An existing user
-  who installs the Store listing gets the MSI they already have, which upgrades in place
-  (#245's data prompt being the one rough edge, as for winget).
+  who installs the Store listing gets the MSI they already have. That is not an in-place
+  upgrade. It is a Windows Installer major upgrade, which uninstalls the old copy first and
+  runs the uninstall hook: the "remove your data?" prompt, worded as if QuickMail had been
+  uninstalled, and the loss of the start-at-sign-in entry. Both are the same as for winget
+  (winget plan *Phase 1d*), and both are fixed by making the hook upgrade-aware.
 
 **What is not known, and is the whole question:** whether a Store-delivered MSI is free of
 the SmartScreen prompt. Microsoft's SmartScreen page says Store-distributed apps are never
