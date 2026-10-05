@@ -1,22 +1,27 @@
 # QuickMail v0.8.53 Release Notes
 
+## Changed
+
+### Groundwork for winget and the Microsoft Store
+
+This release contains foundational work for distributing QuickMail through winget and the
+Microsoft Store, which had to be in place before either can move forward. Nothing changes in how
+you install or update QuickMail today.
+
 ## Fixed
 
-### Installing a newer QuickMail over an older one no longer acts like an uninstall
+### Running a newer installer over an installed copy
 
-Running a newer QuickMail installer over the copy you already have is an upgrade, but QuickMail
-treated it as an uninstall. Partway through, it said QuickMail had been uninstalled and offered to
-delete all your data, even though the new version was about to start working. It also turned off
-**Start QuickMail automatically when I sign in to Windows**. The same happens when an installer
-upgrades QuickMail for you, as winget would.
+This only affected anyone who ran a newer QuickMail installer (the `.msi`) over a copy that was
+already installed. Updates QuickMail installs by itself were never affected.
 
-QuickMail now checks before it asks: if QuickMail is installed again, nothing is asked, and start
-at sign-in is put back as it was, including if you had turned it off in Task Manager. A real
-uninstall still asks about your data, about ten seconds after QuickMail has been removed.
+In that case the installer briefly treated the upgrade as an uninstall: it could ask whether to
+delete your QuickMail data, and it turned off **Start QuickMail automatically when I sign in to
+Windows**. Now it recognises the upgrade, asks nothing, and keeps your start-at-sign-in setting.
+Uninstalling QuickMail still asks about your data as before.
 
-This takes effect for upgrades *from* 0.8.53 onward: the copy being replaced is the one that runs
-this check, so the upgrade from 0.8.52 or earlier to 0.8.53 still behaves the old way, one last
-time. If it asks, choose **No**. (#245)
+The copy being replaced is the one that makes this check, so it applies from 0.8.53 on. If you run
+the 0.8.53 installer over an older copy and it asks about your data, choose **No**. (#245)
 
 ## Reporting Issues
 
