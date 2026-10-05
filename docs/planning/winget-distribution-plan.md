@@ -347,7 +347,39 @@ recipe includes it.
 
 ### A real `winget upgrade`
 
-<!-- SCENARIO7 -->
+Scenario 7 runs winget itself against the template, filled for the shipped 0.8.52 MSIs,
+with a local manifest (`winget settings --enable LocalManifestFiles`). Five runs on both
+architectures established:
+
+1. **`winget upgrade` cannot be tested before the package is published.** Even with
+   `--manifest`, winget finds the installed copy by looking the package Id up in the catalog
+   sources (verbose log: `Performing search: Include:Id='KellyLford.QuickMail'`, then
+   `No app found matching input criteria`). Every correlation variant tried returned
+   "No installed package found" for that reason, so none of them is evidence about the
+   manifest. Run [37274030522](https://github.com/kellylford/QuickMail/actions/runs/37274030522).
+2. **The install mechanics work.** winget picks the native installer (`[Arm64,wix,User]`
+   over `[X64,...]` on ARM64), downloads, verifies the hash, and an install that reached
+   msiexec landed in `%LocalAppData%\QuickMail` with one visible `MSI:QuickMail` row at
+   0.8.52, exit 0, about 6 s. Run [37282130525](https://github.com/kellylford/QuickMail/actions/runs/37282130525).
+3. **A local-manifest install meets SmartScreen.** winget keeps the download's Mark of the
+   Web (`RemoveMotwIfApplicable failed`), and when it launches QuickMail's MSI Windows
+   starts `smartscreen.exe` / `CHXSmartScreen.exe` and msiexec never starts: a reputation
+   prompt is waiting that nobody on a runner can answer. That happened with `/passive` and
+   `/quiet` alike, whichever ran first. The install in point 2 reached msiexec only because
+   it followed an unanswered prompt. A widely installed MSI from the real catalog (Node.js
+   LTS) installed the same way with no prompt (x64; the ARM64 runner fails Node's
+   machine-wide install for an unrelated reason). So this is QuickMail's file reputation, the
+   same thing #746 is about, not winget and not the runner. Runs
+   [37285324978](https://github.com/kellylford/QuickMail/actions/runs/37285324978) and
+   [37291476011](https://github.com/kellylford/QuickMail/actions/runs/37291476011).
+
+What point 3 means for real users is **not measured and cannot be yet.** A catalog install
+comes from a trusted source, which removes the Mark of the Web before the installer runs,
+so it is expected not to prompt. If it does prompt, the user sees the same SmartScreen
+dialog a browser download gets, and can choose to run the installer anyway. That is
+unpleasant but not destructive. Checking this is the first thing to do once the package is
+published (README, step 6). Turning SmartScreen off by policy on the runner, to measure past
+the prompt, did not take effect without a reboot (run 37291476011).
 
 ### What changes in Phases 2-5
 

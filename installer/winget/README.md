@@ -84,16 +84,22 @@ Prerequisite: Kelly's go. Any release from 0.8.48 on qualifies; use the newest.
    MSI upgrade over the copy you use is an uninstall and reinstall of it. winget-pkgs ships
    `Tools/SandboxTest.ps1` for this. Inside: `winget install --manifest <folder>`, launch,
    add an account, then check `winget list quickmail` shows one row at the manifest's
-   version. Then `winget uninstall quickmail`. A fresh `winget install --manifest` is also
-   measured on CI by install-matrix scenario 7; the Sandbox run adds a launch, an account,
-   and what you hear.
+   version. Then `winget uninstall quickmail`. Expect a SmartScreen prompt before the install
+   starts. From a local manifest winget keeps the download's Mark of the Web, and
+   QuickMail's MSI has little reputation (plan, Phase 1d). Choose *More info* and then
+   *Run anyway*. Install-matrix scenario 7 measures the same install on CI, up to that prompt.
 4. Fork microsoft/winget-pkgs, add the folder as
    `manifests/k/KellyLford/QuickMail/<version>/`, open the PR — or
    `wingetcreate submit --token <classic PAT with public_repo> <folder>`.
 5. Expect automated validation plus a moderator on a first-time package; days, not hours.
 6. After it merges, on a machine that has never had QuickMail: `winget search quickmail`,
    `winget install quickmail`, launch, then let it self-update once and confirm
-   `winget upgrade` still does not list it.
+   `winget upgrade` still does not list it. **First, note whether a SmartScreen prompt
+   appears** during `winget install`. From a local manifest it always did (plan, Phase 1d,
+   scenario 7). From the catalog it is expected not to, since winget removes the Mark of the
+   Web for a trusted source, but that has not been seen. If it does appear, record what it
+   says and how a screen reader presents it. It means winget does not get around the
+   SmartScreen problem #746 is about.
 7. **The upgrade, which cannot be tested before this point.** `winget upgrade` finds the
    installed copy through the catalog (see the `InstallerType: exe` note above), so it is
    only testable once a version is published. In a Sandbox: install the *previous* release's

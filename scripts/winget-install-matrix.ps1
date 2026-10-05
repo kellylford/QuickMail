@@ -811,9 +811,11 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
     # - A widely installed MSI from the real catalog (Node.js LTS) installs the same way
     #   without a prompt. So it is QuickMail's low file reputation -- the browser-download
     #   problem of #746 -- not winget, and not the runner.
-    # So: (a) QuickMail with SmartScreen as shipped, bounded short, to keep recording that;
-    # (c) the control; then SmartScreen off on this disposable runner and (b) QuickMail
-    # again, which measures winget's install mechanics with the prompt out of the way.
+    # So this scenario records (a) QuickMail, bounded short, and (c) the control. Turning
+    # SmartScreen off by policy on the runner does not take effect without a reboot (tried:
+    # run 37291476011, smartscreen.exe still ran), so the install mechanics are not
+    # re-measured here; run 37282130525 measured them, when a /quiet attempt that ran after
+    # an unanswered prompt installed into %LocalAppData%\QuickMail with one row.
     # Whether a CATALOG install (a trusted source, which removes the Mark of the Web) meets
     # the prompt is not measurable until the package is published; README step 6.
     $diag = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
@@ -822,9 +824,8 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
     $winget = (Get-Command winget).Source
     $common = @('--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity', '--verbose-logs')
     $attempts = [ordered]@{
-        'a -- QuickMail, SmartScreen as shipped' = @{ Args = @('install', '--manifest', "`"$dir`"") + $common; Seconds = 180; SmartScreenOff = $false }
-        'c -- control: OpenJS.NodeJS.LTS from the winget catalog, SmartScreen as shipped' = @{ Args = @('install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--source', 'winget') + $common; Seconds = 300; SmartScreenOff = $false }
-        'b -- QuickMail, SmartScreen turned off on this runner' = @{ Args = @('install', '--manifest', "`"$dir`"") + $common; Seconds = 300; SmartScreenOff = $true }
+        'a -- QuickMail, SmartScreen as shipped' = @{ Args = @('install', '--manifest', "`"$dir`"") + $common; Seconds = 180 }
+        'c -- control: OpenJS.NodeJS.LTS from the winget catalog, SmartScreen as shipped' = @{ Args = @('install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--source', 'winget') + $common; Seconds = 300 }
     }
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
     $n = 0
@@ -832,14 +833,6 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
         $n++
         $spec = $attempts[$label]
         $isQuickMail = $label -like '*QuickMail*'
-        if ($spec.SmartScreenOff) {
-            # Machine policy, read per launch: what an administrator's Group Policy setting
-            # "Configure Windows Defender SmartScreen = Disabled" writes.
-            $pol = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'
-            New-Item -Path $pol -Force | Out-Null
-            Set-ItemProperty -Path $pol -Name EnableSmartScreen -Value 0 -Type DWord
-            Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer' -Name SmartScreenEnabled -Value 'Off'
-        }
         if ($isQuickMail) { $null = Reset-Machine }
         $logsBefore = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
         $stdout = Join-Path $work "winget-attempt$n.out.txt"
@@ -905,8 +898,8 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
             Write-Section (Format-Snapshot $after)
             $vis = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
             $smartScreenRan = @($spawned | Where-Object { $_ -match 'smartscreen' }).Count -gt 0
-            if (-not $finished -and -not $spec.SmartScreenOff -and $smartScreenRan) {
-                Write-Section "**Expected:** waiting on a SmartScreen prompt, as on every earlier run. Not a finding by itself; attempt b below says whether the install works once that prompt is out of the way."
+            if (-not $finished -and $smartScreenRan) {
+                Write-Section "**Expected:** waiting on a SmartScreen prompt, as on every earlier run. Not a finding by itself; see the plan's Phase 1d."
             } elseif (-not $finished) {
                 Add-Finding "On $Arch, ``winget install --manifest`` attempt $label hung for $($spec.Seconds) seconds$(if ($smartScreenRan) { ' (SmartScreen ran)' } else { ' with no SmartScreen process -- a different hang from the known one' }). See Scenario 7."
             } elseif ($code -ne 0) {
