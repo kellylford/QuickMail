@@ -814,9 +814,22 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
     New-Item -ItemType Directory -Force $logOut | Out-Null
     $winget = (Get-Command winget).Source
     $common = @('--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity', '--verbose-logs')
+    # The template's SilentWithProgress override makes winget's default mode run /quiet; the
+    # `nooverride` copy has it removed, so attempt b reproduces winget's own /passive default.
+    # Template first, so a hang in b cannot be blamed on running first.
+    $dirPlain = Join-Path $work 'manifest-nooverride'
+    New-Item -ItemType Directory -Force $dirPlain | Out-Null
+    foreach ($f in Get-ChildItem $dir -Filter '*.yaml') {
+        $t = [IO.File]::ReadAllText($f.FullName)
+        $t = [regex]::Replace($t, '(?m)^InstallerSwitches:\r?\n  SilentWithProgress: [^\r\n]*\r?\n', '')
+        [IO.File]::WriteAllText((Join-Path $dirPlain $f.Name), $t, (New-Object Text.UTF8Encoding $false))
+    }
+    if ((Get-Content (Join-Path $dirPlain 'KellyLford.QuickMail.installer.yaml') -Raw) -match 'SilentWithProgress') {
+        throw 'Building the no-override manifest failed: SilentWithProgress is still present.'
+    }
     $attempts = [ordered]@{
-        'a -- QuickMail, default (/passive)' = @('install', '--manifest', "`"$dir`"") + $common
-        'b -- QuickMail, --silent (/quiet)'  = @('install', '--manifest', "`"$dir`"", '--silent') + $common
+        'a -- QuickMail, template as committed, winget default mode' = @('install', '--manifest', "`"$dir`"") + $common
+        'b -- QuickMail, without the SilentWithProgress override (winget''s /passive)' = @('install', '--manifest', "`"$dirPlain`"") + $common
         'c -- control: OpenJS.NodeJS.LTS from the winget catalog, default' = @('install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--source', 'winget') + $common
     }
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
