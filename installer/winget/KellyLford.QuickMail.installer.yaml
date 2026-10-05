@@ -13,17 +13,16 @@ InstallModes:
 - interactive
 - silent
 - silentWithProgress
-# winget's default mode (silentWithProgress) runs an MSI with /passive. Measured on both
-# architectures (install-matrix scenario 7, run 37282130525): `winget install --manifest`
-# with /passive never started msiexec -- Windows started SmartScreen instead, i.e. a
-# reputation prompt was waiting -- while the same install with /quiet finished in 6 s,
-# into %LocalAppData%\QuickMail with one row. A popular MSI (Node.js LTS) installed with
-# /passive normally, so it is QuickMail's low file reputation, the same thing behind the
-# browser download warning (#746). So the default mode runs /quiet too. winget prints its own
-# progress in the terminal; nothing is lost but an msiexec progress window.
-# Both are UI level < 5, which since vpk 1.2.158 sets the per-user default location.
-InstallerSwitches:
-  SilentWithProgress: /quiet /norestart
+# No InstallerSwitches: winget supplies an MSI's own -- /passive by default, /quiet under -h.
+# Both are UI level < 5, which since vpk 1.2.158 sets the per-user default location,
+# %LocalAppData%\QuickMail, the same as the wizard (measured on both architectures).
+#
+# SmartScreen, measured with a LOCAL manifest (install-matrix scenario 7): winget keeps the
+# download's Mark of the Web, and Windows then shows SmartScreen's reputation prompt before
+# msiexec starts, in either mode -- the browser-download problem of #746. A popular MSI from
+# the catalog installs the same way without one. A catalog install is a trusted source, which
+# removes the Mark of the Web, so it is expected not to prompt; that can only be checked once
+# the package is published (README, step 6).
 UpgradeBehavior: install
 # QuickMail updates itself through Velopack and keeps the Add/Remove Programs version
 # current as it does, so winget rarely has anything to upgrade. When it does (a copy that has

@@ -803,50 +803,53 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
     # service for every later step (#536's harness history) -- and if one is still running the
     # final reset is skipped.
     #
-    # Three attempts, because the second run of this scenario found winget hanging at
-    # "Starting package install..." on both architectures with no msiexec running and no MSI
-    # log written: (a) the template as committed, winget's default /passive; (b) the same with
-    # --silent, i.e. /quiet; (c) a control -- a widely installed MSI package from the real
-    # winget catalog, installed the same default way. If (c) hangs too, the hang is this
-    # runner's, not QuickMail's.
+    # What earlier runs of this scenario established, both architectures:
+    # - winget installs a local-manifest download with its Mark of the Web intact (its log:
+    #   "RemoveMotwIfApplicable failed"), and on launching QuickMail's MSI Windows starts
+    #   SmartScreen, whose reputation prompt nobody on a runner can answer: winget waits
+    #   forever and msiexec never starts. /passive and /quiet alike, whichever runs first.
+    # - A widely installed MSI from the real catalog (Node.js LTS) installs the same way
+    #   without a prompt. So it is QuickMail's low file reputation -- the browser-download
+    #   problem of #746 -- not winget, and not the runner.
+    # So: (a) QuickMail with SmartScreen as shipped, bounded short, to keep recording that;
+    # (c) the control; then SmartScreen off on this disposable runner and (b) QuickMail
+    # again, which measures winget's install mechanics with the prompt out of the way.
+    # Whether a CATALOG install (a trusted source, which removes the Mark of the Web) meets
+    # the prompt is not measurable until the package is published; README step 6.
     $diag = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
     $logOut = Join-Path $PWD 'winget-logs'
     New-Item -ItemType Directory -Force $logOut | Out-Null
     $winget = (Get-Command winget).Source
     $common = @('--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity', '--verbose-logs')
-    # The template's SilentWithProgress override makes winget's default mode run /quiet; the
-    # `nooverride` copy has it removed, so attempt b reproduces winget's own /passive default.
-    # Template first, so a hang in b cannot be blamed on running first.
-    $dirPlain = Join-Path $work 'manifest-nooverride'
-    New-Item -ItemType Directory -Force $dirPlain | Out-Null
-    foreach ($f in Get-ChildItem $dir -Filter '*.yaml') {
-        $t = [IO.File]::ReadAllText($f.FullName)
-        $t = [regex]::Replace($t, '(?m)^InstallerSwitches:\r?\n  SilentWithProgress: [^\r\n]*\r?\n', '')
-        [IO.File]::WriteAllText((Join-Path $dirPlain $f.Name), $t, (New-Object Text.UTF8Encoding $false))
-    }
-    if ((Get-Content (Join-Path $dirPlain 'KellyLford.QuickMail.installer.yaml') -Raw) -cmatch '(?m)^  SilentWithProgress:') {
-        throw 'Building the no-override manifest failed: SilentWithProgress is still present.'
-    }
     $attempts = [ordered]@{
-        'a -- QuickMail, template as committed, winget default mode' = @('install', '--manifest', "`"$dir`"") + $common
-        'b -- QuickMail, without the SilentWithProgress override (winget''s /passive)' = @('install', '--manifest', "`"$dirPlain`"") + $common
-        'c -- control: OpenJS.NodeJS.LTS from the winget catalog, default' = @('install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--source', 'winget') + $common
+        'a -- QuickMail, SmartScreen as shipped' = @{ Args = @('install', '--manifest', "`"$dir`"") + $common; Seconds = 180; SmartScreenOff = $false }
+        'c -- control: OpenJS.NodeJS.LTS from the winget catalog, SmartScreen as shipped' = @{ Args = @('install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--source', 'winget') + $common; Seconds = 300; SmartScreenOff = $false }
+        'b -- QuickMail, SmartScreen turned off on this runner' = @{ Args = @('install', '--manifest', "`"$dir`"") + $common; Seconds = 300; SmartScreenOff = $true }
     }
     $target = Join-Path $env:LOCALAPPDATA 'QuickMail'
     $n = 0
     foreach ($label in $attempts.Keys) {
         $n++
+        $spec = $attempts[$label]
         $isQuickMail = $label -like '*QuickMail*'
+        if ($spec.SmartScreenOff) {
+            # Machine policy, read per launch: what an administrator's Group Policy setting
+            # "Configure Windows Defender SmartScreen = Disabled" writes.
+            $pol = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'
+            New-Item -Path $pol -Force | Out-Null
+            Set-ItemProperty -Path $pol -Name EnableSmartScreen -Value 0 -Type DWord
+            Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer' -Name SmartScreenEnabled -Value 'Off'
+        }
         if ($isQuickMail) { $null = Reset-Machine }
         $logsBefore = @(Get-ChildItem $diag -Filter '*.log' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
         $stdout = Join-Path $work "winget-attempt$n.out.txt"
         $began = Get-Date
         $sw = [Diagnostics.Stopwatch]::StartNew()
-        $proc = Start-Process -FilePath $winget -ArgumentList $attempts[$label] -PassThru -NoNewWindow -RedirectStandardOutput $stdout
+        $proc = Start-Process -FilePath $winget -ArgumentList $spec.Args -PassThru -NoNewWindow -RedirectStandardOutput $stdout
         # Touch the handle at once: without it, Start-Process -PassThru leaves ExitCode empty
         # after a timed WaitForExit (checked: `winget --version` reported no exit code at all).
         $null = $proc.Handle
-        $finished = $proc.WaitForExit(300000)
+        $finished = $proc.WaitForExit($spec.Seconds * 1000)
         if ($finished) { $proc.WaitForExit() }
         $sw.Stop()
         $spawned = @()
@@ -855,6 +858,9 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
             # prompt or a child, is in here.
             $spawned = @(Get-CimInstance Win32_Process | Where-Object { $_.CreationDate -ge $began } | ForEach-Object { "$($_.ProcessId) (parent $($_.ParentProcessId)) $($_.Name) $($_.CommandLine)" })
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            # The unanswered prompt outlives winget and blocked the next attempt's launch on an
+            # earlier run (and, on ARM64, the rest of the job). Clear it.
+            Get-Process smartscreen, CHXSmartScreen -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
             if (Get-Process msiexec -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -ge $began }) { $script:SkipFinalReset = $true }
         }
         Get-Process QuickMail -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -873,7 +879,7 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
         if ($finished) {
             Write-Section "Exit $code (0x$('{0:X8}' -f $code)) in $([math]::Round($sw.Elapsed.TotalSeconds, 1))s."
         } else {
-            Write-Section "**Did not finish in 5 minutes** and was stopped. Processes started during the attempt:"
+            Write-Section "**Did not finish in $($spec.Seconds) seconds** and was stopped. Processes started during the attempt:"
             Write-Section ''
             Write-Section '```'
             Write-Section ($spawned -join "`n")
@@ -898,8 +904,11 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
             $after = Get-Snapshot "after attempt $label"
             Write-Section (Format-Snapshot $after)
             $vis = @($after.Arp | Where-Object { $_.SystemComponent -ne 1 })
-            if (-not $finished) {
-                Add-Finding "On $Arch, ``winget install --manifest`` attempt $label hung for 5 minutes. See Scenario 7 for what was running."
+            $smartScreenRan = @($spawned | Where-Object { $_ -match 'smartscreen' }).Count -gt 0
+            if (-not $finished -and -not $spec.SmartScreenOff -and $smartScreenRan) {
+                Write-Section "**Expected:** waiting on a SmartScreen prompt, as on every earlier run. Not a finding by itself; attempt b below says whether the install works once that prompt is out of the way."
+            } elseif (-not $finished) {
+                Add-Finding "On $Arch, ``winget install --manifest`` attempt $label hung for $($spec.Seconds) seconds$(if ($smartScreenRan) { ' (SmartScreen ran)' } else { ' with no SmartScreen process -- a different hang from the known one' }). See Scenario 7."
             } elseif ($code -ne 0) {
                 Add-Finding "On $Arch, ``winget install --manifest`` attempt $label exited 0x$('{0:X8}' -f $code)."
             } elseif ($vis.Count -ne 1 -or $vis[0].KeyName -ne 'MSI:QuickMail' -or $vis[0].DisplayVersion -ne $ShippedNew -or @($after.Dirs).Count -ne 1 -or $after.Dirs[0].Path -ne $target) {
@@ -908,9 +917,9 @@ Invoke-Scenario "Scenario 7 -- ``winget install --manifest`` on a clean machine,
                 Write-Section "**Pass ($label):** one visible ``MSI:QuickMail`` row at $ShippedNew, installed in ``%LocalAppData%\QuickMail`` only."
             }
         } else {
-            $verdict = if (-not $finished) { 'hung too -- so the hang is this runner''s, and the QuickMail attempts above say nothing about real machines' } elseif ($code -eq 0) { 'installed normally -- so a QuickMail hang above is specific to QuickMail''s package' } else { "exited 0x$('{0:X8}' -f $code), so it neither confirms nor rules out the runner" }
+            $verdict = if (-not $finished) { 'hung too -- so the hang is this runner''s, and attempt a says nothing about real machines' } elseif ($code -eq 0) { 'installed normally with SmartScreen on -- so attempt a''s prompt is about QuickMail''s file reputation' } else { "exited 0x$('{0:X8}' -f $code), so it neither confirms nor rules out the runner" }
             Write-Section "**Control:** $verdict."
-            Add-Finding "On $Arch the control package $verdict."
+            if ($code -ne 0) { Add-Finding "On $Arch the control package $verdict." }
         }
         Write-Section ''
     }
