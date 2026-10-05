@@ -29,14 +29,17 @@ To bump it: run the *Winget install-path matrix* workflow with the new version a
 Scenario 0, then edit the file.
 
 The `Velopack` NuGet package the app references is a separate pin
-(`QuickMail/QuickMail.csproj`). Keep it at the same version as the CLI: when the library is
-older, packing logs `Velopack library version is lower than vpk version`. Releases 0.8.48 to
+(`QuickMail/QuickMail.csproj`). Keep it at the same version as the CLI —
+`VelopackVersionPinTests` fails when they differ. When the library is older, packing logs
+`Velopack library version is lower than vpk version`; when it is **newer**, vpk logs an error
+it says may become fatal, so never bump the package (Dependabot will propose it) without the
+CLI. Releases 0.8.48 to
 0.8.53 shipped with library 1.2.0 under CLI 1.2.158/1.2.161 and self-updated normally; from
 0.8.54 the library is 1.2.161 too. Bumping the package is an app change, so give it the
 update-cycle test (*Testing updates locally* below) across the transition — from the last
 release's library to the new one, and from the new one to itself. The 1.2.161 bump was tested
-that way on ARM64 in the test VM: 0.8.53 updated to a 1.2.161-library build, which then updated
-to the next.
+that way on ARM64 in the test VM, with a local `--updateFeed` and the update applied on exit:
+0.8.53 updated to a 1.2.161-library build, which then updated to the next.
 
 ## Two architectures, two channels
 
