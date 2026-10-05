@@ -1,26 +1,25 @@
 # Winget Distribution — Plan
 
 **Issue:** [#536 — Distribute QuickMail through winget](https://github.com/kellylford/QuickMail/issues/536)
-**Status: STOPPED (2026-08-16). Do not ship, do not submit the manifests.** Nothing reached
-users — the stop happened before any release carried `Setup.exe`, and no README, user guide
-or release note ever mentioned winget.
+**Status (2026-10-05): RESUMED, with the MSI as the installer. Manifests ready; the first
+submission waits for Kelly's go.** See *Phase 1d* for why, and `installer/winget/README.md`
+for the submission recipe.
 
-The blocker is not winget itself. `Setup.exe` run over an existing **MSI** install leaves
-the machine with two Add/Remove Programs entries both named QuickMail, and removing the
-stale one deletes the working install (measured on both architectures — see *Phase 1c*).
-Every QuickMail user today installed from the MSI, so that is the path a winget install
-would take for essentially the whole user base. A release note saying "uninstall first" is
-not a control: the people most likely to try `winget install` on day one are the ones least
-likely to read it first.
+It was stopped on 2026-08-16, before anything reached users. The winget package then pointed
+at Velopack's `Setup.exe`, and `Setup.exe` run over an existing **MSI** install leaves two
+Add/Remove Programs entries both named QuickMail, where removing the stale one deletes the
+working install (*Phase 1c*). Every user installed from the MSI, so that was the path a
+winget install would take for nearly all of them. `Setup.exe` stopped shipping and still
+does not ship.
 
-What was merged and then reverted: shipping `Setup.exe` as a release asset (PR #555, undone)
-and the auto-publish workflow (PR #557's `winget-publish.yml`, deleted). What was kept: this
-plan, the manifest template under `installer/winget/` (marked on hold), and the CI harness
-`.github/workflows/winget-install-matrix.yml` (PR #560), which is what will re-verify the
-behaviour when this is picked back up. **What has to be true before revisiting is in
-[#536](https://github.com/kellylford/QuickMail/issues/536).**
+What un-stopped it: vpk 1.2.158 fixed the MSI's silent-install location upstream, and the
+release workflow, which installed vpk unpinned, had been packing with it since 0.8.48.
+With the MSI installing correctly when silent, the package can install the MSI itself. An
+MSI over an MSI install is the same kind of install every user already has: no second
+Add/Remove Programs row, nothing to delete by mistake. Phases 2-5 below still describe the
+Setup.exe design and are kept as the record; *Phase 1d* says what changed in each.
 
-**Date:** 2026-08-14, revised 2026-08-15 and 2026-08-16
+**Date:** 2026-08-14, revised 2026-08-15, 2026-08-16 and 2026-10-05
 
 ## Summary
 
@@ -264,6 +263,84 @@ was to stop shipping the asset, not merely to stop publishing the manifest.
 - **DisplayVersion after a Velopack self-update**, unchanged from above: it needs the app
   to run and update itself, which the probe does not do.
 
+## Phase 1d findings (2026-10-05) -- the MSI is now the installer
+
+### What changed upstream, and how it reached our releases unnoticed
+
+[velopack#945](https://github.com/velopack/velopack/issues/945), the silent MSI landing in
+a drive root, was fixed by Velopack PR #970 and shipped in **vpk 1.2.158** (2026-09-21),
+the first stable release after 1.2.0. `quickmail.yml` installed vpk unpinned, so the release
+build logs show the switch happening on its own: **0.8.47 packed with 1.2.0, 0.8.48 with
+1.2.158, 0.8.52 with 1.2.161.** This is the hazard Q5 below warned about, arriving as a fix
+rather than a breakage. Checked after the fact: the release asset names are identical before
+and after (no channel collision), and installed copies updated across the change.
+
+vpk is now pinned in `.github/vpk-version`, read by the release, on-demand installer and
+matrix workflows. That resolves Q5.
+
+### Measured
+
+Install-matrix run [37268689330](https://github.com/kellylford/QuickMail/actions/runs/37268689330),
+vpk 1.2.161, both architectures:
+
+| Scenario | x64 | ARM64 |
+| --- | --- | --- |
+| 1 -- `msiexec /qn`, fresh | exit 0; installs to `%LocalAppData%\QuickMail` only; one visible ARP row `MSI:QuickMail` at the new version, plus the MSI's hidden HKLM row; `winget list` shows one row, `ARP\User\X64\MSI:QuickMail` | same, `ARP\User\Arm64\...` |
+| 2, 5 -- Setup.exe and MSI over each other | unchanged from Phase 1b/1c: two visible rows | same |
+
+The release MSIs themselves (0.8.52): `Template` is `x64;1033` and `Arm64;1033`, no
+`ALLUSERS` (per-user only), Authenticode `Valid`, shared UpgradeCode
+`{4F6E83C5-E7FB-5BBD-A3C3-6D78A4720D5E}`. The installer manifest filled with 0.8.52's
+values passes `winget validate`.
+
+### What winget sees as the installed version
+
+On Kelly's machine (installed from the 0.8.44 MSI on 2026-09-03, self-updated since):
+
+| Where | Version |
+| --- | --- |
+| `current\QuickMail.exe` | 0.8.52 |
+| Velopack's visible `HKCU\...\Uninstall\MSI:QuickMail` row | 0.8.52 |
+| Windows Installer registration (`MsiGetProductInfo`, VersionString) | **0.8.44.0** |
+
+So self-update keeps the visible row current and leaves the Windows Installer registration
+where it was (#244). The manifest therefore correlates on the visible row's key alone
+(`ProductCode: MSI:QuickMail`) and deliberately carries no `UpgradeCode` or installer-level
+`ProductCode`, both of which lead winget to the stale registration.
+
+### Upgrade path
+
+Scenario 6 (new): a newer MSI with `/quiet` over an older one installed the same way, which
+is what `winget upgrade quickmail` runs. Run
+[37271290766](https://github.com/kellylford/QuickMail/actions/runs/37271290766), vpk 1.2.161:
+
+| | x64 | ARM64 |
+| --- | --- | --- |
+| Exit | 0, 4.7 s | 0, 5.8 s |
+| Install directories | `%LocalAppData%\QuickMail` only, before and after | same |
+| Visible ARP rows | one, `MSI:QuickMail`, DisplayVersion advances 1.0.0 -> 1.0.1 | same |
+| Windows Installer registrations | one, at the new ProductCode | same |
+| Verbose log | `RemoveExistingProducts` runs; the older product is removed during the upgrade | same |
+
+So the upgrade does not relocate the app, which was the other half of #554, and leaves
+nothing behind. It is still uninstall-then-install (#245, won't-fix upstream). On a machine
+with a QuickMail profile, that uninstall fires the "remove your data?" prompt partway through
+(default keep). CI has no profile, so the prompt itself is not observed here, only the
+uninstall that triggers it. That is why the manifest sets `RequireExplicitUpgrade: true`:
+`winget upgrade --all` skips QuickMail, which updates itself anyway, and only
+`winget upgrade quickmail`, asked for by name, can reach the prompt.
+
+### What changes in Phases 2-5
+
+- **Phase 2 (ship Setup.exe)** -- not needed. The MSIs already ship with every release.
+- **Phase 3 (first submission)** -- same steps, against the MSI template in
+  `installer/winget/`. Any release from 0.8.48 on qualifies.
+- **Phase 4 (automation)** -- same design, matching the two `.msi` assets. The Setup.exe
+  architecture caveat disappears: the MSIs' `Template` property already says `x64` and
+  `Arm64`.
+- **Phase 5 (docs)** -- unchanged in shape; the User Guide gains `winget install quickmail`
+  once the package is live, and says that QuickMail keeps updating itself.
+
 ## Phase 2 — Ship Setup.exe with every release (the one code change)
 
 `vpk pack` already emits `QuickMail-win-Setup.exe` (x64) and
@@ -407,7 +484,9 @@ decide then whether to patch it ourselves post-update.
    stable `vpk` (checked 2026-08-16); every version above it, including 1.2.110, carries a
    prerelease suffix. There is no stable release with the fix to upgrade *to*, and no
    published date for one.
-5. **Q5 (new):** Should `vpk` be pinned? The release workflow installs it with
+5. **Q5 (resolved 2026-10-05: pinned, in `.github/vpk-version`).** It moved unpinned from
+   1.2.0 to 1.2.158 between 0.8.47 and 0.8.48 without anyone noticing; see *Phase 1d*.
+   Original question: should `vpk` be pinned? The release workflow installs it with
    `dotnet tool install -g vpk`, unpinned, so a future release run silently packs with
    whatever version is newest that day. Two things in the tree currently pull in opposite
    directions on this: the workflow comment above the ARM64 pack step says "re-check this

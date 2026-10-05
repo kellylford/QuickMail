@@ -276,6 +276,34 @@ are the same whatever the listing ends up being called, and their results are wh
 whether the Store route is worth the migration work at all. Settle the name before submission,
 not before measurement.
 
+## Revisited 2026-10-05: list the existing MSI instead of building an MSIX
+
+This plan's non-goals dismiss a Store listing that points at the MSI. Two facts found since
+make that the option to try first, and MSIX the fallback.
+
+- **Store policy 10.2.9 allows it without giving up self-update.** Non-game products may
+  submit an HTTPS, versioned URL to a signed `.msi` or `.exe` that installs silently. The
+  "install and update only through the Store" rule (10.2.5) is for games. The release MSI
+  meets every requirement as it stands: versioned URL on GitHub Releases, Authenticode-signed
+  through a Trusted Root chain, and since 0.8.48 a silent install that lands in
+  `%LocalAppData%\QuickMail` (measured, winget plan *Phase 1d*).
+- **That removes most of this plan's cost.** No package identity means no `%APPDATA%`
+  redirection (0a), no credential-vault isolation (0b), WebView2 installed on demand as
+  today (0c), Velopack left on (Phase 2), and no migration dialog (Phase 3). An existing user
+  who installs the Store listing gets the MSI they already have, which upgrades in place
+  (#245's data prompt being the one rough edge, as for winget).
+
+**What is not known, and is the whole question:** whether a Store-delivered MSI is free of
+the SmartScreen prompt. Microsoft's SmartScreen page says Store-distributed apps are never
+subject to the download warning. It explains that by Microsoft's re-signing, which an MSI
+listing does not get. This plan's non-goal assumed the warning stays. Neither is measured.
+The test is one install of a submitted listing on a machine that has never run QuickMail.
+
+**Order:** settle the name (still Kelly's), submit the MSI listing, and measure. Return to
+Phase 0 and MSIX only if the MSI listing still warns. A Store listing also makes QuickMail
+installable from winget's `msstore` source, which does not replace the community package
+(#536) but costs nothing extra.
+
 ## Open questions
 
 1. **Q1.** Does the Store build get its own profile, or should it deliberately use the same

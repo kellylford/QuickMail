@@ -21,7 +21,12 @@ containing:
 - `QuickMail-win-Portable.zip` — **not shipped**; the raw single-file `publish/QuickMail.exe`
   remains the portable download
 
-The `vpk` CLI is a .NET global tool: `dotnet tool install -g vpk`.
+The `vpk` CLI is a .NET global tool. CI installs the version pinned in `.github/vpk-version`
+(`dotnet tool install -g vpk --version <that>`); match it locally. It was unpinned until
+0.8.52, and moved from 1.2.0 to 1.2.158 between 0.8.47 and 0.8.48 without anyone noticing.
+To bump it: run the *Winget install-path matrix* workflow with the new version as its
+`vpk_version` input, re-check the channel filename listing below against that run's
+Scenario 0, then edit the file.
 
 ## Two architectures, two channels
 
@@ -46,7 +51,9 @@ current version permanently. The naming is inconsistent on purpose.
 Velopack suffixes every file it writes with the channel name, so both channels can safely
 share one output folder and one GitHub release. That was verified against real vpk 1.2.0
 output (run 30710511730) and the listing is reproduced in the workflow comment above the
-ARM64 pack step. **Re-verify it after any vpk upgrade** — a filename collision would
+ARM64 pack step. The unnoticed move to 1.2.158/1.2.161 was checked after the fact: the
+asset names of 0.8.52 are identical to 0.8.47's, and installed copies updated across it.
+**Re-verify it after any vpk upgrade** — a filename collision would
 overwrite the x64 feed and strand every existing install.
 
 The only genuine collision is the portable executable, which is uploaded straight from the
@@ -109,28 +116,27 @@ leaves ARM64 output in `bin/Release` until the next ordinary build.
   is no signing certificate or long-lived secret in the repo — the workflow's OIDC token is
   exchanged for Azure credentials via `azure/login`. Consequence: **nothing may edit a
   packed MSI or exe after `vpk pack`** (a post-pack transform would void the signature).
-- **A silent MSI install must pass `VELOPACK_INSTALLDIR`** (issue #554). The MSI is the only
-  installer shipped, so it is also the only thing an unattended deployment — Intune, Group
-  Policy, a script — has to work with, and `msiexec /i … /qn` on its own puts the app in the
-  wrong place. In vpk 1.2.0 the MSI's `%LocalAppData%` default is set by the wizard's Next
-  button, so an unattended install falls back to the Directory-table default and lands in a
-  drive root — `C:\QuickMail` on one machine, `D:\QuickMail` on a CI runner, because Windows
-  Installer resolves `TARGETDIR` to the drive it prefers. A silent MSI over an existing
-  install then uninstalls the old copy (data-removal prompt included, per the #245
-  investigation) and relocates the app. The property takes an absolute path that the caller
-  expands — an MSI property cannot express "per-user":
+- **A silent MSI install goes to `%LocalAppData%\QuickMail`, from 0.8.48 on** (issue #554).
+  The MSI is the only installer shipped, so it is also what an unattended deployment —
+  Intune, Group Policy, a script, winget — runs. Releases up to 0.8.47 were packed with vpk
+  1.2.0, whose MSI set the per-user default only from the wizard's Next button, so
+  `msiexec /i … /qn` fell back to a drive root (`C:\QuickMail` on one machine, `D:\QuickMail`
+  on a CI runner). vpk 1.2.158 fixed it upstream (velopack/velopack#945, PR #970: a quiet
+  install, UI level below 5, now defaults to `%LocalAppData%`). Measured on both
+  architectures with vpk 1.2.161 (install-matrix run 37268689330, Scenario 1): one install
+  directory, `%LocalAppData%\QuickMail`, and one visible Add/Remove Programs row — the same
+  as a wizard install. For an MSI from 0.8.47 or earlier, pass the location yourself:
 
   ```bat
   msiexec /i QuickMail-<version>-win-arm64.msi /qn VELOPACK_INSTALLDIR="%LocalAppData%\QuickMail"
   ```
 
-  Velopack fixed this upstream (velopack/velopack#945 — `SetQuietDefaultInstallFolder` for
-  `UILevel<5`), but the fix has shipped only in the 1.2.110 prerelease. 1.2.0 remains the
-  newest stable `vpk`, so nothing here changes until a stable release carries it.
-  `Setup.exe --silent` has none of *those* problems — it installs to `%LocalAppData%\QuickMail`,
-  overwrites an existing install in place without invoking its uninstall hook, and writes the
-  `HKCU\…\Uninstall\QuickMail` entry (3-part `DisplayVersion`, `QuietUninstallString`) — which
-  is why winget was going to use it. It is not shipped, and the bullet below is why.
+  What did not change: a newer MSI over an older one is still a Windows Installer major
+  upgrade that uninstalls the old copy first, data-removal prompt included (#245). The
+  in-app updater is the upgrade path; the MSI is for first installs.
+  `Setup.exe --silent` installs to the same place and overwrites in place without the
+  uninstall hook, which is why winget was first going to use it. It is not shipped, and the
+  bullet below is why.
 - **`Setup.exe` over an MSI install leaves a booby-trapped Add/Remove Programs entry.** This
   is why `Setup.exe` is not a release asset, and it is not specific to winget: it applies to
   anyone who runs `Setup.exe` on a machine where QuickMail was installed from the MSI.
