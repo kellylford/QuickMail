@@ -170,6 +170,9 @@ jobs:
           # here. If this variable is ever dropped, the guard below fails the job rather than
           # letting them silently run nowhere.
           QUICKMAIL_RUN_INPUT_TESTS: "1"
+          # Child-process tests (ProcessTests: the uninstall data prompt's script, run through
+          # powershell.exe) are opt-in for the same reason, and guarded below the same way.
+          QUICKMAIL_RUN_PROCESS_TESTS: "1"
         # Both classes that were excluded here for driving the real clipboard now assert against an
         # injected IClipboardService instead, so nothing in the unit suite touches the OS clipboard
         # and the filter that skipped them is gone. It had been silently costing two whole classes of
@@ -230,6 +233,21 @@ jobs:
             exit 1
           }
           Write-Host "Synthesized-input tests executed: $($inputResults.Count) passed, 0 skipped."
+
+          # Same guarantee for the child-process tests: every UninstallDataPromptTests case passed,
+          # none skipped. They protect the uninstall prompt's upgrade-or-uninstall decision (#245),
+          # and are skipped on developer machines on the strength of CI running them.
+          $processResults = @($doc.TestRun.Results.UnitTestResult |
+            Where-Object { $_.testName -like '*UninstallDataPromptTests*' })
+          $notPassed = @($processResults | Where-Object { $_.outcome -ne 'Passed' })
+          if ($processResults.Count -eq 0 -or $notPassed.Count -gt 0) {
+            $detail = if ($processResults.Count -eq 0) { "none were recorded at all" }
+                      else { "not passed: " + (($notPassed | ForEach-Object { "$($_.testName) [$($_.outcome)]" }) -join ', ') }
+            Write-Error ("Child-process tests did not all run here ($detail). They are skipped by " +
+                         "default and rely on QUICKMAIL_RUN_PROCESS_TESTS=1 being set for this step.")
+            exit 1
+          }
+          Write-Host "Child-process tests executed: $($processResults.Count) passed, 0 skipped."
 
           # Coverage report. `total -le 0` above cannot tell a run that finished from one whose host
           # died partway: the tests that never ran are simply absent from the trx, `failed` stays 0,

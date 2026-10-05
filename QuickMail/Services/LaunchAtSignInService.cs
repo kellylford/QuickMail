@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Microsoft.Win32;
 
@@ -96,22 +97,100 @@ public sealed class LaunchAtSignInService : ILaunchAtSignInService
     /// Uninstall cleanup: removes every QuickMail startup entry — any profile — that starts
     /// <paramref name="exePath"/>, so an uninstalled QuickMail leaves nothing in Task Manager.
     /// Entries of the same name pointing at some other copy are not ours to remove.
+    /// Returns what it removed, Windows' on/off mark included, so that an uninstall which turns
+    /// out to be the first half of an upgrade can be undone (<see cref="Restore(IEnumerable{StartupEntry}, string)"/>).
+    /// One entry failing does not stop the rest, nor lose the record of those already removed.
     /// </summary>
-    public static void RemoveAllFor(string exePath) => RemoveAllFor(exePath, RunKeyPath, ApprovedKeyPath);
+    public static IReadOnlyList<StartupEntry> RemoveAllFor(string exePath) => RemoveAllFor(exePath, RunKeyPath, ApprovedKeyPath);
 
-    internal static void RemoveAllFor(string exePath, string runKeyPath, string approvedKeyPath)
+    internal static IReadOnlyList<StartupEntry> RemoveAllFor(string exePath, string runKeyPath, string approvedKeyPath)
     {
+        var removed = new List<StartupEntry>();
         using var run = Registry.CurrentUser.OpenSubKey(runKeyPath, writable: true);
-        if (run is null) return;
+        if (run is null) return removed;
 
         foreach (var name in run.GetValueNames())
         {
-            if (!IsOurValueName(name)) continue;
-            if (run.GetValue(name) is not string command || !PointsAt(command, exePath)) continue;
+            try
+            {
+                if (!IsOurValueName(name)) continue;
+                if (run.GetValue(name) is not string command || !PointsAt(command, exePath)) continue;
 
-            run.DeleteValue(name, throwOnMissingValue: false);
-            DeleteValue(approvedKeyPath, name);
+                byte[]? approval;
+                using (var approved = Registry.CurrentUser.OpenSubKey(approvedKeyPath))
+                    approval = approved?.GetValue(name) as byte[];
+
+                run.DeleteValue(name, throwOnMissingValue: false);
+                removed.Add(new StartupEntry(name, command, approval));
+                DeleteValue(approvedKeyPath, name);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                // Leave this one; the uninstall must not fail over a startup entry.
+            }
         }
+        return removed;
+    }
+
+    /// <summary>
+    /// Puts back startup entries <see cref="RemoveAllFor(string)"/> took away, Windows' on/off
+    /// mark with them, when the uninstall that removed them was really the first half of an
+    /// upgrade (#245: an MSI major upgrade uninstalls the old copy first). Each is rebuilt to
+    /// start <paramref name="exePath"/> — the copy just installed, which need not be where the
+    /// old one was — and only when its arguments are exactly what <see cref="BuildCommand"/>
+    /// writes, so a hand-off file cannot put an arbitrary command into the Run key. An entry is
+    /// skipped when a value of that name exists again, which is a newer decision than the one
+    /// being restored. Returns how many it restored.
+    /// </summary>
+    public static int Restore(IEnumerable<StartupEntry> entries, string exePath) =>
+        Restore(entries, exePath, RunKeyPath, ApprovedKeyPath);
+
+    internal static int Restore(IEnumerable<StartupEntry> entries, string exePath, string runKeyPath, string approvedKeyPath)
+    {
+        var restored = 0;
+        foreach (var entry in entries)
+        {
+            if (!IsOurValueName(entry.Name) || RebuildFor(entry.Command, exePath) is not { } command) continue;
+
+            using var run = Registry.CurrentUser.CreateSubKey(runKeyPath);
+            if (run.GetValue(entry.Name) is not null) continue;
+            run.SetValue(entry.Name, command, RegistryValueKind.String);
+
+            if (entry.Approval is { Length: > 0 })
+            {
+                using var approved = Registry.CurrentUser.CreateSubKey(approvedKeyPath);
+                approved.SetValue(entry.Name, entry.Approval, RegistryValueKind.Binary);
+            }
+            restored++;
+        }
+        return restored;
+    }
+
+    /// <summary>
+    /// <paramref name="command"/> rebuilt to start <paramref name="exePath"/>, or null when its
+    /// arguments are not the shape <see cref="BuildCommand"/> writes: <c>--startup</c>, then
+    /// optionally <c>--profileDir "dir"</c>.
+    /// </summary>
+    internal static string? RebuildFor(string command, string exePath)
+    {
+        var c = command.TrimStart();
+        string exeToken;
+        if (c.StartsWith('"'))
+        {
+            var end = c.IndexOf('"', 1);
+            if (end < 0) return null;
+            exeToken = c[..(end + 1)];
+        }
+        else
+        {
+            var space = c.IndexOf(' ');
+            exeToken = space < 0 ? c : c[..space];
+        }
+
+        var rest = c[exeToken.Length..];
+        var match = System.Text.RegularExpressions.Regex.Match(rest, "^ --startup(?: --profileDir \"([^\"]+)\")?\\z");
+        if (!match.Success) return null;
+        return BuildCommand(exePath, match.Groups[1].Success ? match.Groups[1].Value : null);
     }
 
     // ── Pure helpers (unit-tested directly) ─────────────────────────────────────

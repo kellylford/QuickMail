@@ -338,7 +338,10 @@ back. CI has no profile and no Run entry, so neither is observed there, only the
 running. That is why the manifest sets `RequireExplicitUpgrade: true`:
 `winget upgrade --all` skips QuickMail, which updates itself anyway, and only
 `winget upgrade quickmail`, asked for by name, can reach the prompt. Making the hook
-upgrade-aware would remove the cost altogether. That is an app change, tracked separately.
+upgrade-aware removes the cost: done for 0.8.53 (the data prompt asks only if QuickMail
+stays gone and no live install remains in Add/Remove Programs; start-at-sign-in entries are
+handed to the new copy's install hook). It helps upgrades *from* 0.8.53 on, since the replaced copy's hook
+is the one that runs; install-matrix scenarios 6 and 6b check it.
 
 Not measured anywhere yet: a copy that self-updated *before* the MSI upgrade, so its files no
 longer match the old MSI's file table. That is the state winget actually meets, since it only

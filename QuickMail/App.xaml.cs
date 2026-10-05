@@ -80,6 +80,9 @@ public partial class App : Application
                 RemoveStartupEntries();
                 LaunchUninstallDataPrompt();
             })
+            // A Windows Installer upgrade runs the OLD copy's uninstall hook before installing
+            // this one (#245), which took the startup entries away; put them back (#770).
+            .OnAfterInstallFastCallback(_ => RestoreStartupEntries())
             .Run();
 
         // One instance per profile (issue #240): with close-to-tray the process can be running
@@ -105,42 +108,72 @@ public partial class App : Application
     }
 
     // Uninstall cleanup for start at sign-in (#770): an uninstalled QuickMail must not leave an
-    // entry in Task Manager's Startup apps. Removes every profile's entry that starts this copy.
-    // Runs before the data prompt and, like it, must never fail the uninstall.
+    // entry in Task Manager's Startup apps. Removes every profile's entry that starts this copy,
+    // and hands what it removed to the next install in case this is the first half of an
+    // upgrade (StartupEntryHandoff). Runs before the data prompt and, like it, must never fail
+    // the uninstall.
     private static void RemoveStartupEntries()
     {
         try
         {
             if (Environment.ProcessPath is { } exe)
-                LaunchAtSignInService.RemoveAllFor(exe);
+            {
+                var removed = LaunchAtSignInService.RemoveAllFor(exe);
+                StartupEntryHandoff.Save(StartupEntryHandoff.DefaultPath, removed, DateTimeOffset.Now);
+            }
         }
         catch (Exception ex)
         {
-#pragma warning disable RCS1075 // last-resort diagnostics writer in the uninstall hook — LogService is not configured here, and a failure to write the diagnostic has no further channel
-            try
-            {
-                System.IO.File.AppendAllText(
-                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall.log"),
-                    $"{DateTime.Now:s} startup entry removal failed: {ex}\r\n");
-            }
-            catch (Exception) { }
-#pragma warning restore RCS1075
+            WriteHookDiagnostic($"startup entry removal failed: {ex}");
         }
+    }
+
+    // Install hook: restores the startup entries an upgrade's uninstall half removed (see
+    // RemoveStartupEntries). On an ordinary install there is no hand-off and nothing happens.
+    // Must never fail the install.
+    private static void RestoreStartupEntries()
+    {
+        try
+        {
+            var entries = StartupEntryHandoff.Take(StartupEntryHandoff.DefaultPath, DateTimeOffset.Now);
+            if (entries.Count == 0 || Environment.ProcessPath is not { } exe) return;
+            var restored = LaunchAtSignInService.Restore(entries, exe);
+            WriteHookDiagnostic($"install hook: restored {restored} of {entries.Count} startup entr{(entries.Count == 1 ? "y" : "ies")}");
+        }
+        catch (Exception ex)
+        {
+            WriteHookDiagnostic($"startup entry restore failed: {ex}");
+        }
+    }
+
+    // The install/uninstall hooks run before OnStartup, so LogService is not configured; they
+    // write here instead (%TEMP%\quickmail-uninstall.log, which the data prompt also uses).
+    private static void WriteHookDiagnostic(string text)
+    {
+#pragma warning disable RCS1075 // last-resort diagnostics writer in the install/uninstall hooks — LogService is not configured here, and a failure to write the diagnostic has no further channel
+        try
+        {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall.log"),
+                $"{DateTime.Now:s} {text}\r\n");
+        }
+        catch (Exception) { }
+#pragma warning restore RCS1075
     }
 
     private static bool IsSignInLaunch(string[] args) =>
         args.Contains(LaunchAtSignInService.StartupArg, StringComparer.OrdinalIgnoreCase);
 
-    // Uninstall-time offer to remove user data, mirroring the old installer's prompt.
-    // Update.exe kills hook processes after ~30 seconds — far too short to leave a question
-    // pending — so the prompt runs in a detached PowerShell process that outlives the
-    // uninstall. The default answer keeps everything; only an explicit Yes deletes the
-    // default profile (%APPDATA%\QuickMail) and QuickMail entries in Windows Credential
-    // Manager. Custom --profileDir locations are never touched. The whole mechanism is
-    // best-effort: on script-restricted machines (AppLocker, Constrained Language Mode)
-    // the prompt may never appear, in which case data is kept — the safe default.
-    // Diagnostics go to %TEMP%\quickmail-uninstall.log: LogService is not configured in
-    // the hook context (OnStartup never runs), so it cannot be used here.
+    // Uninstall-time offer to remove user data, mirroring the old installer's prompt. The prompt
+    // runs in a detached PowerShell process that outlives the uninstall, and first works out
+    // whether this "uninstall" is really the first half of an upgrade, in which case it asks
+    // nothing (see Helpers/UninstallDataPrompt). The default answer keeps everything; only an
+    // explicit Yes deletes the default profile (%APPDATA%\QuickMail) and QuickMail entries in
+    // Windows Credential Manager. Custom --profileDir locations are never touched. The whole
+    // mechanism is best-effort: on script-restricted machines (AppLocker, Constrained Language
+    // Mode) the prompt may never appear, in which case data is kept — the safe default.
+    // Diagnostics go to %TEMP%\quickmail-uninstall.log: LogService is not configured in the hook
+    // context (OnStartup never runs), so it cannot be used here.
     private static void LaunchUninstallDataPrompt()
     {
         var diagLog = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall.log");
@@ -149,50 +182,30 @@ public partial class App : Application
             var dataDir = System.IO.Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
             if (!System.IO.Directory.Exists(dataDir)) return;
+            if (Environment.ProcessPath is not { } exe) return;
 
-            var script = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall-prompt.ps1");
-            System.IO.File.WriteAllText(script, """
-                $log = Join-Path $env:TEMP 'quickmail-uninstall.log'
-                Add-Content -Path $log -Value "$(Get-Date -Format s) prompt script started"
-                Add-Type -AssemblyName System.Windows.Forms
-                $dir = Join-Path $env:APPDATA 'QuickMail'
-                if (-not (Test-Path $dir)) { exit }
-                $msg = "QuickMail has been uninstalled.`n`n" +
-                       "Do you also want to remove your QuickMail data? This permanently deletes all accounts, settings, contacts, rules, templates, saved views, and cached mail stored under:`n$dir`n`n" +
-                       "It also removes QuickMail's saved passwords and sign-ins from Windows Credential Manager.`n`n" +
-                       "Choose No to keep everything, so a future install picks up exactly where you left off."
-                $owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true }
-                $r = [System.Windows.Forms.MessageBox]::Show($owner, $msg, 'QuickMail Uninstall',
-                    [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                    [System.Windows.Forms.MessageBoxIcon]::Question,
-                    [System.Windows.Forms.MessageBoxDefaultButton]::Button2)
-                Add-Content -Path $log -Value "$(Get-Date -Format s) user answered: $r"
-                if ($r -eq [System.Windows.Forms.DialogResult]::Yes) {
-                    Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
-                    (cmdkey /list) | ForEach-Object {
-                        if ($_ -match 'target=(QuickMail\S*)') { cmdkey /delete:$($Matches[1]) | Out-Null }
-                    }
-                    Add-Content -Path $log -Value "$(Get-Date -Format s) data removal completed"
-                }
-                Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-                """);
+            // A name of its own: an earlier prompt still waiting would otherwise delete this one's
+            // script on its way out (the script removes itself).
+            var script = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"quickmail-uninstall-prompt-{Guid.NewGuid():N}.ps1");
+            System.IO.File.WriteAllText(script, UninstallDataPrompt.Script);
 
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File \"{script}\"",
+                Arguments = UninstallDataPrompt.Arguments(script, exe, dataDir, diagLog),
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                // Not the hook's own working directory, which Velopack sets to the install's
+                // current\ folder: a process's working directory cannot be deleted, so the
+                // waiting prompt would keep that folder from being removed by the uninstall.
+                WorkingDirectory = System.IO.Path.GetTempPath(),
             });
-            System.IO.File.AppendAllText(diagLog, $"{DateTime.Now:s} uninstall hook: prompt process launched\r\n");
+            WriteHookDiagnostic("uninstall hook: prompt process launched");
         }
         catch (Exception ex)
         {
             // The uninstall itself must never fail or stall because of this prompt.
-#pragma warning disable RCS1075 // this IS the last-resort diagnostics writer — a failure to write the diagnostic has no further channel and must not escape into the uninstall hook
-            try { System.IO.File.AppendAllText(diagLog, $"{DateTime.Now:s} uninstall hook failed: {ex}\r\n"); }
-            catch (Exception) { }
-#pragma warning restore RCS1075
+            WriteHookDiagnostic($"uninstall hook failed: {ex}");
         }
     }
 

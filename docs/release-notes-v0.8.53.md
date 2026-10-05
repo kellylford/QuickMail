@@ -1,5 +1,23 @@
 # QuickMail v0.8.53 Release Notes
 
+## Fixed
+
+### Installing a newer QuickMail over an older one no longer acts like an uninstall
+
+Running a newer QuickMail installer over the copy you already have is an upgrade, but QuickMail
+treated it as an uninstall. Partway through, it said QuickMail had been uninstalled and offered to
+delete all your data, even though the new version was about to start working. It also turned off
+**Start QuickMail automatically when I sign in to Windows**. The same happens when an installer
+upgrades QuickMail for you, as winget would.
+
+QuickMail now checks before it asks: if QuickMail is installed again, nothing is asked, and start
+at sign-in is put back as it was, including if you had turned it off in Task Manager. A real
+uninstall still asks about your data, about ten seconds after QuickMail has been removed.
+
+This takes effect for upgrades *from* 0.8.53 onward: the copy being replaced is the one that runs
+this check, so the upgrade from 0.8.52 or earlier to 0.8.53 still behaves the old way, one last
+time. If it asks, choose **No**. (#245)
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

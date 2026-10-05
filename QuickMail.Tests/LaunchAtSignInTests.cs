@@ -301,7 +301,185 @@ public sealed class LaunchAtSignInRegistryTests : IDisposable
     [Fact]
     public void RemoveAllFor_NoRunKey_DoesNotThrow()
     {
-        LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
+        Assert.Empty(LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath));
+    }
+
+    // ── Carrying entries across an MSI upgrade (#245, #770) ───────────────────────
+
+    [Fact]
+    public void RemoveAllFor_ReturnsWhatItRemoved_WindowsMarkIncluded()
+    {
+        Make().Enable();
+        var test = Make(profileDir: @"C:\Data\TestProfile");
+        test.Enable();
+        SetApproved(test.ValueName, 0x03);
+        SetRun("QuickMail (FFFFFFFF)", $"\"{OtherExe}\" --startup");   // another copy's: not removed
+
+        var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath)
+                                           .OrderBy(e => e.Name, StringComparer.Ordinal).ToList();
+
+        Assert.Equal(new[] { "QuickMail", test.ValueName }, removed.Select(e => e.Name));
+        Assert.Equal($"\"{Exe}\" --startup", removed[0].Command);
+        Assert.Null(removed[0].Approval);
+        Assert.Equal(test.Command, removed[1].Command);
+        Assert.NotNull(removed[1].Approval);
+        Assert.Equal((byte)0x03, removed[1].Approval![0]);
+    }
+
+    [Fact]
+    public void Restore_PutsTheEntriesBack_WithWindowsOffMark()
+    {
+        Make().Enable();
+        var test = Make(profileDir: @"C:\Data\TestProfile");
+        test.Enable();
+        SetApproved(test.ValueName, 0x03);
+        var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
+
+        var restored = LaunchAtSignInService.Restore(removed, Exe, RunPath, ApprovedPath);
+
+        Assert.Equal(2, restored);
+        Assert.Equal(LaunchAtSignInState.On, Make().GetState());
+        Assert.Equal(LaunchAtSignInState.DisabledInWindows, test.GetState());
+        Assert.Equal(test.Command, RunValue(test.ValueName));
+    }
+
+    [Fact]
+    public void Restore_PointsTheEntryAtTheCopyJustInstalled()
+    {
+        // An upgrade that lands in another folder must not restore a dead path.
+        const string newExe = @"D:\Apps\QuickMail\current\QuickMail.exe";
+        Make(profileDir: @"C:\Data\TestProfile").Enable();
+        var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
+
+        Assert.Equal(1, LaunchAtSignInService.Restore(removed, newExe, RunPath, ApprovedPath));
+
+        var moved = Make(exe: newExe, profileDir: @"C:\Data\TestProfile");
+        Assert.Equal(moved.Command, RunValue(moved.ValueName));
+        Assert.Equal(LaunchAtSignInState.On, moved.GetState());
+    }
+
+    [Fact]
+    public void Restore_RefusesACommandQuickMailWouldNotHaveWritten()
+    {
+        // A hand-off file is just a file in %TEMP%; it must not be able to put an arbitrary
+        // command into the Run key under QuickMail's name.
+        var planted = new[]
+        {
+            new StartupEntry("QuickMail", "\"C:\\Windows\\System32\\cmd.exe\" /c calc", null),
+            new StartupEntry("QuickMail (12345678)", $"\"{Exe}\" --startup --profileDir \"C:\\D\" & calc", null),
+        };
+
+        Assert.Equal(0, LaunchAtSignInService.Restore(planted, Exe, RunPath, ApprovedPath));
+        Assert.Null(RunValue("QuickMail"));
+        Assert.Null(RunValue("QuickMail (12345678)"));
+    }
+
+    [Fact]
+    public void Restore_NeverOverwritesAValueThatExistsAgain()
+    {
+        Make().Enable();
+        var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
+        SetRun("QuickMail", $"\"{OtherExe}\" --startup");   // set since, by something newer
+
+        Assert.Equal(0, LaunchAtSignInService.Restore(removed, Exe, RunPath, ApprovedPath));
+        Assert.Equal($"\"{OtherExe}\" --startup", RunValue("QuickMail"));
+    }
+
+    [Fact]
+    public void Restore_IgnoresNamesThatAreNotQuickMails()
+    {
+        var foreign = new StartupEntry("SomeOtherApp", $"\"{Exe}\" --startup", null);
+
+        Assert.Equal(0, LaunchAtSignInService.Restore(new[] { foreign }, Exe, RunPath, ApprovedPath));
+        Assert.Null(RunValue("SomeOtherApp"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(@"C:\Data\Work")]
+    [InlineData(@"D:\")]
+    public void RebuildFor_RoundTripsEveryCommandBuildCommandWrites(string? profileDir)
+    {
+        const string newExe = @"E:\Q\QuickMail.exe";
+        var original = LaunchAtSignInService.BuildCommand(Exe, profileDir);
+
+        Assert.Equal(LaunchAtSignInService.BuildCommand(newExe, profileDir),
+                     LaunchAtSignInService.RebuildFor(original, newExe));
+    }
+
+    [Theory]
+    [InlineData("\"C:\\q\\QuickMail.exe\"")]                                   // no --startup
+    [InlineData("\"C:\\q\\QuickMail.exe\" --startup --online")]                // extra argument
+    [InlineData("\"C:\\q\\QuickMail.exe --startup")]                            // unterminated quote
+    [InlineData("\"C:\\q\\QuickMail.exe\" --startup --profileDir \"\"")]        // empty profile
+    public void RebuildFor_RejectsAnythingElse(string command)
+    {
+        Assert.Null(LaunchAtSignInService.RebuildFor(command, Exe));
+    }
+}
+
+public sealed class StartupEntryHandoffTests : IDisposable
+{
+    private readonly string _path = Path.Combine(Path.GetTempPath(), $"quickmail-handoff-test-{Guid.NewGuid():N}.json");
+    private static readonly DateTimeOffset Now = new(2026, 10, 5, 12, 0, 0, TimeSpan.Zero);
+    private static readonly StartupEntry Entry = new("QuickMail", "\"C:\\q\\QuickMail.exe\" --startup", new byte[] { 3, 0, 0, 0 });
+
+    public void Dispose() => File.Delete(_path);
+
+    [Fact]
+    public void SaveThenTake_RoundTrips_AndConsumesTheFile()
+    {
+        StartupEntryHandoff.Save(_path, new[] { Entry }, Now);
+
+        var taken = Assert.Single(StartupEntryHandoff.Take(_path, Now.AddSeconds(20)));
+
+        Assert.Equal(Entry.Name, taken.Name);
+        Assert.Equal(Entry.Command, taken.Command);
+        Assert.Equal(Entry.Approval, taken.Approval);
+        Assert.False(File.Exists(_path));
+        Assert.Empty(StartupEntryHandoff.Take(_path, Now.AddSeconds(21)));
+    }
+
+    [Fact]
+    public void Take_IgnoresAStaleHandoff_AndDeletesIt()
+    {
+        // A real uninstall's hand-off must not turn start at sign-in back on for a reinstall weeks later.
+        StartupEntryHandoff.Save(_path, new[] { Entry }, Now);
+
+        Assert.Empty(StartupEntryHandoff.Take(_path, Now + StartupEntryHandoff.MaxAge + TimeSpan.FromSeconds(1)));
+        Assert.False(File.Exists(_path));
+    }
+
+    [Fact]
+    public void Take_IgnoresAHandoffDatedInTheFuture()
+    {
+        StartupEntryHandoff.Save(_path, new[] { Entry }, Now);
+        Assert.Empty(StartupEntryHandoff.Take(_path, Now.AddMinutes(-5)));
+    }
+
+    [Fact]
+    public void Take_IgnoresAnUnreadableHandoff_AndDeletesIt()
+    {
+        File.WriteAllText(_path, "{ not json");
+
+        Assert.Empty(StartupEntryHandoff.Take(_path, Now));
+        Assert.False(File.Exists(_path));
+    }
+
+    [Fact]
+    public void Take_WithNoHandoff_IsEmpty()
+    {
+        Assert.Empty(StartupEntryHandoff.Take(_path, Now));
+    }
+
+    [Fact]
+    public void SavingNothing_ClearsAnOlderHandoff()
+    {
+        // An uninstall with start at sign-in off must not leave an earlier hand-off for the next install.
+        StartupEntryHandoff.Save(_path, new[] { Entry }, Now);
+        StartupEntryHandoff.Save(_path, Array.Empty<StartupEntry>(), Now.AddMinutes(1));
+
+        Assert.False(File.Exists(_path));
     }
 }
 

@@ -34,8 +34,9 @@ of install it already has.
 - **`RequireExplicitUpgrade: true`** — QuickMail updates itself, and keeps its Add/Remove
   Programs version current while doing so, so winget seldom has an upgrade to offer. When it
   does, a newer MSI over an older one is a Windows Installer major upgrade that uninstalls the
-  old copy first (#245, won't-fix upstream). That uninstall runs QuickMail's uninstall hook,
-  which does two things nobody wants during an upgrade:
+  old copy first (#245, won't-fix upstream). That uninstall runs the *old* copy's uninstall
+  hook. Copies from 0.8.53 on recognise the upgrade and do neither of the following; older
+  copies do both, once, when they are the ones replaced:
   - **It offers to delete the user's data**, with a prompt saying QuickMail has been
     uninstalled. The prompt runs detached, so it can appear after the new version is already
     in place. The default answer keeps everything. Answering Yes, believing the message,
