@@ -21,7 +21,7 @@ namespace QuickMail.Helpers;
 /// quiet window passes.
 ///
 /// What the install-path matrix measured on real MSI upgrades (scenario 6): the old copy's
-/// files are gone for under a second before the new copy's arrive, and Global\_MSIExecute is
+/// files are gone for about a second before the new copy's arrive, and Global\_MSIExecute is
 /// held from before they go until well after they are back (run 37328565215 — x64: held
 /// 1.9-10.8 s, files gone 3.4-4.8 s; ARM64: held 1.8-24.8 s, gone 20.4-21.0 s). So the files
 /// coming back, or never being seen gone ("still installed"), decide an upgrade, and the mutex
@@ -77,7 +77,12 @@ internal static class UninstallDataPrompt
             $key = "$UninstallRoot\$Row"
             if (-not (Test-Path -LiteralPath $key)) { return $false }
             $loc = (Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue).InstallLocation
-            return [bool]($loc -and (Test-Path -LiteralPath (Join-Path $loc 'current\QuickMail.exe')))
+            if (-not $loc) { return $false }
+            # .NET, not Join-Path/Test-Path: on a drive that no longer exists (a removed USB drive,
+            # an unmapped share) Join-Path fails and Test-Path then throws, which would end the
+            # script without asking. File.Exists answers false for anything it cannot reach.
+            try { return [System.IO.File]::Exists([System.IO.Path]::Combine([string]$loc, 'current', 'QuickMail.exe')) }
+            catch { return $false }
         }
         Write-Log 'prompt script started'
         try {
@@ -123,6 +128,9 @@ internal static class UninstallDataPrompt
                 }
                 Write-Log 'data removal completed'
             }
+        } catch {
+            # Anything unforeseen: record it rather than vanish. Asking nothing is the safe default.
+            Write-Log "prompt script failed, not asking: $($_.Exception.Message)"
         } finally {
             # The script deletes itself on every way out, exit included: PowerShell runs finally on exit.
             Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue

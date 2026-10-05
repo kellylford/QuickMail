@@ -9,9 +9,11 @@ namespace QuickMail.Tests;
 /// not all execute there, so the opt-in cannot quietly mean "runs nowhere".
 /// <para>
 /// <b>Why opt-in.</b> On a developer machine with a screen reader's hooks loaded, full suite runs
-/// that included these tests crashed the test host (exit 0xC0000602, a native fail-fast) in seven
-/// of fourteen runs, and never with them excluded; they were also timing-sensitive under load. The
-/// cause was not pinned down. A CI runner is the environment that can honestly assert "nothing else
+/// that included these tests crashed the test host far more often (exit 0xC0000602, a native
+/// fail-fast; seven of fourteen runs) than runs without them — but not never: a run with them
+/// skipped also crashed (0xC0000005). So these tests are not the cause, which is still unknown;
+/// they make it much more likely, and they were timing-sensitive under load. Do not "fix" the
+/// crash by deleting them. A CI runner is the environment that can honestly assert "nothing else
 /// is running", the same reasoning as <see cref="InputTests"/>. Use it the same way:
 /// </para>
 /// <code>

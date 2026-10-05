@@ -9,6 +9,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
@@ -207,6 +208,24 @@ public sealed class UninstallDataPromptTests : IDisposable
         File.Delete(_exe);
 
         Assert.Contains("would ask", Finish(p));
+    }
+
+    [Fact(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
+    public async Task RowOnADriveThatIsGone_StillAsks()
+    {
+        // A leftover row pointing at a removed USB drive or an unmapped share. Join-Path/Test-Path
+        // throw on a drive that does not exist; that once ended the script without asking at all.
+        var missing = Enumerable.Range('D', 23).Select(c => (char)c)
+            .First(c => !DriveInfo.GetDrives().Any(d => d.Name.StartsWith(c)));
+        AddRow("MSI:QuickMail", $@"{missing}:\Apps\QuickMail\");
+        var p = Start();
+        await WaitForStart();
+        File.Delete(_exe);
+
+        var log = Finish(p);
+
+        Assert.Contains("would ask", log);
+        Assert.DoesNotContain("failed", log);
     }
 
     [Fact(Skip = ProcessTests.SkipReason, SkipUnless = nameof(ProcessTests.Enabled), SkipType = typeof(ProcessTests))]
