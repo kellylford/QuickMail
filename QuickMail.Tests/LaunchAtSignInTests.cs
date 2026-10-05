@@ -335,22 +335,43 @@ public sealed class LaunchAtSignInRegistryTests : IDisposable
         SetApproved(test.ValueName, 0x03);
         var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
 
-        var restored = LaunchAtSignInService.Restore(removed, RunPath, ApprovedPath, _ => true);
+        var restored = LaunchAtSignInService.Restore(removed, Exe, RunPath, ApprovedPath);
 
         Assert.Equal(2, restored);
         Assert.Equal(LaunchAtSignInState.On, Make().GetState());
         Assert.Equal(LaunchAtSignInState.DisabledInWindows, test.GetState());
+        Assert.Equal(test.Command, RunValue(test.ValueName));
     }
 
     [Fact]
-    public void Restore_SkipsAnEntryWhoseExecutableIsGone()
+    public void Restore_PointsTheEntryAtTheCopyJustInstalled()
     {
-        // The executable not existing means the uninstall was real after all.
-        Make().Enable();
+        // An upgrade that lands in another folder must not restore a dead path.
+        const string newExe = @"D:\Apps\QuickMail\current\QuickMail.exe";
+        Make(profileDir: @"C:\Data\TestProfile").Enable();
         var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
 
-        Assert.Equal(0, LaunchAtSignInService.Restore(removed, RunPath, ApprovedPath, _ => false));
+        Assert.Equal(1, LaunchAtSignInService.Restore(removed, newExe, RunPath, ApprovedPath));
+
+        var moved = Make(exe: newExe, profileDir: @"C:\Data\TestProfile");
+        Assert.Equal(moved.Command, RunValue(moved.ValueName));
+        Assert.Equal(LaunchAtSignInState.On, moved.GetState());
+    }
+
+    [Fact]
+    public void Restore_RefusesACommandQuickMailWouldNotHaveWritten()
+    {
+        // A hand-off file is just a file in %TEMP%; it must not be able to put an arbitrary
+        // command into the Run key under QuickMail's name.
+        var planted = new[]
+        {
+            new StartupEntry("QuickMail", "\"C:\\Windows\\System32\\cmd.exe\" /c calc", null),
+            new StartupEntry("QuickMail (12345678)", $"\"{Exe}\" --startup --profileDir \"C:\\D\" & calc", null),
+        };
+
+        Assert.Equal(0, LaunchAtSignInService.Restore(planted, Exe, RunPath, ApprovedPath));
         Assert.Null(RunValue("QuickMail"));
+        Assert.Null(RunValue("QuickMail (12345678)"));
     }
 
     [Fact]
@@ -360,7 +381,7 @@ public sealed class LaunchAtSignInRegistryTests : IDisposable
         var removed = LaunchAtSignInService.RemoveAllFor(Exe, RunPath, ApprovedPath);
         SetRun("QuickMail", $"\"{OtherExe}\" --startup");   // set since, by something newer
 
-        Assert.Equal(0, LaunchAtSignInService.Restore(removed, RunPath, ApprovedPath, _ => true));
+        Assert.Equal(0, LaunchAtSignInService.Restore(removed, Exe, RunPath, ApprovedPath));
         Assert.Equal($"\"{OtherExe}\" --startup", RunValue("QuickMail"));
     }
 
@@ -369,8 +390,31 @@ public sealed class LaunchAtSignInRegistryTests : IDisposable
     {
         var foreign = new StartupEntry("SomeOtherApp", $"\"{Exe}\" --startup", null);
 
-        Assert.Equal(0, LaunchAtSignInService.Restore(new[] { foreign }, RunPath, ApprovedPath, _ => true));
+        Assert.Equal(0, LaunchAtSignInService.Restore(new[] { foreign }, Exe, RunPath, ApprovedPath));
         Assert.Null(RunValue("SomeOtherApp"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(@"C:\Data\Work")]
+    [InlineData(@"D:\")]
+    public void RebuildFor_RoundTripsEveryCommandBuildCommandWrites(string? profileDir)
+    {
+        const string newExe = @"E:\Q\QuickMail.exe";
+        var original = LaunchAtSignInService.BuildCommand(Exe, profileDir);
+
+        Assert.Equal(LaunchAtSignInService.BuildCommand(newExe, profileDir),
+                     LaunchAtSignInService.RebuildFor(original, newExe));
+    }
+
+    [Theory]
+    [InlineData("\"C:\\q\\QuickMail.exe\"")]                                   // no --startup
+    [InlineData("\"C:\\q\\QuickMail.exe\" --startup --online")]                // extra argument
+    [InlineData("\"C:\\q\\QuickMail.exe --startup")]                            // unterminated quote
+    [InlineData("\"C:\\q\\QuickMail.exe\" --startup --profileDir \"\"")]        // empty profile
+    public void RebuildFor_RejectsAnythingElse(string command)
+    {
+        Assert.Null(LaunchAtSignInService.RebuildFor(command, Exe));
     }
 }
 

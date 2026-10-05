@@ -136,8 +136,8 @@ public partial class App : Application
         try
         {
             var entries = StartupEntryHandoff.Take(StartupEntryHandoff.DefaultPath, DateTimeOffset.Now);
-            if (entries.Count == 0) return;
-            var restored = LaunchAtSignInService.Restore(entries);
+            if (entries.Count == 0 || Environment.ProcessPath is not { } exe) return;
+            var restored = LaunchAtSignInService.Restore(entries, exe);
             WriteHookDiagnostic($"install hook: restored {restored} of {entries.Count} startup entr{(entries.Count == 1 ? "y" : "ies")}");
         }
         catch (Exception ex)
@@ -184,7 +184,9 @@ public partial class App : Application
             if (!System.IO.Directory.Exists(dataDir)) return;
             if (Environment.ProcessPath is not { } exe) return;
 
-            var script = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall-prompt.ps1");
+            // A name of its own: an earlier prompt still waiting would otherwise delete this one's
+            // script on its way out (the script removes itself).
+            var script = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"quickmail-uninstall-prompt-{Guid.NewGuid():N}.ps1");
             System.IO.File.WriteAllText(script, UninstallDataPrompt.Script);
 
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -193,6 +195,10 @@ public partial class App : Application
                 Arguments = UninstallDataPrompt.Arguments(script, exe, dataDir, diagLog),
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                // Not the hook's own working directory, which Velopack sets to the install's
+                // current\ folder: a process's working directory cannot be deleted, so the
+                // waiting prompt would keep that folder from being removed by the uninstall.
+                WorkingDirectory = System.IO.Path.GetTempPath(),
             });
             WriteHookDiagnostic("uninstall hook: prompt process launched");
         }

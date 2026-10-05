@@ -27,12 +27,12 @@ UpgradeBehavior: install
 # QuickMail updates itself through Velopack and keeps the Add/Remove Programs version
 # current as it does, so winget rarely has anything to upgrade. When it does (a copy that has
 # not been run since the last release), a newer MSI over an older one is a Windows Installer
-# major upgrade: it uninstalls the old copy first, running QuickMail's uninstall hook. That
-# hook offers to delete the user's data with a prompt saying QuickMail has been uninstalled
-# (#245; default keep, but Yes deletes the profile of a working install) and removes the
-# start-at-sign-in entry (#770), which the new install does not put back. Keeping the
-# package out of an unattended `winget upgrade --all` means nobody meets that from a command
-# they did not aim at QuickMail. `winget upgrade quickmail` still works.
+# major upgrade: it uninstalls the old copy first, running the OLD copy's uninstall hook.
+# From 0.8.53 that hook recognises an upgrade (no data prompt, start-at-sign-in restored);
+# older copies offer to delete the user's data with a prompt saying QuickMail has been
+# uninstalled (#245) and lose the start-at-sign-in entry (#770). Keeping the package out of
+# an unattended `winget upgrade --all` means nobody meets that from a command they did not
+# aim at QuickMail. `winget upgrade quickmail` still works.
 RequireExplicitUpgrade: true
 ReleaseDate: <RELEASE-DATE>
 # How winget recognises an installed copy. The MSI writes two Add/Remove Programs rows:

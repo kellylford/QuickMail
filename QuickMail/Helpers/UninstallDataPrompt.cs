@@ -14,11 +14,15 @@ namespace QuickMail.Helpers;
 /// So the script decides before it asks. It waits for QuickMail's files to go (if they never do,
 /// nothing was uninstalled), then for Windows Installer to go quiet — the Global\_MSIExecute mutex
 /// exists while any installation is executing — and looks again. Files back means an upgrade:
-/// nothing to ask. Still gone means an uninstall: ask. A Velopack uninstall (a Setup.exe install)
-/// involves no Windows Installer, so it asks once the files are gone and the quiet window passes.
+/// nothing to ask. Still gone, but QuickMail still in Add/Remove Programs, means it was installed
+/// somewhere else (an upgrade to a different folder) or another copy remains: the data is still
+/// in use, so nothing to ask either. Otherwise it was an uninstall: ask. A Velopack uninstall (a
+/// Setup.exe install) involves no Windows Installer, so it asks once the files are gone and the
+/// quiet window passes.
 ///
-/// Everything the script needs is a parameter, so the tests can run it against a scratch folder
-/// with short waits and <c>-DryRun</c>, which logs the decision instead of showing the question.
+/// Everything the script needs is a parameter, so the tests can run it against a scratch folder,
+/// a scratch Uninstall key and a mutex of their own, with short waits and <c>-DryRun</c>, which
+/// logs the decision instead of showing the question.
 /// </summary>
 internal static class UninstallDataPrompt
 {
@@ -37,6 +41,8 @@ internal static class UninstallDataPrompt
             [int]$RemovalWaitSeconds = 120,
             [int]$QuietSeconds = 10,
             [int]$MaxWaitSeconds = 600,
+            [string]$MutexName = 'Global\_MSIExecute',
+            [string]$UninstallRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
             [switch]$DryRun
         )
         function Write-Log([string]$Text) { Add-Content -Path $Log -Value "$(Get-Date -Format s) $Text" }
@@ -45,7 +51,7 @@ internal static class UninstallDataPrompt
             # be refused to a standard user; refused still means it exists.
             $m = $null
             try {
-                $found = [System.Threading.Mutex]::TryOpenExisting('Global\_MSIExecute',
+                $found = [System.Threading.Mutex]::TryOpenExisting($MutexName,
                     [System.Security.AccessControl.MutexRights]::Synchronize, [ref]$m)
                 if ($m) { $m.Dispose() }
                 return $found
@@ -66,6 +72,13 @@ internal static class UninstallDataPrompt
                 Start-Sleep -Seconds 1
             }
             if (Test-Path -LiteralPath $Exe) { Write-Log 'QuickMail was installed again (an upgrade); not asking'; exit }
+            # Velopack's own Add/Remove Programs entries: MSI:QuickMail for an MSI install,
+            # QuickMail for a Setup.exe one. Either still there means a copy that uses this data.
+            foreach ($row in 'MSI:QuickMail', 'QuickMail') {
+                if (Test-Path -LiteralPath "$UninstallRoot\$row") {
+                    Write-Log "QuickMail is still installed ($row); not asking"; exit
+                }
+            }
             if (-not (Test-Path -LiteralPath $DataDir)) { Write-Log 'no data folder; not asking'; exit }
             if ($DryRun) { Write-Log 'would ask'; exit }
 

@@ -120,7 +120,9 @@ Two settings in **Settings → Advanced**, under **Updates**, put the whole mech
 
 ### Uninstalling
 
-Remove QuickMail from **Settings → Apps** as usual. After the app is removed, QuickMail asks whether to also delete your data — accounts, settings, contacts, rules, templates, saved views, cached mail, and saved passwords. Choose **No** (the default) to keep everything, so reinstalling later picks up exactly where you left off; choose **Yes** to remove it all.
+Remove QuickMail from **Settings → Apps** as usual. About ten seconds after the app is removed, or longer if Windows is busy with another installation, QuickMail asks whether to also delete your data — accounts, settings, contacts, rules, templates, saved views, cached mail, and saved passwords. Choose **No** (the default) to keep everything, so reinstalling later picks up exactly where you left off; choose **Yes** to remove it all.
+
+Running a newer installer over the QuickMail you have is an upgrade, not an uninstall, so nothing is asked and your settings, including start at sign-in, stay as they were. That holds from version 0.8.53 on. Upgrading *to* 0.8.53 from an earlier version may still ask once; choose **No**. That one upgrade may also turn **Start QuickMail automatically when I sign in to Windows** off; if it does, turn it back on in **File → Settings → Startup**.
 
 ---
 

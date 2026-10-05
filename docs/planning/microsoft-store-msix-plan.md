@@ -298,7 +298,8 @@ make that the option to try first, and MSIX the fallback.
   upgrade. It is a Windows Installer major upgrade, which uninstalls the old copy first and
   runs the uninstall hook: the "remove your data?" prompt, worded as if QuickMail had been
   uninstalled, and the loss of the start-at-sign-in entry. Both are the same as for winget
-  (winget plan *Phase 1d*), and both are fixed by making the hook upgrade-aware.
+  (winget plan *Phase 1d*). Both are fixed from 0.8.53 on, when the copy being replaced is
+  0.8.53 or later.
 
 **What is not known, and is the whole question:** whether a Store-delivered MSI is free of
 the SmartScreen prompt. Microsoft's SmartScreen page says Store-distributed apps are never
@@ -330,7 +331,10 @@ installable from winget's `msstore` source, which does not replace the community
    about differential updates and download size.
 4. **Q4.** WebView2: documented requirement, or bundle the fixed-version runtime?
 5. **Q5 — answered, 2026-09-22: "QuickMail" is NOT available in the Store.** See *The name*
-   below. What remains open is which way round it.
+   below. **Settled 2026-10-05: "QuickMail for Windows" was available and is reserved**, as an
+   *EXE or MSI app* product (the MSI listing this plan now leads with), Partner Center product
+   id `bf90fa3c-e26c-470d-866f-33af55c111a3`. Microsoft may release a reservation with no
+   submission within 90 days, so submit by early January 2027 or renew.
 6. **Q6.** Certification review: does a mail client attract manual review, and does anything
    in the listing need to say what the app does with mail data beyond the privacy policy?
 

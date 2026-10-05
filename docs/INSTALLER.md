@@ -140,9 +140,15 @@ leaves ARM64 output in `bin/Release` until the next ordinary build.
 
   What did not change: a newer MSI over an older one is still a Windows Installer major
   upgrade that uninstalls the old copy first (#245; measured again in install-matrix
-  scenario 6). The uninstall runs the uninstall hook, which offers to delete the user's
-  data, saying QuickMail has been uninstalled, and removes the start-at-sign-in entry (#770).
-  The in-app updater is the upgrade path; the MSI is for first installs.
+  scenario 6), and Velopack runs the uninstall hook for it. From 0.8.53 the hook copes: the
+  data prompt waits until Windows Installer is idle and asks only if QuickMail is still gone
+  (`Helpers/UninstallDataPrompt.cs`), and the start-at-sign-in entries it removes are handed
+  to the new copy's install hook, which restores them (`Services/StartupEntryHandoff.cs`).
+  Copies older than 0.8.53 still run the old hook when they are the ones being replaced.
+  A side effect worth knowing: uninstalling and reinstalling within 15 minutes also restores
+  start at sign-in, since the hand-off cannot tell that from an upgrade.
+  Install-matrix scenarios 6 and 6b check both halves on real MSIs. The in-app updater is
+  still the upgrade path; the MSI is for first installs.
   `Setup.exe --silent` installs to the same place and overwrites in place without the
   uninstall hook, which is why winget was first going to use it. It is not shipped, and the
   bullet below is why.
