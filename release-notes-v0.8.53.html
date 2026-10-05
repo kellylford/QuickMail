@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.53 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.52.html">Older: 0.8.52</a></div>
+  <h1 id="quickmail-v0.8.53-release-notes">QuickMail v0.8.53 Release
+Notes</h1>
+<p class="version">Released October 5, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.53">downloads for this release</a></p>
+<h2 id="changed">Changed</h2>
+<h3 id="groundwork-for-winget-and-the-microsoft-store">Groundwork for
+winget and the Microsoft Store</h3>
+<p>This release contains foundational work for distributing QuickMail
+through winget and the Microsoft Store, which had to be in place before
+either can move forward. Nothing changes in how you install or update
+QuickMail today.</p>
+<h2 id="fixed">Fixed</h2>
+<h3 id="running-a-newer-installer-over-an-installed-copy">Running a
+newer installer over an installed copy</h3>
+<p>This only affected anyone who ran a newer QuickMail installer (the
+<code>.msi</code>) over a copy that was already installed. Updates
+QuickMail installs by itself were never affected.</p>
+<p>In that case the installer briefly treated the upgrade as an
+uninstall: it could ask whether to delete your QuickMail data, and it
+turned off <strong>Start QuickMail automatically when I sign in to
+Windows</strong>. Now it recognises the upgrade, asks nothing, and keeps
+your start-at-sign-in setting. Uninstalling QuickMail still asks about
+your data as before.</p>
+<p>The copy being replaced is the one that makes this check, so it
+applies from 0.8.53 on. If you run the 0.8.53 installer over an older
+copy and it asks about your data, choose <strong>No</strong>. (#245)</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.52.html">Older: 0.8.52</a></div>
+</body>
+</html>
