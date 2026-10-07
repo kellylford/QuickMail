@@ -665,22 +665,37 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
         var msg = MimeMessageBuilder.Build(draft, account);
 
-        if (!string.IsNullOrEmpty(replaceMessageId))
-        {
-            await draftsFolder.OpenAsync(FolderAccess.ReadWrite, ct);
-            try
-            {
-                await draftsFolder.AddFlagsAsync(ToUid(replaceMessageId), MessageFlags.Deleted, true, ct);
-                await draftsFolder.ExpungeAsync(ct);
-            }
-            finally { await draftsFolder.CloseAsync(false, ct); }
-        }
-
+        // Append the new copy FIRST and only then remove the old one (#780). The other order left
+        // the server with no draft at all when the append failed after the expunge — a dropped
+        // connection mid-save lost every edit since the last good one. Now a failure between the
+        // two leaves at worst a duplicate draft, the same guarantee GraphMailService gives.
         await draftsFolder.OpenAsync(FolderAccess.ReadWrite, ct);
         try
         {
             var newUid = await draftsFolder.AppendAsync(msg, MessageFlags.Draft, ct);
             LogService.Log($"AppendDraft: saved draft to {draftsFolder.FullName} UID={newUid?.Id}");
+
+            if (!string.IsNullOrEmpty(replaceMessageId))
+            {
+                try
+                {
+                    var oldUid = ToUid(replaceMessageId);
+                    await draftsFolder.AddFlagsAsync(oldUid, MessageFlags.Deleted, true, ct);
+                    // UID EXPUNGE where offered, so only the superseded draft goes — not anything
+                    // else in Drafts that some other client marked deleted.
+                    if (client.Capabilities.HasFlag(ImapCapabilities.UidPlus))
+                        await draftsFolder.ExpungeAsync(new[] { oldUid }, ct);
+                    else
+                        await draftsFolder.ExpungeAsync(ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The new copy is saved; failing to remove the old one is a duplicate draft,
+                    // never lost content.
+                    LogService.Log($"AppendDraft: removing superseded draft UID={replaceMessageId} failed", ex);
+                }
+            }
+
             // Empty (not "0") signals "server didn't echo a UID" so the next save appends a new
             // draft instead of issuing a delete against the invalid UID 0.
             return newUid?.Id is uint id ? id.ToString(CultureInfo.InvariantCulture) : string.Empty;

@@ -480,12 +480,31 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task AutoSaveAsync()
     {
-        if (!_isDirty || _isSent || IsBusy) return;
-        if (ComposeKind == ComposeKind.EditTemplate) return;
-        var account = SenderAccount;
-        if (account == null) return;
-        if (!HasAutoSavableContent()) return;
+        // The timer discards this Task, so anything thrown outside the try below vanished without
+        // a trace — and the skips were silent too. Auto-save once went 13 minutes without saving or
+        // logging a word before a crash took the edits with it (#781); say why a tick did nothing.
+        string? skip;
+        try
+        {
+            skip = AutoSaveSkipReason();
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("AutoSaveAsync: checking whether to save failed", ex);
+            return;
+        }
+        // Only a skip that leaves edits unsaved is worth a line, and only once per change of
+        // reason — an idle window or a run of identical skips adds one line, not one per tick.
+        var unsavedSkip = _isDirty ? skip : null;
+        if (unsavedSkip != _lastAutoSaveSkip)
+        {
+            _lastAutoSaveSkip = unsavedSkip;
+            if (unsavedSkip != null)
+                LogService.Log($"AutoSaveAsync: not saving unsaved changes ({unsavedSkip})");
+        }
+        if (skip != null) return;
 
+        var account = SenderAccount!;
         IsBusy = true;
         try
         {
@@ -523,6 +542,21 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>The last skip reason logged, so a run of identical skips is logged once.</summary>
+    private string? _lastAutoSaveSkip;
+
+    /// <summary>Why this tick will not save, or null when it will.</summary>
+    private string? AutoSaveSkipReason()
+    {
+        if (_isSent) return "already sent";
+        if (ComposeKind == ComposeKind.EditTemplate) return "editing a template";
+        if (!_isDirty) return "no changes since the last save";
+        if (IsBusy) return "another save or send is still running";
+        if (SenderAccount == null) return "no sender account";
+        if (!HasAutoSavableContent()) return "nothing worth keeping yet";
+        return null;
     }
 
     /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>

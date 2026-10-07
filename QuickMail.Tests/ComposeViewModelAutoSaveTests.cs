@@ -112,6 +112,39 @@ public class ComposeViewModelAutoSaveTests
     }
 
     [Fact]
+    public async Task AutoSave_WhileAnotherSaveRuns_SkipsThenSavesNextTick()
+    {
+        var (vm, imap) = MakeVm();
+        vm.SenderAccount = Account();
+        vm.Subject = "typed while a save was running";
+        vm.IsBusy = true;
+
+        await vm.AutoSaveAsync();
+        Assert.Equal(0, imap.AppendDraftCalls);
+
+        vm.IsBusy = false;
+        await vm.AutoSaveAsync();
+        Assert.Equal(1, imap.AppendDraftCalls);
+    }
+
+    [Fact]
+    public async Task AutoSave_ContentCheckThrows_DoesNotEscapeTheTimer()
+    {
+        // The timer discards AutoSaveAsync's Task, so an exception from the pre-save checks used to
+        // vanish unlogged (#781). It must be handled inside, and the next tick must still run.
+        var (vm, imap) = MakeVm();
+        vm.SenderAccount = Account();
+        vm.SetMode(ComposeMode.Html);
+        vm.RichBodyProvider = () => throw new InvalidOperationException("editor in a bad state");
+        vm.MarkBodyDirty();
+
+        await vm.AutoSaveAsync();   // must not throw
+        Assert.Equal(0, imap.AppendDraftCalls);
+        Assert.True(vm.IsDirty);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
     public async Task AutoSave_Failure_AnnouncesOnceUntilNextSuccess()
     {
         var (vm, imap) = MakeVm();
