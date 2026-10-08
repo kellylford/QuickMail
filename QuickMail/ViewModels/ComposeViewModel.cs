@@ -152,6 +152,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// its last offline save went into. Every later save or send replaces that row.</summary>
     private string? _outboxId;
     private bool _isDirty;
+
+    /// <summary>Bumped on every edit, so a save clears dirty only if nothing was typed while it ran.</summary>
+    private int _editVersion;
+
+    private void MarkEdited() { _isDirty = true; _editVersion++; }
     private bool _isSent;
 
     /// <summary>
@@ -210,18 +215,18 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         _connectivity = connectivity;
         _attachments.CollectionChanged += (_, _) =>
         {
-            _isDirty = true;
+            MarkEdited();
             OnPropertyChanged(nameof(AttachmentSummaryText));
             WarnIfMessageIsLarge();
         };
     }
 
     // Dirty-marking partial methods — fired by the [ObservableProperty] source generator
-    partial void OnToChanged(string value)      => _isDirty = true;
-    partial void OnCcChanged(string value)      => _isDirty = true;
-    partial void OnBccChanged(string value)     => _isDirty = true;
-    partial void OnSubjectChanged(string value) => _isDirty = true;
-    partial void OnBodyChanged(string value)    => _isDirty = true;
+    partial void OnToChanged(string value)      => MarkEdited();
+    partial void OnCcChanged(string value)      => MarkEdited();
+    partial void OnBccChanged(string value)     => MarkEdited();
+    partial void OnSubjectChanged(string value) => MarkEdited();
+    partial void OnBodyChanged(string value)    => MarkEdited();
 
     public void Seed(ComposeModel model)
     {
@@ -368,11 +373,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (_outbox?.IsAvailable != true) return false;
         try
         {
+            var version = _editVersion;
             var compose = BuildComposeModel(account.Id);
             _outboxId = await _outbox.EnqueueDraftAsync(compose, account.Id, _outboxId);
             // Ours while this window is open: a drain must not upload or send it from under the edit.
             _outbox.Hold(_outboxId);
-            _isDirty = false;
+            if (_editVersion == version) _isDirty = false;
             return true;
         }
         catch (Exception ex)
@@ -430,9 +436,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (_draftFolderName == null)
             throw new DraftFolderMissingException();
 
+        var version = _editVersion;
         var compose = BuildComposeModel(account.Id);
         _draftMessageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, combined.Token);
-        _isDirty = false;
+        // Anything typed while the save ran is not in it: stay dirty so the next tick saves it.
+        if (_editVersion == version) _isDirty = false;
     }
 
     private sealed class DraftFolderMissingException : Exception
@@ -480,12 +488,42 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task AutoSaveAsync()
     {
-        if (!_isDirty || _isSent || IsBusy) return;
-        if (ComposeKind == ComposeKind.EditTemplate) return;
-        var account = SenderAccount;
-        if (account == null) return;
-        if (!HasAutoSavableContent()) return;
+        // The timer discards this Task, so anything thrown outside the try below vanished without
+        // a trace — and the skips were silent too. Auto-save once went 13 minutes without saving or
+        // logging a word before a crash took the edits with it (#781); say why a tick did nothing.
+        string? skip;
+        try
+        {
+            skip = AutoSaveSkipReason();
+        }
+        catch (Exception ex)
+        {
+            // Treated as a failed save: logged and announced once, not every tick.
+            if (_lastAutoSaveSkip != ex.Message)
+            {
+                _lastAutoSaveSkip = ex.Message;
+                LogService.Log("AutoSaveAsync: checking whether to save failed", ex);
+            }
+            AutoSaveText = "Auto-save failed";
+            if (!_autoSaveFailureAnnounced)
+            {
+                _autoSaveFailureAnnounced = true;
+                AutoSaveFailed?.Invoke("Auto-save failed. Your draft is not saved to the server.");
+            }
+            return;
+        }
+        // Only a skip that leaves edits unsaved is worth a line, and only once per change of
+        // reason — an idle window or a run of identical skips adds one line, not one per tick.
+        var unsavedSkip = _isDirty ? skip : null;
+        if (unsavedSkip != _lastAutoSaveSkip)
+        {
+            _lastAutoSaveSkip = unsavedSkip;
+            if (unsavedSkip != null)
+                LogService.Log($"AutoSaveAsync: not saving unsaved changes ({unsavedSkip})");
+        }
+        if (skip != null) return;
 
+        var account = SenderAccount!;
         IsBusy = true;
         try
         {
@@ -523,6 +561,21 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>The last skip reason logged, so a run of identical skips is logged once.</summary>
+    private string? _lastAutoSaveSkip;
+
+    /// <summary>Why this tick will not save, or null when it will.</summary>
+    private string? AutoSaveSkipReason()
+    {
+        if (_isSent) return "already sent";
+        if (ComposeKind == ComposeKind.EditTemplate) return "editing a template";
+        if (!_isDirty) return "no changes since the last save";
+        if (IsBusy) return "another save or send is still running";
+        if (SenderAccount == null) return "no sender account";
+        if (!HasAutoSavableContent()) return "nothing worth keeping yet";
+        return null;
     }
 
     /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>
@@ -789,7 +842,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     };
 
     /// <summary>Called by the View when the rich editor content changes (RichTextBox has no Body binding).</summary>
-    public void MarkBodyDirty() => _isDirty = true;
+    public void MarkBodyDirty() => MarkEdited();
 
     /// <summary>
     /// Opens the template picker. The View subscribes to this event to show the dialog.
@@ -1026,7 +1079,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             Content = bytes,
             ContentId = contentId,
         };
-        _isDirty = true;
+        MarkEdited();
         WarnIfMessageIsLarge();
         return contentId;
     }

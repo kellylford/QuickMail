@@ -112,6 +112,65 @@ public class ComposeViewModelAutoSaveTests
     }
 
     [Fact]
+    public async Task AutoSave_WhileAnotherSaveRuns_SkipsThenSavesNextTick()
+    {
+        var (vm, imap) = MakeVm();
+        vm.SenderAccount = Account();
+        vm.Subject = "typed while a save was running";
+        vm.IsBusy = true;
+
+        await vm.AutoSaveAsync();
+        Assert.Equal(0, imap.AppendDraftCalls);
+
+        vm.IsBusy = false;
+        await vm.AutoSaveAsync();
+        Assert.Equal(1, imap.AppendDraftCalls);
+    }
+
+    [Fact]
+    public async Task AutoSave_ContentCheckThrows_DoesNotEscapeTheTimer()
+    {
+        // The timer discards AutoSaveAsync's Task, so an exception from the pre-save checks used to
+        // vanish unlogged (#781). It must be handled inside, and the next tick must still run.
+        var (vm, imap) = MakeVm();
+        vm.SenderAccount = Account();
+        vm.SetMode(ComposeMode.Html);
+        vm.RichBodyProvider = () => throw new InvalidOperationException("editor in a bad state");
+        vm.MarkBodyDirty();
+
+        var announcements = new List<string>();
+        vm.AutoSaveFailed += msg => announcements.Add(msg);
+
+        await vm.AutoSaveAsync();   // must not throw
+        await vm.AutoSaveAsync();   // and says so once, not every tick
+        Assert.Equal(0, imap.AppendDraftCalls);
+        Assert.True(vm.IsDirty);
+        Assert.False(vm.IsBusy);
+        Assert.Single(announcements);
+        Assert.Equal("Auto-save failed", vm.AutoSaveText);
+    }
+
+    [Fact]
+    public async Task AutoSave_EditDuringSave_StaysDirty()
+    {
+        // A keystroke made while the save was on the wire is not in that save, so the save must
+        // not mark the compose clean (#783 review).
+        var (vm, imap) = MakeVm();
+        vm.SenderAccount = Account();
+        vm.Subject = "first";
+        imap.DuringAppend = () => vm.Subject = "typed during the save";
+
+        await vm.AutoSaveAsync();
+
+        Assert.Equal(1, imap.AppendDraftCalls);
+        Assert.True(vm.IsDirty);
+        imap.DuringAppend = null;
+        await vm.AutoSaveAsync();
+        Assert.Equal(2, imap.AppendDraftCalls);
+        Assert.False(vm.IsDirty);
+    }
+
+    [Fact]
     public async Task AutoSave_Failure_AnnouncesOnceUntilNextSuccess()
     {
         var (vm, imap) = MakeVm();
@@ -152,6 +211,9 @@ sealed class RecordingMailService : IMailService
     /// InvalidOperationException, "the server answered") deliberately is not.</summary>
     public Exception? AppendDraftFailure { get; set; }
 
+    /// <summary>Runs inside AppendDraftAsync — an edit made while the save is on the wire.</summary>
+    public Action? DuringAppend { get; set; }
+
     public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) =>
         Task.FromResult<string?>("Drafts");
 
@@ -159,6 +221,7 @@ sealed class RecordingMailService : IMailService
     {
         if (AppendDraftFailure != null) throw AppendDraftFailure;
         if (AppendDraftThrows) throw new InvalidOperationException("simulated append failure");
+        DuringAppend?.Invoke();
         AppendDraftCalls++;
         LastReplaceMessageId = replaceMessageId;
         return Task.FromResult($"draft-{AppendDraftCalls}");
