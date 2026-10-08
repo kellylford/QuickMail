@@ -1833,7 +1833,7 @@ public partial class ComposeWindow : Window
     {
         // Before anything else, and for every change: a screen reader's query against a stale
         // automation tree ends the process (#782).
-        RichTextAutomationTree.Refresh(RichBodyBox);
+        RichTextAutomationTree.Refresh(RichBodyBox, e);
         if (e.UndoAction is UndoAction.Undo or UndoAction.Redo)
         {
             RepairPictures();

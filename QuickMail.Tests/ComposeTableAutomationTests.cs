@@ -84,7 +84,9 @@ public sealed class ComposeTableAutomationTests
             Assert.True(WaitFor(entered, child, 60_000),
                 "the child did not report pressing Enter:\n" + Output());
 
-            // After Enter the caret is in the table's new row. This is the query that failed.
+            // After Enter the caret is in the table's new row. This is the query that failed. Asked
+            // ten times, not once: a screen reader re-queries as it reads, and the crash came on
+            // whichever query first reached the stale cell, so every answer has to be safe.
             AutomationElement? enclosing = null;
             for (int i = 0; i < 10 && !child.HasExited; i++)
             {
@@ -103,6 +105,7 @@ public sealed class ComposeTableAutomationTests
         }
         finally
         {
+            go.Set();   // a child still waiting to press Enter must not sit out its 90 seconds
             done.Set();
             if (!child.WaitForExit(60_000)) child.Kill(entireProcessTree: true);
         }

@@ -1,5 +1,7 @@
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
+using System.Windows.Documents;
+using QuickMail.Services;
 
 namespace QuickMail.Helpers;
 
@@ -19,30 +21,42 @@ namespace QuickMail.Helpers;
 /// </para>
 ///
 /// <para>
-/// <see cref="Refresh"/> rebuilds the cached children of the editor's peer and of every
-/// document-content peer beneath it. Call it when the document changes: <c>TextChanged</c> is
-/// raised synchronously at the end of the change, before any automation query can be
-/// dispatched, so no query ever sees the stale tree. It does nothing when no peer exists, which
-/// is the case until an automation client has asked about the editor.
+/// <see cref="Refresh"/> resets the cached children of the editor's own peer and, for each change,
+/// of the existing peers of the elements enclosing it (the cell and table an Enter added a row to).
+/// Only peers that already exist are touched: a new table or cell has no cache to go stale, and
+/// creating peers nobody asked for would raise a burst of structure-changed events on the UI
+/// thread. Call it from <c>TextChanged</c>, which is raised synchronously at the end of a change,
+/// before any automation query can be dispatched. It does nothing until an automation client has
+/// asked about the editor.
 /// </para>
 /// </summary>
 public static class RichTextAutomationTree
 {
-    public static void Refresh(RichTextBox editor)
+    public static void Refresh(RichTextBox editor, TextChangedEventArgs e)
     {
-        if (UIElementAutomationPeer.FromElement(editor) is { } peer)
-            Refresh(peer);
+        if (UIElementAutomationPeer.FromElement(editor) is not { } peer) return;
+        try
+        {
+            peer.ResetChildrenCache();
+            var start = editor.Document.ContentStart;
+            foreach (var change in e.Changes)
+            {
+                ResetEnclosing(start.GetPositionAtOffset(change.Offset));
+                ResetEnclosing(start.GetPositionAtOffset(change.Offset + change.AddedLength));
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            // A re-entrant GetChildren on the same peer throws. Never let an accessibility refresh
+            // turn a keystroke into an unhandled exception.
+            LogService.Debug($"RichTextAutomationTree: refresh skipped: {ex.Message}");
+        }
     }
 
-    private static void Refresh(AutomationPeer peer)
+    private static void ResetEnclosing(TextPointer? position)
     {
-        peer.ResetChildrenCache();
-        var children = peer.GetChildren();
-        if (children is null) return;
-        // Only content peers (tables, cells, hyperlinks) have document content beneath them;
-        // an embedded control's peer, such as a picture's Image, has visuals.
-        foreach (var child in children)
-            if (child is ContentTextAutomationPeer)
-                Refresh(child);
+        for (var element = position?.Parent as TextElement; element != null; element = element.Parent as TextElement)
+            if (ContentElementAutomationPeer.FromElement(element) is { } peer)
+                peer.ResetChildrenCache();
     }
 }
