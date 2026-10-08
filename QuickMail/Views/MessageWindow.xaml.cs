@@ -904,8 +904,9 @@ public partial class MessageWindow : Window
             "if(!body)return false;" +
             "window.focus();" +
             "body.setAttribute('tabindex','0');" +
-            "body.setAttribute('role','document');" +
-            $"body.setAttribute('aria-label',{label});" +
+            // Title, not a role or aria-label on the body: either of those cut Ctrl+A, Ctrl+C
+            // down to the first paragraph (see MainWindow.TryFocusMessageBodyDocumentAsync).
+            $"document.title={label};" +
             "body.focus({preventScroll:true});" +
             "return document.hasFocus()&&document.activeElement===body;" +
             "})()");

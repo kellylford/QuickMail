@@ -147,7 +147,8 @@ public partial class MarkdownPreviewWindow : Window
                 "const b = document.body;" +
                 "if (!b) return;" +
                 "b.setAttribute('tabindex','0');" +
-                "b.setAttribute('role','document');" +
+                // No role on the body: it cut Ctrl+A, Ctrl+C down to the first paragraph
+                // (see MainWindow.TryFocusMessageBodyDocumentAsync).
                 "b.focus({preventScroll:true});" +
                 "})()");
         }

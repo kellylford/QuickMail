@@ -4272,8 +4272,10 @@ public partial class MainWindow : Window
             "if (!body) return false;" +
             "window.focus();" +
             "body.setAttribute('tabindex','0');" +
-            "body.setAttribute('role','document');" +
-            $"body.setAttribute('aria-label',{bodyLabel});" +
+            // The label rides on the document title, never on the body. A role or aria-label on
+            // the body — either one alone — made Ctrl+A, Ctrl+C copy only the first paragraph
+            // with a screen reader running, and a labelled wrapper inside the body did the same.
+            $"document.title={bodyLabel};" +
             "body.focus({preventScroll:true});" +
             "return document.hasFocus() && document.activeElement === body;" +
             "})()");
