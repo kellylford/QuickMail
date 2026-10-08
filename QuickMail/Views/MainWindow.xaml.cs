@@ -4221,7 +4221,7 @@ public partial class MainWindow : Window
 
             try
             {
-                if (await TryFocusMessageBodyDocumentAsync(focusLabel))
+                if (await TryFocusMessageBodyDocumentAsync())
                     break;
             }
             catch (Exception ex)
@@ -4263,19 +4263,18 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<bool> TryFocusMessageBodyDocumentAsync(string focusLabel)
+    private async Task<bool> TryFocusMessageBodyDocumentAsync()
     {
-        var bodyLabel = JsonSerializer.Serialize(focusLabel);
         var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
             "(() => {" +
             "const body = document.body;" +
             "if (!body) return false;" +
             "window.focus();" +
             "body.setAttribute('tabindex','0');" +
-            // The label rides on the document title, never on the body. A role or aria-label on
-            // the body — either one alone — made Ctrl+A, Ctrl+C copy only the first paragraph
-            // with a screen reader running, and a labelled wrapper inside the body did the same.
-            $"document.title={bodyLabel};" +
+            // No role or aria-label on the body: either one alone made Ctrl+A, Ctrl+C copy only the
+            // first paragraph with a screen reader running, and a labelled wrapper inside the body
+            // did the same. The document title stays the subject — screen readers read it as the
+            // window title — and the spoken label comes from the announcement after focus lands.
             "body.focus({preventScroll:true});" +
             "return document.hasFocus() && document.activeElement === body;" +
             "})()");
@@ -4400,7 +4399,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                await TryFocusMessageBodyDocumentAsync(MessageBodyFocusLabel(_vm.MessageDetail?.Subject));
+                await TryFocusMessageBodyDocumentAsync();
             }
             catch (Exception ex)
             {

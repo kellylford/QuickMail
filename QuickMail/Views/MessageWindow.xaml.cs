@@ -777,7 +777,7 @@ public partial class MessageWindow : Window
 
             try
             {
-                if (await TryFocusDocumentAsync(focusLabel))
+                if (await TryFocusDocumentAsync())
                     break;
             }
             catch (Exception ex)
@@ -889,24 +889,20 @@ public partial class MessageWindow : Window
     {
         _f6FocusStop = 2;
 
-        _ = TryFocusDocumentAsync(_vm.MessageDetail?.Subject is { } s && !string.IsNullOrWhiteSpace(s)
-            ? $"Message body. {s.Trim()}"
-            : "Message body");
+        _ = TryFocusDocumentAsync();
     }
 
-    private async Task<bool> TryFocusDocumentAsync(string focusLabel)
+    private async Task<bool> TryFocusDocumentAsync()
     {
         if (MessageBody.CoreWebView2 == null) return false;
-        var label = JsonSerializer.Serialize(focusLabel);
         var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
             "(() => {" +
             "const body=document.body;" +
             "if(!body)return false;" +
             "window.focus();" +
             "body.setAttribute('tabindex','0');" +
-            // Title, not a role or aria-label on the body: either of those cut Ctrl+A, Ctrl+C
-            // down to the first paragraph (see MainWindow.TryFocusMessageBodyDocumentAsync).
-            $"document.title={label};" +
+            // No role or aria-label on the body: either one cut Ctrl+A, Ctrl+C down to the first
+            // paragraph (see MainWindow.TryFocusMessageBodyDocumentAsync).
             "body.focus({preventScroll:true});" +
             "return document.hasFocus()&&document.activeElement===body;" +
             "})()");
