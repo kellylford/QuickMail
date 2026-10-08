@@ -1,5 +1,31 @@
 # QuickMail v0.8.54 Release Notes
 
+## Fixed
+
+### QuickMail could close while you were writing a message
+
+With a screen reader running, pressing Enter at the end of a message just after a table, to start
+a new line below it, could close QuickMail on the spot, with no warning, and lose any text that
+had not been saved. Pressing Enter there adds a row to the table, and QuickMail now keeps what it
+tells screen readers up to date when that happens. (#782)
+
+### A failed draft save could leave no draft on the server
+
+For accounts that use IMAP, saving a draft replaced the earlier copy on the server by deleting it
+first and then saving the new one. If the connection dropped in between, neither copy was left.
+QuickMail now saves the new copy first and removes the old one only once that has worked. At worst
+you will see an extra copy of the draft in your Drafts folder. (#780)
+
+### Auto-save and changes made during a save
+
+Anything you typed while a draft was being saved could be treated as already saved, so auto-save
+skipped it until you typed again. Those changes are now saved on the next pass. If auto-save cannot
+work out whether there is anything to save, it now tells you once that auto-save failed, as it does
+when a save itself fails, rather than saying nothing.
+
+QuickMail also now notes in its log why it skips an auto-save while there are unsaved changes, to
+help track down a case where auto-save stopped for several minutes without saying why. (#781)
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
