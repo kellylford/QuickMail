@@ -152,6 +152,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// its last offline save went into. Every later save or send replaces that row.</summary>
     private string? _outboxId;
     private bool _isDirty;
+
+    /// <summary>Bumped on every edit, so a save clears dirty only if nothing was typed while it ran.</summary>
+    private int _editVersion;
+
+    private void MarkEdited() { _isDirty = true; _editVersion++; }
     private bool _isSent;
 
     /// <summary>
@@ -210,18 +215,18 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         _connectivity = connectivity;
         _attachments.CollectionChanged += (_, _) =>
         {
-            _isDirty = true;
+            MarkEdited();
             OnPropertyChanged(nameof(AttachmentSummaryText));
             WarnIfMessageIsLarge();
         };
     }
 
     // Dirty-marking partial methods — fired by the [ObservableProperty] source generator
-    partial void OnToChanged(string value)      => _isDirty = true;
-    partial void OnCcChanged(string value)      => _isDirty = true;
-    partial void OnBccChanged(string value)     => _isDirty = true;
-    partial void OnSubjectChanged(string value) => _isDirty = true;
-    partial void OnBodyChanged(string value)    => _isDirty = true;
+    partial void OnToChanged(string value)      => MarkEdited();
+    partial void OnCcChanged(string value)      => MarkEdited();
+    partial void OnBccChanged(string value)     => MarkEdited();
+    partial void OnSubjectChanged(string value) => MarkEdited();
+    partial void OnBodyChanged(string value)    => MarkEdited();
 
     public void Seed(ComposeModel model)
     {
@@ -368,11 +373,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (_outbox?.IsAvailable != true) return false;
         try
         {
+            var version = _editVersion;
             var compose = BuildComposeModel(account.Id);
             _outboxId = await _outbox.EnqueueDraftAsync(compose, account.Id, _outboxId);
             // Ours while this window is open: a drain must not upload or send it from under the edit.
             _outbox.Hold(_outboxId);
-            _isDirty = false;
+            if (_editVersion == version) _isDirty = false;
             return true;
         }
         catch (Exception ex)
@@ -430,9 +436,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (_draftFolderName == null)
             throw new DraftFolderMissingException();
 
+        var version = _editVersion;
         var compose = BuildComposeModel(account.Id);
         _draftMessageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, combined.Token);
-        _isDirty = false;
+        // Anything typed while the save ran is not in it: stay dirty so the next tick saves it.
+        if (_editVersion == version) _isDirty = false;
     }
 
     private sealed class DraftFolderMissingException : Exception
@@ -490,7 +498,18 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            LogService.Log("AutoSaveAsync: checking whether to save failed", ex);
+            // Treated as a failed save: logged and announced once, not every tick.
+            if (_lastAutoSaveSkip != ex.Message)
+            {
+                _lastAutoSaveSkip = ex.Message;
+                LogService.Log("AutoSaveAsync: checking whether to save failed", ex);
+            }
+            AutoSaveText = "Auto-save failed";
+            if (!_autoSaveFailureAnnounced)
+            {
+                _autoSaveFailureAnnounced = true;
+                AutoSaveFailed?.Invoke("Auto-save failed. Your draft is not saved to the server.");
+            }
             return;
         }
         // Only a skip that leaves edits unsaved is worth a line, and only once per change of
@@ -823,7 +842,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     };
 
     /// <summary>Called by the View when the rich editor content changes (RichTextBox has no Body binding).</summary>
-    public void MarkBodyDirty() => _isDirty = true;
+    public void MarkBodyDirty() => MarkEdited();
 
     /// <summary>
     /// Opens the template picker. The View subscribes to this event to show the dialog.
@@ -1060,7 +1079,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             Content = bytes,
             ContentId = contentId,
         };
-        _isDirty = true;
+        MarkEdited();
         WarnIfMessageIsLarge();
         return contentId;
     }

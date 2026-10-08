@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -17,8 +17,8 @@ namespace QuickMail.Tests;
 
 /// <summary>
 /// #780: replacing an IMAP draft must save the new copy before removing the old one. The other
-/// order deleted and expunged the old draft first, so an append that then failed â€” a dropped
-/// connection mid-save â€” left the server with no draft at all. Driven against a scripted IMAP
+/// order deleted and expunged the old draft first, so an append that then failed — a dropped
+/// connection mid-save — left the server with no draft at all. Driven against a scripted IMAP
 /// server so the order of the commands on the wire is what is asserted.
 /// </summary>
 public partial class ImapDraftReplaceOrderTests
@@ -64,12 +64,46 @@ public partial class ImapDraftReplaceOrderTests
         var account = Account(server.Port);
         await service.ConnectAsync(account, "pw", TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAnyAsync<Exception>(
+        await Assert.ThrowsAsync<MailKit.Net.Imap.ImapCommandException>(
             () => service.AppendDraftAsync(account.Id, Draft(), "7", TestContext.Current.CancellationToken));
 
         var verbs = server.Commands;
+        // The refusal must be the APPEND's, not an earlier failure that never reached it.
+        Assert.Contains(verbs, c => c.StartsWith("APPEND", StringComparison.Ordinal));
         Assert.DoesNotContain(verbs, c => c.Contains("STORE", StringComparison.Ordinal));
         Assert.DoesNotContain(verbs, c => c.Contains("EXPUNGE", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task FailedRemovalOfOldDraft_StillReturnsTheNewOne()
+    {
+        // The new draft is on the server once APPEND answers; failing to delete the old copy is a
+        // duplicate, and must not report the save as failed and lose the new UID.
+        using var server = new ScriptedImapServer(appendSucceeds: true, storeSucceeds: false);
+        using var service = new ImapMailService(new StubOAuthService());
+        var account = Account(server.Port);
+        await service.ConnectAsync(account, "pw", TestContext.Current.CancellationToken);
+
+        var newId = await service.AppendDraftAsync(account.Id, Draft(), "7", TestContext.Current.CancellationToken);
+
+        Assert.Equal("11", newId);
+    }
+
+    [Fact]
+    public async Task WithoutUidPlus_FallsBackToPlainExpunge()
+    {
+        using var server = new ScriptedImapServer(appendSucceeds: true, uidPlus: false);
+        using var service = new ImapMailService(new StubOAuthService());
+        var account = Account(server.Port);
+        await service.ConnectAsync(account, "pw", TestContext.Current.CancellationToken);
+
+        await service.AppendDraftAsync(account.Id, Draft(), "7", TestContext.Current.CancellationToken);
+
+        var verbs = server.Commands;
+        var append = verbs.FindIndex(c => c.StartsWith("APPEND", StringComparison.Ordinal));
+        Assert.True(verbs.FindIndex(c => c.StartsWith("UID STORE 7", StringComparison.Ordinal)) > append);
+        Assert.Contains(verbs, c => c == "EXPUNGE");
+        Assert.DoesNotContain(verbs, c => c.StartsWith("UID EXPUNGE", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -82,10 +116,14 @@ public partial class ImapDraftReplaceOrderTests
         private readonly CancellationTokenSource _cts = new();
         private readonly ConcurrentQueue<string> _commands = new();
         private readonly bool _appendSucceeds;
+        private readonly bool _storeSucceeds;
+        private readonly string _capabilities;
 
-        public ScriptedImapServer(bool appendSucceeds)
+        public ScriptedImapServer(bool appendSucceeds, bool storeSucceeds = true, bool uidPlus = true)
         {
             _appendSucceeds = appendSucceeds;
+            _storeSucceeds = storeSucceeds;
+            _capabilities = uidPlus ? "IMAP4rev1 UIDPLUS SPECIAL-USE LITERAL+" : "IMAP4rev1 SPECIAL-USE LITERAL+";
             _listener.Start();
             Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
             _ = AcceptLoopAsync();
@@ -122,7 +160,7 @@ public partial class ImapDraftReplaceOrderTests
 
             try
             {
-                await Send("* OK [CAPABILITY IMAP4rev1 UIDPLUS SPECIAL-USE LITERAL+] ready");
+                await Send($"* OK [CAPABILITY {_capabilities}] ready");
                 while (true)
                 {
                     var line = await ReadLineAsync(stream);
@@ -146,7 +184,7 @@ public partial class ImapDraftReplaceOrderTests
                     switch (verb)
                     {
                         case "CAPABILITY":
-                            await Send("* CAPABILITY IMAP4rev1 UIDPLUS SPECIAL-USE LITERAL+");
+                            await Send($"* CAPABILITY {_capabilities}");
                             await Send($"{tag} OK done");
                             break;
                         case "LIST":
@@ -162,6 +200,9 @@ public partial class ImapDraftReplaceOrderTests
                             await Send("* OK [UIDNEXT 11] ok");
                             await Send("* FLAGS (\\Seen \\Deleted \\Draft)");
                             await Send($"{tag} OK [READ-WRITE] selected");
+                            break;
+                        case "UID" when !_storeSucceeds && command.StartsWith("UID STORE", StringComparison.Ordinal):
+                            await Send($"{tag} NO store refused");
                             break;
                         case "APPEND":
                             await Send(_appendSucceeds
