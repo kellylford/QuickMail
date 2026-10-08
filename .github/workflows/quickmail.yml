@@ -249,6 +249,20 @@ jobs:
           }
           Write-Host "Child-process tests executed: $($processResults.Count) passed, 0 skipped."
 
+          # And the #782 crash test: it runs QuickMail's compose editor in a child process because the
+          # crash it guards against is a FailFast that would take the test host with it. If it is
+          # skipped, or never reached because the host died earlier, a regression would ship green.
+          $crashResults = @($doc.TestRun.Results.UnitTestResult |
+            Where-Object { $_.testName -like '*ComposeTableAutomationTests*' })
+          $crashNotPassed = @($crashResults | Where-Object { $_.outcome -ne 'Passed' })
+          if ($crashResults.Count -eq 0 -or $crashNotPassed.Count -gt 0) {
+            $detail = if ($crashResults.Count -eq 0) { "none were recorded at all" }
+                      else { "not passed: " + (($crashNotPassed | ForEach-Object { "$($_.testName) [$($_.outcome)]" }) -join ', ') }
+            Write-Error ("The compose-editor crash test (#782) did not run and pass here ($detail).")
+            exit 1
+          }
+          Write-Host "Compose-editor crash test executed: $($crashResults.Count) passed."
+
           # Coverage report. `total -le 0` above cannot tell a run that finished from one whose host
           # died partway: the tests that never ran are simply absent from the trx, `failed` stays 0,
           # and the job goes green. That is happening now — measured 1435 cases on one main run and
