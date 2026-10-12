@@ -354,7 +354,7 @@ public class Pop3MailServiceTests
     // ── Synthetic folders ────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Folders_AreTheFourSyntheticOnes_WithCountsFromTheStore()
+    public async Task Folders_WithNoneOfTheUsersOwn_AreTheFourBuiltInOnes_WithCountsFromTheStore()
     {
         var store   = NewStore();
         var account = Guid.NewGuid();
@@ -382,28 +382,6 @@ public class Pop3MailServiceTests
         // Everything but the Inbox is excluded from the All Mail aggregate, as on IMAP.
         Assert.False(folders[0].ExcludeFromAllMail);
         Assert.True(folders.Skip(1).All(f => f.ExcludeFromAllMail));
-    }
-
-    [Fact]
-    public async Task FolderCrud_IsRefused()
-    {
-        var pop = new Pop3MailService(NewStore());
-        var id  = Guid.NewGuid();
-
-        await Assert.ThrowsAsync<NotSupportedException>(() => pop.CreateFolderAsync(id, null, "New"));
-        await Assert.ThrowsAsync<NotSupportedException>(() => pop.DeleteFolderAsync(id, "Inbox"));
-        await Assert.ThrowsAsync<NotSupportedException>(() => pop.RenameFolderAsync(id, "Inbox", "X", null));
-        await Assert.ThrowsAsync<NotSupportedException>(() => pop.CopyFolderAsync(id, "Inbox", null));
-    }
-
-    [Fact]
-    public void FolderCrud_IsRefusedByCapability_NotByReachingTheBackendAndCatchingIt()
-    {
-        // What the UI asks before it opens a folder dialog. The throws above are the last line of
-        // defence; this is the one that keeps the user from being offered the action at all.
-        Assert.False(new AccountModel { BackendKind = BackendKind.Pop3Smtp }.SupportsFolderCrud);
-        Assert.True(new AccountModel { BackendKind = BackendKind.ImapSmtp }.SupportsFolderCrud);
-        Assert.True(new AccountModel { BackendKind = BackendKind.MicrosoftGraph }.SupportsFolderCrud);
     }
 
     [Fact]

@@ -6654,7 +6654,6 @@ public partial class MainWindow : Window
                           ?? (node != null ? _vm.Accounts.FirstOrDefault(a => a.AccountLabel == node.Label)?.Id : null)
                           ?? _vm.SelectedAccount?.Id;
         if (accountId == null || accountId == Guid.Empty) return;
-        if (!SupportsServerFolders(accountId.Value, "create a folder in")) return;
 
         var dlg = new NewFolderDialog
         {
@@ -6689,15 +6688,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Refuses folder management on an account whose protocol has no folders. Whether an account can
-    /// manage folders, and how the refusal reads, both come from the ViewModel
-    /// (<see cref="MainViewModel.FolderCrudRefusal"/>) — this is only the reporting. Same contract as
-    /// <see cref="IsMovableFolder"/>: say why, rather than let the command reach a backend that
-    /// throws and surface as "Failed to create folder".
+    /// Refuses to move or delete a folder the account cannot do without — a POP3 account's built-in
+    /// four (#794). Whether the folder can be managed, and how the refusal reads, both come from the
+    /// ViewModel (<see cref="MainViewModel.FolderCrudRefusal"/>) — this is only the reporting. Same
+    /// contract as <see cref="IsMovableFolder"/>: say why, rather than ask for a confirmation and then
+    /// surface the backend's refusal as "Failed to delete folder".
     /// </summary>
-    private bool SupportsServerFolders(Guid accountId, string verb)
+    private bool CanManageFolder(MailFolderModel folder, string verb)
     {
-        if (_vm.FolderCrudRefusal(accountId, verb) is not { } refusal) return true;
+        if (_vm.FolderCrudRefusal(folder, verb) is not { } refusal) return true;
         Report(refusal);
         return false;
     }
@@ -6714,7 +6713,7 @@ public partial class MainWindow : Window
     {
         var node = GetContextMenuFolderNode(sender);
         if (!IsMovableFolder(node, "move")) return;
-        if (!SupportsServerFolders(node!.Folder!.AccountId, "move")) return;
+        if (!CanManageFolder(node!.Folder!, "moved")) return;
 
         if (_vm.CachedFolders.Count == 0) return;
         var picker = FolderPickerWindow.ForFolderMoveCopy(
@@ -6736,7 +6735,6 @@ public partial class MainWindow : Window
     {
         var node = GetContextMenuFolderNode(sender);
         if (!IsMovableFolder(node, "copy")) return;
-        if (!SupportsServerFolders(node!.Folder!.AccountId, "copy")) return;
 
         if (_vm.CachedFolders.Count == 0) return;
         var picker = FolderPickerWindow.ForFolderMoveCopy(
@@ -6917,7 +6915,7 @@ public partial class MainWindow : Window
     // tree in place (no rebuild), so the captured neighbour reference stays valid for FocusTreeItem.
     private async Task DeleteFolderWithFocusAsync(FolderTreeNode node)
     {
-        if (node.Folder is { } target && !SupportsServerFolders(target.AccountId, "delete")) return;
+        if (node.Folder is { } target && !CanManageFolder(target, "deleted")) return;
 
         var above = FindVisibleFolderNodeAbove(node);
         // Where FolderList_GotKeyboardFocus lands when the node's item is removed with focus on it
@@ -8090,15 +8088,10 @@ public partial class MainWindow : Window
             // Filing is repetitive, so the place the user keeps choosing beats the place they
             // are leaving (#515).
             initialFolder: _vm.LastDestinationFor(list, copy) ?? CurrentFolderOf(list, folders),
-            // No creator, no New Folder button. Withheld when any account in the tree cannot manage
-            // folders (POP3, #128): the button is one button over a whole tree, not one per account,
-            // and offering an action that can only fail is worse than not offering it. Until now this
-            // was the one folder-CRUD entry point with no gate, surviving on the readability of the
-            // backend's NotSupportedException.
-            folderCreator: _vm.AllSupportFolderCrud(ids)
-                ? (accountId, parentFullName, name) =>
-                    _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name)
-                : null)
+            // Every backend can create folders, POP3 included since #794 (in the store, not on a
+            // server), so the picker always offers New Folder.
+            folderCreator: (accountId, parentFullName, name) =>
+                _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name))
             { Owner = this };
     }
 

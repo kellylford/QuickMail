@@ -339,6 +339,23 @@ class StubLocalStoreService : ILocalStoreService
         if (Pop3Uidls.TryGetValue(accountId, out var set)) set.ExceptWith(uidls);
         return Task.CompletedTask;
     }
+    /// <summary>In-memory POP3 local folders (#794), keyed by account then folder id.</summary>
+    public Dictionary<Guid, Dictionary<string, Pop3LocalFolder>> Pop3Folders { get; } = [];
+    public virtual Task<List<Pop3LocalFolder>> LoadPop3LocalFoldersAsync(Guid accountId)
+        => Task.FromResult(Pop3Folders.TryGetValue(accountId, out var f) ? f.Values.ToList() : new List<Pop3LocalFolder>());
+    public virtual Task SavePop3LocalFolderAsync(Guid accountId, Pop3LocalFolder folder)
+    {
+        if (!Pop3Folders.TryGetValue(accountId, out var f))
+            Pop3Folders[accountId] = f = new Dictionary<string, Pop3LocalFolder>(StringComparer.Ordinal);
+        f[folder.Id] = folder;
+        return Task.CompletedTask;
+    }
+    public virtual Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds)
+    {
+        if (Pop3Folders.TryGetValue(accountId, out var f))
+            foreach (var id in folderIds) f.Remove(id);
+        return Task.CompletedTask;
+    }
     /// <summary>In-memory Outbox rows (#637), keyed by id, so compose and main-window tests can
     /// assert what was queued without SQLite. Functional: upsert replaces, delete removes, and the
     /// compose comes back with <see cref="ComposeModel.OutboxId"/> stamped like the real store.</summary>

@@ -322,10 +322,11 @@ public class RuleTargetPickerTests
         finally { window.Close(); }
     }
 
-    /// <summary>POP3 has no server folders to create (#128), so the account a rule files into being a
-    /// POP3 one withholds the button even though the caller supplied a creator.</summary>
+    /// <summary>A POP3 account keeps its own folders in the store (#794), so a rule filing within one
+    /// is offered New Folder like any other. Until #794 the button was withheld here, which is the
+    /// exact dead end a user filing a mailing list reported.</summary>
     [StaFact]
-    public void WithholdsNewFolderForAnAccountThatCannotManageFolders()
+    public void OffersNewFolderForAPop3Account()
     {
         var pop = Guid.NewGuid();
         var folders = Folders();
@@ -336,7 +337,7 @@ public class RuleTargetPickerTests
             folderCreator: NeverCreates);
         try
         {
-            Assert.Equal(Visibility.Collapsed, Named<Button>(window, "NewFolderButton").Visibility);
+            Assert.Equal(Visibility.Visible, Named<Button>(window, "NewFolderButton").Visibility);
         }
         finally { window.Close(); }
     }

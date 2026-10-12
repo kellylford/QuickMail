@@ -194,6 +194,18 @@ public partial class LocalStoreService : ILocalStoreService
                 uidl       TEXT NOT NULL,
                 PRIMARY KEY (account_id, uidl)
             );
+
+            -- Folders the user made on a POP3 account (#794). User-authored, not cache: the Folder
+            -- table above is rewritten from each backend's listing, and for a POP3 account this
+            -- table is where that listing comes from. parent_id is NULL at the top level, else a
+            -- built-in folder's name or another row's id.
+            CREATE TABLE IF NOT EXISTS Pop3LocalFolder (
+                account_id   TEXT NOT NULL,
+                id           TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                parent_id    TEXT DEFAULT NULL,
+                PRIMARY KEY (account_id, id)
+            );
             """;
         cmd.ExecuteNonQuery();
 
@@ -677,7 +689,8 @@ public partial class LocalStoreService : ILocalStoreService
             "DELETE FROM CalendarEvent     WHERE account_id = $aid;" +
             "DELETE FROM Folder            WHERE account_id = $aid;" +
             "DELETE FROM Pop3CollectedUidl WHERE account_id = $aid;" +
-            "DELETE FROM RulesWatermark    WHERE account_id = $aid;" +
+            "DELETE FROM Pop3LocalFolder   WHERE account_id = $aid;" +
+            "DELETE FROM RulesWatermark   WHERE account_id = $aid;" +
             "DELETE FROM CalendarSource    WHERE account_id = $aid;" +
             "DELETE FROM OutboxAttachment WHERE outbox_id IN (SELECT id FROM Outbox WHERE account_id = $aid);" +
             "DELETE FROM Outbox            WHERE account_id = $aid;";
@@ -1193,6 +1206,53 @@ public partial class LocalStoreService : ILocalStoreService
         while (await r.ReadAsync())
             result.Add(r.GetString(0));
         return result;
+    }
+
+    public async Task<List<Pop3LocalFolder>> LoadPop3LocalFoldersAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT id, display_name, parent_id FROM Pop3LocalFolder WHERE account_id=$aid;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        var result = new List<Pop3LocalFolder>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            result.Add(new Pop3LocalFolder(r.GetString(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2)));
+        return result;
+    }
+
+    public async Task SavePop3LocalFolderAsync(Guid accountId, Pop3LocalFolder folder)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "INSERT OR REPLACE INTO Pop3LocalFolder (account_id, id, display_name, parent_id) " +
+            "VALUES ($aid, $id, $name, $pid);";
+        cmd.Parameters.AddWithValue("$aid",  accountId.ToString());
+        cmd.Parameters.AddWithValue("$id",   folder.Id);
+        cmd.Parameters.AddWithValue("$name", folder.DisplayName);
+        cmd.Parameters.AddWithValue("$pid",  (object?)folder.ParentId ?? DBNull.Value);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds)
+    {
+        var list = folderIds as IReadOnlyList<string> ?? folderIds.ToList();
+        if (list.Count == 0) return;
+
+        await using var conn = await OpenAsync();
+        await using var tx = (SqliteTransaction)await conn.BeginTransactionAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "DELETE FROM Pop3LocalFolder WHERE account_id=$aid AND id=$id;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        var id = cmd.Parameters.AddWithValue("$id", string.Empty);
+        foreach (var f in list)
+        {
+            id.Value = f;
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await tx.CommitAsync();
     }
 
     public async Task AddPop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)

@@ -128,6 +128,38 @@ public sealed class Pop3ProtocolTests : IDisposable
     }
 
     [Fact]
+    public async Task MailFiledInAFolderOfTheUsersOwn_IsNotCollectedAgain()
+    {
+        // #794: a rule or the user files a message into a local folder. With leave-on-server on the
+        // UIDL stays listed, so this pins that the folder's mail counts as collected — through the
+        // folder's life and after it is deleted (its mail then in Trash).
+        _greenMail.RequirePop3();
+        var ct      = TestContext.Current.CancellationToken;
+        var account = _greenMail.CreatePop3Account("pop-local-folder", leaveOnServer: true);
+        await SeedAsync(account.Username, "File me", "Body.", ct);
+
+        var store = NewStore();
+        using var pop = new Pop3MailService(store);
+        await pop.ConnectAsync(account, "pw", ct);
+        var downloaded = await WaitForDownloadAsync(pop, account.Id, expected: 1, ct);
+        var uidl = downloaded.Single().MessageId;
+
+        await pop.CreateFolderAsync(account.Id, null, "Lists", ct);
+        var lists = (await pop.GetFoldersAsync(account.Id, ct)).Single(f => f.DisplayName == "Lists");
+        await pop.MoveMessagesAsync(account.Id, "Inbox", [uidl], lists.FullName, ct);
+
+        Assert.Equal(0, await pop.PollAsync(account.Id, "Inbox", ct));
+        Assert.Empty(await store.GetAllMessageIdsAsync(account.Id, "Inbox"));
+        Assert.Equal([uidl], await store.GetAllMessageIdsAsync(account.Id, lists.FullName));
+
+        await pop.DeleteFolderAsync(account.Id, lists.FullName, ct);
+
+        Assert.Equal(0, await pop.PollAsync(account.Id, "Inbox", ct));
+        Assert.Empty(await store.GetAllMessageIdsAsync(account.Id, "Inbox"));
+        Assert.Equal([uidl], await store.GetAllMessageIdsAsync(account.Id, "Trash"));
+    }
+
+    [Fact]
     public async Task EmptiedTrash_StaysEmpty_WhileTheServerStillListsTheUidl()
     {
         // Empty Trash removes the rows entirely; with leave-on-server on there is no DELE, so only

@@ -109,6 +109,19 @@ public interface ILocalStoreService
     /// </summary>
     Task RemovePop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls);
 
+    // ── POP3 local folders (#794) ────────────────────────────────────────────────
+    // The folders a user made on a POP3 account. Only the store knows them: the server has no
+    // folders, and the Folder cache is rewritten from a listing that is itself built from these rows.
+
+    /// <summary>Every folder the user has made on this POP3 account.</summary>
+    Task<List<Pop3LocalFolder>> LoadPop3LocalFoldersAsync(Guid accountId);
+
+    /// <summary>Creates the folder, or replaces the row with the same id (rename, move).</summary>
+    Task SavePop3LocalFolderAsync(Guid accountId, Pop3LocalFolder folder);
+
+    /// <summary>Forgets these folders. Their mail is the caller's to refile first.</summary>
+    Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds);
+
     /// <summary>
     /// Returns the highest message key stored for this folder, or "0" if none. For the IMAP
     /// backend this is the numeric high-water UID, computed as MAX(CAST(unique_id AS INTEGER))

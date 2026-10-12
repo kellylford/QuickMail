@@ -9183,28 +9183,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Why folder management is unavailable on this account, or null when it is available. The single
-    /// gate every folder-CRUD entry point asks before it opens a dialog or reaches a backend —
-    /// <paramref name="verb"/> is the action as the user would say it ("move", "create a folder in").
+    /// Why <paramref name="folder"/> cannot be moved or deleted, or null when it can. Asked by the
+    /// folder tree before it opens a confirmation or picker, so the user hears the reason instead of
+    /// confirming something that can only fail. <paramref name="verb"/> is the past participle the
+    /// sentence needs ("moved", "deleted").
     ///
-    /// <para>Here rather than in <c>MainWindow</c>: which accounts can manage folders is a state
-    /// decision, and code-behind is not where those live (see the MVVM rules). An account this
-    /// ViewModel has never heard of is allowed through — a guard is not the place to invent a
-    /// refusal, and the backend still answers for itself.</para>
+    /// <para>Here rather than in <c>MainWindow</c>: which folders can be managed is a state decision,
+    /// and code-behind is not where those live (see the MVVM rules). An account this ViewModel has
+    /// never heard of is allowed through — a guard is not the place to invent a refusal, and the
+    /// backend still answers for itself.</para>
     /// </summary>
-    public string? FolderCrudRefusal(Guid accountId, string verb)
+    public string? FolderCrudRefusal(MailFolderModel folder, string verb)
     {
-        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account is null || account.SupportsFolderCrud) return null;
+        var account = Accounts.FirstOrDefault(a => a.Id == folder.AccountId);
+        if (account is null || !account.HasFixedSpecialFolders || folder.Kind == SpecialFolderKind.None)
+            return null;
 
-        return $"POP3 accounts have no server folders, so there is nothing to {verb}. "
-             + $"{account.AccountLabel} has only Inbox, Sent, Drafts and Trash.";
+        return $"{folder.DisplayName} is one of the four built-in folders of a POP3 account, "
+             + $"so it cannot be {verb}.";
     }
-
-    /// <summary>True when every one of these accounts can manage folders — the test a picker that
-    /// offers to create one has to pass, since the button is not per-account.</summary>
-    public bool AllSupportFolderCrud(IEnumerable<Guid> accountIds) =>
-        accountIds.All(id => FolderCrudRefusal(id, "create a folder in") is null);
 
     /// <summary>Creates a new folder under the given parent and refreshes the tree.</summary>
     public async Task CreateFolderAndRefreshAsync(Guid accountId, string? parentFolderName, string name)

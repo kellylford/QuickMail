@@ -483,12 +483,8 @@ public partial class FolderPickerWindow : Window
             // account. The button creates under whichever node is selected, so on the unscoped
             // fallback above it would make the folder in one mailbox while the rule files into
             // another: worse than the wrong-folder pick that fallback already allows, because the
-            // user watches the folder appear and reasonably concludes the target is real. Withheld
-            // too for an account that cannot manage folders (POP3, #128) — offering an action that
-            // can only fail is worse than not offering it.
-            folderCreator: useScoped && scopedAccounts.All(a => a.SupportsFolderCrud)
-                ? folderCreator
-                : null);
+            // user watches the folder appear and reasonably concludes the target is real.
+            folderCreator: useScoped ? folderCreator : null);
     }
 
     /// <summary>
