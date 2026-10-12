@@ -266,6 +266,10 @@ public partial class App : Application
         // the ConnectionDiagnostics setting (off by default).
         ConnectionJournal.Configure(profile.ProfileDir);
 
+        // A new install (#507): no account has ever been saved here, so Manage Accounts offers to import
+        // settings instead of starting from nothing. Read before a staged import can write accounts.json.
+        var isNewInstall = SettingsImporter.IsNewInstall(profile.ProfileDir);
+
         // A settings import staged by the last session (#507) is applied here, before any service
         // has read a file it replaces, so nothing in memory can write the old settings back over it.
         var settingsImport = SettingsImporter.ApplyPendingAtStartup(profile.ProfileDir, DateTime.Now);
@@ -610,6 +614,7 @@ public partial class App : Application
             msOAuthService.ResolveAccount = mainVm.ResolveAccountById;
             mainVm.ImmutableIdRebuildAnnouncePending = immutableIdRebuilt;   // #366 one-time re-sync notice
             mainVm.ProfileDirectory = profile.ProfileDir;   // #507 folder heal after a settings import
+            mainVm.IsNewInstall = isNewInstall;               // #507 import offer in Manage Accounts
             // Registers/unregisters the Help command and shows or hides the menu item, and sets
             // ConnectionJournal.Enabled — so nothing records until the user opts in.
             mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);

@@ -237,6 +237,15 @@ public partial class AccountManagerDialog : Window
             _vm.CommitNewAccount(addVm.ToAccountModel(), addVm.Password);
     }
 
+    // #507: the import itself opens after this dialog has closed (MainWindow.OpenAccountManager),
+    // never inside its modal loop over the reading pane.
+    private void ImportSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.ChooseImportSettings();
+        DialogResult = true;
+        Close();
+    }
+
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         DialogResult = true;

@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:views="clr-namespace:QuickMail.Views"
         mc:Ignorable="d"
         Title="Export Settings"
         Width="520" Height="520"
@@ -23,28 +24,30 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="What to export:" Margin="0,0,0,8"/>
+        <Label Grid.Row="0" Content="What _to export:" Target="{Binding ElementName=CategoryList}"
+               Padding="0" Margin="0,0,0,8"/>
 
-        <!-- One tab stop for the group; arrows move between the checkboxes, as in Add to Address Book. -->
+        <!-- FieldCheckList, as in Message List Fields: each row is one check box in a list, so its
+             name is spoken once (a plain ItemsControl added a same-named row around each check box),
+             it has position and count, and Home/End reach the first and last row. One tab stop;
+             arrows move between rows. -->
         <ScrollViewer Grid.Row="1"
                       VerticalScrollBarVisibility="Auto"
                       IsTabStop="False"
-                      AutomationProperties.Name="What to export">
-            <ItemsControl x:Name="CategoryList"
-                          ItemsSource="{Binding Categories}"
-                          KeyboardNavigation.TabNavigation="Once"
-                          KeyboardNavigation.DirectionalNavigation="Contained"
-                          IsTabStop="False"
-                          Focusable="False">
-                <ItemsControl.ItemTemplate>
+                      Focusable="False">
+            <views:FieldCheckList x:Name="CategoryList"
+                                  ItemsSource="{Binding Categories}"
+                                  KeyboardNavigation.TabNavigation="Once"
+                                  KeyboardNavigation.DirectionalNavigation="Contained"
+                                  AutomationProperties.Name="What to export">
+                <views:FieldCheckList.ItemTemplate>
                     <DataTemplate>
-                        <CheckBox IsChecked="{Binding IsChecked}"
+                        <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
                                   Content="{Binding Name}"
-                                  AutomationProperties.Name="{Binding Name}"
                                   Margin="0,4"/>
                     </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                </views:FieldCheckList.ItemTemplate>
+            </views:FieldCheckList>
         </ScrollViewer>
 
         <TextBox x:Name="SummaryBox"

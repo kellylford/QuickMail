@@ -5,6 +5,8 @@
 **File → Export Settings…** saves your QuickMail setup in one file, and **File → Import
 Settings…** brings it in on another computer (#507). Both are off until you turn them on: in
 **Settings → Advanced**, check **Allow exporting and importing settings** on each computer.
+On a new install, **Manage Accounts** offers **Import Settings…** beside **New** without it, so a
+new computer can start from your settings straight away.
 
 The file carries your accounts and signatures, rules, saved views, flags, watched
 conversations, address book, message templates, keyboard shortcuts, themes, message list

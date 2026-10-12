@@ -38,6 +38,9 @@ public partial class ImportSettingsWindow : Window
 
     public void SetFocusRestoreTarget(IInputElement? element) => _restoreFocusTo = element;
 
+    /// <summary>True once Import and Restart staged the file: the window closed to restart, not to back out.</summary>
+    public bool ImportStarted { get; private set; }
+
     private void Import_Click(object sender, RoutedEventArgs e)
     {
         // Checked before anything is staged, so declining leaves nothing waiting for the next start.
@@ -57,6 +60,7 @@ public partial class ImportSettingsWindow : Window
                             "Import Settings", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        ImportStarted = true;
         _restoreFocusTo = null;   // the app is about to restart; there is nothing to return to
         Close();
         _restart();

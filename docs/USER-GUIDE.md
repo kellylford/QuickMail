@@ -143,7 +143,7 @@ The same notes are on each version's own page on GitHub, alongside that version'
 
 Adding an account, changing one, testing it, and removing it all happen in **Manage Accounts**. Open it from **File → Manage Accounts…**, from the **Accounts** button on the toolbar, or from the Command Palette (**Ctrl+Shift+P**) by choosing **Manage Accounts**. It has no keyboard shortcut of its own to begin with; you can give it one under **File → Settings → Keyboard Shortcuts**.
 
-Manage Accounts opens with focus on the first entry in the **Accounts** list, so you can arrow through your accounts straight away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom. When you have no accounts yet there is nothing to land on, so focus goes to **New** instead.
+Manage Accounts opens with focus on the first entry in the **Accounts** list, so you can arrow through your accounts straight away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom. When you have no accounts yet there is nothing to land on, so focus goes to **New** instead. On a new install, where no account has been added yet, an **Import Settings…** button (**Alt+M**) sits beside **New**, for bringing your settings from another computer instead (see *Moving Your Settings to Another Computer*).
 
 For most accounts you need three things: your provider, your email address, and your password. QuickMail knows the server settings for the providers it lists, and looks them up for the ones it does not.
 
@@ -1920,7 +1920,7 @@ Exporting and importing settings are off until you turn them on, on each compute
 ### Exporting your settings
 
 1. Choose **File → Export Settings…**, or **Export Settings** from the Command Palette.
-2. The window lists what can go into the file, all of it checked: accounts and signatures; rules, saved views, flags and watched conversations; the address book; message templates; keyboard shortcuts; themes and message list layout; the Local Calendar; and your preferences with the custom spelling dictionary. The list is one stop when you press **Tab**; arrow through it and press **Space** to leave something out.
+2. The window lists what can go into the file, all of it checked: accounts and signatures; rules, saved views, flags and watched conversations; the address book; message templates; keyboard shortcuts; themes and message list layout; the Local Calendar; and your preferences with the custom spelling dictionary. The list is one stop when you press **Tab**; arrow through it (**Home** and **End** go to the first and last) and press **Space** to leave something out.
 3. Press **Tab** to read a summary of what the file will hold. It contains email addresses, server names, signatures and, if you leave them checked, your address book and Local Calendar. **It never contains a password or a sign-in.**
 4. Choose **Export…** and save the file. Its name ends in `.qmsettings`. QuickMail says how many categories it saved and how large the file is, and returns you to where you were.
 
@@ -1930,10 +1930,14 @@ Your mail is not in the file. It comes back from your mail servers on the other 
 
 ### Importing them on the other computer
 
-1. Install QuickMail on the other computer. You do not need to add any accounts first: if **Manage Accounts** opens when QuickMail starts, close it.
-2. Turn on **Allow exporting and importing settings** on this computer too (see *Turning it on*).
-3. Send, save or close any message you are writing. Importing restarts QuickMail, and it will not go ahead while a message window is open.
-4. Choose **File → Import Settings…** and pick the `.qmsettings` file.
+**On a new install**, you do not need to turn anything on. The first time QuickMail starts, **Manage Accounts** opens with an **Import Settings…** button (**Alt+M**) beside **New**. Choose it, pick the `.qmsettings` file, and carry on from step 5 below. The button is there until the first account is added, so you can close Manage Accounts and come back to it later. If you cancel the import, you are taken back to Manage Accounts. Using it does not turn on **Allow exporting and importing settings**: that stays off until you turn it on yourself.
+
+**On a computer that already has QuickMail set up:**
+
+1. Turn on **Allow exporting and importing settings** on this computer (see *Turning it on*).
+2. Send, save or close any message you are writing. Importing restarts QuickMail, and it will not go ahead while a message window is open.
+3. Choose **File → Import Settings…**.
+4. Pick the `.qmsettings` file.
 5. A preview opens before anything changes, with focus on its summary: which computer the file came from, how many accounts will be added or updated, and what happens next. Press **F6** to move between the summary, the list of what will be imported, the accounts, and the buttons.
    - Each line of **What will be imported** says what is in the file and what it replaces here, for example "Message templates: 4 templates, replacing the 2 here".
    - Each account says what will happen to it: "will be added", or "already on this computer, settings will be updated". If this computer has the same address as a different kind of account (for example IMAP here and Microsoft 365 in the file), the account is added separately and the preview says so.
