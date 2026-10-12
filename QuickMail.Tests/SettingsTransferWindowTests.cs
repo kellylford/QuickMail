@@ -157,7 +157,7 @@ public sealed class SettingsTransferWindowTests : IDisposable
             // The name is on the container (CLAUDE.md) and says what will happen to the account.
             Assert.Equal("Home, will be added", System.Windows.Automation.AutomationProperties.GetName(row));
             var peer = UIElementAutomationPeer.CreatePeerForElement(categories);
-            Assert.Contains(peer.GetChildren(), c => c.GetName() == "Message templates: 0 templates");
+            Assert.Contains(peer.GetChildren(), c => c.GetName() == "Message templates: 0 templates, replacing the 0 here");
         }
         finally { window.Close(); }
     }
