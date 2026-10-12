@@ -128,9 +128,11 @@ public class ConfigService : IConfigService
 
     // ── Parser ────────────────────────────────────────────────────────────────────
 
-    private static ConfigModel ParseFile(string[] lines)
+    /// <param name="into">Parse on top of this model rather than the defaults: a key the file lacks keeps
+    /// its value there (a settings import from an older QuickMail, #507).</param>
+    internal static ConfigModel ParseFile(string[] lines, ConfigModel? into = null)
     {
-        var config       = new ConfigModel();
+        var config       = into ?? new ConfigModel();
         string? section  = null;
         Guid    acctGuid = Guid.Empty;
 
@@ -401,7 +403,7 @@ public class ConfigService : IConfigService
 
     // ── Writer ────────────────────────────────────────────────────────────────────
 
-    private static string BuildFileText(ConfigModel config)
+    internal static string BuildFileText(ConfigModel config)
     {
         var sb = new StringBuilder();
 

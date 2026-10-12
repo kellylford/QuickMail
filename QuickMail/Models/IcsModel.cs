@@ -323,6 +323,31 @@ public class IcsModel
         sb.AppendLine("PRODID:-//QuickMail//EN");
         if (includeMethod)
             sb.AppendLine("METHOD:PUBLISH");
+        AppendEvent(sb, evt);
+        sb.AppendLine("END:VCALENDAR");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Serializes several events into one VCALENDAR: the Local Calendar in a settings file (issue
+    /// #507). Read back by <see cref="Services.CalendarIcsImporter"/>, which updates an appointment
+    /// with the same UID rather than duplicating it.
+    /// </summary>
+    public static string ExportCalendar(IEnumerable<CalendarEvent> events)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("BEGIN:VCALENDAR");
+        sb.AppendLine("VERSION:2.0");
+        sb.AppendLine("PRODID:-//QuickMail//EN");
+        sb.AppendLine("METHOD:PUBLISH");
+        foreach (var evt in events)
+            AppendEvent(sb, evt);
+        sb.AppendLine("END:VCALENDAR");
+        return sb.ToString();
+    }
+
+    private static void AppendEvent(StringBuilder sb, CalendarEvent evt)
+    {
         sb.AppendLine("BEGIN:VEVENT");
         sb.AppendLine($"UID:{(string.IsNullOrWhiteSpace(evt.Uid) ? Guid.NewGuid().ToString("N") : evt.Uid)}");
         sb.AppendLine($"DTSTAMP:{DateTime.UtcNow:yyyyMMdd'T'HHmmss'Z'}");
@@ -346,7 +371,16 @@ public class IcsModel
         }
 
         if (!string.IsNullOrWhiteSpace(evt.RecurrenceRule))
+        {
             sb.AppendLine($"RRULE:{evt.RecurrenceRule}");
+            // Deleted occurrences, in DTSTART's value type (RFC 5545): a date for an all-day series,
+            // whose occurrences are days; otherwise the local wall-clock start written as UTC, which
+            // the parser turns back into the same local time.
+            foreach (var exDate in evt.GetExDates())
+                sb.AppendLine(evt.IsAllDay
+                    ? $"EXDATE;VALUE=DATE:{exDate:yyyyMMdd}"
+                    : $"EXDATE:{DateTime.SpecifyKind(exDate, DateTimeKind.Local).ToUniversalTime():yyyyMMdd'T'HHmmss'Z'}");
+        }
         if (!string.IsNullOrWhiteSpace(evt.Summary))
             sb.AppendLine($"SUMMARY:{EscapeIcsText(evt.Summary)}");
         if (!string.IsNullOrWhiteSpace(evt.Location))
@@ -355,8 +389,6 @@ public class IcsModel
             sb.AppendLine($"DESCRIPTION:{EscapeIcsText(evt.Description)}");
 
         sb.AppendLine("END:VEVENT");
-        sb.AppendLine("END:VCALENDAR");
-        return sb.ToString();
     }
 
     /// <summary>

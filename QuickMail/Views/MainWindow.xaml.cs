@@ -302,6 +302,8 @@ public partial class MainWindow : Window
         RowFieldsMenuItem.Click += (_, _) => OpenRowFieldsWindow();
 
         vm.ExitRequested += RequestExit;
+        vm.ExportSettingsRequested += (_, _) => OpenExportSettings();   // #507
+        vm.ImportSettingsRequested += (_, _) => OpenImportSettings();
         vm.StartupConnectCompleted += () => Dispatcher.BeginInvoke(TryProcessPendingActivation);
         // Windows logoff/shutdown must exit for real, not hide to tray (otherwise Windows shows the
         // "app is preventing sign-out" screen and force-kills us, leaking the tray icon). Subscribe
@@ -1498,6 +1500,15 @@ public partial class MainWindow : Window
             execute: () => _vm.CalendarVm?.ImportIcsCommand.Execute(null),
             isAvailable: () => _vm.CalendarVm != null));
 
+        // Settings export and import (#507). No default keys: occasional actions in a crowded keyspace;
+        // the File menu carries them, and a user who wants a key can assign one.
+        _registry.Register(new CommandDefinition(
+            id: "settings.export", category: "Settings", title: "Export Settings…",
+            execute: _vm.RequestExportSettings));
+        _registry.Register(new CommandDefinition(
+            id: "settings.import", category: "Settings", title: "Import Settings…",
+            execute: _vm.RequestImportSettings));
+
         // ── Default calendar for new appointments (issue #497) ──────────────────
         // No default key: both act on the folder tree's calendar selection, and the context menu on
         // that node is the primary entry point. Registered so they are also reachable — and
@@ -1706,9 +1717,16 @@ public partial class MainWindow : Window
             _vm.MaybeShowUpdateInstalledNotice(dialogAllowed: false);
             // A quiet start (#770) must not open a modal at sign-in over a window never shown.
             if (IsQuietStart)
-                CompleteQuietStartLoad(OpenAccountManager);
+            {
+                CompleteQuietStartLoad(() => { OpenAccountManager(); ShowSettingsImportResult(); });
+            }
             else
+            {
                 OpenAccountManager();
+                // An import that left no accounts (one that failed, or carried none) still reports
+                // at this start (#507), once the Account Manager is out of the way.
+                ShowSettingsImportResult();
+            }
             return;
         }
 
@@ -1798,6 +1816,9 @@ public partial class MainWindow : Window
 
     private void RunStartupNotices()
     {
+        // A settings import applied at this start (#507) comes first: it is what the user restarted for.
+        ShowSettingsImportResult();
+
         // One-time desktop shortcut offer for installed copies — after the window is up and
         // the background sync has been kicked off, so the dialog does not delay startup;
         // the offer handler restores focus to the message panel explicitly on close.

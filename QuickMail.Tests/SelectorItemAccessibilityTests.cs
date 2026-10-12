@@ -177,6 +177,20 @@ public class SelectorItemAccessibilityTests
         Assert.Equal("Unread", AdvancedSearchViewModel.ReadChoices[1].ToString());
         Assert.Equal("Flagged", AdvancedSearchViewModel.FlagChoices[1].ToString());
         Assert.Equal("Work", new AdvancedSearchAccount(Guid.NewGuid(), "Work", isChosen: true).ToString());
+
+        // Settings export and import (#507): the export categories, the import preview's account rows,
+        // and the accounts to sign in after an import.
+        Assert.Equal("Address book", new ExportSettingsViewModel.CategoryOption(
+            SettingsCategoryInfo.All.First(c => c.Category == SettingsCategory.AddressBook)).ToString());
+        var importRow = new ImportAccountRow
+        {
+            Source = new SettingsBundleAccount { Username = "kelly@example.com", DisplayName = "Kelly" },
+            Outcome = ImportAccountOutcome.Added,
+        };
+        Assert.Equal("Kelly, will be added", importRow.ToString());
+        Assert.Equal(importRow.ToString(), importRow.AccessibleName);
+        var signInRow = new SettingsImportedViewModel.SignInRow(new AccountModel { AccountName = "Work" });
+        Assert.Equal("Work, needs sign-in", signInRow.ToString());
     }
 
     // End-to-end against the REAL UnifiedRulesWindow, the only rules window since #550. Asserts that
@@ -400,6 +414,8 @@ public class SelectorItemAccessibilityTests
             // Bound to both Importance ComboBoxes in the rule editor (#682).
             ServerRuleEditorViewModel.ImportanceOptions[0].ToString(),
             new AdvancedSearchAccount(Guid.NewGuid(), "Alpha", isChosen: true).ToString(),
+            new ImportAccountRow { Source = new SettingsBundleAccount { Username = "a@example.com" }, Outcome = ImportAccountOutcome.Matched }.ToString(),
+            new SettingsImportedViewModel.SignInRow(new AccountModel { AccountName = "Alpha" }).ToString(),
             new ConnectionAccountRow
             {
                 Id = Guid.NewGuid(), Label = "Alpha", Host = "h",

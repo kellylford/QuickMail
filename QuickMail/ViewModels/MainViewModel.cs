@@ -284,6 +284,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // After a settings import, the first real folder list is what imported references are matched against (#507).
+        HealImportedFolderReferences(accountId, folders);
+
         // --online never initializes the local store, and the connection string is ReadWriteCreate,
         // so writing here would create an empty mail.db in the profile and then throw "no such
         // table: Folder" on every account. Every other store write in this class is guarded the

@@ -93,9 +93,20 @@ public partial class App : Application
         // A launch by Windows at sign-in (#770) that finds QuickMail already running — the user
         // opened it before Windows got round to its startup apps — ends without signaling, so
         // it never pulls that window to the front.
+        // A restart (#507) waits for the process it replaces to let go of the profile first.
+        Helpers.AppRestart.WaitForPreviousInstance(args);
+
         if (!IsHelpRequest(args))
         {
-            _singleInstance = SingleInstanceService.TryAcquire(args, signalExisting: !IsSignInLaunch(args));
+            // A restart never signals the instance it replaces (that would bring the closing window
+            // forward), and keeps trying a while longer if it is slow to let go of the profile.
+            var isRestart = Helpers.AppRestart.IsReplacement(args);
+            _singleInstance = SingleInstanceService.TryAcquire(args, signalExisting: !isRestart && !IsSignInLaunch(args));
+            for (var attempt = 0; _singleInstance is null && isRestart && attempt < 60; attempt++)
+            {
+                System.Threading.Thread.Sleep(1000);
+                _singleInstance = SingleInstanceService.TryAcquire(args, signalExisting: false);
+            }
             if (_singleInstance is null) return;
         }
 
@@ -255,6 +266,12 @@ public partial class App : Application
         // the ConnectionDiagnostics setting (off by default).
         ConnectionJournal.Configure(profile.ProfileDir);
 
+        // A settings import staged by the last session (#507) is applied here, before any service
+        // has read a file it replaces, so nothing in memory can write the old settings back over it.
+        var settingsImport = SettingsImporter.ApplyPendingAtStartup(profile.ProfileDir, DateTime.Now);
+        if (settingsImport is not null)
+            LogService.Log($"Settings import applied at startup: {(settingsImport.Succeeded ? "succeeded" : "failed")}.");
+
         // /debug enables verbose debug logging to the log file.
         if (e.Args.Contains("/debug", StringComparer.OrdinalIgnoreCase))
         {
@@ -350,6 +367,11 @@ public partial class App : Application
                 // Full-text search (#717): index whatever is waiting — every cached message, the first
                 // launch after upgrading — without holding up startup.
                 localStore.StartBackgroundSearchIndexing();
+
+                // The Local Calendar from a settings import (#507) needs the store, so it lands here.
+                // Off the UI thread: the store's continuations must not need this thread back.
+                if (System.IO.File.Exists(System.IO.Path.Combine(profile.ProfileDir, SettingsImporter.PendingCalendarFileName)))
+                    Task.Run(() => SettingsImporter.ApplyPendingCalendarAsync(profile.ProfileDir, localStore)).GetAwaiter().GetResult();
             }
 
             _pop3Backend          = new Pop3MailService(localStore, onlineMode);
@@ -587,6 +609,7 @@ public partial class App : Application
             // of the account list — never the UI-thread-owned Accounts collection directly.
             msOAuthService.ResolveAccount = mainVm.ResolveAccountById;
             mainVm.ImmutableIdRebuildAnnouncePending = immutableIdRebuilt;   // #366 one-time re-sync notice
+            mainVm.ProfileDirectory = profile.ProfileDir;   // #507 folder heal after a settings import
             // Registers/unregisters the Help command and shows or hides the menu item, and sets
             // ConnectionJournal.Enabled — so nothing records until the user opts in.
             mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);

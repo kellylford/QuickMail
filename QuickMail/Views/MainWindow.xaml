@@ -446,6 +446,12 @@
                 <MenuItem Header="_Import Calendar File (.ics)…"
                           AutomationProperties.Name="Import Calendar File"
                           Click="MenuImportCalendarFile_Click"/>
+                <MenuItem Header="Expo_rt Settings…"
+                          AutomationProperties.Name="Export Settings"
+                          Click="MenuExportSettings_Click"/>
+                <MenuItem Header="Impor_t Settings…"
+                          AutomationProperties.Name="Import Settings"
+                          Click="MenuImportSettings_Click"/>
                 <Separator/>
                 <MenuItem Header="_Manage Accounts…"
                           Command="{Binding ManageAccountsCommand}"/>
