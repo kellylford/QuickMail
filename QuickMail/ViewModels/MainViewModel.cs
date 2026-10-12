@@ -9240,23 +9240,39 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         StatusText = $"Creating folder '{name}'…";
         IsBusy     = true;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await _imap.CreateFolderAsync(accountId, parentFolderName, name, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("CreateFolder", ex);
+            // A timeout's own message is "A task was canceled", which tells a listener nothing.
+            var reason = ex is OperationCanceledException ? "The mail server did not answer in time." : ex.Message;
+            StatusText = $"Failed to create folder: {reason}";
+            IsBusy     = false;
+            throw new InvalidOperationException(reason, ex);
+        }
+
+        // Created. A refresh failing now must not be reported as the creation failing — the folder
+        // exists, and a retry would only be told so. Hand back what is cached; the tree rebuild after
+        // the picker closes picks the new folder up once the list can be read.
+        _folderTreeRebuildPending = true;
+        try
+        {
             var folderList = await _imap.GetFoldersAsync(accountId, cts.Token);
             SetCachedFolders(accountId, folderList);
             var account = Accounts.FirstOrDefault(a => a.Id == accountId);
             if (account != null) ApplyAccountStatus(account, folderList, "folder-created");
-            _folderTreeRebuildPending = true;
             StatusText = $"Folder '{name}' created.";
             return folderList;
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to create folder: {ex.Message}";
-            LogService.Log("CreateFolder", ex);
-            throw;
+            LogService.Log("CreateFolder: refresh after create", ex);
+            StatusText = $"Folder '{name}' created, but the folder list could not be refreshed.";
+            return _cachedFolders.TryGetValue(accountId, out var cached) ? cached : [];
         }
         finally { IsBusy = false; }
     }

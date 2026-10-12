@@ -6656,7 +6656,15 @@ public partial class MainWindow : Window
         Guid? viewAccount = null;
         if (parentFolder is { FullName.Length: > 0 } && parentFolder.FullName[0] == '\0')
         {
-            if (parentFolder.AccountId != Guid.Empty) viewAccount = parentFolder.AccountId;
+            // A view across every account (All Inboxes, say) belongs to none of them, and falling back
+            // to whichever account was last selected would put the folder somewhere the user never
+            // chose. Say what is needed instead.
+            if (parentFolder.AccountId == Guid.Empty)
+            {
+                Report($"'{node!.Label}' covers every account. Choose an account or a folder to create the folder in.");
+                return;
+            }
+            viewAccount  = parentFolder.AccountId;
             parentFolder = null;
         }
         var accountId    = parentFolder?.AccountId

@@ -1122,8 +1122,8 @@ public class Pop3MailService : IMailService
                    .FirstOrDefault(f => string.Equals(f.Id, toFolder, StringComparison.Ordinal))?.Id
             ?? throw new NotSupportedException(toFolder.StartsWith(LocalFolderPrefix, StringComparison.Ordinal)
                 // A local folder's id means nothing to the user: this is a rule still aimed at a
-                // folder they have since deleted.
-                ? "That folder has been deleted, so the messages were not filed there."
+                // folder deleted since, or one brought from another computer where it never existed.
+                ? "That folder no longer exists on this account, so the messages were not filed there."
                 : $"'{toFolder}' is not a folder of this POP3 account, so the messages were not filed there.");
 
         if (string.Equals(fromFolder, toFolder, StringComparison.OrdinalIgnoreCase)) return;

@@ -276,11 +276,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
             : ServerRuleEditorViewModel.ForEditClient(row.Client!);
         if (row.RunsWhere == RuleRunsWhere.Client && NamesFoldersById(accountId))
         {
-            // A Graph client rule keeps folder ids, and the editor's folder buttons show the name. Before #682 no such
-            // rule could move or copy, so nothing needed it. (An IMAP rule's folder is already its readable path; see
-            // the client-row builder for why it isn't looked up.)
-            editor.MoveToFolderName = GraphFolderButtonName(accountId, editor.MoveToFolderId);
-            editor.CopyToFolderName = GraphFolderButtonName(accountId, editor.CopyToFolderId);
+            // A Graph or POP3 client rule keeps folder ids, and the editor's folder buttons show the name. Before #682
+            // no such rule could move or copy, so nothing needed it. (An IMAP rule's folder is already its readable
+            // path; see the client-row builder for why it isn't looked up.)
+            editor.MoveToFolderName = FolderButtonName(accountId, editor.MoveToFolderId);
+            editor.CopyToFolderName = FolderButtonName(accountId, editor.CopyToFolderId);
         }
         editor.AccountId = accountId;
         // The rule's OWN account, not whichever one the picker is showing (#683). The editor is modeless
@@ -766,7 +766,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels,
                     byId && r.Does(RuleAction.MoveToFolder)
                         ? ResolveFolderName(accountId, r.TargetFolder) : null,
-                    folderIsOpaque: byId,
+                    folderIsOpaque: IsOpaqueFolderId(accountId, r.TargetFolder) || IsOpaqueFolderId(accountId, r.CopyTargetFolder),
                     copyFolderDisplay: byId && r.Does(RuleAction.CopyToFolder)
                         ? ResolveFolderName(accountId, r.CopyTargetFolder) : null)));
             }
@@ -826,8 +826,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// rule (<see cref="ServerRuleModel.MoveToFolderId"/>) and a Graph client rule
     /// (<see cref="MailRule.TargetFolder"/>) store an opaque id (e.g. "AQMkAD…"); looking it up here lets
     /// the rule prose read "move to Deleted Items" rather than the id. Null lets the caller keep whatever
-    /// fallback prose it has. Callers pass only Graph folder ids: an IMAP TargetFolder is already the
-    /// readable path and the client-row builder deliberately does not resolve it (see there).
+    /// fallback prose it has. Callers pass only Graph and POP3 folder ids: an IMAP TargetFolder is already
+    /// the readable path and the client-row builder deliberately does not resolve it (see there).
+    /// <para>A POP3 folder of the user's own reads as its path ("Inbox/Lists"), since two can share a name
+    /// under different parents (#794) — the same collapse the IMAP note above refuses. Graph keeps its leaf
+    /// name, as it always has.</para>
     /// </summary>
     private string? ResolveFolderName(Guid accountId, string? folderId)
     {
@@ -836,16 +839,35 @@ public partial class UnifiedRulesViewModel : ObservableObject
             || !_foldersByAccount.TryGetValue(accountId, out var folders))
             return null;
         var match = folders.FirstOrDefault(f => f.FullName == folderId);
-        return string.IsNullOrWhiteSpace(match?.DisplayName) ? null : match.DisplayName;
+        if (string.IsNullOrWhiteSpace(match?.DisplayName)) return null;
+        if (!IsLocalFolderId(folderId)) return match.DisplayName;
+
+        var byId = folders.GroupBy(f => f.FullName, StringComparer.Ordinal)
+                          .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        return FolderPaths.Build(match, byId);
     }
 
     /// <summary>
-    /// What a Graph client rule's folder button says: the folder's name; "another folder" when the id can't be
-    /// resolved — not synced yet, or drifted (#366) — which is what the rules list says for the same folder, and
-    /// never the raw "AQMkAD…"; and null, so the button reads "Choose folder…", when the rule names no folder.
+    /// What a Graph or POP3 client rule's folder button says: the folder's name; "another folder" when an opaque
+    /// id can't be resolved — not synced yet, or drifted (#366) — which is what the rules list says for the same
+    /// folder, and never the raw "AQMkAD…" or "folder-…"; a POP3 built-in name ("Trash") as itself; and null, so
+    /// the button reads "Choose folder…", when the rule names no folder.
     /// </summary>
-    private string? GraphFolderButtonName(Guid accountId, string? folderId)
-        => string.IsNullOrWhiteSpace(folderId) ? null : ResolveFolderName(accountId, folderId) ?? "another folder";
+    private string? FolderButtonName(Guid accountId, string? folderId)
+        => string.IsNullOrWhiteSpace(folderId) ? null
+         : ResolveFolderName(accountId, folderId)
+           ?? (IsOpaqueFolderId(accountId, folderId) ? "another folder" : folderId);
+
+    /// <summary>A POP3 folder the user made (#794): filed under a generated id, never a readable name.</summary>
+    private static bool IsLocalFolderId(string? folderId)
+        => folderId?.StartsWith(Pop3MailService.LocalFolderPrefix, StringComparison.Ordinal) == true;
+
+    /// <summary>Whether <paramref name="folderId"/> is an id no one should be shown: any Graph folder, or a
+    /// POP3 folder of the user's own. A POP3 built-in target ("Inbox", "Trash") is its own readable name.</summary>
+    private bool IsOpaqueFolderId(Guid accountId, string? folderId)
+        => (_allAccounts.FirstOrDefault(a => a.Id == accountId)?.BackendKind == BackendKind.MicrosoftGraph
+            && !string.IsNullOrWhiteSpace(folderId))
+           || IsLocalFolderId(folderId);
 
     /// <summary>
     /// Why a client-side rule that copies into the account's own Inbox can't be saved, or null when it doesn't do
