@@ -117,6 +117,49 @@ public class Pop3LocalFolderTests
         Assert.Equal("Inbox", FolderPaths.Build(folders[0], byId));
     }
 
+    [Fact]
+    public async Task TheCachedFolderList_ReadBackAtStartup_BuildsTheSameTree()
+    {
+        // Startup draws the tree from the Folder cache before any backend answers, so the "" parent
+        // of a top-level local folder has to survive SQLite and still root the folder.
+        var lists = await CreateAsync("Lists", parent: "Inbox");
+        await CreateAsync("lists.xs4all.nl");
+        await _store.SaveFoldersAsync(_account, await _pop.GetFoldersAsync(_account));
+
+        var cached = (await _store.LoadFoldersAsync())[_account];
+        var roots  = FolderTreeBuilder.Build(cached);
+
+        Assert.Equal(["Inbox", "Drafts", "Sent", "Trash", "lists.xs4all.nl"], roots.Select(n => n.Label));
+        Assert.Equal(lists.FullName, Assert.Single(roots[0].Children).Folder!.FullName);
+    }
+
+    [Fact]
+    public async Task MovingAFolderWhereItAlreadyIs_IsCaughtBeforeReachingTheBackend()
+    {
+        var lists = await CreateAsync("Lists", parent: "Inbox");
+        var folders = await _pop.GetFoldersAsync(_account);
+        var inbox = folders.Single(f => f.FullName == "Inbox");
+        var trash = folders.Single(f => f.FullName == "Trash");
+
+        Assert.True(MainViewModel.IsAlreadyUnder(lists, inbox));
+        Assert.False(MainViewModel.IsAlreadyUnder(lists, trash));
+    }
+
+    private sealed class UnreadableFolderStore : StubLocalStoreService
+    {
+        public override Task<List<Pop3LocalFolder>> LoadPop3LocalFoldersAsync(Guid accountId)
+            => throw new InvalidOperationException("database is locked");
+    }
+
+    [Fact]
+    public async Task AFolderListThatCannotBeRead_Throws_RatherThanListingOnlyTheBuiltInFour()
+    {
+        // The caller replaces its cached folder list with whatever this returns. Four folders would
+        // make the user's own vanish from the tree; a throw leaves the last good list in place.
+        var pop = new Pop3MailService(new UnreadableFolderStore());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => pop.GetFoldersAsync(_account));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
@@ -183,9 +226,11 @@ public class Pop3LocalFolderTests
         await _pop.DeleteFolderAsync(_account, lists.FullName);
         await _store.UpsertSummariesAsync([Msg(_account, "a", "Inbox")]);
 
-        await Assert.ThrowsAsync<NotSupportedException>(
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
             () => _pop.MoveMessagesAsync(_account, "Inbox", ["a"], lists.FullName));
         Assert.Equal(["a"], await IdsIn("Inbox"));
+        // Said in words, not with the folder's internal id.
+        Assert.DoesNotContain(Pop3MailService.LocalFolderPrefix, ex.Message);
     }
 
     [Fact]

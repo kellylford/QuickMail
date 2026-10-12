@@ -119,8 +119,11 @@ public interface ILocalStoreService
     /// <summary>Creates the folder, or replaces the row with the same id (rename, move).</summary>
     Task SavePop3LocalFolderAsync(Guid accountId, Pop3LocalFolder folder);
 
-    /// <summary>Forgets these folders. Their mail is the caller's to refile first.</summary>
-    Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds);
+    /// <summary>
+    /// Forgets these folders and refiles every message in them to <paramref name="refileTo"/>, in
+    /// one transaction, so no message is left filed under a folder that no longer exists.
+    /// </summary>
+    Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds, string refileTo);
 
     /// <summary>
     /// Returns the highest message key stored for this folder, or "0" if none. For the IMAP

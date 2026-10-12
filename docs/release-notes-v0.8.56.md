@@ -6,11 +6,12 @@ A POP3 account used to have only Inbox, Sent, Drafts and Trash, so there was now
 mailing list or anything else (#794). Now you can create folders on a POP3 account the same way as
 on any other: **Folder → New Folder…**, the folder tree's context menu, or **New Folder** in the
 folder picker, including while choosing a rule's folder. Move and copy messages into them, point
-rules at them, and rename, move, copy or delete them like any other folder.
+rules at them, and move, copy or delete them like any other folder.
 
 A POP3 server has no folders, so these folders and the mail in them exist only on this computer.
 Deleting one moves its mail, and the mail of any folders inside it, to Trash. Inbox, Sent, Drafts
-and Trash stay as they are and cannot be moved or deleted.
+and Trash stay as they are and cannot be moved or deleted. Exporting your settings does not
+carry these folders or their mail to another computer.
 
 ## Reporting Issues
 

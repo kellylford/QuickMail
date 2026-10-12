@@ -6649,8 +6649,18 @@ public partial class MainWindow : Window
     {
         // Determine the parent: a header node (account) creates at root; a folder node creates
         // beneath it. With no folder-tree selection, fall back to the selected account's root.
+        // A view standing in the tree — the account's All Mail, say — is no folder to create in, so
+        // it creates at its account's root, as the header above it does (#794). A view's FullName
+        // starts with NUL, which no real folder name can.
         var parentFolder = node is { IsHeader: false } ? node.Folder : null;
+        Guid? viewAccount = null;
+        if (parentFolder is { FullName.Length: > 0 } && parentFolder.FullName[0] == '\0')
+        {
+            if (parentFolder.AccountId != Guid.Empty) viewAccount = parentFolder.AccountId;
+            parentFolder = null;
+        }
         var accountId    = parentFolder?.AccountId
+                          ?? viewAccount
                           ?? (node != null ? _vm.Accounts.FirstOrDefault(a => a.AccountLabel == node.Label)?.Id : null)
                           ?? _vm.SelectedAccount?.Id;
         if (accountId == null || accountId == Guid.Empty) return;
@@ -6658,7 +6668,9 @@ public partial class MainWindow : Window
         var dlg = new NewFolderDialog
         {
             Owner = this,
-            ParentFolderName = parentFolder?.DisplayName ?? node?.Label ?? string.Empty
+            ParentFolderName = parentFolder?.DisplayName
+                               ?? (viewAccount is { } va ? _vm.Accounts.FirstOrDefault(a => a.Id == va)?.AccountLabel : null)
+                               ?? node?.Label ?? string.Empty
         };
         if (dlg.ShowDialog() != true) return;
 
@@ -7989,9 +8001,8 @@ public partial class MainWindow : Window
         // Lets the rule editors' target-folder picker create a folder on the spot (#645). The two
         // halves are separated because the picker is modal: creation only refreshes the cache, and
         // the main-window folder tree rebuild waits until the picker has closed (CLAUDE.md, "Modal
-        // Dialog Rules"). Not gated on folder support here — ForRuleTarget withholds the button for
-        // an account that cannot manage folders, and which account that is only settles once the
-        // rule the user is editing is known.
+        // Dialog Rules"). ForRuleTarget decides whether to offer the button, since which account the
+        // folder would go in only settles once the rule the user is editing is known.
         var folderCreation = new FolderCreationSupport(
             (accountId, parentFullName, name) =>
                 _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name),

@@ -133,6 +133,11 @@ public sealed class Pop3ProtocolTests : IDisposable
         // #794: a rule or the user files a message into a local folder. With leave-on-server on the
         // UIDL stays listed, so this pins that the folder's mail counts as collected — through the
         // folder's life and after it is deleted (its mail then in Trash).
+        //
+        // The ledger is cleared after filing so it cannot be what keeps the message from coming
+        // back: that is the state after a crash between storing a message and recording it, and
+        // there only the scan of every folder's rows — the user's own included — stands between
+        // the server listing and a second copy in the Inbox.
         _greenMail.RequirePop3();
         var ct      = TestContext.Current.CancellationToken;
         var account = _greenMail.CreatePop3Account("pop-local-folder", leaveOnServer: true);
@@ -147,6 +152,7 @@ public sealed class Pop3ProtocolTests : IDisposable
         await pop.CreateFolderAsync(account.Id, null, "Lists", ct);
         var lists = (await pop.GetFoldersAsync(account.Id, ct)).Single(f => f.DisplayName == "Lists");
         await pop.MoveMessagesAsync(account.Id, "Inbox", [uidl], lists.FullName, ct);
+        await store.RemovePop3CollectedUidlsAsync(account.Id, [uidl]);
 
         Assert.Equal(0, await pop.PollAsync(account.Id, "Inbox", ct));
         Assert.Empty(await store.GetAllMessageIdsAsync(account.Id, "Inbox"));

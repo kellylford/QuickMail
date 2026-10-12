@@ -342,7 +342,7 @@ own web settings, and — for Gmail and Yahoo — an app password rather than yo
   attachments, searching, and saving the original message all work with no network.
 - **Inbox, Sent, Drafts and Trash belong to QuickMail, and so do any folders you add.** A POP3
   server has no folders to show, so these are QuickMail's own. You can create folders of your own
-  — to file a mailing list, say — and move, copy, rename and delete them, and point rules at them,
+  — to file a mailing list, say — and move, copy and delete them, and point rules at them,
   exactly as on an IMAP account (see [Creating Folders](#creating-folders)). They exist only on this
   computer. Deleting one moves its mail, and the mail in any folders inside it, to Trash. The four
   built-in folders cannot be moved or deleted; QuickMail says so if you try.
@@ -1929,7 +1929,7 @@ Exporting and importing settings are off until you turn them on, on each compute
 
 Keep the file somewhere private: although it has no passwords in it, it does have your contacts and account details. Copy it to the other computer however you like, on a USB stick or through a folder you already sync.
 
-Your mail is not in the file. It comes back from your mail servers on the other computer. Two things in QuickMail exist only on this computer and are not carried: mail in a POP3 account that is set not to leave mail on the server, and unsent mail waiting in the Outbox.
+Your mail is not in the file. It comes back from your mail servers on the other computer. Three things in QuickMail exist only on this computer and are not carried: mail in a POP3 account that is set not to leave mail on the server, the folders you made on a POP3 account (mail that comes back from the server arrives in the Inbox, and a rule that filed into one of those folders leaves the mail in the Inbox until you point it somewhere else), and unsent mail waiting in the Outbox.
 
 ### Importing them on the other computer
 

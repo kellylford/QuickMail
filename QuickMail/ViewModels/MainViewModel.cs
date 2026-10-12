@@ -9236,7 +9236,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <see cref="CachedFolders"/> — can rebuild its own tree in place and select the new folder.
     /// Refreshes only the cache (not the main-window folder tree); that rebuild is deferred to
     /// <see cref="CommitPendingFolderTreeRebuild"/> because this runs inside the picker's modal
-    /// loop. Returns null on failure.
+    /// loop.
+    /// <para>On failure the exception is rethrown after the status text is set, because the picker
+    /// is modal over this window and has to say the reason itself — "There is already a folder named
+    /// 'Lists' there" is the user's to act on, and a bare "could not create" leaves them guessing
+    /// (#794).</para>
     /// </summary>
     public async Task<IReadOnlyList<MailFolderModel>?> CreateFolderReturningFoldersAsync(
         Guid accountId, string? parentFolderName, string name)
@@ -9259,7 +9263,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             StatusText = $"Failed to create folder: {ex.Message}";
             LogService.Log("CreateFolder", ex);
-            return null;
+            throw;
         }
         finally { IsBusy = false; }
     }

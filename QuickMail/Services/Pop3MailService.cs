@@ -92,6 +92,14 @@ public class Pop3MailService : IMailService
     /// </summary>
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
+    /// <summary>
+    /// Serializes filing mail against changing folders (#794). Each checks that a folder exists and
+    /// then writes, so without this a rule could file a message into a folder between a delete
+    /// reading the folder list and removing it — leaving the message under an id no folder has,
+    /// unreachable from every part of the UI. Local and quick, so one lock serves every account.
+    /// </summary>
+    private readonly SemaphoreSlim _folderLock = new(1, 1);
+
     private bool _disposed;
 
     public Pop3MailService(ILocalStoreService store, bool onlineMode = false)
@@ -173,23 +181,17 @@ public class Pop3MailService : IMailService
 
         if (_onlineMode) return folders;
 
-        try
-        {
-            foreach (var local in await _store.LoadPop3LocalFoldersAsync(accountId))
-                folders.Add(new()
-                {
-                    AccountId   = accountId,
-                    FullName    = local.Id,
-                    DisplayName = local.DisplayName,
-                    ParentId    = local.ParentId ?? TopLevelParentId,
-                });
-        }
-        catch (Exception ex)
-        {
-            // Logged and not rethrown: losing the built-in four as well would leave the account with
-            // no folders at all. The user's folders come back on the next refresh that can read them.
-            LogService.Log($"POP3: failed to read local folders for account {accountId}", ex);
-        }
+        // Not caught: a listing without the user's folders would replace the cached folder list and
+        // make them vanish from the tree without a word. Throwing leaves the caller's last good list
+        // in place, as for an IMAP account whose server cannot be reached.
+        foreach (var local in await _store.LoadPop3LocalFoldersAsync(accountId))
+            folders.Add(new()
+            {
+                AccountId   = accountId,
+                FullName    = local.Id,
+                DisplayName = local.DisplayName,
+                ParentId    = local.ParentId ?? TopLevelParentId,
+            });
 
         try
         {
@@ -596,9 +598,29 @@ public class Pop3MailService : IMailService
     // ── Local folders (#794) ──────────────────────────────────────────────────
     // POP3 has no folder namespace on the server, so the folders a user makes live in the store
     // alone. Each failure throws with a sentence the caller shows as is ("Failed to create folder:
-    // …"), because every one of them is something the user did and can correct.
+    // …"), because every one of them is something the user did and can correct. Each runs under
+    // _folderLock, as filing mail does.
 
-    public async Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
+    public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
+        => UnderFolderLockAsync(() => CreateFolderCoreAsync(accountId, parentFolderName, name), ct);
+
+    public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
+        => UnderFolderLockAsync(() => RenameFolderCoreAsync(accountId, folderName, newName, newParentFolderName), ct);
+
+    public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
+        => UnderFolderLockAsync(() => DeleteFolderCoreAsync(accountId, folderName), ct);
+
+    public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
+        => UnderFolderLockAsync(() => CopyFolderCoreAsync(accountId, folderName, destinationParentName), ct);
+
+    private async Task UnderFolderLockAsync(Func<Task> action, CancellationToken ct)
+    {
+        await _folderLock.WaitAsync(ct);
+        try { await action(); }
+        finally { _folderLock.Release(); }
+    }
+
+    private async Task CreateFolderCoreAsync(Guid accountId, string? parentFolderName, string name)
     {
         ThrowIfOnlineMode();
         var locals = await _store.LoadPop3LocalFoldersAsync(accountId);
@@ -613,7 +635,7 @@ public class Pop3MailService : IMailService
     /// whose folders nest by parent reference. The id does not change, so the folder's mail stays
     /// filed under it and every rule targeting it keeps working.
     /// </summary>
-    public async Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
+    private async Task RenameFolderCoreAsync(Guid accountId, string folderName, string newName, string? newParentFolderName)
     {
         ThrowIfOnlineMode();
         ThrowIfBuiltIn(folderName, "renamed or moved");
@@ -634,24 +656,17 @@ public class Pop3MailService : IMailService
     /// <summary>
     /// Deletes a local folder and every folder inside it. Their mail goes to Trash first, never
     /// straight out of the store: this store is the only copy of POP3 mail, and the confirmation the
-    /// user just answered promised Trash. Mail is refiled before any folder row goes, so an
-    /// interruption part way leaves an empty folder behind, never mail filed under a folder that no
-    /// longer exists.
+    /// user just answered promised Trash. The store refiles the mail and drops the folders in one
+    /// transaction, and <see cref="_folderLock"/> keeps a move from filing into one of them part way
+    /// through, so no message is ever left filed under a folder that no longer exists.
     /// </summary>
-    public async Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
+    private async Task DeleteFolderCoreAsync(Guid accountId, string folderName)
     {
         ThrowIfOnlineMode();
         ThrowIfBuiltIn(folderName, "deleted");
-        var locals  = await _store.LoadPop3LocalFoldersAsync(accountId);
-        var subtree = SubtreeIds(FindLocal(folderName, locals).Id, locals);
-
-        foreach (var id in subtree)
-        {
-            var ids = await _store.GetAllMessageIdsAsync(accountId, id);
-            if (ids.Count > 0)
-                await _store.RefileMessagesAsync(accountId, id, TrashFolder, ids, copy: false);
-        }
-        await _store.DeletePop3LocalFoldersAsync(accountId, subtree);
+        var locals = await _store.LoadPop3LocalFoldersAsync(accountId);
+        await _store.DeletePop3LocalFoldersAsync(
+            accountId, SubtreeIds(FindLocal(folderName, locals).Id, locals), refileTo: TrashFolder);
     }
 
     /// <summary>
@@ -659,7 +674,7 @@ public class Pop3MailService : IMailService
     /// <paramref name="destinationParentName"/> (null or empty: the top level). The source may be a
     /// built-in folder — copying the Inbox makes an ordinary local folder called Inbox.
     /// </summary>
-    public async Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
+    private async Task CopyFolderCoreAsync(Guid accountId, string folderName, string? destinationParentName)
     {
         ThrowIfOnlineMode();
         var locals = await _store.LoadPop3LocalFoldersAsync(accountId);
@@ -1088,6 +1103,14 @@ public class Pop3MailService : IMailService
     {
         if (_onlineMode) return;   // no store, so there is nothing filed anywhere to move
 
+        // Under the folder lock: the check below and the refile after it must not straddle a delete.
+        await UnderFolderLockAsync(() => MoveLocalCoreAsync(accountId, fromFolder, toFolder, messageIds, copy),
+                                   CancellationToken.None);
+    }
+
+    private async Task MoveLocalCoreAsync(
+        Guid accountId, string fromFolder, string toFolder, IList<string> messageIds, bool copy)
+    {
         // A rule created against another account, or a mixed-account move offering an IMAP folder
         // name, can hand this any string. Filing rows under a name GetFoldersAsync never returns
         // makes them unreachable from every part of the UI — and this store may hold the only copy
@@ -1097,8 +1120,11 @@ public class Pop3MailService : IMailService
         toFolder = BuiltInName(toFolder)
             ?? (await _store.LoadPop3LocalFoldersAsync(accountId))
                    .FirstOrDefault(f => string.Equals(f.Id, toFolder, StringComparison.Ordinal))?.Id
-            ?? throw new NotSupportedException(
-                $"'{toFolder}' is not a folder of this POP3 account, so the messages were not filed there.");
+            ?? throw new NotSupportedException(toFolder.StartsWith(LocalFolderPrefix, StringComparison.Ordinal)
+                // A local folder's id means nothing to the user: this is a rule still aimed at a
+                // folder they have since deleted.
+                ? "That folder has been deleted, so the messages were not filed there."
+                : $"'{toFolder}' is not a folder of this POP3 account, so the messages were not filed there.");
 
         if (string.Equals(fromFolder, toFolder, StringComparison.OrdinalIgnoreCase)) return;
 
@@ -1309,6 +1335,7 @@ public class Pop3MailService : IMailService
         foreach (var sem in _locks.Values)
             sem.Dispose();
         _locks.Clear();
+        _folderLock.Dispose();
         _accounts.Clear();
         _passwords.Clear();
         GC.SuppressFinalize(this);

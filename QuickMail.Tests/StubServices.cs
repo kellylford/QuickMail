@@ -350,7 +350,7 @@ class StubLocalStoreService : ILocalStoreService
         f[folder.Id] = folder;
         return Task.CompletedTask;
     }
-    public virtual Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds)
+    public virtual Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds, string refileTo)
     {
         if (Pop3Folders.TryGetValue(accountId, out var f))
             foreach (var id in folderIds) f.Remove(id);

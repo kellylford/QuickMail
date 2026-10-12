@@ -690,7 +690,7 @@ public partial class LocalStoreService : ILocalStoreService
             "DELETE FROM Folder            WHERE account_id = $aid;" +
             "DELETE FROM Pop3CollectedUidl WHERE account_id = $aid;" +
             "DELETE FROM Pop3LocalFolder   WHERE account_id = $aid;" +
-            "DELETE FROM RulesWatermark   WHERE account_id = $aid;" +
+            "DELETE FROM RulesWatermark    WHERE account_id = $aid;" +
             "DELETE FROM CalendarSource    WHERE account_id = $aid;" +
             "DELETE FROM OutboxAttachment WHERE outbox_id IN (SELECT id FROM Outbox WHERE account_id = $aid);" +
             "DELETE FROM Outbox            WHERE account_id = $aid;";
@@ -1235,17 +1235,28 @@ public partial class LocalStoreService : ILocalStoreService
         await cmd.ExecuteNonQueryAsync();
     }
 
-    public async Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds)
+    public async Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds, string refileTo)
     {
         var list = folderIds as IReadOnlyList<string> ?? folderIds.ToList();
         if (list.Count == 0) return;
 
+        // One transaction, and refiled by folder rather than by a list of ids read beforehand: a
+        // message filed into one of these folders at any moment up to the commit goes with the rest,
+        // so nothing can end up filed under a folder that no longer exists. The statements are
+        // RefileMessagesAsync's, for the same reasons — UPDATE OR REPLACE for an id already in the
+        // destination, and the CalendarEvent leg so an invite's back-link follows its message.
         await using var conn = await OpenAsync();
         await using var tx = (SqliteTransaction)await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
-        cmd.CommandText = "DELETE FROM Pop3LocalFolder WHERE account_id=$aid AND id=$id;";
+        cmd.CommandText = """
+            UPDATE OR REPLACE MessageSummary SET folder_name=$to WHERE account_id=$aid AND folder_name=$id;
+            UPDATE OR REPLACE MessageDetail  SET folder_name=$to WHERE account_id=$aid AND folder_name=$id;
+            UPDATE CalendarEvent SET source_folder=$to WHERE account_id=$aid AND source_folder=$id;
+            DELETE FROM Pop3LocalFolder WHERE account_id=$aid AND id=$id;
+            """;
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$to",  refileTo);
         var id = cmd.Parameters.AddWithValue("$id", string.Empty);
         foreach (var f in list)
         {
@@ -1253,6 +1264,7 @@ public partial class LocalStoreService : ILocalStoreService
             await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();
+        KickSearchIndexer();
     }
 
     public async Task AddPop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)
