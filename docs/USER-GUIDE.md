@@ -1915,14 +1915,14 @@ If you use QuickMail on more than one computer, or are setting up a new one, you
 
 ### Turning it on
 
-Exporting and importing settings are off until you turn them on, on each computer you use them on: open **Settings**, go to the **Advanced** tab, and check **Allow exporting and importing settings** (**Alt+X**). **Export Settings** and **Import Settings** then appear on the **File** menu and in the Command Palette, and stay there until you turn the setting off. Importing settings never changes this setting.
+Exporting and importing settings are off until you turn them on, on each computer you use them on: open **Settings**, go to the **Advanced** tab, and check **Allow exporting and importing settings** (**Alt+X**). **Export Settings** and **Import Settings** then appear on the **File** menu and in the Command Palette straight away, and stay there until you turn the setting off. Importing settings never changes this setting, on either computer.
 
 ### Exporting your settings
 
 1. Choose **File → Export Settings…**, or **Export Settings** from the Command Palette.
-2. The window lists what can go into the file, all of it checked: accounts and signatures; rules, saved views, flags and watched conversations; the address book; message templates; keyboard shortcuts; themes and message list layout; the Local Calendar; and your preferences with the custom spelling dictionary. Arrow through the list and press **Space** to leave something out.
+2. The window lists what can go into the file, all of it checked: accounts and signatures; rules, saved views, flags and watched conversations; the address book; message templates; keyboard shortcuts; themes and message list layout; the Local Calendar; and your preferences with the custom spelling dictionary. The list is one stop when you press **Tab**; arrow through it and press **Space** to leave something out.
 3. Press **Tab** to read a summary of what the file will hold. It contains email addresses, server names, signatures and, if you leave them checked, your address book and Local Calendar. **It never contains a password or a sign-in.**
-4. Choose **Export…** and save the file. Its name ends in `.qmsettings`.
+4. Choose **Export…** and save the file. Its name ends in `.qmsettings`. QuickMail says how many categories it saved and how large the file is, and returns you to where you were.
 
 Keep the file somewhere private: although it has no passwords in it, it does have your contacts and account details. Copy it to the other computer however you like, on a USB stick or through a folder you already sync.
 
@@ -1930,28 +1930,35 @@ Your mail is not in the file. It comes back from your mail servers on the other 
 
 ### Importing them on the other computer
 
-1. Install QuickMail on the other computer. You do not need to add any accounts first.
-2. Choose **File → Import Settings…** and pick the `.qmsettings` file.
-3. A preview opens before anything changes. It says which computer the file came from, then lists what is in it and what will happen to each account: added, or already on this computer and about to be updated. Press **F6** to move between the summary, the list of what will be imported, the accounts, and the buttons.
-4. Choose **Import and Restart**. QuickMail restarts and brings the settings in as it starts up.
-5. The **Settings Imported** window then lists what came in, and the accounts that still need signing in.
+1. Install QuickMail on the other computer. You do not need to add any accounts first: if **Manage Accounts** opens when QuickMail starts, close it.
+2. Turn on **Allow exporting and importing settings** on this computer too (see *Turning it on*).
+3. Send, save or close any message you are writing. Importing restarts QuickMail, and it will not go ahead while a message window is open.
+4. Choose **File → Import Settings…** and pick the `.qmsettings` file.
+5. A preview opens before anything changes, with focus on its summary: which computer the file came from, how many accounts will be added or updated, and what happens next. Press **F6** to move between the summary, the list of what will be imported, the accounts, and the buttons.
+   - Each line of **What will be imported** says what is in the file and what it replaces here, for example "Message templates: 4 templates, replacing the 2 here".
+   - Each account says what will happen to it: "will be added", or "already on this computer, settings will be updated". If this computer has the same address as a different kind of account (for example IMAP here and Microsoft 365 in the file), the account is added separately and the preview says so.
+6. Choose **Import and Restart**, or **Cancel** to leave everything as it is. Pressing **Enter** in the summary or a list does not import; only the button does.
+7. QuickMail closes, opens again, and brings the settings in as it starts. The **Settings Imported** window then opens with focus on the report: what came in, anything that was left out or turned off, and the name of the folder holding a copy of your previous settings. **Copy Report** puts the report on the clipboard.
+
+If the file is not a QuickMail settings file, is damaged, or was made by a newer version of QuickMail, you are told so and nothing changes.
 
 ### What importing does
 
 - **This computer ends up matching the file.** Rules, saved views, templates, keyboard shortcuts, themes and the other settings you exported replace the ones here, so importing the same file twice gives the same result. Anything you did not export is left alone.
-- **Accounts are never removed.** An account in the file that is already here (the same address, the same kind of account) keeps its sign-in and takes the file's settings and signature. An account that is not here yet is added. Accounts here that are not in the file stay as they are.
-- **Contacts synced from a server are kept.** Your own address book and groups are replaced with the ones in the file. A group member that was synced from a server is matched to the same person here by email address.
+- **Accounts are never removed.** An account in the file that is already here (the same address and the same kind of account) keeps its sign-in here and takes the file's settings and signature. An account that is not here yet is added. Accounts here that are not in the file stay as they are.
+- **Shared mailboxes come with their account.** A shared mailbox is imported only when the account it belongs to is imported too.
+- **Contacts synced from a server are kept.** Your own address book and groups are replaced with the ones in the file. A group member that was synced from a server is matched to the same person here by email address; one that cannot be found here yet is left out of the group, and the report says how many.
 - **Local Calendar appointments are added and updated, never deleted.** An appointment already here is updated rather than duplicated.
-- **Some settings belong to this computer and are not changed:** where Save puts files, logging and connection diagnostics, whether to start minimized at sign-in, and your own Google sign-in app details if you set those up.
-- **Anything that cannot be matched is turned off and named, never guessed.** A rule for an account that is not on this computer is switched off; a rule whose folder this account does not have is switched off the first time the account's folders load, and you are told which. Set a folder on it to turn it back on.
-- **A copy of your previous settings is kept** in a folder named `backup-` followed by the date and time, in QuickMail's data folder. If the import fails part-way, QuickMail puts everything back from that copy and says so.
+- **Some settings belong to this computer and are not changed:** whether exporting and importing are allowed, where Save puts files, logging and connection diagnostics, whether to start minimized at sign-in, and your own Google sign-in app details if you set those up. A setting the file does not mention, because it was made by an older QuickMail, keeps its value here.
+- **Anything that cannot be matched is turned off and named, never guessed.** A rule for an account that is not on this computer is switched off, and a saved view loses that account's folders. For a Microsoft 365 account, folders are found again by name the first time the account's folders load; a rule whose folder that account does not have is switched off, and the status bar says which. Set a folder on the rule to turn it back on.
+- **A copy of your previous settings is kept** in a folder named `backup-` followed by the date and time, in QuickMail's data folder. If the import fails part-way, QuickMail puts everything back from that copy and tells you. If anything could not be put back, it names those files so you can copy them back yourself, with QuickMail closed.
 
 ### Signing in after an import
 
-Passwords and sign-ins never travel between computers, so an account that is new on this computer has to be signed in once. In the **Settings Imported** window, arrow to an account in **Accounts to sign in**:
+Passwords and sign-ins never travel between computers, so an account that is new on this computer has to be signed in once. An account that was already here keeps its sign-in, unless the file signs it in a different way. In the **Settings Imported** window, arrow to an account in **Accounts to sign in**:
 
 - For a Microsoft or Google account, press **Enter** and sign in in the window that opens.
-- For an account that uses a password, press **Enter** to move to the **Password** box, type the password, and press **Enter** again.
+- For an account that uses a password, press **Enter** to move to the **Password** box, type the password, and press **Enter** again. Moving to a different account clears the box, so a password is never saved under the wrong account.
 
 Each account reads as "needs sign-in" or "signed in". You can close the window and sign in later with **Reconnect** on the account instead.
 
