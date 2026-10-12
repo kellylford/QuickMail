@@ -1315,6 +1315,30 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task ClientRuleSummary_ResolvesAPop3LocalFolderIdToName() // #794: found in the test VM
+    {
+        var a = Guid.NewGuid();
+        const string folderId = "folder-dcd5c1a23b4c4e058dc0b8855cc65bc8";
+        var rule = new MailRule
+        {
+            Name = "QuickMail list", AccountId = a,
+            UseSubjectCondition = true, SubjectContains = "quickmail-list",
+            Action = RuleAction.MoveToFolder, TargetFolder = folderId,
+        };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] = [new MailFolderModel { AccountId = a, FullName = folderId, DisplayName = "Lists", ParentId = "Inbox" }],
+        };
+        var pop = new AccountModel { Id = a, AccountName = "Pop", Username = "me@pop.example", BackendKind = BackendKind.Pop3Smtp };
+        var vm = new UnifiedRulesViewModel(new StubRuleService { LoadedRules = [rule] }, new FakeServerRules(), [pop], folders, preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var row = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        Assert.Contains("move to Lists", row.RowText);
+        Assert.DoesNotContain(folderId, row.RowText);
+    }
+
+    [Fact]
     public async Task ClientRuleSummary_FallsBackToRawTarget_WhenFolderUnknown() // IMAP path reads fine as-is
     {
         var a = Guid.NewGuid();

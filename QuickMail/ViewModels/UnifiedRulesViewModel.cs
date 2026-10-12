@@ -274,7 +274,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         var editor = row.RunsWhere == RuleRunsWhere.Server
             ? ServerRuleEditorViewModel.ForEdit(row.Server!)
             : ServerRuleEditorViewModel.ForEditClient(row.Client!);
-        if (row.RunsWhere == RuleRunsWhere.Client && IsGraphAccount(accountId))
+        if (row.RunsWhere == RuleRunsWhere.Client && NamesFoldersById(accountId))
         {
             // A Graph client rule keeps folder ids, and the editor's folder buttons show the name. Before #682 no such
             // rule could move or copy, so nothing needed it. (An IMAP rule's folder is already its readable path; see
@@ -758,16 +758,16 @@ public partial class UnifiedRulesViewModel : ObservableObject
             try
             {
                 var client = _clientRules.LoadRules().Where(r => r.AccountId == accountId);
-                // Resolve a folder name only for a Graph account, whose TargetFolder is an opaque id.
+                // Resolve a folder name only for an account whose TargetFolder is an opaque id (Graph, POP3).
                 // An IMAP TargetFolder is already the readable folder path, and resolving it would return
                 // the leaf DisplayName — collapsing "Work/Archive" and "Personal/Archive" to the same
                 // "Archive" — so leave IMAP rules to render their raw path (the ForClient fallback).
-                var isGraphAccount = IsGraphAccount(accountId);
+                var byId = NamesFoldersById(accountId);
                 rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels,
-                    isGraphAccount && r.Does(RuleAction.MoveToFolder)
+                    byId && r.Does(RuleAction.MoveToFolder)
                         ? ResolveFolderName(accountId, r.TargetFolder) : null,
-                    folderIsOpaque: isGraphAccount,
-                    copyFolderDisplay: isGraphAccount && r.Does(RuleAction.CopyToFolder)
+                    folderIsOpaque: byId,
+                    copyFolderDisplay: byId && r.Does(RuleAction.CopyToFolder)
                         ? ResolveFolderName(accountId, r.CopyTargetFolder) : null)));
             }
             catch (Exception ex)
@@ -867,9 +867,14 @@ public partial class UnifiedRulesViewModel : ObservableObject
         return "A client-side rule can't copy to the Inbox: it runs on the Inbox, so each copy would be copied again. Choose another folder.";
     }
 
-    /// <summary>Whether the account is a Microsoft 365 (Graph) one, whose client rules name folders by id.</summary>
-    private bool IsGraphAccount(Guid accountId)
-        => _allAccounts.FirstOrDefault(a => a.Id == accountId)?.BackendKind == BackendKind.MicrosoftGraph;
+    /// <summary>
+    /// Whether the account's client rules name folders by an opaque id rather than a readable path: a
+    /// Microsoft 365 (Graph) account, and a POP3 account, whose own folders are filed under ids too
+    /// (#794). Without the lookup the rules list read "move to folder-dcd5c1a2…" aloud.
+    /// </summary>
+    private bool NamesFoldersById(Guid accountId)
+        => _allAccounts.FirstOrDefault(a => a.Id == accountId)?.BackendKind
+               is BackendKind.MicrosoftGraph or BackendKind.Pop3Smtp;
 
     /// <summary>
     /// What kinds of rule this account can hold, said outright.
