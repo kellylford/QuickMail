@@ -35,7 +35,7 @@
              in the MIDDLE of the form, between the password box and Advanced settings.
 
              The two columns share one flat run of indices and must not overlap: this column owns
-             0–5 (the list, then its buttons left to right), the edit form owns 6–15. A duplicate
+             0–6 (the list, then its buttons left to right), the edit form owns 7–16. A duplicate
              index across the columns does not fail loudly — WPF breaks the tie on tree order, which
              happens to give the right result here — so a collision reads as working and only bites
              when something later moves. Adding a button here means renumbering the form, not
@@ -48,26 +48,34 @@
                         Click="NewButton_Click"
                         AutomationProperties.Name="New account"
                         MinWidth="60" Margin="0,0,4,0" TabIndex="1"/>
+                <!-- A new install only (#507): bring settings across from another computer instead of adding
+                     accounts by hand. Gone once the first account exists. -->
+                <Button Content="I_mport Settings…"
+                        x:Name="ImportSettingsButton"
+                        Click="ImportSettingsButton_Click"
+                        AutomationProperties.Name="Import settings"
+                        Visibility="{Binding ShowImportSettings, Converter={StaticResource BoolToVisibility}}"
+                        MinWidth="90" Margin="0,0,4,0" TabIndex="2"/>
                 <Button Content="_Delete"
                         Command="{Binding DeleteAccountCommand}"
                         AutomationProperties.Name="Delete account"
-                        MinWidth="60" Margin="0,0,4,0" TabIndex="2"/>
+                        MinWidth="60" Margin="0,0,4,0" TabIndex="3"/>
                 <Button Content="Set _Default"
                         Command="{Binding SetDefaultCommand}"
                         CommandParameter="{Binding SelectedAccount}"
                         AutomationProperties.Name="Set as default"
-                        MinWidth="75" Margin="0,0,4,0" TabIndex="3"/>
+                        MinWidth="75" Margin="0,0,4,0" TabIndex="4"/>
                 <Button Content="Add shared mail_box…"
                         x:Name="AddSharedButton"
                         Click="AddSharedMailboxButton_Click"
                         AutomationProperties.Name="Add shared mailbox"
                         Visibility="{Binding IsSharedMailboxesEnabled, Converter={StaticResource BoolToVisibility}}"
-                        MinWidth="90" Margin="0,0,4,0" TabIndex="4"/>
+                        MinWidth="90" Margin="0,0,4,0" TabIndex="5"/>
                 <Button Content="Con_vert to Microsoft 365"
                         Command="{Binding ConvertToGraphCommand}"
                         AutomationProperties.Name="Convert to Microsoft 365"
                         Visibility="{Binding CanConvertToGraph, Converter={StaticResource BoolToVisibility}}"
-                        MinWidth="90" TabIndex="5"/>
+                        MinWidth="90" TabIndex="6"/>
             </StackPanel>
             <ListBox x:Name="AccountListBox"
                      TabIndex="0"
@@ -112,7 +120,7 @@
                          Text="{Binding SelectedProvider.DisplayName, Mode=OneWay}"
                          IsReadOnly="True"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblProvider}"
-                         TabIndex="6"
+                         TabIndex="7"
                          Margin="0,0,0,4"/>
 
                 <!-- Account Name -->
@@ -120,7 +128,7 @@
                 <TextBox x:Name="AccountNameBox"
                          Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
-                         TabIndex="7"/>
+                         TabIndex="8"/>
 
                 <!-- Sender Display Name — hidden for a shared mailbox (#31): its outgoing identity is the
                      mailbox's own directory display name on send, not a name set per-account here. -->
@@ -129,7 +137,7 @@
                     <TextBox x:Name="DisplayNameBox"
                              Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
-                             TabIndex="8"/>
+                             TabIndex="9"/>
                 </StackPanel>
 
                 <!-- The account's own email address. Since #396 it is only that: a server whose
@@ -139,7 +147,7 @@
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          IsReadOnly="{Binding IsSharedSelected}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
-                         TabIndex="9"/>
+                         TabIndex="10"/>
 
                 <!-- #31: a shared mailbox has no credentials or connection of its own — it reads through
                      its parent account and shows mail only. In place of the connection/auth/sync
@@ -175,7 +183,7 @@
                     <Label x:Name="LblPassword" Content="Pass_word:" Target="{Binding ElementName=PasswordBox}" Padding="0" Margin="0,8,0,2"/>
                     <PasswordBox x:Name="PasswordBox"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
-                                 TabIndex="10"
+                                 TabIndex="11"
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
 
                     <!-- App-specific password warning, driven by the account's provider (Gmail, Yahoo,
@@ -189,7 +197,7 @@
                         <StackPanel>
                             <TextBlock Text="{Binding AppPasswordHint}" TextWrapping="Wrap" FontWeight="SemiBold"/>
                             <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
-                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="11"
+                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="12"
                                            RequestNavigate="AppPasswordLink_RequestNavigate"
                                            AutomationProperties.Name="Create an app password">
                                     <Run Text="{Binding AppPasswordUrl, Mode=OneWay}"/>
@@ -212,7 +220,7 @@
                               IsChecked="{Binding SyncContacts}"
                               Click="SyncContactsCheckBox_Click"
                               AutomationProperties.Name="Sync contacts from this account"
-                              Margin="0,0,0,4" TabIndex="14"/>
+                              Margin="0,0,0,4" TabIndex="15"/>
                 </StackPanel>
 
                 <!-- Calendar sync (#282) — shown for Microsoft, Google, and iCloud accounts. -->
@@ -224,7 +232,7 @@
                               IsChecked="{Binding SyncCalendar}"
                               Click="SyncCalendarCheckBox_Click"
                               AutomationProperties.Name="Sync calendar from this account"
-                              Margin="0,0,0,4" TabIndex="15"/>
+                              Margin="0,0,0,4" TabIndex="16"/>
                 </StackPanel>
 
                 <!-- Server settings live behind the same expander as the Add Account dialog, so an

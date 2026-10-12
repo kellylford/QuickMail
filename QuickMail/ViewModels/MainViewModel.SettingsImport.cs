@@ -18,6 +18,13 @@ public partial class MainViewModel
     /// <summary>The profile directory, set by App startup. Null in tests, where the heal never runs.</summary>
     public string? ProfileDirectory { get; set; }
 
+    /// <summary>
+    /// True when this start found a profile nothing had written yet: a new install. Manage Accounts
+    /// then offers Import Settings beside New, without the AllowSettingsTransfer setting (#507).
+    /// Set by App startup; false on every later start, including the one an import restarts into.
+    /// </summary>
+    public bool IsNewInstall { get; set; }
+
     /// <summary>Raised to open the Export Settings window.</summary>
     public event EventHandler? ExportSettingsRequested;
 

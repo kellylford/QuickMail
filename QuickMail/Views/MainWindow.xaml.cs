@@ -6122,6 +6122,8 @@ public partial class MainWindow : Window
     private void OpenAccountManager()
     {
         var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _providerCatalog, _autoDiscover, _smtp, _contactSyncService, _graphCalendarSyncService);
+        // #507: a new install with no account yet is offered Import Settings beside New.
+        accountVm.OfferImportSettings = _vm.IsNewInstall;
         // #529 step 4: keep the main sync loop safe in-session after an IMAP→Graph convert (disconnect,
         // flip our copy, seed the rule-refire baseline, rebind the router).
         accountVm.AccountConvertedToGraph = id => _vm.OnAccountConvertedToGraphAsync(id);
@@ -6131,6 +6133,11 @@ public partial class MainWindow : Window
         // immediately (persisted without a Save step), so the calendar tree must reflect them even
         // when the dialog is closed with Cancel.
         _vm.RefreshAccountList();
+
+        // After the dialog has closed: the import's own dialogs must not open inside its modal loop.
+        // This path does not need AllowSettingsTransfer; the offer was the user's way in.
+        if (accountVm.ImportSettingsChosen)
+            OpenImportSettings();
     }
 
     private void OpenAccountManagerForAccount(AccountModel account)

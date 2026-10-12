@@ -3,7 +3,6 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 using Microsoft.Win32;
 using QuickMail.Models;
 using QuickMail.Services;
@@ -29,29 +28,11 @@ public partial class ExportSettingsWindow : Window
         DataContext = vm;
         PreviewKeyDown += OnPreviewKeyDown;
         RegisterLocalCommands();
-        Loaded += (_, _) => FocusFirstCategory();
+        Loaded += (_, _) => CategoryList.FocusRow(0);
     }
 
     /// <summary>Where focus returns when the window closes (WPF's return-to-owner is unreliable for list items).</summary>
     public void SetFocusRestoreTarget(IInputElement? element) => _restoreFocusTo = element;
-
-    private void FocusFirstCategory()
-    {
-        if (CategoryList.ItemContainerGenerator.ContainerFromIndex(0) is DependencyObject container
-            && FindFirstChild<CheckBox>(container) is { } checkbox)
-            checkbox.Focus();
-    }
-
-    private static T? FindFirstChild<T>(DependencyObject parent) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is T found) return found;
-            if (FindFirstChild<T>(child) is { } descendant) return descendant;
-        }
-        return null;
-    }
 
     private async void Export_Click(object sender, RoutedEventArgs e)
     {
@@ -123,7 +104,7 @@ public partial class ExportSettingsWindow : Window
         var next = forward ? (current + 1) % 3 : (current + 2) % 3;
         switch (next)
         {
-            case 0: FocusFirstCategory(); break;
+            case 0: CategoryList.Focus(); break;   // the list hands focus to the row last on
             case 1: SummaryBox.Focus(); break;
             default: (ExportButton.IsEnabled ? ExportButton : (UIElement)ButtonRow.Children[1]).Focus(); break;
         }

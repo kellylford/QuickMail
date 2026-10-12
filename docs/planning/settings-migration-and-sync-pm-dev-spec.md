@@ -104,6 +104,8 @@ are dropped and counted in the report.
 
 **R9. Off until the user turns it on** (added 2026-10-12 at the owner's request). Export and import are offered only when `AllowSettingsTransfer` is on: a checkbox, *Allow exporting and importing settings*, in Settings → Advanced, off by default. With it off, the File menu items are hidden and the `settings.export` / `settings.import` commands are not registered, the same way Connection Diagnostics is gated. It is classified **local**, so an import can never switch it on or off.
 
+**R10. Offered on a new install** (added 2026-10-12 at the owner's request, after testing). When a start finds a profile nothing has written yet (no `config.ini`, no `accounts.json`), Manage Accounts shows **Import Settings…** beside **New** while there is no account. Choosing it closes Manage Accounts and opens the import, without `AllowSettingsTransfer`; that setting stays off. The offer ends with the first account, and the start an import restarts into is not a new install. The Export window's category list became a `FieldCheckList`, as in Message List Fields: each row is one check box, so its name is spoken once, and Home and End reach the first and last row.
+
 **Revised phases.** 1: bundle format, account-id rewrite, config classification, apply-at-startup
 with rollback (no UI). 2: export window. 3: import preview window and restart. 4: Settings
 Imported window, sign-in list, and folder heal. Then the user guide, release notes and privacy
