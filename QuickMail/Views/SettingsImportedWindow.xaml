@@ -1,0 +1,94 @@
+<Window x:Class="QuickMail.Views.SettingsImportedWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d"
+        Title="{Binding Title}"
+        Width="620" Height="560"
+        MinWidth="440" MinHeight="400"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBox x:Name="ReportBox"
+                 Grid.Row="0"
+                 Text="{Binding Report, Mode=OneWay}"
+                 IsReadOnly="True"
+                 TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto"
+                 AutomationProperties.Name="Import report"/>
+
+        <Label Grid.Row="1" Content="Accounts to _sign in:" Target="{Binding ElementName=AccountList}"
+               Padding="0" Margin="0,12,0,4"
+               Visibility="{Binding HasRows, Converter={StaticResource BoolToVisibilityConverter}}"/>
+        <ListBox x:Name="AccountList"
+                 Grid.Row="2"
+                 ItemsSource="{Binding Rows}"
+                 SelectedItem="{Binding SelectedRow}"
+                 AutomationProperties.Name="Accounts to sign in"
+                 Visibility="{Binding HasRows, Converter={StaticResource BoolToVisibilityConverter}}">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding AccessibleName}"/>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <StackPanel x:Name="SignInPanel"
+                    Grid.Row="3"
+                    Margin="0,8,0,0"
+                    Visibility="{Binding HasRows, Converter={StaticResource BoolToVisibilityConverter}}">
+            <StackPanel Visibility="{Binding PasswordNeeded, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Label Content="_Password:" Target="{Binding ElementName=PasswordBox}" Padding="0" Margin="0,0,0,4"/>
+                <PasswordBox x:Name="PasswordBox" AutomationProperties.Name="Password"/>
+            </StackPanel>
+            <Button x:Name="SignInButton"
+                    Content="Sign _In"
+                    Command="{Binding SignInCommand}"
+                    HorizontalAlignment="Left"
+                    MinWidth="100"
+                    Margin="0,8,0,0"/>
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+        </StackPanel>
+
+        <StackPanel x:Name="ButtonRow"
+                    Grid.Row="5"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,12,0,0">
+            <Button x:Name="CopyButton"
+                    Content="_Copy Report"
+                    MinWidth="110"
+                    Click="Copy_Click"/>
+            <Button x:Name="CloseButton"
+                    Content="Close"
+                    MinWidth="90"
+                    Margin="8,0,0,0"
+                    Click="Close_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

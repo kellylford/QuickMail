@@ -302,6 +302,8 @@ public partial class MainWindow : Window
         RowFieldsMenuItem.Click += (_, _) => OpenRowFieldsWindow();
 
         vm.ExitRequested += RequestExit;
+        vm.ExportSettingsRequested += (_, _) => OpenExportSettings();   // #507
+        vm.ImportSettingsRequested += (_, _) => OpenImportSettings();
         vm.StartupConnectCompleted += () => Dispatcher.BeginInvoke(TryProcessPendingActivation);
         // Windows logoff/shutdown must exit for real, not hide to tray (otherwise Windows shows the
         // "app is preventing sign-out" screen and force-kills us, leaking the tray icon). Subscribe
@@ -1706,9 +1708,16 @@ public partial class MainWindow : Window
             _vm.MaybeShowUpdateInstalledNotice(dialogAllowed: false);
             // A quiet start (#770) must not open a modal at sign-in over a window never shown.
             if (IsQuietStart)
-                CompleteQuietStartLoad(OpenAccountManager);
+            {
+                CompleteQuietStartLoad(() => { OpenAccountManager(); ShowSettingsImportResult(); });
+            }
             else
+            {
                 OpenAccountManager();
+                // An import that left no accounts (one that failed, or carried none) still reports
+                // at this start (#507), once the Account Manager is out of the way.
+                ShowSettingsImportResult();
+            }
             return;
         }
 
@@ -1798,6 +1807,9 @@ public partial class MainWindow : Window
 
     private void RunStartupNotices()
     {
+        // A settings import applied at this start (#507) comes first: it is what the user restarted for.
+        ShowSettingsImportResult();
+
         // One-time desktop shortcut offer for installed copies — after the window is up and
         // the background sync has been kicked off, so the dialog does not delay startup;
         // the offer handler restores focus to the message panel explicitly on close.

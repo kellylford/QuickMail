@@ -498,6 +498,18 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Moving settings between computers (#507): off until the user asks for it -->
+                        <GroupBox Header="Moving Settings _Between Computers" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Moving settings between computers">
+                            <StackPanel>
+                                <CheckBox Content="Allow e_xporting and importing settings"
+                                          IsChecked="{Binding AllowSettingsTransfer, Mode=TwoWay}"
+                                          AutomationProperties.Name="Allow exporting and importing settings"/>
+                                <TextBlock Text="Adds Export Settings and Import Settings to the File menu, for moving your QuickMail setup to another computer. An exported file holds your account details, signatures and address book, but never a password. Importing replaces this computer's settings with the ones in the file, after keeping a copy of them."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- QuickMail Logging Group -->
                         <GroupBox Header="QuickMail _Logging" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="QuickMail logging settings">

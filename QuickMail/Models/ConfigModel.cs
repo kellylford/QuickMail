@@ -361,6 +361,14 @@ public class ConfigModel
     /// </summary>
     public bool ConnectionDiagnostics { get; set; } = false;
 
+    /// <summary>
+    /// Whether File, Export Settings and File, Import Settings are offered (issue #507). Off by
+    /// default: moving settings means writing account details and the address book to a file, or
+    /// replacing this computer's settings, so it waits until the user asks for it. Stays on once
+    /// turned on. Belongs to this computer: an import never changes it.
+    /// </summary>
+    public bool AllowSettingsTransfer { get; set; } = false;
+
     // ── Tutorial ──────────────────────────────────────────────────────────────────
 
     /// <summary>Show a confirmation dialog before emptying trash. Default on.</summary>

@@ -1,6 +1,36 @@
 # QuickMail v0.8.55 Release Notes
 
+## New: move your settings to another computer
+
+**File → Export Settings…** saves your QuickMail setup in one file, and **File → Import
+Settings…** brings it in on another computer (#507). Both are off until you turn them on: in
+**Settings → Advanced**, check **Allow exporting and importing settings** on each computer. The file carries your accounts and
+signatures, rules, saved views, flags, watched conversations, address book, message templates,
+keyboard shortcuts, themes, message list layout, Local Calendar and preferences. You choose
+which of those to include. It never contains a password or a sign-in.
+
+Before anything changes, the import shows a preview of what will happen to each account and
+setting. QuickMail then restarts to bring the settings in, and lists the accounts that still
+need signing in on this computer so you can sign in to each from one place.
+
+- This computer ends up matching the file, so importing the same file twice gives the same
+  result. Accounts are never removed: one that is already here keeps its sign-in and takes the
+  file's settings, and one that is not is added.
+- Anything that cannot be matched here, such as a rule for a folder this account does not have,
+  is turned off and named rather than pointed at a guess.
+- A copy of your previous settings is kept first, and if the import fails part-way your
+  settings are put back from it.
+
+The exported file also works as a backup of your settings. See *Moving Your Settings to Another
+Computer* in the User Guide.
+
 ## Fixed
+
+### A repeating appointment exported to a calendar file lost its deleted occurrences
+
+Exporting a repeating appointment as a `.ics` file, or saving one to an iCloud or other CalDAV
+calendar, left out the occurrences you had deleted from the series, so the file, or the copy on
+the calendar server, still had them. The deleted occurrences are now written out with the series.
 
 ### Copying a whole message copied only its first line
 

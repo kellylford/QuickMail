@@ -10,6 +10,107 @@ the two machines in agreement afterwards.
 
 ---
 
+## Revision 2 (2026-10-12): changes made at the pre-build review
+
+The pre-build review checked this spec against the code as of 0.8.55. Where this section and the
+rest of the document disagree, **this section wins**. P1 (§4.2, Phases 5–6) is unchanged and
+still needs its own review before it is built.
+
+**R1. Import applies at restart, not live.** The rules, contacts and template services cache
+their files in memory, and the main window saves `config.ini` on its own as the session goes
+on. A file written under a running app is overwritten by those copies. So import no longer
+writes the profile from inside the session: it checks the bundle, shows the preview, stages
+the file as `{ProfileDir}\pending-import.qmsettings`, and restarts QuickMail. Startup applies
+it **before any service is constructed**. This deletes `ConfigService.ReloadAsync`, the cached
+`ConfigModel` audit, and `AccountService.ImportAccountsAsync`'s change notification from
+Phase 3, which was the riskiest phase. The restart passes `--waitForExit <pid>` so the new
+process waits for the old one to release the single-instance mutex.
+
+**R2. Replace, not add.** The reporter of #507 has QuickMail set up on both computers already,
+so their import is a merge every time, and the additive merge in D2 duplicates every rule and
+view on a second import. Import now *makes this computer match the file* for each category
+the file carries:
+
+| Category | On import |
+|---|---|
+| Accounts and signatures | **Matched, never deleted.** A file account matches a local one by id first, then by `(Username, BackendKind)`. A match keeps the **local** id (so its saved password and sign-in survive) and takes the file's settings. An account with no match is added with its own id. Local accounts not in the file are kept. An ambiguous match (two local candidates) is skipped and reported. |
+| Rules, saved views, flags, watched conversations, per-folder view state | Replaced by the file's. |
+| Address book | The local contacts and groups are replaced; contacts synced from a server are kept. |
+| Message templates, keyboard shortcuts | Replaced. |
+| Themes and message-list layout | Replaced (custom themes folder mirrored). |
+| Preferences (`config.ini`, custom dictionary) | Portable settings replaced; machine-local settings kept (§5.2). |
+| Local Calendar | **Added and updated, never deleted** — see R3. |
+
+Adopt (D2) is no longer a separate mode: an empty profile is simply the case where every
+account is added with its own id. Importing the same file twice gives the same result. The
+rollback copy (D6) is what makes replacing safe.
+
+**R3. The Local Calendar travels as an `.ics` file.** `mail.db` is no longer only a cache:
+Local Calendar appointments (#762) live only there. The bundle carries them as `calendar.ics`,
+and import applies it through the existing `.ics` importer (`CalendarIcsImporter`), which
+updates an appointment with the same UID instead of duplicating it. Import never deletes
+appointments, because `mail.db` is not part of the rollback copy. The `.ics` writer gains
+EXDATE so a repeating appointment with a deleted occurrence round-trips. In `--online` mode,
+where there is no local store, the calendar part waits for the next normal start. The export
+window states the two other things in `mail.db` that do not travel: mail in a POP3 account
+that is not left on the server, and unsent mail in the Outbox.
+
+**R4. Account ids are rewritten as text, everywhere.** The review found references §5.4 missed:
+`AccountModel.ParentAccountId` (shared mailboxes), `ConfigModel.DefaultCalendarSource` (an
+account id inside a string), and the `[account:{guid}]` sections. Instead of a remapper that
+takes every referencing model as a parameter — which does not catch a new *field* on an
+existing model, or an id stored as text — every travelling text file has each remapped id
+replaced as text (all GUID formats). Account ids are random, so a false match is not a
+realistic concern. The test that guards this searches the raw text of every applied file for
+a leftover source id. After the rewrite, anything still naming an account that does not exist
+is made safe and reported: the rule is turned off, the view loses that folder, the startup
+folder and default calendar fall back, and a shared mailbox whose parent is missing is not
+added.
+
+**R5. The bundle carries folder names, not just ids.** For Graph accounts a folder reference
+is an opaque id, and `FolderReferenceRemapper` matches by name or path, so on its own it
+cannot rescue a Graph rule whose id does not resolve. Export adds `folders.json`: for each
+account, every known folder's id mapped to its display path. After import, the first time an
+account's folders load, any reference that does not resolve is translated to its display
+path and handed to `FolderReferenceRemapper`, which matches it or turns it off and names it,
+exactly as it does after an IMAP-to-Graph conversion. The archive folder
+(`AccountModel.ArchiveFolderFullName`) is healed the same way. Whether Graph folder ids are the
+same on two computers is checked with a scratch profile signed in to the same mailbox; R5
+works either way.
+
+**R6. Entry points and windows.** Export and import are in the **File** menu, next to *Import
+Calendar File*, and in the command palette (`settings.export`, `settings.import`). They are no
+longer in a new Settings tab, so neither one opens as a second modal dialog over Settings,
+which is itself modal over the reading pane. Both are **modeless windows** owned by the main
+window, with Escape and Cancel wired to close them. After the restart, a modeless *Settings
+Imported* window shows the report and lists the accounts that still need signing in. A
+Microsoft or Google account signs in through the existing Reconnect Account flow. A password
+account takes its password in that window (a modeless window, so the modal-plus-WebView2 rule
+does not apply).
+
+**R7. Classification gaps.** `GoogleClientId`/`GoogleClientSecret` are a credential and are
+**local** (Principle 1). `SaveMessageFolder` and `LastSaveAsFolder` are paths on this
+computer, and `StartMinimizedAtSignIn` belongs with the Windows sign-in entry, which lives in
+the registry; all three are local. `CalendarPaneOpen` travels. Per-account `LastMoveFolder` /
+`LastCopyFolder` travel with their account. `ConfigKeyClassificationTests` fails on any
+unclassified property, including the nested `WindowingPreferences` and
+`AccountOverrideConfig`.
+
+**R8. Contacts carry their group members.** Groups list members by contact id, and contact ids
+differ between profiles. Imported local contacts are renumbered above the target's highest
+id, and each group's member list is rewritten to match. A member that was a synced contact on
+the source is matched by email address to a contact on the target. Members with no match
+are dropped and counted in the report.
+
+**R9. Off until the user turns it on** (added 2026-10-12 at the owner's request). Export and import are offered only when `AllowSettingsTransfer` is on: a checkbox, *Allow exporting and importing settings*, in Settings → Advanced, off by default. With it off, the File menu items are hidden and the `settings.export` / `settings.import` commands are not registered, the same way Connection Diagnostics is gated. It is classified **local**, so an import can never switch it on or off.
+
+**Revised phases.** 1: bundle format, account-id rewrite, config classification, apply-at-startup
+with rollback (no UI). 2: export window. 3: import preview window and restart. 4: Settings
+Imported window, sign-in list, and folder heal. Then the user guide, release notes and privacy
+page.
+
+---
+
 ## Section 1: Executive Summary
 
 A QuickMail user who installs the app on a second computer today starts from nothing: every
