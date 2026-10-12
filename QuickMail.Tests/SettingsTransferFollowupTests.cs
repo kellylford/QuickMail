@@ -28,11 +28,15 @@ public sealed class SettingsTransferFollowupTests
             new StubOAuthService(), new StubLocalStoreService(), new StubConfigService(),
             new StubFeatureGate(), new ProviderCatalog());
 
-    private static void Drain()
+    private static void Drain() => TabOrderWalker.Drain();
+
+    // These tests move real keyboard focus; release it so it cannot leak into the next test in the
+    // WpfTests collection (as RowFieldsWindowCheckBoxTests does).
+    private static void CloseAndReleaseFocus(Window window)
     {
-        var frame = new DispatcherFrame();
-        Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.SystemIdle, new Action(() => frame.Continue = false));
-        Dispatcher.PushFrame(frame);
+        window.Close();
+        Keyboard.ClearFocus();
+        Drain();
     }
 
     private static T OffScreen<T>(T window) where T : Window
@@ -63,6 +67,35 @@ public sealed class SettingsTransferFollowupTests
 
         Assert.False(vm.ShowImportSettings);            // the first account ends the offer
         Assert.Contains(nameof(AccountManagerViewModel.ShowImportSettings), raised);
+    }
+
+    [Fact]
+    public void ImportOffer_StillTracksTheListAfterItIsReplaced()
+    {
+        // Set Default rebuilds the Accounts collection; the offer must follow the new one.
+        var vm = AccountManager();
+        vm.OfferImportSettings = true;
+        vm.Accounts = new System.Collections.ObjectModel.ObservableCollection<AccountModel>();
+        Assert.True(vm.ShowImportSettings);
+        vm.Accounts.Add(new AccountModel { Id = Guid.NewGuid() });
+        Assert.False(vm.ShowImportSettings);
+    }
+
+    [Theory]
+    [InlineData(false, false, true)]    // nothing written yet: new
+    [InlineData(true, false, true)]     // the first start wrote config.ini, no account saved: still new
+    [InlineData(false, true, false)]    // an account file, even empty: not new
+    [InlineData(true, true, false)]
+    public void NewInstall_MeansNoAccountHasEverBeenSaved(bool configExists, bool accountsExist, bool expected)
+    {
+        var dir = System.IO.Directory.CreateDirectory(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "qm-new-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            if (configExists) System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "config.ini"), "[global]");
+            if (accountsExist) System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "accounts.json"), "[]");
+            Assert.Equal(expected, SettingsImporter.IsNewInstall(dir));
+        }
+        finally { System.IO.Directory.Delete(dir, recursive: true); }
     }
 
     [Fact]
@@ -101,7 +134,7 @@ public sealed class SettingsTransferFollowupTests
             Assert.True(stops.IndexOf("NewButton") >= 0, order);
             Assert.True(stops.IndexOf("NewButton") < stops.IndexOf("ImportSettingsButton"), order);
         }
-        finally { window.Close(); }
+        finally { CloseAndReleaseFocus(window); }
     }
 
     [StaFact]
@@ -117,7 +150,7 @@ public sealed class SettingsTransferFollowupTests
             Assert.NotNull(button);
             Assert.Equal(Visibility.Collapsed, button.Visibility);
         }
-        finally { window.Close(); }
+        finally { CloseAndReleaseFocus(window); }
     }
 
     // ── The Export window's list ───────────────────────────────────────────────
@@ -166,7 +199,7 @@ public sealed class SettingsTransferFollowupTests
             Assert.All(children, c => Assert.Equal(AutomationControlType.CheckBox, c.GetAutomationControlType()));
             Assert.Equal(SettingsCategoryInfo.All.Select(c => c.Name), children.Select(c => c.GetName()));
         }
-        finally { window.Close(); }
+        finally { CloseAndReleaseFocus(window); }
     }
 
     private static void Press(Window window, UIElement from, Key key)
@@ -201,6 +234,6 @@ public sealed class SettingsTransferFollowupTests
             Press(window, rows[^1], Key.Home);
             Assert.True(rows[0].IsKeyboardFocused, "Home did not reach the first category");
         }
-        finally { window.Close(); }
+        finally { CloseAndReleaseFocus(window); }
     }
 }

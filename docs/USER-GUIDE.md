@@ -143,7 +143,7 @@ The same notes are on each version's own page on GitHub, alongside that version'
 
 Adding an account, changing one, testing it, and removing it all happen in **Manage Accounts**. Open it from **File → Manage Accounts…**, from the **Accounts** button on the toolbar, or from the Command Palette (**Ctrl+Shift+P**) by choosing **Manage Accounts**. It has no keyboard shortcut of its own to begin with; you can give it one under **File → Settings → Keyboard Shortcuts**.
 
-Manage Accounts opens with focus on the first entry in the **Accounts** list, so you can arrow through your accounts straight away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom. When you have no accounts yet there is nothing to land on, so focus goes to **New** instead.
+Manage Accounts opens with focus on the first entry in the **Accounts** list, so you can arrow through your accounts straight away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom. When you have no accounts yet there is nothing to land on, so focus goes to **New** instead. On a new install, where no account has been added yet, an **Import Settings…** button (**Alt+M**) sits beside **New**, for bringing your settings from another computer instead (see *Moving Your Settings to Another Computer*).
 
 For most accounts you need three things: your provider, your email address, and your password. QuickMail knows the server settings for the providers it lists, and looks them up for the ones it does not.
 
@@ -1930,7 +1930,7 @@ Your mail is not in the file. It comes back from your mail servers on the other 
 
 ### Importing them on the other computer
 
-**On a new install**, you do not need to turn anything on. The first time QuickMail starts, **Manage Accounts** opens with an **Import Settings…** button (**Alt+M**) beside **New**. Choose it, pick the `.qmsettings` file, and carry on from step 5 below. The button is there only on a new install, until the first account exists. Using it does not turn on **Allow exporting and importing settings**: that stays off until you turn it on yourself.
+**On a new install**, you do not need to turn anything on. The first time QuickMail starts, **Manage Accounts** opens with an **Import Settings…** button (**Alt+M**) beside **New**. Choose it, pick the `.qmsettings` file, and carry on from step 5 below. The button is there until the first account is added, so you can close Manage Accounts and come back to it later. If you cancel the import, you are taken back to Manage Accounts. Using it does not turn on **Allow exporting and importing settings**: that stays off until you turn it on yourself.
 
 **On a computer that already has QuickMail set up:**
 

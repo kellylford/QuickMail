@@ -266,10 +266,9 @@ public partial class App : Application
         // the ConnectionDiagnostics setting (off by default).
         ConnectionJournal.Configure(profile.ProfileDir);
 
-        // A new install (#507): nothing has written this profile yet. Read before anything below creates
-        // config.ini, so Manage Accounts can offer to import settings instead of starting from nothing.
-        var isNewInstall = !System.IO.File.Exists(System.IO.Path.Combine(profile.ProfileDir, "config.ini"))
-                        && !System.IO.File.Exists(System.IO.Path.Combine(profile.ProfileDir, "accounts.json"));
+        // A new install (#507): no account has ever been saved here, so Manage Accounts offers to import
+        // settings instead of starting from nothing. Read before a staged import can write accounts.json.
+        var isNewInstall = SettingsImporter.IsNewInstall(profile.ProfileDir);
 
         // A settings import staged by the last session (#507) is applied here, before any service
         // has read a file it replaces, so nothing in memory can write the old settings back over it.

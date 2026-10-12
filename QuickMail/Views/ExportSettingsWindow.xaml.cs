@@ -104,7 +104,7 @@ public partial class ExportSettingsWindow : Window
         var next = forward ? (current + 1) % 3 : (current + 2) % 3;
         switch (next)
         {
-            case 0: CategoryList.Focus(); break;   // the list hands focus to the row last on
+            case 0: CategoryList.FocusLastFocusedRow(); break;
             case 1: SummaryBox.Focus(); break;
             default: (ExportButton.IsEnabled ? ExportButton : (UIElement)ButtonRow.Children[1]).Focus(); break;
         }

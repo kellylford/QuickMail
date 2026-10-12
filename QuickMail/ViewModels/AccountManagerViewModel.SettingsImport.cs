@@ -13,18 +13,10 @@ namespace QuickMail.ViewModels;
 /// </summary>
 public partial class AccountManagerViewModel
 {
-    private bool _offerImportSettings;
-
     /// <summary>Set by the main window when this profile is a new install.</summary>
-    public bool OfferImportSettings
-    {
-        get => _offerImportSettings;
-        set
-        {
-            _offerImportSettings = value;
-            OnPropertyChanged(nameof(ShowImportSettings));
-        }
-    }
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    [CommunityToolkit.Mvvm.ComponentModel.NotifyPropertyChangedFor(nameof(ShowImportSettings))]
+    private bool _offerImportSettings;
 
     /// <summary>Drives the Import Settings button: a new install that has no account yet.</summary>
     public bool ShowImportSettings => OfferImportSettings && Accounts.Count == 0;

@@ -70,16 +70,24 @@ public partial class MainWindow
         }
     }
 
-    private void OpenImportSettings()
+    /// <param name="fromNewInstallOffer">Started from Manage Accounts on a new install. If the user then
+    /// backs out, they are taken back there: closing it was only to make way for the import, and an
+    /// empty main window gives a new user nowhere obvious to go.</param>
+    private void OpenImportSettings(bool fromNewInstallOffer = false)
     {
         if (BringForward(_importSettingsWindow) || ProfileDir is not { } dir) return;
+        void BackOut()
+        {
+            if (fromNewInstallOffer && _vm.Accounts.Count == 0)
+                Dispatcher.BeginInvoke(OpenAccountManager, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        }
         var restoreTo = Keyboard.FocusedElement;
         var dialog = new OpenFileDialog
         {
             Title = "Import Settings",
             Filter = $"QuickMail settings (*{SettingsBundle.FileExtension})|*{SettingsBundle.FileExtension}|All files (*.*)|*.*",
         };
-        if (dialog.ShowDialog(this) != true) return;
+        if (dialog.ShowDialog(this) != true) { BackOut(); return; }
 
         ImportSettingsViewModel vm;
         try
@@ -90,6 +98,7 @@ public partial class MainWindow
         {
             MessageBox.Show(this, ex.Message, "Import Settings", MessageBoxButton.OK, MessageBoxImage.Warning);
             restoreTo?.Focus();
+            BackOut();
             return;
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or System.IO.IOException or UnauthorizedAccessException)
@@ -99,12 +108,17 @@ public partial class MainWindow
             MessageBox.Show(this, $"The import could not be prepared. {ex.Message}", "Import Settings",
                             MessageBoxButton.OK, MessageBoxImage.Warning);
             restoreTo?.Focus();
+            BackOut();
             return;
         }
 
         var window = new ImportSettingsWindow(vm, RestartToApplyImport, CanRestartForImport) { Owner = this };
         window.SetFocusRestoreTarget(restoreTo);
-        window.Closed += (_, _) => _importSettingsWindow = null;
+        window.Closed += (_, _) =>
+        {
+            _importSettingsWindow = null;
+            if (!window.ImportStarted) BackOut();
+        };
         _importSettingsWindow = window;
         // Shown once the Open dialog has fully gone: shown straight away, Windows finished handing
         // activation back to this window afterwards and focus landed in the message list, not the preview

@@ -42,7 +42,9 @@
              reusing an index the form already holds. -->
         <DockPanel Grid.Column="0" Grid.Row="0">
             <TextBlock DockPanel.Dock="Top" Text="Accounts" FontWeight="SemiBold" Margin="0,0,0,4"/>
-            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
+            <!-- Wraps: the column is 180 wide, and New, Delete and Set Default already filled it before
+                 Import Settings (#507) joined them on a new install. Tab order is TabIndex, not layout. -->
+            <WrapPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
                 <Button Content="Ne_w"
                         x:Name="NewButton"
                         Click="NewButton_Click"
@@ -76,7 +78,7 @@
                         AutomationProperties.Name="Convert to Microsoft 365"
                         Visibility="{Binding CanConvertToGraph, Converter={StaticResource BoolToVisibility}}"
                         MinWidth="90" TabIndex="6"/>
-            </StackPanel>
+            </WrapPanel>
             <ListBox x:Name="AccountListBox"
                      TabIndex="0"
                      ItemsSource="{Binding Accounts}"

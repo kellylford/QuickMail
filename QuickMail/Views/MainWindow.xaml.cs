@@ -6137,7 +6137,7 @@ public partial class MainWindow : Window
         // After the dialog has closed: the import's own dialogs must not open inside its modal loop.
         // This path does not need AllowSettingsTransfer; the offer was the user's way in.
         if (accountVm.ImportSettingsChosen)
-            OpenImportSettings();
+            OpenImportSettings(fromNewInstallOffer: true);
     }
 
     private void OpenAccountManagerForAccount(AccountModel account)

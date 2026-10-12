@@ -303,6 +303,15 @@ public static class SettingsImporter
     // ── Staging and the startup apply ────────────────────────────────────────────
 
     /// <summary>
+    /// A new install, for the Import Settings offer in Manage Accounts: no account has ever been
+    /// saved in this profile. Not "no config.ini", which the first start writes whether or not the
+    /// user does anything, so closing Manage Accounts and coming back later would lose the offer.
+    /// Deleting every account later leaves an empty accounts.json, so that is not a new install.
+    /// </summary>
+    public static bool IsNewInstall(string profileDir) =>
+        !File.Exists(Path.Combine(profileDir, "accounts.json"));
+
+    /// <summary>
     /// Copies a checked settings file into the profile, for the next start to apply. The running app
     /// calls this and then restarts; it never writes the profile files itself (R1).
     /// </summary>
