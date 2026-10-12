@@ -448,9 +448,11 @@
                           Click="MenuImportCalendarFile_Click"/>
                 <MenuItem Header="Expo_rt Settings…"
                           AutomationProperties.Name="Export Settings"
+                          Visibility="{Binding IsSettingsTransferEnabled, Converter={StaticResource BoolToVisibilityConverter}}"
                           Click="MenuExportSettings_Click"/>
                 <MenuItem Header="Impor_t Settings…"
                           AutomationProperties.Name="Import Settings"
+                          Visibility="{Binding IsSettingsTransferEnabled, Converter={StaticResource BoolToVisibilityConverter}}"
                           Click="MenuImportSettings_Click"/>
                 <Separator/>
                 <MenuItem Header="_Manage Accounts…"

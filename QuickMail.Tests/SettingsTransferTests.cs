@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
+using QuickMail.ViewModels;
 using Xunit;
 
 namespace QuickMail.Tests;
@@ -1038,5 +1039,80 @@ public sealed class SettingsTransferTests : IDisposable
         Assert.Null(AppRestart.ParseWaitPid(["--profileDir", "x"]));
         Assert.Null(AppRestart.ParseWaitPid(["--waitForExit"]));
         AppRestart.WaitForPreviousInstance(["--waitForExit", "999999999"]);   // a process that is not there: returns at once
+    }
+}
+
+/// <summary>
+/// Settings export and import are behind AllowSettingsTransfer, off until the user turns it on in
+/// Settings, Advanced (#507): with it off there is no command, no menu item and no way to start
+/// either; turning it on takes effect at once, and an import never changes it.
+/// </summary>
+public sealed class SettingsTransferSettingTests
+{
+    private static (MainViewModel vm, CommandRegistry registry) MakeVm()
+    {
+        var registry = new CommandRegistry();
+        var vm = new MainViewModel(new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+            new StubConfigService(), registry, new StubViewService(),
+            new StubRuleService(), new StubSmtpService());
+        return (vm, registry);
+    }
+
+    [Fact]
+    public void DefaultsToOffAndRoundTrips()
+    {
+        Assert.False(new ConfigModel().AllowSettingsTransfer);
+        var text = ConfigService.BuildFileText(new ConfigModel { AllowSettingsTransfer = true });
+        Assert.True(ConfigService.ParseFile(text.Split('\n')).AllowSettingsTransfer);
+        Assert.False(ConfigService.ParseFile(ConfigService.BuildFileText(new ConfigModel()).Split('\n')).AllowSettingsTransfer);
+    }
+
+    [Fact]
+    public void Off_OffersNothingAndStartsNothing()
+    {
+        var (vm, registry) = MakeVm();
+        vm.ApplySettingsTransferSetting(false);
+        var asked = 0;
+        vm.ExportSettingsRequested += (_, _) => asked++;
+        vm.ImportSettingsRequested += (_, _) => asked++;
+
+        vm.RequestExportSettings();
+        vm.RequestImportSettings();
+
+        Assert.False(vm.IsSettingsTransferEnabled);
+        Assert.DoesNotContain(registry.GetAll(), c => c.Id is "settings.export" or "settings.import");
+        Assert.Equal(0, asked);
+    }
+
+    [Fact]
+    public void On_RegistersBothCommandsAndTurningOffRemovesThem()
+    {
+        var (vm, registry) = MakeVm();
+        var asked = 0;
+        vm.ExportSettingsRequested += (_, _) => asked++;
+
+        vm.ApplySettingsTransferSetting(true);
+        Assert.True(vm.IsSettingsTransferEnabled);
+        var export = registry.GetAll().Single(c => c.Id == "settings.export");
+        Assert.Equal("Settings", export.Category);
+        Assert.Contains(registry.GetAll(), c => c.Id == "settings.import");
+        export.Execute();
+        Assert.Equal(1, asked);
+
+        vm.ApplySettingsTransferSetting(true);   // applied again on every Settings save: no duplicate
+        Assert.Single(registry.GetAll(), c => c.Id == "settings.export");
+
+        vm.ApplySettingsTransferSetting(false);
+        Assert.DoesNotContain(registry.GetAll(), c => c.Id is "settings.export" or "settings.import");
+    }
+
+    [Fact]
+    public void AnImportNeverSwitchesItOnOrOff()
+    {
+        Assert.Contains(nameof(ConfigModel.AllowSettingsTransfer), SettingsConfigTransfer.Local);
+        var local = new ConfigModel { AllowSettingsTransfer = true };
+        SettingsConfigTransfer.Apply(new ConfigModel { AllowSettingsTransfer = false }, local, []);
+        Assert.True(local.AllowSettingsTransfer);
     }
 }

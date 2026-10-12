@@ -1913,6 +1913,10 @@ Nothing to press. When Windows reports the network again QuickMail reconnects ev
 
 If you use QuickMail on more than one computer, or are setting up a new one, you can carry your settings across in one file instead of setting everything up again. The same file also works as a backup of your settings before you reinstall Windows.
 
+### Turning it on
+
+Exporting and importing settings are off until you turn them on, on each computer you use them on: open **Settings**, go to the **Advanced** tab, and check **Allow exporting and importing settings** (**Alt+X**). **Export Settings** and **Import Settings** then appear on the **File** menu and in the Command Palette, and stay there until you turn the setting off. Importing settings never changes this setting.
+
 ### Exporting your settings
 
 1. Choose **File → Export Settings…**, or **Export Settings** from the Command Palette.

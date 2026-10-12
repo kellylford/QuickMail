@@ -24,9 +24,45 @@ public partial class MainViewModel
     /// <summary>Raised to start an import: the View asks for the file and shows the preview.</summary>
     public event EventHandler? ImportSettingsRequested;
 
-    public void RequestExportSettings() => ExportSettingsRequested?.Invoke(this, EventArgs.Empty);
+    public void RequestExportSettings()
+    {
+        if (IsSettingsTransferEnabled) ExportSettingsRequested?.Invoke(this, EventArgs.Empty);
+    }
 
-    public void RequestImportSettings() => ImportSettingsRequested?.Invoke(this, EventArgs.Empty);
+    public void RequestImportSettings()
+    {
+        if (IsSettingsTransferEnabled) ImportSettingsRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Whether settings export and import are offered: the AllowSettingsTransfer setting, off until
+    /// the user turns it on in Settings. Drives the File menu items; the commands are registered and
+    /// unregistered with it, so the menu and the command palette never disagree.
+    /// </summary>
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    private bool _isSettingsTransferEnabled;
+
+    /// <summary>Applies the AllowSettingsTransfer setting. Called at startup and on every Settings save.</summary>
+    internal void ApplySettingsTransferSetting(bool enabled)
+    {
+        IsSettingsTransferEnabled = enabled;
+        if (enabled)
+        {
+            // No default keys: occasional actions in a crowded keyspace. The File menu carries them,
+            // and a user who wants a key can assign one.
+            _commandRegistry.Register(new CommandDefinition(
+                id: "settings.export", category: "Settings", title: "Export Settings…",
+                execute: RequestExportSettings));
+            _commandRegistry.Register(new CommandDefinition(
+                id: "settings.import", category: "Settings", title: "Import Settings…",
+                execute: RequestImportSettings));
+        }
+        else
+        {
+            _commandRegistry.Unregister("settings.export");
+            _commandRegistry.Unregister("settings.import");
+        }
+    }
 
     /// <summary>Each account's known folders, id to display path, for a settings file.</summary>
     public Dictionary<Guid, IReadOnlyDictionary<string, string>> BuildFolderPathsForExport() =>

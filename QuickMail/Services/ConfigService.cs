@@ -311,6 +311,7 @@ public class ConfigService : IConfigService
                         break;
                     case "enablelogging": config.EnableLogging = ParseBool(value); break;
                     case "connectiondiagnostics": config.ConnectionDiagnostics = ParseBool(value); break;
+                    case "allowsettingstransfer": config.AllowSettingsTransfer = ParseBool(value); break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
                     case "desktopshortcutprompted": config.DesktopShortcutPrompted = ParseBool(value); break;
                     case "autoupdate":              config.AutoUpdate              = ParseBool(value); break;
@@ -675,6 +676,11 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Write log entries to quickmail.log. When off, no log file is written.");
         sb.AppendLine("# If QuickMail was launched with /debug, this setting is ignored and logging always runs.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AllowSettingsTransfer = {(config.AllowSettingsTransfer ? "on" : "off")}");
+        sb.AppendLine("# Offer File > Export Settings and File > Import Settings, for moving your settings to");
+        sb.AppendLine("# another computer. Default off. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"ConnectionDiagnostics = {(config.ConnectionDiagnostics ? "on" : "off")}");

@@ -350,6 +350,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _connectionDiagnostics;
 
+    /// <summary>Offers Export Settings and Import Settings on the File menu (#507). Off by default.</summary>
+    [ObservableProperty]
+    private bool _allowSettingsTransfer;
+
     public bool IsLogFormatActionFirst
     {
         get => LogFormat == "actionFirst";
@@ -577,6 +581,7 @@ public partial class SettingsViewModel : ObservableObject
         StartupSyncScope                 = ConfigModel.ParseStartupSyncScope(cfg.StartupSyncScope);
         EnableLogging                    = cfg.EnableLogging;
         ConnectionDiagnostics            = cfg.ConnectionDiagnostics;
+        AllowSettingsTransfer            = cfg.AllowSettingsTransfer;
         MessageOpenMode = cfg.Windowing.MessageOpenMode switch
         {
             Models.MessageOpenMode.Tab    => "tab",
@@ -691,6 +696,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.StartupSyncScope                 = StartupSyncScope;
         cfg.EnableLogging                    = EnableLogging;
         cfg.ConnectionDiagnostics            = ConnectionDiagnostics;
+        cfg.AllowSettingsTransfer            = AllowSettingsTransfer;
         cfg.Windowing.MessageOpenMode = MessageOpenMode switch
         {
             "tab"    => Models.MessageOpenMode.Tab,

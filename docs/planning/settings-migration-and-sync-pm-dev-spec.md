@@ -102,6 +102,8 @@ id, and each group's member list is rewritten to match. A member that was a sync
 the source is matched by email address to a contact on the target. Members with no match
 are dropped and counted in the report.
 
+**R9. Off until the user turns it on** (added 2026-10-12 at the owner's request). Export and import are offered only when `AllowSettingsTransfer` is on: a checkbox, *Allow exporting and importing settings*, in Settings → Advanced, off by default. With it off, the File menu items are hidden and the `settings.export` / `settings.import` commands are not registered, the same way Connection Diagnostics is gated. It is classified **local**, so an import can never switch it on or off.
+
 **Revised phases.** 1: bundle format, account-id rewrite, config classification, apply-at-startup
 with rollback (no UI). 2: export window. 3: import preview window and restart. 4: Settings
 Imported window, sign-in list, and folder heal. Then the user guide, release notes and privacy

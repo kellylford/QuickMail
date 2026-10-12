@@ -1500,15 +1500,6 @@ public partial class MainWindow : Window
             execute: () => _vm.CalendarVm?.ImportIcsCommand.Execute(null),
             isAvailable: () => _vm.CalendarVm != null));
 
-        // Settings export and import (#507). No default keys: occasional actions in a crowded keyspace;
-        // the File menu carries them, and a user who wants a key can assign one.
-        _registry.Register(new CommandDefinition(
-            id: "settings.export", category: "Settings", title: "Export Settings…",
-            execute: _vm.RequestExportSettings));
-        _registry.Register(new CommandDefinition(
-            id: "settings.import", category: "Settings", title: "Import Settings…",
-            execute: _vm.RequestImportSettings));
-
         // ── Default calendar for new appointments (issue #497) ──────────────────
         // No default key: both act on the folder tree's calendar selection, and the context menu on
         // that node is the primary entry point. Registered so they are also reachable — and

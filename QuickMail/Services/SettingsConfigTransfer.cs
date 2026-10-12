@@ -24,6 +24,8 @@ public static class SettingsConfigTransfer
         nameof(ConfigModel.LogFormat),
         nameof(ConfigModel.EnableLogging),
         nameof(ConfigModel.ConnectionDiagnostics),
+        // This computer's consent to export and import (#507): an import must never switch it.
+        nameof(ConfigModel.AllowSettingsTransfer),
         // Paths on this computer's disk.
         nameof(ConfigModel.SaveMessageFolder),
         nameof(ConfigModel.LastSaveAsFolder),

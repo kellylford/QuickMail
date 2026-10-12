@@ -2713,6 +2713,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _themeService?.ApplyAppearance(cfg);
 
         ApplyConnectionDiagnosticsSetting(cfg.ConnectionDiagnostics);
+        ApplySettingsTransferSetting(cfg.AllowSettingsTransfer);
         ApplyOfflineBodySetting(cfg);
 
         // Keep the View menu's density check marks in sync with a Settings save.
