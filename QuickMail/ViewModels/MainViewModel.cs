@@ -9400,6 +9400,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // the View land focus on the neighbour (a full rebuild would collapse and reset focus).
             RemoveFolderFromCacheOptimistically(node.Folder.AccountId, node.Folder);
             RemoveNodeFromTree(node);
+            // The folder's mail went to Trash, whose badge — part of its spoken name — would
+            // otherwise keep the old count until the next full folder fetch (#794).
+            ScheduleFolderCountRefresh(node.Folder.AccountId);
             StatusText = $"Folder '{node.Label}' deleted.";
             return true;
         }
