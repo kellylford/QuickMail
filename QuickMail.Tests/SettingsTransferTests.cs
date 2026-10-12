@@ -79,7 +79,8 @@ public sealed class SettingsTransferTests : IDisposable
             ] },
         });
         WriteJson(dir, "templates.json", new List<MessageTemplate> { new() { Title = "Thanks" } });
-        File.WriteAllText(Path.Combine(dir, "hotkeys.json"), """[ { "CommandId": "mail.reply", "Gesture": "Ctrl+R" } ]""");
+        // With a byte-order mark, as ConfigService writes it (found in VM testing: the preview called this damaged).
+        File.WriteAllText(Path.Combine(dir, "hotkeys.json"), """[ { "CommandId": "mail.reply", "Gesture": "Ctrl+R" } ]""", Encoding.UTF8);
         File.WriteAllBytes(Path.Combine(dir, "custom.lex"), Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes("QuickMail\r\n")).ToArray());
         Directory.CreateDirectory(Path.Combine(dir, "themes"));
         File.WriteAllText(Path.Combine(dir, "themes", "mine.json"), """{ "id": "mine" }""");

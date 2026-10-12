@@ -125,7 +125,11 @@ public sealed class SettingsBundle
             throw new SettingsBundleException(notASettingsFile);
 
         SettingsBundleManifest? manifest;
-        try { manifest = JsonSerializer.Deserialize<SettingsBundleManifest>(manifestBytes); }
+        try
+        {
+            using var reader = new StreamReader(new MemoryStream(manifestBytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            manifest = JsonSerializer.Deserialize<SettingsBundleManifest>(reader.ReadToEnd());
+        }
         catch (JsonException ex) { throw new SettingsBundleException(notASettingsFile, ex); }
         if (manifest is null || manifest.SchemaVersion < 1)
             throw new SettingsBundleException(notASettingsFile);

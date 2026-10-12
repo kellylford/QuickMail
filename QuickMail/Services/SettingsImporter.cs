@@ -226,10 +226,11 @@ public static class SettingsImporter
     /// </summary>
     private static void ValidateEntries(SettingsBundle bundle)
     {
-        foreach (var (name, bytes) in bundle.Entries)
+        foreach (var name in bundle.Entries.Keys)
         {
             if (!name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) continue;
-            try { using var doc = JsonDocument.Parse(bytes); }
+            // As text, which drops a byte-order mark: QuickMail writes hotkeys.json with one.
+            try { using var doc = JsonDocument.Parse(bundle.GetText(name) ?? string.Empty); }
             catch (JsonException ex)
             {
                 throw new SettingsBundleException($"This settings file is damaged: {name} could not be read.", ex);
@@ -476,18 +477,18 @@ public static class SettingsImporter
                         ReplaceText(bundle, profileDir, name, Rewrite);
                     DisableOrphanedRules(profileDir, accountIds, result);
                     DropOrphanedViewFolders(profileDir, accountIds, result);
-                    result.Lines.Add(plan.CategoryLines.FirstOrDefault(l => l.StartsWith(SettingsCategoryInfo.NameOf(category), StringComparison.Ordinal)) ?? string.Empty);
+                    result.Lines.Add(Done(plan, category));
                     break;
                 case SettingsCategory.Templates:
                 case SettingsCategory.Keyboard:
                     foreach (var name in SettingsBundle.CategoryFiles[category])
                         ReplaceText(bundle, profileDir, name, Rewrite);
-                    result.Lines.Add(plan.CategoryLines.FirstOrDefault(l => l.StartsWith(SettingsCategoryInfo.NameOf(category), StringComparison.Ordinal)) ?? string.Empty);
+                    result.Lines.Add(Done(plan, category));
                     break;
                 case SettingsCategory.Appearance:
                     ReplaceText(bundle, profileDir, "rowlayout.json", Rewrite);
                     ReplaceThemes(bundle, profileDir);
-                    result.Lines.Add(plan.CategoryLines.FirstOrDefault(l => l.StartsWith(SettingsCategoryInfo.NameOf(category), StringComparison.Ordinal)) ?? string.Empty);
+                    result.Lines.Add(Done(plan, category));
                     break;
                 case SettingsCategory.AddressBook:
                     ApplyAddressBook(bundle, profileDir, result);
@@ -517,6 +518,11 @@ public static class SettingsImporter
     }
 
     // ── Category appliers ────────────────────────────────────────────────────────
+
+    // The preview line for a category, said as done: "in place of the 3 here", not "replacing".
+    private static string Done(SettingsImportPlan plan, SettingsCategory category) =>
+        (plan.CategoryLines.FirstOrDefault(l => l.StartsWith(SettingsCategoryInfo.NameOf(category), StringComparison.Ordinal)) ?? string.Empty)
+            .Replace(", replacing the ", ", in place of the ", StringComparison.Ordinal);
 
     /// <summary>Makes the profile's file match the bundle's: written when the bundle has it, removed when it does not.</summary>
     private static void ReplaceText(SettingsBundle bundle, string profileDir, string name, Func<string, string> rewrite)

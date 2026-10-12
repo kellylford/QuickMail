@@ -106,7 +106,10 @@ public partial class MainWindow
         window.SetFocusRestoreTarget(restoreTo);
         window.Closed += (_, _) => _importSettingsWindow = null;
         _importSettingsWindow = window;
-        window.Show();
+        // Shown once the Open dialog has fully gone: shown straight away, Windows finished handing
+        // activation back to this window afterwards and focus landed in the message list, not the preview
+        // (found in VM testing).
+        Dispatcher.BeginInvoke(() => { window.Show(); window.Activate(); }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
     }
 
     /// <summary>
@@ -147,7 +150,9 @@ public partial class MainWindow
         window.SetFocusRestoreTarget(Keyboard.FocusedElement);
         window.Closed += (_, _) => _settingsImportedWindow = null;
         _settingsImportedWindow = window;
-        window.Show();
+        // After startup has put focus in the message list (FocusActiveMessagePanel defers it), or that
+        // would take focus back from this window (found in VM testing).
+        Dispatcher.BeginInvoke(() => { window.Show(); window.Activate(); }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
     }
 
     // Reconnect Account, on the account as the list holds it now: Manage Accounts may have rebuilt the
