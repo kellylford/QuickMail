@@ -4,20 +4,24 @@
 
 **File → Export Settings…** saves your QuickMail setup in one file, and **File → Import
 Settings…** brings it in on another computer (#507). Both are off until you turn them on: in
-**Settings → Advanced**, check **Allow exporting and importing settings** on each computer. The file carries your accounts and
-signatures, rules, saved views, flags, watched conversations, address book, message templates,
-keyboard shortcuts, themes, message list layout, Local Calendar and preferences. You choose
-which of those to include. It never contains a password or a sign-in.
+**Settings → Advanced**, check **Allow exporting and importing settings** on each computer.
 
-Before anything changes, the import shows a preview of what will happen to each account and
-setting. QuickMail then restarts to bring the settings in, and lists the accounts that still
-need signing in on this computer so you can sign in to each from one place.
+The file carries your accounts and signatures, rules, saved views, flags, watched
+conversations, address book, message templates, keyboard shortcuts, themes, message list
+layout, Local Calendar and preferences. You choose which of those to include. It never
+contains a password or a sign-in.
+
+Before anything changes, the import shows a preview: what is in the file, what it replaces on
+this computer, and what will happen to each account. QuickMail then restarts to bring the
+settings in, and lists the accounts that still need signing in on this computer so you can sign
+in to each from one place.
 
 - This computer ends up matching the file, so importing the same file twice gives the same
   result. Accounts are never removed: one that is already here keeps its sign-in and takes the
   file's settings, and one that is not is added.
-- Anything that cannot be matched here, such as a rule for a folder this account does not have,
-  is turned off and named rather than pointed at a guess.
+- Anything that cannot be matched here is turned off and named rather than pointed at a guess:
+  a rule for an account that is not on this computer, or a Microsoft 365 rule for a folder that
+  account does not have.
 - A copy of your previous settings is kept first, and if the import fails part-way your
   settings are put back from it.
 
