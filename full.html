@@ -248,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.54</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.55</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -278,6 +278,8 @@ Message</a></li>
 <li><a href="#what-syncs-and-what-doesnt">What Syncs and What
 Doesn’t</a></li>
 <li><a href="#working-offline">Working Offline</a></li>
+<li><a href="#moving-your-settings-to-another-computer">Moving Your
+Settings to Another Computer</a></li>
 <li><a href="#notifications">Notifications</a></li>
 <li><a href="#tools-menu">Tools Menu</a></li>
 <li><a href="#connection-diagnostics">Connection Diagnostics</a></li>
@@ -508,7 +510,11 @@ whichever account is selected fill the rest of the window;
 <strong>Save</strong>, <strong>Test Connection</strong>, and
 <strong>Close</strong> are at the bottom. When you have no accounts yet
 there is nothing to land on, so focus goes to <strong>New</strong>
-instead.</p>
+instead. On a new install, where no account has been added yet, an
+<strong>Import Settings…</strong> button (<strong>Alt+M</strong>) sits
+beside <strong>New</strong>, for bringing your settings from another
+computer instead (see <em>Moving Your Settings to Another
+Computer</em>).</p>
 <p>For most accounts you need three things: your provider, your email
 address, and your password. QuickMail knows the server settings for the
 providers it lists, and looks them up for the ones it does not.</p>
@@ -4741,6 +4747,159 @@ every five. <strong>F5</strong> forces an attempt at any time. Once
 something answers, the folder you are looking at refreshes and anything
 waiting in the Outbox goes out.</p>
 <hr />
+<h2 id="moving-your-settings-to-another-computer">Moving Your Settings
+to Another Computer</h2>
+<p>If you use QuickMail on more than one computer, or are setting up a
+new one, you can carry your settings across in one file instead of
+setting everything up again. The same file also works as a backup of
+your settings before you reinstall Windows.</p>
+<h3 id="turning-it-on">Turning it on</h3>
+<p>Exporting and importing settings are off until you turn them on, on
+each computer you use them on: open <strong>Settings</strong>, go to the
+<strong>Advanced</strong> tab, and check <strong>Allow exporting and
+importing settings</strong> (<strong>Alt+X</strong>). <strong>Export
+Settings</strong> and <strong>Import Settings</strong> then appear on
+the <strong>File</strong> menu and in the Command Palette straight away,
+and stay there until you turn the setting off. Importing settings never
+changes this setting, on either computer.</p>
+<h3 id="exporting-your-settings">Exporting your settings</h3>
+<ol type="1">
+<li>Choose <strong>File → Export Settings…</strong>, or <strong>Export
+Settings</strong> from the Command Palette.</li>
+<li>The window lists what can go into the file, all of it checked:
+accounts and signatures; rules, saved views, flags and watched
+conversations; the address book; message templates; keyboard shortcuts;
+themes and message list layout; the Local Calendar; and your preferences
+with the custom spelling dictionary. The list is one stop when you press
+<strong>Tab</strong>; arrow through it (<strong>Home</strong> and
+<strong>End</strong> go to the first and last) and press
+<strong>Space</strong> to leave something out.</li>
+<li>Press <strong>Tab</strong> to read a summary of what the file will
+hold. It contains email addresses, server names, signatures and, if you
+leave them checked, your address book and Local Calendar. <strong>It
+never contains a password or a sign-in.</strong></li>
+<li>Choose <strong>Export…</strong> and save the file. Its name ends in
+<code>.qmsettings</code>. QuickMail says how many categories it saved
+and how large the file is, and returns you to where you were.</li>
+</ol>
+<p>Keep the file somewhere private: although it has no passwords in it,
+it does have your contacts and account details. Copy it to the other
+computer however you like, on a USB stick or through a folder you
+already sync.</p>
+<p>Your mail is not in the file. It comes back from your mail servers on
+the other computer. Two things in QuickMail exist only on this computer
+and are not carried: mail in a POP3 account that is set not to leave
+mail on the server, and unsent mail waiting in the Outbox.</p>
+<h3 id="importing-them-on-the-other-computer">Importing them on the
+other computer</h3>
+<p><strong>On a new install</strong>, you do not need to turn anything
+on. The first time QuickMail starts, <strong>Manage Accounts</strong>
+opens with an <strong>Import Settings…</strong> button
+(<strong>Alt+M</strong>) beside <strong>New</strong>. Choose it, pick
+the <code>.qmsettings</code> file, and carry on from step 5 below. The
+button is there until the first account is added, so you can close
+Manage Accounts and come back to it later. If you cancel the import, you
+are taken back to Manage Accounts. Using it does not turn on
+<strong>Allow exporting and importing settings</strong>: that stays off
+until you turn it on yourself.</p>
+<p><strong>On a computer that already has QuickMail set up:</strong></p>
+<ol type="1">
+<li>Turn on <strong>Allow exporting and importing settings</strong> on
+this computer (see <em>Turning it on</em>).</li>
+<li>Send, save or close any message you are writing. Importing restarts
+QuickMail, and it will not go ahead while a message window is open.</li>
+<li>Choose <strong>File → Import Settings…</strong>.</li>
+<li>Pick the <code>.qmsettings</code> file.</li>
+<li>A preview opens before anything changes, with focus on its summary:
+which computer the file came from, how many accounts will be added or
+updated, and what happens next. Press <strong>F6</strong> to move
+between the summary, the list of what will be imported, the accounts,
+and the buttons.
+<ul>
+<li>Each line of <strong>What will be imported</strong> says what is in
+the file and what it replaces here, for example “Message templates: 4
+templates, replacing the 2 here”.</li>
+<li>Each account says what will happen to it: “will be added”, or
+“already on this computer, settings will be updated”. If this computer
+has the same address as a different kind of account (for example IMAP
+here and Microsoft 365 in the file), the account is added separately and
+the preview says so.</li>
+</ul></li>
+<li>Choose <strong>Import and Restart</strong>, or
+<strong>Cancel</strong> to leave everything as it is. Pressing
+<strong>Enter</strong> in the summary or a list does not import; only
+the button does.</li>
+<li>QuickMail closes, opens again, and brings the settings in as it
+starts. The <strong>Settings Imported</strong> window then opens with
+focus on the report: what came in, anything that was left out or turned
+off, and the name of the folder holding a copy of your previous
+settings. <strong>Copy Report</strong> puts the report on the
+clipboard.</li>
+</ol>
+<p>If the file is not a QuickMail settings file, is damaged, or was made
+by a newer version of QuickMail, you are told so and nothing
+changes.</p>
+<h3 id="what-importing-does">What importing does</h3>
+<ul>
+<li><strong>This computer ends up matching the file.</strong> Rules,
+saved views, templates, keyboard shortcuts, themes and the other
+settings you exported replace the ones here, so importing the same file
+twice gives the same result. Anything you did not export is left
+alone.</li>
+<li><strong>Accounts are never removed.</strong> An account in the file
+that is already here (the same address and the same kind of account)
+keeps its sign-in here and takes the file’s settings and signature. An
+account that is not here yet is added. Accounts here that are not in the
+file stay as they are.</li>
+<li><strong>Shared mailboxes come with their account.</strong> A shared
+mailbox is imported only when the account it belongs to is imported
+too.</li>
+<li><strong>Contacts synced from a server are kept.</strong> Your own
+address book and groups are replaced with the ones in the file. A group
+member that was synced from a server is matched to the same person here
+by email address; one that cannot be found here yet is left out of the
+group, and the report says how many.</li>
+<li><strong>Local Calendar appointments are added and updated, never
+deleted.</strong> An appointment already here is updated rather than
+duplicated.</li>
+<li><strong>Some settings belong to this computer and are not
+changed:</strong> whether exporting and importing are allowed, where
+Save puts files, logging and connection diagnostics, whether to start
+minimized at sign-in, and your own Google sign-in app details if you set
+those up. A setting the file does not mention, because it was made by an
+older QuickMail, keeps its value here.</li>
+<li><strong>Anything that cannot be matched is turned off and named,
+never guessed.</strong> A rule for an account that is not on this
+computer is switched off, and a saved view loses that account’s folders.
+For a Microsoft 365 account, folders are found again by name the first
+time the account’s folders load; a rule whose folder that account does
+not have is switched off, and the status bar says which. Set a folder on
+the rule to turn it back on.</li>
+<li><strong>A copy of your previous settings is kept</strong> in a
+folder named <code>backup-</code> followed by the date and time, in
+QuickMail’s data folder. If the import fails part-way, QuickMail puts
+everything back from that copy and tells you. If anything could not be
+put back, it names those files so you can copy them back yourself, with
+QuickMail closed.</li>
+</ul>
+<h3 id="signing-in-after-an-import">Signing in after an import</h3>
+<p>Passwords and sign-ins never travel between computers, so an account
+that is new on this computer has to be signed in once. An account that
+was already here keeps its sign-in, unless the file signs it in a
+different way. In the <strong>Settings Imported</strong> window, arrow
+to an account in <strong>Accounts to sign in</strong>:</p>
+<ul>
+<li>For a Microsoft or Google account, press <strong>Enter</strong> and
+sign in in the window that opens.</li>
+<li>For an account that uses a password, press <strong>Enter</strong> to
+move to the <strong>Password</strong> box, type the password, and press
+<strong>Enter</strong> again. Moving to a different account clears the
+box, so a password is never saved under the wrong account.</li>
+</ul>
+<p>Each account reads as “needs sign-in” or “signed in”. You can close
+the window and sign in later with <strong>Reconnect</strong> on the
+account instead.</p>
+<hr />
 <h2 id="notifications">Notifications</h2>
 <p>New-mail notifications and the option to keep QuickMail running in
 the notification area when you close the window are both <strong>off by
@@ -4835,7 +4994,7 @@ include something concrete.</li>
 </ul>
 <p>It is a troubleshooting tool, not something to leave on. Turn it off
 again once you have what you need.</p>
-<h3 id="turning-it-on">Turning it on</h3>
+<h3 id="turning-it-on-1">Turning it on</h3>
 <ol type="1">
 <li>Open <strong>Settings</strong> (Ctrl+comma) and go to the
 <strong>Advanced</strong> tab.</li>
