@@ -250,17 +250,19 @@ public class RuleService : IRuleService
 
             try
             {
-                await ExecuteActionsAsync(rule, matched, accountId, ct);
+                var taken = await ExecuteActionsAsync(rule, matched, accountId, ct);
 
                 // Remove messages from incoming that were moved or deleted so the
                 // UI doesn't show them in the original folder after FolderSynced fires.
-                if (rule.RemovesFromFolder())
+                // Only the ones that really went: the caller deletes these from the local store, and
+                // for a POP3 account that row is the only copy of the message (#794).
+                if (taken.Count > 0)
                 {
-                    var matchedKeys = new HashSet<(string MessageId, Guid AccountId, string FolderName)>();
-                    foreach (var m in matched)
-                        matchedKeys.Add((m.MessageId, m.AccountId, m.FolderName));
-                    incoming.RemoveAll(m => matchedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
-                    removedMessages.AddRange(matched);
+                    var takenKeys = new HashSet<(string MessageId, Guid AccountId, string FolderName)>();
+                    foreach (var m in taken)
+                        takenKeys.Add((m.MessageId, m.AccountId, m.FolderName));
+                    incoming.RemoveAll(m => takenKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
+                    removedMessages.AddRange(taken);
                 }
             }
             catch (OperationCanceledException) { throw; }
@@ -325,13 +327,17 @@ public class RuleService : IRuleService
     // ── Action Execution ────────────────────────────────────────────────────
 
     /// <summary>Runs each of the rule's actions in turn, in the order <see cref="MailRule.AllActions"/> gives:
-    /// moving or deleting comes last, because after either the message is no longer where the others look.</summary>
-    private async Task ExecuteActionsAsync(
+    /// moving or deleting comes last, because after either the message is no longer where the others look.
+    /// Returns the messages a move or delete actually took out of their folder — not every message the
+    /// rule matched. A move that failed left its messages where they were, and a caller that treated
+    /// them as gone deleted them from the local store: for a POP3 account, the only copy (#794).</summary>
+    private async Task<List<MailMessageSummary>> ExecuteActionsAsync(
         MailRule rule,
         List<MailMessageSummary> matched,
         Guid accountId,
         CancellationToken ct)
     {
+        var taken = new List<MailMessageSummary>();
         foreach (var action in rule.AllActions())
         {
             switch (action)
@@ -351,14 +357,15 @@ public class RuleService : IRuleService
 
                 case RuleAction.MoveToFolder:
                     if (string.IsNullOrEmpty(rule.TargetFolder)) break;
-                    await MoveToFolderAsync(matched, rule.TargetFolder, ct);
+                    taken.AddRange(await MoveToFolderAsync(matched, rule.TargetFolder, ct));
                     break;
 
                 case RuleAction.Delete:
-                    await DeleteAsync(matched, ct);
+                    taken.AddRange(await DeleteAsync(matched, ct));
                     break;
             }
         }
+        return taken.Distinct().ToList();
     }
 
     private async Task CopyToFolderAsync(
@@ -447,9 +454,11 @@ public class RuleService : IRuleService
         }
     }
 
-    private async Task MoveToFolderAsync(
+    /// <summary>Moves the messages, one MOVE per source folder, and returns the ones that moved.</summary>
+    private async Task<List<MailMessageSummary>> MoveToFolderAsync(
         List<MailMessageSummary> messages, string targetFolder, CancellationToken ct)
     {
+        var moved = new List<MailMessageSummary>();
         // Group messages by (AccountId, FolderName) so we issue one MOVE per source folder.
         var groups = messages.GroupBy(m => (m.AccountId, m.FolderName));
         foreach (var group in groups)
@@ -460,17 +469,23 @@ public class RuleService : IRuleService
             {
                 await _imap.MoveMessagesAsync(
                     group.Key.AccountId, group.Key.FolderName, uids, targetFolder, ct);
+                moved.AddRange(group);
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
+                // A timeout arrives as a cancellation nobody asked for; like any other failure it leaves
+                // these messages where they were, and the rest of the pass carries on.
                 LogService.Log($"MoveToFolder failed for {uids.Count} messages to '{targetFolder}'", ex);
             }
         }
+        return moved;
     }
 
-    private async Task DeleteAsync(List<MailMessageSummary> messages, CancellationToken ct)
+    /// <summary>Moves the messages to Trash, one batch per source folder, and returns the ones that went.</summary>
+    private async Task<List<MailMessageSummary>> DeleteAsync(List<MailMessageSummary> messages, CancellationToken ct)
     {
+        var deleted = new List<MailMessageSummary>();
         var groups = messages.GroupBy(m => (m.AccountId, m.FolderName));
         foreach (var group in groups)
         {
@@ -480,13 +495,15 @@ public class RuleService : IRuleService
             {
                 await _imap.MoveToTrashBatchAsync(
                     group.Key.AccountId, group.Key.FolderName, uids, ct);
+                deleted.AddRange(group);
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 LogService.Log($"Delete (move to trash) failed for {uids.Count} messages", ex);
             }
         }
+        return deleted;
     }
 
     // ── Apply to existing messages ──────────────────────────────────────────
@@ -536,25 +553,27 @@ public class RuleService : IRuleService
 
             try
             {
-                await ExecuteActionsAsync(rule, matched, matched[0].AccountId, ct);
+                // Only what a move or delete really took: a message whose move failed is still in the
+                // Inbox, and deleting its row below would, on a POP3 account, destroy the only copy (#794).
+                var taken = await ExecuteActionsAsync(rule, matched, matched[0].AccountId, ct);
 
-                if (rule.RemovesFromFolder())
+                if (taken.Count > 0)
                 {
                     // Out of the running for the rules after this one, as arriving mail is in
                     // ApplyRulesAsync (#685): a later rule would otherwise act again on a message that is
                     // already moved or deleted, and it would be counted twice. Straight after the action, so a
                     // failure updating the local store below can't leave the message in the running.
-                    var gone = new HashSet<MailMessageSummary>(matched);
+                    var gone = new HashSet<MailMessageSummary>(taken);
                     inboxMessages.RemoveAll(gone.Contains);
 
-                    var byFolder = matched.GroupBy(m => (m.AccountId, m.FolderName));
+                    var byFolder = taken.GroupBy(m => (m.AccountId, m.FolderName));
                     foreach (var group in byFolder)
                     {
                         await store.DeleteSummariesAsync(
                             group.Key.AccountId, group.Key.FolderName,
                             group.Select(m => m.MessageId));
                     }
-                    removedMessages.AddRange(matched);
+                    removedMessages.AddRange(taken);
                 }
             }
             catch (OperationCanceledException) { throw; }

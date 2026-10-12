@@ -13,6 +13,16 @@ Deleting one moves its mail, and the mail of any folders inside it, to Trash. In
 and Trash stay as they are and cannot be moved or deleted. Exporting your settings does not
 carry these folders or their mail to another computer.
 
+## Fixed
+
+### A rule whose move or delete failed could lose the message
+
+When a rule could not move or delete a message (because the folder it files into had been
+deleted, say, or the connection dropped), QuickMail still treated the message as gone and took it
+out of its folder on this computer. On an IMAP or Microsoft 365 account the message was still on
+the server and came back later. On a POP3 account this computer holds the only copy, so the
+message was lost. Now a message stays where it is when its rule's move or delete fails (#794).
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
