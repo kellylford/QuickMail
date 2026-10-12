@@ -380,6 +380,12 @@ public class ClientRuleActionsTests
         /// <summary>Set to make the copy fail, as a deleted destination folder or a full mailbox would.</summary>
         public Exception? ThrowOnCopy { get; set; }
 
+        /// <summary>Set to make the move fail — a rule aimed at a folder deleted since (#794).</summary>
+        public Exception? ThrowOnMove { get; set; }
+
+        /// <summary>Set to make the delete (move to Trash) fail.</summary>
+        public Exception? ThrowOnDelete { get; set; }
+
         public override Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
         {
             Calls.Add($"read {messageId}");
@@ -396,12 +402,14 @@ public class ClientRuleActionsTests
         public override Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
         {
             Calls.Add($"move {string.Join(",", messageIds)} to {destinationFolder}");
+            if (ThrowOnMove is not null) throw ThrowOnMove;
             return Task.CompletedTask;
         }
 
         public override Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
         {
             Calls.Add($"delete {string.Join(",", messageIds)}");
+            if (ThrowOnDelete is not null) throw ThrowOnDelete;
             return Task.CompletedTask;
         }
     }
@@ -592,6 +600,83 @@ public class ClientRuleActionsTests
             Assert.Equal(["copy 7 to INBOX/Kept"], server.Calls);   // the move never ran
             Assert.Empty(removed);
             Assert.Empty(store.Deleted);                            // the cached row stays, as the message does
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    // ── A move or delete that fails leaves the message where it is (#794) ──────────
+    // The sync deletes every message ApplyRulesAsync reports as removed from the local store. A failed
+    // move reported as removed therefore made the message vanish — and for a POP3 account the store is the
+    // only copy, so it was gone for good. Found in the test VM with a rule aimed at a deleted folder.
+
+    [Fact]
+    public async Task WhenTheMoveFails_TheMessageIsNotReportedAsRemoved()
+    {
+        var server = new RecordingMailService { ThrowOnMove = new NotSupportedException("That folder has been deleted") };
+        var (calls, stillInInbox, removed) = await Run(new MailRule
+        {
+            Name = "File", SubjectContains = "digest",
+            Action = RuleAction.MoveToFolder, TargetFolder = "folder-deleted",
+        }, server);
+
+        Assert.Equal(["move 7 to folder-deleted"], calls);
+        Assert.Single(stillInInbox);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public async Task WhenTheDeleteFails_TheMessageIsNotReportedAsRemoved()
+    {
+        var server = new RecordingMailService { ThrowOnDelete = new IOException("connection lost") };
+        var (_, stillInInbox, removed) = await Run(new MailRule
+        {
+            Name = "Bin it", SubjectContains = "digest", Action = RuleAction.Delete,
+        }, server);
+
+        Assert.Single(stillInInbox);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public async Task WhenAMoveTimesOut_TheMessageStays_AndThePassCarriesOn()
+    {
+        // A timeout arrives as a cancellation nobody asked for. It is a failed move, not a cancelled sync.
+        var server = new RecordingMailService { ThrowOnMove = new TaskCanceledException("timed out") };
+        var (_, stillInInbox, removed) = await Run(new MailRule
+        {
+            Name = "File", SubjectContains = "digest",
+            Action = RuleAction.MoveToFolder, TargetFolder = "INBOX/Digests",
+        }, server);
+
+        Assert.Single(stillInInbox);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public async Task RunOnExistingMail_WhenTheMoveFails_KeepsTheMessageAndItsCachedRow()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            var account = Guid.NewGuid();
+            var server = new RecordingMailService { ThrowOnMove = new NotSupportedException("That folder has been deleted") };
+            var store = new RecordingStore();
+            store.SeededSummaries[(account, "INBOX")] =
+            [
+                new MailMessageSummary { MessageId = "7", AccountId = account, FolderName = "INBOX", Subject = "Weekly digest" },
+            ];
+            var rules = new RuleService(server, store, dir);
+            rules.SaveRules([new MailRule
+            {
+                Name = "File", AccountId = account, SubjectContains = "digest",
+                Action = RuleAction.MoveToFolder, TargetFolder = "folder-deleted",
+            }]);
+
+            var removed = await rules.ApplyRulesToExistingAsync(
+                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
+
+            Assert.Empty(removed);
+            Assert.Empty(store.Deleted);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }

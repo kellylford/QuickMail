@@ -9049,13 +9049,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void ScheduleFolderCountRefresh(Guid accountId)
     {
         if (accountId == Guid.Empty) return;
-        // IMAP and Graph both expose per-folder server unread counts, refreshed here through the router's
-        // GetFoldersAsync (IMAP STATUS / Graph unreadItemCount). #491: Graph was excluded on the claim it
-        // "got counts from a different path" — there was no such path, so its folder badges froze at the
-        // last full fetch (and, being part of the folder's accessible name, were spoken stale). POP3 has a
-        // single maildrop with no per-folder counts and stays out. Guarding null avoids a doomed fetch.
-        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account is null || !BackendGetsLiveFolderCounts(account.BackendKind)) return;
+        // Every backend reports per-folder unread counts through the router's GetFoldersAsync: IMAP
+        // STATUS, Graph unreadItemCount, and for POP3 a count of the local store (#794 — with folders
+        // of its own, a POP3 account's badges froze after every move, and the badge is part of the
+        // folder's accessible name, so a screen reader spoke the stale number). #491 was the same
+        // freeze for Graph, excluded on a claim that did not hold. Guarding null avoids a doomed fetch.
+        if (!Accounts.Any(a => a.Id == accountId)) return;
 
         if (_folderCountCts.TryGetValue(accountId, out var old))
         {
@@ -9065,12 +9064,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _folderCountCts[accountId] = cts;
         _ = RefreshFolderCountsDebouncedAsync(accountId, cts.Token);
     }
-
-    /// <summary>Which backends expose per-folder server unread counts that
-    /// <see cref="ScheduleFolderCountRefresh"/> can refresh via GetFoldersAsync: IMAP (STATUS) and
-    /// Microsoft Graph (unreadItemCount). POP3 has a single maildrop and no per-folder counts. (#491)</summary>
-    internal static bool BackendGetsLiveFolderCounts(BackendKind kind)
-        => kind is BackendKind.ImapSmtp or BackendKind.MicrosoftGraph;
 
     private async Task RefreshFolderCountsDebouncedAsync(Guid accountId, CancellationToken ct)
     {
@@ -9183,28 +9176,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Why folder management is unavailable on this account, or null when it is available. The single
-    /// gate every folder-CRUD entry point asks before it opens a dialog or reaches a backend —
-    /// <paramref name="verb"/> is the action as the user would say it ("move", "create a folder in").
+    /// Why <paramref name="folder"/> cannot be moved or deleted, or null when it can. Asked by the
+    /// folder tree before it opens a confirmation or picker, so the user hears the reason instead of
+    /// confirming something that can only fail. <paramref name="verb"/> is the past participle the
+    /// sentence needs ("moved", "deleted").
     ///
-    /// <para>Here rather than in <c>MainWindow</c>: which accounts can manage folders is a state
-    /// decision, and code-behind is not where those live (see the MVVM rules). An account this
-    /// ViewModel has never heard of is allowed through — a guard is not the place to invent a
-    /// refusal, and the backend still answers for itself.</para>
+    /// <para>Here rather than in <c>MainWindow</c>: which folders can be managed is a state decision,
+    /// and code-behind is not where those live (see the MVVM rules). An account this ViewModel has
+    /// never heard of is allowed through — a guard is not the place to invent a refusal, and the
+    /// backend still answers for itself.</para>
     /// </summary>
-    public string? FolderCrudRefusal(Guid accountId, string verb)
+    public string? FolderCrudRefusal(MailFolderModel folder, string verb)
     {
-        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account is null || account.SupportsFolderCrud) return null;
+        var account = Accounts.FirstOrDefault(a => a.Id == folder.AccountId);
+        if (account is null || !account.HasFixedSpecialFolders || folder.Kind == SpecialFolderKind.None)
+            return null;
 
-        return $"POP3 accounts have no server folders, so there is nothing to {verb}. "
-             + $"{account.AccountLabel} has only Inbox, Sent, Drafts and Trash.";
+        return $"{folder.DisplayName} is one of the four built-in folders of a POP3 account, "
+             + $"so it cannot be {verb}.";
     }
-
-    /// <summary>True when every one of these accounts can manage folders — the test a picker that
-    /// offers to create one has to pass, since the button is not per-account.</summary>
-    public bool AllSupportFolderCrud(IEnumerable<Guid> accountIds) =>
-        accountIds.All(id => FolderCrudRefusal(id, "create a folder in") is null);
 
     /// <summary>Creates a new folder under the given parent and refreshes the tree.</summary>
     public async Task CreateFolderAndRefreshAsync(Guid accountId, string? parentFolderName, string name)
@@ -9239,30 +9229,50 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <see cref="CachedFolders"/> — can rebuild its own tree in place and select the new folder.
     /// Refreshes only the cache (not the main-window folder tree); that rebuild is deferred to
     /// <see cref="CommitPendingFolderTreeRebuild"/> because this runs inside the picker's modal
-    /// loop. Returns null on failure.
+    /// loop.
+    /// <para>On failure the exception is rethrown after the status text is set, because the picker
+    /// is modal over this window and has to say the reason itself — "There is already a folder named
+    /// 'Lists' there" is the user's to act on, and a bare "could not create" leaves them guessing
+    /// (#794).</para>
     /// </summary>
     public async Task<IReadOnlyList<MailFolderModel>?> CreateFolderReturningFoldersAsync(
         Guid accountId, string? parentFolderName, string name)
     {
         StatusText = $"Creating folder '{name}'…";
         IsBusy     = true;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await _imap.CreateFolderAsync(accountId, parentFolderName, name, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("CreateFolder", ex);
+            // A timeout's own message is "A task was canceled", which tells a listener nothing.
+            var reason = ex is OperationCanceledException ? "The mail server did not answer in time." : ex.Message;
+            StatusText = $"Failed to create folder: {reason}";
+            IsBusy     = false;
+            throw new InvalidOperationException(reason, ex);
+        }
+
+        // Created. A refresh failing now must not be reported as the creation failing — the folder
+        // exists, and a retry would only be told so. Hand back what is cached; the tree rebuild after
+        // the picker closes picks the new folder up once the list can be read.
+        _folderTreeRebuildPending = true;
+        try
+        {
             var folderList = await _imap.GetFoldersAsync(accountId, cts.Token);
             SetCachedFolders(accountId, folderList);
             var account = Accounts.FirstOrDefault(a => a.Id == accountId);
             if (account != null) ApplyAccountStatus(account, folderList, "folder-created");
-            _folderTreeRebuildPending = true;
             StatusText = $"Folder '{name}' created.";
             return folderList;
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to create folder: {ex.Message}";
-            LogService.Log("CreateFolder", ex);
-            return null;
+            LogService.Log("CreateFolder: refresh after create", ex);
+            StatusText = $"Folder '{name}' created, but the folder list could not be refreshed.";
+            return _cachedFolders.TryGetValue(accountId, out var cached) ? cached : [];
         }
         finally { IsBusy = false; }
     }
@@ -9406,6 +9416,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // the View land focus on the neighbour (a full rebuild would collapse and reset focus).
             RemoveFolderFromCacheOptimistically(node.Folder.AccountId, node.Folder);
             RemoveNodeFromTree(node);
+            // The folder's mail went to Trash, whose badge — part of its spoken name — would
+            // otherwise keep the old count until the next full folder fetch (#794).
+            ScheduleFolderCountRefresh(node.Folder.AccountId);
             StatusText = $"Folder '{node.Label}' deleted.";
             return true;
         }

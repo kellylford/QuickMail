@@ -1315,6 +1315,82 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
+    public async Task ClientRuleSummary_ResolvesAPop3LocalFolderIdToName() // #794: found in the test VM
+    {
+        var a = Guid.NewGuid();
+        const string folderId = "folder-dcd5c1a23b4c4e058dc0b8855cc65bc8";
+        var rule = new MailRule
+        {
+            Name = "QuickMail list", AccountId = a,
+            UseSubjectCondition = true, SubjectContains = "quickmail-list",
+            Action = RuleAction.MoveToFolder, TargetFolder = folderId,
+        };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] = [new MailFolderModel { AccountId = a, FullName = folderId, DisplayName = "Lists", ParentId = "Inbox" }],
+        };
+        var pop = new AccountModel { Id = a, AccountName = "Pop", Username = "me@pop.example", BackendKind = BackendKind.Pop3Smtp };
+        var vm = new UnifiedRulesViewModel(new StubRuleService { LoadedRules = [rule] }, new FakeServerRules(), [pop], folders, preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var row = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        Assert.Contains("move to Lists", row.RowText);
+        Assert.DoesNotContain(folderId, row.RowText);
+    }
+
+    [Fact]
+    public async Task ClientRuleSummary_NamesAPop3FolderByItsPath_SoTwoListsFoldersReadApart() // #794
+    {
+        var a = Guid.NewGuid();
+        var rules = new List<MailRule>
+        {
+            new() { Name = "One", AccountId = a, UseSubjectCondition = true, SubjectContains = "one",
+                    Action = RuleAction.MoveToFolder, TargetFolder = "folder-inbox-lists" },
+            new() { Name = "Two", AccountId = a, UseSubjectCondition = true, SubjectContains = "two",
+                    Action = RuleAction.MoveToFolder, TargetFolder = "folder-archive-lists" },
+        };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [a] =
+            [
+                new MailFolderModel { AccountId = a, FullName = "Inbox", DisplayName = "Inbox", Kind = SpecialFolderKind.Inbox },
+                new MailFolderModel { AccountId = a, FullName = "folder-archive", DisplayName = "Archive", ParentId = "" },
+                new MailFolderModel { AccountId = a, FullName = "folder-inbox-lists", DisplayName = "Lists", ParentId = "Inbox" },
+                new MailFolderModel { AccountId = a, FullName = "folder-archive-lists", DisplayName = "Lists", ParentId = "folder-archive" },
+            ],
+        };
+        var pop = new AccountModel { Id = a, AccountName = "Pop", Username = "me@pop.example", BackendKind = BackendKind.Pop3Smtp };
+        var vm = new UnifiedRulesViewModel(new StubRuleService { LoadedRules = rules }, new FakeServerRules(), [pop], folders, preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains(vm.Rules, r => r.RowText.Contains("move to Inbox/Lists", StringComparison.Ordinal));
+        Assert.Contains(vm.Rules, r => r.RowText.Contains("move to Archive/Lists", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ClientRuleSummary_APop3BuiltInTarget_ReadsAsItselfEvenUncached() // #794
+    {
+        // With the account's folders not read yet, a POP3 rule filing to Trash names Trash — a built-in
+        // name is readable — while one filing to a folder of the user's own says "another folder".
+        var a = Guid.NewGuid();
+        var rules = new List<MailRule>
+        {
+            new() { Name = "Bin", AccountId = a, UseSubjectCondition = true, SubjectContains = "x",
+                    Action = RuleAction.MoveToFolder, TargetFolder = "Trash" },
+            new() { Name = "File", AccountId = a, UseSubjectCondition = true, SubjectContains = "y",
+                    Action = RuleAction.MoveToFolder, TargetFolder = "folder-unread-yet" },
+        };
+        var pop = new AccountModel { Id = a, AccountName = "Pop", Username = "me@pop.example", BackendKind = BackendKind.Pop3Smtp };
+        var vm = new UnifiedRulesViewModel(new StubRuleService { LoadedRules = rules }, new FakeServerRules(), [pop],
+            new Dictionary<Guid, List<MailFolderModel>>(), preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains(vm.Rules, r => r.RowText.Contains("move to Trash", StringComparison.Ordinal));
+        Assert.Contains(vm.Rules, r => r.RowText.Contains("move to another folder", StringComparison.Ordinal));
+        Assert.DoesNotContain(vm.Rules, r => r.RowText.Contains("folder-unread-yet", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ClientRuleSummary_FallsBackToRawTarget_WhenFolderUnknown() // IMAP path reads fine as-is
     {
         var a = Guid.NewGuid();

@@ -444,8 +444,8 @@ public partial class FolderPickerWindow : Window
     /// having to abandon the rule, create the folder in the main window, and start again is the
     /// wrong order of work. Same creator contract as the move/copy-message picker: create it,
     /// refresh the owning account, hand back that account's folders so the tree can rebuild in
-    /// place. Null (the default) leaves the button hidden, and so do the two cases at the call to
-    /// the constructor below — the unscoped fallback, and an account that cannot manage folders.</para>
+    /// place. Null (the default) leaves the button hidden, and so does the unscoped fallback at the
+    /// call to the constructor below.</para>
     /// </summary>
     public static FolderPickerWindow ForRuleTarget(
         IEnumerable<AccountModel> accounts,
@@ -483,12 +483,8 @@ public partial class FolderPickerWindow : Window
             // account. The button creates under whichever node is selected, so on the unscoped
             // fallback above it would make the folder in one mailbox while the rule files into
             // another: worse than the wrong-folder pick that fallback already allows, because the
-            // user watches the folder appear and reasonably concludes the target is real. Withheld
-            // too for an account that cannot manage folders (POP3, #128) — offering an action that
-            // can only fail is worse than not offering it.
-            folderCreator: useScoped && scopedAccounts.All(a => a.SupportsFolderCrud)
-                ? folderCreator
-                : null);
+            // user watches the folder appear and reasonably concludes the target is real.
+            folderCreator: useScoped ? folderCreator : null);
     }
 
     /// <summary>
@@ -827,14 +823,27 @@ public partial class FolderPickerWindow : Window
         if (dlg.ShowDialog() != true) return;
 
         var name = dlg.FolderName;
-        var updated = await _folderCreator(accountId, parentFullName, name);
+        IReadOnlyList<MailFolderModel>? updated;
+        string? reason = null;
+        try
+        {
+            updated = await _folderCreator(accountId, parentFullName, name);
+        }
+        catch (Exception ex)
+        {
+            // The creator's exception carries the reason — a duplicate name, a slash in it — which
+            // is the user's to correct, and the only other place it is written is the main window's
+            // status text, behind this modal picker (#794).
+            updated = null;
+            reason  = ex.Message;
+        }
         if (updated == null)
         {
-            // The caller writes the reason to the main window's status text, which is behind this
-            // modal picker and, from the rule editors, behind a rules window as well. Nothing else
-            // changes on failure, so without this the user is left believing the folder was made.
+            // Nothing else changes on failure, so without this the user is left believing the
+            // folder was made.
             AccessibilityHelper.Announce(
-                this, $"Could not create the folder '{name}'.",
+                this,
+                reason is null ? $"Could not create the folder '{name}'." : $"Could not create the folder '{name}'. {reason}",
                 category: AnnouncementCategory.Result);
             return;
         }

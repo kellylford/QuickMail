@@ -185,9 +185,6 @@ public class MailRule
 
     public bool Does(RuleAction action) => AllActions().Contains(action);
 
-    /// <summary>True when the rule takes matching mail out of the folder: it moves or deletes it.</summary>
-    public bool RemovesFromFolder() => Does(RuleAction.MoveToFolder) || Does(RuleAction.Delete);
-
     private static int RunOrder(RuleAction action) => action switch
     {
         RuleAction.MarkAsRead or RuleAction.MarkAsUnread => 0,
