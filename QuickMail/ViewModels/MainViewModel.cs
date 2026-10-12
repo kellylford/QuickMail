@@ -9049,13 +9049,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void ScheduleFolderCountRefresh(Guid accountId)
     {
         if (accountId == Guid.Empty) return;
-        // IMAP and Graph both expose per-folder server unread counts, refreshed here through the router's
-        // GetFoldersAsync (IMAP STATUS / Graph unreadItemCount). #491: Graph was excluded on the claim it
-        // "got counts from a different path" — there was no such path, so its folder badges froze at the
-        // last full fetch (and, being part of the folder's accessible name, were spoken stale). POP3 has a
-        // single maildrop with no per-folder counts and stays out. Guarding null avoids a doomed fetch.
-        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account is null || !BackendGetsLiveFolderCounts(account.BackendKind)) return;
+        // Every backend reports per-folder unread counts through the router's GetFoldersAsync: IMAP
+        // STATUS, Graph unreadItemCount, and for POP3 a count of the local store (#794 — with folders
+        // of its own, a POP3 account's badges froze after every move, and the badge is part of the
+        // folder's accessible name, so a screen reader spoke the stale number). #491 was the same
+        // freeze for Graph, excluded on a claim that did not hold. Guarding null avoids a doomed fetch.
+        if (!Accounts.Any(a => a.Id == accountId)) return;
 
         if (_folderCountCts.TryGetValue(accountId, out var old))
         {
@@ -9065,12 +9064,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _folderCountCts[accountId] = cts;
         _ = RefreshFolderCountsDebouncedAsync(accountId, cts.Token);
     }
-
-    /// <summary>Which backends expose per-folder server unread counts that
-    /// <see cref="ScheduleFolderCountRefresh"/> can refresh via GetFoldersAsync: IMAP (STATUS) and
-    /// Microsoft Graph (unreadItemCount). POP3 has a single maildrop and no per-folder counts. (#491)</summary>
-    internal static bool BackendGetsLiveFolderCounts(BackendKind kind)
-        => kind is BackendKind.ImapSmtp or BackendKind.MicrosoftGraph;
 
     private async Task RefreshFolderCountsDebouncedAsync(Guid accountId, CancellationToken ct)
     {
