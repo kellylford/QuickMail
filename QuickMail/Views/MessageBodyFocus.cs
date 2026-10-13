@@ -19,10 +19,31 @@ namespace QuickMail.Views;
 public static class MessageBodyFocus
 {
     /// <summary>
-    /// Script that focuses the body as a document, with <paramref name="label"/> as its name when one is
-    /// given. Evaluates to true once the document has focus and the body is its active element.
+    /// TEST BUILD ONLY: which way of focusing the body to use, from <c>--readFocus=a</c> or
+    /// <c>--readFocus=b</c> on the command line, so one build can compare both by ear. Default a.
+    /// </summary>
+    public static readonly string Variant = ReadVariant();
+
+    private static string ReadVariant()
+    {
+        foreach (var arg in System.Environment.GetCommandLineArgs())
+            if (arg.StartsWith("--readFocus=", System.StringComparison.OrdinalIgnoreCase))
+                return arg["--readFocus=".Length..].Trim().ToLowerInvariant();
+        return "a";
+    }
+
+    /// <summary>
+    /// Script that focuses the body, evaluating to true once it has focus.
+    ///
+    /// Variant a: the body is focused as a labelled document, so reading starts, and the role and label
+    /// come off again 1.5 seconds later, so that Ctrl+A, Ctrl+C sees a body that is not an object of its
+    /// own. Variant b: the body never gets a role; focus goes to the first element holding text, so the
+    /// focus moves to an object inside the page after it has arrived, without wrapping the message.
     /// </summary>
     public static string FocusBodyScript(string? label) =>
+        Variant == "b" ? FocusFirstTextScript : FocusAsDocumentScript(label);
+
+    internal static string FocusAsDocumentScript(string? label) =>
         "(() => {" +
         "const body=document.body;" +
         "if(!body)return false;" +
@@ -31,7 +52,24 @@ public static class MessageBodyFocus
         "body.setAttribute('role','document');" +
         (string.IsNullOrEmpty(label) ? "" : $"body.setAttribute('aria-label',{JsonSerializer.Serialize(label)});") +
         "body.focus({preventScroll:true});" +
+        "clearTimeout(window.__qmRoleTimer);" +
+        "window.__qmRoleTimer=setTimeout(function(){body.removeAttribute('role');body.removeAttribute('aria-label');},1500);" +
         "return document.hasFocus()&&document.activeElement===body;" +
+        "})()";
+
+    internal const string FocusFirstTextScript =
+        "(() => {" +
+        "const body=document.body;" +
+        "if(!body)return false;" +
+        "window.focus();" +
+        "const w=document.createTreeWalker(body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){return n.nodeValue.trim()?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP;}});" +
+        "const n=w.nextNode();" +
+        "let el=n&&n.parentElement?n.parentElement:body;" +
+        "if(el.tabIndex<0&&!el.hasAttribute('tabindex'))el.setAttribute('tabindex','-1');" +
+        "if(el===body)body.setAttribute('tabindex','0');" +
+        "el.style.outline='none';" +
+        "el.focus({preventScroll:true});" +
+        "return document.hasFocus()&&document.activeElement===el;" +
         "})()";
 
     /// <summary>

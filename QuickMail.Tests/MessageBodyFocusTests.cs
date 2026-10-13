@@ -37,9 +37,9 @@ public class MessageBodyFocusTests
     [Fact]
     public void FocusBodyScript_WithoutALabel_SetsNoName()
     {
-        var script = MessageBodyFocus.FocusBodyScript(null);
+        var script = MessageBodyFocus.FocusAsDocumentScript(null);
         Assert.Contains("'role','document'", script);
-        Assert.DoesNotContain("aria-label", script);
+        Assert.DoesNotContain("setAttribute('aria-label'", script);
     }
 
     /// <summary>All three windows that show a message body focus it the same way and take Ctrl+A.</summary>
@@ -89,6 +89,44 @@ public class MessageBodyFocusTests
         Assert.Contains("Second paragraph.", text);
         Assert.Contains("A cell", text);
         Assert.Contains("Last paragraph.", text);
+    }
+
+    /// <summary>Variant a takes the role and label off again, so the body stops being an object of its own.</summary>
+    [StaFact]
+    public void ARealWebView2_VariantA_RemovesTheRoleAfterFocus()
+    {
+        string? before = null, after = null, focused = null;
+
+        WithWebView2(Body, async (controller, core) =>
+        {
+            await core.ExecuteScriptAsync(MessageBodyFocus.FocusAsDocumentScript("Message body"));
+            before = await core.ExecuteScriptAsync("document.body.getAttribute('role')");
+            await Task.Delay(2000);
+            after = await core.ExecuteScriptAsync("document.body.getAttribute('role')+','+document.body.getAttribute('aria-label')");
+            focused = await core.ExecuteScriptAsync("document.activeElement===document.body");
+        });
+
+        Assert.Equal("\"document\"", before);
+        Assert.Equal("\"null,null\"", after);
+        Assert.Equal("true", focused);
+    }
+
+    /// <summary>Variant b leaves the body without a role and focuses the first element with text.</summary>
+    [StaFact]
+    public void ARealWebView2_VariantB_FocusesTheFirstText()
+    {
+        string? focused = null, active = null, role = null;
+
+        WithWebView2("<div>  <p>  </p><div><p>First paragraph.</p></div><p>Second.</p></div>", async (controller, core) =>
+        {
+            focused = await core.ExecuteScriptAsync(MessageBodyFocus.FocusFirstTextScript);
+            active = await core.ExecuteScriptAsync("document.activeElement.textContent");
+            role = await core.ExecuteScriptAsync("document.body.getAttribute('role')");
+        });
+
+        Assert.Equal("true", focused);
+        Assert.Equal("\"First paragraph.\"", active);
+        Assert.Equal("null", role);
     }
 
     /// <summary>A field that takes text keeps its own Ctrl+A: the body is not selected out from under it.</summary>
