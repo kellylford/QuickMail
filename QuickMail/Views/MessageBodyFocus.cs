@@ -13,9 +13,15 @@ namespace QuickMail.Views;
 ///   itself, named by its title (the subject), in the same moment the page arrives, and whether reading
 ///   started was down to timing: often Tab was needed first. That is what 0.8.55 shipped.
 ///
-/// So the body gets no role, and focus goes to the first element on screen that holds text. That is a
-/// focus change to an object inside the page after it has arrived, which starts reading, without
-/// wrapping the message in anything that would cut the copy short.
+/// So the body gets no role, and this script moves focus to the first element on screen that holds text:
+/// a focus change to an object inside the page after it has arrived. The host's own focus step then runs
+/// (<c>TabInto</c> in <c>FocusMessageBodyHost</c>) and DOM focus ends on the body, which the message
+/// builders make focusable. Measured through UI Automation in a test VM, for HTML and plain-text
+/// messages alike: the focused element afterwards is the body, with the first text inside it. That
+/// sequence (into the page, then onto the body) is what was heard to start reading on open, and it
+/// leaves focus on nothing that wraps less than the whole message, which is what Ctrl+A needs.
+/// Do not make focus stay on the first text without listening to it: a focused element around one line
+/// may limit a screen reader's select-all the way the document role did.
 /// </summary>
 public static class MessageBodyFocus
 {
