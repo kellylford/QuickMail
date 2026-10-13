@@ -4223,7 +4223,7 @@ public partial class MainWindow : Window
             Keyboard.Focus(MessageBody);
         }, DispatcherPriority.Input);
 
-        var focusLabel = MessageBodyFocusLabel(subject);
+        var focusLabel = MessageBodyFocus.Label(subject);
         for (var attempt = 0; attempt < 5; attempt++)
         {
             if (renderVersion != _messageBodyRenderVersion || !_vm.IsMessageOpen)
@@ -4277,33 +4277,11 @@ public partial class MainWindow : Window
 
     private async Task<bool> TryFocusMessageBodyDocumentAsync()
     {
-        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
-            "(() => {" +
-            "const body = document.body;" +
-            "if (!body) return false;" +
-            "window.focus();" +
-            "body.setAttribute('tabindex','0');" +
-            // No role or aria-label on the body: either one alone made Ctrl+A, Ctrl+C copy only the
-            // first paragraph with a screen reader running, and a labelled wrapper inside the body
-            // did the same. The document title stays the subject — screen readers read it as the
-            // window title — and the spoken label comes from the announcement after focus lands.
-            "body.focus({preventScroll:true});" +
-            "return document.hasFocus() && document.activeElement === body;" +
-            "})()");
+        // Focus goes to the message's first text, so a screen reader starts reading as soon as the
+        // message opens without the body becoming an object that cuts Ctrl+A short; see MessageBodyFocus.
+        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
 
         return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string MessageBodyFocusLabel(string? subject)
-    {
-        if (string.IsNullOrWhiteSpace(subject))
-            return "Message body";
-
-        var trimmed = subject.Trim();
-        if (trimmed.Length > 120)
-            trimmed = trimmed[..120] + "...";
-
-        return $"Message body. {trimmed}";
     }
 
     /// <summary>Handles quickmail: pseudo-URIs from the event card buttons.</summary>

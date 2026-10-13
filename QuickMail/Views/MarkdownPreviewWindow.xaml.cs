@@ -142,15 +142,8 @@ public partial class MarkdownPreviewWindow : Window
         if (PreviewBody.CoreWebView2 == null) return;
         try
         {
-            await PreviewBody.CoreWebView2.ExecuteScriptAsync(
-                "(() => {" +
-                "const b = document.body;" +
-                "if (!b) return;" +
-                "b.setAttribute('tabindex','0');" +
-                // No role on the body: it cut Ctrl+A, Ctrl+C down to the first paragraph
-                // (see MainWindow.TryFocusMessageBodyDocumentAsync).
-                "b.focus({preventScroll:true});" +
-                "})()");
+            // Focus goes to the preview's first text so reading starts on open; see MessageBodyFocus.
+            await PreviewBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
         }
         catch { /* navigation may not be complete yet */ }
     }

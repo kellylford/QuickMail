@@ -759,9 +759,7 @@ public partial class MessageWindow : Window
 
     private async Task FocusMessageBodyAsync(int version, string? subject)
     {
-        var focusLabel = string.IsNullOrWhiteSpace(subject)
-            ? "Message body"
-            : $"Message body. {subject.Trim()}";
+        var focusLabel = MessageBodyFocus.Label(subject);
 
         await Dispatcher.InvokeAsync(() =>
         {
@@ -895,17 +893,8 @@ public partial class MessageWindow : Window
     private async Task<bool> TryFocusDocumentAsync()
     {
         if (MessageBody.CoreWebView2 == null) return false;
-        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
-            "(() => {" +
-            "const body=document.body;" +
-            "if(!body)return false;" +
-            "window.focus();" +
-            "body.setAttribute('tabindex','0');" +
-            // No role or aria-label on the body: either one cut Ctrl+A, Ctrl+C down to the first
-            // paragraph (see MainWindow.TryFocusMessageBodyDocumentAsync).
-            "body.focus({preventScroll:true});" +
-            "return document.hasFocus()&&document.activeElement===body;" +
-            "})()");
+        // Focus goes to the message's first text so reading starts on open; see MessageBodyFocus.
+        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
         return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
     }
 
