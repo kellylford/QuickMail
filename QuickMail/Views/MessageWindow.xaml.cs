@@ -356,9 +356,7 @@ public partial class MessageWindow : Window
                 // Which link the user activated, so a navigation can be matched to it (#728 review).
                 LinkActivationGate.ReportActivationsScript +
                 // Alt+letter opens that menu, as it does outside the message.
-                MenuBarAccess.AltKeyRelayScript +
-                // Ctrl+A selects the whole message (#786).
-                MessageBodyFocus.SelectAllScript);
+                MenuBarAccess.AltKeyRelayScript);
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
@@ -777,7 +775,7 @@ public partial class MessageWindow : Window
 
             try
             {
-                if (await TryFocusDocumentAsync(focusLabel))
+                if (await TryFocusDocumentAsync())
                     break;
             }
             catch (Exception ex)
@@ -889,15 +887,14 @@ public partial class MessageWindow : Window
     {
         _f6FocusStop = 2;
 
-        _ = TryFocusDocumentAsync(MessageBodyFocus.Label(_vm.MessageDetail?.Subject));
+        _ = TryFocusDocumentAsync();
     }
 
-    private async Task<bool> TryFocusDocumentAsync(string focusLabel)
+    private async Task<bool> TryFocusDocumentAsync()
     {
         if (MessageBody.CoreWebView2 == null) return false;
-        // Focused as a labelled document so reading starts on open; see MessageBodyFocus.
-        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
-            MessageBodyFocus.FocusBodyScript(focusLabel));
+        // Focus goes to the message's first text so reading starts on open; see MessageBodyFocus.
+        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
         return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
     }
 

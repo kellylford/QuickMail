@@ -3927,10 +3927,7 @@ public partial class MainWindow : Window
                 // Which link the user activated, so a navigation can be matched to it (#728 review).
                 + LinkActivationGate.ReportActivationsScript
                 // Alt+letter opens that menu, as it does outside the message.
-                + MenuBarAccess.AltKeyRelayScript
-                // Ctrl+A selects the whole message, which Chromium's own select-all does not while the
-                // body is a labelled document (#786).
-                + MessageBodyFocus.SelectAllScript);
+                + MenuBarAccess.AltKeyRelayScript);
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
@@ -4236,7 +4233,7 @@ public partial class MainWindow : Window
 
             try
             {
-                if (await TryFocusMessageBodyDocumentAsync(focusLabel))
+                if (await TryFocusMessageBodyDocumentAsync())
                     break;
             }
             catch (Exception ex)
@@ -4278,12 +4275,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<bool> TryFocusMessageBodyDocumentAsync(string focusLabel)
+    private async Task<bool> TryFocusMessageBodyDocumentAsync()
     {
-        // The body is focused as a labelled document, so a screen reader starts reading it as soon
-        // as the message opens; see MessageBodyFocus for why removing that (#786) broke it.
-        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
-            MessageBodyFocus.FocusBodyScript(focusLabel));
+        // Focus goes to the message's first text, so a screen reader starts reading as soon as the
+        // message opens without the body becoming an object that cuts Ctrl+A short; see MessageBodyFocus.
+        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
 
         return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
     }
@@ -4393,7 +4389,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                await TryFocusMessageBodyDocumentAsync(MessageBodyFocus.Label(_vm.MessageDetail?.Subject));
+                await TryFocusMessageBodyDocumentAsync();
             }
             catch (Exception ex)
             {

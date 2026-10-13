@@ -78,9 +78,7 @@ public partial class MarkdownPreviewWindow : Window
                 "else if(e.key==='F6'&&e.shiftKey){window.chrome.webview.postMessage('shift-f6');e.preventDefault();}" +
                 "else if(e.ctrlKey&&e.key==='w'){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}" +
                 "else if(e.ctrlKey&&e.shiftKey&&e.key==='P'){window.chrome.webview.postMessage('palette');e.preventDefault();}" +
-                "});" +
-                // Ctrl+A selects the whole preview (#786).
-                MessageBodyFocus.SelectAllScript);
+                "});");
 
             PreviewBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
@@ -144,8 +142,8 @@ public partial class MarkdownPreviewWindow : Window
         if (PreviewBody.CoreWebView2 == null) return;
         try
         {
-            // Focused as a document so reading starts on open; see MessageBodyFocus.
-            await PreviewBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusBodyScript(null));
+            // Focus goes to the preview's first text so reading starts on open; see MessageBodyFocus.
+            await PreviewBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
         }
         catch { /* navigation may not be complete yet */ }
     }

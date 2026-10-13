@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -14,16 +13,14 @@ namespace QuickMail.Tests;
 
 /// <summary>
 /// Opening a message must put a screen reader straight into reading it, and Ctrl+A, Ctrl+C must copy the
-/// whole message. 0.8.55 dropped the body's document role to fix the copy (#786), and that left the
-/// reader on the page's title until Tab was pressed. The role is back, and Ctrl+A is done by script.
+/// whole message. A role or label on the body cut the copy to one paragraph (#786); a body focused with
+/// neither left the reader on the page title until Tab. Focus now goes to the first text instead.
+/// Neither failure happens without a screen reader running, so these tests guard the mechanism; the
+/// result itself is checked by ear.
 /// </summary>
 [Collection("WpfTests")]
 public class MessageBodyFocusTests
 {
-    private const string Body =
-        "<p>First paragraph.</p><p></p><p>Second paragraph.</p>" +
-        "<table><tr><td>A cell</td></tr></table><p>Last paragraph.</p>";
-
     [Fact]
     public void Label_NamesTheBodyAndTheSubject()
     {
@@ -34,173 +31,125 @@ public class MessageBodyFocusTests
         Assert.Equal("Message body. " + new string('x', 120) + "...", MessageBodyFocus.Label(longSubject));
     }
 
-    [Fact]
-    public void FocusBodyScript_WithoutALabel_SetsNoName()
-    {
-        var script = MessageBodyFocus.FocusAsDocumentScript(null);
-        Assert.Contains("'role','document'", script);
-        Assert.DoesNotContain("setAttribute('aria-label'", script);
-    }
-
-    /// <summary>All three windows that show a message body focus it the same way and take Ctrl+A.</summary>
+    /// <summary>All three windows that show a message body focus it the same way.</summary>
     [Theory]
     [InlineData("MainWindow.xaml.cs")]
     [InlineData("MessageWindow.xaml.cs")]
     [InlineData("MarkdownPreviewWindow.xaml.cs")]
-    public void EveryBodyWindow_UsesTheSharedScripts(string file)
+    public void EveryBodyWindow_UsesTheSharedScript(string file)
     {
         var code = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "Views", file));
-        Assert.Contains("MessageBodyFocus.FocusBodyScript(", code);
-        Assert.Contains("MessageBodyFocus.SelectAllScript", code);
+        Assert.Contains("MessageBodyFocus.FocusScript", code);
     }
 
     /// <summary>
-    /// In a real WebView2: the body is focused as a document carrying its label (quotes and markup in a
-    /// subject survive the trip into script), and Ctrl+A then selects the body from its first child to its
-    /// last. Without a screen reader Chromium's own select-all would take everything too, so the text
-    /// alone proves nothing about the script; <see cref="ARealWebView2_CtrlAInTheBody_IsClaimed"/> does.
-    /// The first-paragraph copy itself only happens with a screen reader running and is checked by ear.
+    /// No view gives the body a role or a name: either one brought back the one-paragraph copy (#786),
+    /// and it looks like the obvious fix for reading not starting, which is how it came back once.
     /// </summary>
-    [StaFact]
-    public void ARealWebView2_FocusesTheBodyAsADocument_AndCtrlASelectsAll()
+    [Fact]
+    public void NoView_GivesTheBodyARoleOrALabel()
     {
-        const string label = "Message body. \"Quotes\" & </script><b>tags</b>";
-        string? focused = null, role = null, name = null, selection = null, ends = null;
-
-        WithWebView2(Body, async (controller, core) =>
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(RepoRoot(), "QuickMail", "Views"), "*.cs"))
         {
-            focused = await core.ExecuteScriptAsync(MessageBodyFocus.FocusBodyScript(label));
-            role = await core.ExecuteScriptAsync("document.body.getAttribute('role')");
-            name = await core.ExecuteScriptAsync("document.body.getAttribute('aria-label')");
-            await PressCtrlA(core);
-            selection = await core.ExecuteScriptAsync("window.getSelection().toString()");
-            // selectAllChildren anchors the selection on the body itself, at offsets 0 and childNodes.length.
-            ends = await core.ExecuteScriptAsync(
-                "(()=>{const s=window.getSelection(),b=document.body;" +
-                "return s.anchorNode===b&&s.anchorOffset===0&&s.focusNode===b&&s.focusOffset===b.childNodes.length;})()");
-        });
-
-        Assert.Equal("true", focused);
-        Assert.Equal("true", ends);
-        Assert.Equal("\"document\"", role);
-        Assert.Equal(label, JsonSerializer.Deserialize<string>(name!));
-        var text = JsonSerializer.Deserialize<string>(selection!)!;
-        Assert.Contains("First paragraph.", text);
-        Assert.Contains("Second paragraph.", text);
-        Assert.Contains("A cell", text);
-        Assert.Contains("Last paragraph.", text);
+            var code = File.ReadAllText(file);
+            Assert.DoesNotContain("'role','document'", code);
+            Assert.DoesNotContain("body.setAttribute('aria-label'", code);
+        }
     }
 
-    /// <summary>Variant a takes the role and label off again, so the body stops being an object of its own.</summary>
     [StaFact]
-    public void ARealWebView2_VariantA_RemovesTheRoleAfterFocus()
+    public void ARealWebView2_FocusesTheFirstText_AndLeavesTheBodyBare()
     {
-        string? before = null, after = null, focused = null;
+        string? focused = null, active = null, role = null, name = null;
 
-        WithWebView2(Body, async (controller, core) =>
+        WithWebView2("<div>  <p>  </p><div><p>First paragraph.</p></div><p>Second.</p></div>", async core =>
         {
-            await core.ExecuteScriptAsync(MessageBodyFocus.FocusAsDocumentScript("Message body"));
-            before = await core.ExecuteScriptAsync("document.body.getAttribute('role')");
-            await Task.Delay(2000);
-            after = await core.ExecuteScriptAsync("document.body.getAttribute('role')+','+document.body.getAttribute('aria-label')");
-            focused = await core.ExecuteScriptAsync("document.activeElement===document.body");
-        });
-
-        Assert.Equal("\"document\"", before);
-        Assert.Equal("\"null,null\"", after);
-        Assert.Equal("true", focused);
-    }
-
-    /// <summary>Variant b leaves the body without a role and focuses the first element with text.</summary>
-    [StaFact]
-    public void ARealWebView2_VariantB_FocusesTheFirstText()
-    {
-        string? focused = null, active = null, role = null;
-
-        WithWebView2("<div>  <p>  </p><div><p>First paragraph.</p></div><p>Second.</p></div>", async (controller, core) =>
-        {
-            focused = await core.ExecuteScriptAsync(MessageBodyFocus.FocusFirstTextScript);
+            focused = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
             active = await core.ExecuteScriptAsync("document.activeElement.textContent");
             role = await core.ExecuteScriptAsync("document.body.getAttribute('role')");
+            name = await core.ExecuteScriptAsync("document.body.getAttribute('aria-label')");
         });
 
         Assert.Equal("true", focused);
         Assert.Equal("\"First paragraph.\"", active);
         Assert.Equal("null", role);
+        Assert.Equal("null", name);
     }
 
-    /// <summary>A field that takes text keeps its own Ctrl+A: the body is not selected out from under it.</summary>
+    /// <summary>A style block in the body and a hidden pre-header are text no one sees; they are passed over.</summary>
     [StaFact]
-    public void ARealWebView2_CtrlAInATextField_IsLeftToTheField()
+    public void ARealWebView2_SkipsTextThatIsNotRendered()
     {
-        string? selection = null, prevented = null;
+        string? focused = null, active = null;
 
-        WithWebView2("<p>Outside text.</p><input id='f' value='abc'>", async (controller, core) =>
-        {
-            await WatchDefaultPrevented(core);
-            await core.ExecuteScriptAsync("document.getElementById('f').focus()");
-            await PressCtrlA(core);
-            selection = await core.ExecuteScriptAsync("window.getSelection().toString()");
-            prevented = await core.ExecuteScriptAsync("window.__qmPrevented");
-        });
+        WithWebView2(
+            "<style>p{color:black}</style><span style='display:none'>Preheader</span><p>Hello there.</p>",
+            async core =>
+            {
+                focused = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+                active = await core.ExecuteScriptAsync("document.activeElement.textContent");
+            });
 
-        Assert.DoesNotContain("Outside text.", JsonSerializer.Deserialize<string>(selection!)!);
-        Assert.Equal("false", prevented);   // the field's own select-all still runs
+        Assert.Equal("true", focused);
+        Assert.Equal("\"Hello there.\"", active);
     }
 
-    /// <summary>Ctrl+A in the body is claimed, so Chromium's truncating select-all never runs after it.</summary>
+    /// <summary>A message with no text at all (pictures only) still takes focus, on the body.</summary>
     [StaFact]
-    public void ARealWebView2_CtrlAInTheBody_IsClaimed()
+    public void ARealWebView2_WithNoText_FocusesTheBody()
     {
-        string? prevented = null;
+        string? focused = null, isBody = null;
 
-        WithWebView2(Body, async (controller, core) =>
+        WithWebView2("<img alt='' width='10' height='10'>", async core =>
         {
-            await WatchDefaultPrevented(core);
-            await core.ExecuteScriptAsync(MessageBodyFocus.FocusBodyScript("Message body"));
-            await PressCtrlA(core);
-            prevented = await core.ExecuteScriptAsync("window.__qmPrevented");
+            focused = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+            isBody = await core.ExecuteScriptAsync("document.activeElement===document.body");
         });
 
-        Assert.Equal("true", prevented);
+        Assert.Equal("true", focused);
+        Assert.Equal("true", isBody);
     }
 
-    // A bubbling listener runs after the select-all script's capturing one, so it sees its verdict.
-    private static Task WatchDefaultPrevented(CoreWebView2 core) => core.ExecuteScriptAsync(
-        "window.__qmPrevented=null;" +
-        "window.addEventListener('keydown',function(e){if(e.code==='KeyA')window.__qmPrevented=e.defaultPrevented;});");
-
-    /// <summary>Ctrl+Shift+A and Alt+A are other commands' keys; neither selects the body.</summary>
+    /// <summary>When the first text is a link, the link itself takes focus, unaltered.</summary>
     [StaFact]
-    public void ARealWebView2_OnlyPlainCtrlA_SelectsAll()
+    public void ARealWebView2_FirstTextInALink_FocusesTheLink()
     {
-        string? selection = null;
+        string? tag = null, tabindex = null;
 
-        WithWebView2(Body, async (controller, core) =>
+        WithWebView2("<p><a href='https://example.com/'>A link</a> then text.</p>", async core =>
         {
-            await core.ExecuteScriptAsync(MessageBodyFocus.FocusBodyScript(null));
-            await Press(core, 2 | 8);   // Ctrl+Shift+A
-            await Press(core, 1);       // Alt+A
-            selection = await core.ExecuteScriptAsync("window.getSelection().toString()");
+            await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+            tag = await core.ExecuteScriptAsync("document.activeElement.tagName");
+            tabindex = await core.ExecuteScriptAsync("document.activeElement.getAttribute('tabindex')");
         });
 
-        Assert.Equal("\"\"", selection);
+        Assert.Equal("\"A\"", tag);
+        Assert.Equal("null", tabindex);
+    }
+
+    /// <summary>
+    /// Coming back into a message (F6 out and back) leaves focus where the user had it, rather than
+    /// returning to the first paragraph.
+    /// </summary>
+    [StaFact]
+    public void ARealWebView2_FocusAlreadyInside_StaysPut()
+    {
+        string? active = null;
+
+        WithWebView2("<p>First.</p><p><a id='l' href='https://example.com/'>Later link</a></p>", async core =>
+        {
+            await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+            await core.ExecuteScriptAsync("document.getElementById('l').focus()");
+            await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+            active = await core.ExecuteScriptAsync("document.activeElement.id");
+        });
+
+        Assert.Equal("\"l\"", active);
     }
 
     // ── Harness ───────────────────────────────────────────────────────────────
 
-    private static Task PressCtrlA(CoreWebView2 core) => Press(core, 2);
-
-    // CDP modifiers: 1 Alt, 2 Ctrl, 8 Shift.
-    private static async Task Press(CoreWebView2 core, int modifiers)
-    {
-        await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
-            $"{{\"type\":\"rawKeyDown\",\"modifiers\":{modifiers},\"key\":\"a\",\"code\":\"KeyA\",\"windowsVirtualKeyCode\":65}}");
-        await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
-            $"{{\"type\":\"keyUp\",\"modifiers\":{modifiers},\"key\":\"a\",\"code\":\"KeyA\",\"windowsVirtualKeyCode\":65}}");
-    }
-
-    private static void WithWebView2(string html, Func<CoreWebView2Controller, CoreWebView2, Task> act)
+    private static void WithWebView2(string html, Func<CoreWebView2, Task> act)
     {
         WpfTestHost.EnsureApplication();
         var dir = Path.Combine(Path.GetTempPath(), $"QuickMailFocus-{Guid.NewGuid():N}");
@@ -220,13 +169,12 @@ public class MessageBodyFocusTests
                 controller.Bounds = new System.Drawing.Rectangle(0, 0, 300, 200);
                 controller.IsVisible = true;
                 var core = controller.CoreWebView2;
-                await core.AddScriptToExecuteOnDocumentCreatedAsync(MessageBodyFocus.SelectAllScript);
-                var done = new TaskCompletionSource<bool>();
+                                var done = new TaskCompletionSource<bool>();
                 core.NavigationCompleted += (_, _) => done.TrySetResult(true);
                 core.NavigateToString(html);
                 await done.Task;
                 controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
-                await act(controller, core);
+                await act(core);
             }, TimeSpan.FromSeconds(60));
         }
         finally
