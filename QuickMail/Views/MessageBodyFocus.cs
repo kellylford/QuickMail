@@ -20,15 +20,23 @@ namespace QuickMail.Views;
 public static class MessageBodyFocus
 {
     /// <summary>
-    /// Focuses the first rendered element holding text, or the body when there is none (a message of
-    /// pictures only). Evaluates to true once the document has focus on that element.
+    /// Focuses the first element on screen that holds text, or the body when there is none (a message of
+    /// pictures only). Evaluates to true once the document has focus there.
+    ///
+    /// Text sitting directly in the body (every plain-text message, and HTML whose sender wrote text
+    /// straight into it) has no element of its own, and focusing the body is exactly what left the reader
+    /// on the page title. So its first line is wrapped in a span and that is focused: one line, never the
+    /// whole message, since a wrapper around everything is what cut Ctrl+A short.
+    ///
+    /// Passed over: text in an element that is not rendered (a <c>&lt;style&gt;</c> in the body, a
+    /// hidden pre-header), invisible, inert or hidden from screen readers, and text that is only
+    /// whitespace or zero-width filler. If an element still refuses focus, its changes are undone and
+    /// the next text is tried.
     ///
     /// When focus is already on something inside the body (the user Tabbed to a link, then left with F6
-    /// and came back) it stays there, so returning to a message does not throw the reader back to the
-    /// top. A newly loaded message has focus on the body or nothing, and so starts at its first text.
-    ///
-    /// Text is skipped unless its element is rendered (<c>getClientRects</c>): mail often carries
-    /// <c>&lt;style&gt;</c> inside the body, and hidden pre-header text, neither of which can take focus.
+    /// and came back) it stays there. That keeps only a place DOM focus records: moving through the
+    /// message with the screen reader's own reading keys does not move it, so F6 back from there returns
+    /// to the focused element, as it always has. A newly loaded message starts at its first text.
     /// </summary>
     public const string FocusScript =
         "(() => {" +
@@ -37,16 +45,35 @@ public static class MessageBodyFocus
         "window.focus();" +
         "const cur=document.activeElement;" +
         "if(cur&&cur!==body&&body.contains(cur)){cur.focus({preventScroll:true});return document.hasFocus()&&document.activeElement===cur;}" +
-        "const w=document.createTreeWalker(body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){" +
-        "const p=n.parentElement;" +
-        "return n.nodeValue.trim()&&p&&p.getClientRects().length?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP;}});" +
-        "const n=w.nextNode();" +
-        "let el=n?n.parentElement:body;" +
-        "if(el!==body&&el.tabIndex<0&&!el.hasAttribute('tabindex'))el.setAttribute('tabindex','-1');" +
-        "if(el!==body)el.style.outline='none';" +
+        @"const ws=/[\s\u200B-\u200D\u034F\u00AD\uFEFF]/;" +
+        @"const blank=/^[\s\u200B-\u200D\u034F\u00AD\uFEFF]*$/;" +
+        "const shown=function(p){return p.getClientRects().length>0" +
+        "&&!p.closest('[inert],[aria-hidden=\"true\"]')" +
+        "&&(!p.checkVisibility||p.checkVisibility({visibilityProperty:true}));};" +
+        "const w=document.createTreeWalker(body,NodeFilter.SHOW_TEXT,{acceptNode:function(t){" +
+        "const p=t.parentElement;" +
+        "return p&&!blank.test(t.nodeValue)&&shown(p)?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP;}});" +
+        "let n,tries=0;" +
+        "while((n=w.nextNode())&&tries++<50){" +
+        "let el=n.parentElement,wrapped=false;" +
+        "if(el===body){" +
+        "let i=0;while(i<n.nodeValue.length&&ws.test(n.nodeValue[i]))i++;" +
+        "if(i>0)n=n.splitText(i);" +
+        @"const e=n.nodeValue.indexOf('\n');" +
+        "if(e>0)n.splitText(e);" +
+        "el=document.createElement('span');" +
+        "n.parentNode.insertBefore(el,n);el.appendChild(n);wrapped=true;}" +
+        "const added=!el.hasAttribute('tabindex')&&el.tabIndex<0;" +
+        "const outline=el.style.outline;" +
+        "if(added){el.setAttribute('tabindex','-1');el.style.outline='none';}" +
         "el.focus({preventScroll:true});" +
-        "if(document.activeElement!==el){el=body;body.setAttribute('tabindex','0');body.focus({preventScroll:true});}" +
-        "return document.hasFocus()&&document.activeElement===el;" +
+        "if(document.activeElement===el)return document.hasFocus();" +
+        "if(added){el.removeAttribute('tabindex');el.style.outline=outline;}" +
+        "if(wrapped){el.parentNode.insertBefore(el.firstChild,el);el.remove();break;}" +
+        "}" +
+        "body.setAttribute('tabindex','0');" +
+        "body.focus({preventScroll:true});" +
+        "return document.hasFocus()&&document.activeElement===body;" +
         "})()";
 
     /// <summary>

@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
+using QuickMail.Helpers;
 using QuickMail.Views;
 using Xunit;
 
@@ -60,17 +61,16 @@ public class MessageBodyFocusTests
     [StaFact]
     public void ARealWebView2_FocusesTheFirstText_AndLeavesTheBodyBare()
     {
-        string? focused = null, active = null, role = null, name = null;
+        string? active = null, role = null, name = null;
 
         WithWebView2("<div>  <p>  </p><div><p>First paragraph.</p></div><p>Second.</p></div>", async core =>
         {
-            focused = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+            await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
             active = await core.ExecuteScriptAsync("document.activeElement.textContent");
             role = await core.ExecuteScriptAsync("document.body.getAttribute('role')");
             name = await core.ExecuteScriptAsync("document.body.getAttribute('aria-label')");
         });
 
-        Assert.Equal("true", focused);
         Assert.Equal("\"First paragraph.\"", active);
         Assert.Equal("null", role);
         Assert.Equal("null", name);
@@ -80,17 +80,16 @@ public class MessageBodyFocusTests
     [StaFact]
     public void ARealWebView2_SkipsTextThatIsNotRendered()
     {
-        string? focused = null, active = null;
+        string? active = null;
 
         WithWebView2(
             "<style>p{color:black}</style><span style='display:none'>Preheader</span><p>Hello there.</p>",
             async core =>
             {
-                focused = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+                await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
                 active = await core.ExecuteScriptAsync("document.activeElement.textContent");
             });
 
-        Assert.Equal("true", focused);
         Assert.Equal("\"Hello there.\"", active);
     }
 
@@ -98,33 +97,34 @@ public class MessageBodyFocusTests
     [StaFact]
     public void ARealWebView2_WithNoText_FocusesTheBody()
     {
-        string? focused = null, isBody = null;
+        string? isBody = null;
 
         WithWebView2("<img alt='' width='10' height='10'>", async core =>
         {
-            focused = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+            await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
             isBody = await core.ExecuteScriptAsync("document.activeElement===document.body");
         });
 
-        Assert.Equal("true", focused);
         Assert.Equal("true", isBody);
     }
 
-    /// <summary>When the first text is a link, the link itself takes focus, unaltered.</summary>
+    /// <summary>When the first text is a link, the link itself takes focus, with its tabindex and focus outline untouched.</summary>
     [StaFact]
     public void ARealWebView2_FirstTextInALink_FocusesTheLink()
     {
-        string? tag = null, tabindex = null;
+        string? tag = null, tabindex = null, outline = null;
 
         WithWebView2("<p><a href='https://example.com/'>A link</a> then text.</p>", async core =>
         {
             await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
             tag = await core.ExecuteScriptAsync("document.activeElement.tagName");
             tabindex = await core.ExecuteScriptAsync("document.activeElement.getAttribute('tabindex')");
+            outline = await core.ExecuteScriptAsync("document.activeElement.style.outline");
         });
 
         Assert.Equal("\"A\"", tag);
         Assert.Equal("null", tabindex);
+        Assert.Equal("\"\"", outline);
     }
 
     /// <summary>
@@ -145,6 +145,74 @@ public class MessageBodyFocusTests
         });
 
         Assert.Equal("\"l\"", active);
+    }
+
+    /// <summary>
+    /// A plain-text message has its text straight in the body. Focusing the body is what left the reader
+    /// on the page title, so the first line is wrapped and focused instead: that line only, and the
+    /// message's text is otherwise unchanged.
+    /// </summary>
+    [StaFact]
+    public void ARealWebView2_PlainTextMessage_FocusesItsFirstLine()
+    {
+        var html = MessageBodyHtmlBuilder.BuildPlainTextHtmlDocument(
+            "Lunch", "\n  Hello Kelly,\n\nSecond line.\nThird line.", note: null);
+        string? isBody = null, active = null, text = null;
+
+        WithWebView2(html, async core =>
+        {
+            await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+            isBody = await core.ExecuteScriptAsync("document.activeElement===document.body");
+            active = await core.ExecuteScriptAsync("document.activeElement.textContent");
+            text = await core.ExecuteScriptAsync("document.body.textContent");
+        });
+
+        Assert.Equal("false", isBody);
+        Assert.Equal("\"Hello Kelly,\"", active);
+        Assert.Equal("\"\\n  Hello Kelly,\\n\\nSecond line.\\nThird line.\"", text);
+    }
+
+    /// <summary>HTML whose first text sits straight in the body is handled the same way.</summary>
+    [StaFact]
+    public void ARealWebView2_TextDirectlyInTheBody_FocusesThatText()
+    {
+        string? tag = null, active = null;
+
+        WithWebView2("Hi there,<br><p>More.</p>", async core =>
+        {
+            await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+            tag = await core.ExecuteScriptAsync("document.activeElement.tagName");
+            active = await core.ExecuteScriptAsync("document.activeElement.textContent");
+        });
+
+        Assert.Equal("\"SPAN\"", tag);
+        Assert.Equal("\"Hi there,\"", active);
+    }
+
+    /// <summary>
+    /// Text that is invisible, hidden from screen readers, inert, or only zero-width filler is passed
+    /// over, and an element it gave up on is left as it was.
+    /// </summary>
+    [StaFact]
+    public void ARealWebView2_SkipsHiddenAndBlankText()
+    {
+        string? active = null, leftovers = null;
+
+        WithWebView2(
+            "<p style='visibility:hidden'>Invisible</p>" +
+            "<p aria-hidden='true'>Hidden from readers</p>" +
+            "<div inert><p>Inert</p></div>" +
+            "<p>\u200B\u00AD\uFEFF</p>" +
+            "<p>Real text.</p>",
+            async core =>
+            {
+                await core.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
+                active = await core.ExecuteScriptAsync("document.activeElement.textContent");
+                leftovers = await core.ExecuteScriptAsync("document.querySelectorAll('[tabindex]').length");
+            });
+
+        Assert.Equal("\"Real text.\"", active);
+        Assert.Equal("1", leftovers);   // only the focused paragraph
     }
 
     // ── Harness ───────────────────────────────────────────────────────────────
