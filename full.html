@@ -248,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.55</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.56</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -944,15 +944,18 @@ switched on in the service’s own web settings, and — for Gmail and Yahoo
 computer.</strong> Reading a message, opening its attachments,
 searching, and saving the original message all work with no
 network.</li>
-<li><strong>Four folders — Inbox, Sent, Drafts and Trash — and they
-belong to QuickMail.</strong> A POP3 server has no folders to show, so
-these are QuickMail’s own. Creating, renaming, moving and deleting
-folders are not offered for a POP3 account; QuickMail says so rather
-than failing at the server.</li>
-<li><strong>Read and unread, flags, and moves between those folders stay
-on this computer.</strong> POP3 has nowhere on the server to record
-them, so another mail program reading the same mailbox will not see
-them.</li>
+<li><strong>Inbox, Sent, Drafts and Trash belong to QuickMail, and so do
+any folders you add.</strong> A POP3 server has no folders to show, so
+these are QuickMail’s own. You can create folders of your own — to file
+a mailing list, say — and move, copy and delete them, and point rules at
+them, exactly as on an IMAP account (see <a
+href="#creating-folders">Creating Folders</a>). They exist only on this
+computer. Deleting one moves its mail, and the mail in any folders
+inside it, to Trash. The four built-in folders cannot be moved or
+deleted; QuickMail says so if you try.</li>
+<li><strong>Read and unread, flags, and moves between folders stay on
+this computer.</strong> POP3 has nowhere on the server to record them,
+so another mail program reading the same mailbox will not see them.</li>
 <li><strong>New mail arrives on the sync interval</strong>, not the
 moment it lands. POP3 has no equivalent of the live connection QuickMail
 holds open for IMAP, so there is no instant notification.</li>
@@ -3510,13 +3513,12 @@ first folder for a new rule. If the folder you want to file into does
 not exist yet, activate <strong>New Folder</strong> (or
 <strong>Alt+N</strong>) in the picker to create one under the selected
 folder and target it without leaving the rule you are writing. The
-button is not offered for a POP3 account, which has no server folders to
-create, nor for a rule QuickMail cannot tie to one account — a rule that
-has no account of its own, or an account whose folders have not been
-read yet. The picker then falls back to showing every account, where a
-folder created under the selected node could land in a different mailbox
-from the one the rule files in; you can still pick an existing folder
-there.</li>
+button is not offered for a rule QuickMail cannot tie to one account — a
+rule that has no account of its own, or an account whose folders have
+not been read yet. The picker then falls back to showing every account,
+where a folder created under the selected node could land in a different
+mailbox from the one the rule files in; you can still pick an existing
+folder there.</li>
 <li><strong>Advanced conditions &amp; actions</strong> — more conditions
 (<strong>From addresses</strong>, <strong>Sent to addresses</strong>,
 <strong>Subject or body contains</strong>, <strong>Body
@@ -4787,9 +4789,12 @@ it does have your contacts and account details. Copy it to the other
 computer however you like, on a USB stick or through a folder you
 already sync.</p>
 <p>Your mail is not in the file. It comes back from your mail servers on
-the other computer. Two things in QuickMail exist only on this computer
-and are not carried: mail in a POP3 account that is set not to leave
-mail on the server, and unsent mail waiting in the Outbox.</p>
+the other computer. Three things in QuickMail exist only on this
+computer and are not carried: mail in a POP3 account that is set not to
+leave mail on the server, the folders you made on a POP3 account (mail
+that comes back from the server arrives in the Inbox, and a rule that
+filed into one of those folders leaves the mail in the Inbox until you
+point it somewhere else), and unsent mail waiting in the Outbox.</p>
 <h3 id="importing-them-on-the-other-computer">Importing them on the
 other computer</h3>
 <p><strong>On a new install</strong>, you do not need to turn anything
