@@ -356,7 +356,9 @@ public partial class MessageWindow : Window
                 // Which link the user activated, so a navigation can be matched to it (#728 review).
                 LinkActivationGate.ReportActivationsScript +
                 // Alt+letter opens that menu, as it does outside the message.
-                MenuBarAccess.AltKeyRelayScript);
+                MenuBarAccess.AltKeyRelayScript +
+                // Ctrl+A selects the whole message (#786).
+                MessageBodyFocus.SelectAllScript);
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
@@ -759,9 +761,7 @@ public partial class MessageWindow : Window
 
     private async Task FocusMessageBodyAsync(int version, string? subject)
     {
-        var focusLabel = string.IsNullOrWhiteSpace(subject)
-            ? "Message body"
-            : $"Message body. {subject.Trim()}";
+        var focusLabel = MessageBodyFocus.Label(subject);
 
         await Dispatcher.InvokeAsync(() =>
         {
@@ -777,7 +777,7 @@ public partial class MessageWindow : Window
 
             try
             {
-                if (await TryFocusDocumentAsync())
+                if (await TryFocusDocumentAsync(focusLabel))
                     break;
             }
             catch (Exception ex)
@@ -889,23 +889,15 @@ public partial class MessageWindow : Window
     {
         _f6FocusStop = 2;
 
-        _ = TryFocusDocumentAsync();
+        _ = TryFocusDocumentAsync(MessageBodyFocus.Label(_vm.MessageDetail?.Subject));
     }
 
-    private async Task<bool> TryFocusDocumentAsync()
+    private async Task<bool> TryFocusDocumentAsync(string focusLabel)
     {
         if (MessageBody.CoreWebView2 == null) return false;
+        // Focused as a labelled document so reading starts on open; see MessageBodyFocus.
         var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
-            "(() => {" +
-            "const body=document.body;" +
-            "if(!body)return false;" +
-            "window.focus();" +
-            "body.setAttribute('tabindex','0');" +
-            // No role or aria-label on the body: either one cut Ctrl+A, Ctrl+C down to the first
-            // paragraph (see MainWindow.TryFocusMessageBodyDocumentAsync).
-            "body.focus({preventScroll:true});" +
-            "return document.hasFocus()&&document.activeElement===body;" +
-            "})()");
+            MessageBodyFocus.FocusBodyScript(focusLabel));
         return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
     }
 

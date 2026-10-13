@@ -3927,7 +3927,10 @@ public partial class MainWindow : Window
                 // Which link the user activated, so a navigation can be matched to it (#728 review).
                 + LinkActivationGate.ReportActivationsScript
                 // Alt+letter opens that menu, as it does outside the message.
-                + MenuBarAccess.AltKeyRelayScript);
+                + MenuBarAccess.AltKeyRelayScript
+                // Ctrl+A selects the whole message, which Chromium's own select-all does not while the
+                // body is a labelled document (#786).
+                + MessageBodyFocus.SelectAllScript);
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
@@ -4223,7 +4226,7 @@ public partial class MainWindow : Window
             Keyboard.Focus(MessageBody);
         }, DispatcherPriority.Input);
 
-        var focusLabel = MessageBodyFocusLabel(subject);
+        var focusLabel = MessageBodyFocus.Label(subject);
         for (var attempt = 0; attempt < 5; attempt++)
         {
             if (renderVersion != _messageBodyRenderVersion || !_vm.IsMessageOpen)
@@ -4233,7 +4236,7 @@ public partial class MainWindow : Window
 
             try
             {
-                if (await TryFocusMessageBodyDocumentAsync())
+                if (await TryFocusMessageBodyDocumentAsync(focusLabel))
                     break;
             }
             catch (Exception ex)
@@ -4275,35 +4278,14 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<bool> TryFocusMessageBodyDocumentAsync()
+    private async Task<bool> TryFocusMessageBodyDocumentAsync(string focusLabel)
     {
+        // The body is focused as a labelled document, so a screen reader starts reading it as soon
+        // as the message opens; see MessageBodyFocus for why removing that (#786) broke it.
         var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
-            "(() => {" +
-            "const body = document.body;" +
-            "if (!body) return false;" +
-            "window.focus();" +
-            "body.setAttribute('tabindex','0');" +
-            // No role or aria-label on the body: either one alone made Ctrl+A, Ctrl+C copy only the
-            // first paragraph with a screen reader running, and a labelled wrapper inside the body
-            // did the same. The document title stays the subject — screen readers read it as the
-            // window title — and the spoken label comes from the announcement after focus lands.
-            "body.focus({preventScroll:true});" +
-            "return document.hasFocus() && document.activeElement === body;" +
-            "})()");
+            MessageBodyFocus.FocusBodyScript(focusLabel));
 
         return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string MessageBodyFocusLabel(string? subject)
-    {
-        if (string.IsNullOrWhiteSpace(subject))
-            return "Message body";
-
-        var trimmed = subject.Trim();
-        if (trimmed.Length > 120)
-            trimmed = trimmed[..120] + "...";
-
-        return $"Message body. {trimmed}";
     }
 
     /// <summary>Handles quickmail: pseudo-URIs from the event card buttons.</summary>
@@ -4411,7 +4393,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                await TryFocusMessageBodyDocumentAsync();
+                await TryFocusMessageBodyDocumentAsync(MessageBodyFocus.Label(_vm.MessageDetail?.Subject));
             }
             catch (Exception ex)
             {

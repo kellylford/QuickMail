@@ -23,6 +23,14 @@ out of its folder on this computer. On an IMAP or Microsoft 365 account the mess
 the server and came back later. On a POP3 account this computer holds the only copy, so the
 message was lost. Now a message stays where it is when its rule's move or delete fails (#794).
 
+### Opening a message starts reading it again
+
+Since 0.8.55, opening a message with a screen reader running often stopped on the message's
+subject instead of reading the message, and you had to press Tab before reading began. It
+happened in the reading pane, in a message opened in its own window, and in the Markdown preview.
+Opening a message now goes straight into reading it, as it did before. Ctrl+A, Ctrl+C still copies
+the whole message, which was the fix in 0.8.55 that caused this.
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
