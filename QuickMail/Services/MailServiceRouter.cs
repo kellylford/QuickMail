@@ -202,6 +202,9 @@ public class MailServiceRouter : IMailService, IConnectionProbe
     public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default)
         => For(accountId).FetchPreviewsAsync(accountId, folderName, messageIds, maxLines, ct);
 
+    public Task<IReadOnlyDictionary<string, string>> FetchSenderEmailsAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+        => For(accountId).FetchSenderEmailsAsync(accountId, folderName, messageIds, ct);
+
     public Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default)
         => For(accountId).PollAsync(accountId, folderName, ct);
 

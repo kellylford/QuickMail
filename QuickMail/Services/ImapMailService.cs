@@ -977,6 +977,34 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    // ── One-time sender-address backfill (#803) ──────────────────────────────────
+
+    public async Task<IReadOnlyDictionary<string, string>> FetchSenderEmailsAsync(
+        Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, string>();
+        if (messageIds.Count == 0) return result;
+
+        // Background lease, read-only open, ENVELOPE only: the same cost as a summary fetch, and no \Seen.
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
+        var folder = await lease.Client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            var summaries = await folder.FetchAsync(
+                messageIds.Select(ToUid).ToList(),
+                MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope,
+                ct);
+            foreach (var s in summaries)
+            {
+                var emails = FormatAddressListEmails(s.Envelope?.From);
+                if (emails.Length > 0) result[s.UniqueId.Id.ToString(CultureInfo.InvariantCulture)] = emails;
+            }
+            return result;
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
     // ── IDLE watchers (IChangeNotifier) ──────────────────────────────────────────
     // IMAP's change-notification strategy is a held IDLE connection per account. It lives here
     // rather than in a separate notifier class because it is bound to the IMAP connection lifecycle:

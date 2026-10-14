@@ -241,6 +241,8 @@ public partial class SyncService : ISyncService
     {
         if (previewJobs.Count > 0)
             await FetchAllPreviewsAsync(previewJobs, ct);
+        // Before the offline bodies: a handful of ENVELOPE fetches, once, versus a pass that can run long.
+        await BackfillSenderEmailsFromServerAsync(accounts, ct);
         await DownloadOfflineBodiesAsync(accounts, cachedFolders, ct);
     }
 

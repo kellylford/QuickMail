@@ -468,6 +468,30 @@ public partial class App : Application
                 }
             }
 
+            // One-time sender-address backfill (#803): rows cached before from_email existed get it filled in
+            // place. Unlike the #366 rebuild above, nothing is cleared — POP3's cache is the only copy of its mail.
+            // The local half runs here, before the first list is shown, so an older Microsoft row already reads by
+            // name (#801). IMAP rows holding a display name alone are fetched by the first sync's trickle, and the
+            // marker is written only once that has reached every IMAP account; until then each launch resumes it
+            // (both halves only touch rows still lacking an address). Skipped in --online mode (no local store).
+            var senderBackfillMarker = System.IO.Path.Combine(profile.ProfileDir, ".sender-address-backfilled");
+            var senderBackfillPending = !onlineMode && !probeMode && !System.IO.File.Exists(senderBackfillMarker);
+            if (senderBackfillPending)
+            {
+                // Isolated like the #366 clear: a failure here must never stop startup.
+                try
+                {
+                    var graphIds = accounts.Where(a => a.BackendKind == BackendKind.MicrosoftGraph).Select(a => a.Id).ToList();
+                    var filled = localStore.BackfillSenderEmailsLocallyAsync(graphIds).GetAwaiter().GetResult();
+                    LogService.Log($"Sender-address backfill: {filled} cached row(s) filled locally.");
+                }
+                catch (Exception senderEx)
+                {
+                    senderBackfillPending = false;
+                    LogService.Log("Sender-address backfill failed locally; will retry next launch.", senderEx);
+                }
+            }
+
             // Before anything connects: an account hand-configured before the provider catalog
             // existed can be pointed at one of our hosts with the wrong encryption mode, which fails
             // every send with an error about the socket rather than the setting; and one holding a
@@ -500,6 +524,15 @@ public partial class App : Application
             // The one-time immutable-id wipe emptied these accounts' store, so their first re-sync would
             // read old mail as new and re-run rules over it on upgrade day. Baseline it (#366/N5).
             if (immutableIdRebuilt) syncService.SeedRebuildBaseline(rebuiltGraphAccountIds);
+
+            // The server half of the sender-address backfill (#803, above): marks it done once every IMAP
+            // account has been worked through.
+            if (senderBackfillPending)
+                syncService.RequestSenderEmailBackfill(() =>
+                {
+                    try { System.IO.File.WriteAllText(senderBackfillMarker, DateTime.UtcNow.ToString("o")); }
+                    catch (Exception markerEx) { LogService.Log("Sender-address backfill: could not write its marker.", markerEx); }
+                });
 
             // #529 step 4: an IMAP→Graph convert purges the account's store before it re-syncs. If the
             // app closed (or crashed) between the purge and the first baselined sync, the store is empty
