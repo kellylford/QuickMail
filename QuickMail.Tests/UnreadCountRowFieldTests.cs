@@ -216,6 +216,68 @@ public class UnreadCountRowFieldTests
         Assert.Contains("Unread count is also on", vm.SelectedFieldNote, StringComparison.Ordinal);
     }
 
+    // ── through the WPF converter ─────────────────────────────────────────────
+
+    private static string Convert(RowKind kind, object?[] fieldValues, params string[] on)
+    {
+        var layouts = RowFieldCatalog.DefaultLayouts();
+        var layout  = layouts.For(kind);
+        foreach (var f in layout) f.Enabled = on.Contains(f.Id);
+        var values  = fieldValues.Append(new RowSpeechSettings(layouts, false)).ToArray();
+        return (string)new QuickMail.Views.RowSpeechConverter(kind).Convert(
+            values!, typeof(string), parameter: null!, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    [Theory]
+    [InlineData(RowKind.Conversation)]
+    [InlineData(RowKind.SenderGroup)]
+    public void TheConverterPassesTheBoundCountsThrough(RowKind kind)
+    {
+        // The real binding path: a boxed int and a boxed UnreadTally in the last two field slots.
+        var values = RowFieldCatalog.ValuesFor(kind, Group(kind, Messages(unread: 3, total: 7)));
+        Assert.Equal("3 unread. 3 of 7 unread.", Convert(kind, values, "unreadcount", "unreadoftotal"));
+    }
+
+    [Theory]
+    [InlineData(RowKind.Conversation)]
+    [InlineData(RowKind.SenderGroup)]
+    public void UnsetCountsAreSilentRatherThanStringified(RowKind kind)
+    {
+        // WPF hands UnsetValue through while a template is being set up.
+        var values = RowFieldCatalog.ValuesFor(kind, Group(kind, Messages(unread: 3, total: 7)));
+        values[^2] = System.Windows.DependencyProperty.UnsetValue;
+        values[^1] = System.Windows.DependencyProperty.UnsetValue;
+
+        var name = Convert(kind, values, "count", "unreadcount", "unreadoftotal");
+
+        Assert.Equal("7 messages.", name);
+    }
+
+    [Fact]
+    public void ACountTurnedOff_GetsNoNoteAboutDoubling()
+    {
+        // An off field cannot double anything, whatever else is on.
+        var (vm, field) = Chooser(RowKind.Conversation);
+        field("unreadoftotal").Enabled = true;
+        vm.SelectedField = field("unreadcount");
+
+        Assert.Equal(string.Empty, vm.SelectedFieldNote);
+    }
+
+    [Fact]
+    public void AllThreeOn_EachFieldStillHasANote()
+    {
+        var (vm, field) = Chooser(RowKind.Conversation);
+        field("unreadcount").Enabled = true;
+        field("unreadoftotal").Enabled = true;
+
+        foreach (var id in new[] { "hasunread", "unreadcount", "unreadoftotal" })
+        {
+            vm.SelectedField = field(id);
+            Assert.NotEqual(string.Empty, vm.SelectedFieldNote);
+        }
+    }
+
     [Fact]
     public void ACountOnItsOwnHasNoNote()
     {

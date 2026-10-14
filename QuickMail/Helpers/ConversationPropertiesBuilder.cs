@@ -9,7 +9,7 @@ public static class ConversationPropertiesBuilder
     public static (string Title, IReadOnlyList<PropertySection> Sections)
         Build(ConversationGroup group)
     {
-        var unreadCount = group.Messages.Count(m => !m.IsRead);
+        var unreadCount = group.UnreadCount;
 
         var participants = group.Messages
             .Select(m => m.From)

@@ -11,7 +11,7 @@ public static class SenderGroupPropertiesBuilder
         Build(SenderGroup group, bool isToGroup = false)
     {
         var role       = isToGroup ? "Recipient" : "Sender";
-        var unreadCount = group.Messages.Count(m => !m.IsRead);
+        var unreadCount = group.UnreadCount;
 
         var items = new List<PropertyItem>
         {

@@ -6,7 +6,8 @@ A conversation row could only say "Has unread", which sounds the same whether on
 twenty is new or all twenty are. Two new fields in **Message List Fields** say how many: **Unread
 count** ("2 unread") and **Unread of total** ("2 of 5 unread"). They work on conversation rows and
 on the group rows in the From and To views, say nothing when everything has been read, and are off
-until you turn one on, so your rows sound the same as before unless you choose otherwise (#800).
+until you turn one on, so your rows sound the same as before unless you choose otherwise. They start
+at the end of the row; use **Move Up** in Message List Fields to hear the count sooner (#800).
 
 ## Reporting Issues
 
