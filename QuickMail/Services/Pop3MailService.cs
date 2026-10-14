@@ -1149,6 +1149,7 @@ public class Pop3MailService : IMailService
             // Display form in the summary, full addresses in the detail — literally ImapMailService's
             // formatters, so the message list reads the same whichever backend fetched the message.
             From              = ImapMailService.FormatAddressListDisplay(msg.From),
+            FromEmail         = ImapMailService.FormatAddressListEmails(msg.From),
             To                = ImapMailService.FormatAddressList(msg.To),
             Subject           = string.IsNullOrEmpty(msg.Subject) ? "(no subject)" : msg.Subject,
             Date              = NormalizeDate(msg.Date),

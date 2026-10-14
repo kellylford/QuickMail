@@ -559,6 +559,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         FolderName = folderName,
         InternetMessageId = m.InternetMessageId ?? string.Empty,
         From = m.From?.EmailAddress?.AsHeaderString() ?? string.Empty,
+        FromEmail = m.From?.EmailAddress?.Address ?? string.Empty,
         To = JoinRecipients(m.ToRecipients),
         Subject = m.Subject ?? "(no subject)",
         Date = m.ReceivedDateTime,

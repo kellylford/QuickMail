@@ -1891,6 +1891,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             // aggregate views can collapse Gmail's per-folder duplicate copies (issue #220).
             InternetMessageId = s.Envelope?.MessageId ?? string.Empty,
             From        = FormatAddressListDisplay(s.Envelope?.From),
+            FromEmail   = FormatAddressListEmails(s.Envelope?.From),
             To          = FormatAddressList(s.Envelope?.To),
             Subject     = s.Envelope?.Subject ?? "(no subject)",
             Date        = s.Envelope?.Date ?? DateTimeOffset.MinValue,
@@ -2164,6 +2165,18 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 a is MailboxAddress mb && !string.IsNullOrWhiteSpace(mb.Name)
                     ? mb.Name
                     : a.ToString()));
+
+    /// <summary>
+    /// Bare addresses alone ("kelly@example.com"), for <see cref="MailMessageSummary.FromEmail"/>: what rules,
+    /// Find Mail From Contact and search match on, since the display form above drops the address whenever
+    /// there is a name (#803). Never shown. A group's members are listed in place of the group.
+    /// </summary>
+    internal static string FormatAddressListEmails(InternetAddressList? list) =>
+        list == null || list.Count == 0
+            ? string.Empty
+            : string.Join(", ", list.Mailboxes
+                .Select(mb => mb.Address)
+                .Where(a => !string.IsNullOrWhiteSpace(a)));
 
     /// <summary>
     /// Raw text of the first text/calendar body part of a downloaded message, or null when it carries

@@ -310,6 +310,7 @@ public class GraphMailServiceTests
         var m = Assert.Single(list);
         Assert.Equal("m1", m.MessageId);
         Assert.Equal("Alice <alice@x.com>", m.From);
+        Assert.Equal("alice@x.com", m.FromEmail);
         Assert.Equal("me@x.com", m.To);
         Assert.Equal("Hello", m.Subject);
         Assert.False(m.IsRead);
