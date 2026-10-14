@@ -103,6 +103,23 @@ public class ConfigServiceSaveTests
         Assert.True(reloaded.RuleListShowFieldLabels);
     }
 
+    [Theory]
+    [InlineData(RowFieldSeparator.Comma)]
+    [InlineData(RowFieldSeparator.Space)]
+    [InlineData(RowFieldSeparator.Period)]
+    public void SaveThenLoad_RoundTripsTheFieldSeparator(RowFieldSeparator separator)
+    {
+        // #802. Same failure shape as above: a setting with no parse case resets on every launch.
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        config.MessageListFieldSeparator = separator;
+        service.Save(config);
+
+        Assert.Equal(separator, new ConfigService(profile).Load().MessageListFieldSeparator);
+    }
+
     [Fact]
     public void SaveThenLoad_RoundTripsStartupSettings()
     {

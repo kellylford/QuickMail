@@ -14,8 +14,6 @@ namespace QuickMail.Helpers;
 /// </summary>
 public static class RowSpeechBuilder
 {
-    private const string Separator = ". ";
-
     /// <summary>
     /// Composes the spoken string for one row.
     /// </summary>
@@ -29,12 +27,18 @@ public static class RowSpeechBuilder
     /// default, so a row never goes silent because the layout failed to load.
     /// </param>
     /// <param name="showLabels">Whether to prefix text-valued fields with their spoken label.</param>
+    /// <param name="separator">
+    /// What goes between fields (#802). Only <see cref="RowFieldSeparator.Period"/> also ends the
+    /// row with a period, which is what every row said before the choice existed.
+    /// </param>
     public static string Build(
         RowKind kind,
         IReadOnlyList<object?> values,
         IReadOnlyList<RowFieldSetting>? layout,
-        bool showLabels = false)
+        bool showLabels = false,
+        RowFieldSeparator separator = RowFieldSeparator.Period)
     {
+        var between   = RowFieldSeparators.Between(separator);
         var catalog   = RowFieldCatalog.For(kind);
         var effective = layout is { Count: > 0 } ? layout : RowFieldCatalog.DefaultLayout(kind);
 
@@ -53,12 +57,12 @@ public static class RowSpeechBuilder
             var part = Render(def, setting, raw, showLabels);
             if (string.IsNullOrWhiteSpace(part)) continue;
 
-            if (sb.Length > 0) sb.Append(Separator);
+            if (sb.Length > 0) sb.Append(between);
             sb.Append(part);
         }
 
         if (sb.Length == 0) return string.Empty;
-        sb.Append('.');
+        if (RowFieldSeparators.EndsWithPeriod(separator)) sb.Append('.');
         return sb.ToString();
     }
 

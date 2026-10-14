@@ -27,7 +27,8 @@ public sealed class RowFieldSetting
 /// carries a single extra binding. Replaced wholesale (never mutated) when the user changes the
 /// layout, so raising PropertyChanged on the owning property re-speaks every realized row.
 /// </summary>
-public sealed record RowSpeechSettings(RowLayouts Layouts, bool ShowLabels)
+public sealed record RowSpeechSettings(
+    RowLayouts Layouts, bool ShowLabels, RowFieldSeparator Separator = RowFieldSeparator.Period)
 {
     /// <summary>Shipped defaults, used before the service loads and by tests.</summary>
     public static RowSpeechSettings Default { get; } = new(RowFieldCatalog.DefaultLayouts(), false);

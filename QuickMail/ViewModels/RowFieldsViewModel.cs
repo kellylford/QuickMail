@@ -20,6 +20,13 @@ public sealed record RowKindOption(RowKind Kind, string Name)
     public override string ToString() => Name;
 }
 
+/// <summary>One choice in the field separator list (#802).</summary>
+public sealed record SeparatorOption(RowFieldSeparator Value, string Name)
+{
+    /// <summary>A screen reader reads a Selector item's name from ToString(), as for RowKindOption.</summary>
+    public override string ToString() => Name;
+}
+
 /// <summary>
 /// One field in the chooser. A thin observable wrapper over <see cref="RowFieldSetting"/> that
 /// carries the catalog's display text and reports every change back to the owning view model,
@@ -103,8 +110,15 @@ public sealed partial class RowFieldsViewModel : ObservableObject
 
         _layouts = _rowLayoutService.Load();
 
-        try { _showFieldLabels = _configService.Load().MessageListShowFieldLabels; }
+        var separator = RowFieldSeparator.Period;
+        try
+        {
+            var cfg = _configService.Load();
+            _showFieldLabels = cfg.MessageListShowFieldLabels;
+            separator        = cfg.MessageListFieldSeparator;
+        }
         catch { _showFieldLabels = false; }
+        _selectedSeparator = Separators.FirstOrDefault(s => s.Value == separator) ?? Separators[0];
 
         _selectedRowKind = RowKinds[0];
         LoadFieldsForSelectedKind();
@@ -205,6 +219,35 @@ public sealed partial class RowFieldsViewModel : ObservableObject
 
         UpdatePreview();
         // Saving the layout is what re-speaks open rows; the labels flag rides along with it.
+        SaveLayouts();
+    }
+
+    // ── separator (#802) ──────────────────────────────────────────────────────
+
+    /// <summary>What can go between fields. Period first: it is the default and what rows always said.</summary>
+    public IReadOnlyList<SeparatorOption> Separators { get; } =
+    [
+        new(RowFieldSeparator.Period, "Period"),
+        new(RowFieldSeparator.Comma,  "Comma"),
+        new(RowFieldSeparator.Space,  "Space"),
+    ];
+
+    [ObservableProperty]
+    private SeparatorOption _selectedSeparator;
+
+    partial void OnSelectedSeparatorChanged(SeparatorOption value)
+    {
+        if (value is null) return;
+        try
+        {
+            var cfg = _configService.Load();
+            cfg.MessageListFieldSeparator = value.Value;
+            _configService.Save(cfg);
+        }
+        catch { /* config unwritable — the in-session preview still reflects the choice */ }
+
+        UpdatePreview();
+        // As for labels: saving the layout is what tells the main window to re-speak open rows.
         SaveLayouts();
     }
 
@@ -406,7 +449,8 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     {
         var kind   = SelectedRowKind.Kind;
         var layout = Fields.Select(f => f.ToSetting()).ToList();
-        var text   = RowSpeechBuilder.Build(kind, ValuesForPreview(kind), layout, ShowFieldLabels);
+        var text   = RowSpeechBuilder.Build(
+            kind, ValuesForPreview(kind), layout, ShowFieldLabels, SelectedSeparator.Value);
 
         Preview = string.IsNullOrEmpty(text)
             ? "No fields turned on — this row would be silent."
