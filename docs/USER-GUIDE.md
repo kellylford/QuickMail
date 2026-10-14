@@ -2331,7 +2331,9 @@ The **Row type** list at the top chooses which kind of row you are editing. Each
 
 ### Fields for group rows
 
-**Conversation groups** offer Subject, Message count, Sender, Flag, Has unread, Preview, and Date. **Sender and recipient groups** offer Sender, Message count, Flag, Has unread, Preview, Date, and Newest subject. A message count is spoken as "1 message" or "3 messages".
+**Conversation groups** offer Subject, Message count, Sender, Flag, Has unread, Preview, Date, Unread count, and Unread of total. **Sender and recipient groups** offer Sender, Message count, Flag, Has unread, Preview, Date, Newest subject, Unread count, and Unread of total. A message count is spoken as "1 message" or "3 messages".
+
+**Has unread** only tells you that at least one message in the group is unread. To hear how many, turn on **Unread count**, which says "2 unread", or **Unread of total**, which says "2 of 5 unread". Both say nothing when every message in the group has been read, and both are off to begin with. You will usually want only one of the three on. The window points out when two of them would say the same thing twice.
 
 ### Speaking a state only when it applies
 

@@ -1,5 +1,13 @@
 # QuickMail v0.8.57 Release Notes
 
+## New: hear how many messages in a conversation are unread
+
+A conversation row could only say "Has unread", which sounds the same whether one message of
+twenty is new or all twenty are. Two new fields in **Message List Fields** say how many: **Unread
+count** ("2 unread") and **Unread of total** ("2 of 5 unread"). They work on conversation rows and
+on the group rows in the From and To views, say nothing when everything has been read, and are off
+until you turn one on, so your rows sound the same as before unless you choose otherwise (#800).
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
