@@ -35,13 +35,15 @@ public class ClientRuleConditionsTests
         string from = "alice@example.com",
         string to = "bob@example.com",
         string subject = "Test Subject",
-        string preview = "Hello world")
+        string preview = "Hello world",
+        string fromEmail = "")
         => new()
         {
             MessageId = "1",
             AccountId = Guid.NewGuid(),
             FolderName = "INBOX",
             From = from,
+            FromEmail = fromEmail,
             To = to,
             Subject = subject,
             Preview = preview,
@@ -115,6 +117,78 @@ public class ClientRuleConditionsTests
         Assert.True(Matches(rule, Msg(from: "billing@acme.com")));
         Assert.True(Matches(rule, Msg(from: "Acme partner <noreply@partner.com>")));
         Assert.False(Matches(rule, Msg(from: "noreply@partner.com")));
+    }
+
+    // ── IMAP- and POP3-shaped rows (#803) ───────────────────────────────────
+    //
+    // The tests above use Graph-shaped senders, "Name <address>" in From. An IMAP or POP3 row holds the
+    // display name alone in From and the address in FromEmail, and before #803 no test used that shape —
+    // which is how an address condition that never matched an IMAP sender with a name went unnoticed.
+
+    [Fact]
+    public void FromAddress_MatchesAnImapRow_WhoseFromIsTheNameAlone()
+    {
+        var rule = new MailRule
+        {
+            Name = "Billing", UseFromCondition = true, FromContains = "billing@x.com",
+            Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "Billing Dept", fromEmail: "billing@x.com")));
+        Assert.False(Matches(rule, Msg(from: "Someone Else", fromEmail: "someone@z.com")));
+    }
+
+    [Fact]
+    public void SeveralFromAddresses_MatchAnImapRowByItsAddress()
+    {
+        var rule = new MailRule
+        {
+            Name = "Billing", UseFromCondition = true, FromContains = "billing@x.com",
+            FromAddresses = ["billing@x.com", "invoices@y.com"], Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "Invoices", fromEmail: "invoices@y.com")));
+    }
+
+    [Fact]
+    public void SenderContains_MatchesAnImapRow_ByNameOrByAddress()
+    {
+        var rule = new MailRule
+        {
+            Name = "Acme", UseFromCondition = false, UseSenderCondition = true, SenderContains = "acme",
+            Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "Acme Billing", fromEmail: "billing@x.com")));   // the name
+        Assert.True(Matches(rule, Msg(from: "Billing Dept", fromEmail: "billing@acme.com"))); // the address
+        Assert.False(Matches(rule, Msg(from: "Billing Dept", fromEmail: "billing@x.com")));
+    }
+
+    [Fact]
+    public void FromCondition_HoldingAName_StillMatchesAnImapRowByName()
+    {
+        // A rule from before #682 could hold any text in its From condition, a name included. Reading the
+        // address alone there would have broken it.
+        var rule = new MailRule
+        {
+            Name = "Kelly", UseFromCondition = true, FromContains = "Kelly Ford", Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "Kelly Ford", fromEmail: "kelly@example.com")));
+    }
+
+    [Fact]
+    public void FromAddress_OnARowCachedBeforeFromEmail_BehavesAsBefore()
+    {
+        // No FromEmail yet: matching falls back to From alone, so a name-only row still cannot match an address
+        // — no worse than before — until the one-time backfill fills it in.
+        var rule = new MailRule
+        {
+            Name = "Billing", UseFromCondition = true, FromContains = "billing@x.com", Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.False(Matches(rule, Msg(from: "Billing Dept")));
+        Assert.True(Matches(rule, Msg(from: "billing@x.com")));
     }
 
     [Fact]

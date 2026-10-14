@@ -705,7 +705,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private static bool MatchesContactAddress(
         MailMessageSummary msg, string address, ContactMailDirection direction) =>
         HeaderNamesAddress(
-            direction == ContactMailDirection.From ? msg.From : msg.To,
+            // From alone is the display name on an IMAP or POP3 row; the address is beside it (#803).
+            direction == ContactMailDirection.From ? msg.FromForMatching : msg.To,
             address);
 
     /// <summary>

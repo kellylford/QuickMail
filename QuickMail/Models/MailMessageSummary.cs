@@ -43,6 +43,17 @@ public partial class MailMessageSummary : ObservableObject
     /// Empty on rows cached before this field existed; matchers fall back to <see cref="From"/>.
     /// </summary>
     public string FromEmail { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The sender as matchers read it: "Name &lt;address&gt;", the shape Graph rows held in <see cref="From"/>
+    /// before #801, so a rule or search that matched there still does, and an IMAP or POP3 row now matches on its
+    /// address too (#803). <see cref="From"/> alone where there is no separate address — a row cached before
+    /// <see cref="FromEmail"/> existed, or a sender with no name, whose From already is the address. Never shown.
+    /// </summary>
+    public string FromForMatching =>
+        string.IsNullOrEmpty(FromEmail) || string.Equals(From, FromEmail, StringComparison.OrdinalIgnoreCase)
+            ? From
+            : string.IsNullOrEmpty(From) ? FromEmail : $"{From} <{FromEmail}>";
     public string To { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
     public DateTimeOffset Date { get; set; }

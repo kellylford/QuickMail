@@ -287,14 +287,18 @@ public class RuleService : IRuleService
         // A rule may list several From (or Sent-to) addresses, and matching any one of them is enough
         // (#682) — the same "or" a server rule's address list means. Every condition is still ANDed with
         // the others, so the "or" is inside one condition, never across two.
+        // Both sender conditions read the name and the address together (#803): From on an IMAP or POP3 row is the
+        // display name alone, so an address condition had nothing to match there, and a rule from before #682 may
+        // hold a name in its From condition, so neither condition can read the address alone either.
+        var sender = msg.FromForMatching;
         if (rule.FromValues() is { Count: > 0 } fromValues
-            && !fromValues.Any(v => msg.From.Contains(v, StringComparison.OrdinalIgnoreCase)))
+            && !fromValues.Any(v => sender.Contains(v, StringComparison.OrdinalIgnoreCase)))
             return false;
 
         // ANDed with the addresses above, where a rule uses both.
         if (rule.UseSenderCondition
             && !string.IsNullOrEmpty(rule.SenderContains)
-            && !msg.From.Contains(rule.SenderContains, StringComparison.OrdinalIgnoreCase))
+            && !sender.Contains(rule.SenderContains, StringComparison.OrdinalIgnoreCase))
             return false;
 
         if (rule.ToValues() is { Count: > 0 } toValues

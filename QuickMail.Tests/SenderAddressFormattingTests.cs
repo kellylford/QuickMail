@@ -3,6 +3,7 @@
 // both build them with these formatters, so the list reads the same whichever backend fetched it.
 
 using MimeKit;
+using QuickMail.Models;
 using QuickMail.Services;
 using Xunit;
 
@@ -38,4 +39,17 @@ public class SenderAddressFormattingTests
     [InlineData("\"Ford, Kelly\" <kelly@example.com>", "Ford, Kelly")]
     public void Display_IsTheNameWhereThereIsOne(string header, string expected)
         => Assert.Equal(expected, ImapMailService.FormatAddressListDisplay(InternetAddressList.Parse(header)));
+
+    [Theory]
+    // An IMAP or POP3 row: name and address joined, the shape a Graph row used to hold in From.
+    [InlineData("Some Company",     "news@company.com", "Some Company <news@company.com>")]
+    // No name: From already is the address, so it is not repeated.
+    [InlineData("news@company.com", "news@company.com", "news@company.com")]
+    [InlineData("NEWS@company.com", "news@company.com", "NEWS@company.com")]
+    // Cached before FromEmail existed: From alone, exactly what matchers read before.
+    [InlineData("Some Company",     "",                 "Some Company")]
+    [InlineData("Some Company <news@company.com>", "",  "Some Company <news@company.com>")]
+    [InlineData("",                 "news@company.com", "news@company.com")]
+    public void FromForMatching_JoinsTheNameAndTheAddress(string from, string fromEmail, string expected)
+        => Assert.Equal(expected, new MailMessageSummary { From = from, FromEmail = fromEmail }.FromForMatching);
 }

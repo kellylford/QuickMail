@@ -79,6 +79,16 @@ public partial class LocalStoreService
                 cmd.ExecuteNonQuery();
             }
 
+            // The summary-update trigger gained from_email (#803), so filling in a row's address re-indexes its
+            // sender. A trigger written before that would be kept by IF NOT EXISTS below, so drop it to be recreated.
+            cmd.CommandText = "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='trg_search_summary_update';";
+            if (cmd.ExecuteScalar() is string updateTrigger
+                && !updateTrigger.Contains("from_email", StringComparison.OrdinalIgnoreCase))
+            {
+                cmd.CommandText = "DROP TRIGGER IF EXISTS trg_search_summary_update;";
+                cmd.ExecuteNonQuery();
+            }
+
             cmd.CommandText = """
                 CREATE TABLE IF NOT EXISTS SearchKey (
                     id          INTEGER PRIMARY KEY,
@@ -104,7 +114,7 @@ public partial class LocalStoreService
                 END;
 
                 CREATE TRIGGER IF NOT EXISTS trg_search_summary_update AFTER UPDATE ON MessageSummary
-                WHEN old.from_disp IS NOT new.from_disp OR old.to_addr IS NOT new.to_addr
+                WHEN old.from_disp IS NOT new.from_disp OR old.from_email IS NOT new.from_email OR old.to_addr IS NOT new.to_addr
                   OR old.subject IS NOT new.subject OR old.preview_text IS NOT new.preview_text
                   OR old.account_id IS NOT new.account_id OR old.folder_name IS NOT new.folder_name
                   OR old.unique_id IS NOT new.unique_id
@@ -276,13 +286,14 @@ public partial class LocalStoreService
     {
         await using var conn = await OpenAsync();
 
-        var raw = new List<(long Id, long Generation, bool HasSummary, string[] Text, string? AttachmentsJson)>();
+        var raw = new List<(long Id, long Generation, bool HasSummary, string[] Text, string? AttachmentsJson, string FromEmail)>();
         await using (var read = conn.CreateCommand())
         {
             read.CommandText = """
                 SELECT k.id, k.generation, s.unique_id IS NOT NULL,
                        s.subject, s.from_disp, s.to_addr, s.preview_text,
-                       d.from_addr, d.to_addr, d.cc, d.plain_body, d.html_body, d.attachments_json
+                       d.from_addr, d.to_addr, d.cc, d.plain_body, d.html_body, d.attachments_json,
+                       s.from_email
                 FROM SearchKey k
                 LEFT JOIN MessageSummary s
                   ON s.unique_id = k.unique_id AND s.account_id = k.account_id AND s.folder_name = k.folder_name
@@ -299,21 +310,25 @@ public partial class LocalStoreService
                 var text = new string[9];
                 for (int i = 0; i < 9; i++)
                     text[i] = r.IsDBNull(i + 3) ? string.Empty : r.GetString(i + 3);
-                raw.Add((r.GetInt64(0), r.GetInt64(1), r.GetInt64(2) != 0, text, r.IsDBNull(12) ? null : r.GetString(12)));
+                raw.Add((r.GetInt64(0), r.GetInt64(1), r.GetInt64(2) != 0, text, r.IsDBNull(12) ? null : r.GetString(12),
+                         r.IsDBNull(13) ? string.Empty : r.GetString(13)));
             }
         }
         if (raw.Count == 0) return 0;
 
         var rows = new List<PendingRow>(raw.Count);
-        foreach (var (id, generation, hasSummary, t, attJson) in raw)
+        foreach (var (id, generation, hasSummary, t, attJson, fromEmail) in raw)
         {
+            // The sender's name and bare address from the row (#803), so an IMAP message is found by its address
+            // even when no body is cached to supply d.from_addr.
+            var rowSender = JoinDistinct(t[1], fromEmail);
             try
             {
                 // t: subject, from_disp, to_addr, preview_text, d.from_addr, d.to_addr, d.cc, plain_body, html_body
                 var body = t[7].Length > 0 ? t[7]
                          : t[8].Length > 0 ? HtmlStripper.ToPlainText(t[8], includeLinkTargets: false)
                          : t[3];
-                rows.Add(new PendingRow(id, generation, hasSummary, t[0], JoinDistinct(t[1], t[4]), JoinDistinct(t[2], t[5]),
+                rows.Add(new PendingRow(id, generation, hasSummary, t[0], JoinDistinct(rowSender, t[4]), JoinDistinct(t[2], t[5]),
                     t[6], body, AttachmentNames(attJson)));
             }
             catch (Exception ex)
@@ -321,7 +336,7 @@ public partial class LocalStoreService
                 // One message whose text can't be built must not stop every batch after it — the newest pending
                 // row is always read first, so it would be retried forever. Index what the row itself has.
                 LogService.Log($"Search index: could not read message text for key {id}; indexing its summary only", ex);
-                rows.Add(new PendingRow(id, generation, hasSummary, t[0], t[1], t[2], string.Empty, t[3], string.Empty));
+                rows.Add(new PendingRow(id, generation, hasSummary, t[0], rowSender, t[2], string.Empty, t[3], string.Empty));
             }
         }
 
@@ -571,8 +586,8 @@ public partial class LocalStoreService
     /// <summary>The row columns a field's word can be found in without the index.</summary>
     private static string[] RowColumnsFor(SearchField field) => field switch
     {
-        SearchField.Any     => ["s.from_disp", "s.to_addr", "s.subject", "s.preview_text"],
-        SearchField.From    => ["s.from_disp"],
+        SearchField.Any     => ["s.from_disp", "s.from_email", "s.to_addr", "s.subject", "s.preview_text"],
+        SearchField.From    => ["s.from_disp", "s.from_email"],
         SearchField.To      => ["s.to_addr"],
         SearchField.Subject => ["s.subject"],
         SearchField.Body    => ["s.preview_text"],

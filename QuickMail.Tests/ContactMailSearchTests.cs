@@ -253,6 +253,24 @@ public class ContactMailSearchTests
         Assert.Equal("3", vm.Messages[0].MessageId);
     }
 
+    [Fact]
+    public async Task ShowContactMail_From_FindsImapRowsByTheirAddress()
+    {
+        // #803: an IMAP or POP3 row holds the display name alone in From and the address in FromEmail. Every
+        // other test here uses Graph-shaped "Name <address>" senders, which is how this went unnoticed.
+        var imapRow = Msg("1", "Bob Baker", "kelly@example.com");
+        imapRow.FromEmail = "bob@example.com";
+        var otherImapRow = Msg("2", "Ann", "kelly@example.com");
+        otherImapRow.FromEmail = "ann@x.com";
+        var graphRow = Msg("3", "Bob Baker <bob@example.com>", "kelly@example.com");
+        var vm = MakeVm([imapRow, otherImapRow, graphRow]);
+        await vm.InitialLoadAsync();
+
+        await vm.ShowContactMailAsync("bob@example.com", MainViewModel.ContactMailDirection.From, "Bob Baker");
+
+        Assert.Equal(new[] { "1", "3" }, vm.Messages.Select(m => m.MessageId).OrderBy(id => id).ToArray());
+    }
+
     // ── Address book side ────────────────────────────────────────────────────
 
     [Fact]
