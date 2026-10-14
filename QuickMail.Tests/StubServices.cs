@@ -813,6 +813,8 @@ sealed class StubSyncService : ISyncService
     public event Action<int, int>? SyncProgressChanged;
     public event Action<int, int>? OfflineBodyProgressChanged;
     public event Action<int, int>? OfflineBodyPassCompleted;
+    public event Action<int, int>? SenderEmailBackfillProgressChanged;
+    public event Action<int, int>? SenderEmailBackfillCompleted;
 #pragma warning restore CS0067
     /// <summary>Every backfill request (#637), so a test can assert Settings triggered one.</summary>
     public int BackfillCalls { get; private set; }

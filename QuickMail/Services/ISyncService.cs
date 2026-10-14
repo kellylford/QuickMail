@@ -107,6 +107,19 @@ public interface ISyncService
     event Action<int, int>? OfflineBodyPassCompleted;
 
     /// <summary>
+    /// Fired on the UI thread after each batch of the one-time sender-address backfill (#803) fetches from the
+    /// server: (done, total), where total is how many IMAP rows the pass set out to fill. Intermediate only.
+    /// </summary>
+    event Action<int, int>? SenderEmailBackfillProgressChanged;
+
+    /// <summary>
+    /// Fired once, on the UI thread, when a sender-address backfill pass that had work to do ends: (filled, planned).
+    /// filled is below planned when a server went away or no longer has some of the messages. Not fired when there
+    /// was nothing to fetch.
+    /// </summary>
+    event Action<int, int>? SenderEmailBackfillCompleted;
+
+    /// <summary>
     /// The offline-bodies pass on its own (#637): downloads the bodies of recent Inbox messages
     /// inside <see cref="ConfigModel.EffectiveOfflineBodyDays"/> that have no cached body yet, for
     /// the given (connected) accounts. A no-op when the setting is off, and when a pass is already

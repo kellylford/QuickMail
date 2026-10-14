@@ -196,7 +196,11 @@ public class SenderAddressBackfillSyncTests : IDisposable
     private (SyncService Sync, EnvelopeMail Mail) Build()
     {
         var mail = new EnvelopeMail();
-        return (new SyncService(mail, _store, new StubConfigService(), new StubRuleService(), connectivity: _connectivity), mail);
+        var sync = new SyncService(mail, _store, new StubConfigService(), new StubRuleService(), connectivity: _connectivity)
+        {
+            SenderEmailPacing = TimeSpan.Zero,
+        };
+        return (sync, mail);
     }
 
     private Task Seed(AccountModel account, string id, string from, string fromEmail = "", string folder = "INBOX")
@@ -298,5 +302,70 @@ public class SenderAddressBackfillSyncTests : IDisposable
         await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
 
         Assert.Empty(mail.Fetches);
+    }
+
+    [Fact]
+    public async Task ABigCache_IsFetchedInBatches_WithProgressAndOneCompletion()
+    {
+        // It is real traffic the user did not ask for, so it is never invisible: progress after each batch,
+        // one completion at the end.
+        var imap = Account();
+        var total = SyncService.SenderEmailFetchBatch * 2 + 200;
+        await _store.UpsertSummariesAsync([.. Enumerable.Range(1, total).Select(i => new MailMessageSummary
+        {
+            MessageId = i.ToString(System.Globalization.CultureInfo.InvariantCulture), AccountId = imap.Id,
+            FolderName = "INBOX", From = "Some Company", Subject = "s", Date = DateTimeOffset.UtcNow.AddMinutes(-i),
+        })]);
+        var (sync, mail) = Build();
+        for (var i = 1; i <= total; i++) mail.OnServer[i.ToString(System.Globalization.CultureInfo.InvariantCulture)] = $"n{i}@x.com";
+        var progress = new List<(int, int)>();
+        var completed = new List<(int, int)>();
+        sync.SenderEmailBackfillProgressChanged += (d, t) => progress.Add((d, t));
+        sync.SenderEmailBackfillCompleted += (f, p) => completed.Add((f, p));
+        sync.RequestSenderEmailBackfill(() => { });
+
+        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
+
+        Assert.Equal(3, mail.Fetches.Count);
+        Assert.All(mail.Fetches, f => Assert.True(f.Ids.Count <= SyncService.SenderEmailFetchBatch));
+        Assert.Equal([(500, total), (1000, total)], progress);
+        Assert.Equal([(total, total)], completed);
+    }
+
+    [Fact]
+    public async Task NothingToFetch_SaysNothing()
+    {
+        var imap = Account();
+        await Seed(imap, "1", "Done", "done@x.com");
+        var (sync, _) = Build();
+        var said = 0;
+        sync.SenderEmailBackfillProgressChanged += (_, _) => said++;
+        sync.SenderEmailBackfillCompleted += (_, _) => said++;
+        var completed = 0;
+        sync.RequestSenderEmailBackfill(() => completed++);
+
+        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
+
+        Assert.Equal(0, said);
+        Assert.Equal(1, completed);   // still done, so the marker is written
+    }
+}
+
+public class SenderAddressBackfillWordingTests
+{
+    [Fact]
+    public void Progress_ReadsAsACount()
+        => Assert.Equal(
+            string.Format(System.Globalization.CultureInfo.CurrentCulture, "Updating sender addresses: {0:N0} of {1:N0}", 2000, 8000),
+            QuickMail.ViewModels.MainViewModel.DescribeSenderEmailBackfill(2000, 8000));
+
+    [Fact]
+    public void Finishing_IsSpokenOnlyWhenSomethingWasFilled()
+    {
+        Assert.Null(QuickMail.ViewModels.MainViewModel.SenderEmailBackfillFinished(0));
+        Assert.Equal("Updated the sender address of 1 message.", QuickMail.ViewModels.MainViewModel.SenderEmailBackfillFinished(1));
+        Assert.Equal(
+            string.Format(System.Globalization.CultureInfo.CurrentCulture, "Updated sender addresses for {0:N0} messages.", 1234),
+            QuickMail.ViewModels.MainViewModel.SenderEmailBackfillFinished(1234));
     }
 }

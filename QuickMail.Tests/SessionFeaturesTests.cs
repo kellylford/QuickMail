@@ -242,6 +242,8 @@ public class IdleNewMailTests
         public event Action<int, int>? SyncProgressChanged;
         public event Action<int, int>? OfflineBodyProgressChanged;
     public event Action<int, int>? OfflineBodyPassCompleted;
+    public event Action<int, int>? SenderEmailBackfillProgressChanged;
+    public event Action<int, int>? SenderEmailBackfillCompleted;
 #pragma warning restore CS0067
 
         public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts,

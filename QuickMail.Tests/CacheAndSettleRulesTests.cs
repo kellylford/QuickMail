@@ -27,6 +27,8 @@ public class CacheAndSettleRulesTests
         public event Action<int, int>? SyncProgressChanged;
         public event Action<int, int>? OfflineBodyProgressChanged;
         public event Action<int, int>? OfflineBodyPassCompleted;
+        public event Action<int, int>? SenderEmailBackfillProgressChanged;
+        public event Action<int, int>? SenderEmailBackfillCompleted;
 #pragma warning restore CS0067
 
         /// <summary>A folder whose rules pass fails, as it would with the store unavailable.</summary>

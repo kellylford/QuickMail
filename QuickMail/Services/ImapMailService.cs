@@ -985,19 +985,23 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         var result = new Dictionary<string, string>();
         if (messageIds.Count == 0) return result;
 
-        // Background lease, read-only open, ENVELOPE only: the same cost as a summary fetch, and no \Seen.
+        // Background lease, read-only open, and the From header alone (BODY.PEEK, so no \Seen): a hundred-odd bytes
+        // a message, where an ENVELOPE runs to a kilobyte. On a large cache that is the difference between a few
+        // megabytes and a hundred.
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
         var folder = await lease.Client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
         {
-            var summaries = await folder.FetchAsync(
-                messageIds.Select(ToUid).ToList(),
-                MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope,
-                ct);
+            var request = new FetchRequest(MessageSummaryItems.UniqueId) { Headers = new HeaderSet([HeaderId.From]) };
+            var summaries = await folder.FetchAsync(messageIds.Select(ToUid).ToList(), request, ct);
             foreach (var s in summaries)
             {
-                var emails = FormatAddressListEmails(s.Envelope?.From);
+                // Parsed from the raw bytes, not the decoded text: an encoded "Ford, Kelly" decodes to an unquoted
+                // comma, which would read as two addresses.
+                var header = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.From);
+                if (header is null || !InternetAddressList.TryParse(header.RawValue, out var list)) continue;
+                var emails = FormatAddressListEmails(list);
                 if (emails.Length > 0) result[s.UniqueId.Id.ToString(CultureInfo.InvariantCulture)] = emails;
             }
             return result;
