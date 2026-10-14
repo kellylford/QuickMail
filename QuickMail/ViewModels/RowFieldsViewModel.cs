@@ -259,15 +259,36 @@ public sealed partial class RowFieldsViewModel : ObservableObject
 
     private const string StatusName = "Read status (combined)";
 
+    // The group-row fields that count unread messages (#800).
+    private static readonly string[] UnreadCounts = ["unreadcount", "unreadoftotal"];
+
     private void UpdateSelectedFieldNote()
     {
         if (SelectedField is not { } field) { SelectedFieldNote = string.Empty; return; }
 
         bool StatusOn()  => Fields.Any(f => f.Id == "status" && f.Enabled);
         bool AnyPartOn() => Fields.Any(f => StatusParts.Contains(f.Id) && f.Enabled);
+        bool IsOn(string id) => Fields.Any(f => f.Id == id && f.Enabled);
+        bool AnyCountOn()    => UnreadCounts.Any(IsOn);
 
         SelectedFieldNote = field.Id switch
         {
+            // Has unread and the two counts (#800) all say a group has unread mail, so any two of
+            // them on together say it twice — the same doubling the status notes explain.
+            "hasunread" when field.Enabled && AnyCountOn() =>
+                "Unread count or Unread of total is also on and already says there is unread mail. "
+                + "Turn this off to hear only the count.",
+
+            "unreadcount" or "unreadoftotal" when field.Enabled && IsOn("hasunread") =>
+                "Has unread is also on, so a row with unread mail says so twice. "
+                + "Turn Has unread off to use this on its own.",
+
+            "unreadcount" when field.Enabled && IsOn("unreadoftotal") =>
+                "Unread of total is also on and says this count too, so it is said twice.",
+
+            "unreadoftotal" when field.Enabled && IsOn("unreadcount") =>
+                "Unread count is also on and says this count too, so it is said twice.",
+
             // Both halves on. Only worth saying when this field is itself spoken — an off field
             // cannot double anything, and its own note (below) is the more useful one.
             "status" when field.Enabled && AnyPartOn() =>
@@ -443,10 +464,12 @@ public sealed partial class RowFieldsViewModel : ObservableObject
         RowKind.Conversation =>
         [
             "Budget review", 3, "Chris Lee", "Follow up", true, "Lunch tomorrow?", "2:14P",
+            2, new UnreadTally(2, 3),
         ],
         RowKind.SenderGroup =>
         [
             "Chris Lee", 3, "Follow up", true, "Lunch tomorrow?", "2:14P", "Budget review",
+            2, new UnreadTally(2, 3),
         ],
         _ => [],
     };

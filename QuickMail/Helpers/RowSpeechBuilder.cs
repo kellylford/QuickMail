@@ -89,6 +89,20 @@ public static class RowSpeechBuilder
                 return string.Create(CultureInfo.CurrentCulture, $"{n} {(n == 1 ? "message" : "messages")}");
             }
 
+            // Both unread forms say nothing when nothing is unread, the way Has unread does: a row
+            // that is all read stays as short as it was (#800). Self-describing, so unlabelled.
+            case RowFieldFormat.UnreadCount:
+            {
+                if (raw is not int n || n <= 0) return string.Empty;
+                return string.Create(CultureInfo.CurrentCulture, $"{n} unread");
+            }
+
+            case RowFieldFormat.UnreadOfTotal:
+            {
+                if (raw is not UnreadTally { Unread: > 0 } t) return string.Empty;
+                return string.Create(CultureInfo.CurrentCulture, $"{t.Unread} of {t.Total} unread");
+            }
+
             default:
             {
                 var value = (raw as string ?? string.Empty).Trim();

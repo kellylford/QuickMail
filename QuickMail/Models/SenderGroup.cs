@@ -41,11 +41,14 @@ public sealed class SenderGroup : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FlagLabel)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FlagColorHex)));
         }
-        // The row speaks HasUnread, so reading the last unread message in the group has to
-        // refresh the node's name — otherwise it keeps saying "Has unread" after it stops being true.
+        // The row speaks HasUnread and the unread counts (#800), so reading a message in the group
+        // has to refresh the node's name — otherwise it keeps saying "Has unread" or "2 unread"
+        // after that stops being true.
         else if (e.PropertyName is nameof(MailMessageSummary.IsRead))
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasUnread)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UnreadCount)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UnreadOfTotal)));
         }
     }
 
@@ -68,6 +71,12 @@ public sealed class SenderGroup : INotifyPropertyChanged
 
     /// <summary>True when at least one message in the group is unread.</summary>
     public bool HasUnread => Messages.Any(m => !m.IsRead);
+
+    /// <summary>How many messages in the group are unread (#800).</summary>
+    public int UnreadCount => Messages.Count(m => !m.IsRead);
+
+    /// <summary>Unread messages out of all of them, spoken as "2 of 5 unread" (#800).</summary>
+    public UnreadTally UnreadOfTotal => new(UnreadCount, Messages.Count);
 
     /// <summary>True when at least one message in the group is flagged.</summary>
     public bool HasFlagged => Messages.Any(m => m.IsFlagged);
