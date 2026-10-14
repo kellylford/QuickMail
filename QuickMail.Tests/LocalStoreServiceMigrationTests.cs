@@ -328,6 +328,64 @@ public class LocalStoreServiceMigrationTests
         Assert.Equal("<keep@example.com>", Assert.Single(loaded).InternetMessageId);
     }
 
+    [Fact]
+    public async Task FreshDatabase_RoundTripsFromEmail_AlongsideTheDisplayName()
+    {
+        // #803: the list row keeps the display name in From and the bare address in FromEmail.
+        var dir = NewTempDir();
+        var accountId = Guid.NewGuid();
+        var store = new LocalStoreService(new ProfileContext(dir));
+        store.Initialize();
+
+        await store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            MessageId = "1001", AccountId = accountId, FolderName = "Inbox",
+            Subject = "hello", Date = DateTimeOffset.UtcNow,
+            From = "Some Company", FromEmail = "news@company.com",
+        }]);
+
+        var loaded = Assert.Single(await store.LoadFolderSummariesAsync(accountId, "Inbox"));
+        Assert.Equal("Some Company", loaded.From);
+        Assert.Equal("news@company.com", loaded.FromEmail);
+    }
+
+    [Fact]
+    public async Task Upsert_DoesNotWipeFromEmail_WhenIncomingIsEmpty()
+    {
+        // A path that builds a summary without the address must not erase one already stored —
+        // the same rule internet_message_id follows. An address never changes for a given message.
+        var dir = NewTempDir();
+        var accountId = Guid.NewGuid();
+        var store = new LocalStoreService(new ProfileContext(dir));
+        store.Initialize();
+
+        MailMessageSummary Row(string fromEmail) => new()
+        {
+            MessageId = "7", AccountId = accountId, FolderName = "Inbox",
+            Subject = "s", Date = DateTimeOffset.UtcNow, From = "Some Company", FromEmail = fromEmail,
+        };
+
+        await store.UpsertSummariesAsync([Row("news@company.com")]);
+        await store.UpsertSummariesAsync([Row("")]);
+
+        var loaded = await store.LoadFolderSummariesAsync(accountId, "Inbox");
+        Assert.Equal("news@company.com", Assert.Single(loaded).FromEmail);
+    }
+
+    [Fact]
+    public void Migration_FromV1_AddsTheFromEmailColumn()
+    {
+        // from_email is added AFTER RunDataMigrations, so the v1 → v2 rebuild (a fixed column list)
+        // cannot drop it again. An upgraded profile must end up with the column.
+        var dir = NewTempDir();
+        var dbPath = Path.Combine(dir, "mail.db");
+        SeedV1Database(dbPath, Guid.NewGuid());
+
+        new LocalStoreService(new ProfileContext(dir)).Initialize();
+
+        Assert.Equal("TEXT", ColumnType(dbPath, "MessageSummary", "from_email"));
+    }
+
     // ── Phase 5: IMAP ↔ local flag reconciliation (§9.3) ─────────────────────
 
     private static QuickMail.Models.MailMessageSummary MakeSummary(Guid accountId, string id, bool serverFlagged = false, string? flagId = null) =>

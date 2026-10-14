@@ -490,7 +490,7 @@ public partial class LocalStoreService
         await using var cmd = conn.CreateCommand();
         var sql = new StringBuilder(
             "SELECT s.unique_id, s.account_id, s.folder_name, s.from_disp, s.to_addr, s.subject, s.date_ticks, s.is_read, " +
-            "s.preview_text, s.is_replied, s.is_forwarded, s.has_attachments, s.is_mailing_list, s.flag_id, s.internet_message_id " +
+            "s.preview_text, s.is_replied, s.is_forwarded, s.has_attachments, s.is_mailing_list, s.flag_id, s.internet_message_id, s.from_email " +
             "FROM MessageSummary s WHERE s.account_id IN (SELECT value FROM json_each($accounts))");
         cmd.Parameters.AddWithValue("$accounts", JsonSerializer.Serialize(accountIds.Select(a => a.ToString())));
 
