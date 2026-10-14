@@ -57,7 +57,7 @@ public static class RowSpeechBuilder
             var part = Render(def, setting, raw, showLabels);
             if (string.IsNullOrWhiteSpace(part)) continue;
 
-            if (sb.Length > 0) sb.Append(between);
+            if (sb.Length > 0) sb.Append(Join(separator, between, sb[^1]));
             sb.Append(part);
         }
 
@@ -65,6 +65,17 @@ public static class RowSpeechBuilder
         if (RowFieldSeparators.EndsWithPeriod(separator)) sb.Append('.');
         return sb.ToString();
     }
+
+    /// <summary>
+    /// The text between two fields. A comma after a field that already ends in its own punctuation
+    /// ("…required today.", "Lunch tomorrow?") would read ".," — punctuation on punctuation, from a
+    /// choice made to have less of it — so there the comma gives way to a plain space. The period
+    /// choice is left exactly as rows have always read, doubled period included (#802).
+    /// </summary>
+    private static string Join(RowFieldSeparator separator, string between, char previous) =>
+        separator == RowFieldSeparator.Comma && previous is '.' or '?' or '!' or ':' or ';'
+            ? " "
+            : between;
 
     /// <summary>
     /// WPF hands unset or failed bindings through as <see cref="System.Windows.DependencyProperty.UnsetValue"/>

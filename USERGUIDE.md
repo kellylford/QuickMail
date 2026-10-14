@@ -1449,6 +1449,7 @@ Lines starting with `#` are comments and are ignored. The file uses a simple `ke
 | `AutoSaveIntervalSeconds` | `30`–`600` | `120` | Seconds between automatic draft saves. Also available in Settings → General → Composing. |
 | `AnnounceFlagStatus` | `true` / `false` | `true` | Legacy. Superseded by View → Message List Fields, where Flag is one field among many with its own checkbox. Read once, when no saved field layout exists yet, to decide whether Flag starts out enabled; ignored afterwards. |
 | `MessageListShowFieldLabels` | `on` / `off` | `off` | When on, message list rows speak field labels ("From: Chris Lee. Subject: Budget review."). Also available in View → Message List Fields. |
+| `MessageListFieldSeparator` | `period` / `comma` / `space` | `period` | What goes between the fields of a message list row's spoken name. Only `period` also ends the row with a period. Also available in View → Message List Fields. |
 | `RuleListShowFieldLabels` | `on` / `off` | `off` | When on, the rules list speaks field labels in each row's accessible name. Also available in Settings → General → Screen Reader Announcements. |
 
 ### `[account:<guid>]` overrides

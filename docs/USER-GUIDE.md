@@ -2358,7 +2358,9 @@ This is how you get "tell me about unread but never say read": turn **Status (co
 - **Comma**: "Chris Lee, Budget review, 2:14 PM"
 - **Space**: "Chris Lee Budget review 2:14 PM"
 
-If you listen at a slow rate, the pause at each period can add up over a long list; a comma or a space shortens it. Only **Period** also ends the row with a period. Punctuation inside a field, such as the sentences of a preview, is never changed. The choice applies to all three row types.
+If you listen at a slow rate, you may prefer a comma or a space between fields; how long each one pauses depends on your screen reader's settings. Only **Period** also ends the row with a period. Punctuation inside a field, such as the sentences of a preview, is never changed, and with **Comma** a field that already ends in punctuation (a preview ending "today." or a subject ending "?") is followed by a space rather than a second mark. The choice applies to all three row types.
+
+You can also make this choice from the window's command palette (Ctrl+Shift+P): **Separate Fields with a Period**, **with a Comma**, or **with a Space**.
 
 ### Starting over
 

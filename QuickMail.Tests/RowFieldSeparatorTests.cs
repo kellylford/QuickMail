@@ -75,6 +75,33 @@ public class RowFieldSeparatorTests
     }
 
     [Fact]
+    public void Comma_GivesWayToASpaceAfterAFieldsOwnPunctuation()
+    {
+        // "today., 10/13/2026" would put a comma straight after a full stop, from a choice made to
+        // have less punctuation, not more.
+        var period = RowSpeechBuilder.Build(RowKind.Message, Message(), MessageLayout(),
+                                            separator: RowFieldSeparator.Comma);
+        var question = RowSpeechBuilder.Build(RowKind.Message, Message("Lunch tomorrow?"), MessageLayout(),
+                                              separator: RowFieldSeparator.Comma);
+
+        Assert.Equal(
+            "unread, Microsoft 365, Upcoming changes, Learn about updates. No action is required today. 10/13/2026",
+            period);
+        Assert.Equal("unread, Microsoft 365, Upcoming changes, Lunch tomorrow? 10/13/2026", question);
+    }
+
+    [Fact]
+    public void Space_AfterAFieldsOwnPunctuationIsJustASpace()
+    {
+        var text = RowSpeechBuilder.Build(RowKind.Message, Message(), MessageLayout(),
+                                          separator: RowFieldSeparator.Space);
+
+        Assert.Equal(
+            "unread Microsoft 365 Upcoming changes Learn about updates. No action is required today. 10/13/2026",
+            text);
+    }
+
+    [Fact]
     public void LabelsStillWorkWithASpace()
     {
         var text = RowSpeechBuilder.Build(RowKind.Message, Message("Lunch tomorrow?"), MessageLayout(),
@@ -149,6 +176,28 @@ public class RowFieldSeparatorTests
     {
         Assert.Equal(RowFieldSeparator.Period, RowSpeechSettings.Default.Separator);
         Assert.Equal(RowFieldSeparator.Period, new ConfigModel().MessageListFieldSeparator);
+    }
+
+    [Fact]
+    public void TheMainWindowReadsTheSeparatorFromConfig()
+    {
+        // The line that delivers the choice to the real list: every other test here would still
+        // pass if ReloadRowSpeech stopped passing the separator on.
+        var config  = new StubConfigService();
+        var layouts = new StubRowLayoutService();
+        var vm = new MainViewModel(new StubImapMailService(), new StubAccountService(),
+            new StubCredentialService(), new StubLocalStoreService(), new StubOAuthService(),
+            new StubSyncService(), config, new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), new StubSmtpService(), rowLayoutService: layouts);
+        Assert.Equal(RowFieldSeparator.Period, vm.RowSpeech.Separator);
+
+        // What the fields window does when the choice changes: save config, then save layouts.
+        var cfg = config.Load();
+        cfg.MessageListFieldSeparator = RowFieldSeparator.Comma;
+        config.Save(cfg);
+        layouts.Save(layouts.Load());
+
+        Assert.Equal(RowFieldSeparator.Comma, vm.RowSpeech.Separator);
     }
 
     // ── the chooser ───────────────────────────────────────────────────────────
@@ -253,6 +302,21 @@ public class RowFieldSeparatorTests
             // Choosing in the control reaches the view model.
             combo.SelectedIndex = 2;
             Assert.Equal(RowFieldSeparator.Space, vm.SelectedSeparator.Value);
+
+            // Escape with this list open belongs to the list, not the window. The window's Escape
+            // handler tunnels, so it sees the key first and must stand aside (review of #802).
+            combo.IsDropDownOpen = true;
+            Assert.True(window.IsAnyDropDownOpen);
+            var escape = new System.Windows.Input.KeyEventArgs(
+                System.Windows.Input.Keyboard.PrimaryDevice, PresentationSource.FromVisual(window)!, 0,
+                System.Windows.Input.Key.Escape)
+            { RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent };
+            window.RaiseEvent(escape);
+            DrainDispatcher();
+            Assert.True(window.IsVisible, "Escape on the open list closed the whole window");
+
+            combo.IsDropDownOpen = false;
+            Assert.False(window.IsAnyDropDownOpen);
         }
         finally
         {

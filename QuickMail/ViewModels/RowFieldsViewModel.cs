@@ -450,7 +450,8 @@ public sealed partial class RowFieldsViewModel : ObservableObject
         var kind   = SelectedRowKind.Kind;
         var layout = Fields.Select(f => f.ToSetting()).ToList();
         var text   = RowSpeechBuilder.Build(
-            kind, ValuesForPreview(kind), layout, ShowFieldLabels, SelectedSeparator.Value);
+            kind, ValuesForPreview(kind), layout, ShowFieldLabels,
+            SelectedSeparator?.Value ?? RowFieldSeparator.Period);
 
         Preview = string.IsNullOrEmpty(text)
             ? "No fields turned on — this row would be silent."
