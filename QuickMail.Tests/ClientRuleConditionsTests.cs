@@ -178,6 +178,23 @@ public class ClientRuleConditionsTests
     }
 
     [Fact]
+    public void ARuleHoldingAWholeGraphFromHeader_StillMatches_OnceTheNameAndAddressAreStoredApart()
+    {
+        // Before #801, Create Rule from Message on a Microsoft account copied the row's whole From into Sender
+        // contains: "Kelly Ford <kelly@example.com>". Graph rows now keep the name and the address apart, so the
+        // matchers join them back into exactly that shape — or every such rule would have stopped matching.
+        var rule = new MailRule
+        {
+            Name = "Rule for Kelly Ford <kelly@example.com>", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = "Kelly Ford <kelly@example.com>", Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "Kelly Ford", fromEmail: "kelly@example.com")));              // stored apart
+        Assert.True(Matches(rule, Msg(from: "Kelly Ford <kelly@example.com>")));                         // not yet backfilled
+        Assert.False(Matches(rule, Msg(from: "Kelly Ford", fromEmail: "someone.else@example.com")));
+    }
+
+    [Fact]
     public void FromAddress_OnARowCachedBeforeFromEmail_BehavesAsBefore()
     {
         // No FromEmail yet: matching falls back to From alone, so a name-only row still cannot match an address
