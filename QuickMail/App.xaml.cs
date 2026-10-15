@@ -483,8 +483,10 @@ public partial class App : Application
                 try
                 {
                     var graphIds = accounts.Where(a => a.BackendKind == BackendKind.MicrosoftGraph).Select(a => a.Id).ToList();
+                    // Timed: it holds up the first window, once (review of #806). About a second per 100,000 rows.
+                    var senderTimer = System.Diagnostics.Stopwatch.StartNew();
                     var filled = localStore.BackfillSenderEmailsLocallyAsync(graphIds).GetAwaiter().GetResult();
-                    LogService.Log($"Sender-address backfill: {filled} cached row(s) filled locally.");
+                    LogService.Log($"Sender-address backfill: {filled} cached row(s) filled locally in {senderTimer.ElapsedMilliseconds} ms.");
                 }
                 catch (Exception senderEx)
                 {

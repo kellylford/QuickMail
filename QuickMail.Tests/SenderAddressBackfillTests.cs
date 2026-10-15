@@ -141,6 +141,68 @@ public class SenderAddressBackfillStoreTests : IDisposable
         Assert.Equal(["i2", "i3"], forServer["INBOX"].Order());
     }
 
+    private async Task<List<string>> FoundWithoutIndexing(string words)
+    {
+        // indexPendingFirst: false, so a row waiting to be reindexed is not found: what a search sees while the
+        // background indexer is still working through a backlog.
+        var match = SearchMatchExpression.AllOf(MessageSearchQuery.Parse(words).Terms)!;
+        var hits = await _store.FindMessagesAsync(match, null, indexPendingFirst: false, ct: TestContext.Current.CancellationToken);
+        return [.. hits.Select(h => h.MessageId).Order()];
+    }
+
+    private async Task IndexEverything()
+    {
+        while (await _store.IndexPendingSearchAsync(1000, TestContext.Current.CancellationToken) > 0) { }
+    }
+
+    [Fact]
+    public async Task RowsFilledLocally_StayInTheSearchIndex()
+    {
+        // Review of #806: the address filled here was already in each row's search text, so reindexing them all was
+        // a long background job that only hid them from index results until it finished.
+        await _store.UpsertSummariesAsync([
+            Row(_graph, "g1", "Alice <alice@x.com>"),
+            Row(_imap,  "i1", "Ford, Kelly"),
+        ]);
+        await _store.UpsertDetailAsync(new MailMessageDetail
+        {
+            MessageId = "i1", AccountId = _imap, FolderName = "INBOX", From = "\"Ford, Kelly\" <kelly@example.com>",
+        });
+        await IndexEverything();
+
+        Assert.Equal(2, await _store.BackfillSenderEmailsLocallyAsync([_graph]));
+
+        Assert.Equal(["g1"], await FoundWithoutIndexing("alice@x.com"));
+        Assert.Equal(["i1"], await FoundWithoutIndexing("kelly@example.com"));
+    }
+
+    [Fact]
+    public async Task ARowStillWaitingToBeIndexed_IsLeftForTheIndexer()
+    {
+        // Only a row the index had settled is settled again; one it had not reached keeps waiting for it.
+        await _store.UpsertSummariesAsync([Row(_graph, "g1", "Alice <alice@x.com>")]);
+
+        await _store.BackfillSenderEmailsLocallyAsync([_graph]);
+
+        Assert.Empty(await FoundWithoutIndexing("alice"));
+        await IndexEverything();
+        Assert.Equal(["g1"], await FoundWithoutIndexing("alice"));
+    }
+
+    [Fact]
+    public async Task AnAddressFromTheServer_IsReindexed_SoItCanBeFound()
+    {
+        // The server half's addresses are words the index has never had.
+        await _store.UpsertSummariesAsync([Row(_imap, "i1", "Some Company")]);
+        await IndexEverything();
+        Assert.Empty(await FoundWithoutIndexing("news@company.com"));
+
+        await _store.UpdateSenderEmailsBatchAsync(_imap, "INBOX", [("i1", "news@company.com", "")]);
+        await IndexEverything();
+
+        Assert.Equal(["i1"], await FoundWithoutIndexing("news@company.com"));
+    }
+
     [Fact]
     public async Task RunningItAgain_ChangesNothing()
     {

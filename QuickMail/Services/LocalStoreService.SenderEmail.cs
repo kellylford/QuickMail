@@ -20,11 +20,16 @@ public partial class LocalStoreService
         var graph = graphAccountIds.Select(g => g.ToString()).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         await using var conn = await OpenAsync();
-        var updates = new List<(string Uid, string Aid, string Fn, string? From, string FromEmail)>();
+        // Generation of the row's search entry when the index has already settled it, else null (pending, or no
+        // index at all: without FTS5 there is no SearchKey table to join).
+        var settledGeneration = _searchIndexAvailable
+            ? "(SELECT k.generation FROM SearchKey k WHERE k.unique_id = s.unique_id AND k.account_id = s.account_id AND k.folder_name = s.folder_name AND k.pending = 0)"
+            : "NULL";
+        var updates = new List<(string Uid, string Aid, string Fn, string? From, string FromEmail, long? Generation)>();
         await using (var read = conn.CreateCommand())
         {
-            read.CommandText = """
-                SELECT s.unique_id, s.account_id, s.folder_name, s.from_disp, d.from_addr
+            read.CommandText = $"""
+                SELECT s.unique_id, s.account_id, s.folder_name, s.from_disp, d.from_addr, {settledGeneration}
                 FROM MessageSummary s
                 LEFT JOIN MessageDetail d USING (unique_id, account_id, folder_name)
                 WHERE s.from_email = '' AND s.from_disp <> '';
@@ -36,7 +41,8 @@ public partial class LocalStoreService
                 var result = SenderAddressBackfill.For(
                     r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), graph.Contains(aid));
                 if (result is { } found)
-                    updates.Add((r.GetString(0), aid, r.GetString(2), found.From, found.FromEmail));
+                    updates.Add((r.GetString(0), aid, r.GetString(2), found.From, found.FromEmail,
+                                 r.IsDBNull(5) ? null : r.GetInt64(5)));
             }
         }
         if (updates.Count == 0) return 0;
@@ -52,18 +58,44 @@ public partial class LocalStoreService
         var pUid   = cmd.Parameters.Add("$uid",   SqliteType.Text);
         var pAid   = cmd.Parameters.Add("$aid",   SqliteType.Text);
         var pFn    = cmd.Parameters.Add("$fn",    SqliteType.Text);
-        foreach (var (uid, aid, fn, from, email) in updates)
+
+        // Every address filled here was already in the row's search text: the old Graph text "Name <address>",
+        // the cached body's sender line, or a Graph display text that is the address. The update trigger marks
+        // the row for reindexing anyway, which on a large cache is a long background job that drops these rows
+        // from index results until it is done, for words the index already has. So where the index had settled
+        // the row and nothing but this update has touched it since (its generation moved by exactly one), it is
+        // settled again (review of #806). The server half's addresses are new words and are reindexed as usual.
+        await using var settle = conn.CreateCommand();
+        settle.CommandText = """
+            UPDATE SearchKey SET pending = 0
+            WHERE unique_id = $uid AND account_id = $aid AND folder_name = $fn AND generation = $gen AND pending = 1;
+            """;
+        var sUid = settle.Parameters.Add("$uid", SqliteType.Text);
+        var sAid = settle.Parameters.Add("$aid", SqliteType.Text);
+        var sFn  = settle.Parameters.Add("$fn",  SqliteType.Text);
+        var sGen = settle.Parameters.Add("$gen", SqliteType.Integer);
+
+        var filled = 0;
+        var leftPending = false;
+        foreach (var (uid, aid, fn, from, email, generation) in updates)
         {
             pEmail.Value = email;
             pFrom.Value  = (object?)from ?? DBNull.Value;
             pUid.Value   = uid;
             pAid.Value   = aid;
             pFn.Value    = fn;
-            await cmd.ExecuteNonQueryAsync();
+            if (await cmd.ExecuteNonQueryAsync() == 0) continue;
+            filled++;
+            if (generation is { } gen)
+            {
+                (sUid.Value, sAid.Value, sFn.Value, sGen.Value) = (uid, aid, fn, gen + 1);
+                if (await settle.ExecuteNonQueryAsync() == 1) continue;
+            }
+            leftPending = true;
         }
         await tx.CommitAsync();
-        KickSearchIndexer();
-        return updates.Count;
+        if (leftPending) KickSearchIndexer();
+        return filled;
     }
 
     public async Task<Dictionary<string, List<string>>> GetMessageIdsMissingSenderEmailAsync(Guid accountId)
