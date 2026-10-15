@@ -10,7 +10,7 @@ namespace QuickMail.Services;
 /// <summary>
 /// The one-time sender-address backfill (#803). Rows cached before from_email existed have it empty; these fill it
 /// in place — never deleting a row or touching anything but the sender — first from what the database already
-/// holds, then, for IMAP rows that hold a display name alone, from addresses the sync fetches from the server.
+/// holds, then, for IMAP rows with no cached body, from addresses the sync fetches from the server.
 /// Every write is guarded by <c>from_email = ''</c>, so running any of this twice changes nothing.
 /// </summary>
 public partial class LocalStoreService

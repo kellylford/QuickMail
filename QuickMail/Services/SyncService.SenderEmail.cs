@@ -10,7 +10,8 @@ namespace QuickMail.Services;
 /// <summary>
 /// The server half of the one-time sender-address backfill (#803). The local half
 /// (<see cref="ILocalStoreService.BackfillSenderEmailsLocallyAsync"/>, run at startup) fills every row whose
-/// address is already on disk; what is left is IMAP rows holding a display name alone. For exactly those this
+/// address is already on disk; what is left is IMAP rows with no cached body, including any whose display text
+/// looks like an address, since a sender can make their name look like one. For exactly those this
 /// fetches the From header — nothing else — and writes only from_email: no row is added or removed, read state
 /// and flags are untouched, and rules do not run, since nothing arrives. It is paced, and it reports its
 /// progress, because on a large cache it is real traffic the user did not ask for.

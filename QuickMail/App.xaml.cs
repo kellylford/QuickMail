@@ -471,7 +471,7 @@ public partial class App : Application
             // One-time sender-address backfill (#803): rows cached before from_email existed get it filled in
             // place. Unlike the #366 rebuild above, nothing is cleared — POP3's cache is the only copy of its mail.
             // The local half runs here, before the first list is shown, so an older Microsoft row already reads by
-            // name (#801). IMAP rows holding a display name alone are fetched by the first sync's trickle, and the
+            // name (#801). IMAP rows with no cached body are fetched by the first sync's trickle, and the
             // marker is written only once that has reached every IMAP account; until then each launch resumes it
             // (both halves only touch rows still lacking an address). Skipped in --online mode (no local store).
             var senderBackfillMarker = System.IO.Path.Combine(profile.ProfileDir, ".sender-address-backfilled");

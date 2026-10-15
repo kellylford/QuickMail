@@ -202,9 +202,10 @@ public interface ILocalStoreService
     /// <summary>
     /// Fills in from_email for every cached row that lacks it and whose address the database already holds: a
     /// Graph row's "Name &lt;address&gt;" (split, so from_disp keeps the name alone, as #801 has Graph write it
-    /// now), a cached body's full sender, or a display text that is itself a bare address. Leaves the rest — IMAP
-    /// rows holding a display name alone — for <see cref="GetMessageIdsMissingSenderEmailAsync"/>. Returns how
-    /// many rows it filled. Safe to run again: it only touches rows whose from_email is still empty.
+    /// now), a cached body's full sender, or, on a Graph row only, a display text that is itself a bare address.
+    /// Leaves the rest — IMAP rows with no cached body, whose display text can't be trusted to be an address — for
+    /// <see cref="GetMessageIdsMissingSenderEmailAsync"/>. Returns how many rows it filled. Safe to run again: it
+    /// only touches rows whose from_email is still empty.
     /// </summary>
     Task<int> BackfillSenderEmailsLocallyAsync(IReadOnlyCollection<Guid> graphAccountIds);
 

@@ -1,6 +1,7 @@
 // The one-time sender-address backfill (#803): rows cached before from_email existed get it filled in place.
 // Nothing is cleared — POP3's cache is the only copy of its mail — so these pin that it only ever fills what
-// is missing, splits only Graph rows, and asks the server only for IMAP rows that hold a display name alone.
+// is missing, splits only Graph rows, never trusts an IMAP display text to be an address, and asks the server only
+// for IMAP rows with no cached body.
 
 using System;
 using System.Collections.Generic;
@@ -46,9 +47,29 @@ public class SenderAddressBackfillRuleTests
             SenderAddressBackfill.For("Ford, Kelly", "\"Ford, Kelly\" <kelly@example.com>", isGraphRow: false));
 
     [Fact]
-    public void AnImapRowWithNoName_IsAlreadyItsAddress()
-        => Assert.Equal(new SenderAddressBackfill.Result(null, "news@company.com"),
-            SenderAddressBackfill.For("news@company.com", null, isGraphRow: false));
+    public void AnImapDisplayTextThatLooksLikeAnAddress_IsLeftToTheServer()
+        // Review of #806: on IMAP, "boss@company.com" in from_disp may be a forger's display name in front of
+        // another address. Taking it as the address would show the forged one in Properties, and from_email = ''
+        // guards every later write, so the server fetch could never correct it.
+        => Assert.Null(SenderAddressBackfill.For("boss@company.com", null, isGraphRow: false));
+
+    [Fact]
+    public void AnImapRowWithAForgedName_TakesTheRealAddressFromItsCachedBody()
+        => Assert.Equal(new SenderAddressBackfill.Result(null, "attacker@evil.example"),
+            SenderAddressBackfill.For("boss@company.com", "\"boss@company.com\" <attacker@evil.example>", isGraphRow: false));
+
+    [Fact]
+    public void AGraphRowWithAnAddressShapedName_TakesTheRealAddress()
+        // Graph wrote "Name <address>" whenever the name differed from the address, so a forged name arrives with the
+        // real address beside it.
+        => Assert.Equal(new SenderAddressBackfill.Result("boss@company.com", "attacker@evil.example"),
+            SenderAddressBackfill.For("boss@company.com <attacker@evil.example>", null, isGraphRow: true));
+
+    [Fact]
+    public void AGraphRowWithAFakeAddressInsideItsName_TakesTheRealAddressAtTheEnd()
+        // Split at the LAST " <": the real address is the one Graph appended.
+        => Assert.Equal(new SenderAddressBackfill.Result("Tom <ceo@bank.example>", "attacker@evil.example"),
+            SenderAddressBackfill.For("Tom <ceo@bank.example> <attacker@evil.example>", null, isGraphRow: true));
 
     [Theory]
     [InlineData("Some Company")]   // a name alone, no body cached: only the server knows
@@ -94,8 +115,9 @@ public class SenderAddressBackfillStoreTests : IDisposable
     {
         await _store.UpsertSummariesAsync([
             Row(_graph, "g1", "Alice <alice@x.com>"),
+            Row(_graph, "g2", "news@company.com"),
             Row(_imap,  "i1", "Ford, Kelly"),
-            Row(_imap,  "i2", "news@company.com"),
+            Row(_imap,  "i2", "boss@company.com"),
             Row(_imap,  "i3", "Some Company"),
             Row(_imap,  "i4", "Already Done", "done@x.com"),
         ]);
@@ -109,13 +131,14 @@ public class SenderAddressBackfillStoreTests : IDisposable
         Assert.Equal(3, filled);
         var g1 = await Load(_graph, "g1");
         Assert.Equal(("Alice", "alice@x.com"), (g1.From, g1.FromEmail));          // split: #801 for older rows
+        Assert.Equal("news@company.com", (await Load(_graph, "g2")).FromEmail);   // a Graph row with no name
         Assert.Equal(("Ford, Kelly", "kelly@example.com"), ((await Load(_imap, "i1")).From, (await Load(_imap, "i1")).FromEmail));
-        Assert.Equal("news@company.com", (await Load(_imap, "i2")).FromEmail);
+        Assert.Equal("", (await Load(_imap, "i2")).FromEmail);                    // may be a forged name: server
         Assert.Equal("", (await Load(_imap, "i3")).FromEmail);                    // only the server knows
         Assert.Equal("done@x.com", (await Load(_imap, "i4")).FromEmail);          // untouched
 
         var forServer = await _store.GetMessageIdsMissingSenderEmailAsync(_imap);
-        Assert.Equal(["i3"], forServer["INBOX"]);
+        Assert.Equal(["i2", "i3"], forServer["INBOX"].Order());
     }
 
     [Fact]

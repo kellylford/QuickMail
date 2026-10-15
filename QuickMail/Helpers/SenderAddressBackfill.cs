@@ -7,8 +7,9 @@ namespace QuickMail.Helpers;
 /// <summary>
 /// Works out a cached list row's sender address from what is already on disk, for the one-time backfill
 /// that follows the from_email column (#803). Pure, so every shape a row can be in is testable without a
-/// database. Rows these rules cannot answer are IMAP rows holding a display name alone; the sync fetches
-/// those from the server.
+/// database. Rows these rules cannot answer are IMAP rows with no cached body — even one whose display text
+/// looks like an address, since a sender can make their name look like one; the sync fetches those from the
+/// server.
 /// </summary>
 public static class SenderAddressBackfill
 {
@@ -22,13 +23,16 @@ public static class SenderAddressBackfill
     /// <param name="detailFromAddr">The cached body's full sender (MessageDetail.from_addr), or empty.</param>
     /// <param name="isGraphRow">
     /// Whether the row belongs to a Microsoft Graph account, whose from_disp held "Name &lt;address&gt;"
-    /// until #801. Only those rows are split: an IMAP or POP3 display name is the sender's own text, and a
-    /// name that happens to contain angle brackets must not be cut apart.
+    /// until #801. Only those rows are split, and only those rows may take their display text as the address:
+    /// see the comment at that rule.
     /// </param>
     public static Result? For(string fromDisp, string? detailFromAddr, bool isGraphRow)
     {
         if (string.IsNullOrWhiteSpace(fromDisp)) return null;
 
+        // An IMAP or POP3 display name is the sender's own text, and a name that happens to contain angle
+        // brackets must not be cut apart. Splitting at the LAST " <" keeps a forged "Tom <ceo@bank.example>" whole as
+        // the name and takes the real address that follows it.
         if (isGraphRow && TrySplitGraphHeader(fromDisp, out var name, out var address))
             return new Result(name, address);
 
@@ -37,8 +41,11 @@ public static class SenderAddressBackfill
             && ImapMailService.FormatAddressListEmails(list) is { Length: > 0 } fromBody)
             return new Result(null, fromBody);
 
-        // A sender with no name: the display text already is the address.
-        return AsBareAddress(fromDisp) is { } bare ? new Result(null, bare) : null;
+        // A Graph row with no name: AsHeaderString wrote the address alone only when the name was empty or was the
+        // address itself, so on a Graph row this text IS the address. Never on an IMAP row: from_disp there is the
+        // display name alone, and "boss@company.com" can be a forger's name in front of another address. With no
+        // body to say otherwise, only the server knows, so the sync fetches it (review of #806).
+        return isGraphRow && AsBareAddress(fromDisp) is { } bare ? new Result(null, bare) : null;
     }
 
     /// <summary>
