@@ -43,9 +43,8 @@ contact, and both kinds of search look at both the from address and the display 
 
 The first time you start this version, QuickMail fills in the address for mail it already has.
 Most of it comes from what is already on this computer. For IMAP mail whose text has not been
-downloaded, it asks the server for the sender alone, a batch at a time, and says "Updated sender
-addresses for" the number of messages when it is done. Nothing is moved, deleted or marked, and
-your rules do not run again.
+downloaded, it asks the server for the sender alone, a batch at a time, and shows its progress in
+the status bar. Nothing is moved, deleted or marked, and your rules do not run again.
 
 ### A Microsoft account's message list says the sender's name
 

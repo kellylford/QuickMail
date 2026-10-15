@@ -360,7 +360,7 @@ public class SenderAddressBackfillWordingTests
             QuickMail.ViewModels.MainViewModel.DescribeSenderEmailBackfill(2000, 8000));
 
     [Fact]
-    public void Finishing_IsSpokenOnlyWhenSomethingWasFilled()
+    public void Finishing_ShowsAResultOnlyWhenSomethingWasFilled()
     {
         Assert.Null(QuickMail.ViewModels.MainViewModel.SenderEmailBackfillFinished(0));
         Assert.Equal("Updated the sender address of 1 message.", QuickMail.ViewModels.MainViewModel.SenderEmailBackfillFinished(1));
