@@ -651,8 +651,8 @@ public class LocalStoreServiceTests
     [Fact]
     public async Task DetailFrom_FallsBackToTheSummary_ForRowsWrittenBeforeFromAddrExisted()
     {
-        // A detail row cached by an older build has from_addr = '' and cannot be repaired from the
-        // database — the address is stored nowhere else. Serving the summary's display name keeps
+        // A detail row cached by an older build has from_addr = '', and here the summary has no from_email yet
+        // either, so the address is stored nowhere in the database. Serving the summary's display name keeps
         // such a message readable; MainViewModel re-fetches it on open to fill the address back in.
         var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
         var store   = new LocalStoreService(new ProfileContext(tempDir));
@@ -674,6 +674,34 @@ public class LocalStoreServiceTests
         var loaded = await store.LoadDetailAsync(acct, "Inbox", "8");
         Assert.NotNull(loaded);
         Assert.Equal("Kelly Ford", loaded!.From);
+    }
+
+    [Fact]
+    public async Task DetailFrom_ForRowsWrittenBeforeFromAddrExisted_KeepsTheAddressTheSummaryHolds()
+    {
+        // Review of #806: an older Graph row used to fall back to its from_disp "Kelly Ford <kelly@example.com>".
+        // The backfill splits that into from_disp "Kelly Ford" and from_email, so the fallback reads both — or an
+        // offline reply, with no re-fetch to repair it, would be addressed to a bare name.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
+        store.Initialize();
+
+        var acct = Guid.NewGuid();
+        await store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            MessageId = "9", AccountId = acct, FolderName = "Inbox",
+            From = "Kelly Ford", FromEmail = "kelly@example.com", Subject = "s", Date = DateTimeOffset.UtcNow,
+        }]);
+        await store.UpsertDetailAsync(new MailMessageDetail
+        {
+            MessageId = "9", AccountId = acct, FolderName = "Inbox",
+            From = string.Empty,                       // what a pre-#636 row looks like on disk
+            To = "you@example.com", PlainTextBody = "body",
+        });
+
+        var loaded = await store.LoadDetailAsync(acct, "Inbox", "9");
+        Assert.NotNull(loaded);
+        Assert.Equal("Kelly Ford <kelly@example.com>", loaded!.From);
     }
 
     [Fact]

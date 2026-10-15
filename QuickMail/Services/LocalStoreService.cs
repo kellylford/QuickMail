@@ -1083,7 +1083,7 @@ public partial class LocalStoreService : ILocalStoreService
         cmd.CommandText = """
             SELECT d.to_addr, d.cc, d.reply_to, d.plain_body, d.html_body,
                    s.from_disp, s.subject, s.date_ticks, s.is_read, d.attachments_json, d.calendar_ics,
-                   s.internet_message_id, d.from_addr
+                   s.internet_message_id, d.from_addr, s.from_email
             FROM MessageDetail d
             LEFT JOIN MessageSummary s USING (unique_id, account_id, folder_name)
             WHERE d.unique_id=$uid AND d.account_id=$aid AND d.folder_name=$fn;
@@ -1126,11 +1126,16 @@ public partial class LocalStoreService : ILocalStoreService
             ReplyTo       = r.GetString(2),
             PlainTextBody = r.GetString(3),
             HtmlBody      = r.GetString(4),
-            // The detail's own full address where the row has one; the summary's display-name-only
-            // column for rows written before from_addr existed (issue #636). MainViewModel re-fetches
-            // on open when what comes back has no address in it, so a legacy row repairs itself.
+            // The detail's own full address where the row has one. A detail written before from_addr existed
+            // (issue #636) has none, so it takes the summary's name and address together (#803): from_disp alone
+            // is the display name, and since the backfill splits an older Graph row's "Name <address>" into
+            // from_disp and from_email, reading from_disp alone would lose an address that row used to give —
+            // and offline, a reply would be addressed to a bare name (review of #806). With no address on the
+            // summary either, the name alone; MainViewModel then re-fetches on open, so the row repairs itself.
             From          = FirstNonEmpty(r.IsDBNull(12) ? null : r.GetString(12),
-                                          r.IsDBNull(5)  ? null : r.GetString(5)),
+                                          MailMessageSummary.JoinNameAndAddress(
+                                              r.IsDBNull(5)  ? null : r.GetString(5),
+                                              r.IsDBNull(13) ? null : r.GetString(13))),
             Subject       = r.IsDBNull(6) ? "(no subject)" : r.GetString(6),
             Date          = r.IsDBNull(7) ? DateTimeOffset.MinValue : new DateTimeOffset(r.GetInt64(7), TimeSpan.Zero),
             IsRead        = !r.IsDBNull(8) && r.GetInt64(8) != 0,

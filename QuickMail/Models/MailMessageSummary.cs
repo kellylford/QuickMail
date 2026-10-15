@@ -52,10 +52,19 @@ public partial class MailMessageSummary : ObservableObject
     /// there is no separate address — a row cached before <see cref="FromEmail"/> existed, or a sender with no name,
     /// whose From already is the address.
     /// </summary>
-    public string FromWithAddress =>
-        string.IsNullOrEmpty(FromEmail) || string.Equals(From, FromEmail, StringComparison.OrdinalIgnoreCase)
-            ? From
-            : string.IsNullOrEmpty(From) ? FromEmail : $"{From} <{FromEmail}>";
+    public string FromWithAddress => JoinNameAndAddress(From, FromEmail);
+
+    /// <summary>
+    /// <see cref="FromWithAddress"/>'s rule, for callers holding a name and an address that are not on a summary —
+    /// a cached detail's fallback reads them straight from the row (review of #806).
+    /// </summary>
+    public static string JoinNameAndAddress(string? name, string? address)
+    {
+        name ??= string.Empty;
+        return string.IsNullOrEmpty(address) || string.Equals(name, address, StringComparison.OrdinalIgnoreCase)
+            ? name
+            : name.Length == 0 ? address : $"{name} <{address}>";
+    }
 
     public string To { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;

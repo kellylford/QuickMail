@@ -427,7 +427,9 @@ public sealed class MessageSaver
         detail.FlagId      = message.FlagId;
         detail.FlagName    = message.FlagName;
         if (string.IsNullOrWhiteSpace(detail.Subject)) detail.Subject = message.Subject;
-        if (string.IsNullOrWhiteSpace(detail.From))    detail.From    = message.From;
+        // The summary's name and address together, not its From: that is the display name alone, and a saved
+        // file with no address in its From can't be replied to (#803, review of #806).
+        if (string.IsNullOrWhiteSpace(detail.From))    detail.From    = message.FromWithAddress;
         if (detail.Date == default)                    detail.Date    = message.Date;
         return detail;
     }
