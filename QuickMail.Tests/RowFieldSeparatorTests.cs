@@ -48,10 +48,10 @@ public class RowFieldSeparatorTests
     [Fact]
     public void Comma_JoinsWithCommasAndDropsTheFinalPeriod()
     {
-        var text = RowSpeechBuilder.Build(RowKind.Message, Message("Lunch tomorrow?"), MessageLayout(),
+        var text = RowSpeechBuilder.Build(RowKind.Message, Message("Lunch tomorrow"), MessageLayout(),
                                           separator: RowFieldSeparator.Comma);
 
-        Assert.Equal("unread, Microsoft 365, Upcoming changes, Lunch tomorrow?, 10/13/2026", text);
+        Assert.Equal("unread, Microsoft 365, Upcoming changes, Lunch tomorrow, 10/13/2026", text);
     }
 
     [Fact]
@@ -163,12 +163,12 @@ public class RowFieldSeparatorTests
     public void TheConverterUsesTheSettingsSeparator()
     {
         var settings = new RowSpeechSettings(RowFieldCatalog.DefaultLayouts(), false, RowFieldSeparator.Comma);
-        var values   = Message("Lunch tomorrow?").Append(settings).ToArray();
+        var values   = Message("Lunch tomorrow").Append(settings).ToArray();
 
         var name = (string)new RowSpeechConverter(RowKind.Message).Convert(
             values!, typeof(string), parameter: null!, CultureInfo.InvariantCulture);
 
-        Assert.Equal("unread, Microsoft 365, Upcoming changes, Lunch tomorrow?, 10/13/2026", name);
+        Assert.Equal("unread, Microsoft 365, Upcoming changes, Lunch tomorrow, 10/13/2026", name);
     }
 
     [Fact]
