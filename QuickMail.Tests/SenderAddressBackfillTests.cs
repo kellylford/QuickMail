@@ -200,11 +200,14 @@ public class SenderAddressBackfillSyncTests : IDisposable
         public Dictionary<string, string> OnServer { get; } = [];
         public List<(string Folder, List<string> Ids)> Fetches { get; } = [];
         public bool Unreachable { get; set; }
+        /// <summary>A folder whose fetch throws the given exception, the way a real server can fail it.</summary>
+        public Dictionary<string, Exception> FailFolder { get; } = [];
 
         public Task<IReadOnlyDictionary<string, string>> FetchSenderEmailsAsync(
             Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
         {
             if (Unreachable) throw new SocketException((int)SocketError.HostUnreachable);
+            if (FailFolder.TryGetValue(folderName, out var failure)) throw failure;
             Fetches.Add((folderName, messageIds.ToList()));
             return Task.FromResult<IReadOnlyDictionary<string, string>>(
                 messageIds.Where(OnServer.ContainsKey).ToDictionary(id => id, id => OnServer[id]));
@@ -355,6 +358,78 @@ public class SenderAddressBackfillSyncTests : IDisposable
 
         Assert.Equal(["2"], Assert.Single(mail2.Fetches).Ids);   // the first account's rows were already filled
         Assert.Equal(1, completed);
+    }
+
+    [Fact]
+    public async Task AFolderDeletedOnTheServer_IsSkippedForGood_AndTheAccountStillFinishes()
+    {
+        var imap = Account();
+        await Seed(imap, "1", "Some Company");
+        await Seed(imap, "2", "Other Company", folder: "Old Projects");
+        var (sync, mail) = Build();
+        mail.OnServer["1"] = "news@company.com";
+        mail.FailFolder["Old Projects"] = new MailKit.FolderNotFoundException("Old Projects");
+        var completed = 0;
+        sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
+
+        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
+
+        Assert.Equal("news@company.com", (await _store.LoadFolderSummariesAsync(imap.Id, "INBOX")).Single().FromEmail);
+        Assert.Equal(1, completed);   // retrying a folder that is gone would never succeed
+    }
+
+    public static TheoryData<Exception> TemporaryRefusals() => new()
+    {
+        // Gmail throttling: the server answered, so it is not a connection failure — but it passes.
+        new MailKit.Net.Imap.ImapCommandException(MailKit.Net.Imap.ImapCommandResponse.No, "[UNAVAILABLE] Try again later"),
+        new MailKit.Security.AuthenticationException("The sign-in needs renewing."),
+        new InvalidOperationException("Something the backfill did not expect."),
+    };
+
+    [Theory]
+    [MemberData(nameof(TemporaryRefusals))]
+    public async Task ARefusalThatCanPass_LeavesTheAccountForNextLaunch(Exception refusal)
+    {
+        // Review of #806: these used to skip the folder for good, so the marker was written over rows the next launch
+        // could have filled.
+        var imap = Account();
+        await Seed(imap, "1", "Some Company");
+        var (sync, mail) = Build();
+        mail.FailFolder["INBOX"] = refusal;
+        var completed = 0;
+        sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
+
+        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
+
+        Assert.Equal(0, completed);
+    }
+
+    [Fact]
+    public void OnlyAGoneFolderOrABadId_IsSkippedForGood()
+    {
+        Assert.True(SyncService.IsPermanentlyUnfetchable(new MailKit.FolderNotFoundException("Old")));
+        Assert.True(SyncService.IsPermanentlyUnfetchable(new FormatException()));     // a non-numeric stored id
+        Assert.True(SyncService.IsPermanentlyUnfetchable(new OverflowException()));   // too large for a UID
+        Assert.False(SyncService.IsPermanentlyUnfetchable(
+            new MailKit.Net.Imap.ImapCommandException(MailKit.Net.Imap.ImapCommandResponse.No, "[UNAVAILABLE]")));
+        Assert.False(SyncService.IsPermanentlyUnfetchable(new MailKit.Security.AuthenticationException("expired")));
+    }
+
+    [Fact]
+    public async Task ARefusingAccount_DoesNotHoldUpAnotherAccount()
+    {
+        var refusing = Account();
+        var fine = Account();
+        await Seed(refusing, "1", "Some Company", folder: "Busy");
+        await Seed(fine, "2", "Other Company");
+        var (sync, mail) = Build();
+        mail.FailFolder["Busy"] = new MailKit.Net.Imap.ImapCommandException(MailKit.Net.Imap.ImapCommandResponse.No, "[UNAVAILABLE]");
+        mail.OnServer["2"] = "info@other.example";
+        sync.RequestSenderEmailBackfill([refusing.Id, fine.Id], () => { });
+
+        await sync.BackfillSenderEmailsFromServerAsync([refusing, fine], CancellationToken.None);
+
+        Assert.Equal("info@other.example", (await _store.LoadFolderSummariesAsync(fine.Id, "INBOX")).Single().FromEmail);
     }
 
     [Fact]

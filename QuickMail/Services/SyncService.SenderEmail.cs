@@ -77,11 +77,12 @@ public partial class SyncService
         var total = work.Sum(w => w.Ids.Count);
         var done = 0;
         var filled = 0;
-        var lost = new HashSet<Guid>();
+        // Accounts this pass stopped on before it was through: the rest of their folders are left for the next launch.
+        var unfinished = new HashSet<Guid>();
         var firstRequest = true;
         foreach (var (account, folder, ids) in work)
         {
-            if (lost.Contains(account.Id)) continue;
+            if (unfinished.Contains(account.Id)) continue;
             for (var start = 0; start < ids.Count; start += SenderEmailFetchBatch)
             {
                 ct.ThrowIfCancellationRequested();
@@ -100,14 +101,25 @@ public partial class SyncService
                 {
                     _connectivity?.NoteAccountUnreachable(account.Id, "sender-address backfill");
                     LogService.Log($"Sender-address backfill {account.AccountLabel}: server unreachable, stopping", ex);
-                    lost.Add(account.Id);
+                    unfinished.Add(account.Id);
+                    break;
+                }
+                catch (Exception ex) when (IsPermanentlyUnfetchable(ex))
+                {
+                    // The folder is gone from the server, or holds an id no IMAP fetch can name. Retrying it every
+                    // launch would never succeed, so it is skipped for good and the account can still finish; its
+                    // rows keep matching on the display name, as they always did.
+                    LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: skipped for good", ex);
                     break;
                 }
                 catch (Exception ex)
                 {
-                    // A folder deleted on the server, say. Retrying it every launch would never succeed, so it is
-                    // logged and skipped; its rows keep matching on the display name, as they always did.
-                    LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: skipped", ex);
+                    // The server answered but refused: Gmail throttling (NO [UNAVAILABLE]), a sign-in that needs
+                    // renewing, and the like. These pass, so the account is left for the next launch rather than
+                    // its folder dropped for good — and the pass stops asking it now rather than pressing on into a
+                    // server that is pushing back (review of #806).
+                    LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: will try again next launch", ex);
+                    unfinished.Add(account.Id);
                     break;
                 }
                 finally
@@ -129,11 +141,20 @@ public partial class SyncService
             _ui.Post(() => SenderEmailBackfillCompleted?.Invoke(filled, total));
         }
 
-        // An account is done once the pass reached it and its server stayed reachable throughout.
+        // An account is done once the pass reached it and went through all its folders: each one fetched, or skipped
+        // for good because it can never be fetched.
         foreach (var account in reached)
-            if (!lost.Contains(account.Id)) pending.Remove(account.Id);
+            if (!unfinished.Contains(account.Id)) pending.Remove(account.Id);
 
         if (pending.Count == 0) onComplete();
         else LogService.Log($"Sender-address backfill: {pending.Count} IMAP account(s) not worked through; it continues next launch.");
     }
+
+    /// <summary>
+    /// The failures that will happen again however often the fetch is retried: a folder deleted on the server, or a
+    /// stored id that is not an IMAP UID (non-numeric, or out of range). Everything else — a refusal, throttling, an
+    /// expired sign-in — can pass, so it leaves the account for the next launch instead (review of #806).
+    /// </summary>
+    internal static bool IsPermanentlyUnfetchable(Exception ex) =>
+        ex is MailKit.FolderNotFoundException or FormatException or OverflowException;
 }
