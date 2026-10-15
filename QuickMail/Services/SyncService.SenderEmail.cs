@@ -29,30 +29,47 @@ public partial class SyncService
 
     private Action? _senderEmailBackfillDone;
 
+    /// <summary>
+    /// The IMAP accounts the requested pass still has to work through. Fixed when the pass is requested, from every
+    /// IMAP account the profile has — not from the accounts the sync is handed, which are the connected ones only, so
+    /// an account that could not connect at startup is still owed its pass (review of #806).
+    /// </summary>
+    private HashSet<Guid> _senderEmailPending = [];
+
     public event Action<int, int>? SenderEmailBackfillProgressChanged;
     public event Action<int, int>? SenderEmailBackfillCompleted;
 
     /// <summary>
-    /// Asks the next post-sync trickle to fetch the addresses of IMAP rows still lacking one, calling
-    /// <paramref name="onComplete"/> once every IMAP account has been worked through. When an account cannot be
-    /// reached it is not called, and the caller asks again at the next launch.
+    /// Asks the post-sync trickle to fetch the addresses of IMAP rows still lacking one, calling
+    /// <paramref name="onComplete"/> once every account in <paramref name="imapAccountIds"/> has been worked through.
+    /// An account the pass did not reach — not connected at startup, offline, or dropped part-way — leaves it
+    /// uncalled, and the caller asks again at the next launch: the startup sync is the trickle's only caller.
     /// </summary>
-    public void RequestSenderEmailBackfill(Action onComplete) => _senderEmailBackfillDone = onComplete;
+    public void RequestSenderEmailBackfill(IReadOnlyCollection<Guid> imapAccountIds, Action onComplete)
+    {
+        _senderEmailPending = [.. imapAccountIds];
+        _senderEmailBackfillDone = onComplete;
+    }
 
     // Internal so tests can run the pass without a whole startup sync around it.
     internal async Task BackfillSenderEmailsFromServerAsync(List<AccountModel> accounts, CancellationToken ct)
     {
         if (_probeMode) return;
-        // Taken, not read: one pass per request, so the periodic sweep does not repeat it.
+        // Taken, not read: the request is for one pass. The startup sync is the only caller, so whatever this pass
+        // leaves undone waits for the request the next launch makes.
         var onComplete = Interlocked.Exchange(ref _senderEmailBackfillDone, null);
         if (onComplete is null) return;
+        var pending = _senderEmailPending;
 
-        // Plan first, so the progress total is the whole pass rather than one account at a time.
-        var complete = true;
+        // Plan first, so the progress total is the whole pass rather than one account at a time. Only the accounts
+        // the request named, and only those the sync was handed (connected) and still believes online; every other
+        // one stays pending.
+        var reached = new List<AccountModel>();
         var work = new List<(AccountModel Account, string Folder, List<string> Ids)>();
-        foreach (var account in accounts.Where(a => a.BackendKind == BackendKind.ImapSmtp && !a.IsShared))
+        foreach (var account in accounts.Where(a => pending.Contains(a.Id)))
         {
-            if (_connectivity != null && !_connectivity.IsAccountOnline(account.Id)) { complete = false; continue; }
+            if (_connectivity != null && !_connectivity.IsAccountOnline(account.Id)) continue;
+            reached.Add(account);
             foreach (var (folder, ids) in await _store.GetMessageIdsMissingSenderEmailAsync(account.Id))
                 work.Add((account, folder, ids));
         }
@@ -84,7 +101,6 @@ public partial class SyncService
                     _connectivity?.NoteAccountUnreachable(account.Id, "sender-address backfill");
                     LogService.Log($"Sender-address backfill {account.AccountLabel}: server unreachable, stopping", ex);
                     lost.Add(account.Id);
-                    complete = false;
                     break;
                 }
                 catch (Exception ex)
@@ -112,7 +128,12 @@ public partial class SyncService
             LogService.Log($"Sender-address backfill: {filled} of {total} filled from the server");
             _ui.Post(() => SenderEmailBackfillCompleted?.Invoke(filled, total));
         }
-        if (complete) onComplete();
-        else LogService.Log("Sender-address backfill: not every IMAP account was reachable; it continues next launch.");
+
+        // An account is done once the pass reached it and its server stayed reachable throughout.
+        foreach (var account in reached)
+            if (!lost.Contains(account.Id)) pending.Remove(account.Id);
+
+        if (pending.Count == 0) onComplete();
+        else LogService.Log($"Sender-address backfill: {pending.Count} IMAP account(s) not worked through; it continues next launch.");
     }
 }

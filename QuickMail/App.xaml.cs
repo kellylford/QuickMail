@@ -472,8 +472,9 @@ public partial class App : Application
             // place. Unlike the #366 rebuild above, nothing is cleared — POP3's cache is the only copy of its mail.
             // The local half runs here, before the first list is shown, so an older Microsoft row already reads by
             // name (#801). IMAP rows with no cached body are fetched by the first sync's trickle, and the
-            // marker is written only once that has reached every IMAP account; until then each launch resumes it
-            // (both halves only touch rows still lacking an address). Skipped in --online mode (no local store).
+            // marker is written only once that has worked through every IMAP account in the profile, connected at
+            // startup or not; until then each launch resumes it (both halves only touch rows still lacking an
+            // address). Skipped in --online mode (no local store).
             var senderBackfillMarker = System.IO.Path.Combine(profile.ProfileDir, ".sender-address-backfilled");
             var senderBackfillPending = !onlineMode && !probeMode && !System.IO.File.Exists(senderBackfillMarker);
             if (senderBackfillPending)
@@ -525,14 +526,18 @@ public partial class App : Application
             // read old mail as new and re-run rules over it on upgrade day. Baseline it (#366/N5).
             if (immutableIdRebuilt) syncService.SeedRebuildBaseline(rebuiltGraphAccountIds);
 
-            // The server half of the sender-address backfill (#803, above): marks it done once every IMAP
-            // account has been worked through.
+            // The server half of the sender-address backfill (#803, above): marks it done once every IMAP account in
+            // the profile has been worked through. The list is taken here, from all of them, because the sync itself
+            // is handed the connected ones only — an account that can't connect at startup must keep the marker
+            // unwritten, not be silently left out (review of #806).
             if (senderBackfillPending)
-                syncService.RequestSenderEmailBackfill(() =>
-                {
-                    try { System.IO.File.WriteAllText(senderBackfillMarker, DateTime.UtcNow.ToString("o")); }
-                    catch (Exception markerEx) { LogService.Log("Sender-address backfill: could not write its marker.", markerEx); }
-                });
+                syncService.RequestSenderEmailBackfill(
+                    [.. accounts.Where(a => a.BackendKind == BackendKind.ImapSmtp && !a.IsShared).Select(a => a.Id)],
+                    () =>
+                    {
+                        try { System.IO.File.WriteAllText(senderBackfillMarker, DateTime.UtcNow.ToString("o")); }
+                        catch (Exception markerEx) { LogService.Log("Sender-address backfill: could not write its marker.", markerEx); }
+                    });
 
             // #529 step 4: an IMAP→Graph convert purges the account's store before it re-syncs. If the
             // app closed (or crashed) between the purge and the first baselined sync, the store is empty

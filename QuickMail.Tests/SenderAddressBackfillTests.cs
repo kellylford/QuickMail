@@ -242,7 +242,7 @@ public class SenderAddressBackfillSyncTests : IDisposable
         var (sync, mail) = Build();
         mail.OnServer["1"] = "news@company.com";
         var completed = 0;
-        sync.RequestSenderEmailBackfill(() => completed++);
+        sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
 
         await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
 
@@ -258,10 +258,10 @@ public class SenderAddressBackfillSyncTests : IDisposable
         var imap = Account();
         await Seed(imap, "1", "Some Company");
         var (sync, mail) = Build();
-        sync.RequestSenderEmailBackfill(() => { });
+        sync.RequestSenderEmailBackfill([imap.Id], () => { });
 
         await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
-        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);   // a later sweep's trickle
+        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);   // a second call, no new request
 
         Assert.Single(mail.Fetches);
     }
@@ -275,7 +275,7 @@ public class SenderAddressBackfillSyncTests : IDisposable
         await Seed(pop3, "p", "Some Company");
         var (sync, mail) = Build();
         var completed = 0;
-        sync.RequestSenderEmailBackfill(() => completed++);
+        sync.RequestSenderEmailBackfill([], () => completed++);   // what App asks for: the IMAP accounts, none here
 
         await sync.BackfillSenderEmailsFromServerAsync([graph, pop3], CancellationToken.None);
 
@@ -291,7 +291,7 @@ public class SenderAddressBackfillSyncTests : IDisposable
         var (sync, mail) = Build();
         mail.Unreachable = true;
         var completed = 0;
-        sync.RequestSenderEmailBackfill(() => completed++);
+        sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
 
         await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
 
@@ -307,12 +307,54 @@ public class SenderAddressBackfillSyncTests : IDisposable
         _connectivity.NoteAccountUnreachable(imap.Id, "test");
         var (sync, mail) = Build();
         var completed = 0;
-        sync.RequestSenderEmailBackfill(() => completed++);
+        sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
 
         await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
 
         Assert.Empty(mail.Fetches);
         Assert.Equal(0, completed);
+    }
+
+    [Fact]
+    public async Task AnImapAccountThatNeverConnected_LeavesItForNextLaunch()
+    {
+        // Review of #806: the sync is handed the connected accounts only. Gmail needing an interactive sign-in on
+        // upgrade day while another IMAP account connects must not get the marker written over Gmail's older rows.
+        var connected = Account();
+        var neverConnected = Account();
+        await Seed(connected, "1", "Some Company");
+        await Seed(neverConnected, "2", "Other Company");
+        var (sync, mail) = Build();
+        mail.OnServer["1"] = "news@company.com";
+        var completed = 0;
+        sync.RequestSenderEmailBackfill([connected.Id, neverConnected.Id], () => completed++);
+
+        await sync.BackfillSenderEmailsFromServerAsync([connected], CancellationToken.None);
+
+        Assert.Equal("news@company.com", (await _store.LoadFolderSummariesAsync(connected.Id, "INBOX")).Single().FromEmail);
+        Assert.Equal(0, completed);
+    }
+
+    [Fact]
+    public async Task TheNextLaunch_FinishesOnceTheMissingAccountConnects()
+    {
+        var first = Account();
+        var second = Account();
+        await Seed(first, "1", "Some Company");
+        await Seed(second, "2", "Other Company");
+        var (launch1, mail1) = Build();
+        mail1.OnServer["1"] = "news@company.com";
+        launch1.RequestSenderEmailBackfill([first.Id, second.Id], () => { });
+        await launch1.BackfillSenderEmailsFromServerAsync([first], CancellationToken.None);
+
+        var (launch2, mail2) = Build();
+        mail2.OnServer["2"] = "info@other.example";
+        var completed = 0;
+        launch2.RequestSenderEmailBackfill([first.Id, second.Id], () => completed++);
+        await launch2.BackfillSenderEmailsFromServerAsync([first, second], CancellationToken.None);
+
+        Assert.Equal(["2"], Assert.Single(mail2.Fetches).Ids);   // the first account's rows were already filled
+        Assert.Equal(1, completed);
     }
 
     [Fact]
@@ -345,7 +387,7 @@ public class SenderAddressBackfillSyncTests : IDisposable
         var completed = new List<(int, int)>();
         sync.SenderEmailBackfillProgressChanged += (d, t) => progress.Add((d, t));
         sync.SenderEmailBackfillCompleted += (f, p) => completed.Add((f, p));
-        sync.RequestSenderEmailBackfill(() => { });
+        sync.RequestSenderEmailBackfill([imap.Id], () => { });
 
         await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
 
@@ -365,7 +407,7 @@ public class SenderAddressBackfillSyncTests : IDisposable
         sync.SenderEmailBackfillProgressChanged += (_, _) => said++;
         sync.SenderEmailBackfillCompleted += (_, _) => said++;
         var completed = 0;
-        sync.RequestSenderEmailBackfill(() => completed++);
+        sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
 
         await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
 
