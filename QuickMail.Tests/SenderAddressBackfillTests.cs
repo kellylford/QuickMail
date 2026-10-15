@@ -721,5 +721,22 @@ public class SenderAddressBackfillStatusTests
             xaml, StringComparison.Ordinal);
         Assert.Contains("IsVisibleChanged=\"SenderAddressStatusItem_IsVisibleChanged\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SenderAddressStatusTextBox.IsKeyboardFocused) return 5;", code, StringComparison.Ordinal);
+        Assert.Contains("StatusBarFocusPolicy.ShouldMoveFocusOffHiddenRegion(", code, StringComparison.Ordinal);
     }
+
+    [Theory]
+    // Sitting on the region when it hides: focus moves to a neighbour (the user's manual test of #806 found
+    // focus otherwise left on the hidden region until the next key press).
+    [InlineData(false, true,  true,  true)]
+    // On the region, but another application is in front: the window remembers the region, so coming back
+    // would land on it.
+    [InlineData(false, false, true,  true)]
+    // Anywhere else in the window, or in another application with focus remembered elsewhere: left alone.
+    [InlineData(false, false, false, false)]
+    // The region appearing never moves anyone.
+    [InlineData(true,  true,  true,  false)]
+    [InlineData(true,  false, false, false)]
+    public void FocusMovesOffTheHiddenRegion_OnlyForSomeoneOnIt(
+        bool nowVisible, bool hasKeyboardFocus, bool hasLogicalFocus, bool moves)
+        => Assert.Equal(moves, StatusBarFocusPolicy.ShouldMoveFocusOffHiddenRegion(nowVisible, hasKeyboardFocus, hasLogicalFocus));
 }

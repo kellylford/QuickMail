@@ -4768,12 +4768,20 @@ public partial class MainWindow : Window
     /// <summary>
     /// The sender-address region hides itself when the update ends — quite possibly while someone is on it reading
     /// the count. Focus would be left on nothing, so it moves to the region before it, as Left would have taken it.
-    /// Keyboard focus is still on the hidden region here: WPF moves it off a hidden element only afterwards.
+    /// Only for someone who was on the region; see <see cref="StatusBarFocusPolicy"/>.
     /// </summary>
     private void SenderAddressStatusItem_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (e.NewValue is false && SenderAddressStatusTextBox.IsKeyboardFocused)
-            FocusStatusBarRegion(OfflineStatusItem.Visibility == Visibility.Visible ? 4 : 3);
+        if (!StatusBarFocusPolicy.ShouldMoveFocusOffHiddenRegion(
+                nowVisible: e.NewValue is true,
+                hasKeyboardFocus: SenderAddressStatusTextBox.IsKeyboardFocused,
+                hasLogicalFocus: ReferenceEquals(FocusManager.GetFocusedElement(this), SenderAddressStatusTextBox)))
+            return;
+        IInputElement target = OfflineStatusItem.Visibility == Visibility.Visible ? OfflineStatusTextBox : RulesStatusButton;
+        // Logical focus set explicitly: with another application in front, Focus() leaves the window remembering
+        // the hidden region, since it only fills in a remembered focus when there is none.
+        FocusManager.SetFocusedElement(this, target);
+        target.Focus();
     }
 
     /// <summary>
