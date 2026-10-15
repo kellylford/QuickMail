@@ -946,7 +946,7 @@ For POP3 accounts, QuickMail keeps the original of every message it downloads, s
 
 ### Message Properties
 
-Press **Alt+Enter** on any message to open a properties window showing sender, recipients, date, size, and flags.
+Press **Alt+Enter** on any message to open a properties window showing the sender's name and address, recipients, date, size, and flags.
 
 ### Marking as Read
 
@@ -2324,7 +2324,8 @@ The **Row type** list at the top chooses which kind of row you are editing. Each
 | Flag | The flag's name, when the message is flagged |
 | Status (combined) | One word: "replied", "forwarded", "unread", or "read" |
 | Attachments | "attachments" |
-| From, Subject, Preview, Date, To | The field's text |
+| From | The sender's name, or their address when they have no name. The address itself is in the opened message and in Properties (**Alt+Enter**) |
+| Subject, Preview, Date, To | The field's text |
 | Source folder | Where the message lives — only in aggregate views such as All Archive, where it is account-qualified when the view spans accounts |
 | Unread, Replied, Forwarded | Each state on its own, so you can arrange them separately |
 | Mailing list | "mailing list" |

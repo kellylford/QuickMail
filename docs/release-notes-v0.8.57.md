@@ -18,6 +18,33 @@ fields** choice: **Period** (the default, so nothing changes unless you choose),
 sentences of a preview, is left as it is. The choice applies to message rows, conversation rows
 and the group rows in the From and To views (#802).
 
+## Fixed
+
+### Rules, Find mail from this contact, and search find a sender by address on every account
+
+On Gmail, other IMAP accounts and POP3 accounts, QuickMail kept only the sender's name for the
+message list, so anything that looked for the sender's email address had nothing to find. A
+client-side rule with a **From addresses** condition never matched mail from a sender who has a
+display name, **Find mail from this contact** in the address book came up empty for those senders,
+and a search such as `from:@example.com` missed them. Microsoft 365 and Outlook.com accounts were
+not affected. QuickMail now keeps each sender's address alongside the name on every account, and
+rules, Find mail from this contact, and both kinds of search look at both (#803).
+
+The first time you start this version, QuickMail fills in the address for mail it already has.
+Most of it comes from what is already on this computer. For IMAP mail whose text has not been
+downloaded, it asks the server for the sender alone, a batch at a time, and says "Updated sender
+addresses for" the number of messages when it is done. Nothing is moved, deleted or marked, and
+your rules do not run again.
+
+### A Microsoft account's message list says the sender's name
+
+On a Microsoft 365 or Outlook.com account, each row in the message list showed and spoke the
+sender's address after the name (`Example News <news@example.com>`), where every other kind of
+account says the name alone. It now says the name, or the address when the sender has none. An
+opened message still shows the name and address, a reply still goes to the address, and
+**Properties** (**Alt+Enter**) shows both, on every account, even for a message whose text has not
+been downloaded (#801).
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
