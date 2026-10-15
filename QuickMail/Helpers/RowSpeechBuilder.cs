@@ -14,8 +14,6 @@ namespace QuickMail.Helpers;
 /// </summary>
 public static class RowSpeechBuilder
 {
-    private const string Separator = ". ";
-
     /// <summary>
     /// Composes the spoken string for one row.
     /// </summary>
@@ -29,12 +27,18 @@ public static class RowSpeechBuilder
     /// default, so a row never goes silent because the layout failed to load.
     /// </param>
     /// <param name="showLabels">Whether to prefix text-valued fields with their spoken label.</param>
+    /// <param name="separator">
+    /// What goes between fields (#802). Only <see cref="RowFieldSeparator.Period"/> also ends the
+    /// row with a period, which is what every row said before the choice existed.
+    /// </param>
     public static string Build(
         RowKind kind,
         IReadOnlyList<object?> values,
         IReadOnlyList<RowFieldSetting>? layout,
-        bool showLabels = false)
+        bool showLabels = false,
+        RowFieldSeparator separator = RowFieldSeparator.Period)
     {
+        var between   = RowFieldSeparators.Between(separator);
         var catalog   = RowFieldCatalog.For(kind);
         var effective = layout is { Count: > 0 } ? layout : RowFieldCatalog.DefaultLayout(kind);
 
@@ -53,14 +57,25 @@ public static class RowSpeechBuilder
             var part = Render(def, setting, raw, showLabels);
             if (string.IsNullOrWhiteSpace(part)) continue;
 
-            if (sb.Length > 0) sb.Append(Separator);
+            if (sb.Length > 0) sb.Append(Join(separator, between, sb[^1]));
             sb.Append(part);
         }
 
         if (sb.Length == 0) return string.Empty;
-        sb.Append('.');
+        if (RowFieldSeparators.EndsWithPeriod(separator)) sb.Append('.');
         return sb.ToString();
     }
+
+    /// <summary>
+    /// The text between two fields. A comma after a field that already ends in its own punctuation
+    /// ("…required today.", "Lunch tomorrow?") would read ".," — punctuation on punctuation, from a
+    /// choice made to have less of it — so there the comma gives way to a plain space. The period
+    /// choice is left exactly as rows have always read, doubled period included (#802).
+    /// </summary>
+    private static string Join(RowFieldSeparator separator, string between, char previous) =>
+        separator == RowFieldSeparator.Comma && previous is '.' or '?' or '!' or ':' or ';'
+            ? " "
+            : between;
 
     /// <summary>
     /// WPF hands unset or failed bindings through as <see cref="System.Windows.DependencyProperty.UnsetValue"/>
@@ -87,6 +102,20 @@ public static class RowSpeechBuilder
                 if (raw is not int n) return string.Empty;
                 // Self-describing, so unlabelled like the state fields.
                 return string.Create(CultureInfo.CurrentCulture, $"{n} {(n == 1 ? "message" : "messages")}");
+            }
+
+            // Both unread forms say nothing when nothing is unread, the way Has unread does: a row
+            // that is all read stays as short as it was (#800). Self-describing, so unlabelled.
+            case RowFieldFormat.UnreadCount:
+            {
+                if (raw is not int n || n <= 0) return string.Empty;
+                return string.Create(CultureInfo.CurrentCulture, $"{n} unread");
+            }
+
+            case RowFieldFormat.UnreadOfTotal:
+            {
+                if (raw is not UnreadTally { Unread: > 0 } t) return string.Empty;
+                return string.Create(CultureInfo.CurrentCulture, $"{t.Unread} of {t.Total} unread");
             }
 
             default:

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -78,10 +79,29 @@ public partial class RowFieldsWindow : Window
         _localRegistry.Register(new CommandDefinition(
             "rowfields.labels", "View", "Toggle Speak Field Labels",
             () => _vm.ShowFieldLabels = !_vm.ShowFieldLabels));
+        // The Between fields choices (#802), so the palette offers everything the window does.
+        _localRegistry.Register(new CommandDefinition(
+            "rowfields.separator.period", "View", "Separate Fields with a Period",
+            () => ChooseSeparator(RowFieldSeparator.Period)));
+        _localRegistry.Register(new CommandDefinition(
+            "rowfields.separator.comma", "View", "Separate Fields with a Comma",
+            () => ChooseSeparator(RowFieldSeparator.Comma)));
+        _localRegistry.Register(new CommandDefinition(
+            "rowfields.separator.space", "View", "Separate Fields with a Space",
+            () => ChooseSeparator(RowFieldSeparator.Space)));
         _localRegistry.Register(new CommandDefinition(
             "rowfields.close", "View", "Close",
             Close));
     }
+
+    /// <summary>
+    /// True while either drop-down is open. Escape then belongs to the drop-down, and closing the
+    /// window on it instead was the first bug in #802's Between fields list.
+    /// </summary>
+    internal bool IsAnyDropDownOpen => RowTypeList.IsDropDownOpen || SeparatorList.IsDropDownOpen;
+
+    private void ChooseSeparator(RowFieldSeparator separator) =>
+        _vm.SelectedSeparator = _vm.Separators.First(s => s.Value == separator);
 
     private void ToggleSelectedField()
     {
@@ -133,10 +153,11 @@ public partial class RowFieldsWindow : Window
         }
 
         // Modeless windows get no IsCancel handling, so Escape is wired by hand. Guarded so it
-        // does not steal Escape from an open ComboBox dropdown.
+        // does not steal Escape from an open ComboBox dropdown — either one: this is a tunnelling
+        // handler, so it runs before the dropdown sees the key.
         if (e.Key == Key.Escape)
         {
-            if (RowTypeList.IsDropDownOpen) return;
+            if (IsAnyDropDownOpen) return;
             Close();
             e.Handled = true;
         }

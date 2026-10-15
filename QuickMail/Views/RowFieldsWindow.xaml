@@ -226,6 +226,21 @@
                                Margin="0,2,0,0"
                                Foreground="{DynamicResource Theme.TextSecondary}"
                                FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+
+                    <!-- #802. A ComboBox rather than radio buttons: one tab stop, and the arrow
+                         keys choose as they move, with no group wiring to get wrong (#441). -->
+                    <Label Content="_Between fields" Target="{Binding ElementName=SeparatorList}"
+                           Padding="0" FontWeight="SemiBold" Margin="0,12,0,2"/>
+                    <ComboBox x:Name="SeparatorList"
+                              ItemsSource="{Binding Separators}"
+                              SelectedItem="{Binding SelectedSeparator, Mode=TwoWay}"
+                              HorizontalAlignment="Left" MinWidth="140"
+                              AutomationProperties.Name="Between fields"/>
+                    <TextBlock Text="Applies to all row types. Only Period also ends the row with a period. Punctuation inside a field is never changed."
+                               TextWrapping="Wrap"
+                               Margin="0,2,0,0"
+                               Foreground="{DynamicResource Theme.TextSecondary}"
+                               FontSize="{DynamicResource Theme.FontSizeSmall}"/>
                 </StackPanel>
             </ScrollViewer>
         </Grid>

@@ -284,6 +284,7 @@ public class ConfigService : IConfigService
                     case "announcespellingwhilenavigating": config.AnnounceSpellingWhileNavigating = ParseBool(value); break;
                     case "announcespellingsuggestions":     config.AnnounceSpellingSuggestions     = ParseBool(value); break;
                     case "messagelistshowfieldlabels":      config.MessageListShowFieldLabels      = ParseBool(value); break;
+                    case "messagelistfieldseparator":       config.MessageListFieldSeparator       = RowFieldSeparators.FromConfigValue(value); break;
                     case "contactlistshowfieldlabels":      config.ContactListShowFieldLabels      = ParseBool(value); break;
                     case "calendarlistshowfieldlabels":     config.CalendarListShowFieldLabels     = ParseBool(value); break;
                     case "rulelistshowfieldlabels":         config.RuleListShowFieldLabels         = ParseBool(value); break;
@@ -550,6 +551,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Message list: speak field labels (From/Subject/Preview) in each row's accessible");
         sb.AppendLine("# name. Off (default) speaks concise field data only. Which fields are spoken and in");
         sb.AppendLine("# what order is set in the Message List Fields window. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"MessageListFieldSeparator = {RowFieldSeparators.ToConfigValue(config.MessageListFieldSeparator)}");
+        sb.AppendLine("# Message list: what goes between the fields of each row's accessible name. Only");
+        sb.AppendLine("# period (default) also ends the row with a period. Punctuation inside a field is");
+        sb.AppendLine("# never changed. Values: period, comma, space.");
         sb.AppendLine();
 
         sb.AppendLine($"ContactListShowFieldLabels = {(config.ContactListShowFieldLabels ? "on" : "off")}");

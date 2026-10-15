@@ -1286,14 +1286,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public RowSpeechSettings RowSpeech { get; private set; } = RowSpeechSettings.Default;
 
-    /// <summary>Re-reads the layouts and the labels preference and re-speaks every realized row.</summary>
+    /// <summary>
+    /// Re-reads the layouts, the labels preference and the field separator (#802), and re-speaks
+    /// every realized row.
+    /// </summary>
     public void ReloadRowSpeech()
     {
         if (_rowLayoutService is null) return;
         var showLabels = false;
-        try { showLabels = _configService.Load().MessageListShowFieldLabels; }
-        catch { /* config unreadable — fall back to unlabelled */ }
-        RowSpeech = new RowSpeechSettings(_rowLayoutService.Load(), showLabels);
+        var separator  = RowFieldSeparator.Period;
+        try
+        {
+            var cfg = _configService.Load();
+            showLabels = cfg.MessageListShowFieldLabels;
+            separator  = cfg.MessageListFieldSeparator;
+        }
+        catch { /* config unreadable — fall back to unlabelled, period-separated */ }
+        RowSpeech = new RowSpeechSettings(_rowLayoutService.Load(), showLabels, separator);
         OnPropertyChanged(nameof(RowSpeech));
     }
     /// <summary>Named-flag sub-filter id, set by saved views. Null = show all flagged messages.</summary>

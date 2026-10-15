@@ -284,6 +284,13 @@ public class ConfigModel
     public bool MessageListShowFieldLabels { get; set; } = false;
 
     /// <summary>
+    /// What separates the fields of a message list row's spoken name, for all three row kinds:
+    /// a period (default, what rows have always said), a comma, or a space (#802). Set in the
+    /// Message List Fields window.
+    /// </summary>
+    public RowFieldSeparator MessageListFieldSeparator { get; set; } = RowFieldSeparator.Period;
+
+    /// <summary>
     /// When true, the address-book contact list speaks field labels in each row's accessible name
     /// ("Name … email … account …"); when false (default) it speaks concise field data only
     /// ("Kelly Ford, kelly@example.com, Local address book"), matching how the message list reads.

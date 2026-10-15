@@ -150,6 +150,7 @@ public class SelectorItemAccessibilityTests
         Assert.StartsWith("Budget Review, 3 messages, watched ", watchRow.ToString(), StringComparison.Ordinal);
 
         Assert.Equal("Messages", new RowKindOption(RowKind.Message, "Messages").ToString());
+        Assert.Equal("Comma", new SeparatorOption(RowFieldSeparator.Comma, "Comma").ToString());
         var fieldRow = new RowFieldRow(
             RowFieldCatalog.Find(RowKind.Message, "subject")!,
             new RowFieldSetting { Id = "subject", Enabled = true },

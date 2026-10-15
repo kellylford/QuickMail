@@ -20,6 +20,13 @@ public sealed record RowKindOption(RowKind Kind, string Name)
     public override string ToString() => Name;
 }
 
+/// <summary>One choice in the field separator list (#802).</summary>
+public sealed record SeparatorOption(RowFieldSeparator Value, string Name)
+{
+    /// <summary>A screen reader reads a Selector item's name from ToString(), as for RowKindOption.</summary>
+    public override string ToString() => Name;
+}
+
 /// <summary>
 /// One field in the chooser. A thin observable wrapper over <see cref="RowFieldSetting"/> that
 /// carries the catalog's display text and reports every change back to the owning view model,
@@ -103,8 +110,15 @@ public sealed partial class RowFieldsViewModel : ObservableObject
 
         _layouts = _rowLayoutService.Load();
 
-        try { _showFieldLabels = _configService.Load().MessageListShowFieldLabels; }
+        var separator = RowFieldSeparator.Period;
+        try
+        {
+            var cfg = _configService.Load();
+            _showFieldLabels = cfg.MessageListShowFieldLabels;
+            separator        = cfg.MessageListFieldSeparator;
+        }
         catch { _showFieldLabels = false; }
+        _selectedSeparator = Separators.FirstOrDefault(s => s.Value == separator) ?? Separators[0];
 
         _selectedRowKind = RowKinds[0];
         LoadFieldsForSelectedKind();
@@ -208,6 +222,35 @@ public sealed partial class RowFieldsViewModel : ObservableObject
         SaveLayouts();
     }
 
+    // ── separator (#802) ──────────────────────────────────────────────────────
+
+    /// <summary>What can go between fields. Period first: it is the default and what rows always said.</summary>
+    public IReadOnlyList<SeparatorOption> Separators { get; } =
+    [
+        new(RowFieldSeparator.Period, "Period"),
+        new(RowFieldSeparator.Comma,  "Comma"),
+        new(RowFieldSeparator.Space,  "Space"),
+    ];
+
+    [ObservableProperty]
+    private SeparatorOption _selectedSeparator;
+
+    partial void OnSelectedSeparatorChanged(SeparatorOption value)
+    {
+        if (value is null) return;
+        try
+        {
+            var cfg = _configService.Load();
+            cfg.MessageListFieldSeparator = value.Value;
+            _configService.Save(cfg);
+        }
+        catch { /* config unwritable — the in-session preview still reflects the choice */ }
+
+        UpdatePreview();
+        // As for labels: saving the layout is what tells the main window to re-speak open rows.
+        SaveLayouts();
+    }
+
     // ── preview ───────────────────────────────────────────────────────────────
 
     /// <summary>The sample row exactly as it would be spoken with the current settings.</summary>
@@ -259,15 +302,36 @@ public sealed partial class RowFieldsViewModel : ObservableObject
 
     private const string StatusName = "Read status (combined)";
 
+    // The group-row fields that count unread messages (#800).
+    private static readonly string[] UnreadCounts = ["unreadcount", "unreadoftotal"];
+
     private void UpdateSelectedFieldNote()
     {
         if (SelectedField is not { } field) { SelectedFieldNote = string.Empty; return; }
 
         bool StatusOn()  => Fields.Any(f => f.Id == "status" && f.Enabled);
         bool AnyPartOn() => Fields.Any(f => StatusParts.Contains(f.Id) && f.Enabled);
+        bool IsOn(string id) => Fields.Any(f => f.Id == id && f.Enabled);
+        bool AnyCountOn()    => UnreadCounts.Any(IsOn);
 
         SelectedFieldNote = field.Id switch
         {
+            // Has unread and the two counts (#800) all say a group has unread mail, so any two of
+            // them on together say it twice — the same doubling the status notes explain.
+            "hasunread" when field.Enabled && AnyCountOn() =>
+                "Unread count or Unread of total is also on and already says there is unread mail. "
+                + "Turn this off to hear only the count.",
+
+            "unreadcount" or "unreadoftotal" when field.Enabled && IsOn("hasunread") =>
+                "Has unread is also on, so a row with unread mail says so twice. "
+                + "Turn Has unread off to use this on its own.",
+
+            "unreadcount" when field.Enabled && IsOn("unreadoftotal") =>
+                "Unread of total is also on and says this count too, so it is said twice.",
+
+            "unreadoftotal" when field.Enabled && IsOn("unreadcount") =>
+                "Unread count is also on and says this count too, so it is said twice.",
+
             // Both halves on. Only worth saying when this field is itself spoken — an off field
             // cannot double anything, and its own note (below) is the more useful one.
             "status" when field.Enabled && AnyPartOn() =>
@@ -385,7 +449,9 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     {
         var kind   = SelectedRowKind.Kind;
         var layout = Fields.Select(f => f.ToSetting()).ToList();
-        var text   = RowSpeechBuilder.Build(kind, ValuesForPreview(kind), layout, ShowFieldLabels);
+        var text   = RowSpeechBuilder.Build(
+            kind, ValuesForPreview(kind), layout, ShowFieldLabels,
+            SelectedSeparator?.Value ?? RowFieldSeparator.Period);
 
         Preview = string.IsNullOrEmpty(text)
             ? "No fields turned on — this row would be silent."
@@ -443,10 +509,12 @@ public sealed partial class RowFieldsViewModel : ObservableObject
         RowKind.Conversation =>
         [
             "Budget review", 3, "Chris Lee", "Follow up", true, "Lunch tomorrow?", "2:14P",
+            2, new UnreadTally(2, 3),
         ],
         RowKind.SenderGroup =>
         [
             "Chris Lee", 3, "Follow up", true, "Lunch tomorrow?", "2:14P", "Budget review",
+            2, new UnreadTally(2, 3),
         ],
         _ => [],
     };

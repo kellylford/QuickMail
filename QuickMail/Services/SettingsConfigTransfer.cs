@@ -87,6 +87,7 @@ public static class SettingsConfigTransfer
         nameof(ConfigModel.AnnounceFormattingWhileNavigating),
         nameof(ConfigModel.AnnounceFlagStatus),
         nameof(ConfigModel.MessageListShowFieldLabels),
+        nameof(ConfigModel.MessageListFieldSeparator),
         nameof(ConfigModel.ContactListShowFieldLabels),
         nameof(ConfigModel.CalendarListShowFieldLabels),
         nameof(ConfigModel.RuleListShowFieldLabels),
