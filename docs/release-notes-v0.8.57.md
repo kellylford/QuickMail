@@ -18,6 +18,16 @@ fields** choice: **Period** (the default, so nothing changes unless you choose),
 sentences of a preview, is left as it is. The choice applies to message rows, conversation rows
 and the group rows in the From and To views (#802).
 
+## New: choose the word each field says
+
+Each field in **Message List Fields** now has a **Spoken as** box with the word it says: a state's
+word ("unread", "replied"), the word after a count ("3 messages", "2 unread"), or a text field's
+label when Speak field labels is on. Change it to a shorter word, or empty it to say nothing extra:
+a count then says just its number. With Unread count set to "of" just before an emptied Message
+count, and the Space separator, a conversation reads "6 of 12 Budget review", or "12 Budget review"
+when it's all read. **Default word** puts the shipped word back, and Reset to Defaults restores
+them all (#807).
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

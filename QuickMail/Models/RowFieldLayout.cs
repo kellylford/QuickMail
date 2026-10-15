@@ -19,7 +19,24 @@ public sealed class RowFieldSetting
     /// <summary>State fields only; ignored for text and count fields.</summary>
     public SpeakMode SpeakMode { get; set; } = SpeakMode.WhenTrue;
 
-    public RowFieldSetting Clone() => new() { Id = Id, Enabled = Enabled, SpeakMode = SpeakMode };
+    /// <summary>
+    /// The word this field says in place of the shipped one (#807): a state's true word, a count's
+    /// unit, a text field's label. Null means the shipped word; empty means say nothing extra.
+    /// Left out of rowlayout.json while null, so an untouched file looks as it always has.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Word { get; set; }
+
+    /// <summary>A state field's word when false, under <see cref="SpeakMode.Always"/> (#807).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? FalseWord { get; set; }
+
+    public RowFieldSetting Clone() => new()
+    {
+        Id = Id, Enabled = Enabled, SpeakMode = SpeakMode, Word = Word, FalseWord = FalseWord,
+    };
 }
 
 /// <summary>
@@ -92,8 +109,13 @@ public sealed class RowLayouts
         foreach (var setting in loaded ?? [])
         {
             if (string.IsNullOrEmpty(setting.Id)) continue;
-            if (RowFieldCatalog.Find(kind, setting.Id) is null) continue;   // unknown id
-            if (!seen.Add(setting.Id)) continue;                            // duplicate
+            if (RowFieldCatalog.Find(kind, setting.Id) is not { } def) continue;   // unknown id
+            if (!seen.Add(setting.Id)) continue;                                   // duplicate
+            // Words enter here from a file anyone can edit or import (#807): no line breaks or
+            // direction overrides in a row's name, nothing longer than a word, nothing stored
+            // that only repeats the shipped word.
+            setting.Word      = RowFieldWords.Normalize(setting.Word, RowFieldWords.DefaultWord(def));
+            setting.FalseWord = RowFieldWords.Normalize(setting.FalseWord, def.FalseWord ?? string.Empty);
             result.Add(setting);
         }
 
