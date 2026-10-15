@@ -104,10 +104,10 @@
                      name — no AutomationProperties.Name restating it in different words.
 
                      Sender contains is the common one and From addresses is in Advanced, not the other
-                     way round (#682): Create Rule from Message prefills the sender, which is a
-                     substring of the From header and may well hold a comma — an Exchange address book
-                     writes "Last, First" — and the address list reads a comma as a separator. The
-                     prefilled field is the one that has to be first. -->
+                     way round (#682): Create Rule from Message prefills the sender, its address where
+                     QuickMail has one (#803) and otherwise its display name, which may well hold a comma
+                     — an Exchange address book writes "Last, First" — and the address list reads a comma
+                     as a separator. The prefilled field is the one that has to be first. -->
                 <CheckBox Content="Sender contains" IsChecked="{Binding UseSenderContains}"
                           Style="{StaticResource EditorCheckBox}"/>
                 <TextBox Text="{Binding SenderContains, UpdateSourceTrigger=PropertyChanged}"

@@ -41,6 +41,10 @@ support this as expected. QuickMail now properly supports it for all account typ
 sender's address alongside the name on every account type. From now on, rules, Find mail from this
 contact, and both kinds of search look at both the from address and the display name (#803).
 
+**Create Rule from Message** now fills in the sender's email address instead of their name, so a
+rule made from a message from "PayPal" no longer also catches someone else calling themselves
+"PayPal". Where QuickMail doesn't have the address yet, it fills in the name, as before.
+
 The first time you start this version, QuickMail fills in the address for mail it already has.
 Most of it comes from what is already on this computer. For IMAP mail whose text has not been
 downloaded, it asks the server for the sender alone, a batch at a time, and shows its progress in

@@ -336,4 +336,31 @@ public class RuleConditionSwitchTests
         Assert.Equal("Weekly Report", template.SubjectContains);
         Assert.False(template.UseSubjectCondition);
     }
+
+    [Fact]
+    public void CreateRuleFromMessage_UsesTheSendersAddress_WhenTheRowHasOne()
+    {
+        // Review of #806: the display name alone would also catch anyone else using that name, and since #801
+        // a Microsoft row's From is the name alone. The rule's name keeps the name the user knows.
+        var template = MainViewModel.RuleTemplateFrom(new MailMessageSummary
+        {
+            MessageId = "1", FolderName = "INBOX", From = "PayPal", FromEmail = "service@paypal.example",
+            Subject = "Receipt",
+        });
+
+        Assert.Equal("service@paypal.example", template.SenderContains);
+        Assert.Equal("Rule for PayPal", template.Name);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_FallsBackToTheName_WhenTheRowHasNoAddressYet()
+    {
+        // A row cached before FromEmail and not yet backfilled: exactly what this proposed before.
+        var template = MainViewModel.RuleTemplateFrom(new MailMessageSummary
+        {
+            MessageId = "1", FolderName = "INBOX", From = "PayPal", Subject = "Receipt",
+        });
+
+        Assert.Equal("PayPal", template.SenderContains);
+    }
 }

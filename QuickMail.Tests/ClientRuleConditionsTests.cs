@@ -195,6 +195,18 @@ public class ClientRuleConditionsTests
     }
 
     [Fact]
+    public void ARuleMadeFromAMessage_DoesNotCatchAnotherSenderUsingTheSameName()
+    {
+        // Review of #806: made from the name alone, a rule for "PayPal" filed a phisher's "PayPal" too.
+        var real = Msg(from: "PayPal", fromEmail: "service@paypal.example");
+        var rule = MainViewModel.RuleTemplateFrom(real);
+        rule.Action = RuleAction.MarkAsRead;
+
+        Assert.True(Matches(rule, real));
+        Assert.False(Matches(rule, Msg(from: "PayPal", fromEmail: "security@phish.example")));
+    }
+
+    [Fact]
     public void FromAddress_OnARowCachedBeforeFromEmail_BehavesAsBefore()
     {
         // No FromEmail yet: matching falls back to From alone, so a name-only row still cannot match an address

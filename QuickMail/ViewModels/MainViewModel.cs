@@ -8667,14 +8667,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // single thread it was made from. The editor shows it in a cleared checkbox, one keystroke
         // from being part of the rule, rather than silently ANDing it with the sender.
         // The sender goes in as "Sender contains", the condition that means a substring match on the
-        // From header — which is what this is. It must NOT go in as a From address: From holds the
-        // sender's DISPLAY NAME where there is one, an Exchange address book routinely makes that
-        // "Last, First", and the address fields read a comma as a separator. A rule for "Ford, Kelly"
-        // would become a rule for anyone called Ford OR anyone called Kelly (#682).
+        // sender's name and address. It is the sender's ADDRESS where the row has one (#803): the display
+        // name alone matches every sender using that name, a phisher calling themselves "PayPal" included,
+        // and since #801 a Microsoft row's From is the name alone, so it would have got looser there too
+        // (review of #806). The name is the fallback, for a row cached before FromEmail existed and not yet
+        // backfilled, or a sender with no address; it is what this proposed before, so nothing is worse.
+        // It does not go in as a From address yet (a follow-up): the address fields read a comma as a
+        // separator, and a display name, "Last, First" in an Exchange address book, can hold one (#682).
+        // The rule's name keeps the display name, which is how the user knows the sender.
         return new MailRule
         {
             Name = $"Rule for {source.From}",
-            SenderContains = source.From,
+            SenderContains = string.IsNullOrWhiteSpace(source.FromEmail) ? source.From : source.FromEmail,
             UseSenderCondition = true,
             SubjectContains = string.IsNullOrWhiteSpace(source.Subject) ? null : source.Subject,
             UseSubjectCondition = false,
