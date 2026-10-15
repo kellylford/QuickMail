@@ -2347,6 +2347,21 @@ This is how you get "tell me about unread but never say read": turn **Status (co
 
 **Status (combined) and the separate states overlap.** Both say the word "unread", so turning on Unread while Status (combined) is still on says it twice. Whenever that would happen, the **About this field** note in the options pane says so and tells you which one to turn off. The note is a focusable box, so it is reachable from the keyboard rather than being text only a sighted user would notice.
 
+### Choosing the word a field says
+
+Select a field, then use **Spoken as** in the options pane (Alt+K) to change the word it says. The box shows the word in use, and the preview, and the rows behind the window, change as you type.
+
+| Field | What Spoken as changes | Leave it empty and… |
+|-------|------------------------|---------------------|
+| A state, such as Unread or Replied | the word said when it applies | nothing is said for it |
+| Message count | the word after the number ("3 messages") | just the number is said |
+| Unread count, Unread of total | the word at the end ("2 unread", "2 of 5 unread") | "2", or "2 of 5" |
+| A text field, such as From or Subject | its label, said only while **Speak field labels** is on | that field has no label |
+
+A state set to **Always speak** also has **When off, spoken as** (Alt+E), the word said when it doesn't apply ("read", "not replied"). Once you change Message count's word, it is used for one message and for many alike. **Default word** (Alt+W) puts the shipped word back.
+
+For example, to hear a conversation as "6 of 12 Budget review", with nothing unread just "12 Budget review": turn on **Unread count** and set it to "of", put it just before **Message count**, empty Message count's box, and choose **Space** under **Between fields**.
+
 ### Field labels
 
 **Speak field labels** prefixes each text field with its name, so a row reads "From: Chris Lee. Subject: Budget review." rather than "Chris Lee. Budget review." It applies to all three row types. States and counts are never labelled, since "unread" and "3 messages" already say what they are.
@@ -2365,7 +2380,7 @@ You can also make this choice from the window's command palette (Ctrl+Shift+P): 
 
 ### Starting over
 
-**Reset to Defaults** restores the shipped arrangement for the row type you are currently editing, leaving the other two alone. It does not change **Speak field labels** or **Between fields**, which apply to every row type.
+**Reset to Defaults** restores the shipped arrangement for the row type you are currently editing, words included, leaving the other two alone. It does not change **Speak field labels** or **Between fields**, which apply to every row type.
 
 Until you change anything, rows read the way they always have. Empty fields are skipped rather than leaving a gap, so a message with no preview or no subject reads without a pause where it would have been.
 

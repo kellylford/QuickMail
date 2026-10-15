@@ -38,6 +38,11 @@ public partial class RowFieldsWindow : Window
 
         CloseButton.Click += (_, _) => Close();
         FieldList.PreviewKeyDown += FieldList_PreviewKeyDown;
+        WordBox.GotKeyboardFocus += WordBox_GotKeyboardFocus;
+        // A word still waiting out its typing pause goes to the field it was typed for before
+        // focus can move to the list and select another one.
+        WordBox.LostKeyboardFocus      += FlushWord;
+        FalseWordBox.LostKeyboardFocus += FlushWord;
 
         Loaded += (_, _) =>
         {
@@ -79,6 +84,10 @@ public partial class RowFieldsWindow : Window
         _localRegistry.Register(new CommandDefinition(
             "rowfields.labels", "View", "Toggle Speak Field Labels",
             () => _vm.ShowFieldLabels = !_vm.ShowFieldLabels));
+        _localRegistry.Register(new CommandDefinition(
+            "rowfields.defaultword", "View", "Restore Default Word for the Selected Field",
+            () => _vm.RestoreDefaultWordCommand.Execute(null),
+            isAvailable: () => _vm.HasSelection));
         // The Between fields choices (#802), so the palette offers everything the window does.
         _localRegistry.Register(new CommandDefinition(
             "rowfields.separator.period", "View", "Separate Fields with a Period",
@@ -217,10 +226,30 @@ public partial class RowFieldsWindow : Window
         (prev ?? FieldList).Focus();
     }
 
+    private void WordBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) =>
+        _vm.ExplainLabelWordIfSilent();
+
+    private static void FlushWord(object sender, KeyboardFocusChangedEventArgs e) =>
+        (sender as TextBox)?.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+
+    /// <summary>
+    /// The word boxes save after a short pause in typing (Binding.Delay), so a change typed just
+    /// before Escape or Close would otherwise be lost: push it through first (#807).
+    /// </summary>
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        WordBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+        FalseWordBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+        base.OnClosing(e);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         _vm.AnnouncementRequested -= OnAnnouncement;
         FieldList.PreviewKeyDown  -= FieldList_PreviewKeyDown;
+        WordBox.GotKeyboardFocus  -= WordBox_GotKeyboardFocus;
+        WordBox.LostKeyboardFocus      -= FlushWord;
+        FalseWordBox.LostKeyboardFocus -= FlushWord;
         base.OnClosed(e);
     }
 }

@@ -42,9 +42,77 @@ public sealed partial class RowFieldRow : ObservableObject
         DisplayName = def.DisplayName;
         IsState     = def.IsState;
         HasFalseWord = def.FalseWord is not null;
+        IsText      = def.Format == RowFieldFormat.Text;
+        DefaultWord = RowFieldWords.DefaultWord(def);
+        DefaultFalseWord = def.FalseWord ?? string.Empty;
         _enabled    = setting.Enabled;
         _speakMode  = setting.SpeakMode;
+        _wordOverride      = setting.Word;
+        _falseWordOverride = setting.FalseWord;
         _onChanged  = onChanged;
+    }
+
+    // ── spoken words (#807) ───────────────────────────────────────────────────
+
+    private string? _wordOverride;
+    private string? _falseWordOverride;
+
+    /// <summary>True for a text field, whose word is its label (spoken only with labels on).</summary>
+    public bool IsText { get; }
+
+    /// <summary>The shipped word: what <see cref="Word"/> shows until the user changes it.</summary>
+    public string DefaultWord { get; }
+
+    /// <summary>The shipped false word, for a state field that has one.</summary>
+    public string DefaultFalseWord { get; }
+
+    /// <summary>
+    /// The word this field says, as the Spoken as box shows it: the user's if they chose one,
+    /// otherwise the shipped one. Typing the shipped word stores nothing, so a later change to the
+    /// shipped wording still reaches the user.
+    /// </summary>
+    public string Word
+    {
+        get => _wordOverride ?? DefaultWord;
+        set
+        {
+            var next = RowFieldWords.Override(value, DefaultWord);
+            if (next == _wordOverride) return;
+            _wordOverride = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasCustomWord));
+            _onChanged();
+        }
+    }
+
+    /// <summary>The word said when a state is false under Always speak.</summary>
+    public string FalseWord
+    {
+        get => _falseWordOverride ?? DefaultFalseWord;
+        set
+        {
+            var next = RowFieldWords.Override(value, DefaultFalseWord);
+            if (next == _falseWordOverride) return;
+            _falseWordOverride = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasCustomWord));
+            _onChanged();
+        }
+    }
+
+    /// <summary>True when either word differs from the shipped one, so Default word has work to do.</summary>
+    public bool HasCustomWord => _wordOverride is not null || _falseWordOverride is not null;
+
+    /// <summary>Puts the shipped words back.</summary>
+    public void RestoreDefaultWords()
+    {
+        if (!HasCustomWord) return;
+        _wordOverride = null;
+        _falseWordOverride = null;
+        OnPropertyChanged(nameof(Word));
+        OnPropertyChanged(nameof(FalseWord));
+        OnPropertyChanged(nameof(HasCustomWord));
+        _onChanged();
     }
 
     public string Id { get; }
@@ -68,7 +136,11 @@ public sealed partial class RowFieldRow : ObservableObject
     partial void OnEnabledChanged(bool value) => _onChanged();
     partial void OnSpeakModeChanged(SpeakMode value) => _onChanged();
 
-    public RowFieldSetting ToSetting() => new() { Id = Id, Enabled = Enabled, SpeakMode = SpeakMode };
+    public RowFieldSetting ToSetting() => new()
+    {
+        Id = Id, Enabled = Enabled, SpeakMode = SpeakMode,
+        Word = _wordOverride, FalseWord = _falseWordOverride,
+    };
 
     /// <summary>Accessible name for the list row. Checked state is reported by the checkbox itself.</summary>
     public override string ToString() => DisplayName;
@@ -152,6 +224,7 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanMoveUp))]
     [NotifyPropertyChangedFor(nameof(CanMoveDown))]
     [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
+    [NotifyPropertyChangedFor(nameof(SelectedShowsFalseWord))]
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
     private RowFieldRow? _selectedField;
 
@@ -168,6 +241,35 @@ public sealed partial class RowFieldsViewModel : ObservableObject
 
     public bool HasSelection    => SelectedField is not null;
     public bool SelectedIsState => SelectedField?.IsState == true;
+
+    /// <summary>
+    /// Whether the When off box belongs on screen (#807): only a state field with a false word, and
+    /// only under Always speak, since Speak only when true never says it.
+    /// </summary>
+    public bool SelectedShowsFalseWord =>
+        SelectedField is { IsState: true, HasFalseWord: true, SpeakMode: SpeakMode.Always };
+
+    /// <summary>
+    /// Puts the selected field's shipped words back (#807). Always available, and doing nothing
+    /// when there is nothing to restore: a command that disabled its button on the press would
+    /// throw keyboard focus off that button onto the unnamed pane around it.
+    /// </summary>
+    [RelayCommand]
+    private void RestoreDefaultWord() => SelectedField?.RestoreDefaultWords();
+
+    /// <summary>
+    /// Speaks, as a hint, that a text field's word is its label and only heard with labels on.
+    /// The view calls this when Spoken as gets focus; said only while labels are off, when the
+    /// box would otherwise appear to do nothing (#807).
+    /// </summary>
+    public void ExplainLabelWordIfSilent()
+    {
+        if (SelectedField is { IsText: true } && !ShowFieldLabels)
+            Announce(LabelWordHint, AnnouncementCategory.Hint);
+    }
+
+    internal const string LabelWordHint =
+        "For this field, the word is its label, said only while Speak field labels is on.";
 
     /// <summary>
     /// Whether the selected field is turned on. Gates the speak-mode radios: <c>RowSpeechBuilder</c>
@@ -426,6 +528,8 @@ public sealed partial class RowFieldsViewModel : ObservableObject
         // Ticking the selected field's check box is what makes the speak-mode radios available,
         // so the gate has to re-evaluate here and not only when the selection moves.
         OnPropertyChanged(nameof(SelectedIsOn));
+        // Choosing Always speak brings the When off box in.
+        OnPropertyChanged(nameof(SelectedShowsFalseWord));
         SaveLayouts();
         UpdatePreview();
     }
@@ -442,7 +546,14 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     {
         if (_suppressSave) return;
         _layouts.Set(SelectedRowKind.Kind, Fields.Select(f => f.ToSetting()).ToList());
-        _rowLayoutService.Save(_layouts);
+        // A save can fail on a file something else holds open (antivirus, a sync client). From a
+        // word box that would surface inside a binding, from a button as an unhandled exception;
+        // log it instead. The next change saves the whole layout again, so nothing is stranded.
+        try { _rowLayoutService.Save(_layouts); }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            LogService.Log($"RowFields: saving rowlayout.json failed — {ex.Message}");
+        }
     }
 
     private void UpdatePreview()
