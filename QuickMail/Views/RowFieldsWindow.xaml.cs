@@ -79,6 +79,10 @@ public partial class RowFieldsWindow : Window
         _localRegistry.Register(new CommandDefinition(
             "rowfields.labels", "View", "Toggle Speak Field Labels",
             () => _vm.ShowFieldLabels = !_vm.ShowFieldLabels));
+        _localRegistry.Register(new CommandDefinition(
+            "rowfields.defaultword", "View", "Restore Default Word for the Selected Field",
+            () => _vm.RestoreDefaultWordCommand.Execute(null),
+            isAvailable: () => _vm.RestoreDefaultWordCommand.CanExecute(null)));
         // The Between fields choices (#802), so the palette offers everything the window does.
         _localRegistry.Register(new CommandDefinition(
             "rowfields.separator.period", "View", "Separate Fields with a Period",

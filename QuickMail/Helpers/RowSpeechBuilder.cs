@@ -84,24 +84,39 @@ public static class RowSpeechBuilder
     private static object? Normalize(object? value) =>
         value == System.Windows.DependencyProperty.UnsetValue ? null : value;
 
+    /// <summary>"12 messages", or just "12" when the chosen word is empty (#807).</summary>
+    private static string WithUnit(int n, string unit) =>
+        WithUnit(n.ToString(CultureInfo.CurrentCulture), unit);
+
+    private static string WithUnit(string number, string unit)
+    {
+        var word = unit.Trim();
+        return word.Length == 0 ? number : $"{number} {word}";
+    }
+
     private static string Render(RowFieldDef def, RowFieldSetting setting, object? raw, bool showLabels)
     {
         switch (def.Format)
         {
+            // Every word below is the user's when they have chosen one (#807): setting.Word or
+            // setting.FalseWord, null meaning the shipped word and empty meaning nothing extra.
             case RowFieldFormat.State:
             {
                 var on = raw is bool b && b;
                 // State words already say what they are ("unread", "attachments"), so they are
                 // never labelled — "Unread: unread" is noise, not information.
-                if (on) return def.TrueWord ?? string.Empty;
-                return setting.SpeakMode == SpeakMode.Always ? def.FalseWord ?? string.Empty : string.Empty;
+                if (on) return (setting.Word ?? def.TrueWord ?? string.Empty).Trim();
+                return setting.SpeakMode == SpeakMode.Always
+                    ? (setting.FalseWord ?? def.FalseWord ?? string.Empty).Trim()
+                    : string.Empty;
             }
 
             case RowFieldFormat.Count:
             {
                 if (raw is not int n) return string.Empty;
-                // Self-describing, so unlabelled like the state fields.
-                return string.Create(CultureInfo.CurrentCulture, $"{n} {(n == 1 ? "message" : "messages")}");
+                // Self-describing, so unlabelled like the state fields. A chosen word serves for
+                // one and for many alike; only the shipped wording knows its singular.
+                return WithUnit(n, setting.Word ?? (n == 1 ? "message" : "messages"));
             }
 
             // Both unread forms say nothing when nothing is unread, the way Has unread does: a row
@@ -109,20 +124,24 @@ public static class RowSpeechBuilder
             case RowFieldFormat.UnreadCount:
             {
                 if (raw is not int n || n <= 0) return string.Empty;
-                return string.Create(CultureInfo.CurrentCulture, $"{n} unread");
+                return WithUnit(n, setting.Word ?? "unread");
             }
 
             case RowFieldFormat.UnreadOfTotal:
             {
                 if (raw is not UnreadTally { Unread: > 0 } t) return string.Empty;
-                return string.Create(CultureInfo.CurrentCulture, $"{t.Unread} of {t.Total} unread");
+                return WithUnit(
+                    string.Create(CultureInfo.CurrentCulture, $"{t.Unread} of {t.Total}"),
+                    setting.Word ?? "unread");
             }
 
             default:
             {
                 var value = (raw as string ?? string.Empty).Trim();
                 if (value.Length == 0) return string.Empty;
-                return showLabels ? $"{def.SpokenLabel}: {value}" : value;
+                // A label chosen as empty means this field goes unlabelled even with labels on.
+                var label = (setting.Word ?? def.SpokenLabel).Trim();
+                return showLabels && label.Length > 0 ? $"{label}: {value}" : value;
             }
         }
     }

@@ -188,6 +188,63 @@
                         </TextBlock.Style>
                     </TextBlock>
 
+                    <!-- #807. The word this field says. Bound as you type, like every other choice
+                         here: the preview and the rows behind the window follow each keystroke. -->
+                    <Label Content="Spo_ken as" Target="{Binding ElementName=WordBox}"
+                           Padding="0" FontWeight="SemiBold" Margin="0,10,0,2"/>
+                    <TextBox x:Name="WordBox"
+                             Text="{Binding SelectedField.Word, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding HasSelection}"
+                             MaxLength="40"
+                             AutomationProperties.Name="Spoken as"/>
+                    <TextBlock Text="For this field, the word is its label, said only while Speak field labels is on."
+                               TextWrapping="Wrap"
+                               Margin="0,2,0,0"
+                               Foreground="{DynamicResource Theme.TextSecondary}"
+                               FontSize="{DynamicResource Theme.FontSizeSmall}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedField.IsText}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <!-- Only under Always speak, for a state field that has a word to say when off. -->
+                    <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedShowsFalseWord}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <Label Content="Wh_en off, spoken as" Target="{Binding ElementName=FalseWordBox}"
+                               Padding="0" FontWeight="SemiBold" Margin="0,8,0,2"/>
+                        <TextBox x:Name="FalseWordBox"
+                                 Text="{Binding SelectedField.FalseWord, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 MaxLength="40"
+                                 AutomationProperties.Name="When off, spoken as"/>
+                    </StackPanel>
+
+                    <Button x:Name="DefaultWordButton"
+                            Content="Default _word"
+                            Command="{Binding RestoreDefaultWordCommand}"
+                            HorizontalAlignment="Left" Margin="0,6,0,0" Padding="10,2"
+                            AutomationProperties.Name="Default word"/>
+                    <TextBlock Text="An empty box says nothing for that word: a count then says just its number."
+                               TextWrapping="Wrap"
+                               Margin="0,2,0,0"
+                               Foreground="{DynamicResource Theme.TextSecondary}"
+                               FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+
                     <!-- Overlap guidance, e.g. Status (combined) vs the separate Unread field.
                          Focusable so it is reachable in the options pane rather than being
                          visual-only text a keyboard user never lands on. -->
