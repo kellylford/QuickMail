@@ -151,10 +151,22 @@ Archive, where it is account-qualified when the view spans accounts</td>
 </table>
 <h3 id="fields-for-group-rows">Fields for group rows</h3>
 <p><strong>Conversation groups</strong> offer Subject, Message count,
-Sender, Flag, Has unread, Preview, and Date. <strong>Sender and
-recipient groups</strong> offer Sender, Message count, Flag, Has unread,
-Preview, Date, and Newest subject. A message count is spoken as “1
-message” or “3 messages”.</p>
+Sender, Flag, Has unread, Preview, Date, Unread count, and Unread of
+total. <strong>Sender and recipient groups</strong> offer Sender,
+Message count, Flag, Has unread, Preview, Date, Newest subject, Unread
+count, and Unread of total. A message count is spoken as “1 message” or
+“3 messages”.</p>
+<p><strong>Has unread</strong> only tells you that at least one message
+in the group is unread. To hear how many, turn on <strong>Unread
+count</strong>, which says “2 unread”, or <strong>Unread of
+total</strong>, which says “2 of 5 unread”. Both say nothing when every
+message in the group has been read, and both are off to begin with. You
+will usually want only one of the three on. The window points out when
+two of them would say the same thing twice. Unread of total already
+includes the number of messages, so with it on you may want
+<strong>Message count</strong> off. A field you turn on is spoken where
+it sits in the list, and these two start at the end; use <strong>Move
+Up</strong> to hear the count sooner.</p>
 <h3 id="speaking-a-state-only-when-it-applies">Speaking a state only
 when it applies</h3>
 <p>Fields such as <strong>Unread</strong>, <strong>Replied</strong>, and
@@ -178,16 +190,89 @@ this field</strong> note in the options pane says so and tells you which
 one to turn off. The note is a focusable box, so it is reachable from
 the keyboard rather than being text only a sighted user would
 notice.</p>
+<h3 id="choosing-the-word-a-field-says">Choosing the word a field
+says</h3>
+<p>Select a field, then use <strong>Spoken as</strong> in the options
+pane (Alt+K) to change the word it says. The box shows the word in use,
+and the preview, and the rows behind the window, change as you type.</p>
+<table>
+<colgroup>
+<col style="width: 13%" />
+<col style="width: 46%" />
+<col style="width: 40%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Field</th>
+<th>What Spoken as changes</th>
+<th>Leave it empty and…</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>A state, such as Unread or Replied</td>
+<td>the word said when it applies</td>
+<td>nothing is said for it</td>
+</tr>
+<tr class="even">
+<td>Message count</td>
+<td>the word after the number (“3 messages”)</td>
+<td>just the number is said</td>
+</tr>
+<tr class="odd">
+<td>Unread count, Unread of total</td>
+<td>the word at the end (“2 unread”, “2 of 5 unread”)</td>
+<td>“2”, or “2 of 5”</td>
+</tr>
+<tr class="even">
+<td>A text field, such as From or Subject</td>
+<td>its label, said only while <strong>Speak field labels</strong> is
+on</td>
+<td>that field has no label</td>
+</tr>
+</tbody>
+</table>
+<p>A state set to <strong>Always speak</strong> also has <strong>When
+off, spoken as</strong> (Alt+E), the word said when it doesn’t apply
+(“read”, “not replied”). Once you change Message count’s word, it is
+used for one message and for many alike. <strong>Default word</strong>
+(Alt+W) puts the shipped word back.</p>
+<p>For example, to hear a conversation as “6 of 12 Budget review”, with
+nothing unread just “12 Budget review”: turn on <strong>Unread
+count</strong> and set it to “of”, put it just before <strong>Message
+count</strong>, empty Message count’s box, and choose
+<strong>Space</strong> under <strong>Between fields</strong>.</p>
 <h3 id="field-labels">Field labels</h3>
 <p><strong>Speak field labels</strong> prefixes each text field with its
 name, so a row reads “From: Chris Lee. Subject: Budget review.” rather
 than “Chris Lee. Budget review.” It applies to all three row types.
 States and counts are never labelled, since “unread” and “3 messages”
 already say what they are.</p>
+<h3 id="between-fields">Between fields</h3>
+<p><strong>Between fields</strong> chooses what separates the fields of
+a row:</p>
+<ul>
+<li><strong>Period</strong> (the default): “Chris Lee. Budget review.
+2:14 PM.”</li>
+<li><strong>Comma</strong>: “Chris Lee, Budget review, 2:14 PM”</li>
+<li><strong>Space</strong>: “Chris Lee Budget review 2:14 PM”</li>
+</ul>
+<p>If you listen at a slow rate, you may prefer a comma or a space
+between fields; how long each one pauses depends on your screen reader’s
+settings. Only <strong>Period</strong> also ends the row with a period.
+Punctuation inside a field, such as the sentences of a preview, is never
+changed, and with <strong>Comma</strong> a field that already ends in
+punctuation (a preview ending “today.” or a subject ending “?”) is
+followed by a space rather than a second mark. The choice applies to all
+three row types.</p>
+<p>You can also make this choice from the window’s command palette
+(Ctrl+Shift+P): <strong>Separate Fields with a Period</strong>,
+<strong>with a Comma</strong>, or <strong>with a Space</strong>.</p>
 <h3 id="starting-over">Starting over</h3>
 <p><strong>Reset to Defaults</strong> restores the shipped arrangement
-for the row type you are currently editing, leaving the other two
-alone.</p>
+for the row type you are currently editing, words included, leaving the
+other two alone. It does not change <strong>Speak field labels</strong>
+or <strong>Between fields</strong>, which apply to every row type.</p>
 <p>Until you change anything, rows read the way they always have. Empty
 fields are skipped rather than leaving a gap, so a message with no
 preview or no subject reads without a pause where it would have

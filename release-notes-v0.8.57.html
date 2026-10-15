@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.57 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.56.html">Older: 0.8.56</a></div>
+  <h1 id="quickmail-v0.8.57-release-notes">QuickMail v0.8.57 Release
+Notes</h1>
+<p class="version">Released October 15, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.57">downloads for this release</a></p>
+<h2 id="new-hear-how-many-messages-in-a-conversation-are-unread">New:
+hear how many messages in a conversation are unread</h2>
+<p>A conversation row could only say “Has unread”, which sounds the same
+whether one message of twenty is new or all twenty are. Two new fields
+in <strong>Message List Fields</strong> say how many: <strong>Unread
+count</strong> (“2 unread”) and <strong>Unread of total</strong> (“2 of
+5 unread”). They work on conversation rows and on the group rows in the
+From and To views, say nothing when everything has been read, and are
+off until you turn one on, so your rows sound the same as before unless
+you choose otherwise. They start at the end of the row; use <strong>Move
+Up</strong> in Message List Fields to hear the count sooner (#800).</p>
+<h2
+id="new-choose-what-goes-between-the-fields-of-a-message-list-row">New:
+choose what goes between the fields of a message list row</h2>
+<p>Each row in the message list puts a period between its fields, and if
+you listen at a slow rate the pause at every period adds up over a long
+list. <strong>Message List Fields</strong> now has a <strong>Between
+fields</strong> choice: <strong>Period</strong> (the default, so nothing
+changes unless you choose), <strong>Comma</strong>, or
+<strong>Space</strong>. Only Period ends the row with a period.
+Punctuation inside a field, such as the sentences of a preview, is left
+as it is. The choice applies to message rows, conversation rows and the
+group rows in the From and To views (#802).</p>
+<h2 id="new-choose-the-word-each-field-says">New: choose the word each
+field says</h2>
+<p>Each field in <strong>Message List Fields</strong> now has a
+<strong>Spoken as</strong> box with the word it says: a state’s word
+(“unread”, “replied”), the word after a count (“3 messages”, “2
+unread”), or a text field’s label when Speak field labels is on. Change
+it to a shorter word, or empty it to say nothing extra: a count then
+says just its number. With Unread count set to “of” just before an
+emptied Message count, and the Space separator, a conversation reads “6
+of 12 Budget review”, or “12 Budget review” when it’s all read.
+<strong>Default word</strong> puts the shipped word back, and Reset to
+Defaults restores them all (#807).</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.56.html">Older: 0.8.56</a></div>
+</body>
+</html>
