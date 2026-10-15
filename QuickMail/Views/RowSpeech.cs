@@ -93,7 +93,7 @@ public sealed class RowSpeechConverter : IMultiValueConverter
         Array.Copy(values, fieldValues, fieldValues.Length);
 
         return RowSpeechBuilder.Build(
-            _kind, fieldValues, settings.Layouts.For(_kind), settings.ShowLabels);
+            _kind, fieldValues, settings.Layouts.For(_kind), settings.ShowLabels, settings.Separator);
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) =>

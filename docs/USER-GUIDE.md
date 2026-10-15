@@ -2350,9 +2350,21 @@ This is how you get "tell me about unread but never say read": turn **Status (co
 
 **Speak field labels** prefixes each text field with its name, so a row reads "From: Chris Lee. Subject: Budget review." rather than "Chris Lee. Budget review." It applies to all three row types. States and counts are never labelled, since "unread" and "3 messages" already say what they are.
 
+### Between fields
+
+**Between fields** chooses what separates the fields of a row:
+
+- **Period** (the default): "Chris Lee. Budget review. 2:14 PM."
+- **Comma**: "Chris Lee, Budget review, 2:14 PM"
+- **Space**: "Chris Lee Budget review 2:14 PM"
+
+If you listen at a slow rate, you may prefer a comma or a space between fields; how long each one pauses depends on your screen reader's settings. Only **Period** also ends the row with a period. Punctuation inside a field, such as the sentences of a preview, is never changed, and with **Comma** a field that already ends in punctuation (a preview ending "today." or a subject ending "?") is followed by a space rather than a second mark. The choice applies to all three row types.
+
+You can also make this choice from the window's command palette (Ctrl+Shift+P): **Separate Fields with a Period**, **with a Comma**, or **with a Space**.
+
 ### Starting over
 
-**Reset to Defaults** restores the shipped arrangement for the row type you are currently editing, leaving the other two alone.
+**Reset to Defaults** restores the shipped arrangement for the row type you are currently editing, leaving the other two alone. It does not change **Speak field labels** or **Between fields**, which apply to every row type.
 
 Until you change anything, rows read the way they always have. Empty fields are skipped rather than leaving a gap, so a message with no preview or no subject reads without a pause where it would have been.
 

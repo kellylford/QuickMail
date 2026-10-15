@@ -9,6 +9,15 @@ on the group rows in the From and To views, say nothing when everything has been
 until you turn one on, so your rows sound the same as before unless you choose otherwise. They start
 at the end of the row; use **Move Up** in Message List Fields to hear the count sooner (#800).
 
+## New: choose what goes between the fields of a message list row
+
+Each row in the message list puts a period between its fields, and if you listen at a slow rate
+the pause at every period adds up over a long list. **Message List Fields** now has a **Between
+fields** choice: **Period** (the default, so nothing changes unless you choose), **Comma**, or
+**Space**. Only Period ends the row with a period. Punctuation inside a field, such as the
+sentences of a preview, is left as it is. The choice applies to message rows, conversation rows
+and the group rows in the From and To views (#802).
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
