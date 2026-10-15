@@ -74,6 +74,14 @@ internal sealed class GraphEmailAddress
         => string.IsNullOrEmpty(Name) || string.Equals(Name, Address, StringComparison.OrdinalIgnoreCase)
             ? Address ?? string.Empty
             : $"{Name} <{Address}>";
+
+    /// <summary>
+    /// The sender as the message list shows and speaks it (#801): the name where there is one, otherwise the
+    /// address — the same rule ImapMailService.FormatAddressListDisplay applies, so a list row reads the same
+    /// whichever backend fetched it. The address itself goes in MailMessageSummary.FromEmail.
+    /// </summary>
+    public string AsDisplayString()
+        => string.IsNullOrWhiteSpace(Name) ? Address ?? string.Empty : Name.Trim();
 }
 
 internal sealed class GraphRecipient
