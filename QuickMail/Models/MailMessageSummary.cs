@@ -45,15 +45,18 @@ public partial class MailMessageSummary : ObservableObject
     public string FromEmail { get; set; } = string.Empty;
 
     /// <summary>
-    /// The sender as matchers read it: "Name &lt;address&gt;", the shape Graph rows held in <see cref="From"/>
-    /// before #801, so a rule or search that matched there still does, and an IMAP or POP3 row now matches on its
-    /// address too (#803). <see cref="From"/> alone where there is no separate address — a row cached before
-    /// <see cref="FromEmail"/> existed, or a sender with no name, whose From already is the address. Never shown.
+    /// The sender with the address beside the name: "Name &lt;address&gt;", the shape Graph rows held in
+    /// <see cref="From"/> before #801. Matchers read it, so a rule or search that matched there still does and an
+    /// IMAP or POP3 row now matches on its address too (#803); Properties shows it when no body is cached to give
+    /// the full sender. Never the message list, which shows <see cref="From"/>. <see cref="From"/> alone where
+    /// there is no separate address — a row cached before <see cref="FromEmail"/> existed, or a sender with no name,
+    /// whose From already is the address.
     /// </summary>
-    public string FromForMatching =>
+    public string FromWithAddress =>
         string.IsNullOrEmpty(FromEmail) || string.Equals(From, FromEmail, StringComparison.OrdinalIgnoreCase)
             ? From
             : string.IsNullOrEmpty(From) ? FromEmail : $"{From} <{FromEmail}>";
+
     public string To { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
     public DateTimeOffset Date { get; set; }

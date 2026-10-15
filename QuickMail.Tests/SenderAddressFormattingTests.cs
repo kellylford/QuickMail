@@ -50,6 +50,6 @@ public class SenderAddressFormattingTests
     [InlineData("Some Company",     "",                 "Some Company")]
     [InlineData("Some Company <news@company.com>", "",  "Some Company <news@company.com>")]
     [InlineData("",                 "news@company.com", "news@company.com")]
-    public void FromForMatching_JoinsTheNameAndTheAddress(string from, string fromEmail, string expected)
-        => Assert.Equal(expected, new MailMessageSummary { From = from, FromEmail = fromEmail }.FromForMatching);
+    public void FromWithAddress_JoinsTheNameAndTheAddress(string from, string fromEmail, string expected)
+        => Assert.Equal(expected, new MailMessageSummary { From = from, FromEmail = fromEmail }.FromWithAddress);
 }

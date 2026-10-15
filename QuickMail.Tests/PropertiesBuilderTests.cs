@@ -37,6 +37,33 @@ public class MessagePropertiesBuilderTests
     }
 
     [Fact]
+    public void Build_WithNoCachedBody_ShowsTheSendersNameAndAddress()
+    {
+        // #801 left a Microsoft row's From the name alone, as an IMAP row's always was; a message whose body is
+        // not cached — opened in a message window, or never opened — must still show who sent it in full (#803).
+        var s = MakeSummary(from: "Sam Example");
+        s.FromEmail = "sam@example.com";
+
+        var (_, sections) = MessagePropertiesBuilder.Build(s, null, "Work");
+
+        var from = sections.First(x => x.Header == "Headers").Items.First(i => i.Label == "From");
+        Assert.Equal("Sam Example <sam@example.com>", from.Value);
+    }
+
+    [Fact]
+    public void Build_PrefersTheCachedBodysSender()
+    {
+        var s = MakeSummary(from: "Sam Example");
+        s.FromEmail = "sam@example.com";
+        var detail = new MailMessageDetail { From = "\"Sam Example\" <sam@example.com>" };
+
+        var (_, sections) = MessagePropertiesBuilder.Build(s, detail, "Work");
+
+        var from = sections.First(x => x.Header == "Headers").Items.First(i => i.Label == "From");
+        Assert.Equal("\"Sam Example\" <sam@example.com>", from.Value);
+    }
+
+    [Fact]
     public void Build_FormatsDateInLocalTime()
     {
         var s = MakeSummary();

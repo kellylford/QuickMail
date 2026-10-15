@@ -290,7 +290,7 @@ public class RuleService : IRuleService
         // Both sender conditions read the name and the address together (#803): From on an IMAP or POP3 row is the
         // display name alone, so an address condition had nothing to match there, and a rule from before #682 may
         // hold a name in its From condition, so neither condition can read the address alone either.
-        var sender = msg.FromForMatching;
+        var sender = msg.FromWithAddress;
         if (rule.FromValues() is { Count: > 0 } fromValues
             && !fromValues.Any(v => sender.Contains(v, StringComparison.OrdinalIgnoreCase)))
             return false;
