@@ -113,11 +113,12 @@ public interface ISyncService
     event Action<int, int>? SenderEmailBackfillProgressChanged;
 
     /// <summary>
-    /// Fired once, on the UI thread, when a sender-address backfill pass that had work to do ends: (filled, planned).
-    /// filled is below planned when a server went away or no longer has some of the messages. Not fired when there
-    /// was nothing to fetch.
+    /// Fired once, on the UI thread, when a sender-address backfill pass that had work to do ends, however it ends —
+    /// finished, stopped by a server, or cancelled — so whatever showed its progress can be cleared (review of
+    /// #806): (filled, planned). filled is below planned when a server went away, no longer has some of the
+    /// messages, or the pass was cancelled. Not fired when there was nothing to fetch.
     /// </summary>
-    event Action<int, int>? SenderEmailBackfillCompleted;
+    event Action<int, int>? SenderEmailBackfillEnded;
 
     /// <summary>
     /// The offline-bodies pass on its own (#637): downloads the bodies of recent Inbox messages

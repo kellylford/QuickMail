@@ -814,9 +814,11 @@ sealed class StubSyncService : ISyncService
     public event Action<int, int>? SyncProgressChanged;
     public event Action<int, int>? OfflineBodyProgressChanged;
     public event Action<int, int>? OfflineBodyPassCompleted;
-    public event Action<int, int>? SenderEmailBackfillProgressChanged;
-    public event Action<int, int>? SenderEmailBackfillCompleted;
 #pragma warning restore CS0067
+    public event Action<int, int>? SenderEmailBackfillProgressChanged;
+    public event Action<int, int>? SenderEmailBackfillEnded;
+    public void RaiseSenderEmailBackfillProgress(int done, int total) => SenderEmailBackfillProgressChanged?.Invoke(done, total);
+    public void RaiseSenderEmailBackfillEnded(int filled, int planned) => SenderEmailBackfillEnded?.Invoke(filled, planned);
     /// <summary>Every backfill request (#637), so a test can assert Settings triggered one.</summary>
     public int BackfillCalls { get; private set; }
     public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct)

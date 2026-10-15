@@ -38,7 +38,7 @@ public partial class SyncService
     private HashSet<Guid> _senderEmailPending = [];
 
     public event Action<int, int>? SenderEmailBackfillProgressChanged;
-    public event Action<int, int>? SenderEmailBackfillCompleted;
+    public event Action<int, int>? SenderEmailBackfillEnded;
 
     /// <summary>
     /// Asks the post-sync trickle to fetch the addresses of IMAP rows still lacking one, calling
@@ -81,71 +81,79 @@ public partial class SyncService
         // Accounts this pass stopped on before it was through: the rest of their folders are left for the next launch.
         var unfinished = new HashSet<Guid>();
         var firstRequest = true;
-        foreach (var (account, folder, ids) in work)
+        try
         {
-            if (unfinished.Contains(account.Id)) continue;
-            for (var start = 0; start < ids.Count; start += SenderEmailFetchBatch)
+            foreach (var (account, folder, ids) in work)
             {
-                ct.ThrowIfCancellationRequested();
-                if (!firstRequest && SenderEmailPacing > TimeSpan.Zero) await Task.Delay(SenderEmailPacing, ct);
-                firstRequest = false;
+                if (unfinished.Contains(account.Id)) continue;
+                for (var start = 0; start < ids.Count; start += SenderEmailFetchBatch)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (!firstRequest && SenderEmailPacing > TimeSpan.Zero) await Task.Delay(SenderEmailPacing, ct);
+                    firstRequest = false;
 
-                var batch = ids.GetRange(start, Math.Min(SenderEmailFetchBatch, ids.Count - start));
-                try
-                {
-                    var fetched = await _imap.FetchSenderEmailsAsync(account.Id, folder, batch, ct);
-                    var written = await _store.UpdateSenderEmailsBatchAsync(account.Id, folder,
-                        fetched.Select(f => (f.Key, f.Value.FromEmail, f.Value.InternetMessageId)));
-                    filled += written;
-                    // Not written, almost always: the server's message under that id has another Message-ID, because
-                    // the folder was renumbered after it was cached. Asking again next launch would get the same
-                    // answer, so these rows keep matching on the display name, as they always did.
-                    if (written < fetched.Count)
-                        LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: {fetched.Count - written} not written; their ids may now name other messages");
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, ct))
-                {
-                    _connectivity?.NoteAccountUnreachable(account.Id, "sender-address backfill");
-                    LogService.Log($"Sender-address backfill {account.AccountLabel}: server unreachable, stopping", ex);
-                    unfinished.Add(account.Id);
-                    break;
-                }
-                catch (Exception ex) when (IsPermanentlyUnfetchable(ex))
-                {
-                    // The folder is gone from the server, or holds an id no IMAP fetch can name. Retrying it every
-                    // launch would never succeed, so it is skipped for good and the account can still finish; its
-                    // rows keep matching on the display name, as they always did.
-                    LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: skipped for good", ex);
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    // The server answered but refused: Gmail throttling (NO [UNAVAILABLE]), a sign-in that needs
-                    // renewing, and the like. These pass, so the account is left for the next launch rather than
-                    // its folder dropped for good — and the pass stops asking it now rather than pressing on into a
-                    // server that is pushing back (review of #806).
-                    LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: will try again next launch", ex);
-                    unfinished.Add(account.Id);
-                    break;
-                }
-                finally
-                {
-                    done += batch.Count;
-                }
+                    var batch = ids.GetRange(start, Math.Min(SenderEmailFetchBatch, ids.Count - start));
+                    try
+                    {
+                        var fetched = await _imap.FetchSenderEmailsAsync(account.Id, folder, batch, ct);
+                        var written = await _store.UpdateSenderEmailsBatchAsync(account.Id, folder,
+                            fetched.Select(f => (f.Key, f.Value.FromEmail, f.Value.InternetMessageId)));
+                        filled += written;
+                        // Not written, almost always: the server's message under that id has another Message-ID,
+                        // because the folder was renumbered after it was cached. Asking again next launch would get
+                        // the same answer, so these rows keep matching on the display name, as they always did.
+                        if (written < fetched.Count)
+                            LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: {fetched.Count - written} not written; their ids may now name other messages");
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, ct))
+                    {
+                        _connectivity?.NoteAccountUnreachable(account.Id, "sender-address backfill");
+                        LogService.Log($"Sender-address backfill {account.AccountLabel}: server unreachable, stopping", ex);
+                        unfinished.Add(account.Id);
+                        break;
+                    }
+                    catch (Exception ex) when (IsPermanentlyUnfetchable(ex))
+                    {
+                        // The folder is gone from the server, or holds an id no IMAP fetch can name. Retrying it every
+                        // launch would never succeed, so it is skipped for good and the account can still finish; its
+                        // rows keep matching on the display name, as they always did.
+                        LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: skipped for good", ex);
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        // The server answered but refused: Gmail throttling (NO [UNAVAILABLE]), a sign-in that needs
+                        // renewing, and the like. These pass, so the account is left for the next launch rather than
+                        // its folder dropped for good — and the pass stops asking it now rather than pressing on into a
+                        // server that is pushing back (review of #806).
+                        LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: will try again next launch", ex);
+                        unfinished.Add(account.Id);
+                        break;
+                    }
+                    finally
+                    {
+                        done += batch.Count;
+                    }
 
-                if (done < total)
-                {
-                    var (d, t) = (done, total);
-                    _ui.Post(() => SenderEmailBackfillProgressChanged?.Invoke(d, t));
+                    if (done < total)
+                    {
+                        var (d, t) = (done, total);
+                        _ui.Post(() => SenderEmailBackfillProgressChanged?.Invoke(d, t));
+                    }
                 }
             }
         }
-
-        if (total > 0)
+        finally
         {
-            LogService.Log($"Sender-address backfill: {filled} of {total} filled from the server");
-            _ui.Post(() => SenderEmailBackfillCompleted?.Invoke(filled, total));
+            // However the pass ends — finished, stopped, or cancelled at shutdown — so the status bar never keeps
+            // showing progress for a pass that is over (review of #806).
+            if (total > 0)
+            {
+                LogService.Log($"Sender-address backfill: {filled} of {total} filled from the server{(ct.IsCancellationRequested ? " (cancelled)" : "")}");
+                var (f, t) = (filled, total);
+                _ui.Post(() => SenderEmailBackfillEnded?.Invoke(f, t));
+            }
         }
 
         // An account is done once the pass reached it and went through all its folders: each one fetched, or skipped

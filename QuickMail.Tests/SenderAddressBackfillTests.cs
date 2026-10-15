@@ -235,12 +235,15 @@ public class SenderAddressBackfillSyncTests : IDisposable
         public bool Unreachable { get; set; }
         /// <summary>A folder whose fetch throws the given exception, the way a real server can fail it.</summary>
         public Dictionary<string, Exception> FailFolder { get; } = [];
+        /// <summary>Runs as each fetch starts, so a test can act part-way through a pass.</summary>
+        public Action? OnFetch { get; set; }
 
         public Task<IReadOnlyDictionary<string, FetchedSender>> FetchSenderEmailsAsync(
             Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
         {
             if (Unreachable) throw new SocketException((int)SocketError.HostUnreachable);
             if (FailFolder.TryGetValue(folderName, out var failure)) throw failure;
+            OnFetch?.Invoke();
             Fetches.Add((folderName, messageIds.ToList()));
             return Task.FromResult<IReadOnlyDictionary<string, FetchedSender>>(
                 messageIds.Where(OnServer.ContainsKey).ToDictionary(
@@ -304,7 +307,7 @@ public class SenderAddressBackfillSyncTests : IDisposable
         mail.OnServer["2"] = "info@other.example";
         mail.MessageIdOnServer["2"] = "same@other.example";
         var results = new List<(int Filled, int Planned)>();
-        sync.SenderEmailBackfillCompleted += (f, p) => results.Add((f, p));
+        sync.SenderEmailBackfillEnded += (f, p) => results.Add((f, p));
         var completed = 0;
         sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
 
@@ -507,10 +510,10 @@ public class SenderAddressBackfillSyncTests : IDisposable
     }
 
     [Fact]
-    public async Task ABigCache_IsFetchedInBatches_WithProgressAndOneCompletion()
+    public async Task ABigCache_IsFetchedInBatches_WithProgressAndOneEnd()
     {
         // It is real traffic the user did not ask for, so it is never invisible: progress after each batch,
-        // one completion at the end.
+        // and one end, which clears it.
         var imap = Account();
         var total = SyncService.SenderEmailFetchBatch * 2 + 200;
         await _store.UpsertSummariesAsync([.. Enumerable.Range(1, total).Select(i => new MailMessageSummary
@@ -521,9 +524,9 @@ public class SenderAddressBackfillSyncTests : IDisposable
         var (sync, mail) = Build();
         for (var i = 1; i <= total; i++) mail.OnServer[i.ToString(System.Globalization.CultureInfo.InvariantCulture)] = $"n{i}@x.com";
         var progress = new List<(int, int)>();
-        var completed = new List<(int, int)>();
+        var ended = new List<(int, int)>();
         sync.SenderEmailBackfillProgressChanged += (d, t) => progress.Add((d, t));
-        sync.SenderEmailBackfillCompleted += (f, p) => completed.Add((f, p));
+        sync.SenderEmailBackfillEnded += (f, p) => ended.Add((f, p));
         sync.RequestSenderEmailBackfill([imap.Id], () => { });
 
         await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
@@ -531,7 +534,48 @@ public class SenderAddressBackfillSyncTests : IDisposable
         Assert.Equal(3, mail.Fetches.Count);
         Assert.All(mail.Fetches, f => Assert.True(f.Ids.Count <= SyncService.SenderEmailFetchBatch));
         Assert.Equal([(500, total), (1000, total)], progress);
-        Assert.Equal([(total, total)], completed);
+        Assert.Equal([(total, total)], ended);
+    }
+
+    [Fact]
+    public async Task AServerThatGoesAway_StillEndsThePass()
+    {
+        // Review of #806: the progress used to stay in the status bar when the connection dropped part-way.
+        var imap = Account();
+        await Seed(imap, "1", "Some Company");
+        var (sync, mail) = Build();
+        mail.Unreachable = true;
+        var ended = new List<(int, int)>();
+        sync.SenderEmailBackfillEnded += (f, p) => ended.Add((f, p));
+        sync.RequestSenderEmailBackfill([imap.Id], () => { });
+
+        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
+
+        Assert.Equal([(0, 1)], ended);
+    }
+
+    [Fact]
+    public async Task ACancelledPass_StillEndsThePass()
+    {
+        // Shutting down cancels the trickle mid-pass; the end must still be raised so nothing is left showing.
+        var imap = Account();
+        await Seed(imap, "1", "Some Company");
+        await Seed(imap, "2", "Other Company", folder: "Archive");
+        var (sync, mail) = Build();
+        mail.OnServer["1"] = "news@company.com";
+        mail.OnServer["2"] = "info@other.example";
+        using var cts = new CancellationTokenSource();
+        mail.OnFetch = cts.Cancel;   // cancelled while the first folder's fetch is under way
+        var ended = new List<(int, int)>();
+        sync.SenderEmailBackfillEnded += (f, p) => ended.Add((f, p));
+        var completed = 0;
+        sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => sync.BackfillSenderEmailsFromServerAsync([imap], cts.Token));
+
+        Assert.Equal([(1, 2)], ended);
+        Assert.Equal(0, completed);   // not finished, so the next launch carries on
     }
 
     [Fact]
@@ -542,7 +586,7 @@ public class SenderAddressBackfillSyncTests : IDisposable
         var (sync, _) = Build();
         var said = 0;
         sync.SenderEmailBackfillProgressChanged += (_, _) => said++;
-        sync.SenderEmailBackfillCompleted += (_, _) => said++;
+        sync.SenderEmailBackfillEnded += (_, _) => said++;
         var completed = 0;
         sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
 
@@ -553,8 +597,22 @@ public class SenderAddressBackfillSyncTests : IDisposable
     }
 }
 
-public class SenderAddressBackfillWordingTests
+/// <summary>
+/// The status bar's region for the backfill (review of #806): its own text, so the message count is never
+/// overwritten, there while the pass runs and gone the moment it ends.
+/// </summary>
+public class SenderAddressBackfillStatusTests
 {
+    private static (QuickMail.ViewModels.MainViewModel Vm, StubSyncService Sync) Build()
+    {
+        var sync = new StubSyncService();
+        var vm = new QuickMail.ViewModels.MainViewModel(new StubImapMailService(), new StubAccountService(),
+            new StubCredentialService(), new StubLocalStoreService(), new StubOAuthService(), sync,
+            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), new StubSmtpService());
+        return (vm, sync);
+    }
+
     [Fact]
     public void Progress_ReadsAsACount()
         => Assert.Equal(
@@ -562,12 +620,44 @@ public class SenderAddressBackfillWordingTests
             QuickMail.ViewModels.MainViewModel.DescribeSenderEmailBackfill(2000, 8000));
 
     [Fact]
-    public void Finishing_ShowsAResultOnlyWhenSomethingWasFilled()
+    public void Progress_HasItsOwnRegion_AndLeavesTheStatusTextAlone()
     {
-        Assert.Null(QuickMail.ViewModels.MainViewModel.SenderEmailBackfillFinished(0));
-        Assert.Equal("Updated the sender address of 1 message.", QuickMail.ViewModels.MainViewModel.SenderEmailBackfillFinished(1));
-        Assert.Equal(
-            string.Format(System.Globalization.CultureInfo.CurrentCulture, "Updated sender addresses for {0:N0} messages.", 1234),
-            QuickMail.ViewModels.MainViewModel.SenderEmailBackfillFinished(1234));
+        var (vm, sync) = Build();
+        vm.StatusText = "7,323 messages.";
+
+        sync.RaiseSenderEmailBackfillProgress(500, 2000);
+
+        Assert.Equal(QuickMail.ViewModels.MainViewModel.DescribeSenderEmailBackfill(500, 2000), vm.SenderAddressStatusText);
+        Assert.Equal("7,323 messages.", vm.StatusText);
+    }
+
+    [Theory]
+    [InlineData(2000, 2000)]   // finished
+    [InlineData(500, 2000)]    // stopped by a server, or cancelled
+    [InlineData(0, 2000)]
+    public void TheRegionIsCleared_HoweverThePassEnds(int filled, int planned)
+    {
+        var (vm, sync) = Build();
+        vm.StatusText = "7,323 messages.";
+        sync.RaiseSenderEmailBackfillProgress(500, 2000);
+
+        sync.RaiseSenderEmailBackfillEnded(filled, planned);
+
+        Assert.Equal("", vm.SenderAddressStatusText);    // empty, so the region is hidden
+        Assert.Equal("7,323 messages.", vm.StatusText);  // and no result left in the status text either
+    }
+
+    [Fact]
+    public void TheRegion_IsHiddenWhenEmpty_AndReachedWithTheArrowKeys()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (!Directory.Exists(Path.Combine(root.FullName, "QuickMail", "Views"))) root = root.Parent!;
+        var xaml = File.ReadAllText(Path.Combine(root.FullName, "QuickMail", "Views", "MainWindow.xaml"));
+        var code = File.ReadAllText(Path.Combine(root.FullName, "QuickMail", "Views", "MainWindow.xaml.cs"));
+
+        Assert.Contains("Visibility=\"{Binding SenderAddressStatusText, Converter={StaticResource StringToVisibilityConverter}}\"",
+            xaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisibleChanged=\"SenderAddressStatusItem_IsVisibleChanged\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SenderAddressStatusTextBox.IsKeyboardFocused) return 5;", code, StringComparison.Ordinal);
     }
 }

@@ -2322,7 +2322,20 @@
                            Text="{Binding OfflineBodyStatusText, Mode=OneWay}"/>
             </StatusBarItem>
 
-            <!-- Region 5: Sync progress (informational, visible only when busy) -->
+            <!-- Region 5 (focus order): the one-time sender-address update (#803) — "Updating sender addresses: 500 of
+                 2,000". Its own region so it never overwrites the message count; there only while the update runs, and
+                 hidden the moment it ends, however it ends (review of #806). -->
+            <StatusBarItem x:Name="SenderAddressStatusItem"
+                           HorizontalAlignment="Right"
+                           KeyboardNavigation.IsTabStop="True"
+                           Visibility="{Binding SenderAddressStatusText, Converter={StaticResource StringToVisibilityConverter}}"
+                           IsVisibleChanged="SenderAddressStatusItem_IsVisibleChanged">
+                <TextBlock x:Name="SenderAddressStatusTextBox"
+                           Style="{StaticResource StatusTextBlockStyle}"
+                           Text="{Binding SenderAddressStatusText, Mode=OneWay}"/>
+            </StatusBarItem>
+
+            <!-- Region 6: Sync progress (informational, visible only when busy) -->
             <StatusBarItem x:Name="StatusProgressItem"
                            HorizontalAlignment="Right"
                            KeyboardNavigation.IsTabStop="True"

@@ -62,7 +62,7 @@ public class MessageRemovalFocusTests
         public event Action<int, int>? OfflineBodyProgressChanged;
         public event Action<int, int>? OfflineBodyPassCompleted;
         public event Action<int, int>? SenderEmailBackfillProgressChanged;
-        public event Action<int, int>? SenderEmailBackfillCompleted;
+        public event Action<int, int>? SenderEmailBackfillEnded;
 #pragma warning restore CS0067
 
         public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts,

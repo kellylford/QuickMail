@@ -4693,14 +4693,15 @@ public partial class MainWindow : Window
         if (ConnectionStatusTextBox.IsKeyboardFocused) return 2;
         if (RulesStatusButton.IsKeyboardFocused)       return 3;
         if (OfflineStatusTextBox.IsKeyboardFocused)    return 4;
-        if (StatusProgressBar.IsKeyboardFocused)       return 5;
+        if (SenderAddressStatusTextBox.IsKeyboardFocused) return 5;
+        if (StatusProgressBar.IsKeyboardFocused)       return 6;
 
         return 0;
     }
 
     /// <summary>
     /// Moves keyboard focus to the specified status bar region (1-based index).
-    /// Regions 4 (offline reading) and 5 (sync progress) are skipped when not visible.
+    /// Regions 4 (offline reading), 5 (sender-address update) and 6 (sync progress) are skipped when not visible.
     /// </summary>
     private void FocusStatusBarRegion(int region)
     {
@@ -4722,6 +4723,12 @@ public partial class MainWindow : Window
                     FocusStatusBarRegion(1); // fallback: wrap to first
                 break;
             case 5:
+                if (SenderAddressStatusItem.Visibility == Visibility.Visible)
+                    SenderAddressStatusTextBox.Focus();
+                else
+                    FocusStatusBarRegion(1); // fallback: wrap to first
+                break;
+            case 6:
                 if (StatusProgressItem.Visibility == Visibility.Visible)
                     StatusProgressBar.Focus();
                 else
@@ -4743,8 +4750,10 @@ public partial class MainWindow : Window
         var visible = new List<int> { 1, 2, 3 };
         if (OfflineStatusItem.Visibility == Visibility.Visible)
             visible.Add(4);
-        if (StatusProgressItem.Visibility == Visibility.Visible)
+        if (SenderAddressStatusItem.Visibility == Visibility.Visible)
             visible.Add(5);
+        if (StatusProgressItem.Visibility == Visibility.Visible)
+            visible.Add(6);
 
         int pos = visible.IndexOf(current);
         if (pos < 0) { FocusStatusBarRegion(visible[0]); return; }
@@ -4754,6 +4763,17 @@ public partial class MainWindow : Window
             : (pos - 1 + visible.Count) % visible.Count;
 
         FocusStatusBarRegion(visible[nextPos]);
+    }
+
+    /// <summary>
+    /// The sender-address region hides itself when the update ends — quite possibly while someone is on it reading
+    /// the count. Focus would be left on nothing, so it moves to the region before it, as Left would have taken it.
+    /// Keyboard focus is still on the hidden region here: WPF moves it off a hidden element only afterwards.
+    /// </summary>
+    private void SenderAddressStatusItem_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is false && SenderAddressStatusTextBox.IsKeyboardFocused)
+            FocusStatusBarRegion(OfflineStatusItem.Visibility == Visibility.Visible ? 4 : 3);
     }
 
     /// <summary>

@@ -48,7 +48,9 @@ rule made from a message from "PayPal" no longer also catches someone else calli
 The first time you start this version, QuickMail fills in the address for mail it already has.
 Most of it comes from what is already on this computer. For IMAP mail whose text has not been
 downloaded, it asks the server for the sender alone, a batch at a time, and shows its progress in
-the status bar. Nothing is moved, deleted or marked, and your rules do not run again.
+its own part of the status bar, which goes away when it's done. To check on it, press **Ctrl+9** to
+reach the status bar and **Right** to move along it. Nothing is moved, deleted or marked, and your
+rules do not run again.
 
 ### A Microsoft account's message list says the sender's name
 

@@ -98,7 +98,7 @@ public class MainViewModelFlagTests
         public event Action<int, int>? OfflineBodyProgressChanged;
     public event Action<int, int>? OfflineBodyPassCompleted;
     public event Action<int, int>? SenderEmailBackfillProgressChanged;
-    public event Action<int, int>? SenderEmailBackfillCompleted;
+    public event Action<int, int>? SenderEmailBackfillEnded;
 #pragma warning restore CS0067
         public void Fire(IReadOnlyList<MailMessageSummary> messages) => FolderSynced?.Invoke(messages);
         public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
