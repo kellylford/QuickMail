@@ -979,30 +979,39 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
     // ── One-time sender-address backfill (#803) ──────────────────────────────────
 
-    public async Task<IReadOnlyDictionary<string, string>> FetchSenderEmailsAsync(
+    public async Task<IReadOnlyDictionary<string, FetchedSender>> FetchSenderEmailsAsync(
         Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
-        var result = new Dictionary<string, string>();
+        var result = new Dictionary<string, FetchedSender>();
         if (messageIds.Count == 0) return result;
 
-        // Background lease, read-only open, and the From header alone (BODY.PEEK, so no \Seen): a hundred-odd bytes
-        // a message, where an ENVELOPE runs to a kilobyte. On a large cache that is the difference between a few
-        // megabytes and a hundred.
+        // Background lease, read-only open, and the From and Message-ID headers alone (BODY.PEEK, so no \Seen): a
+        // couple of hundred bytes a message, where an ENVELOPE runs to a kilobyte. On a large cache that is the
+        // difference between a few megabytes and a hundred.
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
         var folder = await lease.Client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
         {
-            var request = new FetchRequest(MessageSummaryItems.UniqueId) { Headers = new HeaderSet([HeaderId.From]) };
+            var request = new FetchRequest(MessageSummaryItems.UniqueId)
+            {
+                Headers = new HeaderSet([HeaderId.From, HeaderId.MessageId]),
+            };
             var summaries = await folder.FetchAsync(messageIds.Select(ToUid).ToList(), request, ct);
             foreach (var s in summaries)
             {
                 // Parsed from the raw bytes, not the decoded text: an encoded "Ford, Kelly" decodes to an unquoted
                 // comma, which would read as two addresses.
-                var header = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.From);
-                if (header is null || !InternetAddressList.TryParse(header.RawValue, out var list)) continue;
+                var from = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.From);
+                if (from is null || !InternetAddressList.TryParse(from.RawValue, out var list)) continue;
                 var emails = FormatAddressListEmails(list);
-                if (emails.Length > 0) result[s.UniqueId.Id.ToString(CultureInfo.InvariantCulture)] = emails;
+                if (emails.Length == 0) continue;
+                // Without angle brackets, as the ENVELOPE's Message-ID the sync cached was.
+                var messageIdHeader = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.MessageId)?.Value;
+                var messageId = string.IsNullOrWhiteSpace(messageIdHeader)
+                    ? string.Empty
+                    : MimeKit.Utils.MimeUtils.ParseMessageId(messageIdHeader) ?? messageIdHeader.Trim();
+                result[s.UniqueId.Id.ToString(CultureInfo.InvariantCulture)] = new FetchedSender(emails, messageId);
             }
             return result;
         }

@@ -212,8 +212,13 @@ public interface ILocalStoreService
     /// <summary>Ids of the account's rows with a sender but no from_email, grouped by folder, newest first.</summary>
     Task<Dictionary<string, List<string>>> GetMessageIdsMissingSenderEmailAsync(Guid accountId);
 
-    /// <summary>Sets from_email on rows that still lack it. Never overwrites one already there.</summary>
-    Task UpdateSenderEmailsBatchAsync(Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail)> updates);
+    /// <summary>
+    /// Sets from_email on rows that still lack it, where the row's Message-ID matches the one fetched with the
+    /// address or the row has none: after a server renumbers a folder, a stored id can name another message (review
+    /// of #806). Never overwrites an address already there. Returns how many rows it filled.
+    /// </summary>
+    Task<int> UpdateSenderEmailsBatchAsync(
+        Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail, string InternetMessageId)> updates);
 
     /// <summary>
     /// Counts all message summaries stored for the given account.

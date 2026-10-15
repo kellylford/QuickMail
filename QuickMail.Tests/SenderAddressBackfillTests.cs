@@ -1,7 +1,7 @@
 // The one-time sender-address backfill (#803): rows cached before from_email existed get it filled in place.
 // Nothing is cleared — POP3's cache is the only copy of its mail — so these pin that it only ever fills what
-// is missing, splits only Graph rows, never trusts an IMAP display text to be an address, and asks the server only
-// for IMAP rows with no cached body.
+// is missing, splits only Graph rows, never trusts an IMAP display text to be an address, asks the server only
+// for IMAP rows with no cached body, and writes the server's answer only where its Message-ID matches the row's.
 
 using System;
 using System.Collections.Generic;
@@ -101,10 +101,10 @@ public class SenderAddressBackfillStoreTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private MailMessageSummary Row(Guid account, string id, string from, string fromEmail = "") => new()
+    private MailMessageSummary Row(Guid account, string id, string from, string fromEmail = "", string internetMessageId = "") => new()
     {
         MessageId = id, AccountId = account, FolderName = "INBOX", From = from, FromEmail = fromEmail,
-        Subject = id, Date = DateTimeOffset.UtcNow,
+        InternetMessageId = internetMessageId, Subject = id, Date = DateTimeOffset.UtcNow,
     };
 
     private async Task<MailMessageSummary> Load(Guid account, string id)
@@ -166,10 +166,41 @@ public class SenderAddressBackfillStoreTests : IDisposable
     {
         await _store.UpsertSummariesAsync([Row(_imap, "i1", "Some Company"), Row(_imap, "i2", "Kept", "kept@x.com")]);
 
-        await _store.UpdateSenderEmailsBatchAsync(_imap, "INBOX", [("i1", "news@company.com"), ("i2", "other@x.com")]);
+        var written = await _store.UpdateSenderEmailsBatchAsync(_imap, "INBOX",
+            [("i1", "news@company.com", ""), ("i2", "other@x.com", "")]);
 
+        Assert.Equal(1, written);
         Assert.Equal("news@company.com", (await Load(_imap, "i1")).FromEmail);
         Assert.Equal("kept@x.com", (await Load(_imap, "i2")).FromEmail);
+    }
+
+    [Fact]
+    public async Task ServerAddresses_AreWrittenOnlyWhereTheMessageIdStillMatches()
+    {
+        // Review of #806: after a server renumbers a folder, a stored id can name another message, and its sender
+        // must not be written onto the cached one.
+        await _store.UpsertSummariesAsync([
+            Row(_imap, "same",       "Some Company",   internetMessageId: "a1@company.com"),
+            Row(_imap, "renumbered", "Some Company",   internetMessageId: "a2@company.com"),
+            Row(_imap, "noIdCached", "Other Company"),
+            Row(_imap, "brackets",   "Third Company",  internetMessageId: "<a4@company.com>"),
+            Row(_imap, "noIdThere",  "Fourth Company", internetMessageId: "a5@company.com"),
+        ]);
+
+        var written = await _store.UpdateSenderEmailsBatchAsync(_imap, "INBOX", [
+            ("same",       "news@company.com",      "a1@company.com"),
+            ("renumbered", "someone@other.example", "b2@other.example"),
+            ("noIdCached", "info@other.example",    "a3@other.example"),   // nothing cached to check against
+            ("brackets",   "info@third.example",    "a4@company.com"),     // the same id, written two ways
+            ("noIdThere",  "info@fourth.example",   ""),                   // the server's has none: another message
+        ]);
+
+        Assert.Equal(3, written);
+        Assert.Equal("news@company.com",   (await Load(_imap, "same")).FromEmail);
+        Assert.Equal("",                   (await Load(_imap, "renumbered")).FromEmail);
+        Assert.Equal("info@other.example", (await Load(_imap, "noIdCached")).FromEmail);
+        Assert.Equal("info@third.example", (await Load(_imap, "brackets")).FromEmail);
+        Assert.Equal("",                   (await Load(_imap, "noIdThere")).FromEmail);
     }
 }
 
@@ -198,19 +229,22 @@ public class SenderAddressBackfillSyncTests : IDisposable
     private sealed class EnvelopeMail : StubImapMailServiceBase, IMailService
     {
         public Dictionary<string, string> OnServer { get; } = [];
+        /// <summary>The Message-ID the server gives a message; none when not listed.</summary>
+        public Dictionary<string, string> MessageIdOnServer { get; } = [];
         public List<(string Folder, List<string> Ids)> Fetches { get; } = [];
         public bool Unreachable { get; set; }
         /// <summary>A folder whose fetch throws the given exception, the way a real server can fail it.</summary>
         public Dictionary<string, Exception> FailFolder { get; } = [];
 
-        public Task<IReadOnlyDictionary<string, string>> FetchSenderEmailsAsync(
+        public Task<IReadOnlyDictionary<string, FetchedSender>> FetchSenderEmailsAsync(
             Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
         {
             if (Unreachable) throw new SocketException((int)SocketError.HostUnreachable);
             if (FailFolder.TryGetValue(folderName, out var failure)) throw failure;
             Fetches.Add((folderName, messageIds.ToList()));
-            return Task.FromResult<IReadOnlyDictionary<string, string>>(
-                messageIds.Where(OnServer.ContainsKey).ToDictionary(id => id, id => OnServer[id]));
+            return Task.FromResult<IReadOnlyDictionary<string, FetchedSender>>(
+                messageIds.Where(OnServer.ContainsKey).ToDictionary(
+                    id => id, id => new FetchedSender(OnServer[id], MessageIdOnServer.GetValueOrDefault(id, ""))));
         }
     }
 
@@ -229,11 +263,12 @@ public class SenderAddressBackfillSyncTests : IDisposable
         return (sync, mail);
     }
 
-    private Task Seed(AccountModel account, string id, string from, string fromEmail = "", string folder = "INBOX")
+    private Task Seed(AccountModel account, string id, string from, string fromEmail = "", string folder = "INBOX",
+                      string internetMessageId = "")
         => _store.UpsertSummariesAsync([new MailMessageSummary
         {
             MessageId = id, AccountId = account.Id, FolderName = folder, From = from, FromEmail = fromEmail,
-            Subject = id, Date = DateTimeOffset.UtcNow,
+            InternetMessageId = internetMessageId, Subject = id, Date = DateTimeOffset.UtcNow,
         }]);
 
     [Fact]
@@ -252,6 +287,33 @@ public class SenderAddressBackfillSyncTests : IDisposable
         var (_, ids) = Assert.Single(mail.Fetches);
         Assert.Equal(["1"], ids);
         Assert.Equal("news@company.com", (await _store.LoadFolderSummariesAsync(imap.Id, "INBOX")).Single(m => m.MessageId == "1").FromEmail);
+        Assert.Equal(1, completed);
+    }
+
+    [Fact]
+    public async Task AnIdNowNamingAnotherMessage_IsNotWritten_AndTheAccountStillFinishes()
+    {
+        // Review of #806: the folder was renumbered on the server, so id 1 is now somebody else's message. Its
+        // sender must not land on the cached one, and asking again next launch would get the same answer.
+        var imap = Account();
+        await Seed(imap, "1", "Some Company", internetMessageId: "kept@company.com");
+        await Seed(imap, "2", "Other Company", internetMessageId: "<same@other.example>");
+        var (sync, mail) = Build();
+        mail.OnServer["1"] = "someone@other.example";
+        mail.MessageIdOnServer["1"] = "different@other.example";
+        mail.OnServer["2"] = "info@other.example";
+        mail.MessageIdOnServer["2"] = "same@other.example";
+        var results = new List<(int Filled, int Planned)>();
+        sync.SenderEmailBackfillCompleted += (f, p) => results.Add((f, p));
+        var completed = 0;
+        sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
+
+        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
+
+        var rows = await _store.LoadFolderSummariesAsync(imap.Id, "INBOX");
+        Assert.Equal("", rows.Single(m => m.MessageId == "1").FromEmail);
+        Assert.Equal("info@other.example", rows.Single(m => m.MessageId == "2").FromEmail);
+        Assert.Equal([(1, 2)], results);   // the count says what was written, not what was fetched
         Assert.Equal(1, completed);
     }
 

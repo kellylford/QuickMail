@@ -87,30 +87,37 @@ public partial class LocalStoreService
         return byFolder;
     }
 
-    public async Task UpdateSenderEmailsBatchAsync(
-        Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail)> updates)
+    public async Task<int> UpdateSenderEmailsBatchAsync(
+        Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail, string InternetMessageId)> updates)
     {
         await using var conn = await OpenAsync();
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
+        // A server can renumber a folder (a new UIDVALIDITY) without the cache knowing, and then the stored id names
+        // another message. So the address is written only where the row's Message-ID is the one the server gave,
+        // or the row has none to check (review of #806). Angle brackets are trimmed on both sides: IMAP rows hold
+        // the id without them and Graph rows with them.
         cmd.CommandText = """
             UPDATE MessageSummary SET from_email = $email
-            WHERE unique_id = $uid AND account_id = $aid AND folder_name = $fn AND from_email = '';
+            WHERE unique_id = $uid AND account_id = $aid AND folder_name = $fn AND from_email = ''
+              AND trim(internet_message_id, '<> ') IN ('', $imid);
             """;
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn", folderName);
         var pUid   = cmd.Parameters.Add("$uid",   SqliteType.Text);
         var pEmail = cmd.Parameters.Add("$email", SqliteType.Text);
-        var any = false;
-        foreach (var (id, email) in updates)
+        var pImid  = cmd.Parameters.Add("$imid",  SqliteType.Text);
+        var written = 0;
+        foreach (var (id, email, imid) in updates)
         {
             if (string.IsNullOrEmpty(email)) continue;
             pUid.Value   = id;
             pEmail.Value = email;
-            await cmd.ExecuteNonQueryAsync();
-            any = true;
+            pImid.Value  = (imid ?? string.Empty).Trim('<', '>', ' ');
+            written += await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();
-        if (any) KickSearchIndexer();
+        if (written > 0) KickSearchIndexer();
+        return written;
     }
 }

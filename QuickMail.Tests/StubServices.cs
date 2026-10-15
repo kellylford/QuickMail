@@ -395,8 +395,9 @@ class StubLocalStoreService : ILocalStoreService
     public virtual Task<int> BackfillSenderEmailsLocallyAsync(IReadOnlyCollection<Guid> graphAccountIds) => Task.FromResult(0);
     public virtual Task<Dictionary<string, List<string>>> GetMessageIdsMissingSenderEmailAsync(Guid accountId)
         => Task.FromResult(new Dictionary<string, List<string>>());
-    public virtual Task UpdateSenderEmailsBatchAsync(Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail)> updates)
-        => Task.CompletedTask;
+    public virtual Task<int> UpdateSenderEmailsBatchAsync(
+        Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail, string InternetMessageId)> updates)
+        => Task.FromResult(0);
     public virtual Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
     public virtual Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     public virtual Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());
