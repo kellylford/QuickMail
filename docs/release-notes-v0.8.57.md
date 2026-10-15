@@ -26,7 +26,7 @@ label when Speak field labels is on. Change it to a shorter word, or empty it to
 a count then says just its number. With Unread count set to "of" just before an emptied Message
 count, and the Space separator, a conversation reads "6 of 12 Budget review", or "12 Budget review"
 when it's all read. **Default word** puts the shipped word back, and Reset to Defaults restores
-them all. Thanks to the user who suggested it (#807).
+them all (#807).
 
 ## Reporting Issues
 

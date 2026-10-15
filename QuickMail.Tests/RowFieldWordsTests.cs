@@ -157,7 +157,8 @@ public class RowFieldWordsTests
     public void TypingTheShippedWordStoresNothing()
     {
         Assert.Null(RowFieldWords.Override("unread", "unread"));
-        Assert.Null(RowFieldWords.Override(" unread ", "unread"));
+        // Exactly, not trimmed: "unread " is on its way to "unread mail" and must keep its space.
+        Assert.Equal("unread ", RowFieldWords.Override("unread ", "unread"));
         Assert.Equal("of", RowFieldWords.Override("of", "unread"));
         Assert.Equal(string.Empty, RowFieldWords.Override("", "unread"));
     }
@@ -166,7 +167,7 @@ public class RowFieldWordsTests
     public void WordsLoseControlAndFormatCharacters_AndAreCapped()
     {
         Assert.Equal("ab", RowFieldWords.Clean("a\r\nb"));
-        Assert.Equal("ab", RowFieldWords.Clean("a‮b"));                // right-to-left override
+        Assert.Equal("ab", RowFieldWords.Clean("a" + (char)0x202E + "b"));                // right-to-left override
         Assert.Equal("not read ", RowFieldWords.Clean("not read "));        // the space before a 2nd word
         Assert.Equal(RowFieldWords.MaxLength, RowFieldWords.Clean(new string('x', 99)).Length);
     }
@@ -229,13 +230,13 @@ public class RowFieldWordsTests
         var (vm, layouts) = Chooser(RowKind.Conversation);
         vm.SelectedField = vm.Fields.First(f => f.Id == "count");
         Assert.Equal("messages", vm.SelectedField!.Word);
-        Assert.False(vm.RestoreDefaultWordCommand.CanExecute(null));
+        Assert.False(vm.SelectedField.HasCustomWord);
 
         vm.SelectedField.Word = "";
 
         Assert.Equal("", layouts.Load().Conversation.First(f => f.Id == "count").Word);
         Assert.DoesNotContain("messages", vm.Preview, StringComparison.Ordinal);
-        Assert.True(vm.RestoreDefaultWordCommand.CanExecute(null));
+        Assert.True(vm.SelectedField.HasCustomWord);
     }
 
     [Fact]
@@ -249,7 +250,7 @@ public class RowFieldWordsTests
 
         Assert.Equal("messages", vm.SelectedField.Word);
         Assert.Null(layouts.Load().Conversation.First(f => f.Id == "count").Word);
-        Assert.False(vm.RestoreDefaultWordCommand.CanExecute(null));
+        Assert.False(vm.SelectedField.HasCustomWord);
     }
 
     [Fact]
@@ -282,6 +283,116 @@ public class RowFieldWordsTests
         Assert.False(vm.SelectedShowsFalseWord);
         vm.SelectedField = vm.Fields.First(f => f.Id == "subject");
         Assert.False(vm.SelectedShowsFalseWord);
+    }
+
+    // ── review fixes ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public void APhraseStartingWithTheShippedWordCanBeTyped()
+    {
+        // The box writes back what the source holds after every update. If "unread " counted as
+        // the shipped word, the space would vanish and "unread mail" would come out "unreadmail".
+        var (vm, _) = Chooser(RowKind.Conversation);
+        var field = vm.Fields.First(f => f.Id == "unreadcount");
+
+        field.Word = "unread ";
+        Assert.Equal("unread ", field.Word);
+        field.Word = "unread mail";
+        Assert.Equal("unread mail", field.Word);
+    }
+
+    [Fact]
+    public void WordsAreCleanedWhereTheyEnter_OnLoad()
+    {
+        // A hand edit or a settings import can put anything in rowlayout.json.
+        var saved = RowFieldCatalog.DefaultLayouts();
+        saved.Conversation.First(f => f.Id == "count").Word = "  msgs\r\n" + (char)0x202E + new string('x', 80);
+        saved.Conversation.First(f => f.Id == "unreadcount").Word = " unread ";   // just the shipped word
+        saved.Message.First(f => f.Id == "unread").FalseWord = "  seen ";
+
+        saved.Reconcile();
+
+        var count = saved.Conversation.First(f => f.Id == "count").Word!;
+        Assert.StartsWith("msgs", count, StringComparison.Ordinal);
+        Assert.DoesNotContain('\r', count);
+        Assert.DoesNotContain((char)0x202E, count);
+        Assert.True(count.Length <= RowFieldWords.MaxLength);
+        Assert.Null(saved.Conversation.First(f => f.Id == "unreadcount").Word);
+        Assert.Equal("seen", saved.Message.First(f => f.Id == "unread").FalseWord);
+    }
+
+    [Fact]
+    public void TheWhenOffWordIsStoredAndRestored()
+    {
+        var (vm, layouts) = Chooser(RowKind.Message);
+        vm.SelectedField = vm.Fields.First(f => f.Id == "unread");
+        Assert.Equal("read", vm.SelectedField!.FalseWord);
+
+        vm.SelectedField.FalseWord = "seen";
+        Assert.Equal("seen", layouts.Load().Message.First(f => f.Id == "unread").FalseWord);
+        Assert.True(vm.SelectedField.HasCustomWord);
+
+        vm.RestoreDefaultWordCommand.Execute(null);
+        Assert.Equal("read", vm.SelectedField.FalseWord);
+        Assert.Null(layouts.Load().Message.First(f => f.Id == "unread").FalseWord);
+    }
+
+    [Fact]
+    public void DefaultWordIsAlwaysAvailable_SoPressingItNeverThrowsFocusOff()
+    {
+        // A command that disabled its own button on the press would move keyboard focus off it.
+        var (vm, _) = Chooser(RowKind.Conversation);
+        vm.SelectedField = vm.Fields.First(f => f.Id == "count");
+        vm.SelectedField!.Word = "";
+
+        vm.RestoreDefaultWordCommand.Execute(null);
+
+        Assert.True(vm.RestoreDefaultWordCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void ATextFieldsLabelWordIsExplained_OnlyWhileLabelsAreOff()
+    {
+        var (vm, _) = Chooser(RowKind.Message);
+        var heard = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (t, c) => heard.Add((t, c));
+
+        vm.SelectedField = vm.Fields.First(f => f.Id == "subject");
+        heard.Clear();
+        vm.ExplainLabelWordIfSilent();
+        Assert.Equal((RowFieldsViewModel.LabelWordHint, AnnouncementCategory.Hint), Assert.Single(heard));
+
+        heard.Clear();
+        vm.ShowFieldLabels = true;
+        heard.Clear();
+        vm.ExplainLabelWordIfSilent();
+        Assert.Empty(heard);
+
+        vm.ShowFieldLabels = false;
+        vm.SelectedField = vm.Fields.First(f => f.Id == "unread");
+        heard.Clear();
+        vm.ExplainLabelWordIfSilent();
+        Assert.Empty(heard);
+    }
+
+    [Fact]
+    public void ALabelTypedWithItsOwnColonIsNotDoubled()
+    {
+        var layout = Only(RowKind.Message, ("from", "Sender:"));
+        Assert.Equal("Sender: Chris Lee.",
+            RowSpeechBuilder.Build(RowKind.Message, Message(), layout, showLabels: true));
+    }
+
+    [Theory]
+    [InlineData(RowKind.Conversation, false, "Budget review. 3 messages. Chris Lee. Has unread. Lunch tomorrow?.")]
+    [InlineData(RowKind.Conversation, true, "Subject: Budget review. 3 messages. From: Chris Lee. Has unread. Preview: Lunch tomorrow?.")]
+    public void UntouchedGroupRowsSayWhatTheyAlwaysSaid(RowKind kind, bool labels, string expected)
+    {
+        var values = RowFieldsViewModel.SampleValues(kind);
+        var layout = RowFieldCatalog.DefaultLayout(kind);
+        foreach (var f in layout.Where(f => f.Id is "flag" or "date")) f.Enabled = false;
+
+        Assert.Equal(expected, RowSpeechBuilder.Build(kind, values, layout, labels));
     }
 
     // ── the window ────────────────────────────────────────────────────────────
@@ -318,6 +429,7 @@ public class RowFieldWordsTests
             Assert.Equal("unread", box!.Text);
 
             box.Text = "new";
+            box.GetBindingExpression(TextBox.TextProperty)!.UpdateSource();   // the typing pause
             Assert.Equal("new", vm.SelectedField!.Word);
 
             var falseBox = window.FindName("FalseWordBox") as TextBox;

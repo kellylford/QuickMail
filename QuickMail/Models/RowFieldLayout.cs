@@ -109,8 +109,13 @@ public sealed class RowLayouts
         foreach (var setting in loaded ?? [])
         {
             if (string.IsNullOrEmpty(setting.Id)) continue;
-            if (RowFieldCatalog.Find(kind, setting.Id) is null) continue;   // unknown id
-            if (!seen.Add(setting.Id)) continue;                            // duplicate
+            if (RowFieldCatalog.Find(kind, setting.Id) is not { } def) continue;   // unknown id
+            if (!seen.Add(setting.Id)) continue;                                   // duplicate
+            // Words enter here from a file anyone can edit or import (#807): no line breaks or
+            // direction overrides in a row's name, nothing longer than a word, nothing stored
+            // that only repeats the shipped word.
+            setting.Word      = RowFieldWords.Normalize(setting.Word, RowFieldWords.DefaultWord(def));
+            setting.FalseWord = RowFieldWords.Normalize(setting.FalseWord, def.FalseWord ?? string.Empty);
             result.Add(setting);
         }
 

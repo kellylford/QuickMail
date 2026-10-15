@@ -225,7 +225,6 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanMoveDown))]
     [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
     [NotifyPropertyChangedFor(nameof(SelectedShowsFalseWord))]
-    [NotifyCanExecuteChangedFor(nameof(RestoreDefaultWordCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
     private RowFieldRow? _selectedField;
 
@@ -250,11 +249,27 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     public bool SelectedShowsFalseWord =>
         SelectedField is { IsState: true, HasFalseWord: true, SpeakMode: SpeakMode.Always };
 
-    /// <summary>Puts the selected field's shipped words back (#807).</summary>
-    [RelayCommand(CanExecute = nameof(CanRestoreDefaultWord))]
+    /// <summary>
+    /// Puts the selected field's shipped words back (#807). Always available, and doing nothing
+    /// when there is nothing to restore: a command that disabled its button on the press would
+    /// throw keyboard focus off that button onto the unnamed pane around it.
+    /// </summary>
+    [RelayCommand]
     private void RestoreDefaultWord() => SelectedField?.RestoreDefaultWords();
 
-    private bool CanRestoreDefaultWord() => SelectedField?.HasCustomWord == true;
+    /// <summary>
+    /// Speaks, as a hint, that a text field's word is its label and only heard with labels on.
+    /// The view calls this when Spoken as gets focus; said only while labels are off, when the
+    /// box would otherwise appear to do nothing (#807).
+    /// </summary>
+    public void ExplainLabelWordIfSilent()
+    {
+        if (SelectedField is { IsText: true } && !ShowFieldLabels)
+            Announce(LabelWordHint, AnnouncementCategory.Hint);
+    }
+
+    internal const string LabelWordHint =
+        "For this field, the word is its label, said only while Speak field labels is on.";
 
     /// <summary>
     /// Whether the selected field is turned on. Gates the speak-mode radios: <c>RowSpeechBuilder</c>
@@ -513,9 +528,8 @@ public sealed partial class RowFieldsViewModel : ObservableObject
         // Ticking the selected field's check box is what makes the speak-mode radios available,
         // so the gate has to re-evaluate here and not only when the selection moves.
         OnPropertyChanged(nameof(SelectedIsOn));
-        // Choosing Always speak brings the When off box in; a word change enables Default word.
+        // Choosing Always speak brings the When off box in.
         OnPropertyChanged(nameof(SelectedShowsFalseWord));
-        RestoreDefaultWordCommand.NotifyCanExecuteChanged();
         SaveLayouts();
         UpdatePreview();
     }
@@ -532,7 +546,14 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     {
         if (_suppressSave) return;
         _layouts.Set(SelectedRowKind.Kind, Fields.Select(f => f.ToSetting()).ToList());
-        _rowLayoutService.Save(_layouts);
+        // A save can fail on a file something else holds open (antivirus, a sync client). From a
+        // word box that would surface inside a binding, from a button as an unhandled exception;
+        // log it instead. The next change saves the whole layout again, so nothing is stranded.
+        try { _rowLayoutService.Save(_layouts); }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            LogService.Log($"RowFields: saving rowlayout.json failed — {ex.Message}");
+        }
     }
 
     private void UpdatePreview()

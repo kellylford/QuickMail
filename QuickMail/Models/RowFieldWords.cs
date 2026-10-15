@@ -43,12 +43,27 @@ public static class RowFieldWords
     }
 
     /// <summary>
-    /// The override to store for what the user typed: null when it matches the shipped word, so a
-    /// later change to the shipped wording still reaches them; otherwise the cleaned text.
+    /// The override to store for what the user typed: null when it is exactly the shipped word, so
+    /// a later change to the shipped wording still reaches them; otherwise the cleaned text.
+    /// Exactly, not after trimming: the box is bound as you type, and "unread " on the way to
+    /// "unread mail" must not snap back to "unread" and lose its space. <see cref="Normalize"/>
+    /// tidies a stored word on load.
     /// </summary>
     public static string? Override(string? typed, string shipped)
     {
         var clean = Clean(typed);
-        return string.Equals(clean.Trim(), shipped, StringComparison.Ordinal) ? null : clean;
+        return string.Equals(clean, shipped, StringComparison.Ordinal) ? null : clean;
+    }
+
+    /// <summary>
+    /// A stored word as it should be kept: cleaned, trimmed, and null when that leaves the shipped
+    /// word. Run where words enter the app (loading rowlayout.json, which a hand edit or a settings
+    /// import can fill with anything), not in the box, where it would fight the typing.
+    /// </summary>
+    public static string? Normalize(string? stored, string shipped)
+    {
+        if (stored is null) return null;
+        var clean = Clean(stored).Trim();
+        return string.Equals(clean, shipped, StringComparison.Ordinal) ? null : clean;
     }
 }

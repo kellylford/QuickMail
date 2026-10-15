@@ -140,7 +140,8 @@ public static class RowSpeechBuilder
                 var value = (raw as string ?? string.Empty).Trim();
                 if (value.Length == 0) return string.Empty;
                 // A label chosen as empty means this field goes unlabelled even with labels on.
-                var label = (setting.Word ?? def.SpokenLabel).Trim();
+                // A chosen label typed with its own colon would otherwise read "From:: value".
+                var label = (setting.Word ?? def.SpokenLabel).Trim().TrimEnd(':').TrimEnd();
                 return showLabels && label.Length > 0 ? $"{label}: {value}" : value;
             }
         }
