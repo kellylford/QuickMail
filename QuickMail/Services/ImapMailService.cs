@@ -13,6 +13,7 @@ using MailKit.Net.Imap;
 using MailKit.Search;
 using MailKit.Security;
 using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -522,10 +523,10 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 MessageId     = messageId,
                 AccountId     = accountId,
                 FolderName    = folderName,
-                From          = FormatAddressList(s.Envelope?.From),
-                To            = FormatAddressList(s.Envelope?.To),
-                Cc            = FormatAddressList(s.Envelope?.Cc),
-                ReplyTo       = FormatAddressList(s.Envelope?.ReplyTo),
+                From          = AddressListFormat.Full(s.Envelope?.From),
+                To            = AddressListFormat.Full(s.Envelope?.To),
+                Cc            = AddressListFormat.Full(s.Envelope?.Cc),
+                ReplyTo       = AddressListFormat.Full(s.Envelope?.ReplyTo),
                 Subject       = s.Envelope?.Subject ?? "(no subject)",
                 Date          = s.Envelope?.Date ?? DateTimeOffset.MinValue,
                 IsRead        = markRead || (s.Flags & MessageFlags.Seen) != 0,
@@ -1047,6 +1048,47 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 catch (Exception ex) { LogService.Log($"FetchPreview/{s.UniqueId}", ex); }
             }
             return (IReadOnlyDictionary<string, string>)result;
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
+    // ── One-time sender-address backfill (#803) ──────────────────────────────────
+
+    public async Task<IReadOnlyDictionary<string, FetchedSender>> FetchSenderEmailsAsync(
+        Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, FetchedSender>();
+        if (messageIds.Count == 0) return result;
+
+        // Background lease, read-only open, and the From and Message-ID headers alone (BODY.PEEK, so no \Seen): a
+        // couple of hundred bytes a message, where an ENVELOPE runs to a kilobyte. On a large cache that is the
+        // difference between a few megabytes and a hundred.
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
+        var folder = await lease.Client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            var request = new FetchRequest(MessageSummaryItems.UniqueId)
+            {
+                Headers = new HeaderSet([HeaderId.From, HeaderId.MessageId]),
+            };
+            var summaries = await folder.FetchAsync(messageIds.Select(ToUid).ToList(), request, ct);
+            foreach (var s in summaries)
+            {
+                // Parsed from the raw bytes, not the decoded text: an encoded "Ford, Kelly" decodes to an unquoted
+                // comma, which would read as two addresses.
+                var from = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.From);
+                if (from is null || !InternetAddressList.TryParse(from.RawValue, out var list)) continue;
+                var emails = AddressListFormat.Emails(list);
+                if (emails.Length == 0) continue;
+                // Without angle brackets, as the ENVELOPE's Message-ID the sync cached was.
+                var messageIdHeader = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.MessageId)?.Value;
+                var messageId = string.IsNullOrWhiteSpace(messageIdHeader)
+                    ? string.Empty
+                    : MimeKit.Utils.MimeUtils.ParseMessageId(messageIdHeader) ?? messageIdHeader.Trim();
+                result[s.UniqueId.Id.ToString(CultureInfo.InvariantCulture)] = new FetchedSender(emails, messageId);
+            }
+            return result;
         }
         finally { await folder.CloseAsync(false, ct); }
     }
@@ -1964,8 +2006,9 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             // RFC 5322 Message-ID — stable across every folder/label a message appears in, so
             // aggregate views can collapse Gmail's per-folder duplicate copies (issue #220).
             InternetMessageId = s.Envelope?.MessageId ?? string.Empty,
-            From        = FormatAddressListDisplay(s.Envelope?.From),
-            To          = FormatAddressList(s.Envelope?.To),
+            From        = AddressListFormat.Display(s.Envelope?.From),
+            FromEmail   = AddressListFormat.Emails(s.Envelope?.From),
+            To          = AddressListFormat.Full(s.Envelope?.To),
             Subject     = s.Envelope?.Subject ?? "(no subject)",
             Date        = s.Envelope?.Date ?? DateTimeOffset.MinValue,
             IsRead         = (s.Flags & MessageFlags.Seen)     != 0,
@@ -2220,24 +2263,6 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         "html"     => ComposeMode.Html,
         _          => ComposeMode.PlainText,
     };
-
-    // Shared with Pop3MailService for the same reason ParseComposeMode is: the message list renders
-    // both backends' rows side by side, so a second copy of these would be free to drift.
-
-    /// <summary>Full addresses ("Kelly Ford &lt;kelly@example.com&gt;"), for the detail view.</summary>
-    internal static string FormatAddressList(InternetAddressList? list) =>
-        list == null || list.Count == 0
-            ? string.Empty
-            : string.Join(", ", list.Select(a => a.ToString()));
-
-    /// <summary>Display names where there is one, for the message list's From column.</summary>
-    internal static string FormatAddressListDisplay(InternetAddressList? list) =>
-        list == null || list.Count == 0
-            ? string.Empty
-            : string.Join(", ", list.Select(a =>
-                a is MailboxAddress mb && !string.IsNullOrWhiteSpace(mb.Name)
-                    ? mb.Name
-                    : a.ToString()));
 
     /// <summary>
     /// Raw text of the first text/calendar body part of a downloaded message, or null when it carries

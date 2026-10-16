@@ -98,8 +98,9 @@ public sealed class MessageSearchMatcher
     /// <summary>The row's own text for a term — the four fields the search box has always read.</summary>
     private static bool RowContains(MailMessageSummary msg, SearchTerm t) => t.Field switch
     {
-        SearchField.Any     => Has(msg.From, t) || Has(msg.To, t) || Has(msg.Subject, t) || Has(msg.Preview, t),
-        SearchField.From    => Has(msg.From, t),
+        // The sender's name and address together (#803): From alone is only the name on most rows.
+        SearchField.Any     => Has(msg.FromWithAddress, t) || Has(msg.To, t) || Has(msg.Subject, t) || Has(msg.Preview, t),
+        SearchField.From    => Has(msg.FromWithAddress, t),
         SearchField.To      => Has(msg.To, t),
         SearchField.Subject => Has(msg.Subject, t),
         SearchField.Body    => Has(msg.Preview, t),

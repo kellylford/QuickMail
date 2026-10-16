@@ -127,6 +127,17 @@ public interface IMailService : IDisposable
         Guid accountId, string folderName, IList<string> messageIds,
         int maxLines, CancellationToken ct = default);
 
+    /// <summary>
+    /// The bare sender address(es) of the given messages in one folder, keyed by message id — what
+    /// <see cref="MailMessageSummary.FromEmail"/> holds — for the one-time backfill of rows cached before that
+    /// field existed (#803), each with the message's Message-ID, so the caller can check the id still names the
+    /// message it cached (review of #806). Only IMAP needs it: Graph and POP3 rows can be filled from what is
+    /// already cached, so the default finds nothing. Ids the server no longer has are simply missing from the result.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, FetchedSender>> FetchSenderEmailsAsync(
+        Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<string, FetchedSender>>(new Dictionary<string, FetchedSender>());
+
     Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
     /// <summary>

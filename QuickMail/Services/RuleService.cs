@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -282,19 +283,59 @@ public class RuleService : IRuleService
 
     // ── Condition Matching ──────────────────────────────────────────────────
 
+    /// <summary>
+    /// Whether a sender condition's <paramref name="value"/> matches <paramref name="msg"/>'s sender. A value that is
+    /// an address or part of one ("service@paypal.com", "@company.com") is looked for in the sender's real address
+    /// alone where the row has it, as a whole address or domain, never in the display name, which the sender writes: otherwise mail from
+    /// <c>"service@paypal.com" &lt;x@evil.example&gt;</c> matches a rule Create Rule from Message made from real PayPal
+    /// mail (review of #806). A whole "Name &lt;address&gt;", as Create Rule from Message put in a Microsoft rule before
+    /// #801, is split the same way: the address must be in the real address and the name in the display name, or
+    /// <c>"PayPal &lt;service@paypal.com&gt;" &lt;x@evil.example&gt;</c> would match it too. Anything else, a name above
+    /// all, is looked for in the name and address together. A row not yet backfilled has no separate address, so
+    /// every value is looked for in what it has, as before #803.
+    /// </summary>
+    internal static bool SenderMatches(MailMessageSummary msg, string value)
+    {
+        if (string.IsNullOrEmpty(msg.FromEmail) || !value.Contains('@', StringComparison.Ordinal))
+            return msg.FromWithAddress.Contains(value, StringComparison.OrdinalIgnoreCase);
+
+        if (value.Contains('<', StringComparison.Ordinal))
+        {
+            if (!MimeKit.MailboxAddress.TryParse(value, out var mailbox))
+                return msg.FromWithAddress.Contains(value, StringComparison.OrdinalIgnoreCase);
+            return AddressMatch.Names(msg.FromEmail, mailbox.Address)
+                   && (string.IsNullOrEmpty(mailbox.Name)
+                       || msg.From.Contains(mailbox.Name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // A whole address or domain ("service@paypal.com", "@paypal.com": a dot after the '@') is matched on address
+        // boundaries, not as a substring: "service@paypal.com" must not match service@paypal.com.evil.example, which
+        // anyone owning a domain can send from. A fragment that is neither ("@acme", "john.smith@") can only mean a
+        // substring, so it stays one, as it always was.
+        var trimmed = value.Trim();
+        var at = trimmed.IndexOf('@', StringComparison.Ordinal);
+        return trimmed.IndexOf('.', at + 1) > at
+            ? AddressMatch.Names(msg.FromEmail, trimmed)
+            : msg.FromEmail.Contains(trimmed, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool MatchesRule(MailRule rule, MailMessageSummary msg)
     {
         // A rule may list several From (or Sent-to) addresses, and matching any one of them is enough
         // (#682) — the same "or" a server rule's address list means. Every condition is still ANDed with
         // the others, so the "or" is inside one condition, never across two.
+        // Both sender conditions go through SenderMatches (#803): From on an IMAP or POP3 row is the display name
+        // alone, so an address condition had nothing to match there. A value holding an address is matched against
+        // the real address, and a name against the name and address together, since a rule from before #682 may
+        // hold a name in its From condition.
         if (rule.FromValues() is { Count: > 0 } fromValues
-            && !fromValues.Any(v => msg.From.Contains(v, StringComparison.OrdinalIgnoreCase)))
+            && !fromValues.Any(v => SenderMatches(msg, v)))
             return false;
 
         // ANDed with the addresses above, where a rule uses both.
         if (rule.UseSenderCondition
             && !string.IsNullOrEmpty(rule.SenderContains)
-            && !msg.From.Contains(rule.SenderContains, StringComparison.OrdinalIgnoreCase))
+            && !SenderMatches(msg, rule.SenderContains))
             return false;
 
         if (rule.ToValues() is { Count: > 0 } toValues

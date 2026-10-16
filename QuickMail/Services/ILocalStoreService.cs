@@ -197,6 +197,29 @@ public interface ILocalStoreService
     /// </summary>
     Task<List<string>> GetMessageIdsMissingDetailAsync(Guid accountId, string folderName, DateTimeOffset since, int limit);
 
+    // ── One-time sender-address backfill (#803) ──────────────────────────────────
+
+    /// <summary>
+    /// Fills in from_email for every cached row that lacks it and whose address the database already holds: a
+    /// Graph row's "Name &lt;address&gt;" (split, so from_disp keeps the name alone, as #801 has Graph write it
+    /// now), a cached body's full sender, or, on a Graph row only, a display text that is itself a bare address.
+    /// Leaves the rest — IMAP rows with no cached body, whose display text can't be trusted to be an address — for
+    /// <see cref="GetMessageIdsMissingSenderEmailAsync"/>. Returns how many rows it filled. Safe to run again: it
+    /// only touches rows whose from_email is still empty.
+    /// </summary>
+    Task<int> BackfillSenderEmailsLocallyAsync(IReadOnlyCollection<Guid> graphAccountIds);
+
+    /// <summary>Ids of the account's rows with a sender but no from_email, grouped by folder, newest first.</summary>
+    Task<Dictionary<string, List<string>>> GetMessageIdsMissingSenderEmailAsync(Guid accountId);
+
+    /// <summary>
+    /// Sets from_email on rows that still lack it, where the row's Message-ID matches the one fetched with the
+    /// address or the row has none: after a server renumbers a folder, a stored id can name another message (review
+    /// of #806). Never overwrites an address already there. Returns how many rows it filled.
+    /// </summary>
+    Task<int> UpdateSenderEmailsBatchAsync(
+        Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail, string InternetMessageId)> updates);
+
     /// <summary>
     /// Counts all message summaries stored for the given account.
     /// Returns 0 if the account has no messages or does not exist.

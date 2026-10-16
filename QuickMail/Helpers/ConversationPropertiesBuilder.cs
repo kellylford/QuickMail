@@ -11,11 +11,8 @@ public static class ConversationPropertiesBuilder
     {
         var unreadCount = group.UnreadCount;
 
-        var participants = group.Messages
-            .Select(m => m.From)
-            .Where(f => !string.IsNullOrWhiteSpace(f))
-            .Distinct(System.StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        // Each "Name <address>", as a single message's Properties shows its sender (review of #806).
+        var participants = SenderList.Of(group.Messages);
 
         var items = new List<PropertyItem>
         {
@@ -23,7 +20,7 @@ public static class ConversationPropertiesBuilder
             new("Messages",     group.Messages.Count.ToString()),
             new("Unread",       unreadCount == 0 ? "None" : unreadCount.ToString()),
             new("Participants", participants.Count > 0
-                                    ? string.Join("; ", participants)
+                                    ? SenderList.Describe(participants)
                                     : "(none)"),
         };
 

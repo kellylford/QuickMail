@@ -241,6 +241,20 @@ public partial class SyncService : ISyncService
     {
         if (previewJobs.Count > 0)
             await FetchAllPreviewsAsync(previewJobs, ct);
+        // The one-time sender-address backfill (#803), before the offline bodies. It is not small on a large IMAP
+        // cache: one From-header request per 500 messages, a second apart, so it can hold the offline pass back by
+        // minutes. It goes first anyway because it runs only until it is done, while the offline pass runs every
+        // launch, and rules and search are what is waiting on it. A launch that owes it nothing returns at once.
+        // Isolated: a store error in it (a busy database, say) must not cost this launch its offline bodies; the
+        // backfill is left owed, so the next launch takes it up again (review of #806).
+        try
+        {
+            await BackfillSenderEmailsFromServerAsync(accounts, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogService.Log("Sender-address backfill failed; it continues next launch.", ex);
+        }
         await DownloadOfflineBodiesAsync(accounts, cachedFolders, ct);
     }
 

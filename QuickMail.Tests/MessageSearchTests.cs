@@ -230,6 +230,19 @@ public class MessageSearchMatcherTests
         var row = Row("1", subject: "lee");
         Assert.False(Matcher("cc:lee").Matches(row));
     }
+
+    [Fact]
+    public void AnImapRow_IsFoundByItsSendersAddress_AndName()
+    {
+        // #803: From on an IMAP or POP3 row is the display name alone; the address is in FromEmail.
+        var row = Row("1", from: "Sam Smith");
+        row.FromEmail = "sam@company.com";
+
+        Assert.True(Matcher("from:@company.com").Matches(row));
+        Assert.True(Matcher("from:sam smith").Matches(row));
+        Assert.True(Matcher("company.com").Matches(row));          // Any reads the sender too
+        Assert.False(Matcher("from:other.org").Matches(row));
+    }
 }
 
 /// <summary>The index on a real store: every write path that changes what a message says keeps it honest.</summary>
@@ -311,6 +324,71 @@ public class SearchIndexStoreTests : IDisposable
         Assert.Equal(["INBOX/1"], await Find("from:sam"));
         Assert.Empty(await Find("subject:attached"));
         Assert.Empty(await Find("from:lee"));
+    }
+
+    private MailMessageSummary ImapSummary(string id, string name, string email) => new()
+    {
+        MessageId = id, AccountId = _account, FolderName = "INBOX", From = name, FromEmail = email,
+        To = "kelly@example.com", Subject = "Hello", Date = DateTimeOffset.UtcNow,
+    };
+
+    [Fact]
+    public async Task AnImapRowsSenderAddress_IsIndexed_WithNoBodyCached()
+    {
+        // #803: with no body cached there is no d.from_addr, so the row's own from_email is the only address.
+        await _store.UpsertSummariesAsync([ImapSummary("1", "Sam Smith", "sam@acme.com")]);
+
+        Assert.Equal(["INBOX/1"], await Find("from:acme"));
+        Assert.Equal(["INBOX/1"], await Find("from:smith"));
+    }
+
+    [Fact]
+    public async Task FillingInARowsAddressLater_ReindexesItsSender()
+    {
+        // What the one-time backfill does: a row cached by name only gets its address afterwards.
+        await _store.UpsertSummariesAsync([ImapSummary("1", "Sam Smith", "")]);
+        Assert.Empty(await Find("from:acme"));
+
+        await _store.UpsertSummariesAsync([ImapSummary("1", "Sam Smith", "sam@acme.com")]);
+
+        Assert.Equal(["INBOX/1"], await Find("from:acme"));
+    }
+
+    [Fact]
+    public async Task TheRowSearch_FindsAnImapRowByItsAddress()
+    {
+        await _store.UpsertSummariesAsync([ImapSummary("1", "Sam Smith", "sam@acme.com"), ImapSummary("2", "Lee", "lee@x.org")]);
+
+        var rows = await _store.SearchSummariesAsync(MessageSearchQuery.Parse("from:@acme.com"), [_account],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("1", Assert.Single(rows).MessageId);
+    }
+
+    [Fact]
+    public void AnOlderSummaryUpdateTrigger_IsReplaced_SoAnAddressChangeReindexes()
+    {
+        // A profile from before #803 has the trigger without from_email, and IF NOT EXISTS would keep it.
+        using (var conn = new SqliteConnection($"Data Source={Path.Combine(_dir, "mail.db")}"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                DROP TRIGGER trg_search_summary_update;
+                CREATE TRIGGER trg_search_summary_update AFTER UPDATE ON MessageSummary
+                WHEN old.from_disp IS NOT new.from_disp
+                BEGIN SELECT 1; END;
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        new LocalStoreService(new ProfileContext(_dir)).Initialize();
+
+        using var check = new SqliteConnection($"Data Source={Path.Combine(_dir, "mail.db")};Mode=ReadOnly;");
+        check.Open();
+        using var read = check.CreateCommand();
+        read.CommandText = "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='trg_search_summary_update';";
+        Assert.Contains("from_email", (string)read.ExecuteScalar()!, StringComparison.Ordinal);
     }
 
     [Fact]

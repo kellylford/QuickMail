@@ -167,6 +167,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         DrainCts(ref _offlineRetryCts);
         _syncService.OfflineBodyPassCompleted -= OnOfflineBodyPassCompleted;
         _syncService.OfflineBodyProgressChanged -= OnOfflineBodyProgress;
+        _syncService.SenderEmailBackfillProgressChanged -= OnSenderEmailBackfillProgress;
+        _syncService.SenderEmailBackfillEnded -= OnSenderEmailBackfillEnded;
         DrainCts(ref _offlineBodyStatusCts);
         if (_rowLayoutService != null && _onRowLayoutsChanged != null)
         {
@@ -704,40 +706,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private static bool MatchesContactAddress(
         MailMessageSummary msg, string address, ContactMailDirection direction) =>
-        HeaderNamesAddress(
-            direction == ContactMailDirection.From ? msg.From : msg.To,
+        AddressMatch.Names(
+            // From alone is the display name on an IMAP or POP3 row, so the address is read from FromEmail (#803);
+            // only there where the row has it, since the display name is the sender's to write and can be made to
+            // look like a contact's address (review of #806). A row not yet backfilled has only From.
+            direction == ContactMailDirection.From
+                ? (string.IsNullOrEmpty(msg.FromEmail) ? msg.From : msg.FromEmail)
+                : msg.To,
             address);
-
-    /// <summary>
-    /// True when <paramref name="header"/> contains <paramref name="address"/> as a whole address
-    /// rather than as part of a longer one. A plain substring test would report a match for
-    /// "bob@example.com" in both "notbob@example.com" and "bob@example.com.au", so each hit has to
-    /// sit on an address boundary — anything but an address character on either side, which is what
-    /// the surrounding "&lt;", "&gt;", quotes, commas, and spaces in a header supply.
-    /// </summary>
-    internal static bool HeaderNamesAddress(string header, string address)
-    {
-        if (string.IsNullOrEmpty(header) || string.IsNullOrEmpty(address)) return false;
-
-        var i = header.IndexOf(address, StringComparison.OrdinalIgnoreCase);
-        while (i >= 0)
-        {
-            var end = i + address.Length;
-            if ((i == 0 || !IsAddressChar(header[i - 1])) &&
-                (end >= header.Length || !IsAddressChar(header[end])))
-                return true;
-            if (i + 1 >= header.Length) break;
-            i = header.IndexOf(address, i + 1, StringComparison.OrdinalIgnoreCase);
-        }
-        return false;
-    }
-
-    // Characters that can appear inside an address (RFC 5322 atext plus '.' and '@'). Seeing one
-    // immediately before or after a hit means the hit is only part of a longer address.
-    private static bool IsAddressChar(char c) =>
-        char.IsLetterOrDigit(c) ||
-        c is '.' or '@' or '-' or '_' or '+' or '%' or '!' or '#' or '$' or '&' or '\''
-          or '*' or '/' or '=' or '?' or '^' or '`' or '{' or '|' or '}' or '~';
 
     private static bool TryGetViewIdFromSentinel(string? fullName, out Guid viewId)
     {
@@ -1886,6 +1862,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _offlineBodyAllFolders = cfg.OfflineBodyAllFolders;
         _syncService.OfflineBodyPassCompleted += OnOfflineBodyPassCompleted;
         _syncService.OfflineBodyProgressChanged += OnOfflineBodyProgress;
+        _syncService.SenderEmailBackfillProgressChanged += OnSenderEmailBackfillProgress;
+        _syncService.SenderEmailBackfillEnded += OnSenderEmailBackfillEnded;
         _viewMode = ConfigModel.ParseViewMode(cfg.ViewMode);
         _listDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
@@ -8662,14 +8640,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // single thread it was made from. The editor shows it in a cleared checkbox, one keystroke
         // from being part of the rule, rather than silently ANDing it with the sender.
         // The sender goes in as "Sender contains", the condition that means a substring match on the
-        // From header — which is what this is. It must NOT go in as a From address: From holds the
-        // sender's DISPLAY NAME where there is one, an Exchange address book routinely makes that
-        // "Last, First", and the address fields read a comma as a separator. A rule for "Ford, Kelly"
-        // would become a rule for anyone called Ford OR anyone called Kelly (#682).
+        // sender's name and address. It is the sender's ADDRESS where the row has one (#803): the display
+        // name alone matches every sender using that name, a phisher calling themselves "PayPal" included,
+        // and since #801 a Microsoft row's From is the name alone, so it would have got looser there too
+        // (review of #806). The name is the fallback, for a row cached before FromEmail existed and not yet
+        // backfilled, or a sender with no address; it is what this proposed before, so nothing is worse.
+        // It does not go in as a From address yet (a follow-up): the address fields read a comma as a
+        // separator, and a display name, "Last, First" in an Exchange address book, can hold one (#682).
+        // The rule's name keeps the display name, which is how the user knows the sender.
         return new MailRule
         {
             Name = $"Rule for {source.From}",
-            SenderContains = source.From,
+            SenderContains = string.IsNullOrWhiteSpace(source.FromEmail) ? source.From : source.FromEmail,
             UseSenderCondition = true,
             SubjectContains = string.IsNullOrWhiteSpace(source.Subject) ? null : source.Subject,
             UseSubjectCondition = false,

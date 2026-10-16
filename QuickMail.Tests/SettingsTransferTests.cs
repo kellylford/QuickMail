@@ -995,6 +995,9 @@ public sealed class SettingsTransferTests : IDisposable
         var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "mail.db", "msal.cache", "quickmail.log", "connection.log", ".immutable-id-rebuilt", "debug-screenshots",
+            // Records that this computer's mail.db had its sender addresses backfilled (#803) — about the cache,
+            // which stays behind, so the marker does too.
+            ".sender-address-backfilled", ".sender-address-backfill-progress",
             SettingsImporter.PendingFileName, SettingsImporter.ResultFileName, SettingsImporter.PendingCalendarFileName,
             ImportFolderHeal.FileName,
         };

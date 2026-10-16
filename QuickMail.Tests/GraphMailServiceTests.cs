@@ -309,12 +309,39 @@ public class GraphMailServiceTests
 
         var m = Assert.Single(list);
         Assert.Equal("m1", m.MessageId);
-        Assert.Equal("Alice <alice@x.com>", m.From);
+        // The name alone in the list, as IMAP and POP3 rows have it (#801); the address beside it (#803).
+        Assert.Equal("Alice", m.From);
+        Assert.Equal("alice@x.com", m.FromEmail);
         Assert.Equal("me@x.com", m.To);
         Assert.Equal("Hello", m.Subject);
         Assert.False(m.IsRead);
         Assert.Equal("hi there", m.Preview);
         Assert.True(m.HasAttachments);
+    }
+
+    [Theory]
+    // No name, or a blank one: the address stands in, so the list never shows or speaks a blank sender.
+    [InlineData("""{"address":"news@company.com"}""",                  "news@company.com")]
+    [InlineData("""{"name":"","address":"news@company.com"}""",        "news@company.com")]
+    [InlineData("""{"name":"   ","address":"news@company.com"}""",     "news@company.com")]
+    [InlineData("""{"name":" Some Company ","address":"news@company.com"}""", "Some Company")]
+    public async Task GetMessageSummariesAsync_ShowsTheNameOrElseTheAddress(string emailAddress, string expectedFrom)
+    {
+        // #801: what a Graph row shows follows AddressListFormat.Display.
+        var msgs = $$"""
+            {"value":[{
+              "id":"m1","subject":"Hello","from":{"emailAddress":{{emailAddress}}},
+              "receivedDateTime":"2024-01-02T03:04:05Z","isRead":true
+            }]}
+            """;
+        var (svc, _) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, msgs));
+
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var m = Assert.Single(await svc.GetMessageSummariesAsync(account.Id, "inbox", 50, TestContext.Current.CancellationToken));
+
+        Assert.Equal(expectedFrom, m.From);
+        Assert.Equal("news@company.com", m.FromEmail);
     }
 
     [Fact]
@@ -393,6 +420,26 @@ public class GraphMailServiceTests
         Assert.Equal("doc.pdf", att.FileName);
         Assert.Equal("a1", att.PartSpecifier);  // Graph attachment id
         Assert.Equal(1234, att.FileSize);
+    }
+
+    [Fact]
+    public async Task GetMessageDetailAsync_KeepsTheFullSender()
+    {
+        // #801 shortens only the list row. The opened message — its header, Properties, and the To of a reply —
+        // still needs "Name <address>".
+        const string detail = """
+            {"id":"m1","subject":"Hello","body":{"contentType":"text","content":"Hi"},
+             "from":{"emailAddress":{"name":"Alice","address":"alice@x.com"}},
+             "toRecipients":[{"emailAddress":{"address":"me@x.com"}}],
+             "receivedDateTime":"2024-01-02T03:04:05Z","isRead":true}
+            """;
+        var (svc, _) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, detail));
+
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var d = await svc.GetMessageDetailAsync(account.Id, "inbox", "m1", TestContext.Current.CancellationToken);
+
+        Assert.Equal("Alice <alice@x.com>", d.From);
     }
 
     // A raw RFC 822 meeting request whose text/calendar part carries the invite. CRLF line endings

@@ -392,6 +392,12 @@ class StubLocalStoreService : ILocalStoreService
 
     public virtual Task<List<string>> GetMessageIdsMissingDetailAsync(Guid accountId, string folderName, DateTimeOffset since, int limit)
         => Task.FromResult(new List<string>());
+    public virtual Task<int> BackfillSenderEmailsLocallyAsync(IReadOnlyCollection<Guid> graphAccountIds) => Task.FromResult(0);
+    public virtual Task<Dictionary<string, List<string>>> GetMessageIdsMissingSenderEmailAsync(Guid accountId)
+        => Task.FromResult(new Dictionary<string, List<string>>());
+    public virtual Task<int> UpdateSenderEmailsBatchAsync(
+        Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail, string InternetMessageId)> updates)
+        => Task.FromResult(0);
     public virtual Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
     public virtual Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     public virtual Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());
@@ -809,6 +815,10 @@ sealed class StubSyncService : ISyncService
     public event Action<int, int>? OfflineBodyProgressChanged;
     public event Action<int, int>? OfflineBodyPassCompleted;
 #pragma warning restore CS0067
+    public event Action<int, int>? SenderEmailBackfillProgressChanged;
+    public event Action<int, int>? SenderEmailBackfillEnded;
+    public void RaiseSenderEmailBackfillProgress(int done, int total) => SenderEmailBackfillProgressChanged?.Invoke(done, total);
+    public void RaiseSenderEmailBackfillEnded(int filled, int planned) => SenderEmailBackfillEnded?.Invoke(filled, planned);
     /// <summary>Every backfill request (#637), so a test can assert Settings triggered one.</summary>
     public int BackfillCalls { get; private set; }
     public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct)

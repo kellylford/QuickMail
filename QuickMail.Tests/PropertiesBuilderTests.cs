@@ -37,6 +37,33 @@ public class MessagePropertiesBuilderTests
     }
 
     [Fact]
+    public void Build_WithNoCachedBody_ShowsTheSendersNameAndAddress()
+    {
+        // #801 left a Microsoft row's From the name alone, as an IMAP row's always was; a message whose body is
+        // not cached — opened in a message window, or never opened — must still show who sent it in full (#803).
+        var s = MakeSummary(from: "Sam Example");
+        s.FromEmail = "sam@example.com";
+
+        var (_, sections) = MessagePropertiesBuilder.Build(s, null, "Work");
+
+        var from = sections.First(x => x.Header == "Headers").Items.First(i => i.Label == "From");
+        Assert.Equal("Sam Example <sam@example.com>", from.Value);
+    }
+
+    [Fact]
+    public void Build_PrefersTheCachedBodysSender()
+    {
+        var s = MakeSummary(from: "Sam Example");
+        s.FromEmail = "sam@example.com";
+        var detail = new MailMessageDetail { From = "\"Sam Example\" <sam@example.com>" };
+
+        var (_, sections) = MessagePropertiesBuilder.Build(s, detail, "Work");
+
+        var from = sections.First(x => x.Header == "Headers").Items.First(i => i.Label == "From");
+        Assert.Equal("\"Sam Example\" <sam@example.com>", from.Value);
+    }
+
+    [Fact]
     public void Build_FormatsDateInLocalTime()
     {
         var s = MakeSummary();
@@ -641,6 +668,49 @@ public class ConversationPropertiesBuilderTests
         // alice appears only once
         Assert.Equal(1, participants.Split("alice@example.com").Length - 1);
     }
+
+    private static MailMessageSummary From(string name, string email) => new()
+    {
+        MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX", From = name, FromEmail = email,
+        Subject = "Hello", Date = new DateTimeOffset(2026, 6, 2, 10, 0, 0, TimeSpan.Zero),
+    };
+
+    [Fact]
+    public void Build_ListsEachParticipantWithTheirAddress()
+    {
+        // Review of #806: as a single message's Properties shows its sender, so two people sharing a name are two.
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          =
+            [
+                From("Alice", "alice@example.com"),
+                From("Alice", "alice@example.com"),
+                From("Alice", "alice@other.example"),
+                From("Bob",   "bob@example.com"),
+            ],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants"
+            && i.Value == "Alice <alice@example.com>; Alice <alice@other.example>; Bob <bob@example.com>");
+    }
+
+    [Fact]
+    public void Build_WithElevenParticipants_NamesTenAndCountsTheRest()
+    {
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          = [.. Enumerable.Range(1, 11).Select(n => From($"Person {n}", $"p{n}@example.com"))],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+        var participants = sections[0].Items.Single(i => i.Label == "Participants").Value;
+
+        Assert.EndsWith("Person 10 <p10@example.com>; and 1 more", participants);
+    }
 }
 
 // ── SenderGroupPropertiesBuilder ────────────────────────────────────────────
@@ -712,5 +782,87 @@ public class SenderGroupPropertiesBuilderTests
 
         var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
         Assert.Contains(sections[0].Items, i => i.Label == "Unread" && i.Value == "None");
+    }
+
+    private static MailMessageSummary From(string name, string email) => new()
+    {
+        MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX", From = name, FromEmail = email,
+        Subject = "Hello", Date = new DateTimeOffset(2026, 6, 2, 10, 0, 0, TimeSpan.Zero),
+    };
+
+    [Fact]
+    public void Build_FromGroup_ListsEveryAddressUnderTheName()
+    {
+        // Review of #806: the group is keyed on the name, so mail from a forger using it is in the same group.
+        // Properties is where that shows: each sender as "Name <address>".
+        var group = new SenderGroup
+        {
+            SenderKey = "PayPal",
+            Messages  = [From("PayPal", "service@paypal.example"), From("PayPal", "fake@evil.example"),
+                         From("PayPal", "service@paypal.example")],
+        };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Senders"
+            && i.Value == "PayPal <service@paypal.example>; PayPal <fake@evil.example>");
+    }
+
+    [Fact]
+    public void Build_FromGroup_WithManyAddresses_NamesTheFirstTenAndCountsTheRest()
+    {
+        // A sender using a new address on every message would otherwise be one line read out as all of them.
+        var group = new SenderGroup
+        {
+            SenderKey = "Lists",
+            Messages  = [.. Enumerable.Range(1, 25).Select(n => From("Lists", $"bounce-{n}@lists.example"))],
+        };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
+        var senders = sections[0].Items.Single(i => i.Label == "Senders").Value;
+
+        Assert.StartsWith("Lists <bounce-1@lists.example>; ", senders);
+        Assert.Contains("Lists <bounce-10@lists.example>; and 15 more", senders);
+        Assert.DoesNotContain("bounce-11@", senders);
+    }
+
+    [Fact]
+    public void Build_FromGroup_LeavesOutTheBareNameOfARowStillWithoutItsAddress()
+    {
+        // Cached before the sender-address catch-up reached it: the name alone says less than the row beside it.
+        var group = new SenderGroup
+        {
+            SenderKey = "PayPal",
+            Messages  = [From("PayPal", ""), From("PayPal", "service@paypal.example")],
+        };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Sender" && i.Value == "PayPal <service@paypal.example>");
+    }
+
+    [Fact]
+    public void Build_FromGroup_WithNoAddressYet_ShowsTheName()
+    {
+        var group = new SenderGroup { SenderKey = "PayPal", Messages = [From("PayPal", "")] };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Sender" && i.Value == "PayPal");
+    }
+
+    [Fact]
+    public void Build_ToGroup_KeepsItsKey()
+    {
+        // A recipient group's key is the To text itself, addresses included.
+        var group = new SenderGroup
+        {
+            SenderKey = "Kelly <kelly@example.com>",
+            Messages  = [From("PayPal", "service@paypal.example")],
+        };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group, isToGroup: true);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Recipient" && i.Value == "Kelly <kelly@example.com>");
     }
 }

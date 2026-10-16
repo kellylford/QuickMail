@@ -248,6 +248,25 @@ public sealed class MessageSaverTests : IDisposable
     }
 
     [Fact]
+    public async Task Save_OfAnOlderCachedCopyWithNoSender_WritesTheSummarysNameAndAddress()
+    {
+        // Review of #806: a body cached before from_addr existed has no From of its own, and the summary's From is
+        // the display name alone (#801, #803). The file must still say who it is from in full.
+        var store = new StubLocalStoreService
+        {
+            SeededDetail = new MailMessageDetail { Subject = "Shipped", From = string.Empty, PlainTextBody = "Cached body" },
+        };
+        var (saver, _, _) = NewSaver("txt", store);
+        var message = Summary();
+        message.From = "Jane";
+        message.FromEmail = "jane@example.com";
+
+        await saver.SaveAsync([message], false, new FakeUi(), ct: TestContext.Current.CancellationToken);
+
+        Assert.Contains("Jane <jane@example.com>", File.ReadAllText(Assert.Single(Directory.GetFiles(_dir))));
+    }
+
+    [Fact]
     public async Task Save_AsText_FallsBackToTheServer_WithoutMarkingRead()
     {
         var (saver, mail, _) = NewSaver("txt", new StubLocalStoreService());

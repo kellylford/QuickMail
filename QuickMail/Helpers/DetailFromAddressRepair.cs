@@ -17,9 +17,12 @@ namespace QuickMail.Helpers;
 /// bare name the address box could not turn into a chip.
 /// </para>
 /// <para>
-/// The address is stored nowhere else in the database, so such a row can only be repaired by
-/// re-fetching it. Lives here rather than on a view model because both cache-first load paths need
-/// it: the reading pane and tabs (MainViewModel) and standalone windows (MessageWindow).
+/// Since #803 <c>LoadDetailAsync</c> falls back to the summary's name AND address (<c>from_email</c>), so
+/// such a row usually arrives with its address and this does nothing. What still needs it is a row whose
+/// summary has no address yet — cached before <c>from_email</c> and not yet backfilled — or no summary at all;
+/// the address is then stored nowhere else in the database, and only re-fetching repairs it. Lives here rather
+/// than on a view model because both cache-first load paths need it: the reading pane and tabs (MainViewModel)
+/// and standalone windows (MessageWindow).
 /// </para>
 /// </summary>
 public static class DetailFromAddressRepair

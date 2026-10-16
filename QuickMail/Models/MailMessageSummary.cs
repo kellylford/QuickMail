@@ -28,7 +28,40 @@ public partial class MailMessageSummary : ObservableObject
     /// Message-ID. Empty when the server did not supply one; empty identities are never merged.
     /// </summary>
     public string InternetMessageId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The sender as the message list shows and speaks it: the display name where there is one,
+    /// otherwise the bare address. Never carries the address alongside a name — that is
+    /// <see cref="FromEmail"/>'s job.
+    /// </summary>
     public string From { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The sender's bare email address(es), comma-separated in the rare case a From header names
+    /// more than one mailbox. Kept apart from <see cref="From"/> so the list can say only the name
+    /// while rules, Find Mail From Contact, and search still have the address to match (#803).
+    /// Empty on rows cached before this field existed; matchers fall back to <see cref="From"/>.
+    /// </summary>
+    public string FromEmail { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The sender with the address beside the name: "Name &lt;address&gt;", the shape Graph rows held in
+    /// <see cref="From"/> before #801. Matchers read it, so a rule or search that matched there still does and an
+    /// IMAP or POP3 row now matches on its address too (#803). Properties shows it: a message's own when no body is
+    /// cached to give the full sender, and every sender of a conversation or a From view group, through
+    /// <see cref="Helpers.SenderList"/> (review of #806). Never the message list, which shows <see cref="From"/>.
+    /// <see cref="From"/> alone where there is no separate address — a row cached before <see cref="FromEmail"/>
+    /// existed, or a sender with no name, whose From already is the address.
+    /// </summary>
+    /// <remarks>
+    /// Not a header: the name is left unquoted, so "Ford, Kelly &lt;kelly@example.com&gt;" parses as two addresses.
+    /// Where the result is replied to or written to a file, use <c>AddressListFormat.Mailbox</c> (review of #806).
+    /// </remarks>
+    public string FromWithAddress =>
+        string.IsNullOrEmpty(FromEmail) || string.Equals(From, FromEmail, StringComparison.OrdinalIgnoreCase)
+            ? From
+            : string.IsNullOrEmpty(From) ? FromEmail : $"{From} <{FromEmail}>";
+
     public string To { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
     public DateTimeOffset Date { get; set; }

@@ -35,13 +35,15 @@ public class ClientRuleConditionsTests
         string from = "alice@example.com",
         string to = "bob@example.com",
         string subject = "Test Subject",
-        string preview = "Hello world")
+        string preview = "Hello world",
+        string fromEmail = "")
         => new()
         {
             MessageId = "1",
             AccountId = Guid.NewGuid(),
             FolderName = "INBOX",
             From = from,
+            FromEmail = fromEmail,
             To = to,
             Subject = subject,
             Preview = preview,
@@ -115,6 +117,200 @@ public class ClientRuleConditionsTests
         Assert.True(Matches(rule, Msg(from: "billing@acme.com")));
         Assert.True(Matches(rule, Msg(from: "Acme partner <noreply@partner.com>")));
         Assert.False(Matches(rule, Msg(from: "noreply@partner.com")));
+    }
+
+    // ── IMAP- and POP3-shaped rows (#803) ───────────────────────────────────
+    //
+    // The tests above use Graph-shaped senders, "Name <address>" in From. An IMAP or POP3 row holds the
+    // display name alone in From and the address in FromEmail, and before #803 no test used that shape —
+    // which is how an address condition that never matched an IMAP sender with a name went unnoticed.
+
+    [Fact]
+    public void FromAddress_MatchesAnImapRow_WhoseFromIsTheNameAlone()
+    {
+        var rule = new MailRule
+        {
+            Name = "Billing", UseFromCondition = true, FromContains = "billing@x.com",
+            Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "Billing Dept", fromEmail: "billing@x.com")));
+        Assert.False(Matches(rule, Msg(from: "Someone Else", fromEmail: "someone@z.com")));
+    }
+
+    [Fact]
+    public void SeveralFromAddresses_MatchAnImapRowByItsAddress()
+    {
+        var rule = new MailRule
+        {
+            Name = "Billing", UseFromCondition = true, FromContains = "billing@x.com",
+            FromAddresses = ["billing@x.com", "invoices@y.com"], Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "Invoices", fromEmail: "invoices@y.com")));
+    }
+
+    [Fact]
+    public void SenderContains_MatchesAnImapRow_ByNameOrByAddress()
+    {
+        var rule = new MailRule
+        {
+            Name = "Acme", UseFromCondition = false, UseSenderCondition = true, SenderContains = "acme",
+            Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "Acme Billing", fromEmail: "billing@x.com")));   // the name
+        Assert.True(Matches(rule, Msg(from: "Billing Dept", fromEmail: "billing@acme.com"))); // the address
+        Assert.False(Matches(rule, Msg(from: "Billing Dept", fromEmail: "billing@x.com")));
+    }
+
+    [Fact]
+    public void FromCondition_HoldingAName_StillMatchesAnImapRowByName()
+    {
+        // A rule from before #682 could hold any text in its From condition, a name included. Reading the
+        // address alone there would have broken it.
+        var rule = new MailRule
+        {
+            Name = "Kelly", UseFromCondition = true, FromContains = "Kelly Ford", Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "Kelly Ford", fromEmail: "kelly@example.com")));
+    }
+
+    [Fact]
+    public void ARuleHoldingAWholeGraphFromHeader_StillMatches_OnceTheNameAndAddressAreStoredApart()
+    {
+        // Before #801, Create Rule from Message on a Microsoft account copied the row's whole From into Sender
+        // contains: "Kelly Ford <kelly@example.com>". Graph rows now keep the name and the address apart, so the
+        // matchers join them back into exactly that shape — or every such rule would have stopped matching.
+        var rule = new MailRule
+        {
+            Name = "Rule for Kelly Ford <kelly@example.com>", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = "Kelly Ford <kelly@example.com>", Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "Kelly Ford", fromEmail: "kelly@example.com")));              // stored apart
+        Assert.True(Matches(rule, Msg(from: "Kelly Ford <kelly@example.com>")));                         // not yet backfilled
+        Assert.False(Matches(rule, Msg(from: "Kelly Ford", fromEmail: "someone.else@example.com")));
+    }
+
+    [Fact]
+    public void ARuleMadeFromAMessage_DoesNotCatchAnotherSenderUsingTheSameName()
+    {
+        // Review of #806: made from the name alone, a rule for "PayPal" filed a phisher's "PayPal" too.
+        var real = Msg(from: "PayPal", fromEmail: "service@paypal.example");
+        var rule = MainViewModel.RuleTemplateFrom(real);
+        rule.Action = RuleAction.MarkAsRead;
+
+        Assert.True(Matches(rule, real));
+        Assert.False(Matches(rule, Msg(from: "PayPal", fromEmail: "security@phish.example")));
+    }
+
+    [Fact]
+    public void AnAddressInTheDisplayName_DoesNotMatchAnAddressCondition()
+    {
+        // Review of #806: the display name is the sender's to write. "service@paypal.example" <x@evil.example> must
+        // not match a rule made from real PayPal mail, by Sender contains, by From addresses, or by domain.
+        var forged = Msg(from: "service@paypal.example", fromEmail: "x@evil.example");
+        var real = Msg(from: "PayPal", fromEmail: "service@paypal.example");
+        var bySender = new MailRule
+        {
+            Name = "PayPal", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = "service@paypal.example", Action = RuleAction.MarkAsRead,
+        };
+        var byFrom = new MailRule
+        {
+            Name = "PayPal", UseFromCondition = true, FromContains = "service@paypal.example", Action = RuleAction.MarkAsRead,
+        };
+        var byDomain = new MailRule
+        {
+            Name = "PayPal", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = "@paypal.example", Action = RuleAction.MarkAsRead,
+        };
+
+        foreach (var rule in new[] { bySender, byFrom, byDomain })
+        {
+            Assert.True(Matches(rule, real));
+            Assert.False(Matches(rule, forged));
+        }
+    }
+
+    [Fact]
+    public void AWholeNameAndAddressRule_IsNotMatchedByPuttingItAllInTheDisplayName()
+    {
+        // Review of #806: a pre-#801 Microsoft rule holds "PayPal <service@paypal.example>". A forger who writes all
+        // of that as their display name must not match it.
+        var rule = new MailRule
+        {
+            Name = "PayPal", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = "PayPal <service@paypal.example>", Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "PayPal", fromEmail: "service@paypal.example")));
+        Assert.False(Matches(rule, Msg(from: "PayPal <service@paypal.example>", fromEmail: "x@evil.example")));
+        Assert.False(Matches(rule, Msg(from: "Someone Else", fromEmail: "service@paypal.example")));
+    }
+
+    [Fact]
+    public void AnAddressCondition_DoesNotMatchALongerAddress()
+    {
+        // Review of #806: anyone owning a domain can send from service@paypal.example.evil.example.
+        var lookAlike = Msg(from: "PayPal", fromEmail: "service@paypal.example.evil.example");
+        var real = Msg(from: "PayPal", fromEmail: "service@paypal.example");
+        foreach (var value in new[] { "service@paypal.example", "@paypal.example", "PayPal <service@paypal.example>" })
+        {
+            var rule = new MailRule
+            {
+                Name = "PayPal", UseFromCondition = false,
+                UseSenderCondition = true, SenderContains = value, Action = RuleAction.MarkAsRead,
+            };
+            Assert.True(Matches(rule, real), value);
+            Assert.False(Matches(rule, lookAlike), value);
+        }
+        Assert.False(Matches(new MailRule
+        {
+            Name = "Bob", UseFromCondition = true, FromContains = "bob@example.com", Action = RuleAction.MarkAsRead,
+        }, Msg(from: "Not Bob", fromEmail: "notbob@example.com")));
+    }
+
+    [Theory]
+    [InlineData("@acme")]          // any acme domain
+    [InlineData("john.smith@")]    // at any domain
+    public void AnAddressFragment_StillMatchesAsAFragment(string value)
+    {
+        var rule = new MailRule
+        {
+            Name = "Fragment", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = value, Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "John Smith", fromEmail: "john.smith@acme.co.uk")));
+    }
+
+    [Fact]
+    public void ANameCondition_StillMatchesTheName()
+    {
+        var rule = new MailRule
+        {
+            Name = "PayPal", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = "PayPal", Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "PayPal", fromEmail: "service@paypal.example")));
+    }
+
+    [Fact]
+    public void FromAddress_OnARowCachedBeforeFromEmail_BehavesAsBefore()
+    {
+        // No FromEmail yet: matching falls back to From alone, so a name-only row still cannot match an address
+        // — no worse than before — until the one-time backfill fills it in.
+        var rule = new MailRule
+        {
+            Name = "Billing", UseFromCondition = true, FromContains = "billing@x.com", Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.False(Matches(rule, Msg(from: "Billing Dept")));
+        Assert.True(Matches(rule, Msg(from: "billing@x.com")));
     }
 
     [Fact]

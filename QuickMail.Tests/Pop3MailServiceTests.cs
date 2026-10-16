@@ -680,8 +680,10 @@ public class Pop3MailServiceTests
         var summary = Pop3MailService.BuildSummary(account, "uidl-1", msg, "Inbox", isRead: false);
 
         Assert.Equal("uidl-1", summary.MessageId);
-        // Display name in the list, like ImapMailService.SummaryToModel.
+        // Display name in the list, like ImapMailService.SummaryToModel…
         Assert.Equal("Kelly Ford", summary.From);
+        // …and the bare address beside it, for rules and contact lookups to match (#803).
+        Assert.Equal("kelly@example.com", summary.FromEmail);
         Assert.Equal("Quarterly report", summary.Subject);
         // Carried so aggregate views can collapse duplicates and a reply can thread (#220).
         Assert.Equal("abc@example.com", summary.InternetMessageId);

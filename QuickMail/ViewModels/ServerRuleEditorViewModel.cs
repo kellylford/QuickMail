@@ -67,8 +67,9 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         {
             IsNew = true,
             Name = template.Name ?? string.Empty,
-            // A template made from a message carries its sender as Sender contains, because a display
-            // name can hold a comma and the address fields would read that as two addresses (#682).
+            // A template made from a message carries its sender as Sender contains: the sender's address
+            // where the row has one (#803), else the display name, which can hold a comma that the address
+            // fields would read as two addresses (#682).
             // A condition arrives switched on only where the template actually has something for it to
             // match: a flag over an empty box would tick a condition that tests nothing.
             SenderContains = template.SenderContains ?? string.Empty,

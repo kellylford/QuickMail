@@ -558,7 +558,10 @@ public class GraphMailService : IMailService, IConnectionProbe
         AccountId = accountId,
         FolderName = folderName,
         InternetMessageId = m.InternetMessageId ?? string.Empty,
-        From = m.From?.EmailAddress?.AsHeaderString() ?? string.Empty,
+        // Name alone in the list, address beside it for matching (#801, #803) — as IMAP and POP3 rows have it.
+        // The detail below keeps the full "Name <address>".
+        From = m.From?.EmailAddress?.AsDisplayString() ?? string.Empty,
+        FromEmail = m.From?.EmailAddress?.Address ?? string.Empty,
         To = JoinRecipients(m.ToRecipients),
         Subject = m.Subject ?? "(no subject)",
         Date = m.ReceivedDateTime,

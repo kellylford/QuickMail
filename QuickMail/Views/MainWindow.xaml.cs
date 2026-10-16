@@ -280,6 +280,9 @@ public partial class MainWindow : Window
         _connectivity     = connectivity;
         InitializeComponent();
         DataContext = vm;
+        // The region's own Visibility, not IsVisible: IsVisible also changes when the window hides to the tray, and
+        // does not change at all when the region empties while the window is hidden (review of #806).
+        SenderAddressRegionVisibility.AddValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
 
         // Focus moving to the message body, or away from it, is recorded in one place, so no pane
         // handler has to remember to clear it. handledEventsToo is needed for the CLEARING half:
@@ -858,6 +861,8 @@ public partial class MainWindow : Window
         foreach (var w in _openMessageWindows.ToList())
             w.Close();
         _rulesWindow?.Close(); // unowned (#347), so not auto-closed with the main window
+        // A DependencyPropertyDescriptor holds its handlers strongly, so the window would never be collected.
+        SenderAddressRegionVisibility.RemoveValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
         _trayIcon?.Dispose(); // remove the tray icon so it doesn't linger after exit
         // Cancels all in-flight VM operations (sync, prefetch, loads) and releases
         // their CTS handles. OnClosed, not OnClosing — the close cannot be cancelled here.
@@ -4693,14 +4698,15 @@ public partial class MainWindow : Window
         if (ConnectionStatusTextBox.IsKeyboardFocused) return 2;
         if (RulesStatusButton.IsKeyboardFocused)       return 3;
         if (OfflineStatusTextBox.IsKeyboardFocused)    return 4;
-        if (StatusProgressBar.IsKeyboardFocused)       return 5;
+        if (SenderAddressStatusTextBox.IsKeyboardFocused) return 5;
+        if (StatusProgressBar.IsKeyboardFocused)       return 6;
 
         return 0;
     }
 
     /// <summary>
     /// Moves keyboard focus to the specified status bar region (1-based index).
-    /// Regions 4 (offline reading) and 5 (sync progress) are skipped when not visible.
+    /// Regions 4 (offline reading), 5 (sender-address update) and 6 (sync progress) are skipped when not visible.
     /// </summary>
     private void FocusStatusBarRegion(int region)
     {
@@ -4722,6 +4728,12 @@ public partial class MainWindow : Window
                     FocusStatusBarRegion(1); // fallback: wrap to first
                 break;
             case 5:
+                if (SenderAddressStatusItem.Visibility == Visibility.Visible)
+                    SenderAddressStatusTextBox.Focus();
+                else
+                    FocusStatusBarRegion(1); // fallback: wrap to first
+                break;
+            case 6:
                 if (StatusProgressItem.Visibility == Visibility.Visible)
                     StatusProgressBar.Focus();
                 else
@@ -4743,8 +4755,10 @@ public partial class MainWindow : Window
         var visible = new List<int> { 1, 2, 3 };
         if (OfflineStatusItem.Visibility == Visibility.Visible)
             visible.Add(4);
-        if (StatusProgressItem.Visibility == Visibility.Visible)
+        if (SenderAddressStatusItem.Visibility == Visibility.Visible)
             visible.Add(5);
+        if (StatusProgressItem.Visibility == Visibility.Visible)
+            visible.Add(6);
 
         int pos = visible.IndexOf(current);
         if (pos < 0) { FocusStatusBarRegion(visible[0]); return; }
@@ -4754,6 +4768,29 @@ public partial class MainWindow : Window
             : (pos - 1 + visible.Count) % visible.Count;
 
         FocusStatusBarRegion(visible[nextPos]);
+    }
+
+    /// <summary>
+    /// The sender-address region hides itself when the update ends — quite possibly while someone is on it reading
+    /// the count. Focus would be left on nothing, so it moves to the region before it, as Left would have taken it.
+    /// Only for someone who was on the region; see <see cref="StatusBarFocusPolicy"/>. Hidden to the tray, only the
+    /// window's remembered focus is moved, so restoring it does not land on the gone region.
+    /// </summary>
+    private static readonly DependencyPropertyDescriptor SenderAddressRegionVisibility =
+        DependencyPropertyDescriptor.FromProperty(VisibilityProperty, typeof(StatusBarItem));
+
+    private void SenderAddressStatusItem_VisibilityChanged(object? sender, EventArgs e)
+    {
+        if (!StatusBarFocusPolicy.ShouldMoveFocusOffHiddenRegion(
+                nowVisible: SenderAddressStatusItem.Visibility == Visibility.Visible,
+                hasKeyboardFocus: SenderAddressStatusTextBox.IsKeyboardFocused,
+                hasLogicalFocus: ReferenceEquals(FocusManager.GetFocusedElement(this), SenderAddressStatusTextBox)))
+            return;
+        IInputElement target = OfflineStatusItem.Visibility == Visibility.Visible ? OfflineStatusTextBox : RulesStatusButton;
+        // Logical focus set explicitly: with another application in front, Focus() leaves the window remembering
+        // the hidden region, since it only fills in a remembered focus when there is none.
+        FocusManager.SetFocusedElement(this, target);
+        target.Focus();
     }
 
     /// <summary>
