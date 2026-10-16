@@ -16,12 +16,13 @@ public static class SenderGroupPropertiesBuilder
         // A sender group is keyed on the name, so it can hold mail from several addresses under that name: a
         // forger's among them. Each is listed as "Name <address>", as a single message's Properties shows its sender
         // (review of #806). A recipient group's key is already the To text, addresses and all.
-        var who = isToGroup ? group.SenderKey : string.Join("; ", SenderList.Of(group.Messages));
+        var senders = isToGroup ? [] : SenderList.Of(group.Messages);
+        var who = isToGroup ? group.SenderKey : SenderList.Describe(senders);
         if (who.Length == 0) who = group.SenderKey;
 
         var items = new List<PropertyItem>
         {
-            new(role,       who),
+            new(senders.Count > 1 ? "Senders" : role, who),
             new("Messages", group.Messages.Count.ToString()),
             new("Unread",   unreadCount == 0 ? "None" : unreadCount.ToString()),
         };

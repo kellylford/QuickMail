@@ -29,6 +29,7 @@ public partial class SyncService
     internal TimeSpan SenderEmailPacing { get; set; } = TimeSpan.FromSeconds(1);
 
     private Action? _senderEmailBackfillDone;
+    private Action<Guid>? _senderEmailAccountDone;
 
     /// <summary>
     /// The IMAP accounts the requested pass still has to work through. Fixed when the pass is requested, from every
@@ -45,11 +46,15 @@ public partial class SyncService
     /// <paramref name="onComplete"/> once every account in <paramref name="imapAccountIds"/> has been worked through.
     /// An account the pass did not reach — not connected at startup, offline, or dropped part-way — leaves it
     /// uncalled, and the caller asks again at the next launch: the startup sync is the trickle's only caller.
+    /// <paramref name="onAccountFinished"/> is called for each account as it is worked through, so the caller can
+    /// leave it out of that next request.
     /// </summary>
-    public void RequestSenderEmailBackfill(IReadOnlyCollection<Guid> imapAccountIds, Action onComplete)
+    public void RequestSenderEmailBackfill(IReadOnlyCollection<Guid> imapAccountIds, Action onComplete,
+        Action<Guid>? onAccountFinished = null)
     {
         _senderEmailPending = [.. imapAccountIds];
         _senderEmailBackfillDone = onComplete;
+        _senderEmailAccountDone = onAccountFinished;
     }
 
     // Internal so tests can run the pass without a whole startup sync around it.
@@ -60,6 +65,7 @@ public partial class SyncService
         // leaves undone waits for the request the next launch makes.
         var onComplete = Interlocked.Exchange(ref _senderEmailBackfillDone, null);
         if (onComplete is null) return;
+        var onAccountFinished = Interlocked.Exchange(ref _senderEmailAccountDone, null);
         var pending = _senderEmailPending;
 
         // Plan first, so the progress total is the whole pass rather than one account at a time. Only the accounts
@@ -81,6 +87,8 @@ public partial class SyncService
         // Accounts this pass stopped on before it was through: the rest of their folders are left for the next launch.
         var unfinished = new HashSet<Guid>();
         var firstRequest = true;
+        // Shown before the first request, not after it: a pass of one batch would otherwise never be shown at all.
+        if (total > 0) _ui.Post(() => SenderEmailBackfillProgressChanged?.Invoke(0, total));
         try
         {
             foreach (var (account, folder, ids) in work)
@@ -159,7 +167,11 @@ public partial class SyncService
         // An account is done once the pass reached it and went through all its folders: each one fetched, or skipped
         // for good because it can never be fetched.
         foreach (var account in reached)
-            if (!unfinished.Contains(account.Id)) pending.Remove(account.Id);
+        {
+            if (unfinished.Contains(account.Id)) continue;
+            pending.Remove(account.Id);
+            onAccountFinished?.Invoke(account.Id);
+        }
 
         if (pending.Count == 0) onComplete();
         else LogService.Log($"Sender-address backfill: {pending.Count} IMAP account(s) not worked through; it continues next launch.");
@@ -167,9 +179,10 @@ public partial class SyncService
 
     /// <summary>
     /// The failures that will happen again however often the fetch is retried: a folder deleted on the server, or a
-    /// stored id that is not an IMAP UID (non-numeric, or out of range). Everything else — a refusal, throttling, an
+    /// stored id that is not an IMAP UID (non-numeric, out of range, or 0, which <c>UniqueId</c> rejects with
+    /// <see cref="ArgumentOutOfRangeException"/>). Everything else — a refusal, throttling, an
     /// expired sign-in — can pass, so it leaves the account for the next launch instead (review of #806).
     /// </summary>
     internal static bool IsPermanentlyUnfetchable(Exception ex) =>
-        ex is MailKit.FolderNotFoundException or FormatException or OverflowException;
+        ex is MailKit.FolderNotFoundException or FormatException or OverflowException or ArgumentOutOfRangeException;
 }

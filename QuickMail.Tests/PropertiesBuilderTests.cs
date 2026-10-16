@@ -696,6 +696,21 @@ public class ConversationPropertiesBuilderTests
         Assert.Contains(sections[0].Items, i => i.Label == "Participants"
             && i.Value == "Alice <alice@example.com>; Alice <alice@other.example>; Bob <bob@example.com>");
     }
+
+    [Fact]
+    public void Build_WithElevenParticipants_NamesTenAndCountsTheRest()
+    {
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          = [.. Enumerable.Range(1, 11).Select(n => From($"Person {n}", $"p{n}@example.com"))],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+        var participants = sections[0].Items.Single(i => i.Label == "Participants").Value;
+
+        Assert.EndsWith("Person 10 <p10@example.com>; and 1 more", participants);
+    }
 }
 
 // ── SenderGroupPropertiesBuilder ────────────────────────────────────────────
@@ -789,8 +804,26 @@ public class SenderGroupPropertiesBuilderTests
 
         var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
 
-        Assert.Contains(sections[0].Items, i => i.Label == "Sender"
+        Assert.Contains(sections[0].Items, i => i.Label == "Senders"
             && i.Value == "PayPal <service@paypal.example>; PayPal <fake@evil.example>");
+    }
+
+    [Fact]
+    public void Build_FromGroup_WithManyAddresses_NamesTheFirstTenAndCountsTheRest()
+    {
+        // A sender using a new address on every message would otherwise be one line read out as all of them.
+        var group = new SenderGroup
+        {
+            SenderKey = "Lists",
+            Messages  = [.. Enumerable.Range(1, 25).Select(n => From("Lists", $"bounce-{n}@lists.example"))],
+        };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
+        var senders = sections[0].Items.Single(i => i.Label == "Senders").Value;
+
+        Assert.StartsWith("Lists <bounce-1@lists.example>; ", senders);
+        Assert.Contains("Lists <bounce-10@lists.example>; and 15 more", senders);
+        Assert.DoesNotContain("bounce-11@", senders);
     }
 
     [Fact]

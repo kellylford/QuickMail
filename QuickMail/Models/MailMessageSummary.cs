@@ -53,19 +53,14 @@ public partial class MailMessageSummary : ObservableObject
     /// <see cref="From"/> alone where there is no separate address — a row cached before <see cref="FromEmail"/>
     /// existed, or a sender with no name, whose From already is the address.
     /// </summary>
-    public string FromWithAddress => JoinNameAndAddress(From, FromEmail);
-
-    /// <summary>
-    /// <see cref="FromWithAddress"/>'s rule, for callers holding a name and an address that are not on a summary —
-    /// a cached detail's fallback reads them straight from the row (review of #806).
-    /// </summary>
-    public static string JoinNameAndAddress(string? name, string? address)
-    {
-        name ??= string.Empty;
-        return string.IsNullOrEmpty(address) || string.Equals(name, address, StringComparison.OrdinalIgnoreCase)
-            ? name
-            : name.Length == 0 ? address : $"{name} <{address}>";
-    }
+    /// <remarks>
+    /// Not a header: the name is left unquoted, so "Ford, Kelly &lt;kelly@example.com&gt;" parses as two addresses.
+    /// Where the result is replied to or written to a file, use <c>AddressListFormat.Mailbox</c> (review of #806).
+    /// </remarks>
+    public string FromWithAddress =>
+        string.IsNullOrEmpty(FromEmail) || string.Equals(From, FromEmail, StringComparison.OrdinalIgnoreCase)
+            ? From
+            : From.Length == 0 ? FromEmail : $"{From} <{FromEmail}>";
 
     public string To { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;

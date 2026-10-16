@@ -42,4 +42,22 @@ internal static class AddressListFormat
             : string.Join(", ", list.Mailboxes
                 .Select(mb => mb.Address)
                 .Where(a => !string.IsNullOrWhiteSpace(a)));
+
+    /// <summary>
+    /// A cached row's sender name and bare address put back together as a From header, for a detail that has no
+    /// From of its own: a reply addresses it and a saved file writes it, so it must parse back to the one mailbox.
+    /// <see cref="MailMessageSummary.FromWithAddress"/> is for reading and matching and leaves the name as it is,
+    /// so "Ford, Kelly &lt;kelly@example.com&gt;" would parse as two addresses; MimeKit quotes such a name
+    /// (review of #806). With no address, the name alone; with several, the addresses alone, since the one name
+    /// belongs to none of them in particular.
+    /// </summary>
+    internal static string Mailbox(string? name, string? address)
+    {
+        name ??= string.Empty;
+        if (string.IsNullOrWhiteSpace(address)) return name;
+        if (address.Contains(',', System.StringComparison.Ordinal)) return address;
+        if (name.Length == 0 || string.Equals(name, address, System.StringComparison.OrdinalIgnoreCase)) return address;
+        try { return new MailboxAddress(name, address).ToString(); }
+        catch (ParseException) { return address; }
+    }
 }

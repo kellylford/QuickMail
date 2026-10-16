@@ -54,3 +54,33 @@ public class SenderAddressFormattingTests
     public void FromWithAddress_JoinsTheNameAndTheAddress(string from, string fromEmail, string expected)
         => Assert.Equal(expected, new MailMessageSummary { From = from, FromEmail = fromEmail }.FromWithAddress);
 }
+
+/// <summary>
+/// The From header a cached detail falls back to (review of #806): it is replied to and saved, so it must parse back
+/// to the one mailbox, which an unquoted "Last, First" name does not.
+/// </summary>
+public class AddressListFormatMailboxTests
+{
+    [Fact]
+    public void ANameWithAComma_IsQuoted_AndParsesAsOneMailbox()
+    {
+        var header = AddressListFormat.Mailbox("Ford, Kelly", "kelly@example.com");
+
+        Assert.True(MimeKit.InternetAddressList.TryParse(header, out var list));
+        var mailbox = Assert.IsType<MimeKit.MailboxAddress>(Assert.Single(list));
+        Assert.Equal("Ford, Kelly", mailbox.Name);
+        Assert.Equal("kelly@example.com", mailbox.Address);
+    }
+
+    [Fact]
+    public void APlainName_ReadsAsUsual() =>
+        Assert.Equal("Kelly Ford <kelly@example.com>", AddressListFormat.Mailbox("Kelly Ford", "kelly@example.com"));
+
+    [Theory]
+    [InlineData("Kelly Ford", "", "Kelly Ford")]                         // no address: the name, for the repair to see
+    [InlineData("", "kelly@example.com", "kelly@example.com")]           // no name
+    [InlineData("kelly@example.com", "kelly@example.com", "kelly@example.com")]
+    [InlineData("Team", "a@example.com, b@example.com", "a@example.com, b@example.com")]   // several: the name is no one's
+    public void WithoutANameToPair_GivesWhatThereIs(string name, string address, string expected) =>
+        Assert.Equal(expected, AddressListFormat.Mailbox(name, address));
+}

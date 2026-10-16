@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -277,9 +278,9 @@ public partial class LocalStoreService : ILocalStoreService
         // name when served from cache, and a reply composed from the cached copy addressed a name
         // with no mailbox behind it.
         //
-        // Rows written before this column keep an empty string; LoadDetailAsync falls back to
-        // from_disp for them, and MainViewModel re-fetches from the server on open so the row
-        // repairs itself. AFTER RunDataMigrations for the same reason as mime_bytes above.
+        // Rows written before this column keep an empty string; LoadDetailAsync falls back to the
+        // summary's from_disp and from_email for them (#803), and where the summary has no address
+        // either, MainViewModel re-fetches from the server on open so the row repairs itself. AFTER RunDataMigrations for the same reason as mime_bytes above.
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN from_addr TEXT NOT NULL DEFAULT '';");
 
         // Whether client rules have run on a cached message (#712). Being cached used to stand in for it: the
@@ -1130,10 +1131,11 @@ public partial class LocalStoreService : ILocalStoreService
             // (issue #636) has none, so it takes the summary's name and address together (#803): from_disp alone
             // is the display name, and since the backfill splits an older Graph row's "Name <address>" into
             // from_disp and from_email, reading from_disp alone would lose an address that row used to give —
-            // and offline, a reply would be addressed to a bare name (review of #806). With no address on the
-            // summary either, the name alone; MainViewModel then re-fetches on open, so the row repairs itself.
+            // and offline, a reply would be addressed to a bare name (review of #806). Built as a header, so a
+            // "Last, First" name is quoted rather than read as two addresses. With no address on the summary
+            // either, the name alone; MainViewModel then re-fetches on open, so the row repairs itself.
             From          = FirstNonEmpty(r.IsDBNull(12) ? null : r.GetString(12),
-                                          MailMessageSummary.JoinNameAndAddress(
+                                          AddressListFormat.Mailbox(
                                               r.IsDBNull(5)  ? null : r.GetString(5),
                                               r.IsDBNull(13) ? null : r.GetString(13))),
             Subject       = r.IsDBNull(6) ? "(no subject)" : r.GetString(6),

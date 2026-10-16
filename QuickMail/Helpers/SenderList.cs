@@ -35,4 +35,17 @@ internal static class SenderList
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    /// <summary>How many senders a Properties value names before it says how many more there are.</summary>
+    internal const int MaxListed = 10;
+
+    /// <summary>
+    /// <paramref name="senders"/> as one Properties value: the first <see cref="MaxListed"/>, then how many more. A
+    /// long thread, or a group whose sender uses a new address on every message, would otherwise be one line read
+    /// out as hundreds of addresses (review of #806).
+    /// </summary>
+    internal static string Describe(IReadOnlyList<string> senders) =>
+        senders.Count <= MaxListed
+            ? string.Join("; ", senders)
+            : $"{string.Join("; ", senders.Take(MaxListed))}; and {senders.Count - MaxListed} more";
 }

@@ -207,6 +207,47 @@ public class ClientRuleConditionsTests
     }
 
     [Fact]
+    public void AnAddressInTheDisplayName_DoesNotMatchAnAddressCondition()
+    {
+        // Review of #806: the display name is the sender's to write. "service@paypal.example" <x@evil.example> must
+        // not match a rule made from real PayPal mail, by Sender contains, by From addresses, or by domain.
+        var forged = Msg(from: "service@paypal.example", fromEmail: "x@evil.example");
+        var real = Msg(from: "PayPal", fromEmail: "service@paypal.example");
+        var bySender = new MailRule
+        {
+            Name = "PayPal", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = "service@paypal.example", Action = RuleAction.MarkAsRead,
+        };
+        var byFrom = new MailRule
+        {
+            Name = "PayPal", UseFromCondition = true, FromContains = "service@paypal.example", Action = RuleAction.MarkAsRead,
+        };
+        var byDomain = new MailRule
+        {
+            Name = "PayPal", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = "@paypal.example", Action = RuleAction.MarkAsRead,
+        };
+
+        foreach (var rule in new[] { bySender, byFrom, byDomain })
+        {
+            Assert.True(Matches(rule, real));
+            Assert.False(Matches(rule, forged));
+        }
+    }
+
+    [Fact]
+    public void ANameCondition_StillMatchesTheName()
+    {
+        var rule = new MailRule
+        {
+            Name = "PayPal", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = "PayPal", Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "PayPal", fromEmail: "service@paypal.example")));
+    }
+
+    [Fact]
     public void FromAddress_OnARowCachedBeforeFromEmail_BehavesAsBefore()
     {
         // No FromEmail yet: matching falls back to From alone, so a name-only row still cannot match an address

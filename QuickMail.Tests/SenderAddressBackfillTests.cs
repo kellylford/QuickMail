@@ -540,6 +540,7 @@ public class SenderAddressBackfillSyncTests : IDisposable
         Assert.True(SyncService.IsPermanentlyUnfetchable(new MailKit.FolderNotFoundException("Old")));
         Assert.True(SyncService.IsPermanentlyUnfetchable(new FormatException()));     // a non-numeric stored id
         Assert.True(SyncService.IsPermanentlyUnfetchable(new OverflowException()));   // too large for a UID
+        Assert.True(SyncService.IsPermanentlyUnfetchable(new ArgumentOutOfRangeException()));   // 0, which UniqueId rejects
         Assert.False(SyncService.IsPermanentlyUnfetchable(
             new MailKit.Net.Imap.ImapCommandException(MailKit.Net.Imap.ImapCommandResponse.No, "[UNAVAILABLE]")));
         Assert.False(SyncService.IsPermanentlyUnfetchable(new MailKit.Security.AuthenticationException("expired")));
@@ -598,7 +599,7 @@ public class SenderAddressBackfillSyncTests : IDisposable
 
         Assert.Equal(3, mail.Fetches.Count);
         Assert.All(mail.Fetches, f => Assert.True(f.Ids.Count <= SyncService.SenderEmailFetchBatch));
-        Assert.Equal([(500, total), (1000, total)], progress);
+        Assert.Equal([(0, total), (500, total), (1000, total)], progress);   // shown before the first request
         Assert.Equal([(total, total)], ended);
     }
 
@@ -641,6 +642,59 @@ public class SenderAddressBackfillSyncTests : IDisposable
 
         Assert.Equal([(1, 2)], ended);
         Assert.Equal(0, completed);   // not finished, so the next launch carries on
+    }
+
+    [Fact]
+    public async Task AOneBatchPass_IsStillShown()
+    {
+        // Review of #806: progress was posted only after a batch and never at the end, so a pass of one batch
+        // never showed at all.
+        var imap = Account();
+        await Seed(imap, "1", "Some Company");
+        var (sync, mail) = Build();
+        mail.OnServer["1"] = "news@company.com";
+        var progress = new List<(int, int)>();
+        sync.SenderEmailBackfillProgressChanged += (d, t) => progress.Add((d, t));
+        sync.RequestSenderEmailBackfill([imap.Id], () => { });
+
+        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
+
+        Assert.Equal([(0, 1)], progress);
+    }
+
+    [Fact]
+    public async Task EachAccountWorkedThrough_IsReported_SoTheNextLaunchSkipsIt()
+    {
+        // Review of #806: with one account that never connects, every launch re-asked the finished ones too.
+        var connected = Account();
+        var neverConnected = Account();
+        await Seed(connected, "1", "Some Company");
+        await Seed(neverConnected, "2", "Other Company");
+        var (sync, mail) = Build();
+        mail.OnServer["1"] = "news@company.com";
+        var finished = new List<Guid>();
+        var completed = 0;
+        sync.RequestSenderEmailBackfill([connected.Id, neverConnected.Id], () => completed++, finished.Add);
+
+        await sync.BackfillSenderEmailsFromServerAsync([connected], CancellationToken.None);
+
+        Assert.Equal([connected.Id], finished);
+        Assert.Equal(0, completed);
+    }
+
+    [Fact]
+    public async Task AnAccountStoppedPartWay_IsNotReportedFinished()
+    {
+        var imap = Account();
+        await Seed(imap, "1", "Some Company");
+        var (sync, mail) = Build();
+        mail.Unreachable = true;
+        var finished = new List<Guid>();
+        sync.RequestSenderEmailBackfill([imap.Id], () => { }, finished.Add);
+
+        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
+
+        Assert.Empty(finished);
     }
 
     [Fact]
@@ -742,4 +796,58 @@ public class SenderAddressBackfillStatusTests
     public void FocusMovesOffTheHiddenRegion_OnlyForSomeoneOnIt(
         bool nowVisible, bool hasKeyboardFocus, bool hasLogicalFocus, bool moves)
         => Assert.Equal(moves, StatusBarFocusPolicy.ShouldMoveFocusOffHiddenRegion(nowVisible, hasKeyboardFocus, hasLogicalFocus));
+}
+
+/// <summary>
+/// What the backfill remembers between launches (review of #806): the local pass once, and each IMAP account the
+/// server pass has finished, so one account that never connects does not make every launch redo the rest.
+/// </summary>
+public sealed class SenderAddressBackfillProgressTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+
+    public SenderAddressBackfillProgressTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
+    }
+
+    [Fact]
+    public void AFreshProfile_OwesEverything()
+    {
+        var progress = new SenderAddressBackfillProgress(_dir);
+        var a = Guid.NewGuid();
+
+        Assert.False(progress.IsDone);
+        Assert.False(progress.IsLocalDone);
+        Assert.Equal([a], progress.Owed([a]));
+    }
+
+    [Fact]
+    public void WhatIsRecorded_IsRememberedByTheNextLaunch()
+    {
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        var launch1 = new SenderAddressBackfillProgress(_dir);
+        launch1.RecordLocalDone();
+        launch1.RecordAccountDone(a);
+
+        var launch2 = new SenderAddressBackfillProgress(_dir);
+
+        Assert.True(launch2.IsLocalDone);
+        Assert.False(launch2.IsDone);
+        Assert.Equal([b], launch2.Owed([a, b]));
+    }
+
+    [Fact]
+    public void Done_IsDone_AndClearsThePartsRecord()
+    {
+        var progress = new SenderAddressBackfillProgress(_dir);
+        progress.RecordLocalDone();
+        progress.RecordDone();
+
+        Assert.True(new SenderAddressBackfillProgress(_dir).IsDone);
+        Assert.False(File.Exists(Path.Combine(_dir, ".sender-address-backfill-progress")));
+    }
 }

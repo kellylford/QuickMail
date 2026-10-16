@@ -4773,7 +4773,9 @@ public partial class MainWindow : Window
     private void SenderAddressStatusItem_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (!StatusBarFocusPolicy.ShouldMoveFocusOffHiddenRegion(
-                nowVisible: e.NewValue is true,
+                // Visible too while the region itself is: IsVisible also goes false when the whole window hides to
+                // the tray, and moving the remembered focus then would bring the user back to Rules, not to here.
+                nowVisible: e.NewValue is true || SenderAddressStatusItem.Visibility == Visibility.Visible,
                 hasKeyboardFocus: SenderAddressStatusTextBox.IsKeyboardFocused,
                 hasLogicalFocus: ReferenceEquals(FocusManager.GetFocusedElement(this), SenderAddressStatusTextBox)))
             return;

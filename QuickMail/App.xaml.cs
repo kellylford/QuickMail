@@ -474,10 +474,12 @@ public partial class App : Application
             // name (#801). IMAP rows with no cached body are fetched by the first sync's trickle, and the
             // marker is written only once that has worked through every IMAP account in the profile, connected at
             // startup or not; until then each launch resumes it (both halves only touch rows still lacking an
-            // address). Skipped in --online mode (no local store).
-            var senderBackfillMarker = System.IO.Path.Combine(profile.ProfileDir, ".sender-address-backfilled");
-            var senderBackfillPending = !onlineMode && !probeMode && !System.IO.File.Exists(senderBackfillMarker);
-            if (senderBackfillPending)
+            // address). Each part is recorded as it finishes, so a launch repeats only what is left: the local half
+            // runs once, and an account the server half has worked through is not asked again while another one
+            // can't connect (review of #806). Skipped in --online mode (no local store).
+            var senderBackfill = new SenderAddressBackfillProgress(profile.ProfileDir);
+            var senderBackfillPending = !onlineMode && !probeMode && !senderBackfill.IsDone;
+            if (senderBackfillPending && !senderBackfill.IsLocalDone)
             {
                 // Isolated like the #366 clear: a failure here must never stop startup.
                 try
@@ -487,6 +489,7 @@ public partial class App : Application
                     var senderTimer = System.Diagnostics.Stopwatch.StartNew();
                     var filled = localStore.BackfillSenderEmailsLocallyAsync(graphIds).GetAwaiter().GetResult();
                     LogService.Log($"Sender-address backfill: {filled} cached row(s) filled locally in {senderTimer.ElapsedMilliseconds} ms.");
+                    senderBackfill.RecordLocalDone();
                 }
                 catch (Exception senderEx)
                 {
@@ -531,15 +534,12 @@ public partial class App : Application
             // The server half of the sender-address backfill (#803, above): marks it done once every IMAP account in
             // the profile has been worked through. The list is taken here, from all of them, because the sync itself
             // is handed the connected ones only — an account that can't connect at startup must keep the marker
-            // unwritten, not be silently left out (review of #806).
+            // unwritten, not be silently left out (review of #806). Accounts an earlier launch finished are not owed.
             if (senderBackfillPending)
                 syncService.RequestSenderEmailBackfill(
-                    [.. accounts.Where(a => a.BackendKind == BackendKind.ImapSmtp && !a.IsShared).Select(a => a.Id)],
-                    () =>
-                    {
-                        try { System.IO.File.WriteAllText(senderBackfillMarker, DateTime.UtcNow.ToString("o")); }
-                        catch (Exception markerEx) { LogService.Log("Sender-address backfill: could not write its marker.", markerEx); }
-                    });
+                    senderBackfill.Owed(accounts.Where(a => a.BackendKind == BackendKind.ImapSmtp && !a.IsShared).Select(a => a.Id)),
+                    senderBackfill.RecordDone,
+                    senderBackfill.RecordAccountDone);
 
             // #529 step 4: an IMAP→Graph convert purges the account's store before it re-syncs. If the
             // app closed (or crashed) between the purge and the first baselined sync, the store is empty

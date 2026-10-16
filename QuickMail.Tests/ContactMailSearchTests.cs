@@ -271,6 +271,22 @@ public class ContactMailSearchTests
         Assert.Equal(new[] { "1", "3" }, vm.Messages.Select(m => m.MessageId).OrderBy(id => id).ToArray());
     }
 
+    [Fact]
+    public async Task ShowContactMail_From_IgnoresAnAddressInTheDisplayName()
+    {
+        // Review of #806: the display name is the sender's to write, so "bob@example.com" <x@evil.example> is not Bob.
+        var forged = Msg("1", "bob@example.com", "kelly@example.com");
+        forged.FromEmail = "x@evil.example";
+        var real = Msg("2", "Bob Baker", "kelly@example.com");
+        real.FromEmail = "bob@example.com";
+        var vm = MakeVm([forged, real]);
+        await vm.InitialLoadAsync();
+
+        await vm.ShowContactMailAsync("bob@example.com", MainViewModel.ContactMailDirection.From, "Bob Baker");
+
+        Assert.Equal("2", Assert.Single(vm.Messages).MessageId);
+    }
+
     // ── Address book side ────────────────────────────────────────────────────
 
     [Fact]

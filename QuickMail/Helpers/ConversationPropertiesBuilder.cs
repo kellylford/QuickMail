@@ -20,7 +20,7 @@ public static class ConversationPropertiesBuilder
             new("Messages",     group.Messages.Count.ToString()),
             new("Unread",       unreadCount == 0 ? "None" : unreadCount.ToString()),
             new("Participants", participants.Count > 0
-                                    ? string.Join("; ", participants)
+                                    ? SenderList.Describe(participants)
                                     : "(none)"),
         };
 

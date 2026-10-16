@@ -22,7 +22,11 @@ contact, and both kinds of search look at both the from address and the display 
 
 **Create Rule from Message** now fills in the sender's email address instead of their name, so a
 rule made from a message from "PayPal" no longer also catches someone else calling themselves
-"PayPal". Where QuickMail doesn't have the address yet, it fills in the name, as before.
+"PayPal". Where QuickMail doesn't have the address yet, it fills in the name, as before. When a
+client-side rule's **Sender contains** or **From addresses** holds an email address, or part of one
+such as `@example.com`, it is checked against the sender's actual address only, so a sender can't
+match it by putting that address in their display name. **Find mail from this contact** works the
+same way.
 
 The first time you start this version, QuickMail fills in the address for mail it already has.
 Most of it comes from what is already on this computer. For IMAP mail whose text has not been

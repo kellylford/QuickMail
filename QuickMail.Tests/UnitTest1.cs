@@ -705,6 +705,36 @@ public class LocalStoreServiceTests
     }
 
     [Fact]
+    public async Task DetailFrom_FallbackWithACommaInTheName_ParsesAsOneMailbox()
+    {
+        // Review of #806: "Ford, Kelly <kelly@example.com>" unquoted is two addresses to a reply's To box, and the
+        // address in it stops the re-fetch that used to repair the row. The fallback is built as a header.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
+        store.Initialize();
+
+        var acct = Guid.NewGuid();
+        await store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            MessageId = "10", AccountId = acct, FolderName = "Inbox",
+            From = "Ford, Kelly", FromEmail = "kelly@example.com", Subject = "s", Date = DateTimeOffset.UtcNow,
+        }]);
+        await store.UpsertDetailAsync(new MailMessageDetail
+        {
+            MessageId = "10", AccountId = acct, FolderName = "Inbox",
+            From = string.Empty, To = "you@example.com", PlainTextBody = "body",
+        });
+
+        var loaded = await store.LoadDetailAsync(acct, "Inbox", "10");
+
+        Assert.NotNull(loaded);
+        Assert.True(MimeKit.InternetAddressList.TryParse(loaded!.From, out var list));
+        var mailbox = Assert.IsType<MimeKit.MailboxAddress>(Assert.Single(list));
+        Assert.Equal("Ford, Kelly", mailbox.Name);
+        Assert.Equal("kelly@example.com", mailbox.Address);
+    }
+
+    [Fact]
     public async Task CountSummariesByFolder_GroupsPerFolderForOneAccount()
     {
         // #462 sweep instrumentation: one grouped query yields every folder's cached count.
