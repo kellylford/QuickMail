@@ -158,8 +158,9 @@ public interface IMailService : IDisposable
 
     /// <summary>
     /// Appends a sent message to the server Sent folder so it appears in the Sent view.
-    /// Providers that auto-copy sent mail (e.g. Gmail) will silently duplicate; we rely on
-    /// the server to deduplicate or accept the extra copy — most handle this gracefully.
+    /// Providers that file their own copy of sent mail (Gmail, iCloud, Outlook.com) are detected
+    /// by <see cref="ComposeModel.OutgoingMessageId"/> where the backend can look, and then
+    /// nothing is added (#811).
     /// </summary>
     Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default);
 
