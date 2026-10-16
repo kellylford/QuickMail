@@ -45,9 +45,7 @@ public class OutgoingMessageIdTests
     [Theory]
     [InlineData("someone@bücher.de")]          // Unicode domain
     [InlineData("someone@xn--bcher-kva.de")]   // the same domain in punycode, which MimeKit turns back
-    [InlineData("someone@exa mple.com")]       // MimeKit would cut this at the space
-    [InlineData("someone@example.com>")]
-    public void EnsureOutgoingMessageId_UnusableDomain_FallsBackToAnAsciiId(string username)
+    public void EnsureOutgoingMessageId_InternationalDomain_FallsBackToAnAsciiIdThatSurvivesBuild(string username)
     {
         var compose = new ComposeModel { To = "a@b.com", Body = "hello" };
 
@@ -58,6 +56,17 @@ public class OutgoingMessageIdTests
         // What is written is what the Sent search will look for.
         Assert.Equal(id, built.MessageId);
         Assert.All(built.MessageId!, c => Assert.True(c < 128));
+    }
+
+    [Theory]
+    [InlineData("someone@exa mple.com")]       // MimeKit would cut this at the space
+    [InlineData("someone@example.com>")]
+    public void EnsureOutgoingMessageId_MalformedDomain_FallsBack(string username)
+    {
+        // Such an address cannot be a From either, so only the id is checked.
+        var id = MimeMessageBuilder.EnsureOutgoingMessageId(new ComposeModel(), MakeAccount(username));
+
+        Assert.EndsWith("@" + MimeMessageBuilder.FallbackMessageIdDomain, id);
     }
 
     [Fact]
