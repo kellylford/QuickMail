@@ -327,7 +327,7 @@ public class GraphMailServiceTests
     [InlineData("""{"name":" Some Company ","address":"news@company.com"}""", "Some Company")]
     public async Task GetMessageSummariesAsync_ShowsTheNameOrElseTheAddress(string emailAddress, string expectedFrom)
     {
-        // #801: what a Graph row shows follows ImapMailService.FormatAddressListDisplay.
+        // #801: what a Graph row shows follows AddressListFormat.Display.
         var msgs = $$"""
             {"value":[{
               "id":"m1","subject":"Hello","from":{"emailAddress":{{emailAddress}}},

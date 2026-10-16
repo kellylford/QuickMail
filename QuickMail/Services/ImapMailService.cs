@@ -13,6 +13,7 @@ using MailKit.Net.Imap;
 using MailKit.Search;
 using MailKit.Security;
 using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -522,10 +523,10 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 MessageId     = messageId,
                 AccountId     = accountId,
                 FolderName    = folderName,
-                From          = FormatAddressList(s.Envelope?.From),
-                To            = FormatAddressList(s.Envelope?.To),
-                Cc            = FormatAddressList(s.Envelope?.Cc),
-                ReplyTo       = FormatAddressList(s.Envelope?.ReplyTo),
+                From          = AddressListFormat.Full(s.Envelope?.From),
+                To            = AddressListFormat.Full(s.Envelope?.To),
+                Cc            = AddressListFormat.Full(s.Envelope?.Cc),
+                ReplyTo       = AddressListFormat.Full(s.Envelope?.ReplyTo),
                 Subject       = s.Envelope?.Subject ?? "(no subject)",
                 Date          = s.Envelope?.Date ?? DateTimeOffset.MinValue,
                 IsRead        = markRead || (s.Flags & MessageFlags.Seen) != 0,
@@ -1004,7 +1005,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 // comma, which would read as two addresses.
                 var from = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.From);
                 if (from is null || !InternetAddressList.TryParse(from.RawValue, out var list)) continue;
-                var emails = FormatAddressListEmails(list);
+                var emails = AddressListFormat.Emails(list);
                 if (emails.Length == 0) continue;
                 // Without angle brackets, as the ENVELOPE's Message-ID the sync cached was.
                 var messageIdHeader = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.MessageId)?.Value;
@@ -1931,9 +1932,9 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             // RFC 5322 Message-ID — stable across every folder/label a message appears in, so
             // aggregate views can collapse Gmail's per-folder duplicate copies (issue #220).
             InternetMessageId = s.Envelope?.MessageId ?? string.Empty,
-            From        = FormatAddressListDisplay(s.Envelope?.From),
-            FromEmail   = FormatAddressListEmails(s.Envelope?.From),
-            To          = FormatAddressList(s.Envelope?.To),
+            From        = AddressListFormat.Display(s.Envelope?.From),
+            FromEmail   = AddressListFormat.Emails(s.Envelope?.From),
+            To          = AddressListFormat.Full(s.Envelope?.To),
             Subject     = s.Envelope?.Subject ?? "(no subject)",
             Date        = s.Envelope?.Date ?? DateTimeOffset.MinValue,
             IsRead         = (s.Flags & MessageFlags.Seen)     != 0,
@@ -2188,36 +2189,6 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         "html"     => ComposeMode.Html,
         _          => ComposeMode.PlainText,
     };
-
-    // Shared with Pop3MailService for the same reason ParseComposeMode is: the message list renders
-    // both backends' rows side by side, so a second copy of these would be free to drift.
-
-    /// <summary>Full addresses ("Kelly Ford &lt;kelly@example.com&gt;"), for the detail view.</summary>
-    internal static string FormatAddressList(InternetAddressList? list) =>
-        list == null || list.Count == 0
-            ? string.Empty
-            : string.Join(", ", list.Select(a => a.ToString()));
-
-    /// <summary>Display names where there is one, for the message list's From column.</summary>
-    internal static string FormatAddressListDisplay(InternetAddressList? list) =>
-        list == null || list.Count == 0
-            ? string.Empty
-            : string.Join(", ", list.Select(a =>
-                a is MailboxAddress mb && !string.IsNullOrWhiteSpace(mb.Name)
-                    ? mb.Name
-                    : a.ToString()));
-
-    /// <summary>
-    /// Bare addresses alone ("kelly@example.com"), for <see cref="MailMessageSummary.FromEmail"/>: what rules,
-    /// Find Mail From Contact and search match on, since the display form above drops the address whenever
-    /// there is a name (#803). Never shown. A group's members are listed in place of the group.
-    /// </summary>
-    internal static string FormatAddressListEmails(InternetAddressList? list) =>
-        list == null || list.Count == 0
-            ? string.Empty
-            : string.Join(", ", list.Mailboxes
-                .Select(mb => mb.Address)
-                .Where(a => !string.IsNullOrWhiteSpace(a)));
 
     /// <summary>
     /// Raw text of the first text/calendar body part of a downloaded message, or null when it carries

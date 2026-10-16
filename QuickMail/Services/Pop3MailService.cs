@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MailKit.Net.Pop3;
 using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -1146,11 +1147,11 @@ public class Pop3MailService : IMailService
             AccountId         = accountId,
             FolderName        = folderName,
             InternetMessageId = msg.MessageId ?? string.Empty,
-            // Display form in the summary, full addresses in the detail — literally ImapMailService's
-            // formatters, so the message list reads the same whichever backend fetched the message.
-            From              = ImapMailService.FormatAddressListDisplay(msg.From),
-            FromEmail         = ImapMailService.FormatAddressListEmails(msg.From),
-            To                = ImapMailService.FormatAddressList(msg.To),
+            // Display form in the summary, full addresses in the detail — the formatters IMAP uses too, so the
+            // message list reads the same whichever backend fetched the message.
+            From              = AddressListFormat.Display(msg.From),
+            FromEmail         = AddressListFormat.Emails(msg.From),
+            To                = AddressListFormat.Full(msg.To),
             Subject           = string.IsNullOrEmpty(msg.Subject) ? "(no subject)" : msg.Subject,
             Date              = NormalizeDate(msg.Date),
             IsRead            = isRead,
@@ -1204,10 +1205,10 @@ public class Pop3MailService : IMailService
             AccountId         = accountId,
             FolderName        = folderName,
             InternetMessageId = msg.MessageId ?? string.Empty,
-            From              = ImapMailService.FormatAddressList(msg.From),
-            To                = ImapMailService.FormatAddressList(msg.To),
-            Cc                = ImapMailService.FormatAddressList(msg.Cc),
-            ReplyTo           = ImapMailService.FormatAddressList(msg.ReplyTo),
+            From              = AddressListFormat.Full(msg.From),
+            To                = AddressListFormat.Full(msg.To),
+            Cc                = AddressListFormat.Full(msg.Cc),
+            ReplyTo           = AddressListFormat.Full(msg.ReplyTo),
             Subject           = string.IsNullOrEmpty(msg.Subject) ? "(no subject)" : msg.Subject,
             Date              = NormalizeDate(msg.Date),
             IsRead            = isRead,

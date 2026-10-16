@@ -1,6 +1,5 @@
 using System;
 using MimeKit;
-using QuickMail.Services;
 
 namespace QuickMail.Helpers;
 
@@ -38,7 +37,7 @@ public static class SenderAddressBackfill
 
         if (!string.IsNullOrWhiteSpace(detailFromAddr)
             && InternetAddressList.TryParse(detailFromAddr, out var list)
-            && ImapMailService.FormatAddressListEmails(list) is { Length: > 0 } fromBody)
+            && AddressListFormat.Emails(list) is { Length: > 0 } fromBody)
             return new Result(null, fromBody);
 
         // A Graph row with no name: AsHeaderString wrote the address alone only when the name was empty or was the

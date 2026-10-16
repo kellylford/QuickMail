@@ -77,7 +77,7 @@ internal sealed class GraphEmailAddress
 
     /// <summary>
     /// The sender as the message list shows and speaks it (#801): the name where there is one, otherwise the
-    /// address — the same rule ImapMailService.FormatAddressListDisplay applies, so a list row reads the same
+    /// address — the same rule AddressListFormat.Display applies to IMAP and POP3, so a list row reads the same
     /// whichever backend fetched it. The address itself goes in MailMessageSummary.FromEmail.
     /// </summary>
     public string AsDisplayString()
