@@ -236,6 +236,22 @@ public class ClientRuleConditionsTests
     }
 
     [Fact]
+    public void AWholeNameAndAddressRule_IsNotMatchedByPuttingItAllInTheDisplayName()
+    {
+        // Review of #806: a pre-#801 Microsoft rule holds "PayPal <service@paypal.example>". A forger who writes all
+        // of that as their display name must not match it.
+        var rule = new MailRule
+        {
+            Name = "PayPal", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = "PayPal <service@paypal.example>", Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "PayPal", fromEmail: "service@paypal.example")));
+        Assert.False(Matches(rule, Msg(from: "PayPal <service@paypal.example>", fromEmail: "x@evil.example")));
+        Assert.False(Matches(rule, Msg(from: "Someone Else", fromEmail: "service@paypal.example")));
+    }
+
+    [Fact]
     public void ANameCondition_StillMatchesTheName()
     {
         var rule = new MailRule

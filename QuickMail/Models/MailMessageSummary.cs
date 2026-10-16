@@ -60,7 +60,7 @@ public partial class MailMessageSummary : ObservableObject
     public string FromWithAddress =>
         string.IsNullOrEmpty(FromEmail) || string.Equals(From, FromEmail, StringComparison.OrdinalIgnoreCase)
             ? From
-            : From.Length == 0 ? FromEmail : $"{From} <{FromEmail}>";
+            : string.IsNullOrEmpty(From) ? FromEmail : $"{From} <{FromEmail}>";
 
     public string To { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;

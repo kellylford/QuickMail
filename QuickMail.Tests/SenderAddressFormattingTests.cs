@@ -72,9 +72,24 @@ public class AddressListFormatMailboxTests
         Assert.Equal("kelly@example.com", mailbox.Address);
     }
 
+    [Theory]
+    [InlineData("Kelly Ford")]
+    [InlineData("Jürgen Müller")]
+    public void APlainName_IsNotQuoted(string name) =>
+        Assert.Equal($"{name} <kelly@example.com>", AddressListFormat.Mailbox(name, "kelly@example.com"));
+
     [Fact]
-    public void APlainName_ReadsAsUsual() =>
-        Assert.Equal("Kelly Ford <kelly@example.com>", AddressListFormat.Mailbox("Kelly Ford", "kelly@example.com"));
+    public void ANameWithADot_IsQuoted_AndParsesAsOneMailbox()
+    {
+        var header = AddressListFormat.Mailbox("Kelly J. Ford", "kelly@example.com");
+
+        Assert.True(MimeKit.InternetAddressList.TryParse(header, out var list));
+        Assert.Equal("Kelly J. Ford", Assert.IsType<MimeKit.MailboxAddress>(Assert.Single(list)).Name);
+    }
+
+    [Fact]
+    public void AnAddressThatDoesNotParse_IsGivenAlone() =>
+        Assert.Equal("not an address", AddressListFormat.Mailbox("Kelly", "not an address"));
 
     [Theory]
     [InlineData("Kelly Ford", "", "Kelly Ford")]                         // no address: the name, for the repair to see

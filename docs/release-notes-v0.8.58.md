@@ -18,15 +18,16 @@ display name, **Find mail from this contact** in the address book came up empty 
 and a search such as `from:@example.com` missed them. Microsoft 365 and Outlook.com accounts did
 support this as expected. QuickMail now properly supports it for all account types by keeping each
 sender's address alongside the name on every account type. From now on, rules, Find mail from this
-contact, and both kinds of search look at both the from address and the display name (#803).
+contact, and both kinds of search can find a sender by their address as well as their name (#803).
 
 **Create Rule from Message** now fills in the sender's email address instead of their name, so a
 rule made from a message from "PayPal" no longer also catches someone else calling themselves
 "PayPal". Where QuickMail doesn't have the address yet, it fills in the name, as before. When a
 client-side rule's **Sender contains** or **From addresses** holds an email address, or part of one
-such as `@example.com`, it is checked against the sender's actual address only, so a sender can't
-match it by putting that address in their display name. **Find mail from this contact** works the
-same way.
+such as `@example.com`, it is checked against the sender's actual address, so a sender can't match
+it by putting that address in their display name. **Find mail from this contact** works the same
+way. Text without an @, such as a name, still matches the display name. Until the one-time update
+described below has reached a message, QuickMail has only the name to check, as before.
 
 The first time you start this version, QuickMail fills in the address for mail it already has.
 Most of it comes from what is already on this computer. For IMAP mail whose text has not been

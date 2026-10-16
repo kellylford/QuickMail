@@ -280,6 +280,9 @@ public partial class MainWindow : Window
         _connectivity     = connectivity;
         InitializeComponent();
         DataContext = vm;
+        // The region's own Visibility, not IsVisible: IsVisible also changes when the window hides to the tray, and
+        // does not change at all when the region empties while the window is hidden (review of #806).
+        SenderAddressRegionVisibility.AddValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
 
         // Focus moving to the message body, or away from it, is recorded in one place, so no pane
         // handler has to remember to clear it. handledEventsToo is needed for the CLEARING half:
@@ -858,6 +861,8 @@ public partial class MainWindow : Window
         foreach (var w in _openMessageWindows.ToList())
             w.Close();
         _rulesWindow?.Close(); // unowned (#347), so not auto-closed with the main window
+        // A DependencyPropertyDescriptor holds its handlers strongly, so the window would never be collected.
+        SenderAddressRegionVisibility.RemoveValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
         _trayIcon?.Dispose(); // remove the tray icon so it doesn't linger after exit
         // Cancels all in-flight VM operations (sync, prefetch, loads) and releases
         // their CTS handles. OnClosed, not OnClosing — the close cannot be cancelled here.
@@ -4768,14 +4773,16 @@ public partial class MainWindow : Window
     /// <summary>
     /// The sender-address region hides itself when the update ends — quite possibly while someone is on it reading
     /// the count. Focus would be left on nothing, so it moves to the region before it, as Left would have taken it.
-    /// Only for someone who was on the region; see <see cref="StatusBarFocusPolicy"/>.
+    /// Only for someone who was on the region; see <see cref="StatusBarFocusPolicy"/>. Hidden to the tray, only the
+    /// window's remembered focus is moved, so restoring it does not land on the gone region.
     /// </summary>
-    private void SenderAddressStatusItem_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    private static readonly DependencyPropertyDescriptor SenderAddressRegionVisibility =
+        DependencyPropertyDescriptor.FromProperty(VisibilityProperty, typeof(StatusBarItem));
+
+    private void SenderAddressStatusItem_VisibilityChanged(object? sender, EventArgs e)
     {
         if (!StatusBarFocusPolicy.ShouldMoveFocusOffHiddenRegion(
-                // Visible too while the region itself is: IsVisible also goes false when the whole window hides to
-                // the tray, and moving the remembered focus then would bring the user back to Rules, not to here.
-                nowVisible: e.NewValue is true || SenderAddressStatusItem.Visibility == Visibility.Visible,
+                nowVisible: SenderAddressStatusItem.Visibility == Visibility.Visible,
                 hasKeyboardFocus: SenderAddressStatusTextBox.IsKeyboardFocused,
                 hasLogicalFocus: ReferenceEquals(FocusManager.GetFocusedElement(this), SenderAddressStatusTextBox)))
             return;

@@ -538,9 +538,8 @@ public class SenderAddressBackfillSyncTests : IDisposable
     public void OnlyAGoneFolderOrABadId_IsSkippedForGood()
     {
         Assert.True(SyncService.IsPermanentlyUnfetchable(new MailKit.FolderNotFoundException("Old")));
-        Assert.True(SyncService.IsPermanentlyUnfetchable(new FormatException()));     // a non-numeric stored id
-        Assert.True(SyncService.IsPermanentlyUnfetchable(new OverflowException()));   // too large for a UID
-        Assert.True(SyncService.IsPermanentlyUnfetchable(new ArgumentOutOfRangeException()));   // 0, which UniqueId rejects
+        // Ids that are not UIDs never reach a request (IsImapUid), so their exceptions no longer mean anything here.
+        Assert.False(SyncService.IsPermanentlyUnfetchable(new FormatException()));
         Assert.False(SyncService.IsPermanentlyUnfetchable(
             new MailKit.Net.Imap.ImapCommandException(MailKit.Net.Imap.ImapCommandResponse.No, "[UNAVAILABLE]")));
         Assert.False(SyncService.IsPermanentlyUnfetchable(new MailKit.Security.AuthenticationException("expired")));
@@ -642,6 +641,36 @@ public class SenderAddressBackfillSyncTests : IDisposable
 
         Assert.Equal([(1, 2)], ended);
         Assert.Equal(0, completed);   // not finished, so the next launch carries on
+    }
+
+    [Theory]
+    [InlineData("1", true)]
+    [InlineData("4294967295", true)]
+    [InlineData("0", false)]            // UniqueId rejects 0
+    [InlineData("4294967296", false)]   // too large
+    [InlineData("abc", false)]
+    [InlineData("-1", false)]
+    [InlineData("", false)]
+    public void OnlyRealUids_AreFetched(string id, bool expected) => Assert.Equal(expected, SyncService.IsImapUid(id));
+
+    [Fact]
+    public async Task ABadIdInAFolder_CostsOnlyItsOwnRow()
+    {
+        // Review of #806: one id that is not a UID used to fail its whole request, and the folder was then given up.
+        var imap = Account();
+        await Seed(imap, "0", "Broken Row");
+        await Seed(imap, "2", "Some Company");
+        var (sync, mail) = Build();
+        mail.OnServer["2"] = "news@company.com";
+        var completed = 0;
+        sync.RequestSenderEmailBackfill([imap.Id], () => completed++);
+
+        await sync.BackfillSenderEmailsFromServerAsync([imap], CancellationToken.None);
+
+        Assert.Equal(["2"], Assert.Single(mail.Fetches).Ids);
+        Assert.Equal("news@company.com",
+            (await _store.LoadFolderSummariesAsync(imap.Id, "INBOX")).Single(m => m.MessageId == "2").FromEmail);
+        Assert.Equal(1, completed);
     }
 
     [Fact]
@@ -776,7 +805,8 @@ public class SenderAddressBackfillStatusTests
 
         Assert.Contains("Visibility=\"{Binding SenderAddressStatusText, Converter={StaticResource StringToVisibilityConverter}}\"",
             xaml, StringComparison.Ordinal);
-        Assert.Contains("IsVisibleChanged=\"SenderAddressStatusItem_IsVisibleChanged\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SenderAddressRegionVisibility.AddValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);",
+            code, StringComparison.Ordinal);
         Assert.Contains("SenderAddressStatusTextBox.IsKeyboardFocused) return 5;", code, StringComparison.Ordinal);
         Assert.Contains("StatusBarFocusPolicy.ShouldMoveFocusOffHiddenRegion(", code, StringComparison.Ordinal);
     }

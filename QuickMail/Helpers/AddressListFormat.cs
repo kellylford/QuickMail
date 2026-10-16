@@ -47,9 +47,11 @@ internal static class AddressListFormat
     /// A cached row's sender name and bare address put back together as a From header, for a detail that has no
     /// From of its own: a reply addresses it and a saved file writes it, so it must parse back to the one mailbox.
     /// <see cref="MailMessageSummary.FromWithAddress"/> is for reading and matching and leaves the name as it is,
-    /// so "Ford, Kelly &lt;kelly@example.com&gt;" would parse as two addresses; MimeKit quotes such a name
-    /// (review of #806). With no address, the name alone; with several, the addresses alone, since the one name
-    /// belongs to none of them in particular.
+    /// so "Ford, Kelly &lt;kelly@example.com&gt;" would parse as two addresses. Such a name is quoted (review of
+    /// #806); a plain one is not, since MimeKit's own <c>ToString</c> quotes every name and the fallback would then
+    /// read differently from what Properties and the message list show. With no address, the name alone; with
+    /// several, the addresses alone, since the one name belongs to none of them in particular; with an address
+    /// that does not parse, that address alone.
     /// </summary>
     internal static string Mailbox(string? name, string? address)
     {
@@ -57,7 +59,11 @@ internal static class AddressListFormat
         if (string.IsNullOrWhiteSpace(address)) return name;
         if (address.Contains(',', System.StringComparison.Ordinal)) return address;
         if (name.Length == 0 || string.Equals(name, address, System.StringComparison.OrdinalIgnoreCase)) return address;
-        try { return new MailboxAddress(name, address).ToString(); }
-        catch (ParseException) { return address; }
+        if (!MailboxAddress.TryParse(address, out _)) return address;
+        var shown = name.AsSpan().IndexOfAny(HeaderSpecials) >= 0 ? MimeKit.Utils.MimeUtils.Quote(name) : name;
+        return $"{shown} <{address}>";
     }
+
+    // RFC 5322's specials: a display name holding any of them must be quoted to parse back as one phrase.
+    private static readonly System.Buffers.SearchValues<char> HeaderSpecials = System.Buffers.SearchValues.Create("()<>[]:;@\\,.\"");
 }

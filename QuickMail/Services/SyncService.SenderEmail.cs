@@ -78,7 +78,15 @@ public partial class SyncService
             if (_connectivity != null && !_connectivity.IsAccountOnline(account.Id)) continue;
             reached.Add(account);
             foreach (var (folder, ids) in await _store.GetMessageIdsMissingSenderEmailAsync(account.Id))
-                work.Add((account, folder, ids));
+            {
+                // A stored id that is not an IMAP UID (not a number, too large, or 0) can never be fetched, and one
+                // in a request fails the whole request. Left out here, it costs only its own row, which keeps
+                // matching on the display name as it always did (review of #806).
+                var uids = ids.Where(IsImapUid).ToList();
+                if (uids.Count < ids.Count)
+                    LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: {ids.Count - uids.Count} id(s) that are not IMAP UIDs left out");
+                if (uids.Count > 0) work.Add((account, folder, uids));
+            }
         }
 
         var total = work.Sum(w => w.Ids.Count);
@@ -123,9 +131,9 @@ public partial class SyncService
                     }
                     catch (Exception ex) when (IsPermanentlyUnfetchable(ex))
                     {
-                        // The folder is gone from the server, or holds an id no IMAP fetch can name. Retrying it every
-                        // launch would never succeed, so it is skipped for good and the account can still finish; its
-                        // rows keep matching on the display name, as they always did.
+                        // The folder is gone from the server. Retrying it every launch would never succeed, so it is
+                        // skipped for good and the account can still finish; its rows keep matching on the display
+                        // name, as they always did.
                         LogService.Log($"Sender-address backfill {account.AccountLabel}/{folder}: skipped for good", ex);
                         break;
                     }
@@ -178,11 +186,14 @@ public partial class SyncService
     }
 
     /// <summary>
-    /// The failures that will happen again however often the fetch is retried: a folder deleted on the server, or a
-    /// stored id that is not an IMAP UID (non-numeric, out of range, or 0, which <c>UniqueId</c> rejects with
-    /// <see cref="ArgumentOutOfRangeException"/>). Everything else — a refusal, throttling, an
-    /// expired sign-in — can pass, so it leaves the account for the next launch instead (review of #806).
+    /// The failure that will happen again however often the fetch is retried: a folder deleted on the server. Ids
+    /// that are not UIDs never reach a request (<see cref="IsImapUid"/>). Everything else — a refusal, throttling,
+    /// an expired sign-in — can pass, so it leaves the account for the next launch instead (review of #806).
     /// </summary>
-    internal static bool IsPermanentlyUnfetchable(Exception ex) =>
-        ex is MailKit.FolderNotFoundException or FormatException or OverflowException or ArgumentOutOfRangeException;
+    internal static bool IsPermanentlyUnfetchable(Exception ex) => ex is MailKit.FolderNotFoundException;
+
+    /// <summary>Whether a stored id can name an IMAP message: a UID is a non-zero 32-bit number.</summary>
+    internal static bool IsImapUid(string id) =>
+        uint.TryParse(id, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var uid)
+        && uid != 0;
 }
