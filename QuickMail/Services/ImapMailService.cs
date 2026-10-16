@@ -718,29 +718,74 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         return newUid?.Id is uint id ? id.ToString(CultureInfo.InvariantCulture) : string.Empty;
     }
 
+    /// <summary>
+    /// How long to wait before each look in Sent for a copy the server filed itself (#811). Gmail,
+    /// iCloud and Outlook.com file what they relay, not always by the time the send returns, so a
+    /// first look that finds nothing is repeated before QuickMail adds its own. Settable for tests.
+    /// </summary>
+    internal TimeSpan[] SentCopyChecks { get; set; } =
+        [TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3)];
+
     public async Task AppendToSentAsync(
         Guid accountId, ComposeModel sent, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
-        var client  = lease.Client;
         var account = _accounts[accountId];
+        var messageId = sent.OutgoingMessageId;
 
-        var sentFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Sent);
-        if (sentFolder == null)
+        // Without the id the message went out with there is nothing to look for: append as before.
+        var checks = string.IsNullOrEmpty(messageId) ? [TimeSpan.Zero] : SentCopyChecks;
+        for (int i = 0; i < checks.Length; i++)
         {
-            LogService.Log($"AppendToSent: no Sent folder found for account {accountId}");
-            return;
+            if (checks[i] > TimeSpan.Zero)
+                await Task.Delay(checks[i], ct);
+
+            // A lease per look, so other work on this account is not held up while we wait.
+            using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+            var client = lease.Client;
+
+            var sentFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Sent);
+            if (sentFolder == null)
+            {
+                LogService.Log($"AppendToSent: no Sent folder found for account {accountId}");
+                return;
+            }
+
+            await sentFolder.OpenAsync(FolderAccess.ReadWrite, ct);
+            try
+            {
+                if (!string.IsNullOrEmpty(messageId)
+                    && await SentHoldsMessageAsync(sentFolder, messageId, ct))
+                {
+                    LogService.Log($"AppendToSent: {sentFolder.FullName} already has the server's copy; not adding another");
+                    return;
+                }
+                if (i < checks.Length - 1)
+                    continue;
+
+                var uid = await sentFolder.AppendAsync(MimeMessageBuilder.Build(sent, account), MessageFlags.Seen, ct);
+                LogService.Log($"AppendToSent: appended to {sentFolder.FullName} UID={uid?.Id}");
+            }
+            finally { await sentFolder.CloseAsync(false, ct); }
         }
+    }
 
-        var msg = MimeMessageBuilder.Build(sent, account);
-
-        await sentFolder.OpenAsync(FolderAccess.ReadWrite, ct);
+    /// <summary>
+    /// Whether <paramref name="sentFolder"/> already holds the message with this Message-ID. A
+    /// search the server refuses counts as "no": a second copy beats losing the only one.
+    /// </summary>
+    private static async Task<bool> SentHoldsMessageAsync(
+        IMailFolder sentFolder, string messageId, CancellationToken ct)
+    {
         try
         {
-            var uid = await sentFolder.AppendAsync(msg, MessageFlags.Seen, ct);
-            LogService.Log($"AppendToSent: appended to {sentFolder.FullName} UID={uid?.Id}");
+            var found = await sentFolder.SearchAsync(SearchQuery.HeaderContains("Message-ID", messageId), ct);
+            return found.Count > 0;
         }
-        finally { await sentFolder.CloseAsync(false, ct); }
+        catch (Exception ex) when (ex is ImapCommandException or NotSupportedException)
+        {
+            LogService.Log("AppendToSent: searching Sent for the server's copy failed; appending anyway", ex);
+            return false;
+        }
     }
 
     // ── Copy / Move messages ─────────────────────────────────────────────────────

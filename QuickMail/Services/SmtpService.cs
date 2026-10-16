@@ -25,6 +25,8 @@ public class SmtpService : ISendMailService
             return;
         }
 
+        // Before building: AppendToSentAsync files the copy in Sent under the same id (#811).
+        MimeMessageBuilder.EnsureOutgoingMessageId(compose, account);
         var message = MimeMessageBuilder.Build(compose, account, MimeMessageBuilder.AppUserAgent);
 
         using var client = new SmtpClient();

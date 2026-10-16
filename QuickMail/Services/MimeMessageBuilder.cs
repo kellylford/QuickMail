@@ -38,6 +38,26 @@ public static class MimeMessageBuilder
     }
 
     /// <summary>
+    /// Gives <paramref name="compose"/> the Message-ID it will be sent with, unless it already has
+    /// one, and returns it. The send and the copy filed in Sent each build their own
+    /// <see cref="MimeMessage"/>; without a shared id each got a fresh one, so a server that files
+    /// its own copy of relayed mail ended up holding two messages with nothing to tie them (#811).
+    /// The right-hand side is the sender's domain rather than this computer's name.
+    /// </summary>
+    public static string EnsureOutgoingMessageId(ComposeModel compose, AccountModel account)
+    {
+        if (string.IsNullOrEmpty(compose.OutgoingMessageId))
+        {
+            var at = account.Username.LastIndexOf('@');
+            var domain = at >= 0 ? account.Username[(at + 1)..].Trim() : string.Empty;
+            compose.OutgoingMessageId = domain.Length > 0
+                ? MimeKit.Utils.MimeUtils.GenerateMessageId(domain)
+                : MimeKit.Utils.MimeUtils.GenerateMessageId();
+        }
+        return compose.OutgoingMessageId;
+    }
+
+    /// <summary>
     /// Builds a complete MIME message from compose fields, including attachments.
     /// </summary>
     /// <param name="compose">The compose model with To, Cc, Bcc, Subject, Body, and Attachments.</param>
@@ -59,6 +79,9 @@ public static class MimeMessageBuilder
         AddressParser.AddAddresses(message.Cc,  compose.Cc);
         AddressParser.AddAddresses(message.Bcc, compose.Bcc);
         message.Subject = compose.Subject;
+
+        if (!string.IsNullOrEmpty(compose.OutgoingMessageId))
+            message.MessageId = compose.OutgoingMessageId;
 
         if (!string.IsNullOrEmpty(compose.InReplyToMessageId))
             message.InReplyTo = compose.InReplyToMessageId;

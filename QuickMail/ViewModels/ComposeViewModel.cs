@@ -683,8 +683,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             await ForgetLocalCopyAsync();
 
             // Append to Sent folder (best-effort — fire and forget so it doesn't block the UI).
-            // Providers that auto-save sent mail (e.g. Gmail) may produce a duplicate; that is
-            // harmless and the background sync will eventually deduplicate via UID tracking.
+            // Providers that file their own copy of sent mail (Gmail, iCloud, Outlook.com) are
+            // detected by the Message-ID the send stamped on compose, and get no second copy (#811).
             _ = Task.Run(async () =>
             {
                 try
