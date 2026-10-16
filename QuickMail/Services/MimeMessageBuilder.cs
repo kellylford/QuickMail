@@ -16,7 +16,7 @@ namespace QuickMail.Services;
 /// <see cref="AccountModel"/>, shared by <see cref="SmtpService"/> and
 /// <see cref="ImapMailService"/> (draft saving).
 /// </summary>
-public static class MimeMessageBuilder
+public static partial class MimeMessageBuilder
 {
     /// <summary>The User-Agent string for outgoing mail — one source of truth for every sender.</summary>
     internal static readonly string AppUserAgent = "QuickMail/" + AppVersion.Display;
@@ -36,6 +36,36 @@ public static class MimeMessageBuilder
         Base64.EncodeToUtf8(ms.GetBuffer().AsSpan(0, mimeLength), body, out _, out _);
         return body;
     }
+
+    /// <summary>
+    /// Gives <paramref name="compose"/> the Message-ID it will be sent with, unless it already has
+    /// one, and returns it. The send and the copy filed in Sent each build their own
+    /// <see cref="MimeMessage"/>; without a shared id each got a fresh one, so a server that files
+    /// its own copy of relayed mail ended up holding two messages with nothing to tie them (#811).
+    /// The right-hand side is the sender's domain rather than this computer's name, when that
+    /// domain is plain ASCII: MimeKit turns a punycode domain back into Unicode when the id is
+    /// set, which puts non-ASCII bytes in the header and an id the Sent search cannot match.
+    /// </summary>
+    public static string EnsureOutgoingMessageId(ComposeModel compose, AccountModel account)
+    {
+        if (string.IsNullOrEmpty(compose.OutgoingMessageId))
+        {
+            var at = account.Username.LastIndexOf('@');
+            var domain = at >= 0 ? account.Username[(at + 1)..].Trim() : string.Empty;
+            compose.OutgoingMessageId = AsciiDomain().IsMatch(domain)
+                    && !domain.Contains("xn--", StringComparison.OrdinalIgnoreCase)
+                ? MimeKit.Utils.MimeUtils.GenerateMessageId(domain)
+                : MimeKit.Utils.MimeUtils.GenerateMessageId(FallbackMessageIdDomain);
+        }
+        return compose.OutgoingMessageId;
+    }
+
+    /// <summary>Right-hand side of an outgoing Message-ID when the sender's own domain will not do.</summary>
+    internal const string FallbackMessageIdDomain = "quickmail.invalid";
+
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$")]
+    private static partial System.Text.RegularExpressions.Regex AsciiDomain();
 
     /// <summary>
     /// Builds a complete MIME message from compose fields, including attachments.
@@ -59,6 +89,11 @@ public static class MimeMessageBuilder
         AddressParser.AddAddresses(message.Cc,  compose.Cc);
         AddressParser.AddAddresses(message.Bcc, compose.Bcc);
         message.Subject = compose.Subject;
+
+        if (!string.IsNullOrEmpty(compose.OutgoingMessageId))
+            message.MessageId = compose.OutgoingMessageId;
+        if (compose.OutgoingDate is { } date)
+            message.Date = date;
 
         if (!string.IsNullOrEmpty(compose.InReplyToMessageId))
             message.InReplyTo = compose.InReplyToMessageId;

@@ -718,29 +718,103 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         return newUid?.Id is uint id ? id.ToString(CultureInfo.InvariantCulture) : string.Empty;
     }
 
+    /// <summary>
+    /// How long to wait before each look in Sent for a copy the server filed itself (#811). Gmail,
+    /// iCloud and Outlook.com file what they relay, not always by the time the send returns, so a
+    /// first look that finds nothing is repeated before QuickMail adds its own. Settable for tests.
+    /// </summary>
+    internal TimeSpan[] SentCopyChecks { get; set; } =
+        [TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3)];
+
+    /// <summary>Test hook: raised after a look in Sent that found no copy, with the look's index.</summary>
+    internal event Action<int>? SentCopyLookMissed;
+
+    /// <summary>
+    /// Files <paramref name="sent"/> in the account's Sent folder, unless the server has already
+    /// filed its own copy (#811). That copy is recognised by <see cref="ComposeModel.OutgoingMessageId"/>,
+    /// which the send stamped, so a compose that never went through <see cref="SmtpService"/> is
+    /// filed without looking.
+    /// </summary>
     public async Task AppendToSentAsync(
         Guid accountId, ComposeModel sent, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
-        var client  = lease.Client;
         var account = _accounts[accountId];
-
-        var sentFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Sent);
-        if (sentFolder == null)
-        {
-            LogService.Log($"AppendToSent: no Sent folder found for account {accountId}");
-            return;
-        }
-
+        // Built once, and the id looked for is the one actually written: MimeKit may normalise
+        // what it was given.
         var msg = MimeMessageBuilder.Build(sent, account);
+        var messageId = string.IsNullOrEmpty(sent.OutgoingMessageId) ? null : msg.MessageId;
 
-        await sentFolder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try
+        TimeSpan[] checks = messageId == null || SentCopyChecks.Length == 0 ? [TimeSpan.Zero] : SentCopyChecks;
+        for (int i = 0; i < checks.Length; i++)
         {
+            if (checks[i] > TimeSpan.Zero)
+                await Task.Delay(checks[i], ct);
+
+            // A lease per look, so other work on this account is not held up while we wait.
+            using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+            var client = lease.Client;
+
+            var sentFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Sent);
+            if (sentFolder == null)
+            {
+                LogService.Log($"AppendToSent: no Sent folder found for account {accountId}");
+                return;
+            }
+
+            if (messageId != null && await SentHoldsMessageAsync(sentFolder, messageId, ct))
+            {
+                LogService.Log($"AppendToSent: {sentFolder.FullName} already has the server's copy; not adding another");
+                return;
+            }
+            if (i < checks.Length - 1)
+            {
+                SentCopyLookMissed?.Invoke(i);
+                continue;
+            }
+
+            // APPEND does not need the folder selected.
             var uid = await sentFolder.AppendAsync(msg, MessageFlags.Seen, ct);
             LogService.Log($"AppendToSent: appended to {sentFolder.FullName} UID={uid?.Id}");
         }
-        finally { await sentFolder.CloseAsync(false, ct); }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="sentFolder"/> already holds the message with this Message-ID. The
+    /// search only narrows the field: some servers ignore a HEADER condition and return everything,
+    /// so each hit's own Message-ID is compared. A search the server refuses counts as "no": a
+    /// second copy beats losing the only one.
+    /// </summary>
+    private static async Task<bool> SentHoldsMessageAsync(
+        IMailFolder sentFolder, string messageId, CancellationToken ct)
+    {
+        await sentFolder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            var found = await sentFolder.SearchAsync(SearchQuery.HeaderContains("Message-ID", messageId), ct);
+            if (found.Count == 0) return false;
+
+            // Newest last; a filed copy is among the most recent, which bounds the fetch.
+            var recent = found.Skip(Math.Max(0, found.Count - 50)).ToList();
+            var summaries = await sentFolder.FetchAsync(recent, MessageSummaryItems.Envelope, ct);
+            return SentCopyMatches(summaries.Select(s => s.Envelope?.MessageId), messageId);
+        }
+        catch (Exception ex) when (ex is ImapCommandException or NotSupportedException)
+        {
+            LogService.Log("AppendToSent: searching Sent for the server's copy failed; appending anyway", ex);
+            return false;
+        }
+        finally
+        {
+            try { await sentFolder.CloseAsync(false, CancellationToken.None); }
+            catch (Exception ex) { LogService.Log("AppendToSent: closing Sent after the look failed", ex); }
+        }
+    }
+
+    /// <summary>Whether any of <paramref name="foundIds"/> is <paramref name="messageId"/>, brackets and case aside.</summary>
+    internal static bool SentCopyMatches(IEnumerable<string?> foundIds, string messageId)
+    {
+        var wanted = MessageDeduplicator.Normalize(messageId);
+        return wanted.Length > 0 && foundIds.Any(id => MessageDeduplicator.Normalize(id) == wanted);
     }
 
     // ── Copy / Move messages ─────────────────────────────────────────────────────

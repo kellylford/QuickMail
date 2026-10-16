@@ -66,8 +66,13 @@ public class OutboxServiceTests
             return Task.FromResult("77");
         }
 
+        /// <summary>Runs inside the Sent append, before it records anything; may throw.</summary>
+        public Action<CancellationToken>? DuringSentAppend { get; set; }
+
         public override Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default)
         {
+            try { DuringSentAppend?.Invoke(ct); }
+            catch (Exception ex) { return Task.FromException(ex); }
             if (SentAppendFailure != null) return Task.FromException(SentAppendFailure);
             AppendedToSent.Add(sent);
             return Task.CompletedTask;
@@ -163,6 +168,32 @@ public class OutboxServiceTests
         Assert.Equal(("Drafts", "4242"), Assert.Single(f.Mail.Trashed));
         Assert.Empty(await svc.ListAsync());
         Assert.Equal(result, Assert.Single(f.Completed));
+    }
+
+    [Fact]
+    public async Task ADrainCancelledWhileFilingInSent_StillFinishesTheSentRow()
+    {
+        // #811: filing in Sent now takes seconds. A drain cancelled then (another account coming
+        // online, app exit) used to put the row back to Pending, and the next drain sent it again.
+        var f = new Fixture();
+        using var svc = f.Build();
+        await svc.EnqueueSendAsync(f.Compose(), f.Account.Id, null);
+        using var drain = new CancellationTokenSource();
+        f.Mail.DuringSentAppend = ct =>
+        {
+            drain.Cancel();
+            ct.ThrowIfCancellationRequested();
+        };
+
+        try { await svc.FlushAsync(ct: drain.Token); }
+        catch (OperationCanceledException) { /* the drain stopping afterwards is fine */ }
+
+        Assert.Single(f.Smtp.Sent);
+        Assert.Empty(await svc.ListAsync());
+
+        f.Mail.DuringSentAppend = null;
+        await svc.FlushAsync(ct: TestContext.Current.CancellationToken);
+        Assert.Single(f.Smtp.Sent);
     }
 
     [Fact]

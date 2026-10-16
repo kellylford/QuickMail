@@ -17,7 +17,8 @@ public sealed class OutboxService : IOutboxService, IDisposable
 {
     private static readonly TimeSpan SendTimeout       = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan DraftTimeout      = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan SentAppendTimeout = TimeSpan.FromSeconds(30);
+    // Room for the looks in Sent for the server's own copy (#811) on top of the append itself.
+    private static readonly TimeSpan SentAppendTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan TrashTimeout      = TimeSpan.FromSeconds(15);
     private const int MaxBackoffMinutes = 32;
 
@@ -365,14 +366,16 @@ public sealed class OutboxService : IOutboxService, IDisposable
 
         // The same two best-effort steps ComposeViewModel.SendAsync performs after a live send:
         // file a copy in Sent, and trash the server draft this message grew out of. Neither can
-        // un-send the message, so neither is allowed to fail the row.
+        // un-send the message, so neither is allowed to fail the row. Not even a cancelled drain:
+        // past this point the message is gone, and a row put back to Pending would be sent again —
+        // a race that filing in Sent taking a few seconds (#811) would make easy to hit.
         try
         {
             using var sentCts = CancellationTokenSource.CreateLinkedTokenSource(token);
             sentCts.CancelAfter(SentAppendTimeout);
             await _mail.AppendToSentAsync(account.Id, compose, sentCts.Token);
         }
-        catch (Exception ex) when (!token.IsCancellationRequested)
+        catch (Exception ex)
         {
             LogService.Log($"Outbox: {item.Id} sent, but appending to Sent failed", ex);
         }
@@ -385,7 +388,7 @@ public sealed class OutboxService : IOutboxService, IDisposable
                 delCts.CancelAfter(TrashTimeout);
                 await _mail.MoveToTrashAsync(account.Id, item.DraftFolderName, item.ReplaceDraftId, delCts.Token);
             }
-            catch (Exception ex) when (!token.IsCancellationRequested)
+            catch (Exception ex)
             {
                 LogService.Log($"Outbox: {item.Id} sent, but trashing its server draft failed", ex);
             }

@@ -1,5 +1,13 @@
 # QuickMail v0.8.58 Release Notes
 
+## Fixed
+
+- **A message you send is in the Sent folder once, not twice.** Many mail services, Gmail,
+  iCloud and Outlook.com among them, file their own copy of every message they send for you, and
+  QuickMail then added a second one. QuickMail now checks the Sent folder for the service's copy
+  and adds its own only when there isn't one. Messages sent before this release keep their
+  duplicate copies; delete either one (#811, #150).
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

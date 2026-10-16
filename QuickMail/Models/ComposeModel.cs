@@ -39,6 +39,21 @@ public class ComposeModel
     /// <summary>RFC 2822 Message-ID of the message being replied to.</summary>
     public string? InReplyToMessageId { get; set; }
 
+    /// <summary>
+    /// RFC 5322 Message-ID this message goes out with. <see cref="Services.SmtpService"/> assigns it
+    /// on the first send attempt when it is empty, and the copy filed in Sent reuses it, so the two
+    /// are recognisably one message: a server that files its own copy of what it relayed then leaves
+    /// QuickMail nothing to add (#811). Never set for drafts, which keep a fresh id per save.
+    /// </summary>
+    public string? OutgoingMessageId { get; set; }
+
+    /// <summary>
+    /// When the last send attempt went out, set by <see cref="Services.SmtpService"/>, so the copy
+    /// filed in Sent a few seconds later carries the same Date. Not stored in the Outbox: a retry
+    /// is a new send with its own time.
+    /// </summary>
+    public DateTimeOffset? OutgoingDate { get; set; }
+
     /// <summary>Server message id of the existing draft (null when composing new).</summary>
     public string? DraftMessageId { get; set; }
 
@@ -82,6 +97,7 @@ public class ComposeModel
         Mode = Mode,
         HtmlBody = HtmlBody,
         InReplyToMessageId = InReplyToMessageId,
+        OutgoingMessageId = OutgoingMessageId,
         DraftMessageId = DraftMessageId,
         DraftFolderName = DraftFolderName,
         OutboxId = OutboxId,
