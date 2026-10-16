@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -285,7 +286,7 @@ public class RuleService : IRuleService
     /// <summary>
     /// Whether a sender condition's <paramref name="value"/> matches <paramref name="msg"/>'s sender. A value that is
     /// an address or part of one ("service@paypal.com", "@company.com") is looked for in the sender's real address
-    /// alone where the row has it, never in the display name, which the sender writes: otherwise mail from
+    /// alone where the row has it, as a whole address or domain, never in the display name, which the sender writes: otherwise mail from
     /// <c>"service@paypal.com" &lt;x@evil.example&gt;</c> matches a rule Create Rule from Message made from real PayPal
     /// mail (review of #806). A whole "Name &lt;address&gt;", as Create Rule from Message put in a Microsoft rule before
     /// #801, is split the same way: the address must be in the real address and the name in the display name, or
@@ -302,12 +303,14 @@ public class RuleService : IRuleService
         {
             if (!MimeKit.MailboxAddress.TryParse(value, out var mailbox))
                 return msg.FromWithAddress.Contains(value, StringComparison.OrdinalIgnoreCase);
-            return msg.FromEmail.Contains(mailbox.Address, StringComparison.OrdinalIgnoreCase)
+            return AddressMatch.Names(msg.FromEmail, mailbox.Address)
                    && (string.IsNullOrEmpty(mailbox.Name)
                        || msg.From.Contains(mailbox.Name, StringComparison.OrdinalIgnoreCase));
         }
 
-        return msg.FromEmail.Contains(value, StringComparison.OrdinalIgnoreCase);
+        // On address boundaries, not as a substring: "service@paypal.com" must not match
+        // service@paypal.com.evil.example, which anyone owning a domain can send from.
+        return AddressMatch.Names(msg.FromEmail, value.Trim());
     }
 
     private static bool MatchesRule(MailRule rule, MailMessageSummary msg)

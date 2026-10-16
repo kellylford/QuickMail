@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -233,7 +234,7 @@ public class ContactMailSearchTests
     [InlineData("ann@x.com",                              "bob@example.com", false)]
     [InlineData("",                                       "bob@example.com", false)]
     public void HeaderNamesAddress_MatchesWholeAddressesOnly(string header, string address, bool expected)
-        => Assert.Equal(expected, MainViewModel.HeaderNamesAddress(header, address));
+        => Assert.Equal(expected, AddressMatch.Names(header, address));
 
     [Fact]
     public async Task ShowContactMail_DoesNotMatchALongerAddress()

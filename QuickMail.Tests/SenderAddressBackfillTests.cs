@@ -535,7 +535,7 @@ public class SenderAddressBackfillSyncTests : IDisposable
     }
 
     [Fact]
-    public void OnlyAGoneFolderOrABadId_IsSkippedForGood()
+    public void OnlyAGoneFolder_IsSkippedForGood()
     {
         Assert.True(SyncService.IsPermanentlyUnfetchable(new MailKit.FolderNotFoundException("Old")));
         // Ids that are not UIDs never reach a request (IsImapUid), so their exceptions no longer mean anything here.

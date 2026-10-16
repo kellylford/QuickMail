@@ -252,6 +252,28 @@ public class ClientRuleConditionsTests
     }
 
     [Fact]
+    public void AnAddressCondition_DoesNotMatchALongerAddress()
+    {
+        // Review of #806: anyone owning a domain can send from service@paypal.example.evil.example.
+        var lookAlike = Msg(from: "PayPal", fromEmail: "service@paypal.example.evil.example");
+        var real = Msg(from: "PayPal", fromEmail: "service@paypal.example");
+        foreach (var value in new[] { "service@paypal.example", "@paypal.example", "PayPal <service@paypal.example>" })
+        {
+            var rule = new MailRule
+            {
+                Name = "PayPal", UseFromCondition = false,
+                UseSenderCondition = true, SenderContains = value, Action = RuleAction.MarkAsRead,
+            };
+            Assert.True(Matches(rule, real), value);
+            Assert.False(Matches(rule, lookAlike), value);
+        }
+        Assert.False(Matches(new MailRule
+        {
+            Name = "Bob", UseFromCondition = true, FromContains = "bob@example.com", Action = RuleAction.MarkAsRead,
+        }, Msg(from: "Not Bob", fromEmail: "notbob@example.com")));
+    }
+
+    [Fact]
     public void ANameCondition_StillMatchesTheName()
     {
         var rule = new MailRule
