@@ -273,6 +273,20 @@ public class ClientRuleConditionsTests
         }, Msg(from: "Not Bob", fromEmail: "notbob@example.com")));
     }
 
+    [Theory]
+    [InlineData("@acme")]          // any acme domain
+    [InlineData("john.smith@")]    // at any domain
+    public void AnAddressFragment_StillMatchesAsAFragment(string value)
+    {
+        var rule = new MailRule
+        {
+            Name = "Fragment", UseFromCondition = false,
+            UseSenderCondition = true, SenderContains = value, Action = RuleAction.MarkAsRead,
+        };
+
+        Assert.True(Matches(rule, Msg(from: "John Smith", fromEmail: "john.smith@acme.co.uk")));
+    }
+
     [Fact]
     public void ANameCondition_StillMatchesTheName()
     {

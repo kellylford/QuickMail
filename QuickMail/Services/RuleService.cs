@@ -308,9 +308,15 @@ public class RuleService : IRuleService
                        || msg.From.Contains(mailbox.Name, StringComparison.OrdinalIgnoreCase));
         }
 
-        // On address boundaries, not as a substring: "service@paypal.com" must not match
-        // service@paypal.com.evil.example, which anyone owning a domain can send from.
-        return AddressMatch.Names(msg.FromEmail, value.Trim());
+        // A whole address or domain ("service@paypal.com", "@paypal.com": a dot after the '@') is matched on address
+        // boundaries, not as a substring: "service@paypal.com" must not match service@paypal.com.evil.example, which
+        // anyone owning a domain can send from. A fragment that is neither ("@acme", "john.smith@") can only mean a
+        // substring, so it stays one, as it always was.
+        var trimmed = value.Trim();
+        var at = trimmed.IndexOf('@', StringComparison.Ordinal);
+        return trimmed.IndexOf('.', at + 1) > at
+            ? AddressMatch.Names(msg.FromEmail, trimmed)
+            : msg.FromEmail.Contains(trimmed, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool MatchesRule(MailRule rule, MailMessageSummary msg)
