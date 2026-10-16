@@ -36,12 +36,16 @@ its own part of the status bar, which goes away when it's done. To check on it, 
 reach the status bar and **Right** to move along it. Nothing is moved, deleted or marked, and your
 rules do not run again.
 
+Contributed by [valiant8086](https://github.com/valiant8086).
+
 ### A Microsoft account's message list says the sender's name
 
 On a Microsoft 365 or Outlook.com account, each row in the message list showed and spoke the
 sender's address after the name like `News <news@example.com>`, where every other kind of
 account says the name alone. Microsoft accounts now work like the rest, saying the name, or the
 address when the sender has none (#801).
+
+Contributed by [valiant8086](https://github.com/valiant8086).
 
 ### Message properties now always show both the sender's name and address
 
@@ -53,6 +57,15 @@ The same goes for a conversation, and for a sender's group in the From view: the
 list each sender as name and address. A sender's group is gathered by name, so if mail under that
 name came from more than one address, each address is listed, and someone else using a familiar
 name shows up there.
+
+Contributed by [valiant8086](https://github.com/valiant8086).
+
+## Thank You
+
+Thank you to [valiant8086](https://github.com/valiant8086), who noticed that Microsoft accounts
+were the only ones putting the sender's address in the message list, traced that to every other
+account type keeping no address at all, and wrote the fix for both. Their careful manual testing
+also caught problems that a code review alone would have missed.
 
 ## Reporting Issues
 
