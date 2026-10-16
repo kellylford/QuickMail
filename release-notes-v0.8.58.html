@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.58 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.57.html">Older: 0.8.57</a></div>
+  <h1 id="quickmail-v0.8.58-release-notes">QuickMail v0.8.58 Release
+Notes</h1>
+<p class="version">Released October 16, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.58">downloads for this release</a></p>
+<h2 id="fixed">Fixed</h2>
+<h3 id="a-message-you-send-is-in-the-sent-folder-once-not-twice">A
+message you send is in the Sent folder once, not twice</h3>
+<p>Many mail services, Gmail, iCloud and Outlook.com among them, file
+their own copy of every message they send for you, and QuickMail then
+added a second one. QuickMail now checks the Sent folder for the
+service’s copy and adds its own only when there isn’t one. Messages sent
+before this release keep their duplicate copies; delete either one
+(#811, #150).</p>
+<h3
+id="rules-find-mail-from-this-contact-and-search-now-can-find-a-sender-by-address-on-every-account-type">Rules,
+Find mail from this contact, and search now can find a sender by address
+on every account type</h3>
+<p>On Gmail, other IMAP accounts and POP3 accounts, QuickMail kept only
+the sender’s name for the message list, so anything that looked for the
+sender’s email address had nothing to find. A client-side rule with a
+<strong>From addresses</strong> condition never matched mail from a
+sender who has a display name, <strong>Find mail from this
+contact</strong> in the address book came up empty for those senders,
+and a search such as <code>from:@example.com</code> missed them.
+Microsoft 365 and Outlook.com accounts did support this as expected.
+QuickMail now properly supports it for all account types by keeping each
+sender’s address alongside the name on every account type. From now on,
+rules, Find mail from this contact, and both kinds of search can find a
+sender by their address as well as their name (#803).</p>
+<p><strong>Create Rule from Message</strong> now fills in the sender’s
+email address instead of their name, so a rule made from a message from
+“PayPal” no longer also catches someone else calling themselves
+“PayPal”. Where QuickMail doesn’t have the address yet, it fills in the
+name, as before. When a client-side rule’s <strong>Sender
+contains</strong> or <strong>From addresses</strong> holds an email
+address, or part of one such as <code>@example.com</code>, it is checked
+against the sender’s actual address, so a sender can’t match it by
+putting that address in their display name. <strong>Find mail from this
+contact</strong> works the same way. Text without an @, such as a name,
+still matches the display name. Until the one-time update described
+below has reached a message, QuickMail has only the name to check, as
+before.</p>
+<p>The first time you start this version, QuickMail fills in the address
+for mail it already has. Most of it comes from what is already on this
+computer. For IMAP mail whose text has not been downloaded, it asks the
+server for the sender alone, a batch at a time, and shows its progress
+in its own part of the status bar, which goes away when it’s done. To
+check on it, press <strong>Ctrl+9</strong> to reach the status bar and
+<strong>Right</strong> to move along it. Nothing is moved, deleted or
+marked, and your rules do not run again.</p>
+<p>Contributed by <a
+href="https://github.com/valiant8086">valiant8086</a>.</p>
+<h3 id="a-microsoft-accounts-message-list-says-the-senders-name">A
+Microsoft account’s message list says the sender’s name</h3>
+<p>On a Microsoft 365 or Outlook.com account, each row in the message
+list showed and spoke the sender’s address after the name like
+<code>News &lt;news@example.com&gt;</code>, where every other kind of
+account says the name alone. Microsoft accounts now work like the rest,
+saying the name, or the address when the sender has none (#801).</p>
+<p>Contributed by <a
+href="https://github.com/valiant8086">valiant8086</a>.</p>
+<h3
+id="message-properties-now-always-show-both-the-senders-name-and-address">Message
+properties now always show both the sender’s name and address</h3>
+<p><strong>Properties</strong> (<strong>Alt+Enter</strong>) on an
+individual message now shows both the display name (when available) and
+the email address, on every account, even for a message whose text has
+not been downloaded. Previously, it tended to only show the display name
+(#801).</p>
+<p>The same goes for a conversation, and for a sender’s group in the
+From view: their Properties now list each sender as name and address. A
+sender’s group is gathered by name, so if mail under that name came from
+more than one address, each address is listed, and someone else using a
+familiar name shows up there.</p>
+<p>Contributed by <a
+href="https://github.com/valiant8086">valiant8086</a>.</p>
+<h2 id="thank-you">Thank You</h2>
+<p>Thank you to <a
+href="https://github.com/valiant8086">valiant8086</a>, who noticed that
+Microsoft accounts were the only ones putting the sender’s address in
+the message list, traced that to every other account type keeping no
+address at all, and wrote the fix for both. Their careful manual testing
+also caught problems that a code review alone would have missed.</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.57.html">Older: 0.8.57</a></div>
+</body>
+</html>

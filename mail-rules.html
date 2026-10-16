@@ -92,18 +92,26 @@ type. A message must satisfy <strong>every</strong> condition you
 checked, so leaving one unchecked is how you say “don’t care”. Matching
 ignores case. The <em>contains</em> conditions look for your text
 anywhere in the field, so <strong>Sender contains</strong> matches part
-of a sender’s name as readily as an address. <strong>From
-addresses</strong> and <strong>Sent to addresses</strong> are for email
-addresses, and each takes more than one, separated by commas — a message
-matches when it has <strong>any one</strong> of them. Use <strong>Sender
-contains</strong> where your text is not an address, or holds a comma.
-The choice is inside that one condition; the conditions themselves are
-still all required. A client-side rule’s <strong>Body contains</strong>
-and <strong>Subject or body contains</strong> look at the start of the
-message that QuickMail keeps as its preview, not the whole message.
-Clearing a checkbox leaves the text sitting in its box, now read-only
-and skipped by Tab, so a condition you turned off is one keystroke from
-being turned back on rather than something you have to retype.</li>
+of a sender’s name as readily as an address. In a client-side rule, text
+that holds an email address, or part of one such as
+<code>@example.com</code>, is checked against the sender’s actual
+address rather than the name they display, so nobody can match it by
+putting that address in their name. A whole address or domain must match
+whole: <code>@example.com</code> matches mail from example.com but not
+from example.com.other.net. A fragment such as <code>@example</code> or
+<code>jane@</code> matches any address containing it. Text without an @
+still matches the name. <strong>From addresses</strong> and <strong>Sent
+to addresses</strong> are for email addresses, and each takes more than
+one, separated by commas — a message matches when it has <strong>any
+one</strong> of them. Use <strong>Sender contains</strong> where your
+text is not an address, or holds a comma. The choice is inside that one
+condition; the conditions themselves are still all required. A
+client-side rule’s <strong>Body contains</strong> and <strong>Subject or
+body contains</strong> look at the start of the message that QuickMail
+keeps as its preview, not the whole message. Clearing a checkbox leaves
+the text sitting in its box, now read-only and skipped by Tab, so a
+condition you turned off is one keystroke from being turned back on
+rather than something you have to retype.</li>
 <li><strong>Then do this</strong> — <strong>Move to folder</strong>,
 <strong>Mark as read</strong>, <strong>Delete</strong>, and <strong>Stop
 processing more rules</strong>. <strong>Delete</strong> moves the
@@ -272,11 +280,13 @@ it is on that window’s <strong>Message</strong> menu, key and command
 palette, and uses the message the window is showing. QuickMail opens a
 new rule pre-filled from that message: the sender is filled in and its
 condition is <strong>checked</strong>, so the rule matches everything
-from that sender. The subject is filled in too, but its condition starts
-<strong>unchecked</strong> — a rule that has to match one sender
-<em>and</em> one exact subject line matches, in practice, only the
-conversation you made it from. If you did want the subject as well,
-check its box; the text is already there. This does not work on a
+from that sender. It fills in the sender’s email address rather than
+their name wherever QuickMail has it, so the rule doesn’t also catch
+someone else using the same name. The subject is filled in too, but its
+condition starts <strong>unchecked</strong> — a rule that has to match
+one sender <em>and</em> one exact subject line matches, in practice,
+only the conversation you made it from. If you did want the subject as
+well, check its box; the text is already there. This does not work on a
 message in a shared mailbox, whose rules are managed in Outlook; see <a
 href="#shared-mailboxes">Shared mailboxes</a>.</p>
 <h3 id="microsoft-365-server-side-rules">Microsoft 365: server-side
