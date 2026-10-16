@@ -65,6 +65,11 @@ address when the sender has none (#801).
 available) and the email address, on every account, even for a message whose text has not been
 downloaded. Previously, it tended to only show the display name (#801).
 
+The same goes for a conversation, and for a sender's group in the From view: their Properties now
+list each sender as name and address. A sender's group is gathered by name, so if mail under that
+name came from more than one address, each address is listed, and someone else using a familiar
+name shows up there.
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

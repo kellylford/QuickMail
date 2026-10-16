@@ -948,6 +948,8 @@ For POP3 accounts, QuickMail keeps the original of every message it downloads, s
 
 Press **Alt+Enter** on any message to open a properties window showing the sender's name and address, recipients, date, size, and flags.
 
+On a conversation, or on a sender's group in the From view, **Alt+Enter** lists the senders the same way, each as name and address. A sender's group is gathered by name, so if mail under that name came from more than one address, every address is listed. That way, someone else using a familiar name shows up there.
+
 ### Marking as Read
 
 Press `Ctrl+Q` to mark the selected message or messages as read. Messages are also marked read automatically when you open them (configurable in **Settings → General**).

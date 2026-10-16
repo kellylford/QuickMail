@@ -668,6 +668,34 @@ public class ConversationPropertiesBuilderTests
         // alice appears only once
         Assert.Equal(1, participants.Split("alice@example.com").Length - 1);
     }
+
+    private static MailMessageSummary From(string name, string email) => new()
+    {
+        MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX", From = name, FromEmail = email,
+        Subject = "Hello", Date = new DateTimeOffset(2026, 6, 2, 10, 0, 0, TimeSpan.Zero),
+    };
+
+    [Fact]
+    public void Build_ListsEachParticipantWithTheirAddress()
+    {
+        // Review of #806: as a single message's Properties shows its sender, so two people sharing a name are two.
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          =
+            [
+                From("Alice", "alice@example.com"),
+                From("Alice", "alice@example.com"),
+                From("Alice", "alice@other.example"),
+                From("Bob",   "bob@example.com"),
+            ],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants"
+            && i.Value == "Alice <alice@example.com>; Alice <alice@other.example>; Bob <bob@example.com>");
+    }
 }
 
 // ── SenderGroupPropertiesBuilder ────────────────────────────────────────────
@@ -739,5 +767,69 @@ public class SenderGroupPropertiesBuilderTests
 
         var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
         Assert.Contains(sections[0].Items, i => i.Label == "Unread" && i.Value == "None");
+    }
+
+    private static MailMessageSummary From(string name, string email) => new()
+    {
+        MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX", From = name, FromEmail = email,
+        Subject = "Hello", Date = new DateTimeOffset(2026, 6, 2, 10, 0, 0, TimeSpan.Zero),
+    };
+
+    [Fact]
+    public void Build_FromGroup_ListsEveryAddressUnderTheName()
+    {
+        // Review of #806: the group is keyed on the name, so mail from a forger using it is in the same group.
+        // Properties is where that shows: each sender as "Name <address>".
+        var group = new SenderGroup
+        {
+            SenderKey = "PayPal",
+            Messages  = [From("PayPal", "service@paypal.example"), From("PayPal", "fake@evil.example"),
+                         From("PayPal", "service@paypal.example")],
+        };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Sender"
+            && i.Value == "PayPal <service@paypal.example>; PayPal <fake@evil.example>");
+    }
+
+    [Fact]
+    public void Build_FromGroup_LeavesOutTheBareNameOfARowStillWithoutItsAddress()
+    {
+        // Cached before the sender-address catch-up reached it: the name alone says less than the row beside it.
+        var group = new SenderGroup
+        {
+            SenderKey = "PayPal",
+            Messages  = [From("PayPal", ""), From("PayPal", "service@paypal.example")],
+        };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Sender" && i.Value == "PayPal <service@paypal.example>");
+    }
+
+    [Fact]
+    public void Build_FromGroup_WithNoAddressYet_ShowsTheName()
+    {
+        var group = new SenderGroup { SenderKey = "PayPal", Messages = [From("PayPal", "")] };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Sender" && i.Value == "PayPal");
+    }
+
+    [Fact]
+    public void Build_ToGroup_KeepsItsKey()
+    {
+        // A recipient group's key is the To text itself, addresses included.
+        var group = new SenderGroup
+        {
+            SenderKey = "Kelly <kelly@example.com>",
+            Messages  = [From("PayPal", "service@paypal.example")],
+        };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group, isToGroup: true);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Recipient" && i.Value == "Kelly <kelly@example.com>");
     }
 }
