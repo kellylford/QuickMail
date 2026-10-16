@@ -47,6 +47,13 @@ public class ComposeModel
     /// </summary>
     public string? OutgoingMessageId { get; set; }
 
+    /// <summary>
+    /// When the last send attempt went out, set by <see cref="Services.SmtpService"/>, so the copy
+    /// filed in Sent a few seconds later carries the same Date. Not stored in the Outbox: a retry
+    /// is a new send with its own time.
+    /// </summary>
+    public DateTimeOffset? OutgoingDate { get; set; }
+
     /// <summary>Server message id of the existing draft (null when composing new).</summary>
     public string? DraftMessageId { get; set; }
 

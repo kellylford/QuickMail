@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MailKit.Net.Smtp;
@@ -27,6 +28,7 @@ public class SmtpService : ISendMailService
 
         // Before building: AppendToSentAsync files the copy in Sent under the same id (#811).
         MimeMessageBuilder.EnsureOutgoingMessageId(compose, account);
+        compose.OutgoingDate = DateTimeOffset.Now;
         var message = MimeMessageBuilder.Build(compose, account, MimeMessageBuilder.AppUserAgent);
 
         using var client = new SmtpClient();

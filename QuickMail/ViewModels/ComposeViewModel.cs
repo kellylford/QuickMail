@@ -684,12 +684,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
             // Append to Sent folder (best-effort — fire and forget so it doesn't block the UI).
             // Providers that file their own copy of sent mail (Gmail, iCloud, Outlook.com) are
-            // detected by the Message-ID the send stamped on compose, and get no second copy (#811).
+            // looked for by the Message-ID the send stamped on compose, for a few seconds, and get
+            // no second copy if theirs turns up (#811). The timeout leaves room for those looks.
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    using var sentCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    using var sentCts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
                     await _imap.AppendToSentAsync(account.Id, compose, sentCts.Token);
                 }
                 catch (Exception ex)

@@ -51,19 +51,20 @@ public sealed class SentCopyTests
         MimeMessageBuilder.EnsureOutgoingMessageId(compose, account);
 
         using var imap = await ConnectWithSentAsync(account, ct);
-        imap.SentCopyChecks = [TimeSpan.Zero, TimeSpan.FromSeconds(2)];
+        imap.SentCopyChecks = [TimeSpan.Zero, TimeSpan.FromSeconds(1)];
+        // The server's copy lands only after the first look has found nothing, so the test
+        // fails unless the second look runs and finds it.
+        var missed = new List<int>();
+        imap.SentCopyLookMissed += i =>
+        {
+            missed.Add(i);
+            if (i == 0) FileServerCopyAsync(account, compose, ct).GetAwaiter().GetResult();
+        };
         try
         {
-            // The server's copy lands between QuickMail's first and second look.
-            var late = Task.Run(async () =>
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(500), ct);
-                await FileServerCopyAsync(account, compose, ct);
-            }, ct);
-
             await imap.AppendToSentAsync(account.Id, compose, ct);
-            await late;
 
+            Assert.Equal([0], missed);
             Assert.Equal(1, await CountInSentAsync(account, compose.OutgoingMessageId!, ct));
         }
         finally { await imap.DisconnectAsync(account.Id, ct); }
@@ -90,7 +91,7 @@ public sealed class SentCopyTests
     }
 
     [Fact]
-    public async Task NoOutgoingId_AppendsWithoutLooking()
+    public async Task NoOutgoingId_StillFilesOneCopy()
     {
         _greenMail.RequireServers();
         var ct = TestContext.Current.CancellationToken;

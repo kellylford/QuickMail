@@ -1,3 +1,4 @@
+using System;
 using QuickMail.Models;
 using QuickMail.Services;
 using Xunit;
@@ -39,6 +40,61 @@ public class OutgoingMessageIdTests
 
         Assert.False(string.IsNullOrWhiteSpace(id));
         Assert.Contains("@", id);
+    }
+
+    [Theory]
+    [InlineData("someone@bücher.de")]          // Unicode domain
+    [InlineData("someone@xn--bcher-kva.de")]   // the same domain in punycode, which MimeKit turns back
+    [InlineData("someone@exa mple.com")]       // MimeKit would cut this at the space
+    [InlineData("someone@example.com>")]
+    public void EnsureOutgoingMessageId_UnusableDomain_FallsBackToAnAsciiId(string username)
+    {
+        var compose = new ComposeModel { To = "a@b.com", Body = "hello" };
+
+        var id = MimeMessageBuilder.EnsureOutgoingMessageId(compose, MakeAccount(username));
+        var built = MimeMessageBuilder.Build(compose, MakeAccount(username));
+
+        Assert.EndsWith("@" + MimeMessageBuilder.FallbackMessageIdDomain, id);
+        // What is written is what the Sent search will look for.
+        Assert.Equal(id, built.MessageId);
+        Assert.All(built.MessageId!, c => Assert.True(c < 128));
+    }
+
+    [Fact]
+    public void Build_WithOutgoingDate_UsesIt()
+    {
+        var when = new DateTimeOffset(2026, 10, 16, 9, 30, 0, TimeSpan.FromHours(-5));
+        var compose = new ComposeModel { To = "a@b.com", Body = "hello", OutgoingDate = when };
+
+        Assert.Equal(when, MimeMessageBuilder.Build(compose, MakeAccount()).Date);
+    }
+
+    [Fact]
+    public void WithoutAttachments_DropsOutgoingDate()
+    {
+        // A queued retry is a new send with its own time.
+        var compose = new ComposeModel { OutgoingDate = DateTimeOffset.Now };
+
+        Assert.Null(compose.WithoutAttachments().OutgoingDate);
+    }
+
+    [Theory]
+    [InlineData(new[] { "abc@example.com" }, "abc@example.com", true)]
+    [InlineData(new[] { "<ABC@Example.com>" }, "abc@example.com", true)]
+    [InlineData(new[] { "other@example.com", "abc@example.com" }, "abc@example.com", true)]
+    // A server that ignores the HEADER condition returns everything: no match must mean no skip.
+    [InlineData(new[] { "other@example.com", "third@example.com" }, "abc@example.com", false)]
+    [InlineData(new[] { "xabc@example.com" }, "abc@example.com", false)]
+    [InlineData(new string[0], "abc@example.com", false)]
+    public void SentCopyMatches_OnlyAnExactIdCounts(string[] found, string wanted, bool expected)
+    {
+        Assert.Equal(expected, ImapMailService.SentCopyMatches(found, wanted));
+    }
+
+    [Fact]
+    public void SentCopyMatches_IgnoresMissingIds()
+    {
+        Assert.False(ImapMailService.SentCopyMatches([null, ""], "abc@example.com"));
     }
 
     [Fact]
