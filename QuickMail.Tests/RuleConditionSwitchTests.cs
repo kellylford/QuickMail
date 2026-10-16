@@ -328,8 +328,8 @@ public class RuleConditionSwitchTests
         vm.CreateRuleFromMessageCommand.Execute(null);
 
         Assert.NotNull(template);
-        // The sender is a substring match on From, not an address list: a display name can hold a
-        // comma, which an address field reads as a separator (#682).
+        // No separate address on this row yet, so the sender is a substring match on From, not an address
+        // list: a display name can hold a comma, which an address field reads as a separator (#682).
         Assert.True(template!.UseSenderCondition);
         Assert.Equal("boss@work.com", template.SenderContains);
         // Carried so it can be switched on in the editor, but not ANDed into the rule by default.
@@ -337,30 +337,106 @@ public class RuleConditionSwitchTests
         Assert.False(template.UseSubjectCondition);
     }
 
-    [Fact]
-    public void CreateRuleFromMessage_UsesTheSendersAddress_WhenTheRowHasOne()
-    {
-        // Review of #806: the display name alone would also catch anyone else using that name, and since #801
-        // a Microsoft row's From is the name alone. The rule's name keeps the name the user knows.
-        var template = MainViewModel.RuleTemplateFrom(new MailMessageSummary
-        {
-            MessageId = "1", FolderName = "INBOX", From = "PayPal", FromEmail = "service@paypal.example",
-            Subject = "Receipt",
-        });
+    private static MailRule TemplateFor(string from, string fromEmail) => MainViewModel.RuleTemplateFrom(
+        new MailMessageSummary { MessageId = "1", FolderName = "INBOX", From = from, FromEmail = fromEmail, Subject = "Receipt" });
 
-        Assert.Equal("service@paypal.example", template.SenderContains);
+    [Fact]
+    public void CreateRuleFromMessage_PutsTheAddressInFromAddresses_AndTheNameInSenderContains()
+    {
+        // The address is the condition switched on: the display name alone would also catch anyone else using it,
+        // and since #801 a Microsoft row's From is the name alone. The name is filled in beside it, switched off,
+        // one keystroke from a rule that wants both. The rule's name keeps the name the user knows.
+        var template = TemplateFor("PayPal", "service@paypal.example");
+
+        Assert.Equal(["service@paypal.example"], template.FromValues());
+        Assert.Equal("PayPal", template.SenderContains);
+        Assert.False(template.UseSenderCondition);
         Assert.Equal("Rule for PayPal", template.Name);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_ForASenderWithNoName_PutsTheAddressInBoth()
+    {
+        var template = TemplateFor("news@company.example", "news@company.example");
+
+        Assert.Equal(["news@company.example"], template.FromValues());
+        Assert.Equal("news@company.example", template.SenderContains);
+        Assert.False(template.UseSenderCondition);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_ListsEveryAddressOfAMessageFromSeveral()
+    {
+        // A From header naming two mailboxes is rare, but it is shown, not chosen for the user: the address list
+        // means any one of them, and the box says so.
+        var template = TemplateFor("Ann and Bob", "ann@x.example, bob@y.example");
+
+        Assert.Equal(["ann@x.example", "bob@y.example"], template.FromValues());
+        Assert.False(template.UseSenderCondition);
     }
 
     [Fact]
     public void CreateRuleFromMessage_FallsBackToTheName_WhenTheRowHasNoAddressYet()
     {
         // A row cached before FromEmail and not yet backfilled: exactly what this proposed before.
-        var template = MainViewModel.RuleTemplateFrom(new MailMessageSummary
-        {
-            MessageId = "1", FolderName = "INBOX", From = "PayPal", Subject = "Receipt",
-        });
+        var template = TemplateFor("PayPal", "");
 
         Assert.Equal("PayPal", template.SenderContains);
+        Assert.True(template.UseSenderCondition);
+        Assert.Null(template.FromAddresses);
+    }
+
+    [Fact]
+    public void TheEditor_OpensWithTheAddressOn_AndTheNameFilledInButOff()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("PayPal", "service@paypal.example"));
+
+        Assert.Equal("service@paypal.example", vm.FromAddresses);
+        Assert.True(vm.UseFromAddresses);
+        Assert.Equal("PayPal", vm.SenderContains);
+        Assert.False(vm.UseSenderContains);
+        Assert.True(vm.IsAdvancedExpanded);   // From addresses is in the advanced section, and in use
+    }
+
+    [Fact]
+    public void TheEditor_WithNoAddressYet_OpensWithTheNameOn()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("PayPal", ""));
+
+        Assert.Equal(string.Empty, vm.FromAddresses);
+        Assert.False(vm.UseFromAddresses);
+        Assert.Equal("PayPal", vm.SenderContains);
+        Assert.True(vm.UseSenderContains);
+    }
+
+    [Fact]
+    public void SavingIt_MatchesOnTheAddressAlone_AndKeepsTheNameForLater()
+    {
+        // What the editor saves is what the user saw: the address required, the name kept but not tested, so the
+        // same sender writing under another name is still caught.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("PayPal", "service@paypal.example"));
+        vm.MarkAsRead = true;
+
+        var rule = vm.ToClientRule(Guid.NewGuid());
+
+        Assert.Equal(["service@paypal.example"], rule.FromValues());
+        Assert.Equal("PayPal", rule.SenderContains);
+        Assert.False(rule.UseSenderCondition);
+        Assert.True(QuickMail.Services.RuleService.SenderMatches(
+            new MailMessageSummary { From = "PayPal Billing", FromEmail = "service@paypal.example" }, rule.FromValues()[0]));
+    }
+
+    [Fact]
+    public void SwitchingTheNameOnToo_RequiresBoth()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("PayPal", "service@paypal.example"));
+        vm.MarkAsRead = true;
+        vm.UseSenderContains = true;
+
+        var rule = vm.ToClientRule(Guid.NewGuid());
+
+        Assert.Equal(["service@paypal.example"], rule.FromValues());
+        Assert.True(rule.UseSenderCondition);
+        Assert.Equal("PayPal", rule.SenderContains);
     }
 }

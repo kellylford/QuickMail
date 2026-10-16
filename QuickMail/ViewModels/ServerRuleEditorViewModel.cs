@@ -53,30 +53,31 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     public static ServerRuleEditorViewModel ForNew() => new() { IsNew = true, Name = string.Empty };
 
     /// <summary>A new rule prefilled from a message (create-rule-from-message, Ctrl+Shift+T): carries
-    /// the message's From and Subject as conditions. It's still a new rule — the user picks the
-    /// action, and it's classified server/client on save like any other New rule.
+    /// the message's sender (address and name) and Subject as conditions. It's still a new rule — the
+    /// user picks the action, and it's classified server/client on save like any other New rule.
     ///
-    /// Both fields carry their text whatever the template's flags say; the flags drive the matching
+    /// Every field carries its text whatever the template's flags say; the flags drive the matching
     /// condition checkbox instead (#665). Subject arrives switched OFF, because a rule that matches
     /// one sender AND one exact subject line matches, in practice, the single thread it was made
     /// from — which is not what "Rule for &lt;sender&gt;" means. The text is still sitting in the box,
     /// so turning the subject back on is one keystroke rather than retyping it.</summary>
     public static ServerRuleEditorViewModel ForNewFromTemplate(MailRule template)
     {
+        // A template made from a message carries its sender in both sender conditions: the address in From
+        // addresses, switched on, and the display name in Sender contains, switched off; or, with no address yet,
+        // the name in Sender contains, switched on (see MainViewModel.RuleTemplateFrom). It is written in the shape
+        // a saved rule holding that combination has, so it is read the same way an existing rule is.
+        var from = ReadFromCondition(template);
         var vm = new ServerRuleEditorViewModel
         {
             IsNew = true,
             Name = template.Name ?? string.Empty,
-            // A template made from a message carries its sender as Sender contains: the sender's address
-            // where the row has one (#803), else the display name, which can hold a comma that the address
-            // fields would read as two addresses (#682).
             // A condition arrives switched on only where the template actually has something for it to
             // match: a flag over an empty box would tick a condition that tests nothing.
-            SenderContains = template.SenderContains ?? string.Empty,
-            UseSenderContains = template.UseSenderCondition && !string.IsNullOrWhiteSpace(template.SenderContains),
-            FromAddresses = template.SenderContains is null ? template.FromContains ?? string.Empty : string.Empty,
-            UseFromAddresses = template.SenderContains is null && template.UseFromCondition
-                               && !string.IsNullOrWhiteSpace(template.FromContains),
+            FromAddresses = from.Addresses,
+            UseFromAddresses = from.UseAddresses && !string.IsNullOrWhiteSpace(from.Addresses),
+            SenderContains = from.Sender,
+            UseSenderContains = from.UseSender && !string.IsNullOrWhiteSpace(from.Sender),
             SubjectContains = template.SubjectContains ?? string.Empty,
             UseSubjectContains = template.UseSubjectCondition && !string.IsNullOrWhiteSpace(template.SubjectContains),
         };
