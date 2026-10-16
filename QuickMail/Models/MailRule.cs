@@ -39,7 +39,9 @@ public class MailRule
     public bool UseFromCondition { get; set; } = true;
 
     /// <summary>
-    /// Case-insensitive substring match against MailMessageSummary.From. When <see cref="FromAddresses"/>
+    /// Case-insensitive substring match against the sender's name and address together,
+    /// <see cref="MailMessageSummary.FromWithAddress"/> (#803), so it matches whichever of the two it holds: on an
+    /// IMAP or POP3 row, MailMessageSummary.From is the display name alone. When <see cref="FromAddresses"/>
     /// holds the condition, this carries its first address and is not read: it is what a QuickMail from
     /// before #682 matches on, and matching one of the addresses can only act on less mail than matching
     /// any of them.
@@ -59,7 +61,8 @@ public class MailRule
     public bool UseSenderCondition { get; set; }
 
     /// <summary>
-    /// The editor's "Sender contains": a substring match against From, ANDed with any
+    /// The editor's "Sender contains": a substring match against the sender's name and address together
+    /// (<see cref="MailMessageSummary.FromWithAddress"/>, #803), ANDed with any
     /// <see cref="FromAddresses"/> the rule also lists (#682).
     /// <para>
     /// <b>Where it is set and <see cref="FromAddresses"/> is null, <see cref="FromContains"/> is this

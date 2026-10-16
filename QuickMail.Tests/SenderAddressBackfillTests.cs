@@ -287,8 +287,11 @@ public class SenderAddressBackfillSyncTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    /// <summary>Answers FetchSenderEmailsAsync from a fixed table, and can fail the way a dead network does.</summary>
-    private sealed class EnvelopeMail : StubImapMailServiceBase, IMailService
+    /// <summary>
+    /// A server's answers to FetchSenderEmailsAsync, from fixed tables of addresses and Message-IDs. It can fail the
+    /// way a dead network does, or the way a server refuses one folder.
+    /// </summary>
+    private sealed class ServerSenders : StubImapMailServiceBase, IMailService
     {
         public Dictionary<string, string> OnServer { get; } = [];
         /// <summary>The Message-ID the server gives a message; none when not listed.</summary>
@@ -318,9 +321,9 @@ public class SenderAddressBackfillSyncTests : IDisposable
         Id = Guid.NewGuid(), AccountName = "Test", Username = "t@example.com", ImapHost = "host", BackendKind = backend,
     };
 
-    private (SyncService Sync, EnvelopeMail Mail) Build()
+    private (SyncService Sync, ServerSenders Mail) Build()
     {
-        var mail = new EnvelopeMail();
+        var mail = new ServerSenders();
         var sync = new SyncService(mail, _store, new StubConfigService(), new StubRuleService(), connectivity: _connectivity)
         {
             SenderEmailPacing = TimeSpan.Zero,
