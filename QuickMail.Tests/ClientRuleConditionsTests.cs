@@ -715,9 +715,8 @@ public class ClientRuleConditionsTests
     [Fact]
     public void ThePrefilledSenderIsInTheEditorsMainSection_NotBehindAdvanced()
     {
-        // Sender contains and From addresses swapped places for this (#682): the field Create Rule
-        // from Message fills is the one the user meets first, and an address list a rule made by hand
-        // needs is the less common of the two.
+        // The field Create Rule from Message fills is one the user meets first (#682). It fills both sender
+        // conditions now, so both are in the main section, the name and then the address (review of #806).
         var vm = ServerRuleEditorViewModel.ForNewFromTemplate(new MailRule
         {
             Name = "Rule for boss@work.com",
@@ -729,8 +728,9 @@ public class ClientRuleConditionsTests
 
         Assert.False(vm.IsAdvancedExpanded);
 
-        // And the list that decides it still matches where the fields actually are: a rule using the
-        // address list opens with Advanced showing, so editing never hides a field that is in use.
+        // And the list that decides it still matches where the fields actually are: the From address list is
+        // in the main section now, so a rule using it doesn't open Advanced, while one using Sent to (still in
+        // Advanced) does, so editing never hides a field that is in use.
         var withAddresses = ServerRuleEditorViewModel.ForEditClient(new MailRule
         {
             Name = "Billing",
@@ -739,7 +739,36 @@ public class ClientRuleConditionsTests
             FromAddresses = ["billing@x.com", "invoices@y.com"],
             Action = RuleAction.MarkAsRead,
         });
-        Assert.True(withAddresses.IsAdvancedExpanded);
+        Assert.False(withAddresses.IsAdvancedExpanded);
+
+        var withSentTo = ServerRuleEditorViewModel.ForEditClient(new MailRule
+        {
+            Name = "To me",
+            UseFromCondition = false,
+            UseToCondition = true,
+            ToContains = "me@x.com",
+            Action = RuleAction.MarkAsRead,
+        });
+        Assert.True(withSentTo.IsAdvancedExpanded);
+    }
+
+    [Fact]
+    public void TheSenderConditions_AreTabbedToAsNameThenAddress_BeforeAdvanced()
+    {
+        // The order the editor is read in: Sender contains, then the address list, then Subject, all ahead of the
+        // Advanced section (review of #806). The address list's label says what it means.
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (!Directory.Exists(Path.Combine(root.FullName, "QuickMail", "Views"))) root = root.Parent!;
+        var xaml = File.ReadAllText(Path.Combine(root.FullName, "QuickMail", "Views", "ServerRuleEditorWindow.xaml"));
+
+        var sender = xaml.IndexOf("Content=\"Sender contains\"", StringComparison.Ordinal);
+        var from = xaml.IndexOf("Content=\"From any of these addresses (comma-separated)\"", StringComparison.Ordinal);
+        var subject = xaml.IndexOf("Content=\"Subject contains\"", StringComparison.Ordinal);
+        var advanced = xaml.IndexOf("<Expander Header=\"Advanced conditions", StringComparison.Ordinal);
+        var sentTo = xaml.IndexOf("Content=\"Sent to any of these addresses (comma-separated)\"", StringComparison.Ordinal);
+
+        Assert.True(sender >= 0 && from > sender && subject > from && advanced > subject && sentTo > advanced,
+            $"Expected Sender contains < From addresses < Subject < Advanced < Sent to; got {sender}, {from}, {subject}, {advanced}, {sentTo}.");
     }
 
     [Fact]
@@ -845,13 +874,13 @@ public class ClientRuleConditionsTests
 
         // "any of", not "a or b": spoken beside the "and" that joins the conditions, "or" leaves the
         // grouping ambiguous, and the reading that wins is the one where the rule acts more widely.
-        Assert.Contains("from contains any of 'billing@x.com', 'invoices@y.com'", row.RowText, StringComparison.Ordinal);
+        Assert.Contains("from any of 'billing@x.com', 'invoices@y.com'", row.RowText, StringComparison.Ordinal);
         Assert.Contains("sender contains 'acme'", row.RowText, StringComparison.Ordinal);
         Assert.Contains("subject or body contains 'invoice'", row.RowText, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ARuleWithOneAddress_ReadsExactlyAsItAlwaysHas()
+    public void ARuleWithOneAddress_ReadsAsTheAddressAlone()
     {
         var row = UnifiedRuleRow.ForClient(new MailRule
         {
@@ -863,7 +892,29 @@ public class ClientRuleConditionsTests
             Action = RuleAction.MarkAsRead,
         });
 
-        Assert.Contains("If from contains 'billing@x.com' →", row.RowText, StringComparison.Ordinal);
+        Assert.Contains("If from 'billing@x.com' →", row.RowText, StringComparison.Ordinal);
         Assert.DoesNotContain("any of", row.RowText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ClientAndServerRows_WordTheAddressConditionsAlike()
+    {
+        // Review of #806: a client row said "from contains" and "to contains" where a server row says "from" and
+        // "sent to", in the one list. An address is matched as a whole address now, so "contains" was wrong too;
+        // it stays on Sender contains, which is a contains match.
+        var row = UnifiedRuleRow.ForClient(new MailRule
+        {
+            Name = "Billing",
+            IsEnabled = true,
+            UseFromCondition = true,
+            FromContains = "billing@x.com",
+            UseToCondition = true,
+            ToContains = "me@x.com",
+            UseSubjectCondition = false,
+            Action = RuleAction.MarkAsRead,
+        });
+
+        Assert.Contains("If from 'billing@x.com' and sent to 'me@x.com' →", row.RowText, StringComparison.Ordinal);
+        Assert.DoesNotContain("contains", row.RowText, StringComparison.Ordinal);
     }
 }

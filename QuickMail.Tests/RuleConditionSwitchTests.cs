@@ -395,7 +395,7 @@ public class RuleConditionSwitchTests
         Assert.True(vm.UseFromAddresses);
         Assert.Equal("PayPal", vm.SenderContains);
         Assert.False(vm.UseSenderContains);
-        Assert.True(vm.IsAdvancedExpanded);   // From addresses is in the advanced section, and in use
+        Assert.False(vm.IsAdvancedExpanded);   // both sender conditions are in the main section
     }
 
     [Fact]
