@@ -1418,7 +1418,13 @@ The editor has the same parts whichever kind of rule you are writing.
 
 - **Rule name** — how you recognize it in the list. A rule must have one.
 - **Enabled** — turn a rule off without deleting it.
-- **Apply when a message matches** — **Sender contains**, **From any of these addresses** and **Subject contains**.
+- **Apply when a message matches** has three conditions:
+  - **Sender contains**
+  - **From any of these addresses**
+  - **Subject contains**
+
+  How they work:
+
   - **Turning a condition on.** Each condition has a checkbox in front of it. Check it, then Tab into its box and type what to look for. While a condition is unchecked, its box is read-only and Tab skips it.
   - **How a rule starts.** A rule you start with **New Rule** has nothing checked except **Enabled**, so the rule tests only what you choose. A rule made with **Create Rule from Message** starts with its sender condition checked; see [Creating a Rule from a Message](#creating-a-rule-from-a-message).
   - **Every checked condition must match.** Leaving a condition unchecked means "don't care". Matching ignores upper and lower case.
