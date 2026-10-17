@@ -202,7 +202,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <list type="bullet">
     /// <item>A rule carrying a sender and no address list keeps that sender in the old field too, for an
     /// older build (<see cref="MailRule.FromContainsMirrorsSender"/>). It belongs in the Sender box
-    /// only, or the editor would show it twice.</item>
+    /// only, or the editor would show it twice. Any addresses the user switched off beside it come back
+    /// from <see cref="MailRule.FromAddressesOff"/>, switched off.</item>
     /// <item>A rule with an address list shows the list, with any sender beside it.</item>
     /// <item>A rule from before #682 holds its whole From condition in one field, where a comma was
     /// never a separator: <b>Ctrl+Shift+T wrote the sender's DISPLAY NAME there</b>, and an Exchange
@@ -215,7 +216,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     private static (string Addresses, bool UseAddresses, string Sender, bool UseSender) ReadFromCondition(MailRule rule)
     {
         if (rule.FromContainsMirrorsSender)
-            return (string.Empty, false, rule.SenderContains ?? string.Empty, rule.UseSenderCondition);
+            return (AddressText(rule.FromAddressesOff, null), false, rule.SenderContains ?? string.Empty,
+                    rule.UseSenderCondition);
 
         if (rule.FromAddresses is { Count: > 0 })
             return (AddressText(rule.FromAddresses, rule.FromContains), rule.UseFromCondition,
@@ -578,10 +580,13 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         else if (senderOn)
         {
             // Sender contains is the live condition, so the old field mirrors it (FromValues reads
-            // SenderContains instead). The switched-off address text has nowhere left to sit and is
-            // dropped: the alternative is leaving the old field holding addresses the rule does not use.
+            // SenderContains instead). The switched-off address text can't sit in the old field, which an
+            // older build reads as the condition, nor in FromAddresses, which this build would; it is kept in
+            // FromAddressesOff, which nothing but the editor reads (review of #806). It used to be dropped, so
+            // switching back to the addresses found an empty box.
             rule.UseFromCondition = true;
             rule.FromContains = sender;
+            if (fromAddrs.Count > 0) rule.FromAddressesOff = fromAddrs;
         }
         else
         {

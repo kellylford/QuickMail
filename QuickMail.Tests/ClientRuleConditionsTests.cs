@@ -496,11 +496,14 @@ public class ClientRuleConditionsTests
         Assert.True(Matches(rule, Msg(from: "anyone@acme.com")));
         Assert.False(Matches(rule, Msg(from: "billing@x.com")));
 
-        // And it reads back as the sender condition it is, not relabelled as a From address.
+        // And it reads back as the sender condition it is, not relabelled as a From address. The switched-off
+        // addresses come back too, still off, rather than as an empty box (review of #806); they are kept apart,
+        // where neither this build's engine nor an older build reads them.
         var reopened = ServerRuleEditorViewModel.ForEditClient(rule);
         Assert.Equal("acme", reopened.SenderContains);
         Assert.True(reopened.UseSenderContains);
-        Assert.Equal(string.Empty, reopened.FromAddresses);
+        Assert.Equal("billing@x.com, invoices@y.com", reopened.FromAddresses);
+        Assert.False(reopened.UseFromAddresses);
     }
 
     [Fact]

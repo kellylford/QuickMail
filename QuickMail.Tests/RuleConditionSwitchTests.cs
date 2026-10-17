@@ -439,4 +439,86 @@ public class RuleConditionSwitchTests
         Assert.True(rule.UseSenderCondition);
         Assert.Equal("PayPal", rule.SenderContains);
     }
+
+    // ── Switching between the two sender conditions keeps the text (review of #806) ──
+
+    private static ServerRuleEditorViewModel Reopen(ServerRuleEditorViewModel vm)
+        => ServerRuleEditorViewModel.ForEditClient(vm.ToClientRule(Guid.NewGuid()));
+
+    [Fact]
+    public void TurningTheAddressesOff_ForTheName_KeepsTheAddressesForLater()
+    {
+        // Manual testing found this: saved with only Sender contains on, the address list came back empty.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("Dana", "dana@x.example"));
+        vm.MarkAsRead = true;
+        vm.UseSenderContains = true;
+        vm.UseFromAddresses = false;
+
+        var reopened = Reopen(vm);
+
+        Assert.True(reopened.UseSenderContains);
+        Assert.Equal("Dana", reopened.SenderContains);
+        Assert.False(reopened.UseFromAddresses);
+        Assert.Equal("dana@x.example", reopened.FromAddresses);
+    }
+
+    [Fact]
+    public void SwitchingBackToTheAddresses_UsesThemAgain()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("Dana", "dana@x.example"));
+        vm.MarkAsRead = true;
+        vm.UseSenderContains = true;
+        vm.UseFromAddresses = false;
+        var reopened = Reopen(vm);
+
+        reopened.UseFromAddresses = true;
+        reopened.UseSenderContains = false;
+        var rule = reopened.ToClientRule(Guid.NewGuid());
+
+        Assert.Equal(["dana@x.example"], rule.FromValues());
+        Assert.False(rule.UseSenderCondition);
+        Assert.Null(rule.FromAddressesOff);
+    }
+
+    [Fact]
+    public void KeptAddresses_AreNotACondition()
+    {
+        // Only the editor reads them. The rule matches on the name alone, and an older QuickMail, which reads only
+        // the old From field, still tests the sender's name there.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("Dana", "dana@x.example"));
+        vm.MarkAsRead = true;
+        vm.UseSenderContains = true;
+        vm.UseFromAddresses = false;
+
+        var rule = vm.ToClientRule(Guid.NewGuid());
+
+        Assert.Equal(["dana@x.example"], rule.FromAddressesOff);
+        Assert.Empty(rule.FromValues());
+        Assert.True(rule.UseSenderCondition);
+        Assert.Null(rule.FromAddresses);
+        Assert.Equal("Dana", rule.FromContains);
+        Assert.True(QuickMail.Services.RuleService.SenderMatches(
+            new MailMessageSummary { From = "Dana", FromEmail = "dana@another.example" }, rule.SenderContains!));
+    }
+
+    [Fact]
+    public void KeptAddresses_SurviveBeingWrittenToDisk()
+    {
+        var rule = new MailRule
+        {
+            Name = "Dana", UseFromCondition = true, FromContains = "Dana",
+            UseSenderCondition = true, SenderContains = "Dana", FromAddressesOff = ["dana@x.example"],
+            Action = RuleAction.MarkAsRead,
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(rule);
+        var back = System.Text.Json.JsonSerializer.Deserialize<MailRule>(json)!;
+
+        Assert.Equal(["dana@x.example"], back.FromAddressesOff);
+        Assert.Equal("dana@x.example", ServerRuleEditorViewModel.ForEditClient(back).FromAddresses);
+        // And a rule that never had any writes nothing new.
+        Assert.DoesNotContain("FromAddressesOff",
+            System.Text.Json.JsonSerializer.Serialize(new MailRule { Name = "Plain", FromContains = "a@x.example" }),
+            StringComparison.Ordinal);
+    }
 }
