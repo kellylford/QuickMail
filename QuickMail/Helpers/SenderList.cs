@@ -28,15 +28,18 @@ internal static class SenderList
             .Where(s => s.Full.Length > 0)
             .ToList();
         // Entries that carry both a name and an address: Full is then neither the name alone nor the address alone.
-        var both = senders
+        var withNameAndAddress = senders
             .Where(s => !Same(s.Full, s.Name) && !Same(s.Full, s.Email))
             .ToList();
-        var namesWithAnAddress = both.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var addressesWithAName = both.Select(s => s.Email).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var namesWithAnAddress = withNameAndAddress.Select(s => s.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var addressesWithAName = withNameAndAddress.Select(s => s.Email)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return senders
             .Where(s => !(Same(s.Full, s.Name) && namesWithAnAddress.Contains(s.Name)))
             // The bare address, whether or not the catch-up has filled the row's address in yet. An entry with a name
-            // never reads as a bare address, so only address-only entries can match.
+            // never reads as a bare address, so only entries with no name, or a cached name that is an address, can
+            // match.
             .Where(s => !addressesWithAName.Contains(s.Full))
             .Select(s => s.Full)
             .Distinct(StringComparer.OrdinalIgnoreCase)

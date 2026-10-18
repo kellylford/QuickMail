@@ -6,9 +6,8 @@
 
 **Properties** (**Alt+Enter**) on a conversation listed a sender twice in Participants when they
 had written once with a display name and once without: once as their name and address, and again
-as the address alone. They are now listed once, with their name. The same goes for the Senders of
-a sender's group in the From view. Someone who never gave a name is still listed by their address
-(#814).
+as the address alone. They are now listed once, with their name. Someone who never gave a name is
+still listed by their address (#814).
 
 Contributed by [valiant8086](https://github.com/valiant8086).
 

@@ -763,6 +763,56 @@ public class ConversationPropertiesBuilderTests
         Assert.Contains(sections[0].Items, i => i.Label == "Participants"
             && i.Value == "dana@example.com; Bob <bob@example.com>");
     }
+
+    [Fact]
+    public void Build_ListsASenderOnce_WhenTheBareAddressDiffersInCase()
+    {
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          = [From("Dana", "dana@example.com"), From("DANA@EXAMPLE.COM", "DANA@EXAMPLE.COM")],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants" && i.Value == "Dana <dana@example.com>");
+    }
+
+    [Fact]
+    public void Build_ListsASenderOnce_WhenTheNamelessMessageHasAnEmptyName()
+    {
+        // From empty, address known: the row reads as the bare address.
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          = [From("", "dana@example.com"), From("Dana", "dana@example.com")],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants" && i.Value == "Dana <dana@example.com>");
+    }
+
+    [Fact]
+    public void Build_KeepsBothNames_WhenOneAddressWroteUnderTwo()
+    {
+        // Two names for one address are both worth seeing; only the bare address says nothing either does not.
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          =
+            [
+                From("Dana", "dana@example.com"),
+                From("dana@example.com", "dana@example.com"),
+                From("Dana Smith", "dana@example.com"),
+            ],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants"
+            && i.Value == "Dana <dana@example.com>; Dana Smith <dana@example.com>");
+    }
 }
 
 // ── SenderGroupPropertiesBuilder ────────────────────────────────────────────
