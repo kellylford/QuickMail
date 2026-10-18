@@ -558,6 +558,8 @@ public class ClientRuleConditionsTests
         var vm = Editor();
         vm.UseFromAddresses = true;
         vm.FromAddresses = "billing@x.com, invoices@y.com";
+        vm.MarkAsRead = false;   // client-side only since #810, so it would decide the question by itself
+        vm.Delete = true;
 
         Assert.Equal(RuleRunsWhere.Server, vm.Classify(accountSupportsServerRules: true).Kind);
     }

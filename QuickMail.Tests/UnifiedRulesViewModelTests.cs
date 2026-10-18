@@ -59,7 +59,7 @@ public class UnifiedRulesViewModelTests
     private static AccountModel Graph(Guid id) => new() { Id = id, BackendKind = BackendKind.MicrosoftGraph, Username = "g@x.com", AccountName = "Work" };
     private static AccountModel PersonalGraph(Guid id) => new() { Id = id, BackendKind = BackendKind.MicrosoftGraph, IsPersonalMicrosoftAccount = true, Username = "me@outlook.com", AccountName = "Personal" };
     private static AccountModel Imap(Guid id) => new() { Id = id, BackendKind = BackendKind.ImapSmtp, Username = "i@x.com", AccountName = "Home" };
-    private static ServerRuleModel Server(string name) => new() { Id = name, DisplayName = name, SubjectContains = "x", Delete = true };
+    private static ServerRuleModel Server(string name) => new() { Id = name, DisplayName = name, SubjectContains = "x", StopProcessingRules = true };
     private static MailRule Client(string name, Guid accountId) => new() { Name = name, AccountId = accountId, SubjectContains = "y", Action = RuleAction.MarkAsRead };
 
     // ── What the editor is told about the account (#682) ────────────────────
