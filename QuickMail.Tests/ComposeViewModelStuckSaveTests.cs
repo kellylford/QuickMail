@@ -313,6 +313,28 @@ public class ComposeViewModelStuckSaveTests
     }
 
     [Fact]
+    public async Task AbandonedSave_FinishingWhileTheDraftIsBeingKeptLocally_LeavesTheComposeUnsaved()
+    {
+        // The late id is adopted while the Outbox write is in flight, so the row being written still
+        // replaces the older id. Left marked saved, closing would let that row upload a second copy.
+        var h = new Harness();
+        var stuck = h.Mail.NextHangs();
+        h.Outbox.DuringEnqueue = () => stuck.TrySetResult("late");
+
+        await Bounded(h.Vm.AutoSaveAsync());
+        await Bounded(h.Vm.AbandonedDraftSave);
+        h.Outbox.DuringEnqueue = null;
+
+        var rowId = Assert.Single(h.Outbox.Enqueued).Id;
+        Assert.True(h.Vm.IsDirty);
+
+        await Bounded(h.Vm.AutoSaveAsync());
+        Assert.Equal("late", h.Mail.ReplaceIds[^1]);
+        Assert.Equal([rowId], h.Outbox.Removed);
+        Assert.False(h.Vm.IsDirty);
+    }
+
+    [Fact]
     public async Task AbandonedSave_FinishingAfterTheMessageWasSent_RemovesTheLateDraft()
     {
         var h = new Harness();

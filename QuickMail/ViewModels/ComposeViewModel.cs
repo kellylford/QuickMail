@@ -379,6 +379,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // Ours while this window is open: a drain must not upload or send it from under the edit.
             _outbox.Hold(_outboxId);
             if (_editVersion == version) _isDirty = false;
+            // An abandoned server save that finished during the enqueue has been adopted as the
+            // draft on the server (#781). This row replaces the id it was built with, not that one,
+            // so it would upload a second copy beside it; staying unsaved has the next save replace
+            // the late copy and drop the row.
+            if (!string.Equals(compose.DraftMessageId, _draftMessageId, StringComparison.Ordinal))
+                _isDirty = true;
             LogService.Log("SaveDraft: kept the draft on this computer");
             return true;
         }

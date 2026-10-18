@@ -707,8 +707,12 @@ sealed class StubOutboxService : IOutboxService
     public void RaiseChanged() => Changed?.Invoke();
     public void RaiseFlushCompleted(OutboxFlushResult r) => FlushCompleted?.Invoke(r);
 
+    /// <summary>Runs at the start of every enqueue — something that happens while the store write is in flight.</summary>
+    public Action? DuringEnqueue { get; set; }
+
     private Task<string> Enqueue(OutboxKind kind, ComposeModel compose, Guid accountId, string? existingId)
     {
+        DuringEnqueue?.Invoke();
         if (!IsAvailable) throw new InvalidOperationException("The Outbox is not available in --online mode.");
         if (EnqueueFailure != null) return Task.FromException<string>(EnqueueFailure);
         var id = existingId ?? OutboxItem.NewId();

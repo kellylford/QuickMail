@@ -115,27 +115,35 @@ public sealed class ConnectionRecoveryTests : IDisposable
     public async Task FindDraftsFolder_OnADroppedConnection_IsAConnectionFailureNotAMissingFolder()
     {
         // #781: the by-name Drafts lookup swallowed every exception, so a dead connection came back
-        // as "this account has no Drafts folder" instead of a failure the compose window keeps the
-        // draft locally for. Either the folder is found (a server advertising special-use answers
-        // without a round trip) or the call fails as a connection failure; null is the regression.
+        // as "this account has no Drafts folder" (null) instead of a failure the compose window keeps
+        // the draft locally for. GreenMail advertises no special-use attributes, so the lookup has to
+        // go by name.
         _greenMail.RequireServers();
         var ct = TestContext.Current.CancellationToken;
         var account = CreateRelayedAccount("drafts-drop");
+
+        // Drafts is created over a separate, direct connection before the service connects, so the
+        // service's client has never listed it: MailKit would otherwise answer the lookup from the
+        // folder cache CREATE filled and never touch the killed socket.
+        using (var direct = new MailKit.Net.Imap.ImapClient())
+        {
+            await direct.ConnectAsync(GreenMailFixture.Host, GreenMailFixture.ImapPort, SecureSocketOptions.None, ct);
+            await direct.AuthenticateAsync(account.Username, "pw", ct);
+            var root = direct.GetFolder(direct.PersonalNamespaces[0]);
+            await root.CreateAsync("Drafts", true, ct);
+            await direct.DisconnectAsync(true, ct);
+        }
 
         using var imap = new ImapMailService(new NoOpOAuthService());
         await imap.ConnectAsync(account, "pw", ct);
         try
         {
-            await imap.CreateFolderAsync(account.Id, null, "Drafts", ct);
             Assert.True(_relay.KillActiveConnections() >= 1, "Kill hit no connections — nothing to recover from.");
 
-            string? found = null;
-            var ex = await Record.ExceptionAsync(async () => found = await imap.FindDraftsFolderNameAsync(account.Id, ct));
+            var ex = await Record.ExceptionAsync(() => imap.FindDraftsFolderNameAsync(account.Id, ct));
 
-            if (ex is null)
-                Assert.Equal("Drafts", found);
-            else
-                Assert.True(ConnectionFailure.IsConnectionFailure(ex, ct), $"Expected a connection failure, got {ex}");
+            Assert.NotNull(ex);
+            Assert.True(ConnectionFailure.IsConnectionFailure(ex, ct), $"Expected a connection failure, got {ex}");
         }
         finally
         {
