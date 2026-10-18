@@ -72,7 +72,8 @@ public class ClientRuleActionsTests
     {
         // Where the server can do it, it still does: a server rule runs while QuickMail is closed.
         var vm = Named();
-        vm.MarkAsRead = true;
+        vm.CopyToFolder = true;
+        vm.CopyToFolderId = "copy-id";
         vm.MoveToFolder = true;
         vm.MoveToFolderId = "folder-id";
 
