@@ -105,7 +105,7 @@ public class ServerOnlyOptionsDisabledTests
         {
             Id = "r1",
             DisplayName = "Forward invoices",
-            ForwardTo = ["ap@contoso.com"],
+            ForwardTo = [new("ap@contoso.com")],
             StopProcessingRules = true,
         });
         vm.AccountSupportsServerRules = false;

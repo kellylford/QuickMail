@@ -49,10 +49,11 @@ public sealed partial class ServerRuleModel : ObservableObject
     // ── Conditions (editable subset) ────────────────────────────────────────
 
     public string? SenderContains { get; set; }
-    public List<string> FromAddresses { get; set; } = [];
+    /// <summary>Senders the rule matches (Graph <c>fromAddresses</c>), each with its display name (#810).</summary>
+    public List<RuleRecipient> FromAddresses { get; set; } = [];
 
     /// <summary>Recipients the message was sent to (Graph <c>sentToAddresses</c>).</summary>
-    public List<string> SentToAddresses { get; set; } = [];
+    public List<RuleRecipient> SentToAddresses { get; set; } = [];
 
     public string? SubjectContains { get; set; }
     public string? BodyOrSubjectContains { get; set; }
@@ -89,7 +90,7 @@ public sealed partial class ServerRuleModel : ObservableObject
     /// <summary>Move to Deleted Items (Graph's <c>delete</c> action — not a permanent delete).</summary>
     public bool Delete { get; set; }
 
-    public List<string> ForwardTo { get; set; } = [];
+    public List<RuleRecipient> ForwardTo { get; set; } = [];
     public bool StopProcessingRules { get; set; }
 
     // ── Round-trip safety ───────────────────────────────────────────────────
@@ -219,8 +220,8 @@ public sealed partial class ServerRuleModel : ObservableObject
     /// reading that wins is the one where the rule acts more widely than it does. A client rule's row
     /// says the same (<see cref="UnifiedRuleRow"/>) — both kinds are read from the one list.
     /// </summary>
-    private static string AnyOf(List<string> addresses)
-        => addresses.Count == 1 ? addresses[0] : "any of " + string.Join(", ", addresses);
+    private static string AnyOf(List<RuleRecipient> addresses)
+        => addresses.Count == 1 ? addresses[0].ToDisplayText() : "any of " + string.Join(", ", addresses.Select(r => r.ToDisplayText()));
 
     private List<string> DescribeActions()
     {
@@ -232,7 +233,7 @@ public sealed partial class ServerRuleModel : ObservableObject
         if (MarkAsRead) a.Add("mark as read");
         if (!string.IsNullOrWhiteSpace(MarkImportance)) a.Add($"set importance to {MarkImportance}");
         if (Delete) a.Add("move to Deleted Items");
-        if (ForwardTo.Count > 0) a.Add($"forward to {string.Join(", ", ForwardTo)}");
+        if (ForwardTo.Count > 0) a.Add($"forward to {string.Join(", ", ForwardTo.Select(r => r.ToDisplayText()))}");
         if (StopProcessingRules) a.Add("stop processing more rules");
         return a;
     }
