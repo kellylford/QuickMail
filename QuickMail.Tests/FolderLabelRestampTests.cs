@@ -1,11 +1,14 @@
 // Issue #451: aggregate-view rows shown before the folder list is known get their source-folder label
 // once the folder list arrives, in place, without the user navigating away and back.
 //
-// The startup All Mail comes up from the message cache. On a profile with no persisted folder list
-// (first launch, a fresh --profileDir, a rebuilt mail.db) the folder lookup misses, so the rows are
-// correctly left unlabelled — never a raw backend id. Before #451 nothing labelled them when the
-// folders arrived, and FolderDisplayName raised no change notification, so even a re-stamp could not
-// have reached the row's accessible name.
+// The startup All Mail comes up from the message cache. When the cache holds rows that the persisted
+// folder list does not cover, the folder lookup misses and the rows are correctly left unlabelled,
+// never given a raw backend id. That happens on the first launch after upgrading from a version
+// before #516 (0.8.38 or earlier), which saved no folder list, or after a folder save that failed or
+// was cut off. A folder renamed on the server (Graph keeps the id, the display name changes) leaves
+// rows with a stale label the same way. Before #451 nothing labelled them again when the folders
+// arrived, and FolderDisplayName raised no change notification, so even a re-stamp could not have
+// reached the row's accessible name.
 
 using System;
 using System.Collections.Generic;
@@ -189,6 +192,42 @@ public class FolderLabelRestampTests
 
         Assert.Equal("Work -- Client work", row.FolderDisplayName);
         Assert.Equal(["w-proj"], changes);
+    }
+
+    [Fact]
+    public async Task RowOnlyInTheDisplayedList_IsRelabelledToo()
+    {
+        // The phase-2 server fetches of All Mail, per-account All Mail and saved views insert their rows
+        // straight into Messages without adding them to the raw list. Those rows are on screen as well.
+        var (vm, _) = MakeVm(persistFolders: false);
+        await vm.InitialLoadAsync();
+        var fromServer = Msg(WorkId, WorkProjectsId, "w-proj-server", 0);
+        vm.Messages.Add(fromServer);
+        Assert.DoesNotContain(vm.LoadedMessages, m => ReferenceEquals(m, fromServer));
+        var changes = WatchLabels([fromServer]);
+
+        await vm.ConnectAllAccountsAsync();
+
+        Assert.Equal("Work -- Projects", fromServer.FolderDisplayName);
+        Assert.Equal(["w-proj-server"], changes);
+    }
+
+    [Fact]
+    public async Task RowsLeftFromThePreviousView_AreNotRelabelled()
+    {
+        // The user has moved to another view whose load has not landed yet: the rows still held were
+        // stamped for All Mail, not for the selected view, and a folder-list rebuild must leave them alone.
+        var (vm, _) = MakeVm(persistFolders: false);
+        await vm.InitialLoadAsync();
+        var shown = vm.Messages.ToList();
+        Assert.All(shown, m => Assert.Equal(string.Empty, m.FolderDisplayName));
+        var changes = WatchLabels(shown);
+
+        vm.SelectedFolder = MainViewModel.AllInboxesFolder;   // selection moved; no load has run
+        await vm.ConnectAllAccountsAsync();
+
+        Assert.All(shown, m => Assert.Equal(string.Empty, m.FolderDisplayName));
+        Assert.Empty(changes);
     }
 
     [Fact]

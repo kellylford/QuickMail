@@ -4521,24 +4521,36 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// #451: re-labels the rows already on screen in an aggregate/virtual view after the folder list
-    /// changes. Rows stamped while <see cref="_cachedFolders"/> did not yet know their folder (a profile
-    /// with no persisted folder list, so the startup All Mail came up from the message cache alone)
-    /// were correctly left blank — never a raw id — and nothing labelled them once the folders arrived,
-    /// so the source folder stayed silent until the user navigated away and back. A rename or a newly
-    /// connected account is caught the same way.
+    /// changes. A row stamped while <see cref="_cachedFolders"/> did not know its folder is correctly
+    /// left blank (never a raw id), and before #451 nothing labelled it once the folders arrived, so
+    /// the source folder stayed silent until the user navigated away and back. That happens when the
+    /// message cache has rows but the persisted folder list does not cover them: the first launch
+    /// after upgrading from a version before #516 (0.8.38 or earlier), which persisted no folder
+    /// list, or a folder save that failed or was cut off. A folder renamed on the server (a Graph
+    /// folder keeps its id and gets a new display name) is relabelled the same way.
     /// <para>Runs on the UI thread: its one caller, <see cref="RebuildFolderListFromCache"/>, replaces
     /// the bound <see cref="Folders"/> collection. O(rows) with the same precomputed lookups as a load,
     /// and only on a folder-list rebuild, never per message; a row whose label is unchanged raises no
     /// PropertyChanged, so an already-labelled list costs no UI work.</para>
+    /// <para>Does not re-run <see cref="MessageDeduplicator.CollapseForAggregate"/>: a Gmail message
+    /// whose representative was picked before folder kinds were known may keep its "[Gmail]/All Mail"
+    /// label until the view is reloaded. That predates #451.</para>
     /// </summary>
     private void RestampDisplayedFolderLabels()
     {
         // Only the aggregate these rows were stamped for: a single real folder's rows carry no label,
         // and rows left over from the previous view mid-navigation (or under the calendar) are not
         // the current view's to label.
-        if (_rawMessagesStampedForView == null || _rawMessages.Count == 0) return;
+        if (_rawMessagesStampedForView == null) return;
         if (!string.Equals(SelectedFolder?.FullName, _rawMessagesStampedForView, StringComparison.Ordinal)) return;
-        ApplyFolderDisplayNames(_rawMessages);
+
+        // _rawMessages and Messages, by reference: the phase-2 server fetches of All Mail, per-account
+        // All Mail and saved views insert their rows straight into Messages without adding them to
+        // _rawMessages, and those rows are on screen too.
+        var rows = _rawMessages.Union(Messages, ReferenceEqualityComparer.Instance)
+                               .Cast<MailMessageSummary>()
+                               .ToList();
+        ApplyFolderDisplayNames(rows);
     }
 
     /// <summary>
