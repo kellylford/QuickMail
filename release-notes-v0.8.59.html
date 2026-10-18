@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.59 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.58.html">Older: 0.8.58</a></div>
+  <h1 id="quickmail-v0.8.59-release-notes">QuickMail v0.8.59 Release
+Notes</h1>
+<p class="version">Released October 18, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.59">downloads for this release</a></p>
+<h2 id="fixed">Fixed</h2>
+<h3
+id="auto-save-no-longer-stops-after-a-save-that-never-finishes">Auto-save
+no longer stops after a save that never finishes</h3>
+<p>If saving a draft hung, for example on a connection that had quietly
+dropped, auto-save stopped for the rest of the session without saying
+so, and edits made after that could be lost. A save that does not finish
+within about 35 seconds is now given up on: the draft is kept on this
+computer, as it already is when you are offline, and auto-save carries
+on. Saving with <strong>Ctrl+S</strong> and saving when you close the
+window give up the same way, so the window can always close. If the
+abandoned save reaches the server later, QuickMail tidies up so you are
+not left with two copies (#781).</p>
+<h3 id="a-sender-is-listed-once-in-a-conversations-properties">A sender
+is listed once in a conversation’s Properties</h3>
+<p><strong>Properties</strong> (<strong>Alt+Enter</strong>) on a
+conversation listed a sender twice in Participants when they had written
+once with a display name and once without: once as their name and
+address, and again as the address alone. They are now listed once, with
+their name. Someone who never gave a name is still listed by their
+address (#814).</p>
+<p>Contributed by <a
+href="https://github.com/valiant8086">valiant8086</a>.</p>
+<h3
+id="address-book-groups-say-which-group-they-are-and-how-many-members-they-have">Address
+book groups say which group they are, and how many members they
+have</h3>
+<p>In the address book’s Groups list and in the Group Manager, a group
+with no members was shown and read as just “Empty group”, so several
+empty groups could not be told apart. It now gives its name first, such
+as “Work, no members” (#649).</p>
+<p>The member count beside each group’s name in the address book was
+never drawn on screen. It now shows beside the name, and the heading
+above the member list reads “Members of Work”. Screen readers now read
+both headings as shown, instead of a fixed label (#650).</p>
+<h3
+id="rows-in-all-mail-say-their-folder-as-soon-as-the-folder-list-arrives">Rows
+in All Mail say their folder as soon as the folder list arrives</h3>
+<p>In All Mail and the other views that gather several folders, each
+message says which folder it is in. When the message list appeared
+before QuickMail knew the folder names, such as on the first start after
+an upgrade, those messages said no folder until you left the view and
+came back. They now pick up the folder as soon as the list arrives, and
+pick up a folder’s new name when it is renamed (#451).</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.58.html">Older: 0.8.58</a></div>
+</body>
+</html>

@@ -248,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.58</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.59</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -2830,8 +2830,9 @@ are invalid.</p>
 <p>QuickMail saves your compose as a draft automatically every 2 minutes
 (on by default). A quiet status line in the compose window shows
 “Auto-saved 3:42 PM” after each save — no announcement interrupts your
-writing. When the server cannot be reached, the status line reads “Kept
-on this computer 3:42 PM” instead and that is announced once; see <a
+writing. When the server cannot be reached, or a save has not finished
+after about 35 seconds, the status line reads “Kept on this computer
+3:42 PM” instead and that is announced once; see <a
 href="#working-offline-drafts-and-the-outbox">Working Offline: Drafts
 and the Outbox</a>. If a save fails entirely, it is announced once. You
 can check the last auto-save time from the command palette:
