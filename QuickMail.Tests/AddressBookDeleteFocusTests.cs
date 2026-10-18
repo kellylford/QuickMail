@@ -572,10 +572,11 @@ public class AddressBookDeleteFocusWindowTests
             var list = window.FindName("GroupsList") as ListView;
             Assert.NotNull(list);
             var before = vm.Groups.ToList();
-            vm.ConfirmRequested += (_, _) => Task.FromResult(true);
             FocusRow(list!, before[0]);
 
-            Pump(((IAsyncRelayCommand)vm.DeleteGroupCommand).ExecuteAsync(null));
+            // The confirmed half of Delete Group: the command would raise ConfirmRequested, which
+            // this window answers with a real MessageBox that nothing here could dismiss.
+            Pump(vm.DeleteGroupConfirmedAsync(before[0]));
             Drain();
 
             var focused = Keyboard.FocusedElement as ListViewItem;
@@ -601,12 +602,12 @@ public class AddressBookDeleteFocusWindowTests
             var newGroup = window.FindName("NewGroupButton") as Button;
             Assert.NotNull(list);
             Assert.NotNull(newGroup);
-            vm.ConfirmRequested += (_, _) => Task.FromResult(true);
 
             foreach (var _ in vm.Groups.ToList())
             {
-                FocusRow(list!, vm.Groups[0]);
-                Pump(((IAsyncRelayCommand)vm.DeleteGroupCommand).ExecuteAsync(null));
+                var group = vm.Groups[0];
+                FocusRow(list!, group);
+                Pump(vm.DeleteGroupConfirmedAsync(group));
             }
 
             Assert.Empty(vm.Groups);

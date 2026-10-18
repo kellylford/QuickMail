@@ -614,6 +614,16 @@ public partial class AddressBookViewModel : ObservableObject
         };
         var confirmed = await RequestConfirmAsync("Confirm", body);
         if (!confirmed) return;
+        await DeleteGroupConfirmedAsync(g);
+    }
+
+    /// <summary>
+    /// Deletes <paramref name="g"/> once the user has confirmed, leaving selection and keyboard
+    /// focus on the neighbouring group (issue #265). Public, like <see cref="DeleteConfirmedAsync"/>,
+    /// so the window-level focus tests can reach the deletion without the window's confirmation box.
+    /// </summary>
+    public async Task DeleteGroupConfirmedAsync(GroupModel g)
+    {
         await _contactService.DeleteGroupAsync(g.Id);
         var deletedName = g.Name;
 
