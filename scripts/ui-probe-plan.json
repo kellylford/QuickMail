@@ -12,6 +12,21 @@
       "scale": 100
     },
     {
+      "surface": "reading-pane-attachment",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "reading-pane-attachment-selected",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "compose-attachment",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
       "surface": "compose",
       "theme": "parchment",
       "scale": 100
@@ -93,6 +108,21 @@
     },
     {
       "surface": "reading-pane",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "reading-pane-attachment",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "reading-pane-attachment-selected",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "compose-attachment",
       "theme": "dark",
       "scale": 100
     },
@@ -178,6 +208,11 @@
     },
     {
       "surface": "reading-pane",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "reading-pane-attachment",
       "theme": "parchment",
       "scale": 150
     },

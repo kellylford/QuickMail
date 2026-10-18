@@ -68,8 +68,7 @@
                                     FontSize="{DynamicResource Theme.FontSizeSmall}"
                                     Tag="{Binding}"
                                     Click="CloseTabButton_Click"
-                                    AutomationProperties.Name="Close this tab"
-                                    ToolTip="Close tab"/>
+                                    AutomationProperties.Name="Close this tab"/>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
