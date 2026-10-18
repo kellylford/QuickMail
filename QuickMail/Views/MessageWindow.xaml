@@ -213,6 +213,7 @@
                                       FallbackValue=Collapsed}"
                          KeyboardNavigation.TabNavigation="Once"
                          KeyboardNavigation.DirectionalNavigation="Contained"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          AutomationProperties.Name="Attachments"
                          PreviewKeyDown="AttachmentList_PreviewKeyDown"
                          GotKeyboardFocus="AttachmentList_GotKeyboardFocus"
@@ -224,13 +225,17 @@
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <!-- Size as visible text, not a tooltip (issue #825). -->
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding FileName}"/>
-                                <TextBlock Text="{Binding FileSizeDisplay}"
+                            <!-- Size as visible text, not a tooltip (issue #825). Docked right so a long
+                                 file name trims with an ellipsis instead of pushing the size off the row. The
+                                 container's AccessibleName still reads "name, size". -->
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right"
+                                           Text="{Binding FileSizeDisplay}"
                                            Style="{StaticResource RowSecondaryText}"
                                            Margin="8,0,0,0"/>
-                            </StackPanel>
+                                <TextBlock Text="{Binding FileName}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </DockPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                     <ListBox.ContextMenu>

@@ -64,8 +64,9 @@ public class MessageListToolTipTests
     //
     // The attachment lists refill when the user moves to another message (Alt+Down in the reading
     // pane) or adds a file in compose, and the tab strip's headers shift whenever a tab opens or
-    // closes. A row tooltip in any of them opens under a resting pointer just as #638's did. The
-    // attachment rows used to keep the file size only in a tooltip; it is now visible text.
+    // closes (and the Open Tabs list loses a row when one is closed from it). A row tooltip in any
+    // of them opens under a resting pointer just as #638's did. The attachment rows used to keep
+    // the file size only in a tooltip; it is now visible text.
 
     /// <summary>(XAML file under Views/, x:Name of the list) for every list guarded for #825.</summary>
     public static readonly TheoryData<string, string> ShiftingRowLists = new()
@@ -74,6 +75,7 @@ public class MessageListToolTipTests
         { "MessageWindow.xaml", "AttachmentList" },
         { "ComposeWindow.xaml", "AttachmentList" },
         { "MainWindow.xaml",    "TabStrip" },
+        { "TabListWindow.xaml", "TabList" },
     };
 
     [Theory]
@@ -115,11 +117,25 @@ public class MessageListToolTipTests
         Assert.Contains("{Binding FileSizeDisplay}", texts);
         Assert.Contains("{Binding FileName}", texts);
 
+        // A long file name trims rather than pushing the size off the row: the size is docked
+        // right, the name ellipsizes, and the list does not scroll sideways (a horizontal
+        // ScrollViewer measures rows at infinite width, so nothing would ever trim).
+        var size = TextBlockBound(template, "{Binding FileSizeDisplay}");
+        var fileName = TextBlockBound(template, "{Binding FileName}");
+        Assert.Equal("Right", (string?)size.Attribute("DockPanel.Dock"));
+        Assert.Equal("CharacterEllipsis", (string?)fileName.Attribute("TextTrimming"));
+        Assert.Equal("Disabled", (string?)list.Attribute("ScrollViewer.HorizontalScrollBarVisibility"));
+
         // Its themed secondary style: Theme.TextSecondary while unselected, the row's own
-        // foreground when selected (both contrast-checked by BuiltInThemeTests).
-        var size = template.Descendants().First(e => e.Name.LocalName == "TextBlock"
-                                                    && (string?)e.Attribute("Text") == "{Binding FileSizeDisplay}");
+        // foreground when selected. BuiltInThemeTests holds those colours to 4.5:1 against the
+        // theme's backgrounds, which is only true while the list draws a themed background — so
+        // a local ListBox.Style must be BasedOn the themed one. Without BasedOn it replaces the
+        // theme's style and the list falls back to stock white, where the dark theme's secondary
+        // text measured about 2:1 (compose's list did exactly that).
         Assert.Equal("{StaticResource RowSecondaryText}", (string?)size.Attribute("Style"));
+        foreach (var localStyle in list.Elements().Where(e => e.Name.LocalName == "ListBox.Style")
+                                       .SelectMany(e => e.Elements().Where(c => c.Name.LocalName == "Style")))
+            Assert.Equal("{StaticResource {x:Type ListBox}}", (string?)localStyle.Attribute("BasedOn"));
 
         // The spoken name stays on the container, as "name, size" — never on a template child,
         // which would not be read (see AddressBookRowSpeechTests).
@@ -157,13 +173,20 @@ public class MessageListToolTipTests
     }
 
     /// <summary>
-    /// The list's subtree minus its GridView column headers. A column header tooltip opens only
-    /// when the pointer rests on the header row, which does not scroll, so it is not this bug.
-    /// Only GridViewColumn.Header is excluded: any other header (an Expander's, say) inside a row
-    /// template scrolls with the rows and is still checked.
+    /// The list's subtree minus its GridView column headers and its context menus. A column header
+    /// tooltip opens only when the pointer rests on the header row, which does not scroll, and a
+    /// context menu's items are not rows, so neither is this bug. Only GridViewColumn.Header is
+    /// excluded among headers: any other header (an Expander's, say) inside a row template
+    /// scrolls with the rows and is still checked.
     /// </summary>
     private static IEnumerable<XElement> RowContent(XElement list) =>
-        list.DescendantsAndSelf().Where(e => !e.AncestorsAndSelf().Any(a => a.Name.LocalName == "GridViewColumn.Header"));
+        list.DescendantsAndSelf().Where(e => !e.AncestorsAndSelf().Any(a =>
+            a.Name.LocalName == "GridViewColumn.Header"
+            || a.Name.LocalName == "ContextMenu"
+            || a.Name.LocalName.EndsWith(".ContextMenu", StringComparison.Ordinal)));
+
+    private static XElement TextBlockBound(XElement root, string binding) =>
+        root.Descendants().Single(e => e.Name.LocalName == "TextBlock" && (string?)e.Attribute("Text") == binding);
 
     private static IEnumerable<string> ToolTipsOn(XElement element)
     {

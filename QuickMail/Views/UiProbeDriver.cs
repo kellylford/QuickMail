@@ -106,6 +106,22 @@ internal sealed class UiProbeDriver
             case "reading-pane-attachment":
                 return await CaptureReadingPaneAsync(path, UiProbeFixture.AttachmentMessageId);
 
+            // The same with the first (long-named) attachment selected and focused, to check the
+            // size stays readable on a selected row.
+            case "reading-pane-attachment-selected":
+                return await CaptureReadingPaneAsync(path, UiProbeFixture.AttachmentMessageId,
+                    SelectFirstReadingPaneAttachment);
+
+            case "compose-attachment":
+                return await CaptureChildWindowAsync(() => ExecuteCommand("mail.new"),
+                    w => w is ComposeWindow, path,
+                    w =>
+                    {
+                        if (w.DataContext is not ComposeViewModel vm) return;
+                        vm.Attachments.Add(new AttachmentModel { FileName = UiProbeFixture.LongAttachmentName, FileSize = 3_250_586 });
+                        vm.Attachments.Add(new AttachmentModel { FileName = "notes.txt", FileSize = 812 });
+                    });
+
             case "calendar":
                 ExecuteCommand("view.calendar");
                 await IdleAsync();
@@ -210,7 +226,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, reading-pane-attachment-selected, compose-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }
@@ -223,11 +239,12 @@ internal sealed class UiProbeDriver
     }
 
     /// <summary>
-    /// Selects the fixture HTML message and awaits the window's render-complete
+    /// Opens the given fixture message (the HTML message, or the one with attachments)
+    /// and awaits the window's render-complete
     /// signal (WebView2 NavigationCompleted + an idle turn) — the strongest
     /// settle signal available, per spec Decision F.
     /// </summary>
-    private async Task<bool> CaptureReadingPaneAsync(string path, string messageId)
+    private async Task<bool> CaptureReadingPaneAsync(string path, string messageId, Action? afterRender = null)
     {
         var rendered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnRendered() => rendered.TrySetResult(true);
@@ -246,12 +263,29 @@ internal sealed class UiProbeDriver
                 return false;
             }
             await IdleAsync();
+            if (afterRender != null)
+            {
+                afterRender();
+                await IdleAsync();
+            }
             return await CaptureSettledAsync(_window, path);
         }
         finally
         {
             _window.MessageBodyRendered -= OnRendered;
         }
+    }
+
+    private void SelectFirstReadingPaneAttachment()
+    {
+        if (_window.FindName("ReadingPaneAttachmentList") is not ListBox list || list.Items.Count == 0)
+        {
+            LogService.Log("ui-probe: reading-pane attachment list missing or empty.");
+            return;
+        }
+        list.SelectedIndex = 0;
+        list.UpdateLayout();
+        (list.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem)?.Focus();
     }
 
     /// <summary>

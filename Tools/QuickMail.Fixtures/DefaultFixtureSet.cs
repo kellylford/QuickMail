@@ -111,6 +111,13 @@ public static class DefaultFixtureSet
             [
                 new AttachmentModel
                 {
+                    FileName = UiProbeFixture.LongAttachmentName,
+                    ContentType = "application/pdf",
+                    FileSize = 3_250_586,
+                    PartSpecifier = "3",
+                },
+                new AttachmentModel
+                {
                     FileName = "Q4-report.pdf",
                     ContentType = "application/pdf",
                     FileSize = 245_760,

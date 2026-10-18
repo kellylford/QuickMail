@@ -1229,7 +1229,9 @@
                                 <Setter Property="Margin" Value="0,0,1,0"/>
                                 <!-- No ToolTip (issue #825): opening or closing a tab shifts the headers under a
                                      resting pointer, and screen readers speak whichever tooltip opens. Selecting
-                                     the tab shows its subject in full, in the message and the window title. -->
+                                     the tab shows its subject in full, in the message and the window title.
+                                     The close button's "Close tab" tooltip went for the same reason; its
+                                     accessible name, "Close this tab", is unchanged. -->
                                 <Setter Property="AutomationProperties.Name" Value="{Binding Title}"/>
                             </Style>
                         </ListBox.ItemContainerStyle>
@@ -1327,6 +1329,7 @@
                                                   FallbackValue=Collapsed}"
                                      KeyboardNavigation.TabNavigation="Once"
                                      KeyboardNavigation.DirectionalNavigation="Contained"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                      AutomationProperties.Name="Attachments"
                                      PreviewKeyDown="ReadingPaneAttachmentList_PreviewKeyDown"
                                      GotKeyboardFocus="ReadingPaneAttachmentList_GotKeyboardFocus"
@@ -1338,15 +1341,19 @@
                                 </ListBox.ItemContainerStyle>
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <!-- The size is visible text, not a tooltip (issue #825): a row tooltip opens
+                                        <!-- Size as visible text, not a tooltip (issue #825): a row tooltip opens
                                              when the list refills under a resting pointer, and screen readers speak it.
-                                             The container's AccessibleName already reads "name, size". -->
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding FileName}"/>
-                                            <TextBlock Text="{Binding FileSizeDisplay}"
+                                             Docked right so a long file name trims with an ellipsis instead of pushing
+                                             the size off the row. The container's AccessibleName still reads
+                                             "name, size". -->
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Right"
+                                                       Text="{Binding FileSizeDisplay}"
                                                        Style="{StaticResource RowSecondaryText}"
                                                        Margin="8,0,0,0"/>
-                                        </StackPanel>
+                                            <TextBlock Text="{Binding FileName}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </DockPanel>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                                 <ListBox.ContextMenu>
