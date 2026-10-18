@@ -120,7 +120,10 @@ internal sealed class UiProbeDriver
                         if (w.DataContext is not ComposeViewModel vm) return;
                         vm.Attachments.Add(new AttachmentModel { FileName = UiProbeFixture.LongAttachmentName, FileSize = 3_250_586 });
                         vm.Attachments.Add(new AttachmentModel { FileName = "notes.txt", FileSize = 812 });
-                    });
+                    },
+                    // Take them off again before the close, or it stops to ask about the unsaved
+                    // draft and the probe times out.
+                    cleanup: w => (w.DataContext as ComposeViewModel)?.Attachments.Clear());
 
             case "calendar":
                 ExecuteCommand("view.calendar");
@@ -293,7 +296,7 @@ internal sealed class UiProbeDriver
     /// for the window to appear and settle, captures it, and closes it.
     /// </summary>
     private async Task<bool> CaptureChildWindowAsync(Action open, Func<Window, bool> match,
-        string path, Action<Window>? prepare = null)
+        string path, Action<Window>? prepare = null, Action<Window>? cleanup = null)
     {
         // Modal ShowDialog would block this method if called directly — fire it
         // through the dispatcher and poll from within whatever loop is pumping.
@@ -320,6 +323,7 @@ internal sealed class UiProbeDriver
         {
             // Always close: a leaked modal child would leave its nested message
             // loop running while RunAsync tries to shut the app down.
+            try { cleanup?.Invoke(child); } catch (Exception ex) { LogService.Debug($"ui-probe: child cleanup failed: {ex.Message}"); }
             try { child.Close(); } catch (Exception ex) { LogService.Debug($"ui-probe: child close failed: {ex.Message}"); }
             await IdleAsync();
         }

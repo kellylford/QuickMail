@@ -448,7 +448,7 @@
                             <TextBlock DockPanel.Dock="Right"
                                        Text="{Binding FileSizeDisplay}"
                                        Style="{StaticResource RowSecondaryText}"
-                                       Margin="8,0,0,0"/>
+                                       Margin="8,0,4,0"/>
                             <TextBlock Text="{Binding FileName}"
                                        TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
