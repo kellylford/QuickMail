@@ -123,11 +123,11 @@ internal static class ServerRuleMapper
                     case "bodyorsubjectcontains": m.BodyOrSubjectContains = FirstString(p.Value); break;
                     case "fromaddresses":
                         if (Recipients(p.Value) is { } from) m.FromAddresses = from;
-                        else unsupported.Add($"{Friendly(p.Name)} (an entry without an address)");
+                        else unsupported.Add($"{Friendly(p.Name)} (an entry QuickMail can't represent)");
                         break;
                     case "senttoaddresses":
                         if (Recipients(p.Value) is { } sentTo) m.SentToAddresses = sentTo;
-                        else unsupported.Add($"{Friendly(p.Name)} (an entry without an address)");
+                        else unsupported.Add($"{Friendly(p.Name)} (an entry QuickMail can't represent)");
                         break;
                     case "senttome": m.SentToMe = p.Value.ValueKind == JsonValueKind.True; break;
                     case "sentonlytome": m.SentOnlyToMe = p.Value.ValueKind == JsonValueKind.True; break;
@@ -153,7 +153,7 @@ internal static class ServerRuleMapper
                     case "delete": m.Delete = p.Value.ValueKind == JsonValueKind.True; break;
                     case "forwardto":
                         if (Recipients(p.Value) is { } forward) m.ForwardTo = forward;
-                        else unsupported.Add($"{Friendly(p.Name)} (an entry without an address)");
+                        else unsupported.Add($"{Friendly(p.Name)} (an entry QuickMail can't represent)");
                         break;
                     case "stopprocessingrules": m.StopProcessingRules = p.Value.ValueKind == JsonValueKind.True; break;
                 }
@@ -251,8 +251,10 @@ internal static class ServerRuleMapper
 
     /// <summary>
     /// Reads a Graph recipient collection, keeping each entry's display name with its address (#810).
-    /// Returns null when an entry has no address: the model cannot hold it, so saving would drop it, and
-    /// the caller gates the rule as view-only rather than let that happen.
+    /// Returns null when an entry has no address, or an address holding a separator, quotation mark or angle
+    /// bracket (an unresolved Outlook entry can store a name such as "Ford, Kelly" as its address). The model
+    /// cannot hold the first, and the editor would read the second back as two entries, so saving would drop
+    /// or split it; the caller gates the rule as view-only rather than let that happen.
     /// </summary>
     private static List<RuleRecipient>? Recipients(JsonElement v)
     {
@@ -265,7 +267,8 @@ internal static class ServerRuleMapper
                 ea.ValueKind != JsonValueKind.Object ||
                 !ea.TryGetProperty("address", out var addr) ||
                 addr.ValueKind != JsonValueKind.String ||
-                string.IsNullOrWhiteSpace(addr.GetString()))
+                string.IsNullOrWhiteSpace(addr.GetString()) ||
+                addr.GetString()!.IndexOfAny([',', ';', '"', '<', '>']) >= 0)
             {
                 return null;
             }

@@ -78,7 +78,22 @@ public class ServerRuleRecipientNameTests
             """));
 
         Assert.False(model.IsFullyEditable);
-        Assert.Contains("from addresses (an entry without an address)", model.UnsupportedFields);
+        Assert.Contains("from addresses (an entry QuickMail can't represent)", model.UnsupportedFields);
+    }
+
+    [Theory]
+    [InlineData("""{ "sentToAddresses": [ { "emailAddress": { "name": "No address" } } ] }""", """{ "moveToFolder": "F1" }""", "sent to addresses")]
+    [InlineData("""{ "subjectContains": ["x"] }""", """{ "forwardTo": [ { "emailAddress": { "address": "" } } ] }""", "forward to")]
+    [InlineData("""{ "fromAddresses": [ "not-an-object" ] }""", """{ "moveToFolder": "F1" }""", "from addresses")]
+    [InlineData("""{ "fromAddresses": [ { "emailAddress": { "name": "Ford, Kelly", "address": "Ford, Kelly" } } ] }""", """{ "moveToFolder": "F1" }""", "from addresses")]
+    public void ToModel_ARecipientTheEditorCannotHold_MakesTheRuleViewOnly(string conditions, string actions, string field)
+    {
+        // An address holding a comma (an unresolved Outlook entry stores the name there) would come back
+        // from the editor as two entries; one with no address would be dropped. Either is a silent rewrite.
+        var model = ServerRuleMapper.ToModel(Dto(conditions, actions));
+
+        Assert.False(model.IsFullyEditable);
+        Assert.Contains($"{field} (an entry QuickMail can't represent)", model.UnsupportedFields);
     }
 
     // ── Model → Graph ────────────────────────────────────────────────────────
@@ -203,6 +218,72 @@ public class ServerRuleRecipientNameTests
         var rule = editor.ToClientRule(Guid.NewGuid());
 
         Assert.Equal(["kelly@contoso.com", "boss@contoso.com"], rule.FromAddresses);
+    }
+
+    [Fact]
+    public void ANameDifferingFromItsAddressOnlyInCase_IsKeptAsItIs()
+    {
+        var model = ServerRuleMapper.ToModel(Dto(
+            """{ "fromAddresses": [ { "emailAddress": { "name": "Kelly@Contoso.com", "address": "kelly@contoso.com" } } ] }"""));
+
+        Assert.Equal([("Kelly@Contoso.com", "kelly@contoso.com")],
+            Entries(Wire(ServerRuleEditorViewModel.ForEdit(model).ToModel()).GetProperty("conditions").GetProperty("fromAddresses")));
+    }
+
+    [Theory]
+    [InlineData("a@b.com, \"c@d.com, e@f.com", "From addresses has a quotation mark or < that is never closed.")]
+    [InlineData("Bob <bob@x.com, c@d.com", "From addresses has a quotation mark or < that is never closed.")]
+    [InlineData("a@b.com, Nobody <>", "From addresses has an entry with no address.")]
+    public void AnAddressBoxThatCantBeReadAsItLooks_IsRefusedOnSave(string from, string error)
+    {
+        // Read quietly, these would save one long "address" that matches nothing, or lose an entry.
+        var editor = ServerRuleEditorViewModel.ForNew();
+        editor.Name = "Rule";
+        editor.UseSubjectContains = true;
+        editor.SubjectContains = "x";
+        editor.UseFromAddresses = true;
+        editor.FromAddresses = from;
+        editor.Delete = true;
+        string? announced = null;
+        editor.AnnouncementRequested += (text, _) => announced = text;
+
+        Assert.False(editor.Validate());
+        Assert.Equal(error, editor.AddressError);
+        Assert.Contains(error, announced, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AProblemInASwitchedOffAddressBox_DoesNotBlockSaving()
+    {
+        var editor = ServerRuleEditorViewModel.ForNew();
+        editor.Name = "Rule";
+        editor.UseSubjectContains = true;
+        editor.SubjectContains = "x";
+        editor.UseFromAddresses = false;
+        editor.FromAddresses = "Bob <bob@x.com";
+        editor.Delete = true;
+
+        Assert.True(editor.Validate());
+        Assert.Equal(string.Empty, editor.AddressError);
+    }
+
+    [Fact]
+    public void AnUnclosedForwardTo_IsRefusedOnSave()
+    {
+        var editor = ServerRuleEditorViewModel.ForNew();
+        editor.Name = "Rule";
+        editor.ForwardTo = "\"Home <me@home.example>";
+
+        Assert.False(editor.Validate());
+        Assert.Equal("Forward to has a quotation mark or < that is never closed.", editor.AddressError);
+    }
+
+    [Fact]
+    public void ABareQuotedEntry_MeansTheTextInsideTheQuotes()
+    {
+        // In a client rule's From box, a display name with a comma is written in quotes so the comma
+        // separates nothing; the quotation marks themselves are not part of what to match.
+        Assert.Equal([new RuleRecipient("Ford, Kelly")], RuleRecipient.ParseList("\"Ford, Kelly\""));
     }
 
     // ── Presentation ─────────────────────────────────────────────────────────

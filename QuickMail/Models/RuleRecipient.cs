@@ -24,7 +24,7 @@ public sealed record RuleRecipient(string Address, string? Name = null)
     /// <summary>True when the entry has a name that says something the address does not. A name equal to the
     /// address (Exchange's form for an address-only entry) is not shown, so the editor reads exactly as it did.</summary>
     public bool HasDistinctName
-        => !string.IsNullOrWhiteSpace(Name) && !string.Equals(Name.Trim(), Address, StringComparison.OrdinalIgnoreCase);
+        => !string.IsNullOrWhiteSpace(Name) && !string.Equals(Name.Trim(), Address, StringComparison.Ordinal);
 
     /// <summary>
     /// The entry as the editor's address box shows it: <c>Name &lt;address&gt;</c>, or the bare address
@@ -56,15 +56,35 @@ public sealed record RuleRecipient(string Address, string? Name = null)
         var list = new List<RuleRecipient>();
         if (string.IsNullOrWhiteSpace(text)) return list;
 
-        foreach (var token in SplitEntries(text))
+        foreach (var token in SplitEntries(text, out _))
         {
             if (ParseEntry(token) is { } recipient) list.Add(recipient);
         }
         return list;
     }
 
-    private static IEnumerable<string> SplitEntries(string text)
+    /// <summary>
+    /// What is wrong with an address box that <see cref="ParseList"/> would otherwise read quietly into
+    /// something the user did not mean, or null when nothing is. A quote or <c>&lt;</c> left open swallows
+    /// every entry after it into one, and <c>Name &lt;&gt;</c> has no address to keep; both would save a
+    /// rule that matches less than it says, without a word, so the editor refuses them instead.
+    /// </summary>
+    public static string? FindProblem(string? text)
     {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var entries = SplitEntries(text, out var unclosed);
+        if (unclosed) return "has a quotation mark or < that is never closed";
+        foreach (var token in entries)
+        {
+            var t = token.Trim();
+            if (t.Length > 0 && ParseEntry(t) is null) return "has an entry with no address";
+        }
+        return null;
+    }
+
+    private static List<string> SplitEntries(string text, out bool unclosed)
+    {
+        var entries = new List<string>();
         var sb = new StringBuilder();
         var inQuotes = false;
         var inAngle = false;
@@ -82,13 +102,15 @@ public sealed record RuleRecipient(string Address, string? Name = null)
             else if (ch == '>' && !inQuotes) inAngle = false;
             else if ((ch == ',' || ch == ';') && !inQuotes && !inAngle)
             {
-                yield return sb.ToString();
+                entries.Add(sb.ToString());
                 sb.Clear();
                 continue;
             }
             sb.Append(ch);
         }
-        yield return sb.ToString();
+        entries.Add(sb.ToString());
+        unclosed = inQuotes || inAngle;
+        return entries;
     }
 
     private static RuleRecipient? ParseEntry(string token)
@@ -105,7 +127,10 @@ public sealed record RuleRecipient(string Address, string? Name = null)
             return new RuleRecipient(address, string.IsNullOrWhiteSpace(name) ? null : name);
         }
 
-        return new RuleRecipient(t);
+        // A bare entry written in quotes ("Ford, Kelly", so the comma separates nothing) means the text
+        // inside them: kept whole, the quotation marks would be part of a value no header contains.
+        var bare = Unquote(t);
+        return bare.Length == 0 ? null : new RuleRecipient(bare);
     }
 
     private static string Unquote(string s)

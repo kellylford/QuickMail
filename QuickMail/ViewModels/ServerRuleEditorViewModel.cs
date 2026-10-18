@@ -425,6 +425,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [ObservableProperty] private string _nameError = string.Empty;
     [ObservableProperty] private string _folderError = string.Empty;
     [ObservableProperty] private string _actionsError = string.Empty;
+    /// <summary>An address box that can't be read as the entries it appears to hold (#810), shown on the form.</summary>
+    [ObservableProperty] private string _addressError = string.Empty;
     /// <summary>A server-side save failure (e.g. Graph rejected the rule), shown on the form.</summary>
     [ObservableProperty] private string _saveError = string.Empty;
 
@@ -668,8 +670,22 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     public bool Validate()
     {
-        NameError = FolderError = ActionsError = string.Empty;
+        NameError = FolderError = ActionsError = AddressError = string.Empty;
         var valid = true;
+
+        // An address box with a quote or < left open would save as one long "address" that matches nothing,
+        // swallowing every entry after it, and "Name <>" would quietly lose its entry. Only the boxes in use
+        // count: a switched-off condition never reaches the saved rule (#665).
+        var addressProblems = new[]
+            {
+                ("From addresses", UseFromAddresses ? FromAddresses : null),
+                ("Sent to addresses", UseSentToAddresses ? SentToAddresses : null),
+                ("Forward to", ForwardTo),
+            }
+            .Select(f => RuleRecipient.FindProblem(f.Item2) is { } problem ? $"{f.Item1} {problem}." : null)
+            .Where(p => p is not null);
+        AddressError = string.Join(" ", addressProblems);
+        if (AddressError.Length > 0) valid = false;
 
         if (string.IsNullOrWhiteSpace(Name))
         {
@@ -735,7 +751,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
         if (!valid)
         {
-            var errors = new[] { NameError, FolderError, ActionsError }.Where(e => !string.IsNullOrEmpty(e));
+            var errors = new[] { NameError, AddressError, FolderError, ActionsError }.Where(e => !string.IsNullOrEmpty(e));
             AnnouncementRequested?.Invoke(string.Join(" ", errors), AnnouncementCategory.Result);
         }
 
@@ -952,6 +968,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// matches on. Read the way a server rule's save reads it (<see cref="RuleRecipient.ParseList"/>), so
     /// the box means one thing whichever kind of rule it lands in: an entry written "Name &lt;address&gt;"
     /// counts once and contributes its address, and a quoted name's comma separates nothing (#810).
+    /// <para>
+    /// Deliberately the address alone. A client rule that an older build saved holding a whole
+    /// "Name &lt;address&gt;" value required both the name and the address to match; saved again from here
+    /// it requires the address, which still matches on the sender's real address and is what the box
+    /// now means for every other entry.
+    /// </para>
     /// </summary>
     private static List<string> SplitAddresses(string text)
         => RuleRecipient.ParseList(text).Select(r => r.Address).ToList();
