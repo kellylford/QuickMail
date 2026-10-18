@@ -2,6 +2,16 @@
 
 ## Fixed
 
+### Auto-save no longer stops after a save that never finishes
+
+If saving a draft hung, for example on a connection that had quietly dropped, auto-save stopped
+for the rest of the session without saying so, and edits made after that could be lost. A save
+that does not finish within about 35 seconds is now given up on: the draft is kept on this
+computer, as it already is when you are offline, and auto-save carries on. Saving with **Ctrl+S**
+and saving when you close the window give up the same way, so the window can always close. If the
+abandoned save reaches the server later, QuickMail tidies up so you are not left with two copies
+(#781).
+
 ### A sender is listed once in a conversation's Properties
 
 **Properties** (**Alt+Enter**) on a conversation listed a sender twice in Participants when they
@@ -26,7 +36,8 @@ Screen readers now read both headings as shown, instead of a fixed label (#650).
 In All Mail and the other views that gather several folders, each message says which folder it is
 in. When the message list appeared before QuickMail knew the folder names, such as on the first
 start after an upgrade, those messages said no folder until you left the view and came back. They
-now pick up the folder as soon as the list arrives, and when a folder is renamed (#451).
+now pick up the folder as soon as the list arrives, and pick up a folder's new name when it is
+renamed (#451).
 
 ## Reporting Issues
 

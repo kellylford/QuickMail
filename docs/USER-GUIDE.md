@@ -1150,7 +1150,7 @@ Press `Ctrl+K` in the To, Cc, or Bcc field (anywhere outside the message body, w
 
 ### Auto-Save Drafts
 
-QuickMail saves your compose as a draft automatically every 2 minutes (on by default). A quiet status line in the compose window shows "Auto-saved 3:42 PM" after each save — no announcement interrupts your writing. When the server cannot be reached, the status line reads "Kept on this computer 3:42 PM" instead and that is announced once; see [Working Offline: Drafts and the Outbox](#working-offline-drafts-and-the-outbox). If a save fails entirely, it is announced once. You can check the last auto-save time from the command palette: **Ctrl+Shift+P → Announce Last Auto-Save**.
+QuickMail saves your compose as a draft automatically every 2 minutes (on by default). A quiet status line in the compose window shows "Auto-saved 3:42 PM" after each save — no announcement interrupts your writing. When the server cannot be reached, or a save has not finished after about 35 seconds, the status line reads "Kept on this computer 3:42 PM" instead and that is announced once; see [Working Offline: Drafts and the Outbox](#working-offline-drafts-and-the-outbox). If a save fails entirely, it is announced once. You can check the last auto-save time from the command palette: **Ctrl+Shift+P → Announce Last Auto-Save**.
 
 Control auto-save in **Settings → General → Composing**: turn it off, change the interval (30 seconds to 10 minutes), and set the default compose mode for new messages.
 
