@@ -283,7 +283,7 @@ public class ContactServiceGroupTestsV2
         {
             var empty = await service.CreateGroupAsync("Empty");
             var e = (await service.LoadAllGroupsAsync()).First(g => g.Id == empty);
-            Assert.Equal("Empty group", e.Display);
+            Assert.Equal("Empty, no members", e.Display);
 
             await service.UpsertContactAsync(MakeContact("Alice"));
             var one = await service.CreateGroupAsync("One");

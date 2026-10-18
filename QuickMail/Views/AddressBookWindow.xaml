@@ -330,7 +330,7 @@
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                                         <TextBlock Text="  "/>
-                                        <TextBlock Text="{Binding Display, Converter={x:Static local:GroupSubtitleConverter.Instance}}"
+                                        <TextBlock Text="{Binding MemberSummary}"
                                                    Opacity="0.75"/>
                                     </StackPanel>
                                 </DataTemplate>
@@ -341,7 +341,7 @@
                     <!-- Right: members of selected group + insert buttons -->
                     <DockPanel Grid.Row="0" Grid.Column="1" Margin="8,0,0,0">
                         <TextBlock DockPanel.Dock="Top"
-                                   Text="{Binding SelectedGroup.Display, StringFormat='Members of {0}'}"
+                                   Text="{Binding SelectedGroup.Name, StringFormat='Members of {0}'}"
                                    FontWeight="SemiBold"
                                    Margin="0,0,0,3"
                                    AutomationProperties.Name="Group member list header"/>
