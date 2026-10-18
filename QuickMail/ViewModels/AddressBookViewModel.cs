@@ -828,7 +828,6 @@ public partial class AddressBookViewModel : ObservableObject
 
     private async Task DeleteSelectedContactsCoreAsync(IReadOnlyList<ContactModel> selected)
     {
-
         var local = selected.Where(c => c.IsLocal).ToList();
         var readOnly = selected.Count - local.Count;
 

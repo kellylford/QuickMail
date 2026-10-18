@@ -71,12 +71,17 @@ public partial class AddressBookWindow : Window
             }
             // The message line under the details takes room from the contact list when it appears,
             // which can push the row a delete just landed on out of view. Bring it back once
-            // layout has run. Scrolling only: keyboard focus is not touched.
-            else if (e.PropertyName == nameof(vm.ContactError) && vm.ContactError.Length > 0)
+            // layout has run. Scrolling only: keyboard focus is not touched. In a multi-select
+            // SelectedItem is the anchor, not the row with focus, so prefer the focused row.
+            else if (e.PropertyName == nameof(vm.ContactError) && vm.ContactError.Length > 0
+                     && !vm.IsEditingContact)
             {
                 Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
                 {
-                    if (ContactList.SelectedItem is { } row)
+                    var focusedRow = ContactList.IsKeyboardFocusWithin
+                        ? (Keyboard.FocusedElement as FrameworkElement)?.DataContext as ContactModel
+                        : null;
+                    if ((focusedRow ?? ContactList.SelectedItem) is { } row)
                         ContactList.ScrollIntoView(row);
                 });
             }
