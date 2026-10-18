@@ -121,9 +121,9 @@ internal sealed class UiProbeDriver
                         vm.Attachments.Add(new AttachmentModel { FileName = UiProbeFixture.LongAttachmentName, FileSize = 3_250_586 });
                         vm.Attachments.Add(new AttachmentModel { FileName = "notes.txt", FileSize = 812 });
                     },
-                    // Take them off again before the close, or it stops to ask about the unsaved
-                    // draft and the probe times out.
-                    cleanup: w => (w.DataContext as ComposeViewModel)?.Attachments.Clear());
+                    // Close without the "Save Draft?" prompt the added files would raise: a
+                    // modal box left open stops the probe from exiting, and it times out.
+                    cleanup: w => { if (w is ComposeWindow compose) compose.ConfirmSaveOnClose = null; });
 
             case "calendar":
                 ExecuteCommand("view.calendar");
