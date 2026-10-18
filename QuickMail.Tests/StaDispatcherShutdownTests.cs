@@ -6,35 +6,40 @@ using Xunit.v3;
 namespace QuickMail.Tests;
 
 /// <summary>
-/// Guards <see cref="ShutDownStaDispatcherAttribute"/>: a StaTheory's rows share one STA thread, so
-/// its Dispatcher must survive until the last row, and must still be shut down whenever the number
-/// of rows that will actually run cannot be trusted (issue #211).
+/// Guards <see cref="ShutDownStaDispatcherAttribute"/>. Rows of a delay-enumerated StaTheory share one
+/// STA thread, so its Dispatcher must survive until the last row; everything else, and any theory
+/// whose row count cannot be trusted, must still be shut down after each row (issue #211).
 /// </summary>
 public class StaDispatcherShutdownTests
 {
-    // Every row checks the Dispatcher is still alive. Before the fix the first row's After() shut it
-    // down, so rows 2 and 3 ran on a thread whose Dispatcher was dead.
-    [StaTheory]
+    // One test case for the whole theory, so all three rows run on one rented thread. Without the
+    // deferral the first row's After() shut that thread's Dispatcher down and rows 2 and 3 failed.
+    [StaTheory(DisableDiscoveryEnumeration = true)]
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
-    public void EveryRowOfAStaTheoryGetsALiveDispatcher(int row)
+    public void EveryRowOfADelayEnumeratedStaTheoryGetsALiveDispatcher(int row)
     {
+        // Precondition: otherwise this would pass without exercising the deferral at all.
+        Assert.IsAssignableFrom<XunitDelayEnumeratedTheoryTestCase>(TestContext.Current.Test?.TestCase);
+
         Assert.False(Dispatcher.CurrentDispatcher.HasShutdownStarted,
             $"row {row} ran on a thread whose Dispatcher had already been shut down");
-        _ = new System.Windows.Controls.TextBox();   // a real WPF object, as the failing tests built
+        _ = new System.Windows.Controls.TextBox();   // a real WPF object
     }
 
-    // The deferral relies on the whole theory being ONE delay-enumerated test case on one thread. If
-    // theory pre-enumeration is ever turned on, each row becomes its own case and the deferral is
-    // skipped (per-row shutdown again) — this test says so rather than leaving it to be rediscovered.
+    // The default: serializable [InlineData] rows are pre-enumerated, each row its own test case on its
+    // own thread, so the deferral must NOT apply (it would never reach its count and would leak).
     [StaTheory]
     [InlineData(1)]
     [InlineData(2)]
-    public void StaTheoriesAreDelayEnumerated(int row)
+    public void APreEnumeratedStaTheoryRowIsItsOwnTestCase(int row)
     {
-        _ = row;
-        Assert.IsAssignableFrom<XunitDelayEnumeratedTheoryTestCase>(TestContext.Current.Test?.TestCase);
+        Assert.IsNotAssignableFrom<XunitDelayEnumeratedTheoryTestCase>(TestContext.Current.Test?.TestCase);
+
+        Assert.False(Dispatcher.CurrentDispatcher.HasShutdownStarted,
+            $"row {row} ran on a thread whose Dispatcher had already been shut down");
+        _ = new System.Windows.Controls.TextBox();
     }
 
     [Fact]

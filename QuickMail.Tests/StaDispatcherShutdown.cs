@@ -63,22 +63,22 @@ public sealed class ShutDownStaDispatcherAttribute : BeforeAfterTestAttribute
     /// True while a <c>[StaTheory]</c> still has data rows left to run on this thread.
     ///
     /// <para><b>Why this is needed.</b> Xunit.StaFact rents a fresh STA thread per TEST CASE, not per
-    /// row. xUnit v3 delay-enumerates theories by default (this project does not turn
-    /// pre-enumeration on), so a whole theory is ONE test case — StaFact's
-    /// <c>UIDelayEnumeratedTestCase</c>, a <see cref="XunitDelayEnumeratedTheoryTestCase"/> — and
-    /// every one of its rows runs on that one thread. Measured: both rows of a two-row StaTheory
-    /// reported the same managed thread id, while each StaFact got its own. Shutting the Dispatcher
-    /// down after the first row therefore leaves the remaining rows running on a thread whose
-    /// Dispatcher is dead, and the first WPF operation in them throws "Cannot perform requested
-    /// operation because the Dispatcher shut down". That is how
-    /// <c>AccountDialogHintTests.TheSmtpSslHintNamesBothPorts</c> failed on its second row while
-    /// passing on its first. Shutting down after the LAST row keeps the issue #211 protection intact
-    /// — the thread still never outlives its Dispatcher — without breaking the rows in between.</para>
+    /// row. By default xUnit v3 pre-enumerates a theory whose data is serializable, so each
+    /// <c>[InlineData]</c> row is its own <c>UITestCase</c> on its own thread, and nothing here
+    /// applies. But a theory that is delay-enumerated — <c>DisableDiscoveryEnumeration = true</c>, or
+    /// data xUnit cannot serialize — is ONE test case, StaFact's <c>UIDelayEnumeratedTestCase</c> (a
+    /// <see cref="XunitDelayEnumeratedTheoryTestCase"/>), and all of its rows run one after another
+    /// on that one rented thread. Shutting the Dispatcher down after the first row then leaves the
+    /// remaining rows running on a thread whose Dispatcher is dead, and the first WPF operation in
+    /// them throws "Cannot perform requested operation because the Dispatcher shut down". Shutting
+    /// down after the LAST row keeps the issue #211 protection intact — the thread still never
+    /// outlives its Dispatcher — without breaking the rows in between.
+    /// <c>StaDispatcherShutdownTests</c> covers both shapes.</para>
     ///
-    /// <para><b>Only for delay-enumerated cases.</b> If theories were ever pre-enumerated, each row
-    /// would be its own test case on its own thread, the count below would never be reached on any of
-    /// them, and every row would leak its Dispatcher — the #211 crash. So anything that is not a
-    /// delay-enumerated theory case shuts down after the row, as before.</para>
+    /// <para><b>Only for delay-enumerated cases.</b> A pre-enumerated row is its own test case on its
+    /// own thread; deferring there would mean the count is never reached on any of them and every
+    /// row leaks its Dispatcher — the #211 crash. So anything that is not a delay-enumerated theory
+    /// case shuts down after the row, as before.</para>
     ///
     /// <para><b>Rows are counted rather than detected</b>: xUnit exposes no "is this the last row"
     /// flag. When the count cannot be trusted this returns false, and the Dispatcher is shut down
@@ -86,8 +86,10 @@ public sealed class ShutDownStaDispatcherAttribute : BeforeAfterTestAttribute
     /// that is about to die. That is the case for:</para>
     /// <list type="bullet">
     /// <item><c>[MemberData]</c>, <c>[ClassData]</c> or any other data source whose rows are only
-    /// known after running it. Such a StaTheory still gets per-row shutdown, so its rows after the
-    /// first will fail if they touch WPF — write it as <c>[InlineData]</c> or as separate StaFacts.</item>
+    /// known after running it. Pre-enumerated, their rows are separate test cases and are fine; but
+    /// a DELAY-enumerated StaTheory fed that way still gets per-row shutdown, so its rows after the
+    /// first will fail if they touch WPF — use <c>[InlineData]</c>, serializable data, or separate
+    /// StaFacts.</item>
     /// <item>An <c>[InlineData]</c> row with <c>Skip</c>, <c>SkipUnless</c>, <c>SkipWhen</c> or
     /// <c>Explicit</c> set. A row skipped that way never reaches <c>After</c>, so counting it would
     /// leave the total unreachable and leak the Dispatcher.</item>
