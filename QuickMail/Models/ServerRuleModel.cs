@@ -176,6 +176,17 @@ public sealed partial class ServerRuleModel : ObservableObject
             foreach (var r in reasons) sb.AppendLine(r);
         }
 
+        // #810: Outlook Classic can't show a server rule that marks messages read, and QuickMail no longer
+        // writes one. Said here so the user can tell why the rule is missing from Outlook, and how to fix it
+        // where QuickMail can edit the rule.
+        if (MarkAsRead)
+        {
+            sb.AppendLine("Note:");
+            sb.AppendLine(IsFullyEditable && !IsReadOnly
+                ? "This rule marks messages as read, so Outlook Classic can't show it. Edit it and clear Mark as read to save changes to it here and show it in Outlook Classic."
+                : "This rule marks messages as read, so Outlook Classic can't show it.");
+        }
+
         return sb.ToString().TrimEnd();
     }
 

@@ -28,7 +28,11 @@ internal static class ServerRuleMapper
         "bodyOrSubjectContains", "sentToMe", "sentOnlyToMe", "hasAttachments", "importance",
     };
 
-    /// <summary>Actions QuickMail can represent and therefore safely rewrite.</summary>
+    /// <summary>
+    /// Actions QuickMail can represent. <c>markAsRead</c> is read so an existing rule shows and edits as
+    /// it is, but never written back (#810, see <see cref="ToRequestBody"/>): the editor makes the user
+    /// clear it before such a rule can be saved, rather than dropping it without a word.
+    /// </summary>
     internal static readonly HashSet<string> SupportedActions = new(StringComparer.OrdinalIgnoreCase)
     {
         "moveToFolder", "copyToFolder", "markAsRead", "markImportance", "delete", "forwardTo", "stopProcessingRules",
@@ -189,7 +193,10 @@ internal static class ServerRuleMapper
         var actions = new Dictionary<string, object?>();
         if (!string.IsNullOrWhiteSpace(rule.MoveToFolderId)) actions["moveToFolder"] = rule.MoveToFolderId;
         if (!string.IsNullOrWhiteSpace(rule.CopyToFolderId)) actions["copyToFolder"] = rule.CopyToFolderId;
-        if (rule.MarkAsRead) actions["markAsRead"] = true;
+        // markAsRead is never written (#810). Graph accepts it in a server rule, but Outlook Classic treats
+        // "mark it as read" as client-only: it cannot show such a rule, and on its next rules upload it
+        // deactivates rules it cannot represent. QuickMail runs mark as read in a client-side rule instead.
+        // GraphServerRuleService refuses a model that still carries it, so it is never dropped unseen here.
         if (!string.IsNullOrWhiteSpace(rule.MarkImportance)) actions["markImportance"] = rule.MarkImportance;
         if (rule.Delete) actions["delete"] = true;
         if (rule.ForwardTo.Count > 0) actions["forwardTo"] = rule.ForwardTo.Select(ToRecipient).ToArray();

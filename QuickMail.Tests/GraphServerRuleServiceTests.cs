@@ -394,7 +394,7 @@ public class GraphServerRuleServiceTests
             Id = "r1",
             DisplayName = "Renamed",
             SubjectContains = "invoice",
-            MarkAsRead = true,
+            Delete = true,
             IsFullyEditable = true,
         });
 
@@ -403,7 +403,7 @@ public class GraphServerRuleServiceTests
         var body = handler.Bodies.Single()!;
         Assert.Contains("\"displayName\":\"Renamed\"", body);
         Assert.Contains("subjectContains", body);
-        Assert.Contains("markAsRead", body);
+        Assert.Contains("\"delete\":true", body);
     }
 
     [Fact]

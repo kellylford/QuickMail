@@ -59,7 +59,7 @@ public class UnifiedRulesViewModelTests
     private static AccountModel Graph(Guid id) => new() { Id = id, BackendKind = BackendKind.MicrosoftGraph, Username = "g@x.com", AccountName = "Work" };
     private static AccountModel PersonalGraph(Guid id) => new() { Id = id, BackendKind = BackendKind.MicrosoftGraph, IsPersonalMicrosoftAccount = true, Username = "me@outlook.com", AccountName = "Personal" };
     private static AccountModel Imap(Guid id) => new() { Id = id, BackendKind = BackendKind.ImapSmtp, Username = "i@x.com", AccountName = "Home" };
-    private static ServerRuleModel Server(string name) => new() { Id = name, DisplayName = name, SubjectContains = "x", MarkAsRead = true };
+    private static ServerRuleModel Server(string name) => new() { Id = name, DisplayName = name, SubjectContains = "x", Delete = true };
     private static MailRule Client(string name, Guid accountId) => new() { Name = name, AccountId = accountId, SubjectContains = "y", Action = RuleAction.MarkAsRead };
 
     // ── What the editor is told about the account (#682) ────────────────────
@@ -268,7 +268,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Move digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Move digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.Delete = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.Contains("create", server.Calls);
@@ -487,7 +487,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(client, server, [Imap(home), Graph(work)], preferredAccountId: work);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.Delete = true;
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == home);
         await editor.SaveCommand.ExecuteAsync(null);
 
@@ -510,7 +510,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Imap(home), Graph(work)], preferredAccountId: work);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.Delete = true;
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == home);
         await editor.SaveCommand.ExecuteAsync(null);
 
@@ -641,7 +641,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Move digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Move digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.Delete = true;
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.NotNull(vm.SelectedRule);                                 // not stranded after create
@@ -2088,5 +2088,67 @@ public class UnifiedRulesViewModelTests
 
         Assert.Contains(nameof(UnifiedRulesViewModel.WindowTitle), changed);
         Assert.Equal($"Rules Manager — {vm.SelectedAccount!.DisplayName}", vm.WindowTitle);
+    }
+
+    // ── Mark as read is client-side only (#810) ─────────────────────────────
+
+    [Fact]
+    public async Task NewRule_MarkAsRead_OnGraph_RoutesToClient_AndAnnounces() // #810
+    {
+        // Outlook Classic can't show a server rule that marks read, and deactivates such rules, so the rule
+        // that reported it (subject contains → mark as read → move) is now saved client-side.
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
+        var announcements = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (t, c) => announcements.Add((t, c));
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest";
+        editor.MarkAsRead = true;
+        editor.MoveToFolder = true; editor.MoveToFolderId = "folder-id";
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain("create", server.Calls);
+        var saved = Assert.Single(client.LoadedRules);
+        Assert.Equal([RuleAction.MarkAsRead, RuleAction.MoveToFolder], saved.AllActions());
+        Assert.Contains(announcements, x => x.Text == "Saving as a client-side rule." && x.Category == AnnouncementCategory.Result);
+    }
+
+    [Fact]
+    public async Task EditServerRule_ThatMarksRead_IsRefusedUntilMarkAsReadIsCleared_ThenSavesWithoutIt() // #810
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules
+        {
+            Stored = [new ServerRuleModel { Id = "S1", DisplayName = "S1", SubjectContains = "x", MarkAsRead = true, StopProcessingRules = true }],
+        };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.SelectedRule = vm.Rules.Single();
+        vm.EditRuleCommand.Execute(null);
+        var closed = false;
+        editor!.CloseRequested += () => closed = true;
+
+        // As it stands, the rule is refused — never saved with the mark quietly dropped.
+        editor.Name = "Renamed";
+        await editor.SaveCommand.ExecuteAsync(null);
+        Assert.False(closed);
+        Assert.Equal("Mark as read only works in a client-side rule, and this rule runs on the server. Remove it to save.",
+                     editor.SaveError);
+        Assert.DoesNotContain("update", server.Calls);
+
+        // Cleared by the user, it saves, keeping everything else.
+        editor.MarkAsRead = false;
+        await editor.SaveCommand.ExecuteAsync(null);
+        Assert.True(closed);
+        Assert.Contains("update", server.Calls);
+        var updated = server.Stored.Single();
+        Assert.False(updated.MarkAsRead);
+        Assert.True(updated.StopProcessingRules);
+        Assert.Equal("Renamed", updated.DisplayName);
     }
 }
