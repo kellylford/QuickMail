@@ -433,7 +433,9 @@ public partial class AddressBookWindow : Window
             // Handled before the await: once this handler yields, routing has moved on and a
             // later assignment is ignored.
             e.Handled = true;
-            await DeleteSelectedContactsAsync();
+            // The command the Delete button is bound to, so the key and the button apply the
+            // same rules — synced contacts are read-only (issue #827).
+            await _vm.DeleteSelectedContactsCommand.ExecuteAsync(null);
         }
     }
 
@@ -659,25 +661,10 @@ public partial class AddressBookWindow : Window
             ShowGroupNameEntry(g.Name);
     }
 
-    private async void DeleteButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (ContactList.SelectedItems.Count == 0) return;
-        await DeleteSelectedContactsAsync();
-    }
-
-    private async Task DeleteSelectedContactsAsync()
-    {
-        var selected = ContactList.SelectedItems.OfType<ContactModel>().ToList();
-        if (selected.Count == 0) return;
-
-        var prompt = selected.Count == 1
-            ? $"Delete {selected[0].Display}?"
-            : $"Delete {selected.Count} contacts?";
-        var result = MessageBox.Show(prompt, "Confirm Delete",
-            MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (result == MessageBoxResult.Yes)
-            await _vm.DeleteMultipleAsync(selected);
-    }
+    // The list is multi-select and SelectedItems cannot be bound, so hand the selection to the
+    // ViewModel: Delete acts on all of it, and the Delete button's availability depends on it.
+    private void ContactList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        _vm.SetSelectedContacts(ContactList.SelectedItems.OfType<ContactModel>());
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

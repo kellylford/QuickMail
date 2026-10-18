@@ -181,8 +181,10 @@
                                     AutomationProperties.Name="Edit contact"
                                     IsEnabled="{Binding CanEditContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="9"/>
+                            <!-- Same command the Delete key runs in the contact list (issue #827). -->
                             <Button Content="_Delete"
-                                    Click="DeleteButton_Click"
+                                    x:Name="DeleteContactButton"
+                                    Command="{Binding DeleteSelectedContactsCommand}"
                                     AutomationProperties.Name="Delete selected contact"
                                     IsEnabled="{Binding CanDeleteContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="10"/>
@@ -217,12 +219,16 @@
                                     Click="Close_Click"/>
                         </StackPanel>
 
-                        <!-- Row 2: Error message (shown only when non-empty) -->
-                        <TextBlock Grid.Row="2" Text="{Binding ContactError}"
+                        <!-- Row 2: Error message (shown only when non-empty). It also carries
+                             the "synced contacts are read-only" message from a Delete (issue #827).
+                             The default Setter used to be Collapsed as well, so nothing written
+                             here was ever shown. -->
+                        <TextBlock Grid.Row="2" x:Name="ContactErrorText" Text="{Binding ContactError}"
+                                   TextWrapping="Wrap"
                                    Foreground="{DynamicResource Theme.Error}" Margin="0,4,0,0">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Setter Property="Visibility" Value="Visible"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding ContactError}" Value="">
                                             <Setter Property="Visibility" Value="Collapsed"/>
@@ -251,6 +257,7 @@
                               KeyboardNavigation.TabNavigation="Once"
                               KeyboardNavigation.DirectionalNavigation="Contained"
                               PreviewKeyDown="ContactList_PreviewKeyDown"
+                              SelectionChanged="ContactList_SelectionChanged"
                               ContextMenuOpening="ContactList_ContextMenuOpening">
                         <ListView.ContextMenu>
                             <!-- Items are built in ContactList_ContextMenuOpening: the two

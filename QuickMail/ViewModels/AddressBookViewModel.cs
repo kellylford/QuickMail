@@ -334,7 +334,33 @@ public partial class AddressBookViewModel : ObservableObject
     // Synced contacts (issue #256) are read-only: they're owned by the server, so Edit/Delete are
     // disabled for them. A local contact with the same address can still be added and edited.
     public bool CanEditContact    => HasSelectedContact && !IsEditingContact && SelectedContact!.IsLocal;
-    public bool CanDeleteContact  => HasSelectedContact && !IsEditingContact && SelectedContact!.IsLocal;
+    // Delete acts on the whole selection, so it is available when ANY selected contact is local
+    // (issue #827): with a mixed selection it deletes the local ones and leaves the synced ones.
+    public bool CanDeleteContact  => !IsEditingContact && ContactsToDelete().Any(c => c.IsLocal);
+
+    // The contact list is multi-select, and a ListView's SelectedItems cannot be bound, so the View
+    // pushes it here on every selection change (SetSelectedContacts).
+    private IReadOnlyList<ContactModel> _selectedContacts = [];
+
+    /// <summary>
+    /// Tells the ViewModel which contacts are selected in the list. Called by the View whenever the
+    /// list's selection changes, since multi-selection has no bindable property.
+    /// </summary>
+    public void SetSelectedContacts(IEnumerable<ContactModel> contacts)
+    {
+        _selectedContacts = contacts.ToList();
+        OnPropertyChanged(nameof(CanDeleteContact));
+    }
+
+    /// <summary>
+    /// The contacts a Delete acts on: the list's selection, or just <see cref="SelectedContact"/>
+    /// when the pushed selection does not include it (it was set without going through the list).
+    /// </summary>
+    private IReadOnlyList<ContactModel> ContactsToDelete()
+    {
+        if (SelectedContact is not { } current) return _selectedContacts;
+        return _selectedContacts.Contains(current) ? _selectedContacts : [current];
+    }
 
     [ObservableProperty]
     private string _contactError = string.Empty;
@@ -765,6 +791,57 @@ public partial class AddressBookViewModel : ObservableObject
 
     public Task DeleteConfirmedAsync() =>
         SelectedContact is { } contact ? DeleteMultipleAsync([contact]) : Task.CompletedTask;
+
+    /// <summary>
+    /// What the Delete key in the contact list and the Delete button both run (issue #827): one
+    /// path, so they cannot disagree about what may be deleted. Synced contacts are read-only
+    /// (issue #256) — a delete here could not reach the account and the contact would come back on
+    /// the next sync — so they are never deleted. A selection of nothing but synced contacts is
+    /// refused and left as it was; a mixed selection deletes the local contacts after a
+    /// confirmation that says the synced ones will stay, and says so again once it is done.
+    /// </summary>
+    [RelayCommand]
+    public async Task DeleteSelectedContactsAsync()
+    {
+        if (IsEditingContact) return;
+        var selected = ContactsToDelete();
+        if (selected.Count == 0) return;
+
+        var local = selected.Where(c => c.IsLocal).ToList();
+        var readOnly = selected.Count - local.Count;
+
+        if (local.Count == 0)
+        {
+            // Nothing changes, so keyboard focus stays on the row it was on.
+            ReportReadOnly(readOnly == 1
+                ? $"{(string.IsNullOrWhiteSpace(selected[0].DisplayName) ? selected[0].EmailAddress : selected[0].DisplayName)} is synced from an account. Synced contacts are read-only and can't be deleted here."
+                : $"All {readOnly} selected contacts are synced from an account. Synced contacts are read-only and can't be deleted here.");
+            return;
+        }
+
+        var prompt = local.Count == 1
+            ? $"Delete {local[0].Display}?"
+            : $"Delete {local.Count} contacts?";
+        if (readOnly > 0)
+            prompt += readOnly == 1
+                ? " 1 selected contact is synced from an account and read-only, so it will be kept."
+                : $" {readOnly} selected contacts are synced from an account and read-only, so they will be kept.";
+        if (!await RequestConfirmAsync("Confirm Delete", prompt)) return;
+
+        await DeleteMultipleAsync(local);
+
+        if (readOnly > 0)
+            ReportReadOnly(readOnly == 1
+                ? "1 synced contact was not deleted. Synced contacts are read-only."
+                : $"{readOnly} synced contacts were not deleted. Synced contacts are read-only.");
+    }
+
+    // Shown under the contact details as well as spoken, so it is there to read again.
+    private void ReportReadOnly(string message)
+    {
+        ContactError = message;
+        Announce(message, AnnouncementCategory.Result);
+    }
 
     /// <summary>
     /// Deletes <paramref name="contacts"/> and leaves selection and keyboard focus on the contact

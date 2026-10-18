@@ -1321,7 +1321,7 @@ Contact sync is one-directional and read-only in this release: no changes are wr
 
 ### Changing or Deleting a Synced Contact
 
-Because sync only runs one way, **the address book is not the place to change or remove a contact that came from an account.** With a synced contact selected, the **Edit** and **Delete** buttons are unavailable, and the matching Command Palette entries do nothing. This is deliberate: a deletion made here could not be sent to your account, so the contact would simply reappear the next time QuickMail refreshed — the change would look like it worked and then quietly undo itself.
+Because sync only runs one way, **the address book is not the place to change or remove a contact that came from an account.** With a synced contact selected, the **Edit** and **Delete** buttons are unavailable, and the matching Command Palette entries do nothing. Pressing the **Delete** key on a synced contact deletes nothing either: QuickMail says the contact is synced and read-only, the same message appears under the contact details, and focus stays where it was. If you select several contacts and some of them are synced, the **Delete** button and the **Delete** key both delete only the contacts you added yourself. The confirmation says how many synced contacts will be kept, and once the others are deleted QuickMail says again how many synced contacts were not deleted. This is deliberate: a deletion made here could not be sent to your account, so the contact would simply reappear the next time QuickMail refreshed — the change would look like it worked and then quietly undo itself.
 
 To change or remove a synced contact for good, edit it where it actually lives, then bring the change back:
 
