@@ -9082,7 +9082,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // A sweep that lands mid-connect or mid-reconnect: expected, and the next sweep after the account
             // is back puts the counts right. Not an error, so it does not bury real ones in the log (#278).
-            LogService.Debug($"RefreshFolderCounts {accountId} skipped (not connected): {ex.GetType().Name}");
+            LogService.Debug(
+                $"RefreshFolderCounts {accountId} skipped (connection failure): {LogService.FormatException(ex)}");
         }
         catch (Exception ex)
         {
