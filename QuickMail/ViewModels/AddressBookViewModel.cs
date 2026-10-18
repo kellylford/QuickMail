@@ -50,6 +50,68 @@ public partial class AddressBookViewModel : ObservableObject
     private void Announce(string text, AnnouncementCategory category) =>
         AnnouncementRequested?.Invoke(text, category);
 
+    // ── Focus after a delete (issue #265) ─────────────────────────────────────
+    // Deleting a contact or group used to clear the selection, so keyboard focus was left on a
+    // row that no longer existed and the next arrow key started again from the top. The delete
+    // now selects the neighbouring row and asks the View to focus it BEFORE the deleted rows are
+    // taken out of the list — the same ordering the message list uses (issue #667), so the row
+    // that holds focus is never the one being removed. Focus itself is the View's business; these
+    // events only say when and where.
+
+    /// <summary>
+    /// Raised just before contacts are removed from <see cref="FilteredContacts"/>, after
+    /// <see cref="SelectedContact"/> has been moved to the surviving neighbour. The View focuses that
+    /// row synchronously and returns whether keyboard focus actually reached it.
+    /// </summary>
+    public event Func<bool>? ContactListFocusNowRequested;
+
+    /// <summary>
+    /// Raised after a contact delete when <see cref="ContactListFocusNowRequested"/> could not land
+    /// focus — including when the list is now empty. The View queues a focus move onto the selected
+    /// contact, or onto the list itself when nothing is left to select.
+    /// </summary>
+    public event Action? ContactListFocusRequested;
+
+    /// <summary>The <see cref="ContactListFocusNowRequested"/> counterpart for the Groups list.</summary>
+    public event Func<bool>? GroupsListFocusNowRequested;
+
+    /// <summary>The <see cref="ContactListFocusRequested"/> counterpart for the Groups list.</summary>
+    public event Action? GroupsListFocusRequested;
+
+    /// <summary>
+    /// Raised just before a member is removed from <see cref="SelectedGroupMembers"/>, with the
+    /// member to land on. The members list's selection is the View's own, so the View selects that
+    /// member, focuses its row synchronously, and returns whether keyboard focus reached it.
+    /// </summary>
+    public event Func<ContactModel, bool>? GroupMemberFocusNowRequested;
+
+    /// <summary>
+    /// Raised after a member removal when <see cref="GroupMemberFocusNowRequested"/> could not land
+    /// focus, including when the group is now empty.
+    /// </summary>
+    public event Action? GroupMembersListFocusRequested;
+
+    /// <summary>
+    /// The row selection should land on when <paramref name="leaving"/> are removed from
+    /// <paramref name="items"/>: the first survivor after the first leaving row, else the last
+    /// survivor before it. Null when none of <paramref name="leaving"/> is in the list, or when
+    /// every row is leaving.
+    /// </summary>
+    internal static T? FindLandingRow<T>(IList<T> items, IReadOnlyCollection<T> leaving) where T : class
+    {
+        var doomed = new HashSet<T>(leaving, ReferenceEqualityComparer.Instance);
+        var first = -1;
+        for (var i = 0; i < items.Count; i++)
+            if (doomed.Contains(items[i])) { first = i; break; }
+        if (first < 0) return null;
+
+        for (var i = first + 1; i < items.Count; i++)
+            if (!doomed.Contains(items[i])) return items[i];
+        for (var i = first - 1; i >= 0; i--)
+            if (!doomed.Contains(items[i])) return items[i];
+        return null;
+    }
+
     public bool HasInsertActions => _toInsertAction != null;
 
     public void SetInsertActions(
@@ -298,7 +360,15 @@ public partial class AddressBookViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value) => ApplyFilter(value);
 
-    partial void OnSelectedGroupChanged(GroupModel? value) => RebuildSelectedGroupMembers();
+    partial void OnSelectedGroupChanged(GroupModel? value)
+    {
+        if (!_suppressMemberRebuild) RebuildSelectedGroupMembers();
+    }
+
+    // Set only for the synchronous stretch in which RemoveContactFromGroupAsync refreshes Groups.
+    // Refilling Groups makes the Groups list's binding drop and restore SelectedGroup, which would
+    // otherwise clear and rebuild the members list — including the row that just took focus.
+    private bool _suppressMemberRebuild;
 
     [RelayCommand]
     public async Task LoadAsync()
@@ -544,13 +614,43 @@ public partial class AddressBookViewModel : ObservableObject
         };
         var confirmed = await RequestConfirmAsync("Confirm", body);
         if (!confirmed) return;
+        await DeleteGroupConfirmedAsync(g);
+    }
+
+    /// <summary>
+    /// Deletes <paramref name="g"/> once the user has confirmed, leaving selection and keyboard
+    /// focus on the neighbouring group (issue #265). Public, like <see cref="DeleteConfirmedAsync"/>,
+    /// so the window-level focus tests can reach the deletion without the window's confirmation box.
+    /// </summary>
+    public async Task DeleteGroupConfirmedAsync(GroupModel g)
+    {
         await _contactService.DeleteGroupAsync(g.Id);
         var deletedName = g.Name;
-        await ReloadGroupsAsync();
-        SelectedGroup = null;
-        Announce(
-            $"Group '{deletedName}' deleted",
-            AnnouncementCategory.Result);
+
+        // Land on the neighbouring group before this one leaves the list, then remove just this
+        // row. A full ReloadGroupsAsync would clear and refill Groups, regenerating every row —
+        // the one that had just received focus included — and nothing else about the other groups
+        // changes when a group is deleted (issue #265).
+        var row = Groups.FirstOrDefault(x => x.Id == g.Id);
+        var landing = row is null ? null : FindLandingRow(Groups, [row]);
+        var landed = false;
+        SelectedGroup = landing;
+        if (landing is not null)
+            landed = GroupsListFocusNowRequested?.Invoke() == true;
+        if (row is not null)
+            Groups.Remove(row);
+        else
+            await ReloadGroupsAsync();   // the selection was stale; resync from disk
+        if (!landed)
+            GroupsListFocusRequested?.Invoke();
+
+        // When focus landed on the next group, that group being read IS the confirmation; an
+        // announcement here would only cut its reading off (the #667 reasoning). Spoken when there
+        // was nowhere to land, where it is the only sign the delete happened.
+        if (!landed)
+            Announce(
+                $"Group '{deletedName}' deleted",
+                AnnouncementCategory.Result);
     }
 
     [RelayCommand]
@@ -600,13 +700,36 @@ public partial class AddressBookViewModel : ObservableObject
     {
         if (SelectedGroup is not { } g || contact is null) return;
         await _contactService.RemoveMemberAsync(g.Id, contact.Id);
-        await ReloadGroupsAsync();
-        // Preserve selection across the reload.
-        SelectedGroup = Groups.FirstOrDefault(x => x.Id == g.Id);
-        RebuildSelectedGroupMembers();
-        Announce(
-            $"Removed {contact.Display} from {g.Name}",
-            AnnouncementCategory.Result);
+        var groups = await _contactService.LoadAllGroupsAsync();
+
+        // Everything from here is synchronous, so nothing can change the selection in between.
+        // Land on the neighbouring member before this one leaves the list, then remove only its row
+        // (issue #265) — rebuilding the list would regenerate every row, the focused one included.
+        var row = SelectedGroupMembers.FirstOrDefault(m => m.Id == contact.Id);
+        var landing = row is null ? null : FindLandingRow(SelectedGroupMembers, [row]);
+        var landed = landing is not null && GroupMemberFocusNowRequested?.Invoke(landing) == true;
+        if (row is not null)
+            SelectedGroupMembers.Remove(row);
+
+        // Refresh the groups for the new member count, keeping the members list as it now is.
+        _suppressMemberRebuild = true;
+        try
+        {
+            ReplaceGroups(groups);
+            SelectedGroup = Groups.FirstOrDefault(x => x.Id == g.Id);
+        }
+        finally { _suppressMemberRebuild = false; }
+        if (row is null || SelectedGroup?.Id != g.Id)
+            RebuildSelectedGroupMembers();
+
+        if (!landed)
+            GroupMembersListFocusRequested?.Invoke();
+
+        // As for a group delete: once focus has landed on the next member, that is the feedback.
+        if (!landed)
+            Announce(
+                $"Removed {contact.Display} from {g.Name}",
+                AnnouncementCategory.Result);
     }
 
     /// <summary>
@@ -640,13 +763,48 @@ public partial class AddressBookViewModel : ObservableObject
 
     // ── Bulk contact ops ─────────────────────────────────────────────────────
 
-    public async Task DeleteConfirmedAsync()
+    public Task DeleteConfirmedAsync() =>
+        SelectedContact is { } contact ? DeleteMultipleAsync([contact]) : Task.CompletedTask;
+
+    /// <summary>
+    /// Deletes <paramref name="contacts"/> and leaves selection and keyboard focus on the contact
+    /// that followed them in the visible list (the one before, when the last rows went; the list
+    /// itself, when it is now empty) — issue #265.
+    /// </summary>
+    public async Task DeleteMultipleAsync(IReadOnlyList<ContactModel> contacts)
     {
-        if (SelectedContact is not { } contact) return;
-        await _contactService.DeleteContactAsync(contact.Id);
-        _allContacts.Remove(contact);
-        FilteredContacts.Remove(contact);
-        SelectedContact = null;
+        if (contacts.Count == 0) return;
+        foreach (var contact in contacts)
+            await _contactService.DeleteContactAsync(contact.Id);
+
+        // Land on the survivor BEFORE the rows go, so the row holding keyboard focus is never one
+        // being removed (see the "Focus after a delete" block above). A selected contact that is
+        // not being deleted keeps the selection; otherwise its visible neighbour takes it.
+        var leaving = new HashSet<ContactModel>(contacts, ReferenceEqualityComparer.Instance);
+        var selectionLeaving = SelectedContact is null || leaving.Contains(SelectedContact);
+        var landing = selectionLeaving
+            ? FindLandingRow(FilteredContacts, leaving)
+            : SelectedContact;
+        var landed = false;
+        if (landing is not null)
+        {
+            SelectedContact = landing;
+            landed = ContactListFocusNowRequested?.Invoke() == true;
+        }
+
+        foreach (var contact in contacts)
+        {
+            _allContacts.Remove(contact);
+            FilteredContacts.Remove(contact);
+        }
+        if (SelectedContact is { } s && leaving.Contains(s))
+            SelectedContact = null;
+
+        // Only when focus did not already land: a second, queued focus move would arrive after the
+        // removal and read the row out a second time (the #667 reasoning).
+        if (!landed)
+            ContactListFocusRequested?.Invoke();
+
         // A deleted contact may have been a member of groups. The group
         // MemberContactIds are intentionally left intact on disk (see
         // ContactService.DeleteContactAsync rationale), but the visible
@@ -654,23 +812,12 @@ public partial class AddressBookViewModel : ObservableObject
         await ReloadGroupsAsync();
     }
 
-    public async Task DeleteMultipleAsync(IReadOnlyList<ContactModel> contacts)
-    {
-        foreach (var contact in contacts)
-            await _contactService.DeleteContactAsync(contact.Id);
-        foreach (var contact in contacts)
-        {
-            _allContacts.Remove(contact);
-            FilteredContacts.Remove(contact);
-        }
-        if (contacts.Contains(SelectedContact))
-            SelectedContact = null;
-        await ReloadGroupsAsync();
-    }
-
     // ── Internals ────────────────────────────────────────────────────────────
 
-    private async Task ReloadGroupsAsync()
+    private async Task ReloadGroupsAsync() =>
+        ReplaceGroups(await _contactService.LoadAllGroupsAsync());
+
+    private void ReplaceGroups(IEnumerable<GroupModel> groups)
     {
         // Use SetProperty via the field directly (CommunityToolkit's MVVMTK0034
         // warning) so the OnSelectedGroupChanged rebuild is suppressed — we'll
@@ -678,7 +825,7 @@ public partial class AddressBookViewModel : ObservableObject
         // building the member list twice when Groups are merely refreshed.
         var selectedId = SelectedGroup?.Id;
         Groups.Clear();
-        foreach (var g in await _contactService.LoadAllGroupsAsync())
+        foreach (var g in groups)
             Groups.Add(g);
         // Restore selection if the group still exists.
         GroupModel? match = null;

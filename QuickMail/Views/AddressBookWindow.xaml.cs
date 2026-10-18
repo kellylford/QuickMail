@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -36,6 +37,12 @@ public partial class AddressBookWindow : Window
             vm.AnnouncementRequested += OnAnnouncement;
             vm.ConfirmRequested     += OnConfirm;
             vm.PropertiesRequested  += OnPropertiesRequested;
+            vm.ContactListFocusNowRequested += FocusSelectedContactRowNow;
+            vm.ContactListFocusRequested    += QueueFocusContactList;
+            vm.GroupsListFocusNowRequested  += FocusSelectedGroupRowNow;
+            vm.GroupsListFocusRequested     += QueueFocusGroupsList;
+            vm.GroupMemberFocusNowRequested   += FocusGroupMemberNow;
+            vm.GroupMembersListFocusRequested += QueueFocusGroupMembersList;
             await vm.LoadAsync();
             SearchBox.Focus();
         };
@@ -46,6 +53,12 @@ public partial class AddressBookWindow : Window
             vm.AnnouncementRequested -= OnAnnouncement;
             vm.ConfirmRequested     -= OnConfirm;
             vm.PropertiesRequested  -= OnPropertiesRequested;
+            vm.ContactListFocusNowRequested -= FocusSelectedContactRowNow;
+            vm.ContactListFocusRequested    -= QueueFocusContactList;
+            vm.GroupsListFocusNowRequested  -= FocusSelectedGroupRowNow;
+            vm.GroupsListFocusRequested     -= QueueFocusGroupsList;
+            vm.GroupMemberFocusNowRequested   -= FocusGroupMemberNow;
+            vm.GroupMembersListFocusRequested -= QueueFocusGroupMembersList;
         };
 
         // When edit mode is activated, focus the name field and select it
@@ -417,8 +430,10 @@ public partial class AddressBookWindow : Window
 
         if (e.Key == Key.Delete && ContactList.SelectedItems.Count > 0)
         {
-            await DeleteSelectedContactsAsync();
+            // Handled before the await: once this handler yields, routing has moved on and a
+            // later assignment is ignored.
             e.Handled = true;
+            await DeleteSelectedContactsAsync();
         }
     }
 
@@ -518,6 +533,69 @@ public partial class AddressBookWindow : Window
             e.Handled = true;
         }
     }
+
+    // ── Focus after a delete (issue #265) ────────────────────────────────────
+    // The ViewModel moves the selection onto the neighbouring row and raises these; see the
+    // "Focus after a delete" block in AddressBookViewModel for the ordering and why it matters.
+
+    // Synchronous on purpose: the ViewModel calls this just BEFORE it removes the deleted rows, so
+    // keyboard focus is off them by the time they go. The target comes from the ViewModel's own
+    // selection rather than the list's SelectedItem, which depends on the binding having already
+    // propagated. Returns whether keyboard focus actually reached the row.
+    private bool FocusSelectedContactRowNow() => FocusRowNow(ContactList, _vm.SelectedContact);
+
+    private bool FocusSelectedGroupRowNow() => FocusRowNow(GroupsList, _vm.SelectedGroup);
+
+    private static bool FocusRowNow(ListView list, object? target)
+    {
+        // A list on a tab that is not showing is not where the user is; leave focus alone.
+        if (target is null || !list.IsVisible) return false;
+        var idx = list.Items.IndexOf(target);
+        if (idx < 0) return false;
+
+        list.ScrollIntoView(target);
+        // ScrollIntoView only schedules the panel's measure pass; without this the container for
+        // a row that was off screen does not exist yet and there is nothing to focus.
+        list.UpdateLayout();
+        return list.ItemContainerGenerator.ContainerFromIndex(idx) is ListViewItem row && row.Focus();
+    }
+
+    // The fallback when focus could not land before the removal — most often because the list is
+    // now empty. Queued so it runs after the removal's layout pass.
+    private void QueueFocusContactList() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (!ContactList.IsVisible) return;
+            if (!FocusRowNow(ContactList, _vm.SelectedContact))
+                ContactList.Focus();
+        });
+
+    private void QueueFocusGroupsList() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (!GroupsList.IsVisible) return;
+            if (FocusRowNow(GroupsList, _vm.SelectedGroup)) return;
+            // As FocusGroupsPane does: with no groups left, New Group is the useful place to be.
+            if (_vm.Groups.Count == 0) NewGroupButton.Focus();
+            else GroupsList.Focus();
+        });
+
+    // The members list's selection belongs to the View (it is not bound), so the ViewModel names
+    // the member to land on and this selects it as well as focusing it.
+    private bool FocusGroupMemberNow(ContactModel landing)
+    {
+        if (!GroupMembersList.IsVisible) return false;
+        GroupMembersList.SelectedItem = landing;
+        return FocusRowNow(GroupMembersList, landing);
+    }
+
+    private void QueueFocusGroupMembersList() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (!GroupMembersList.IsVisible) return;
+            if (!FocusRowNow(GroupMembersList, GroupMembersList.SelectedItem))
+                GroupMembersList.Focus();
+        });
 
     private void FocusGroupsPane()
     {
