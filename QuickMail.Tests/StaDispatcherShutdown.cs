@@ -62,51 +62,78 @@ public sealed class ShutDownStaDispatcherAttribute : BeforeAfterTestAttribute
     /// <summary>
     /// True while a <c>[StaTheory]</c> still has data rows left to run on this thread.
     ///
-    /// <para><b>Why this is needed.</b> Xunit.StaFact gives each test METHOD a fresh STA thread, but
-    /// every data row of one theory shares that thread — measured: both rows of a two-row StaTheory
+    /// <para><b>Why this is needed.</b> Xunit.StaFact rents a fresh STA thread per TEST CASE, not per
+    /// row. xUnit v3 delay-enumerates theories by default (this project does not turn
+    /// pre-enumeration on), so a whole theory is ONE test case — StaFact's
+    /// <c>UIDelayEnumeratedTestCase</c>, a <see cref="XunitDelayEnumeratedTheoryTestCase"/> — and
+    /// every one of its rows runs on that one thread. Measured: both rows of a two-row StaTheory
     /// reported the same managed thread id, while each StaFact got its own. Shutting the Dispatcher
     /// down after the first row therefore leaves the remaining rows running on a thread whose
     /// Dispatcher is dead, and the first WPF operation in them throws "Cannot perform requested
     /// operation because the Dispatcher shut down". That is how
     /// <c>AccountDialogHintTests.TheSmtpSslHintNamesBothPorts</c> failed on its second row while
-    /// passing on its first, and it would silently claim any future StaTheory whose later rows touch
-    /// WPF. Shutting down after the LAST row keeps the issue #211 protection intact — the thread
-    /// still never outlives its Dispatcher — without breaking the rows in between.</para>
+    /// passing on its first. Shutting down after the LAST row keeps the issue #211 protection intact
+    /// — the thread still never outlives its Dispatcher — without breaking the rows in between.</para>
     ///
-    /// <para>Rows are counted rather than detected: xUnit exposes no "is this the last case" flag,
-    /// and <see cref="IXunitTestMethod"/> has no test-case collection to ask. When the expected count
-    /// cannot be worked out (a data source other than <c>[InlineData]</c>, whose rows are only known
-    /// after running it), this returns false and the old behaviour stands: better to shut down early
-    /// than to leak a Dispatcher onto a thread that is about to die. The same applies to a filtered
-    /// run where some rows are never executed — the count is simply never reached, and one Dispatcher
-    /// survives on a dying thread, which is the pre-existing hazard rather than a new one.</para>
+    /// <para><b>Only for delay-enumerated cases.</b> If theories were ever pre-enumerated, each row
+    /// would be its own test case on its own thread, the count below would never be reached on any of
+    /// them, and every row would leak its Dispatcher — the #211 crash. So anything that is not a
+    /// delay-enumerated theory case shuts down after the row, as before.</para>
+    ///
+    /// <para><b>Rows are counted rather than detected</b>: xUnit exposes no "is this the last row"
+    /// flag. When the count cannot be trusted this returns false, and the Dispatcher is shut down
+    /// after the first row — better to break later rows loudly than to leak a Dispatcher onto a thread
+    /// that is about to die. That is the case for:</para>
+    /// <list type="bullet">
+    /// <item><c>[MemberData]</c>, <c>[ClassData]</c> or any other data source whose rows are only
+    /// known after running it. Such a StaTheory still gets per-row shutdown, so its rows after the
+    /// first will fail if they touch WPF — write it as <c>[InlineData]</c> or as separate StaFacts.</item>
+    /// <item>An <c>[InlineData]</c> row with <c>Skip</c>, <c>SkipUnless</c>, <c>SkipWhen</c> or
+    /// <c>Explicit</c> set. A row skipped that way never reaches <c>After</c>, so counting it would
+    /// leave the total unreachable and leak the Dispatcher.</item>
+    /// </list>
     /// </summary>
     private static bool MoreRowsToCome(IXunitTest test)
     {
-        var expected = ExpectedRows(test.TestMethod);
-        if (expected is not { } total || total <= 1) return false;
+        if (test.TestCase is not XunitDelayEnumeratedTheoryTestCase) return false;
+        if (ExpectedRows(test.TestMethod.DataAttributes) is not { } total || total <= 1) return false;
 
-        var key = (Environment.CurrentManagedThreadId, test.TestMethod.Method.MetadataToken);
+        var key = test.TestCase.UniqueID;
         lock (RowsRun)
         {
             var run = RowsRun.TryGetValue(key, out var already) ? already + 1 : 1;
+            if (run >= total)
+            {
+                RowsRun.Remove(key);
+                return false;
+            }
             RowsRun[key] = run;
-            return run < total;
+            return true;
         }
     }
 
-    /// <summary>Rows completed so far, per (thread, test method).</summary>
-    private static readonly Dictionary<(int Thread, int Method), int> RowsRun = [];
+    /// <summary>Rows completed so far, per delay-enumerated test case (its <c>UniqueID</c>).</summary>
+    private static readonly Dictionary<string, int> RowsRun = [];
 
-    private static int? ExpectedRows(IXunitTestMethod method)
+    /// <summary>
+    /// How many rows a theory with these data attributes will run through <c>After</c>, or null when
+    /// that cannot be known without running the data source (see <see cref="MoreRowsToCome"/>).
+    /// </summary>
+    internal static int? ExpectedRows(IReadOnlyCollection<IDataAttribute> dataAttributes)
     {
-        if (method.DataAttributes.Count == 0) return 1;   // a plain [StaFact]
+        if (dataAttributes.Count == 0) return 1;   // not a theory
 
         var rows = 0;
-        foreach (var data in method.DataAttributes)
+        foreach (var data in dataAttributes)
         {
             // One row each, and countable without running the data source.
             if (data is not InlineDataAttribute) return null;
+
+            // A row that may not run would leave the total unreachable.
+            if (data.Skip is not null || data.SkipUnless is not null || data.SkipWhen is not null
+                || data.Explicit == true)
+                return null;
+
             rows++;
         }
         return rows;
