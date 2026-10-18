@@ -85,11 +85,13 @@ public class MessageListToolTipTests
     }
 
     /// <summary>
-    /// The list's subtree minus its column headers. A header tooltip opens only when the pointer
-    /// rests on the header row, which does not scroll, so it is not this bug.
+    /// The list's subtree minus its GridView column headers. A column header tooltip opens only
+    /// when the pointer rests on the header row, which does not scroll, so it is not this bug.
+    /// Only GridViewColumn.Header is excluded: any other header (an Expander's, say) inside a row
+    /// template scrolls with the rows and is still checked.
     /// </summary>
     private static IEnumerable<XElement> RowContent(XElement list) =>
-        list.DescendantsAndSelf().Where(e => !e.AncestorsAndSelf().Any(a => a.Name.LocalName.EndsWith(".Header", StringComparison.Ordinal)));
+        list.DescendantsAndSelf().Where(e => !e.AncestorsAndSelf().Any(a => a.Name.LocalName == "GridViewColumn.Header"));
 
     private static IEnumerable<string> ToolTipsOn(XElement element)
     {
