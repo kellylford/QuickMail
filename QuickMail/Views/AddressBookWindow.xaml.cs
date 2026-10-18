@@ -69,6 +69,17 @@ public partial class AddressBookWindow : Window
                 ContactNameBox.Focus();
                 ContactNameBox.SelectAll();
             }
+            // The message line under the details takes room from the contact list when it appears,
+            // which can push the row a delete just landed on out of view. Bring it back once
+            // layout has run. Scrolling only: keyboard focus is not touched.
+            else if (e.PropertyName == nameof(vm.ContactError) && vm.ContactError.Length > 0)
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+                {
+                    if (ContactList.SelectedItem is { } row)
+                        ContactList.ScrollIntoView(row);
+                });
+            }
         };
     }
 
@@ -237,10 +248,17 @@ public partial class AddressBookWindow : Window
     private void OnAnnouncement(string text, AnnouncementCategory category) =>
         AccessibilityHelper.Announce(this, text, category: category);
 
+    /// <summary>
+    /// Answers confirmations in place of the MessageBox. For window tests only: a real MessageBox
+    /// would wait for a person, and nothing in a test could dismiss it.
+    /// </summary>
+    internal Func<string, bool>? ConfirmForTests { get; set; }
+
     private Task<bool> OnConfirm(string title, string body) =>
-        Task.FromResult(
-            MessageBox.Show(this, body, title, MessageBoxButton.YesNo, MessageBoxImage.Question)
-            == MessageBoxResult.Yes);
+        Task.FromResult(ConfirmForTests is { } answer
+            ? answer(body)
+            : MessageBox.Show(this, body, title, MessageBoxButton.YesNo, MessageBoxImage.Question)
+              == MessageBoxResult.Yes);
 
     private void OnPropertiesRequested(PropertiesViewModel vm)
     {
@@ -433,9 +451,9 @@ public partial class AddressBookWindow : Window
             // Handled before the await: once this handler yields, routing has moved on and a
             // later assignment is ignored.
             e.Handled = true;
-            // The command the Delete button is bound to, so the key and the button apply the
-            // same rules — synced contacts are read-only (issue #827).
-            await _vm.DeleteSelectedContactsCommand.ExecuteAsync(null);
+            // What the Delete button runs, so the key and the button apply the same rules —
+            // synced contacts are read-only (issue #827).
+            await _vm.DeleteSelectedContactsAsync();
         }
     }
 
@@ -660,6 +678,9 @@ public partial class AddressBookWindow : Window
         if (_vm.SelectedGroup is { } g)
             ShowGroupNameEntry(g.Name);
     }
+
+    private async void DeleteButton_Click(object sender, RoutedEventArgs e) =>
+        await _vm.DeleteSelectedContactsAsync();
 
     // The list is multi-select and SelectedItems cannot be bound, so hand the selection to the
     // ViewModel: Delete acts on all of it, and the Delete button's availability depends on it.

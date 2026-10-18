@@ -181,10 +181,12 @@
                                     AutomationProperties.Name="Edit contact"
                                     IsEnabled="{Binding CanEditContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="9"/>
-                            <!-- Same command the Delete key runs in the contact list (issue #827). -->
+                            <!-- Runs what the Delete key runs in the contact list (issue #827). A Click
+                                 handler rather than an async command: an async command disables its
+                                 button while it runs, and this button holds focus during the delete. -->
                             <Button Content="_Delete"
                                     x:Name="DeleteContactButton"
-                                    Command="{Binding DeleteSelectedContactsCommand}"
+                                    Click="DeleteButton_Click"
                                     AutomationProperties.Name="Delete selected contact"
                                     IsEnabled="{Binding CanDeleteContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="10"/>

@@ -336,7 +336,14 @@ public partial class AddressBookViewModel : ObservableObject
     public bool CanEditContact    => HasSelectedContact && !IsEditingContact && SelectedContact!.IsLocal;
     // Delete acts on the whole selection, so it is available when ANY selected contact is local
     // (issue #827): with a mixed selection it deletes the local ones and leaves the synced ones.
-    public bool CanDeleteContact  => !IsEditingContact && ContactsToDelete().Any(c => c.IsLocal);
+    // While a delete is under way the answer is held at true: the Delete button may hold keyboard
+    // focus, and a focused button that goes disabled has WPF move focus somewhere of its own choosing
+    // before the delete can put it on the neighbouring row. A second press meanwhile is ignored by
+    // DeleteSelectedContactsAsync itself.
+    public bool CanDeleteContact  =>
+        _deleteInProgress || (!IsEditingContact && ContactsToDelete().Any(c => c.IsLocal));
+
+    private bool _deleteInProgress;
 
     // The contact list is multi-select, and a ListView's SelectedItems cannot be bound, so the View
     // pushes it here on every selection change (SetSelectedContacts).
@@ -798,24 +805,41 @@ public partial class AddressBookViewModel : ObservableObject
     /// (issue #256) — a delete here could not reach the account and the contact would come back on
     /// the next sync — so they are never deleted. A selection of nothing but synced contacts is
     /// refused and left as it was; a mixed selection deletes the local contacts after a
-    /// confirmation that says the synced ones will stay, and says so again once it is done.
+    /// confirmation that says the synced ones will stay, and shows that again once it is done.
+    /// A press while a delete is still running (the confirmation, or the store write) is ignored.
     /// </summary>
-    [RelayCommand]
     public async Task DeleteSelectedContactsAsync()
     {
-        if (IsEditingContact) return;
+        if (_deleteInProgress || IsEditingContact) return;
         var selected = ContactsToDelete();
         if (selected.Count == 0) return;
+
+        _deleteInProgress = true;
+        try
+        {
+            await DeleteSelectedContactsCoreAsync(selected);
+        }
+        finally
+        {
+            _deleteInProgress = false;
+            OnPropertyChanged(nameof(CanDeleteContact));
+        }
+    }
+
+    private async Task DeleteSelectedContactsCoreAsync(IReadOnlyList<ContactModel> selected)
+    {
 
         var local = selected.Where(c => c.IsLocal).ToList();
         var readOnly = selected.Count - local.Count;
 
         if (local.Count == 0)
         {
-            // Nothing changes, so keyboard focus stays on the row it was on.
-            ReportReadOnly(readOnly == 1
+            // Nothing changes, so keyboard focus stays on the row it was on and the announcement
+            // interrupts nothing.
+            ContactError = readOnly == 1
                 ? $"{(string.IsNullOrWhiteSpace(selected[0].DisplayName) ? selected[0].EmailAddress : selected[0].DisplayName)} is synced from an account. Synced contacts are read-only and can't be deleted here."
-                : $"All {readOnly} selected contacts are synced from an account. Synced contacts are read-only and can't be deleted here.");
+                : $"All {readOnly} selected contacts are synced from an account. Synced contacts are read-only and can't be deleted here.";
+            Announce(ContactError, AnnouncementCategory.Result);
             return;
         }
 
@@ -828,29 +852,31 @@ public partial class AddressBookViewModel : ObservableObject
                 : $" {readOnly} selected contacts are synced from an account and read-only, so they will be kept.";
         if (!await RequestConfirmAsync("Confirm Delete", prompt)) return;
 
-        await DeleteMultipleAsync(local);
+        var landed = await DeleteMultipleAsync(local);
 
         if (readOnly > 0)
-            ReportReadOnly(readOnly == 1
+        {
+            // Always shown under the contact details. Spoken only when focus did not land on a row:
+            // when it did, that row is being read, and an announcement would cut it off — the rule
+            // the group delete and member removal follow (#265, #667). The confirmation already
+            // said the synced contacts would be kept.
+            ContactError = readOnly == 1
                 ? "1 synced contact was not deleted. Synced contacts are read-only."
-                : $"{readOnly} synced contacts were not deleted. Synced contacts are read-only.");
-    }
-
-    // Shown under the contact details as well as spoken, so it is there to read again.
-    private void ReportReadOnly(string message)
-    {
-        ContactError = message;
-        Announce(message, AnnouncementCategory.Result);
+                : $"{readOnly} synced contacts were not deleted. Synced contacts are read-only.";
+            if (!landed)
+                Announce(ContactError, AnnouncementCategory.Result);
+        }
     }
 
     /// <summary>
     /// Deletes <paramref name="contacts"/> and leaves selection and keyboard focus on the contact
     /// that followed them in the visible list (the one before, when the last rows went; the list
-    /// itself, when it is now empty) — issue #265.
+    /// itself, when it is now empty) — issue #265. Returns whether keyboard focus landed on a row
+    /// before the deleted ones were removed, so a caller knows whether anything is being read.
     /// </summary>
-    public async Task DeleteMultipleAsync(IReadOnlyList<ContactModel> contacts)
+    public async Task<bool> DeleteMultipleAsync(IReadOnlyList<ContactModel> contacts)
     {
-        if (contacts.Count == 0) return;
+        if (contacts.Count == 0) return false;
         foreach (var contact in contacts)
             await _contactService.DeleteContactAsync(contact.Id);
 
@@ -887,6 +913,7 @@ public partial class AddressBookViewModel : ObservableObject
         // ContactService.DeleteContactAsync rationale), but the visible
         // ResolvedMemberCount on the right pane needs to drop. Re-fetch.
         await ReloadGroupsAsync();
+        return landed;
     }
 
     // ── Internals ────────────────────────────────────────────────────────────

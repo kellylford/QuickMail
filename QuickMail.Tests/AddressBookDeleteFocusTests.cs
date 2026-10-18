@@ -15,6 +15,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -268,7 +270,7 @@ public class AddressBookDeleteFocusTests
 
     // ── Synced contacts are read-only (issue #827) ───────────────────────────
     // The Delete key used to delete whatever was selected, synced contacts included, while the
-    // Delete button refused them. Both now run DeleteSelectedContactsCommand, so these tests are
+    // Delete button refused them. Both now run DeleteSelectedContactsAsync, so these tests are
     // the rules for both.
 
     /// <summary>A ViewModel over local contacts and contacts synced from a Microsoft account.</summary>
@@ -305,11 +307,11 @@ public class AddressBookDeleteFocusTests
         public readonly List<(string Text, AnnouncementCategory Category)> Spoken = [];
         public int FocusRequests;
 
-        public DeleteProbe(AddressBookViewModel vm, bool confirm = true)
+        public DeleteProbe(AddressBookViewModel vm, bool confirm = true, bool focusLands = true)
         {
             vm.ConfirmRequested += (_, body) => { Prompts.Add(body); return Task.FromResult(confirm); };
             vm.AnnouncementRequested += (text, category) => Spoken.Add((text, category));
-            vm.ContactListFocusNowRequested += () => { FocusRequests++; return true; };
+            vm.ContactListFocusNowRequested += () => { FocusRequests++; return focusLands; };
             vm.ContactListFocusRequested += () => FocusRequests++;
         }
     }
@@ -325,7 +327,7 @@ public class AddressBookDeleteFocusTests
             Assert.False(vm.CanDeleteContact);   // the button is unavailable…
             var probe = new DeleteProbe(vm);
 
-            await vm.DeleteSelectedContactsCommand.ExecuteAsync(null);   // …and the key is refused
+            await vm.DeleteSelectedContactsAsync();   // …and the key is refused
 
             Assert.Empty(probe.Prompts);
             Assert.Contains(synced, vm.FilteredContacts);
@@ -351,7 +353,7 @@ public class AddressBookDeleteFocusTests
             Assert.False(vm.CanDeleteContact);
             var probe = new DeleteProbe(vm);
 
-            await vm.DeleteSelectedContactsCommand.ExecuteAsync(null);
+            await vm.DeleteSelectedContactsAsync();
 
             Assert.Empty(probe.Prompts);
             Assert.Equal(3, vm.FilteredContacts.Count);
@@ -373,7 +375,7 @@ public class AddressBookDeleteFocusTests
             Assert.True(vm.CanDeleteContact);
             var probe = new DeleteProbe(vm);
 
-            await vm.DeleteSelectedContactsCommand.ExecuteAsync(null);
+            await vm.DeleteSelectedContactsAsync();
 
             Assert.Equal($"Delete {alice.Display}?", Assert.Single(probe.Prompts));
             Assert.DoesNotContain(alice, vm.FilteredContacts);
@@ -403,7 +405,7 @@ public class AddressBookDeleteFocusTests
             Assert.True(vm.CanDeleteContact);   // the button is available: something can go
             var probe = new DeleteProbe(vm);
 
-            await vm.DeleteSelectedContactsCommand.ExecuteAsync(null);
+            await vm.DeleteSelectedContactsAsync();
 
             var prompt = Assert.Single(probe.Prompts);
             Assert.StartsWith("Delete 2 contacts?", prompt, StringComparison.Ordinal);
@@ -415,10 +417,56 @@ public class AddressBookDeleteFocusTests
             Assert.Contains(stored, c => c.Id == dan.Id);
             Assert.DoesNotContain(stored, c => c.Id == alice.Id || c.Id == carol.Id);
 
+            // Shown, but not spoken: focus landed on the next row, and that row is being read. An
+            // announcement now would cut it off (#265, #667); the confirmation already said it.
+            Assert.Equal("2 synced contacts were not deleted. Synced contacts are read-only.", vm.ContactError);
+            Assert.Empty(probe.Spoken);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task MixedSelection_FocusDidNotLand_TheSyncedCountIsSpoken()
+    {
+        var (vm, _, dir) = await MakeMixedViewModel(["Alice", "Carol"], ["Bob Server"]);
+        try
+        {
+            Select(vm, Named(vm, "Alice"), Named(vm, "Bob Server"));
+            var probe = new DeleteProbe(vm, focusLands: false);
+
+            await vm.DeleteSelectedContactsAsync();
+
             var (text, category) = Assert.Single(probe.Spoken);
             Assert.Equal(AnnouncementCategory.Result, category);
-            Assert.Equal("2 synced contacts were not deleted. Synced contacts are read-only.", text);
+            Assert.Equal("1 synced contact was not deleted. Synced contacts are read-only.", text);
             Assert.Equal(text, vm.ContactError);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task ASecondDeleteWhileOneIsRunning_IsIgnored()
+    {
+        var (vm, svc, dir) = await MakeMixedViewModel(["Alice", "Carol", "Dave"], []);
+        try
+        {
+            Select(vm, Named(vm, "Alice"));
+            var prompts = 0;
+            var answer = new TaskCompletionSource<bool>();
+            vm.ConfirmRequested += (_, _) => { prompts++; return answer.Task; };
+
+            var first = vm.DeleteSelectedContactsAsync();     // waiting on its confirmation
+            Assert.True(vm.CanDeleteContact);                  // held while the delete runs
+            await vm.DeleteSelectedContactsAsync();            // the second press
+            Assert.Equal(1, prompts);
+
+            answer.SetResult(true);
+            await first;
+            Assert.Equal(2, (await svc.LoadAllContactsAsync()).Count);
+
+            // Finished, so the next press is honoured again.
+            await vm.DeleteSelectedContactsAsync();
+            Assert.Equal(2, prompts);
         }
         finally { Cleanup(dir); }
     }
@@ -433,13 +481,12 @@ public class AddressBookDeleteFocusTests
             Select(vm, alice, Named(vm, "Bob Server"));
             var probe = new DeleteProbe(vm);
 
-            await vm.DeleteSelectedContactsCommand.ExecuteAsync(null);
+            await vm.DeleteSelectedContactsAsync();
 
             Assert.Equal(
                 $"Delete {alice.Display}? 1 selected contact is synced from an account and read-only, so it will be kept.",
                 Assert.Single(probe.Prompts));
-            Assert.Equal("1 synced contact was not deleted. Synced contacts are read-only.",
-                Assert.Single(probe.Spoken).Text);
+            Assert.Equal("1 synced contact was not deleted. Synced contacts are read-only.", vm.ContactError);
         }
         finally { Cleanup(dir); }
     }
@@ -454,7 +501,7 @@ public class AddressBookDeleteFocusTests
             Select(vm, alice, Named(vm, "Bob Server"));
             var probe = new DeleteProbe(vm, confirm: false);
 
-            await vm.DeleteSelectedContactsCommand.ExecuteAsync(null);
+            await vm.DeleteSelectedContactsAsync();
 
             Assert.Single(probe.Prompts);
             Assert.Equal(3, vm.FilteredContacts.Count);
@@ -499,7 +546,7 @@ public class AddressBookDeleteFocusTests
             vm.BeginEditContactCommand.Execute(null);
             var probe = new DeleteProbe(vm);
 
-            await vm.DeleteSelectedContactsCommand.ExecuteAsync(null);
+            await vm.DeleteSelectedContactsAsync();
 
             Assert.Empty(probe.Prompts);
             Assert.Equal(2, (await svc.LoadAllContactsAsync()).Count);
@@ -520,7 +567,7 @@ public class AddressBookDeleteFocusTests
             Assert.False(vm.CanDeleteContact);
             var probe = new DeleteProbe(vm);
 
-            await vm.DeleteSelectedContactsCommand.ExecuteAsync(null);
+            await vm.DeleteSelectedContactsAsync();
 
             Assert.Empty(probe.Prompts);
             Assert.Equal(3, vm.FilteredContacts.Count);
@@ -989,7 +1036,7 @@ public class AddressBookDeleteFocusWindowTests
     }
 
     [StaFact]
-    public void DeleteButton_RunsTheKeysCommand_AndFollowsTheWholeSelection()
+    public void DeleteButton_FollowsTheWholeSelection()
     {
         var (window, vm, dir) = BuildWindow(withSynced: true);
         try
@@ -998,13 +1045,11 @@ public class AddressBookDeleteFocusWindowTests
             var button = window.FindName("DeleteContactButton") as Button;
             Assert.NotNull(list);
             Assert.NotNull(button);
-            // One path for the key and the button: the button is bound to the command the key runs.
-            Assert.Same(vm.DeleteSelectedContactsCommand, button!.Command);
 
             var synced = vm.FilteredContacts.Single(c => !c.IsLocal);
             var local = vm.FilteredContacts.First(c => c.IsLocal);
             FocusRow(list!, synced);
-            Assert.False(button.IsEnabled);
+            Assert.False(button!.IsEnabled);
 
             list!.SelectedItems.Add(local);   // a mixed selection, started on the synced contact
             Drain();
@@ -1014,6 +1059,51 @@ public class AddressBookDeleteFocusWindowTests
             list.SelectedItems.Remove(local);
             Drain();
             Assert.False(button.IsEnabled);
+        }
+        finally { Cleanup(window, dir); }
+    }
+
+    [StaFact]
+    public void DeleteButton_FocusGoesFromTheButtonStraightToTheLandedRow()
+    {
+        // The button holds focus through the delete. If it went disabled meanwhile (as an async
+        // command's button does while it runs), WPF would move focus somewhere of its own first and
+        // a screen reader would announce that on the way to the row.
+        var (window, vm, dir) = BuildWindow(withSynced: true);
+        try
+        {
+            var list = window.FindName("ContactList") as ListView;
+            var button = window.FindName("DeleteContactButton") as Button;
+            Assert.NotNull(list);
+            Assert.NotNull(button);
+            var doomed = vm.FilteredContacts.First(c => c.IsLocal);
+            var expected = vm.FilteredContacts[vm.FilteredContacts.IndexOf(doomed) + 1];
+            FocusRow(list!, doomed);
+            Assert.True(button!.Focus(), "Could not put keyboard focus on the Delete button.");
+            Drain();
+            Assert.True(button.IsEnabled);
+
+            var prompts = new List<string>();
+            window.ConfirmForTests = body => { prompts.Add(body); return true; };
+            var focusPath = new List<object>();
+            KeyboardFocusChangedEventHandler onFocus = (_, e) => focusPath.Add(e.NewFocus);
+            window.AddHandler(Keyboard.GotKeyboardFocusEvent, onFocus, handledEventsToo: true);
+
+            ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)!).Invoke();
+            var until = DateTime.UtcNow.AddSeconds(10);
+            while (vm.FilteredContacts.Contains(doomed) && DateTime.UtcNow < until)
+            {
+                Drain();
+                Thread.Sleep(5);
+            }
+            Drain();
+            window.RemoveHandler(Keyboard.GotKeyboardFocusEvent, onFocus);
+
+            Assert.Single(prompts);
+            Assert.DoesNotContain(doomed, vm.FilteredContacts);
+            var landedRow = Assert.Single(focusPath);
+            Assert.Same(expected, (landedRow as ListViewItem)?.DataContext);
+            Assert.Same(expected, (Keyboard.FocusedElement as ListViewItem)?.DataContext);
         }
         finally { Cleanup(window, dir); }
     }
