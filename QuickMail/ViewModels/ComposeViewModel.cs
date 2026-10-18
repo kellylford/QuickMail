@@ -327,7 +327,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         SetProgress("Saving draft…");
         try
         {
-            await SaveDraftCoreAsync(account);
+            await SaveDraftCoreAsync(account, "manual");
             await ForgetLocalCopyAsync();
             LastSaveOutcome = DraftSaveOutcome.SavedToServer;
             SetStatusOutcome("Draft saved.");
@@ -379,6 +379,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // Ours while this window is open: a drain must not upload or send it from under the edit.
             _outbox.Hold(_outboxId);
             if (_editVersion == version) _isDirty = false;
+            LogService.Log("SaveDraft: kept the draft on this computer");
             return true;
         }
         catch (Exception ex)
@@ -426,21 +427,155 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     internal static string SharedMailboxQueuedMessage(AccountModel account)
         => $"Message queued. It will be sent when {account.AccountLabel} is connected again.";
 
-    /// <summary>Uploads the current compose state as a draft, replacing any previous draft.</summary>
-    private async Task SaveDraftCoreAsync(AccountModel account, CancellationToken externalCt = default)
-    {
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        using var combined = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, externalCt);
+    /// <summary>How long a draft save's cancellation token runs before it fires. Settable for tests.</summary>
+    internal TimeSpan DraftSaveTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
-        _draftFolderName ??= await _imap.FindDraftsFolderNameAsync(account.Id, combined.Token);
+    /// <summary>
+    /// How much longer than <see cref="DraftSaveTimeout"/> a save is waited for before it is
+    /// abandoned outright (#781). The token is the polite way to stop a save; this is the
+    /// guarantee, for when something under the save does not listen to it. Settable for tests.
+    /// </summary>
+    internal TimeSpan DraftSaveAbandonGrace { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Numbers each draft save, so the log can follow one and a late one knows it is late.</summary>
+    private int _draftSaveSerial;
+
+    /// <summary>
+    /// The watcher of the most recently abandoned save, which settles what its late result means.
+    /// Exposed so tests can wait for it; nothing in the app needs to.
+    /// </summary>
+    internal Task AbandonedDraftSave { get; private set; } = Task.CompletedTask;
+
+    /// <summary>What one upload produced: the server's id for the draft, and the edit it captured.</summary>
+    private readonly record struct DraftUpload(string MessageId, int EditVersion);
+
+    /// <summary>
+    /// Uploads the current compose state as a draft, replacing any previous draft. Returns or throws
+    /// within <see cref="DraftSaveTimeout"/> plus <see cref="DraftSaveAbandonGrace"/> whatever the
+    /// server does: a save that never came back once held <see cref="IsBusy"/> for good and stopped
+    /// every later auto-save without a word in the log (#781). A save given up on throws
+    /// <see cref="TimeoutException"/>, which is a connection failure, so callers keep the draft on
+    /// this computer exactly as they do when the server cannot be reached (#637).
+    /// </summary>
+    /// <param name="account">The sending account.</param>
+    /// <param name="trigger">"manual" or "auto", for the log.</param>
+    /// <param name="externalCt">Cancelled when the window closes.</param>
+    private async Task SaveDraftCoreAsync(AccountModel account, string trigger, CancellationToken externalCt = default)
+    {
+        var serial = ++_draftSaveSerial;
+        var tag = $"SaveDraft ({trigger} #{serial})";
+        var sw = Stopwatch.StartNew();
+        // Logged without /debug, and with nothing about the message in it: the line that tells a
+        // save that never started from one that started and never finished.
+        LogService.Log($"{tag}: started");
+
+        var timeoutCts = new CancellationTokenSource(DraftSaveTimeout);
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, externalCt);
+        var abandoned = false;
+        try
+        {
+            var upload = UploadDraftAsync(account, linked.Token);
+            DraftUpload result;
+            try
+            {
+                result = await upload.WaitAsync(DraftSaveTimeout + DraftSaveAbandonGrace, externalCt);
+            }
+            catch (Exception ex) when (!upload.IsCompleted)
+            {
+                // The upload is still running and nothing will wait for it any more. Cancel it in
+                // case it ever looks, and leave the token sources to the watcher: disposing them
+                // under a running operation turns a clean cancellation into ObjectDisposedException.
+                abandoned = true;
+                try { timeoutCts.Cancel(); }
+                catch (AggregateException) { /* a registered callback threw; the save is abandoned either way */ }
+                AbandonedDraftSave = WatchAbandonedSaveAsync(upload, serial, tag, sw, timeoutCts, linked);
+                if (ex is TimeoutException)
+                {
+                    LogService.Log($"{tag}: no answer {sw.ElapsedMilliseconds} ms after it started, though its "
+                        + $"{DraftSaveTimeout.TotalSeconds:0}-second timeout had fired; abandoned so later saves can run");
+                    throw new TimeoutException(
+                        $"Saving the draft did not finish within {(DraftSaveTimeout + DraftSaveAbandonGrace).TotalSeconds:0} seconds.", ex);
+                }
+                LogService.Log($"{tag}: abandoned after {sw.ElapsedMilliseconds} ms because the window is closing");
+                throw;
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !externalCt.IsCancellationRequested)
+            {
+                LogService.Log($"{tag}: timed out after {sw.ElapsedMilliseconds} ms");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                LogService.Log($"{tag}: failed after {sw.ElapsedMilliseconds} ms ({ex.GetType().Name})");
+                throw;
+            }
+
+            LogService.Log($"{tag}: saved to the server in {sw.ElapsedMilliseconds} ms");
+            _draftMessageId = result.MessageId;
+            // Anything typed while the save ran is not in it: stay dirty so the next tick saves it.
+            if (_editVersion == result.EditVersion) _isDirty = false;
+        }
+        finally
+        {
+            if (!abandoned)
+            {
+                linked.Dispose();
+                timeoutCts.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Finds the Drafts folder if it is not known yet and appends the draft. Changes no state but
+    /// the folder name, so a save abandoned mid-flight cannot overwrite what a newer save recorded.
+    /// </summary>
+    private async Task<DraftUpload> UploadDraftAsync(AccountModel account, CancellationToken ct)
+    {
+        _draftFolderName ??= await _imap.FindDraftsFolderNameAsync(account.Id, ct);
         if (_draftFolderName == null)
             throw new DraftFolderMissingException();
 
+        // An abandoned save whose folder lookup came back late must not go on to append.
+        ct.ThrowIfCancellationRequested();
         var version = _editVersion;
         var compose = BuildComposeModel(account.Id);
-        _draftMessageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, combined.Token);
-        // Anything typed while the save ran is not in it: stay dirty so the next tick saves it.
-        if (_editVersion == version) _isDirty = false;
+        var messageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, ct);
+        return new DraftUpload(messageId, version);
+    }
+
+    /// <summary>
+    /// Waits out a save that was abandoned (#781) and decides what its late result means. If it did
+    /// put a draft on the server and no save has started since, that copy becomes the one the next
+    /// save replaces, rather than being left behind as a duplicate. If a newer save has started, the
+    /// newer save's state wins and the late copy is only logged.
+    /// </summary>
+    private async Task WatchAbandonedSaveAsync(Task<DraftUpload> upload, int serial, string tag, Stopwatch sw,
+        CancellationTokenSource timeoutCts, CancellationTokenSource linked)
+    {
+        try
+        {
+            var late = await upload;
+            if (serial == _draftSaveSerial && !_isSent)
+            {
+                _draftMessageId = late.MessageId;
+                LogService.Log($"{tag}: finished {sw.ElapsedMilliseconds} ms after it started, after it was "
+                    + "abandoned; no newer save had started, so the next save replaces this copy");
+            }
+            else
+            {
+                LogService.Log($"{tag}: finished {sw.ElapsedMilliseconds} ms after it started, after it was abandoned; "
+                    + $"a newer save had started, so draft {late.MessageId} may be left on the server as a duplicate");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"{tag}: abandoned save ended {sw.ElapsedMilliseconds} ms after it started ({ex.GetType().Name})");
+        }
+        finally
+        {
+            linked.Dispose();
+            timeoutCts.Dispose();
+        }
     }
 
     private sealed class DraftFolderMissingException : Exception
@@ -527,7 +662,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         IsBusy = true;
         try
         {
-            await SaveDraftCoreAsync(account, _autoSaveCts.Token);
+            await SaveDraftCoreAsync(account, "auto", _autoSaveCts.Token);
             await ForgetLocalCopyAsync();
             AutoSaveText = $"Auto-saved {DateTime.Now:t}";
             _autoSaveFailureAnnounced = false;

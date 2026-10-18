@@ -678,7 +678,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         }
         catch
         {
-            try { await draftsFolder.CloseAsync(false, CancellationToken.None); } catch { }
+            try { await CloseDraftsBoundedAsync(draftsFolder); } catch { }
             throw;
         }
         LogService.Log($"AppendDraft: saved draft to {draftsFolder.FullName} UID={newUid?.Id}");
@@ -711,12 +711,25 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             }
         }
 
-        try { await draftsFolder.CloseAsync(false, CancellationToken.None); }
+        try { await CloseDraftsBoundedAsync(draftsFolder); }
         catch (Exception ex) { LogService.Log("AppendDraft: closing Drafts after the save failed", ex); }
 
         // Empty (not "0") signals "server didn't echo a UID" so the next save appends a new
         // draft instead of issuing a delete against the invalid UID 0.
         return newUid?.Id is uint id ? id.ToString(CultureInfo.InvariantCulture) : string.Empty;
+    }
+
+    /// <summary>
+    /// Closes Drafts after a draft save without the caller's token — the timeout firing must not
+    /// undo a save that already happened — but not without any limit either. CLOSE on a connection
+    /// that died after the append was the one wait in a draft save that QuickMail did not bound
+    /// itself: it was left to MailKit's socket timeout, holding the lease (and, before #781, the
+    /// compose window's auto-save) for as long as that took.
+    /// </summary>
+    private static async Task CloseDraftsBoundedAsync(IMailFolder draftsFolder)
+    {
+        using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await draftsFolder.CloseAsync(false, closeCts.Token);
     }
 
     /// <summary>
@@ -2054,8 +2067,11 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
             foreach (var name in names)
             {
+                // Only "no such folder" means try the next name. A cancellation or a dropped
+                // connection swallowed here came out as "this account has no such folder" — a draft
+                // save that timed out was reported as a missing Drafts folder (#781).
                 try { return await root.GetSubfolderAsync(name, ct); }
-                catch { }
+                catch (Exception ex) when (ex is not OperationCanceledException && !IsConnectionDrop(ex)) { }
             }
         }
         return null;
