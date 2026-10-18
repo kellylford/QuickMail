@@ -57,13 +57,27 @@ public class MarkAsReadClientOnlyTests
         Assert.Contains("mark as read", model.OneLineSummary(), StringComparison.Ordinal);
     }
 
+    private const string DetailNote =
+        "This rule marks messages as read, which Outlook Classic treats as a client-side action, so Outlook Classic may not show it.";
+
     [Fact]
-    public void DetailText_SaysWhyOutlookCantShowTheRule_AndHowToFixIt()
+    public void DetailText_SaysWhyOutlookMayNotShowTheRule_AndHowToFixIt()
     {
+        var model = ServerRuleMapper.ToModel(Dto("""{ "markAsRead": true, "moveToFolder": "F1" }"""));
+
+        Assert.Contains(DetailNote + " To save changes to it here, edit it and clear Mark as read.",
+                        model.DetailText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DetailText_OfARuleThatOnlyMarksRead_SaysToRecreateItClientSide()
+    {
+        // Clearing its only action would leave a rule Save refuses, so that is not the advice.
         var model = ServerRuleMapper.ToModel(Dto("""{ "markAsRead": true }"""));
 
-        Assert.Contains("This rule marks messages as read, so Outlook Classic can't show it. Edit it and clear Mark as read",
+        Assert.Contains(DetailNote + " Marking as read is all it does; to keep that, delete it and create a new rule that marks messages as read",
                         model.DetailText(), StringComparison.Ordinal);
+        Assert.DoesNotContain("clear Mark as read", model.DetailText(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -72,8 +86,9 @@ public class MarkAsReadClientOnlyTests
         var model = ServerRuleMapper.ToModel(Dto("""{ "markAsRead": true, "assignCategories": ["Red"] }"""));
 
         Assert.False(model.IsFullyEditable);
-        Assert.Contains("This rule marks messages as read, so Outlook Classic can't show it.", model.DetailText(), StringComparison.Ordinal);
+        Assert.Contains(DetailNote, model.DetailText(), StringComparison.Ordinal);
         Assert.DoesNotContain("clear Mark as read", model.DetailText(), StringComparison.Ordinal);
+        Assert.DoesNotContain("delete it and create", model.DetailText(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -198,11 +213,50 @@ public class MarkAsReadClientOnlyTests
         Assert.True(vm.MarkAsRead);           // shown as it is, not quietly unticked
         Assert.True(vm.CanMarkAsRead);
         Assert.True(vm.HasServerMarkAsReadNotice);
-        Assert.Equal("This rule runs on the server and marks messages as read. Outlook Classic can't show a server-side rule "
-                     + "that marks messages as read, so QuickMail no longer saves one. To save changes to this rule, clear Mark as read.",
-                     vm.ServerMarkAsReadNotice);
+        Assert.Equal(NoticeLead + "To save changes to this rule, clear Mark as read.", vm.ServerMarkAsReadNotice);
         Assert.Equal("Mark as read only works in a client-side rule, and this rule runs on the server. Remove it to save.",
                      vm.ServerEditError);
+    }
+
+    private const string NoticeLead =
+        "This rule runs on the server and marks messages as read. Outlook Classic treats marking as read as a "
+        + "client-side action and may not show a server-side rule that does it, so QuickMail no longer saves one. ";
+
+    [Fact]
+    public void AServerRuleThatOnlyMarksRead_IsToldToRecreateIt_NotToClearIt()
+    {
+        // Clearing the only action leaves "Choose at least one action." — a loop with no way out.
+        var vm = ServerRuleEditorViewModel.ForEdit(ServerRuleMapper.ToModel(Dto("""{ "markAsRead": true }""")));
+
+        Assert.Equal(NoticeLead + "Marking as read is all this rule does, so to keep it, delete it and create a new rule "
+                     + "that marks messages as read; QuickMail saves that as a client-side rule.", vm.ServerMarkAsReadNotice);
+    }
+
+    [Fact]
+    public void TheNotice_FollowsTheOtherActions()
+    {
+        var vm = ServerRuleEditorViewModel.ForEdit(ServerRuleMapper.ToModel(Dto("""{ "markAsRead": true, "delete": true }""")));
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        vm.Delete = false;
+
+        Assert.Contains(nameof(ServerRuleEditorViewModel.ServerMarkAsReadNotice), changed);
+        Assert.Contains("Marking as read is all this rule does", vm.ServerMarkAsReadNotice, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ANewRuleThatMarksRead_MovesAndDeletes_SaysWhatAClientRuleCantDo()
+    {
+        // Sent client-side by the mark, where move and delete can't go together.
+        var vm = NewRule();
+        vm.MarkAsRead = true;
+        vm.MoveToFolder = true;
+        vm.MoveToFolderId = "folder-id";
+        vm.Delete = true;
+
+        Assert.Equal("Mark as read only works in a client-side rule, which can't both move and delete a message. Change one to save.",
+                     vm.Classify(accountSupportsServerRules: true).ConflictError);
     }
 
     [Fact]

@@ -176,15 +176,19 @@ public sealed partial class ServerRuleModel : ObservableObject
             foreach (var r in reasons) sb.AppendLine(r);
         }
 
-        // #810: Outlook Classic can't show a server rule that marks messages read, and QuickMail no longer
-        // writes one. Said here so the user can tell why the rule is missing from Outlook, and how to fix it
-        // where QuickMail can edit the rule.
+        // #810: Outlook Classic treats marking as read as client-side and may not show a server rule that does
+        // it, and QuickMail no longer writes one. Said here so the user can tell why the rule may be missing from
+        // Outlook, and what to do about it where QuickMail can edit the rule.
         if (MarkAsRead)
         {
             sb.AppendLine("Note:");
-            sb.AppendLine(IsFullyEditable && !IsReadOnly
-                ? "This rule marks messages as read, so Outlook Classic can't show it. Edit it and clear Mark as read to save changes to it here and show it in Outlook Classic."
-                : "This rule marks messages as read, so Outlook Classic can't show it.");
+            var marksReadOnly = DescribeActions().Count == 1;
+            sb.AppendLine("This rule marks messages as read, which Outlook Classic treats as a client-side action, so Outlook Classic may not show it."
+                + (!IsFullyEditable || IsReadOnly
+                    ? string.Empty
+                    : marksReadOnly
+                        ? " Marking as read is all it does; to keep that, delete it and create a new rule that marks messages as read, which QuickMail saves as a client-side rule."
+                        : " To save changes to it here, edit it and clear Mark as read."));
         }
 
         return sb.ToString().TrimEnd();

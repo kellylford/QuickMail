@@ -446,7 +446,7 @@ public class UnifiedRulesViewModelTests
         var vm = new UnifiedRulesViewModel(client, server, [Imap(home), Graph(work)], preferredAccountId: home);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.Delete = true;
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
         await editor.SaveCommand.ExecuteAsync(null);
 
@@ -911,7 +911,7 @@ public class UnifiedRulesViewModelTests
             [Imap(home), Graph(work)], preferredAccountId: home);
 
         var editor = await OpenNewEditorAsync(vm);
-        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        editor.Name = "Digests"; editor.UseSubjectContains = true; editor.SubjectContains = "digest"; editor.Delete = true;
         vm.SelectedAccount = vm.AccountOptions.First(o => o.Id == work);
         var announces = new List<(string Text, AnnouncementCategory Category)>();
         vm.AnnouncementRequested += (t, c) => announces.Add((t, c));
