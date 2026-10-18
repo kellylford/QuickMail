@@ -14,11 +14,13 @@ public partial class MailMessageSummary : ObservableObject
     /// where the message lives (#423). Holds the folder alone ("Inbox"), or an account-qualified
     /// "&lt;account&gt; -- &lt;folder&gt;" when the aggregate spans more than one account. Empty in
     /// single-folder views, where the folder is implied.
-    /// <para>Deliberately NOT an observable property: it is stamped on freshly-materialized summaries
-    /// during an aggregate load, BEFORE the row's UI container is generated, so no change notification
-    /// is needed. That stamp-before-insert ordering is load-bearing — a re-stamp after the row is shown
-    /// would not refresh the accessible name. Preserve it if this instance is ever reused.</para></summary>
-    public string FolderDisplayName { get; set; } = string.Empty;
+    /// <para>Observable (#451): rows shown before the folder list is known (a profile with no
+    /// persisted folder list yet, so the startup All Mail comes up from the message cache alone) are
+    /// stamped again when the folder list arrives, and the row's accessible-name MultiBinding has to
+    /// hear about it. Setting the value it already holds raises nothing, so re-stamping an
+    /// already-labelled list is silent.</para></summary>
+    [ObservableProperty]
+    private string _folderDisplayName = string.Empty;
 
     /// <summary>
     /// The RFC 5322 Message-ID header, a stable identity for the *same physical message* across

@@ -161,6 +161,13 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 Kind         = SpecialFolderKind.Inbox
             });
         }
+        // A dropped connection fails the folder listing just below too, which reports it; a cancellation is not
+        // a failure at all. Logging either here as an error only added to the startup and reconnect noise (#278).
+        catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, ct)
+                                   || (ex is OperationCanceledException && ct.IsCancellationRequested))
+        {
+            LogService.Debug($"GetFolders/Inbox skipped: {LogService.FormatException(ex)}");
+        }
         catch (Exception ex) { LogService.Log("GetFolders/Inbox", ex); }
 
         var folders = await client.GetFoldersAsync(client.PersonalNamespaces[0], cancellationToken: ct);
