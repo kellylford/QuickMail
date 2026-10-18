@@ -11,6 +11,16 @@ still listed by their address (#814).
 
 Contributed by [valiant8086](https://github.com/valiant8086).
 
+### Address book groups say which group they are, and how many members they have
+
+In the address book's Groups list and in the Group Manager, a group with no members was shown and
+read as just "Empty group", so several empty groups could not be told apart. It now gives its name
+first, such as "Work, no members" (#649).
+
+The member count beside each group's name in the address book was never drawn on screen. It now shows
+beside the name, and the heading above the member list reads "Members of Work".
+Screen readers now read both headings as shown, instead of a fixed label (#650).
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
