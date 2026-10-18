@@ -898,7 +898,7 @@ Deleting a message from its window closes the window and returns focus to the or
 
 ### Attachments on a Received Message
 
-When a message has attachments, they appear in an **attachments list** just below the header fields (Subject, From, To, Date). This works the same way in all three reading modes — reading pane, tab, and window.
+When a message has attachments, they appear in an **attachments list** just below the header fields (Subject, From, To, Date). Each one shows its file name followed by its size, and screen readers read both. This works the same way in all three reading modes — reading pane, tab, and window.
 
 Reach the attachment list in either of two ways:
 
