@@ -270,7 +270,43 @@ public class ContactServiceGroupTestsV2
             var group  = groups.First(g => g.Id == id);
             Assert.Equal(1, group.ResolvedMemberCount);
             Assert.Equal(2, group.MissingContactCount);
-            Assert.Contains("(2 missing)", group.Display);
+            Assert.Equal("Mixed, 1 member (2 missing)", group.Display);
+            Assert.Equal("1 member (2 missing)", group.MemberSummary);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task Display_KeepsTheName_WhenEveryMemberIsMissing()
+    {
+        // Used to read "Empty group", with no way to tell which (#649).
+        var (service, dir) = MakeService();
+        try
+        {
+            var id = await service.CreateGroupAsync("Gone");
+            await service.AddMemberAsync(id, 999);
+            await service.AddMemberAsync(id, 998);
+            var group = (await service.LoadAllGroupsAsync()).First(g => g.Id == id);
+            Assert.Equal("Gone, no members (2 missing)", group.Display);
+            Assert.Equal("no members (2 missing)", group.MemberSummary);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task LoadAllGroupsAsync_ReadsAFileThatStillHoldsDisplay()
+    {
+        // Builds before #649 wrote the computed Display into groups.json; it is ignored now, and must not stop a load.
+        var dir = TempDir();
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "groups.json"),
+                """[{"Id":1,"Name":"Old","Display":"Empty group","MemberContactIds":[],"LastUsedTicks":0}]""");
+            var service = new ContactService(new ProfileContext(dir));
+
+            var group = Assert.Single(await service.LoadAllGroupsAsync());
+            Assert.Equal("Old, no members", group.Display);
         }
         finally { Cleanup(dir); }
     }

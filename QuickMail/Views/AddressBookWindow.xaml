@@ -307,8 +307,7 @@
                         <TextBlock DockPanel.Dock="Top"
                                    Text="Groups"
                                    FontWeight="SemiBold"
-                                   Margin="0,0,0,3"
-                                   AutomationProperties.Name="Groups header"/>
+                                   Margin="0,0,0,3"/>
                         <ListView x:Name="GroupsList"
                                   ItemsSource="{Binding Groups}"
                                   SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
@@ -343,8 +342,7 @@
                         <TextBlock DockPanel.Dock="Top"
                                    Text="{Binding SelectedGroup.Name, StringFormat='Members of {0}'}"
                                    FontWeight="SemiBold"
-                                   Margin="0,0,0,3"
-                                   AutomationProperties.Name="Group member list header"/>
+                                   Margin="0,0,0,3"/>
                         <StackPanel DockPanel.Dock="Top"
                                     Style="{StaticResource InsertRow}"
                                     Orientation="Horizontal"
