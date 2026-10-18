@@ -99,8 +99,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             IsEnabled = rule.IsEnabled,
 
             SenderContains = rule.SenderContains ?? string.Empty,
-            FromAddresses = string.Join(", ", rule.FromAddresses),
-            SentToAddresses = string.Join(", ", rule.SentToAddresses),
+            FromAddresses = RuleRecipient.FormatList(rule.FromAddresses),
+            SentToAddresses = RuleRecipient.FormatList(rule.SentToAddresses),
             SubjectContains = rule.SubjectContains ?? string.Empty,
             BodyOrSubjectContains = rule.BodyOrSubjectContains ?? string.Empty,
             BodyContains = rule.BodyContains ?? string.Empty,
@@ -116,7 +116,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             CopyToFolderName = rule.CopyToFolderName,
             MarkAsRead = rule.MarkAsRead,
             Delete = rule.Delete,
-            ForwardTo = string.Join(", ", rule.ForwardTo),
+            ForwardTo = RuleRecipient.FormatList(rule.ForwardTo),
             StopProcessingRules = rule.StopProcessingRules,
         };
 
@@ -491,8 +491,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         IsEnabled = IsEnabled,
 
         SenderContains = Blank(EffectiveSenderContains),
-        FromAddresses = SplitAddresses(EffectiveFromAddresses),
-        SentToAddresses = SplitAddresses(EffectiveSentToAddresses),
+        FromAddresses = RuleRecipient.ParseList(EffectiveFromAddresses),
+        SentToAddresses = RuleRecipient.ParseList(EffectiveSentToAddresses),
         SubjectContains = Blank(EffectiveSubjectContains),
         BodyOrSubjectContains = Blank(EffectiveBodyOrSubjectContains),
         BodyContains = Blank(EffectiveBodyContains),
@@ -508,7 +508,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         MarkAsRead = MarkAsRead,
         MarkImportance = SelectedMarkImportance?.Value,
         Delete = Delete,
-        ForwardTo = SplitAddresses(ForwardTo),
+        ForwardTo = RuleRecipient.ParseList(ForwardTo),
         StopProcessingRules = StopProcessingRules,
 
         // Only fully-representable rules ever reach this editor, so the assembled model is safe to
@@ -947,13 +947,14 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>The text of a condition that is switched OFF — null when it is on, or has none.</summary>
     private static string? OffText(bool isOn, string raw) => isOn ? null : Blank(raw);
 
-    /// <summary>Parses a free-text recipient field ("a@b.com, c@d.com; e@f.com").</summary>
+    /// <summary>
+    /// Parses a free-text recipient field ("a@b.com, c@d.com; e@f.com") into the values a client rule
+    /// matches on. Read the way a server rule's save reads it (<see cref="RuleRecipient.ParseList"/>), so
+    /// the box means one thing whichever kind of rule it lands in: an entry written "Name &lt;address&gt;"
+    /// counts once and contributes its address, and a quoted name's comma separates nothing (#810).
+    /// </summary>
     private static List<string> SplitAddresses(string text)
-        => string.IsNullOrWhiteSpace(text)
-            ? []
-            : text.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                  .Where(s => s.Length > 0)
-                  .ToList();
+        => RuleRecipient.ParseList(text).Select(r => r.Address).ToList();
 }
 
 /// <summary>
