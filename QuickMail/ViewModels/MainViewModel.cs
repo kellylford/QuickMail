@@ -1186,6 +1186,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Raw messages before search filtering; repopulated by SetMessages().
     private List<MailMessageSummary> _rawMessages = [];
 
+    /// <summary>
+    /// The aggregate/virtual view whose folder labels <see cref="_rawMessages"/> was stamped for by
+    /// <see cref="SetMessages"/>, or null when the list belongs to a single real folder (whose rows
+    /// carry no label). Lets <see cref="RestampDisplayedFolderLabels"/> re-label exactly the rows it
+    /// labelled before, and never a single folder's rows caught mid-navigation (#451).
+    /// </summary>
+    private string? _rawMessagesStampedForView;
+
     /// <summary>All messages loaded for the current folder/view, before filtering.</summary>
     public IReadOnlyList<MailMessageSummary> LoadedMessages => _rawMessages;
 
@@ -4442,12 +4450,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // folder list (first run, fresh --profileDir, rebuilt mail.db) it is still empty, ranking is
         // neutral (date/name tie-break), and the representative settles on the first fetch — collapse
         // is correct either way.
+        string? stampedFor = null;
         if (IsVirtualFolder(SelectedFolder))
         {
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
             ApplyFolderDisplayNames(list);
+            stampedFor = SelectedFolder!.FullName;
         }
         _rawMessages = list;
+        _rawMessagesStampedForView = stampedFor;
         // Watch state is derived, not persisted, so it has to be stamped onto every freshly
         // materialized row — in every folder, not just the watched one. The row's spoken "watched"
         // field is meant to be readable wherever the message appears.
@@ -4506,6 +4517,28 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 folderNames[(kvp.Key, f.FullName)] = f.DisplayName;
 
         StampFolderDisplayNames(list, AggregateSpansMultipleAccounts(), accountLabels, folderNames);
+    }
+
+    /// <summary>
+    /// #451: re-labels the rows already on screen in an aggregate/virtual view after the folder list
+    /// changes. Rows stamped while <see cref="_cachedFolders"/> did not yet know their folder (a profile
+    /// with no persisted folder list, so the startup All Mail came up from the message cache alone)
+    /// were correctly left blank — never a raw id — and nothing labelled them once the folders arrived,
+    /// so the source folder stayed silent until the user navigated away and back. A rename or a newly
+    /// connected account is caught the same way.
+    /// <para>Runs on the UI thread: its one caller, <see cref="RebuildFolderListFromCache"/>, replaces
+    /// the bound <see cref="Folders"/> collection. O(rows) with the same precomputed lookups as a load,
+    /// and only on a folder-list rebuild, never per message; a row whose label is unchanged raises no
+    /// PropertyChanged, so an already-labelled list costs no UI work.</para>
+    /// </summary>
+    private void RestampDisplayedFolderLabels()
+    {
+        // Only the aggregate these rows were stamped for: a single real folder's rows carry no label,
+        // and rows left over from the previous view mid-navigation (or under the calendar) are not
+        // the current view's to label.
+        if (_rawMessagesStampedForView == null || _rawMessages.Count == 0) return;
+        if (!string.Equals(SelectedFolder?.FullName, _rawMessagesStampedForView, StringComparison.Ordinal)) return;
+        ApplyFolderDisplayNames(_rawMessages);
     }
 
     /// <summary>
@@ -5057,6 +5090,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         BuildFolderTree();
+
+        // Folder names the displayed aggregate rows could not be labelled with may be known now (#451).
+        RestampDisplayedFolderLabels();
 
         // The Outbox count is a local read, so it is right from the first tree the user sees (#637).
         RefreshOutboxCountAsync().LogFaults("Outbox count");
