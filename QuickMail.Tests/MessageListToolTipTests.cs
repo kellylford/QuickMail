@@ -11,6 +11,8 @@
 // These guards read the XAML source, so they cover every presentation of a message row: the flat
 // list, the conversations tree, and the From and To group trees, including the row styles those
 // trees declare in their own resources, plus any app-wide ListViewItem/TreeViewItem style.
+//
+// Issue #825 extends the same guard to the attachment lists and the tab strip; see below.
 
 using System;
 using System.Collections.Generic;
@@ -56,6 +58,76 @@ public class MessageListToolTipTests
             "A tooltip on a message row opens whenever the list scrolls under a resting mouse "
           + "pointer — Alt+Down/Alt+Up to the next unread message does that — and screen readers "
           + "speak it, naming the wrong message (issue #638):\n  " + string.Join("\n  ", problems));
+    }
+
+    // ── Other lists whose rows change under a resting pointer (issue #825) ──────────────────────
+    //
+    // The attachment lists refill when the user moves to another message (Alt+Down in the reading
+    // pane) or adds a file in compose, and the tab strip's headers shift whenever a tab opens or
+    // closes. A row tooltip in any of them opens under a resting pointer just as #638's did. The
+    // attachment rows used to keep the file size only in a tooltip; it is now visible text.
+
+    /// <summary>(XAML file under Views/, x:Name of the list) for every list guarded for #825.</summary>
+    public static readonly TheoryData<string, string> ShiftingRowLists = new()
+    {
+        { "MainWindow.xaml",    "ReadingPaneAttachmentList" },
+        { "MessageWindow.xaml", "AttachmentList" },
+        { "ComposeWindow.xaml", "AttachmentList" },
+        { "MainWindow.xaml",    "TabStrip" },
+    };
+
+    [Theory]
+    [MemberData(nameof(ShiftingRowLists))]
+    public void ShiftingRowList_CarriesNoRowToolTip(string file, string name)
+    {
+        var list = Named(Load("Views", file), name);
+        Assert.True(list is not null, $"{file}: no element named {name} — renamed or removed?");
+
+        var problems = RowContent(list!)
+            .SelectMany(ToolTipsOn)
+            .ToList();
+
+        Assert.True(problems.Count == 0,
+            $"{file}/{name}: a row tooltip opens when the rows change under a resting mouse pointer, "
+          + "and screen readers speak it (issue #825):\n  " + string.Join("\n  ", problems));
+    }
+
+    public static readonly TheoryData<string, string> AttachmentLists = new()
+    {
+        { "MainWindow.xaml",    "ReadingPaneAttachmentList" },
+        { "MessageWindow.xaml", "AttachmentList" },
+        { "ComposeWindow.xaml", "AttachmentList" },
+    };
+
+    [Theory]
+    [MemberData(nameof(AttachmentLists))]
+    public void AttachmentRow_ShowsSizeAsTextAndKeepsItsNameOnTheContainer(string file, string name)
+    {
+        var list = Named(Load("Views", file), name);
+        Assert.True(list is not null, $"{file}: no element named {name} — renamed or removed?");
+
+        // The size is visible to sighted users now that the tooltip is gone.
+        var template = list!.Descendants().Single(e => e.Name.LocalName == "ListBox.ItemTemplate");
+        var texts = template.Descendants()
+            .Where(e => e.Name.LocalName == "TextBlock")
+            .Select(e => (string?)e.Attribute("Text") ?? "")
+            .ToList();
+        Assert.Contains("{Binding FileSizeDisplay}", texts);
+        Assert.Contains("{Binding FileName}", texts);
+
+        // Its themed secondary style: Theme.TextSecondary while unselected, the row's own
+        // foreground when selected (both contrast-checked by BuiltInThemeTests).
+        var size = template.Descendants().First(e => e.Name.LocalName == "TextBlock"
+                                                    && (string?)e.Attribute("Text") == "{Binding FileSizeDisplay}");
+        Assert.Equal("{StaticResource RowSecondaryText}", (string?)size.Attribute("Style"));
+
+        // The spoken name stays on the container, as "name, size" — never on a template child,
+        // which would not be read (see AddressBookRowSpeechTests).
+        Assert.DoesNotContain(template.Descendants(), e => e.Attributes().Any(a => a.Name.LocalName == "AutomationProperties.Name"));
+        var containerStyle = list.Descendants().Single(e => e.Name.LocalName == "ListBox.ItemContainerStyle");
+        Assert.Contains(containerStyle.Descendants(), e => e.Name.LocalName == "Setter"
+            && (string?)e.Attribute("Property") == "AutomationProperties.Name"
+            && (string?)e.Attribute("Value") == "{Binding AccessibleName}");
     }
 
     [Fact]

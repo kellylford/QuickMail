@@ -1227,8 +1227,10 @@
                             <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                                 <Setter Property="Padding" Value="8,5"/>
                                 <Setter Property="Margin" Value="0,0,1,0"/>
+                                <!-- No ToolTip (issue #825): opening or closing a tab shifts the headers under a
+                                     resting pointer, and screen readers speak whichever tooltip opens. Selecting
+                                     the tab shows its subject in full, in the message and the window title. -->
                                 <Setter Property="AutomationProperties.Name" Value="{Binding Title}"/>
-                                <Setter Property="ToolTip" Value="{Binding Title}"/>
                             </Style>
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
@@ -1247,7 +1249,6 @@
                                             Tag="{Binding}"
                                             IsTabStop="False"
                                             AutomationProperties.Name="Close this tab"
-                                            ToolTip="Close tab"
                                             Visibility="{Binding CanClose, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </StackPanel>
                             </DataTemplate>
@@ -1337,7 +1338,15 @@
                                 </ListBox.ItemContainerStyle>
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding FileName}" ToolTip="{Binding FileSizeDisplay}"/>
+                                        <!-- The size is visible text, not a tooltip (issue #825): a row tooltip opens
+                                             when the list refills under a resting pointer, and screen readers speak it.
+                                             The container's AccessibleName already reads "name, size". -->
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding FileName}"/>
+                                            <TextBlock Text="{Binding FileSizeDisplay}"
+                                                       Style="{StaticResource RowSecondaryText}"
+                                                       Margin="8,0,0,0"/>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                                 <ListBox.ContextMenu>

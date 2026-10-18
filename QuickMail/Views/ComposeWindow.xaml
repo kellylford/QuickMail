@@ -437,8 +437,13 @@
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <TextBlock Text="{Binding FileName, StringFormat='{}{0}'}"
-                                   ToolTip="{Binding FileSizeDisplay}"/>
+                        <!-- Size as visible text, not a tooltip (issue #825). -->
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding FileName}"/>
+                            <TextBlock Text="{Binding FileSizeDisplay}"
+                                       Style="{StaticResource RowSecondaryText}"
+                                       Margin="8,0,0,0"/>
+                        </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
                 <ListBox.ContextMenu>
