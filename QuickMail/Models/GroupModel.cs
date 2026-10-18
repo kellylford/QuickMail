@@ -47,15 +47,29 @@ public class GroupModel
         MemberContactIds.Count - ResolvedMemberCount;
 
     /// <summary>
-    /// Display string for the group list, e.g. "Project Team, 7 members" or
-    /// "Empty group" or "3 members (1 missing contact)".
+    /// Display string for the group list, e.g. "Project Team, 7 members",
+    /// "Project Team, 3 members (1 missing)" or "Project Team, no members".
+    /// Always led by the name: it is the row's accessible name, so a group with
+    /// no members must still say which group it is (#649).
     /// </summary>
-    public string Display =>
-        ResolvedMemberCount == 0
-            ? "Empty group"
-            : MissingContactCount == 0
-                ? $"{Name}, {ResolvedMemberCount} member{(ResolvedMemberCount == 1 ? "" : "s")}"
-                : $"{Name}, {ResolvedMemberCount} member{(ResolvedMemberCount == 1 ? "" : "s")} ({MissingContactCount} missing)";
+    [JsonIgnore]
+    public string Display => $"{Name}, {MemberSummary}";
+
+    /// <summary>
+    /// <see cref="Display"/> without the name: "7 members", "3 members (1 missing)",
+    /// "no members". The address book draws it beside the bold name.
+    /// </summary>
+    [JsonIgnore]
+    public string MemberSummary
+    {
+        get
+        {
+            var count = ResolvedMemberCount == 0
+                ? "no members"
+                : $"{ResolvedMemberCount} member{(ResolvedMemberCount == 1 ? "" : "s")}";
+            return MissingContactCount > 0 ? $"{count} ({MissingContactCount} missing)" : count;
+        }
+    }
 
     // A screen reader reads a data-bound Selector item's UIA Name from ToString()
     // (DisplayMemberPath="Display" only sets the visual). Without this the Groups
