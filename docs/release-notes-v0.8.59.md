@@ -21,6 +21,13 @@ The member count beside each group's name in the address book was never drawn on
 beside the name, and the heading above the member list reads "Members of Work".
 Screen readers now read both headings as shown, instead of a fixed label (#650).
 
+### Rows in All Mail say their folder as soon as the folder list arrives
+
+In All Mail and the other views that gather several folders, each message says which folder it is
+in. When the message list appeared before QuickMail knew the folder names, such as on the first
+start after an upgrade, those messages said no folder until you left the view and came back. They
+now pick up the folder as soon as the list arrives, and when a folder is renamed (#451).
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
