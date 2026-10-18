@@ -111,6 +111,38 @@ public sealed class ConnectionRecoveryTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task FindDraftsFolder_OnADroppedConnection_IsAConnectionFailureNotAMissingFolder()
+    {
+        // #781: the by-name Drafts lookup swallowed every exception, so a dead connection came back
+        // as "this account has no Drafts folder" instead of a failure the compose window keeps the
+        // draft locally for. Either the folder is found (a server advertising special-use answers
+        // without a round trip) or the call fails as a connection failure; null is the regression.
+        _greenMail.RequireServers();
+        var ct = TestContext.Current.CancellationToken;
+        var account = CreateRelayedAccount("drafts-drop");
+
+        using var imap = new ImapMailService(new NoOpOAuthService());
+        await imap.ConnectAsync(account, "pw", ct);
+        try
+        {
+            await imap.CreateFolderAsync(account.Id, null, "Drafts", ct);
+            Assert.True(_relay.KillActiveConnections() >= 1, "Kill hit no connections — nothing to recover from.");
+
+            string? found = null;
+            var ex = await Record.ExceptionAsync(async () => found = await imap.FindDraftsFolderNameAsync(account.Id, ct));
+
+            if (ex is null)
+                Assert.Equal("Drafts", found);
+            else
+                Assert.True(ConnectionFailure.IsConnectionFailure(ex, ct), $"Expected a connection failure, got {ex}");
+        }
+        finally
+        {
+            await imap.DisconnectAsync(account.Id, ct);
+        }
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────────
 
     /// <summary>

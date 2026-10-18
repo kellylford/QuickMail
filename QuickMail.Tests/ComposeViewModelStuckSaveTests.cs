@@ -40,6 +40,14 @@ public class ComposeViewModelStuckSaveTests
             return tcs;
         }
 
+        public List<(string Folder, string Id)> Trashed { get; } = [];
+
+        public override Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+        {
+            Trashed.Add((folderName, messageId));
+            return Task.CompletedTask;
+        }
+
         public override Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default)
             => Task.FromResult<string?>("Drafts");
 
@@ -73,7 +81,8 @@ public class ComposeViewModelStuckSaveTests
             };
             Vm.AutoSaveNotice += Notices.Add;
             Vm.AutoSaveFailed += Failures.Add;
-            Vm.SenderAccount = new AccountModel { Id = Guid.NewGuid(), Username = "kelly@example.com" };
+            // OAuth, so a send needs no stored password.
+            Vm.SenderAccount = new AccountModel { Id = Guid.NewGuid(), Username = "kelly@example.com", AuthType = AuthType.OAuth2Google };
             Vm.To = "someone@example.com";
             Vm.Subject = "Lunch";
             Vm.Body = "Friday?";
@@ -244,9 +253,104 @@ public class ComposeViewModelStuckSaveTests
     }
 
     [Fact]
+    public async Task SaveDraft_WhenTheSaveNeverReturnsAndThereIsNoOutbox_FailsWithTheTimeout()
+    {
+        var h = new Harness(withOutbox: false);   // --online mode
+        h.Mail.NextHangs();
+
+        await Bounded(h.Vm.SaveDraftCommand.ExecuteAsync(null));
+
+        Assert.Equal(DraftSaveOutcome.Failed, h.Vm.LastSaveOutcome);
+        Assert.StartsWith("Save draft failed: Saving the draft did not finish within", h.Vm.StatusText, StringComparison.Ordinal);
+        Assert.False(h.Vm.IsBusy);
+        Assert.True(h.Vm.IsDirty);
+    }
+
+    [Fact]
+    public async Task AbandonedSave_FinishingLateAndCurrent_DropsTheCopyKeptOnThisComputer()
+    {
+        // The Outbox row replaces the draft id it was given, not the late one, so left alone it
+        // would upload a second copy beside the late one when the window closes.
+        var h = new Harness();
+        var stuck = h.Mail.NextHangs();
+        await Bounded(h.Vm.AutoSaveAsync());           // abandoned, kept locally
+        var rowId = Assert.Single(h.Outbox.Enqueued).Id;
+        Assert.Contains(rowId, h.Outbox.Held);
+
+        stuck.SetResult("late");                       // nothing typed since it started
+        await Bounded(h.Vm.AbandonedDraftSave);
+
+        Assert.Equal([rowId], h.Outbox.Removed);
+        Assert.DoesNotContain(rowId, h.Outbox.Held);
+        Assert.False(h.Vm.IsDirty);
+
+        h.Vm.Body = "Friday at noon?";
+        await Bounded(h.Vm.AutoSaveAsync());
+        Assert.Equal("late", h.Mail.ReplaceIds[^1]);
+    }
+
+    [Fact]
+    public async Task AbandonedSave_FinishingLateAndBehind_LeavesTheComposeUnsavedSoTheNextSaveReplacesIt()
+    {
+        var h = new Harness();
+        var stuck = h.Mail.NextHangs();
+        var tick = h.Vm.AutoSaveAsync();
+        h.Vm.Body = "Friday at noon?";                 // typed while the save hung
+        await Bounded(tick);                           // abandoned; the local copy has the edit
+        var rowId = Assert.Single(h.Outbox.Enqueued).Id;
+        Assert.False(h.Vm.IsDirty);
+
+        stuck.SetResult("late");                       // the server copy predates the edit
+        await Bounded(h.Vm.AbandonedDraftSave);
+
+        Assert.True(h.Vm.IsDirty);
+        Assert.Empty(h.Outbox.Removed);
+
+        await Bounded(h.Vm.AutoSaveAsync());
+        Assert.Equal("late", h.Mail.ReplaceIds[^1]);
+        Assert.Equal([rowId], h.Outbox.Removed);
+        Assert.False(h.Vm.IsDirty);
+    }
+
+    [Fact]
+    public async Task AbandonedSave_FinishingAfterTheMessageWasSent_RemovesTheLateDraft()
+    {
+        var h = new Harness();
+        var stuck = h.Mail.NextHangs();
+        await Bounded(h.Vm.AutoSaveAsync());           // abandoned
+        await Bounded(h.Vm.SendCommand.ExecuteAsync(null));
+        Assert.True(h.Vm.IsSent);
+
+        stuck.SetResult("late");
+        await Bounded(h.Vm.AbandonedDraftSave);
+
+        Assert.Contains(("Drafts", "late"), h.Mail.Trashed);
+    }
+
+    [Fact]
+    public async Task AbandonedSave_FinishingAfterANewerSave_IsNotRemoved()
+    {
+        // Only a draft of a sent message is deleted; a late copy that a newer save overtook might be
+        // the only one with some edit in it, so it is left alone.
+        var h = new Harness();
+        var stuck = h.Mail.NextHangs();
+        await Bounded(h.Vm.AutoSaveAsync());
+        h.Vm.Body = "Friday at noon?";
+        await Bounded(h.Vm.AutoSaveAsync());
+
+        stuck.SetResult("late");
+        await Bounded(h.Vm.AbandonedDraftSave);
+
+        Assert.Empty(h.Mail.Trashed);
+    }
+
+    [Fact]
     public async Task AutoSave_ThatCompletesInTime_IsNotAbandoned()
     {
         var h = new Harness();
+        // Generous here: this test is about the ordinary path, and a loaded runner must not turn a
+        // 20 ms save into an abandoned one.
+        h.Vm.DraftSaveTimeout = TimeSpan.FromSeconds(30);
         h.Mail.Next(async ct => { await Task.Delay(20, ct); return "quick"; });
 
         await Bounded(h.Vm.AutoSaveAsync());

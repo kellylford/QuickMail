@@ -475,12 +475,19 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         try
         {
             var upload = UploadDraftAsync(account, linked.Token);
-            DraftUpload result;
-            try
+
+            // Wait for the upload or the hard deadline (or the window closing), whichever comes
+            // first. Deciding from one look at the upload afterwards, rather than from which
+            // exception a WaitAsync threw, leaves no window in which an upload that finished right at
+            // the deadline is counted as a failure and its server id dropped.
+            using (var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(externalCt))
             {
-                result = await upload.WaitAsync(DraftSaveTimeout + DraftSaveAbandonGrace, externalCt);
+                var deadline = Task.Delay(DraftSaveTimeout + DraftSaveAbandonGrace, deadlineCts.Token);
+                await Task.WhenAny(upload, deadline);
+                deadlineCts.Cancel();
             }
-            catch (Exception ex) when (!upload.IsCompleted)
+
+            if (!upload.IsCompleted)
             {
                 // The upload is still running and nothing will wait for it any more. Cancel it in
                 // case it ever looks, and leave the token sources to the watcher: disposing them
@@ -488,16 +495,22 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 abandoned = true;
                 try { timeoutCts.Cancel(); }
                 catch (AggregateException) { /* a registered callback threw; the save is abandoned either way */ }
-                AbandonedDraftSave = WatchAbandonedSaveAsync(upload, serial, tag, sw, timeoutCts, linked);
-                if (ex is TimeoutException)
+                AbandonedDraftSave = WatchAbandonedSaveAsync(upload, account.Id, serial, tag, sw, timeoutCts, linked);
+                if (externalCt.IsCancellationRequested)
                 {
-                    LogService.Log($"{tag}: no answer {sw.ElapsedMilliseconds} ms after it started, though its "
-                        + $"{DraftSaveTimeout.TotalSeconds:0}-second timeout had fired; abandoned so later saves can run");
-                    throw new TimeoutException(
-                        $"Saving the draft did not finish within {(DraftSaveTimeout + DraftSaveAbandonGrace).TotalSeconds:0} seconds.", ex);
+                    LogService.Log($"{tag}: abandoned after {sw.ElapsedMilliseconds} ms because the window is closing");
+                    throw new OperationCanceledException(externalCt);
                 }
-                LogService.Log($"{tag}: abandoned after {sw.ElapsedMilliseconds} ms because the window is closing");
-                throw;
+                LogService.Log($"{tag}: no answer {sw.ElapsedMilliseconds} ms after it started, though its "
+                    + $"{DraftSaveTimeout.TotalSeconds:0}-second timeout had fired; abandoned so later saves can run");
+                throw new TimeoutException(
+                    $"Saving the draft did not finish within {(DraftSaveTimeout + DraftSaveAbandonGrace).TotalSeconds:0} seconds.");
+            }
+
+            DraftUpload result;
+            try
+            {
+                result = await upload;
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !externalCt.IsCancellationRequested)
             {
@@ -544,37 +557,87 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Waits out a save that was abandoned (#781) and decides what its late result means. If it did
-    /// put a draft on the server and no save has started since, that copy becomes the one the next
-    /// save replaces, rather than being left behind as a duplicate. If a newer save has started, the
-    /// newer save's state wins and the late copy is only logged.
+    /// Waits out a save that was abandoned (#781) and decides what its late result means:
+    /// <list type="bullet">
+    /// <item>The message has been sent since: the late copy is a draft of a sent message, so it is
+    /// moved to Trash, best effort.</item>
+    /// <item>A newer save has started: that save's state wins, and the late copy is only logged. It
+    /// may be left on the server as a duplicate.</item>
+    /// <item>Otherwise the late copy is the draft on the server, and becomes the one the next save
+    /// replaces. If the draft was kept on this computer meanwhile, that Outbox row would upload a
+    /// second copy later (it replaces the older id), so it is dropped when the server copy is
+    /// current, and the compose is marked unsaved when it is not, so the next save replaces the late
+    /// copy and drops the row.</item>
+    /// </list>
     /// </summary>
-    private async Task WatchAbandonedSaveAsync(Task<DraftUpload> upload, int serial, string tag, Stopwatch sw,
-        CancellationTokenSource timeoutCts, CancellationTokenSource linked)
+    private async Task WatchAbandonedSaveAsync(Task<DraftUpload> upload, Guid accountId, int serial, string tag,
+        Stopwatch sw, CancellationTokenSource timeoutCts, CancellationTokenSource linked)
     {
         try
         {
-            var late = await upload;
-            if (serial == _draftSaveSerial && !_isSent)
+            DraftUpload late;
+            try
             {
-                _draftMessageId = late.MessageId;
-                LogService.Log($"{tag}: finished {sw.ElapsedMilliseconds} ms after it started, after it was "
-                    + "abandoned; no newer save had started, so the next save replaces this copy");
+                late = await upload;
+            }
+            catch (Exception ex)
+            {
+                LogService.Log($"{tag}: abandoned save ended {sw.ElapsedMilliseconds} ms after it started ({ex.GetType().Name})");
+                return;
+            }
+
+            var finished = $"{tag}: finished {sw.ElapsedMilliseconds} ms after it started, after it was abandoned";
+            if (_isSent)
+            {
+                LogService.Log($"{finished}; the message has been sent since, so draft {late.MessageId} is being removed");
+                await RemoveLateDraftAsync(accountId, late.MessageId, tag);
+            }
+            else if (serial != _draftSaveSerial)
+            {
+                LogService.Log($"{finished}; a newer save had started, so draft {late.MessageId} may be left on the server as a duplicate");
             }
             else
             {
-                LogService.Log($"{tag}: finished {sw.ElapsedMilliseconds} ms after it started, after it was abandoned; "
-                    + $"a newer save had started, so draft {late.MessageId} may be left on the server as a duplicate");
+                _draftMessageId = late.MessageId;
+                if (_outboxId == null)
+                {
+                    LogService.Log($"{finished}; no newer save had started, so the next save replaces this copy");
+                }
+                else if (late.EditVersion == _editVersion)
+                {
+                    LogService.Log($"{finished}; it is current, so the copy kept on this computer is no longer needed");
+                    await ForgetLocalCopyAsync();
+                }
+                else
+                {
+                    _isDirty = true;
+                    LogService.Log($"{finished}; edits made since are only on this computer, so the next save replaces this copy");
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            LogService.Log($"{tag}: abandoned save ended {sw.ElapsedMilliseconds} ms after it started ({ex.GetType().Name})");
         }
         finally
         {
             linked.Dispose();
             timeoutCts.Dispose();
+        }
+    }
+
+    /// <summary>Moves a draft that landed after the message was sent to Trash. Best effort.</summary>
+    private async Task RemoveLateDraftAsync(Guid accountId, string messageId, string tag)
+    {
+        if (string.IsNullOrEmpty(messageId) || _draftFolderName == null)
+        {
+            LogService.Log($"{tag}: the late draft has no id the server reported, so it cannot be removed");
+            return;
+        }
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            await _imap.MoveToTrashAsync(accountId, _draftFolderName, messageId, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"{tag}: removing the late draft of a sent message failed", ex);
         }
     }
 
