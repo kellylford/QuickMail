@@ -1,5 +1,16 @@
 # QuickMail v0.8.59 Release Notes
 
+## Fixed
+
+### A sender is listed once in a conversation's Properties
+
+**Properties** (**Alt+Enter**) on a conversation listed a sender twice in Participants when they
+had written once with a display name and once without: once as their name and address, and again
+as the address alone. They are now listed once, with their name. Someone who never gave a name is
+still listed by their address (#814).
+
+Contributed by [valiant8086](https://github.com/valiant8086).
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

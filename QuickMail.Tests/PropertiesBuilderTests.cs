@@ -711,6 +711,108 @@ public class ConversationPropertiesBuilderTests
 
         Assert.EndsWith("Person 10 <p10@example.com>; and 1 more", participants);
     }
+
+    [Fact]
+    public void Build_ListsASenderOnce_WhoWroteWithAndWithoutTheirName()
+    {
+        // One message arrived as "Dana <dana@example.com>", another from the same address with no display name, which
+        // the row holds as the bare address. Both say the same sender, so the one with the name is enough.
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          =
+            [
+                From("Dana", "dana@example.com"),
+                From("dana@example.com", "dana@example.com"),
+                From("Bob",  "bob@example.com"),
+            ],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants"
+            && i.Value == "Dana <dana@example.com>; Bob <bob@example.com>");
+    }
+
+    [Fact]
+    public void Build_ListsASenderOnce_EvenBeforeTheNamelessMessageHasItsAddress()
+    {
+        // A nameless message cached before the sender-address catch-up reached it: the bare address is all the row has.
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          = [From("dana@example.com", ""), From("Dana", "dana@example.com")],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants" && i.Value == "Dana <dana@example.com>");
+    }
+
+    [Fact]
+    public void Build_KeepsANamelessSender_WhenNoMessageGivesTheirName()
+    {
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          = [From("dana@example.com", "dana@example.com"), From("Bob", "bob@example.com")],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants"
+            && i.Value == "dana@example.com; Bob <bob@example.com>");
+    }
+
+    [Fact]
+    public void Build_ListsASenderOnce_WhenTheBareAddressDiffersInCase()
+    {
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          = [From("Dana", "dana@example.com"), From("DANA@EXAMPLE.COM", "DANA@EXAMPLE.COM")],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants" && i.Value == "Dana <dana@example.com>");
+    }
+
+    [Fact]
+    public void Build_ListsASenderOnce_WhenTheNamelessMessageHasAnEmptyName()
+    {
+        // From empty, address known: the row reads as the bare address.
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          = [From("", "dana@example.com"), From("Dana", "dana@example.com")],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants" && i.Value == "Dana <dana@example.com>");
+    }
+
+    [Fact]
+    public void Build_KeepsBothNames_WhenOneAddressWroteUnderTwo()
+    {
+        // Two names for one address are both worth seeing; only the bare address says nothing either does not.
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          =
+            [
+                From("Dana", "dana@example.com"),
+                From("dana@example.com", "dana@example.com"),
+                From("Dana Smith", "dana@example.com"),
+            ],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+
+        Assert.Contains(sections[0].Items, i => i.Label == "Participants"
+            && i.Value == "Dana <dana@example.com>; Dana Smith <dana@example.com>");
+    }
 }
 
 // ── SenderGroupPropertiesBuilder ────────────────────────────────────────────
