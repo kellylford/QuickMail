@@ -68,6 +68,7 @@ public sealed class GraphServerRuleService : IServerRuleService
 
     public async Task<ServerRuleModel> CreateAsync(Guid accountId, ServerRuleModel rule, CancellationToken ct = default)
     {
+        RefuseMarkAsRead(rule);
         var account = Account(accountId);
         var body = ServerRuleMapper.ToRequestBody(rule);
 
@@ -91,11 +92,25 @@ public sealed class GraphServerRuleService : IServerRuleService
                 $"Rule '{rule.DisplayName}' uses conditions or actions QuickMail can't represent " +
                 "yet, so it cannot be saved from here without losing them. Edit it in Outlook.");
 
+        RefuseMarkAsRead(rule);
+
         var account = Account(accountId);
         var body = ServerRuleMapper.ToRequestBody(rule);
 
         await GuardAsync(() => _client.PatchAsync(account, $"{RulesPath}/{Uri.EscapeDataString(rule.Id)}", body, ct));
         LogService.Log($"ServerRules: updated rule '{rule.DisplayName}' for {account.Username}");
+    }
+
+    /// <summary>
+    /// Belt-and-braces behind the editor (#810): a server rule no longer carries mark as read, and the
+    /// request body never writes it, so a model that still has it would lose it on the wire without a word.
+    /// Refuse instead — the editor asks the user to clear it, or to make a client-side rule.
+    /// </summary>
+    private static void RefuseMarkAsRead(ServerRuleModel rule)
+    {
+        if (rule.MarkAsRead)
+            throw new InvalidOperationException(
+                "Mark as read only works in a client-side rule, so it can't be saved in a server-side rule. Remove it to save.");
     }
 
     public async Task SetEnabledAsync(Guid accountId, string ruleId, bool enabled, CancellationToken ct = default)

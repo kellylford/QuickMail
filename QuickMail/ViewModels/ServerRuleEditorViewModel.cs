@@ -115,6 +115,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             CopyToFolderId = rule.CopyToFolderId,
             CopyToFolderName = rule.CopyToFolderName,
             MarkAsRead = rule.MarkAsRead,
+            _openedWithMarkAsRead = rule.MarkAsRead,
             Delete = rule.Delete,
             ForwardTo = RuleRecipient.FormatList(rule.ForwardTo),
             StopProcessingRules = rule.StopProcessingRules,
@@ -330,7 +331,18 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CopyToFolderButtonName))]
     private string? _copyToFolderName;
-    [ObservableProperty] private bool _markAsRead;
+    /// <summary>
+    /// Client-only since #810. Graph accepts markAsRead in a server rule, but Outlook Classic treats "mark it
+    /// as read" as a client-side action: it cannot show a server rule that has it, and deactivates such rules
+    /// when it next uploads its own. So a new rule that marks read is saved client-side, as Mark as unread is.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ServerMarkAsReadNotice))]
+    [NotifyPropertyChangedFor(nameof(HasServerMarkAsReadNotice))]
+    private bool _markAsRead;
+
+    /// <summary>Whether the server rule being edited already marked messages read when it was opened (#810).</summary>
+    private bool _openedWithMarkAsRead;
     /// <summary>Client-only action — Microsoft 365 server rules have no "mark as unread" (spec §20.2).</summary>
     [ObservableProperty] private bool _markAsUnread;
 
@@ -344,6 +356,47 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>Mark as unread can't run in a server-side rule, so it is turned off while editing one (#684).
     /// A new rule keeps it: ticking it there makes the rule client-side.</summary>
     public bool CanMarkAsUnread => !IsEditingServerRule;
+
+    /// <summary>
+    /// Mark as read can't be added to a server-side rule any more (#810), so it is turned off while editing
+    /// one — except on a rule that already has it. That rule's box stays available so the user can clear it,
+    /// and tick it back while deciding; Save refuses the rule while it is ticked (<see cref="ServerEditError"/>).
+    /// Nothing is ever dropped from an existing rule without the user doing it.
+    /// </summary>
+    public bool CanMarkAsRead => !IsEditingServerRule || _openedWithMarkAsRead;
+
+    /// <summary>Whether to show <see cref="ServerMarkAsReadNotice"/>: editing a server rule that marks read.</summary>
+    public bool HasServerMarkAsReadNotice => IsEditingServerRule && MarkAsRead;
+
+    /// <summary>
+    /// Said on the form, before the fields, when an existing server rule marks messages read (#810): Save
+    /// will refuse it as it stands, and the user should know why before reaching Save, not after.
+    /// </summary>
+    public string ServerMarkAsReadNotice => !HasServerMarkAsReadNotice
+        ? string.Empty
+        : "This rule runs on the server and marks messages as read. Outlook Classic treats marking as read as a "
+          + "client-side action and may not show a server-side rule that does it, so QuickMail no longer saves one. "
+          + (MarksReadAndNothingElse
+              // Clearing the only action leaves a rule that does nothing, which Save refuses too, so don't send the
+              // user round that loop: say what actually keeps the rule's effect.
+              ? "Marking as read is all this rule does, so to keep it, delete it and create a new rule that marks messages as read; QuickMail saves that as a client-side rule."
+              : "To save changes to this rule, clear Mark as read.");
+
+    /// <summary>The notice's wording turns on the rule's other actions, so it is re-read whenever one changes.</summary>
+    protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        if (e.PropertyName is nameof(MarkAsUnread) or nameof(MoveToFolder) or nameof(CopyToFolder) or nameof(Delete)
+            or nameof(StopProcessingRules) or nameof(SelectedMarkImportance) or nameof(ForwardTo))
+        {
+            base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(ServerMarkAsReadNotice)));
+        }
+    }
+
+    /// <summary>True when Mark as read is the rule's only action, so clearing it would leave nothing to save.</summary>
+    private bool MarksReadAndNothingElse
+        => MarkAsRead && !MarkAsUnread && !MoveToFolder && !CopyToFolder && !Delete && !StopProcessingRules
+           && string.IsNullOrWhiteSpace(SelectedMarkImportance?.Value) && SplitAddresses(ForwardTo).Count == 0;
 
     /// <summary>
     /// Whether the account this rule belongs to can carry server-side rules at all. Set by the owner when
@@ -799,9 +852,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             // Nothing here is a server feature the user could go and find: the client rule model itself can't hold
             // the combination, so the message says what a client-side rule can't do rather than where it lives.
             //
-            // With move+delete the only limit, the "Mark as unread only works in a client-side rule, which …" form is
-            // currently unreachable — Validate refuses unread with move or delete before a save gets this far. The
-            // composition stands for the limits that follow; don't read the one test here as covering both forms.
+            // Reachable with Mark as read since #810: a new Microsoft 365 rule that marks read, moves AND deletes is
+            // sent client-side by the mark, and a client-side rule can't both move and delete ("Mark as read only works
+            // in a client-side rule, which can't both move and delete a message"). The same form with Mark as unread
+            // stays unreachable — Validate refuses unread with move or delete before a save gets this far.
             conflict = $"{runsOnClientBecause}, which {Join(ClientModelLimits())}. Change one to save.";
         }
         return new RuleClassification { ConflictError = conflict };
@@ -871,11 +925,13 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         return f;
     }
 
-    /// <summary>Client-only capabilities in use — the server has no equivalent (spec §20.2). Extend
+    /// <summary>Client-only capabilities in use — the server has no equivalent, or none Outlook can live with (spec §20.2, #810). Extend
     /// as more client-only options are added (play sound, notify, …).</summary>
     private List<string> ClientOnlyFeaturesUsed()
     {
         var f = new List<string>();
+        // Mark as read joined it with #810: Outlook Classic itself makes "mark it as read" client-only.
+        if (MarkAsRead) f.Add("Mark as read");
         if (MarkAsUnread) f.Add("Mark as unread");
         return f;
     }
