@@ -100,7 +100,11 @@ internal sealed class UiProbeDriver
                 return await CaptureSettledAsync(_window, path);
 
             case "reading-pane":
-                return await CaptureReadingPaneAsync(path);
+                return await CaptureReadingPaneAsync(path, UiProbeFixture.HtmlMessageId);
+
+            // #825: the attachment row shows its file size as visible text instead of a tooltip.
+            case "reading-pane-attachment":
+                return await CaptureReadingPaneAsync(path, UiProbeFixture.AttachmentMessageId);
 
             case "calendar":
                 ExecuteCommand("view.calendar");
@@ -206,7 +210,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }
@@ -223,7 +227,7 @@ internal sealed class UiProbeDriver
     /// signal (WebView2 NavigationCompleted + an idle turn) — the strongest
     /// settle signal available, per spec Decision F.
     /// </summary>
-    private async Task<bool> CaptureReadingPaneAsync(string path)
+    private async Task<bool> CaptureReadingPaneAsync(string path, string messageId)
     {
         var rendered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnRendered() => rendered.TrySetResult(true);
@@ -233,7 +237,7 @@ internal sealed class UiProbeDriver
             // Through the window's open path (the notification-activation route):
             // the VM command alone loads the detail but never renders the body.
             _ = _window.OpenMessageForProbeAsync(
-                UiProbeFixture.AccountId, UiProbeFixture.InboxFolder, UiProbeFixture.HtmlMessageId);
+                UiProbeFixture.AccountId, UiProbeFixture.InboxFolder, messageId);
 
             var done = await Task.WhenAny(rendered.Task, Task.Delay(SurfaceTimeout)) == rendered.Task;
             if (!done)

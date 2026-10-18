@@ -62,7 +62,7 @@ public static class DefaultFixtureSet
             Summary("1003", UiProbeFixture.InboxFolder, "Ben Ortiz", "Invoice attached — please review",
                 hoursAgo: 5, isRead: false, isServerFlagged: true,
                 preview: "Flagged for follow-up before Friday."),
-            Summary("1004", UiProbeFixture.InboxFolder, "Files Team", "Q4 report",
+            Summary(UiProbeFixture.AttachmentMessageId, UiProbeFixture.InboxFolder, "Files Team", "Q4 report",
                 hoursAgo: 8, isRead: true,
                 preview: "The quarterly report is attached as a PDF."),
             Summary("1005", UiProbeFixture.InboxFolder,

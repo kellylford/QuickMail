@@ -18,6 +18,12 @@ public static class UiProbeFixture
     public const string HtmlMessageId = "1002";
     public const string HtmlMessageSubject = "Weekly digest: headings, lists, links";
 
+    /// <summary>
+    /// The message with an attachment, which the reading-pane-attachment probe renders so the
+    /// attachment row (file name plus its visible size, issue #825) is captured.
+    /// </summary>
+    public const string AttachmentMessageId = "1004";
+
     /// <summary>Fixed clock: every fixture timestamp derives from this instant.</summary>
     public static readonly System.DateTimeOffset T0 = new(2026, 1, 15, 9, 0, 0, System.TimeSpan.Zero);
 }
