@@ -753,7 +753,7 @@ public class ClientRuleConditionsTests
         {
             DisplayName = "Billing",
             IsEnabled = true,
-            FromAddresses = ["billing@x.com", "invoices@y.com"],
+            FromAddresses = [new("billing@x.com"), new("invoices@y.com")],
             MarkAsRead = true,
         });
 

@@ -1733,8 +1733,7 @@
                                         <DataTemplate>
                                             <TextBlock Text="{Binding Subject}"
                                                        FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       ToolTip="{Binding Subject}"/>
+                                                       TextTrimming="CharacterEllipsis"/>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>

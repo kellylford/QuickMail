@@ -259,8 +259,10 @@
                     </StackPanel>
                 </Expander>
 
-                <TextBlock Text="{Binding FolderError}" Foreground="{DynamicResource Theme.Error}"
+                <TextBlock Text="{Binding AddressError}" Foreground="{DynamicResource Theme.Error}"
                            TextWrapping="Wrap" Margin="0,8,0,0" KeyboardNavigation.IsTabStop="False"/>
+                <TextBlock Text="{Binding FolderError}" Foreground="{DynamicResource Theme.Error}"
+                           TextWrapping="Wrap" KeyboardNavigation.IsTabStop="False"/>
                 <TextBlock Text="{Binding ActionsError}" Foreground="{DynamicResource Theme.Error}"
                            TextWrapping="Wrap" KeyboardNavigation.IsTabStop="False"/>
             </StackPanel>

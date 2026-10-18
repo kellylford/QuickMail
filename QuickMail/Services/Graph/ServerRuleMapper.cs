@@ -125,8 +125,14 @@ internal static class ServerRuleMapper
                     case "subjectcontains": m.SubjectContains = FirstString(p.Value); break;
                     case "bodycontains": m.BodyContains = FirstString(p.Value); break;
                     case "bodyorsubjectcontains": m.BodyOrSubjectContains = FirstString(p.Value); break;
-                    case "fromaddresses": m.FromAddresses = Recipients(p.Value); break;
-                    case "senttoaddresses": m.SentToAddresses = Recipients(p.Value); break;
+                    case "fromaddresses":
+                        if (Recipients(p.Value) is { } from) m.FromAddresses = from;
+                        else unsupported.Add($"{Friendly(p.Name)} (an entry QuickMail can't represent)");
+                        break;
+                    case "senttoaddresses":
+                        if (Recipients(p.Value) is { } sentTo) m.SentToAddresses = sentTo;
+                        else unsupported.Add($"{Friendly(p.Name)} (an entry QuickMail can't represent)");
+                        break;
                     case "senttome": m.SentToMe = p.Value.ValueKind == JsonValueKind.True; break;
                     case "sentonlytome": m.SentOnlyToMe = p.Value.ValueKind == JsonValueKind.True; break;
                     case "hasattachments": m.HasAttachments = p.Value.ValueKind == JsonValueKind.True; break;
@@ -149,7 +155,10 @@ internal static class ServerRuleMapper
                     case "markasread": m.MarkAsRead = p.Value.ValueKind == JsonValueKind.True; break;
                     case "markimportance": m.MarkImportance = p.Value.GetString(); break;
                     case "delete": m.Delete = p.Value.ValueKind == JsonValueKind.True; break;
-                    case "forwardto": m.ForwardTo = Recipients(p.Value); break;
+                    case "forwardto":
+                        if (Recipients(p.Value) is { } forward) m.ForwardTo = forward;
+                        else unsupported.Add($"{Friendly(p.Name)} (an entry QuickMail can't represent)");
+                        break;
                     case "stopprocessingrules": m.StopProcessingRules = p.Value.ValueKind == JsonValueKind.True; break;
                 }
             }
@@ -247,28 +256,52 @@ internal static class ServerRuleMapper
         _ => null,
     };
 
-    /// <summary>Extracts addresses from a Graph recipient collection.</summary>
-    private static List<string> Recipients(JsonElement v)
+    /// <summary>
+    /// Reads a Graph recipient collection, keeping each entry's display name with its address (#810).
+    /// Returns null when an entry has no address, or an address holding a separator, quotation mark or angle
+    /// bracket (an unresolved Outlook entry can store a name such as "Ford, Kelly" as its address). The model
+    /// cannot hold the first, and the editor would read the second back as two entries, so saving would drop
+    /// or split it; the caller gates the rule as view-only rather than let that happen.
+    /// </summary>
+    private static List<RuleRecipient>? Recipients(JsonElement v)
     {
-        var list = new List<string>();
+        var list = new List<RuleRecipient>();
         if (v.ValueKind != JsonValueKind.Array) return list;
         foreach (var item in v.EnumerateArray())
         {
-            if (item.ValueKind != JsonValueKind.Object) continue;
-            if (item.TryGetProperty("emailAddress", out var ea) &&
-                ea.ValueKind == JsonValueKind.Object &&
-                ea.TryGetProperty("address", out var addr) &&
-                addr.ValueKind == JsonValueKind.String)
+            if (item.ValueKind != JsonValueKind.Object ||
+                !item.TryGetProperty("emailAddress", out var ea) ||
+                ea.ValueKind != JsonValueKind.Object ||
+                !ea.TryGetProperty("address", out var addr) ||
+                addr.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(addr.GetString()) ||
+                addr.GetString()!.IndexOfAny([',', ';', '"', '<', '>']) >= 0)
             {
-                var s = addr.GetString();
-                if (!string.IsNullOrWhiteSpace(s)) list.Add(s);
+                return null;
             }
+
+            string? name = ea.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String
+                ? n.GetString()
+                : null;
+            list.Add(new RuleRecipient(addr.GetString()!, string.IsNullOrWhiteSpace(name) ? null : name));
         }
         return list;
     }
 
-    private static object ToRecipient(string address)
-        => new Dictionary<string, object?> { ["emailAddress"] = new Dictionary<string, object?> { ["address"] = address } };
+    /// <summary>
+    /// Writes one recipient with its name AND address. The name is never left out: Outlook Classic switched
+    /// off rules whose entries carried an address alone (#810), and an entry nobody named gets the address
+    /// as its name, the form Exchange uses for Outlook's own address-only entries.
+    /// </summary>
+    private static object ToRecipient(RuleRecipient recipient)
+        => new Dictionary<string, object?>
+        {
+            ["emailAddress"] = new Dictionary<string, object?>
+            {
+                ["name"] = recipient.NameOrAddress,
+                ["address"] = recipient.Address,
+            },
+        };
 
     private static string Friendly(string graphName)
     {

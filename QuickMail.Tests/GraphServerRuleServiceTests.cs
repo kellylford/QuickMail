@@ -165,7 +165,7 @@ public class GraphServerRuleServiceTests
         Assert.True(rule.IsFullyEditable);                       // no longer flagged
         Assert.Empty(rule.UnsupportedFields);
         Assert.Equal("PTAC", rule.BodyContains);
-        Assert.Equal("board@contoso.com", Assert.Single(rule.SentToAddresses));
+        Assert.Equal("board@contoso.com", Assert.Single(rule.SentToAddresses).Address);
 
         await svc.CreateAsync(_accountId, rule);
         var body = handler.Bodies.Last()!;
@@ -291,7 +291,7 @@ public class GraphServerRuleServiceTests
         var rule = (await Service(handler).ListAsync(_accountId)).Single();
 
         Assert.True(rule.IsFullyEditable);
-        Assert.Equal(["a@contoso.com", "b@contoso.com"], rule.FromAddresses);
+        Assert.Equal(["a@contoso.com", "b@contoso.com"], rule.FromAddresses.Select(r => r.Address));
     }
 
     [Fact]
@@ -324,8 +324,8 @@ public class GraphServerRuleServiceTests
 
         var rule = (await Service(handler).ListAsync(_accountId)).Single();
 
-        Assert.Equal("boss@contoso.com", Assert.Single(rule.FromAddresses));
-        Assert.Equal("me@contoso.com", Assert.Single(rule.ForwardTo));
+        Assert.Equal("boss@contoso.com", Assert.Single(rule.FromAddresses).Address);
+        Assert.Equal("me@contoso.com", Assert.Single(rule.ForwardTo).Address);
         Assert.True(rule.IsFullyEditable);
     }
 
