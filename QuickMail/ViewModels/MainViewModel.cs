@@ -9125,7 +9125,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (ct.IsCancellationRequested) return;
             _ui.Post(() => ApplyFolderCounts(accountId, fresh));
         }
-        catch (OperationCanceledException) { /* superseded or shutting down — fine */ }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { /* superseded or shutting down — fine */ }
+        catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, ct))
+        {
+            // A sweep that lands mid-connect or mid-reconnect: expected, and the next sweep after the account
+            // is back puts the counts right. Not an error, so it does not bury real ones in the log (#278).
+            LogService.Debug(
+                $"RefreshFolderCounts {accountId} skipped (connection failure): {LogService.FormatException(ex)}");
+        }
         catch (Exception ex)
         {
             LogService.Log($"RefreshFolderCounts {accountId}", ex);
