@@ -69,6 +69,22 @@ public partial class AddressBookWindow : Window
                 ContactNameBox.Focus();
                 ContactNameBox.SelectAll();
             }
+            // The message line under the details takes room from the contact list when it appears,
+            // which can push the row a delete just landed on out of view. Bring it back once
+            // layout has run. Scrolling only: keyboard focus is not touched. In a multi-select
+            // SelectedItem is the anchor, not the row with focus, so prefer the focused row.
+            else if (e.PropertyName == nameof(vm.ContactError) && vm.ContactError.Length > 0
+                     && !vm.IsEditingContact)
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+                {
+                    var focusedRow = ContactList.IsKeyboardFocusWithin
+                        ? (Keyboard.FocusedElement as FrameworkElement)?.DataContext as ContactModel
+                        : null;
+                    if ((focusedRow ?? ContactList.SelectedItem) is { } row)
+                        ContactList.ScrollIntoView(row);
+                });
+            }
         };
     }
 
@@ -237,10 +253,17 @@ public partial class AddressBookWindow : Window
     private void OnAnnouncement(string text, AnnouncementCategory category) =>
         AccessibilityHelper.Announce(this, text, category: category);
 
+    /// <summary>
+    /// Answers confirmations in place of the MessageBox. For window tests only: a real MessageBox
+    /// would wait for a person, and nothing in a test could dismiss it.
+    /// </summary>
+    internal Func<string, bool>? ConfirmForTests { get; set; }
+
     private Task<bool> OnConfirm(string title, string body) =>
-        Task.FromResult(
-            MessageBox.Show(this, body, title, MessageBoxButton.YesNo, MessageBoxImage.Question)
-            == MessageBoxResult.Yes);
+        Task.FromResult(ConfirmForTests is { } answer
+            ? answer(body)
+            : MessageBox.Show(this, body, title, MessageBoxButton.YesNo, MessageBoxImage.Question)
+              == MessageBoxResult.Yes);
 
     private void OnPropertiesRequested(PropertiesViewModel vm)
     {
@@ -433,7 +456,9 @@ public partial class AddressBookWindow : Window
             // Handled before the await: once this handler yields, routing has moved on and a
             // later assignment is ignored.
             e.Handled = true;
-            await DeleteSelectedContactsAsync();
+            // What the Delete button runs, so the key and the button apply the same rules —
+            // synced contacts are read-only (issue #827).
+            await _vm.DeleteSelectedContactsAsync();
         }
     }
 
@@ -659,25 +684,13 @@ public partial class AddressBookWindow : Window
             ShowGroupNameEntry(g.Name);
     }
 
-    private async void DeleteButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (ContactList.SelectedItems.Count == 0) return;
-        await DeleteSelectedContactsAsync();
-    }
+    private async void DeleteButton_Click(object sender, RoutedEventArgs e) =>
+        await _vm.DeleteSelectedContactsAsync();
 
-    private async Task DeleteSelectedContactsAsync()
-    {
-        var selected = ContactList.SelectedItems.OfType<ContactModel>().ToList();
-        if (selected.Count == 0) return;
-
-        var prompt = selected.Count == 1
-            ? $"Delete {selected[0].Display}?"
-            : $"Delete {selected.Count} contacts?";
-        var result = MessageBox.Show(prompt, "Confirm Delete",
-            MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (result == MessageBoxResult.Yes)
-            await _vm.DeleteMultipleAsync(selected);
-    }
+    // The list is multi-select and SelectedItems cannot be bound, so hand the selection to the
+    // ViewModel: Delete acts on all of it, and the Delete button's availability depends on it.
+    private void ContactList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        _vm.SetSelectedContacts(ContactList.SelectedItems.OfType<ContactModel>());
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }
