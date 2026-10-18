@@ -41,6 +41,8 @@ public partial class AddressBookWindow : Window
             vm.ContactListFocusRequested    += QueueFocusContactList;
             vm.GroupsListFocusNowRequested  += FocusSelectedGroupRowNow;
             vm.GroupsListFocusRequested     += QueueFocusGroupsList;
+            vm.GroupMemberFocusNowRequested   += FocusGroupMemberNow;
+            vm.GroupMembersListFocusRequested += QueueFocusGroupMembersList;
             await vm.LoadAsync();
             SearchBox.Focus();
         };
@@ -55,6 +57,8 @@ public partial class AddressBookWindow : Window
             vm.ContactListFocusRequested    -= QueueFocusContactList;
             vm.GroupsListFocusNowRequested  -= FocusSelectedGroupRowNow;
             vm.GroupsListFocusRequested     -= QueueFocusGroupsList;
+            vm.GroupMemberFocusNowRequested   -= FocusGroupMemberNow;
+            vm.GroupMembersListFocusRequested -= QueueFocusGroupMembersList;
         };
 
         // When edit mode is activated, focus the name field and select it
@@ -514,7 +518,7 @@ public partial class AddressBookWindow : Window
         }
     }
 
-    private async void GroupMembersList_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void GroupMembersList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.G && Keyboard.Modifiers == ModifierKeys.Control)
         {
@@ -525,10 +529,8 @@ public partial class AddressBookWindow : Window
 
         if (e.Key == Key.Delete && GroupMembersList.SelectedItem is ContactModel c)
         {
+            _vm.RemoveContactFromGroupCommand.Execute(c);
             e.Handled = true;
-            var index = GroupMembersList.SelectedIndex;
-            await _vm.RemoveContactFromGroupCommand.ExecuteAsync(c);
-            FocusGroupMemberAt(index);
         }
     }
 
@@ -578,23 +580,22 @@ public partial class AddressBookWindow : Window
             else GroupsList.Focus();
         });
 
-    // Removing a member rebuilds the whole members list (the group is reloaded to refresh its
-    // count), so there is no surviving row to land on beforehand; land on the member now at the
-    // removed one's position — the one that followed it, or the new last member.
-    private void FocusGroupMemberAt(int index)
+    // The members list's selection belongs to the View (it is not bound), so the ViewModel names
+    // the member to land on and this selects it as well as focusing it.
+    private bool FocusGroupMemberNow(ContactModel landing)
     {
-        if (!GroupMembersList.IsVisible) return;
-        var count = GroupMembersList.Items.Count;
-        if (count == 0)
-        {
-            GroupMembersList.Focus();
-            return;
-        }
-        var i = Math.Clamp(index, 0, count - 1);
-        GroupMembersList.SelectedIndex = i;
-        if (!FocusRowNow(GroupMembersList, GroupMembersList.Items[i]))
-            GroupMembersList.Focus();
+        if (!GroupMembersList.IsVisible) return false;
+        GroupMembersList.SelectedItem = landing;
+        return FocusRowNow(GroupMembersList, landing);
     }
+
+    private void QueueFocusGroupMembersList() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (!GroupMembersList.IsVisible) return;
+            if (!FocusRowNow(GroupMembersList, GroupMembersList.SelectedItem))
+                GroupMembersList.Focus();
+        });
 
     private void FocusGroupsPane()
     {

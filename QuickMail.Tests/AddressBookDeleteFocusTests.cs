@@ -307,6 +307,103 @@ public class AddressBookDeleteFocusTests
     }
 
     [Fact]
+    public async Task DeleteGroup_FocusLanded_SaysNothing_NothingToLand_SaysDeleted()
+    {
+        // Once focus has landed on the next group, its reading is the confirmation; an
+        // announcement would cut it off (#667). With nowhere to land, the announcement is all
+        // the user gets.
+        var (vm, svc, dir) = await MakeViewModel();
+        try
+        {
+            await svc.CreateGroupAsync("One");
+            await svc.CreateGroupAsync("Two");
+            await vm.LoadAsync();
+            vm.ConfirmRequested += (_, _) => Task.FromResult(true);
+            vm.GroupsListFocusNowRequested += () => true;
+            var spoken = new List<string>();
+            vm.AnnouncementRequested += (text, _) => spoken.Add(text);
+
+            vm.SelectedGroup = vm.Groups[0];
+            await ((IAsyncRelayCommand)vm.DeleteGroupCommand).ExecuteAsync(null);
+            Assert.Empty(spoken);
+
+            await ((IAsyncRelayCommand)vm.DeleteGroupCommand).ExecuteAsync(null);
+            Assert.Single(spoken);
+            Assert.Contains("deleted", spoken[0], StringComparison.Ordinal);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task RemoveMember_LandsOnTheNextMember_BeforeRemovingOnlyThatRow()
+    {
+        var (vm, svc, dir) = await MakeViewModel("Alice", "Bob", "Carol");
+        try
+        {
+            var groupId = await svc.CreateGroupAsync("Team");
+            foreach (var c in vm.FilteredContacts)
+                await svc.AddMemberAsync(groupId, c.Id);
+            await vm.LoadAsync();
+            vm.SelectedGroup = vm.Groups.First(g => g.Id == groupId);
+
+            var before = vm.SelectedGroupMembers.ToList();
+            Assert.Equal(3, before.Count);
+            ContactModel? landedOn = null;
+            var stillListed = false;
+            var queued = 0;
+            vm.GroupMemberFocusNowRequested += landing =>
+            {
+                landedOn = landing;
+                stillListed = vm.SelectedGroupMembers.Contains(before[1]);
+                return true;
+            };
+            vm.GroupMembersListFocusRequested += () => queued++;
+            var resets = 0;
+            vm.SelectedGroupMembers.CollectionChanged += (_, e) =>
+            {
+                if (e.Action == NotifyCollectionChangedAction.Reset) resets++;
+            };
+            var spoken = new List<string>();
+            vm.AnnouncementRequested += (text, _) => spoken.Add(text);
+
+            await vm.RemoveContactFromGroupAsync(before[1]);
+
+            Assert.Same(before[2], landedOn);
+            Assert.True(stillListed);
+            Assert.Equal(0, queued);
+            Assert.Equal(0, resets);   // the list was not cleared and rebuilt
+            Assert.Equal([before[0], before[2]], vm.SelectedGroupMembers.ToList());
+            Assert.Equal(2, vm.SelectedGroup!.ResolvedMemberCount);
+            Assert.Empty(spoken);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task RemoveLastMember_QueuesFocus_AndSaysRemoved()
+    {
+        var (vm, svc, dir) = await MakeViewModel("Alice");
+        try
+        {
+            var groupId = await svc.CreateGroupAsync("Solo");
+            await svc.AddMemberAsync(groupId, vm.FilteredContacts[0].Id);
+            await vm.LoadAsync();
+            vm.SelectedGroup = vm.Groups.First(g => g.Id == groupId);
+            var queued = 0;
+            vm.GroupMembersListFocusRequested += () => queued++;
+            var spoken = new List<string>();
+            vm.AnnouncementRequested += (text, _) => spoken.Add(text);
+
+            await vm.RemoveContactFromGroupAsync(vm.SelectedGroupMembers[0]);
+
+            Assert.Empty(vm.SelectedGroupMembers);
+            Assert.Equal(1, queued);
+            Assert.Single(spoken);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
     public async Task DeleteOnlyGroup_LeavesNoSelection_AndQueuesFocus()
     {
         var (vm, svc, dir) = await MakeViewModel();
@@ -489,6 +586,37 @@ public class AddressBookDeleteFocusWindowTests
     }
 
     [StaFact]
+    public void DeleteTheLastGroupLeft_FocusMovesToNewGroup()
+    {
+        var (window, vm, dir) = BuildWindow();
+        try
+        {
+            var tabs = window.FindName("MainTabs") as TabControl;
+            Assert.NotNull(tabs);
+            tabs!.SelectedIndex = 1;
+            window.UpdateLayout();
+            Drain();
+
+            var list = window.FindName("GroupsList") as ListView;
+            var newGroup = window.FindName("NewGroupButton") as Button;
+            Assert.NotNull(list);
+            Assert.NotNull(newGroup);
+            vm.ConfirmRequested += (_, _) => Task.FromResult(true);
+
+            foreach (var _ in vm.Groups.ToList())
+            {
+                FocusRow(list!, vm.Groups[0]);
+                Pump(((IAsyncRelayCommand)vm.DeleteGroupCommand).ExecuteAsync(null));
+            }
+
+            Assert.Empty(vm.Groups);
+            Assert.True(newGroup!.IsKeyboardFocused,
+                $"With no groups left, focus belongs on New Group; it is on {Keyboard.FocusedElement}.");
+        }
+        finally { Cleanup(window, dir); }
+    }
+
+    [StaFact]
     public void RemoveGroupMember_FocusMovesToTheNextMember()
     {
         var (window, vm, dir) = BuildWindow();
@@ -509,6 +637,17 @@ public class AddressBookDeleteFocusWindowTests
             Assert.Equal(3, before.Count);
             FocusRow(members, before[1]);
 
+            // Where focus is at the instant the removed member leaves the collection.
+            object? focusedAtRemoval = null;
+            var resets = 0;
+            void OnChanged(object? s, NotifyCollectionChangedEventArgs e)
+            {
+                if (e.Action == NotifyCollectionChangedAction.Remove)
+                    focusedAtRemoval = (Keyboard.FocusedElement as ListViewItem)?.DataContext;
+                if (e.Action == NotifyCollectionChangedAction.Reset) resets++;
+            }
+            vm.SelectedGroupMembers.CollectionChanged += OnChanged;
+
             // Delete as the key handler receives it. Not synthesized OS input, so not gated.
             var row = (ListViewItem)Keyboard.FocusedElement;
             var key = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(row)!, 0, Key.Delete)
@@ -526,11 +665,15 @@ public class AddressBookDeleteFocusWindowTests
                 Thread.Sleep(5);
             }
 
+            vm.SelectedGroupMembers.CollectionChanged -= OnChanged;
+
             Assert.Equal(2, members.Items.Count);
+            Assert.Same(before[2], focusedAtRemoval);
+            // Only the one row went: the list was not cleared and rebuilt under the focused row.
+            Assert.Equal(0, resets);
             var focused = Keyboard.FocusedElement as ListViewItem;
             Assert.NotNull(focused);
-            // The members list is rebuilt, so compare by contact id rather than by reference.
-            Assert.Equal(before[2].Id, (focused!.DataContext as ContactModel)?.Id);
+            Assert.Same(before[2], focused!.DataContext);
             Assert.True(members.IsKeyboardFocusWithin);
         }
         finally { Cleanup(window, dir); }
@@ -538,7 +681,10 @@ public class AddressBookDeleteFocusWindowTests
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private static (AddressBookWindow window, AddressBookViewModel vm, string dir) BuildWindow()
+    // xUnit builds a fresh instance per test, so this belongs to the one test running.
+    private SynchronizationContext? _previousContext;
+
+    private (AddressBookWindow window, AddressBookViewModel vm, string dir) BuildWindow()
     {
         WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
 
@@ -563,27 +709,39 @@ public class AddressBookDeleteFocusWindowTests
 
         // The app runs the ViewModel on the UI thread, where awaits resume on the dispatcher; the
         // focus handlers touch WPF objects, so the test has to reproduce that.
+        _previousContext = SynchronizationContext.Current;
         SynchronizationContext.SetSynchronizationContext(
             new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
 
         var vm = new AddressBookViewModel(svc);
         var window = new AddressBookWindow(vm) { WindowStyle = WindowStyle.None, ShowInTaskbar = false };
-        window.Show();
-        window.Activate();
-        // Loaded subscribes the focus handlers, runs LoadAsync, and then focuses the search box.
-        // Wait for that last step so it cannot land in the middle of a test.
-        var search = window.FindName("SearchBox") as TextBox;
-        Assert.NotNull(search);
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while ((vm.FilteredContacts.Count < 4 || !search!.IsKeyboardFocused) && DateTime.UtcNow < deadline)
+        try
         {
+            window.Show();
+            window.Activate();
+            // Loaded subscribes the focus handlers, runs LoadAsync, and then focuses the search
+            // box. Wait for that last step so it cannot land in the middle of a test.
+            var search = window.FindName("SearchBox") as TextBox;
+            Assert.NotNull(search);
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while ((vm.FilteredContacts.Count < 4 || !search!.IsKeyboardFocused) && DateTime.UtcNow < deadline)
+            {
+                Drain();
+                Thread.Sleep(10);
+            }
+            Assert.Equal(4, vm.FilteredContacts.Count);
+            Assert.True(window.IsActive && search!.IsKeyboardFocused,
+                "The address book window never became active, so no keyboard-focus assertion " +
+                "in this class can mean anything.");
+            window.UpdateLayout();
             Drain();
-            Thread.Sleep(10);
+            return (window, vm, dir);
         }
-        Assert.Equal(4, vm.FilteredContacts.Count);
-        window.UpdateLayout();
-        Drain();
-        return (window, vm, dir);
+        catch
+        {
+            Cleanup(window, dir);
+            throw;
+        }
     }
 
     private static void FocusRow(ListView list, object item)
@@ -611,10 +769,10 @@ public class AddressBookDeleteFocusWindowTests
         Drain();
     }
 
-    private static void Cleanup(Window window, string dir)
+    private void Cleanup(Window window, string dir)
     {
         window.Close();
-        SynchronizationContext.SetSynchronizationContext(null);
+        SynchronizationContext.SetSynchronizationContext(_previousContext);
         try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); } catch { }
     }
 
