@@ -16,6 +16,8 @@ public enum AddAccountOutcome
 {
     /// <summary>Cancelled, or closed before an account was added.</summary>
     None,
+    // Closing the window at the "added" step (its close box, Alt+F4) counts as Done, like Escape:
+    // the account exists, and leaving it should not drop the user into its settings.
     /// <summary>An account was added and the user chose Add another account.</summary>
     AddAnother,
     /// <summary>An account was added and the user chose Done.</summary>
@@ -45,7 +47,9 @@ public partial class AddAccountDialog : Window
         DataContext = vm;
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
+            // Once the account is added the form is gone; a lookup or Test Connection still
+            // finishing must not speak about fields that are no longer there.
+            if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText) && !vm.IsAdded)
                 // The category lives on the VM (AccountEditorViewModel.StatusCategory) so both
                 // account dialogs classify status the same way, and so a VM-side refusal can mark
                 // itself a Result without the View having to guess from the wording.
@@ -286,6 +290,10 @@ public partial class AddAccountDialog : Window
             return;
         }
 
+        // Focus sits on the now-hidden Add button until the Input-priority move to Done runs; a
+        // repeated Enter in that gap must not save the account a second time.
+        if (_vm.IsAdded) return;
+
         if (CommitAccount is null)
         {
             DialogResult = true;
@@ -327,6 +335,12 @@ public partial class AddAccountDialog : Window
     {
         DialogResult = false;
         Close();
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (_vm.IsAdded && Outcome == AddAccountOutcome.None) Outcome = AddAccountOutcome.Done;
+        base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)

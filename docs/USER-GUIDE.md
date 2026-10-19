@@ -175,10 +175,10 @@ Press **New** in Manage Accounts. The Add Account dialog opens with focus on the
 5. **Sync contacts from this account** and **Sync calendar from this account** appear for iCloud accounts and for accounts that sign in — Microsoft, and Gmail when you choose Google sign-in. Check them *before* signing in, so the permission can be part of the same sign-in. (A Gmail account using an app password has no contact or calendar sync, so the boxes do not appear.)
 6. Press **Add Account**.
 
-The account is saved, and the dialog says so — "*your address* added." — with two buttons in place of the form:
+The account is saved, and the dialog says so — "*account name* added.", using your email address when you left the name blank — with two buttons in place of the form:
 
 - **Add another account** (**Alt+N**) opens an empty form for the next one.
-- **Done** (**Alt+D**) closes Add Account and Manage Accounts together, and puts you on the new account in the **Accounts** list, where QuickMail is already connecting to it. Focus starts on **Done**, so Enter finishes; Escape does the same, since the account is already saved.
+- **Done** (**Alt+D**) closes Add Account and Manage Accounts together, and puts you on the new account in the **Accounts** list, where QuickMail is already connecting to it. Focus starts on **Done**, so Enter finishes; Escape, or closing the window, does the same, since the account is already saved. If contact or calendar sync could not be turned on for the new account, QuickMail says so once it has finished trying.
 
 Either way you are not taken back through the settings you just typed. To change them later, open Manage Accounts and choose the account.
 

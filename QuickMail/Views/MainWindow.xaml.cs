@@ -6149,6 +6149,7 @@ public partial class MainWindow : Window
         // when the dialog is closed with Cancel.
         _vm.RefreshAccountList();
         FocusAddedAccountIfDone(accountVm);
+        ReportNewAccountFollowUpsAsync(accountVm).LogFaults("new-account follow-up report");
 
         // After the dialog has closed: the import's own dialogs must not open inside its modal loop.
         // This path does not need AllowSettingsTransfer; the offer was the user's way in.
@@ -6166,6 +6167,21 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
         _vm.RefreshAccountList();   // see note above — reflect immediate sync toggles
         FocusAddedAccountIfDone(accountVm);
+        ReportNewAccountFollowUpsAsync(accountVm).LogFaults("new-account follow-up report");
+    }
+
+    /// <summary>
+    /// A new account's contact and calendar consent can still be running when Manage Accounts closes
+    /// — Done closes it straight after adding (#834). Wait for it here, and if it failed, say so from
+    /// this window and refresh, so the calendar tree and the account's sync flags match what was saved.
+    /// </summary>
+    private async Task ReportNewAccountFollowUpsAsync(AccountManagerViewModel accountVm)
+    {
+        await accountVm.NewAccountFollowUpsCompletion;
+        var failures = accountVm.TakeNewAccountFailures();
+        if (failures.Count == 0) return;
+        _vm.RefreshAccountList();
+        Report(string.Join(" ", failures));
     }
 
     /// <summary>
@@ -6180,7 +6196,7 @@ public partial class MainWindow : Window
         var account = _vm.Accounts.FirstOrDefault(a => a.Id == id);
         if (account == null) return;
 
-        AccountList.SelectedItem = account;
+        _vm.SelectedAccount = account;   // AccountList.SelectedItem is bound two-way to this
         FocusAccountRow(account);
     }
 

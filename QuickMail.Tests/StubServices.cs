@@ -226,7 +226,10 @@ sealed class StubOAuthService : IOAuthService
     }
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(SignInResult());
     private OAuthResult SignInResult() => new(string.Empty, SignInUsername ?? string.Empty, SignInIsPersonalAccount);
-    public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>When set, RequestContactsConsentAsync waits for it, and fails if it faults — to
+    /// simulate a contact consent that is still running, or declined, after the dialog has closed.</summary>
+    public Task? ContactsConsent { get; set; }
+    public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => ContactsConsent ?? Task.CompletedTask;
     public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
 
     /// <summary>Parent account ids RequestSharedMailboxConsentAsync was called for (#31) — lets a test
