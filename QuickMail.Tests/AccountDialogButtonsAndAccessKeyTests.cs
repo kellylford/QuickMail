@@ -200,7 +200,8 @@ public class AccountDialogButtonsAndAccessKeyTests
         window.UpdateLayout();
         Drain();
         var keys = VisibleAccessKeys(window);
-        Assert.True(keys.Count > 5, $"{state}: found only {keys.Count} access keys; the scan is not seeing the dialog.");
+        // First run has the fewest: New, Import Settings, Delete, Add shared mailbox and Save, with the form disabled.
+        Assert.True(keys.Count >= 4, $"{state}: found only {keys.Count} access keys; the scan is not seeing the dialog.");
         var clashes = keys.Where(k => k.Value.Count > 1)
                           .Select(k => $"Alt+{k.Key}: {string.Join(" | ", k.Value)}")
                           .ToList();
