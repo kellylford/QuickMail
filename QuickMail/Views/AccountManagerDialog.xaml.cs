@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -40,6 +41,7 @@ public partial class AccountManagerDialog : Window
         // password itself — otherwise the box keeps showing dots for a password that is gone.
         vm.PasswordCleared += OnPasswordCleared;
         vm.EmailAddressRejected += OnEmailAddressRejected;
+        vm.Accounts.CollectionChanged += OnAccountsChanged;
         // Every account removal is confirmed (#834); a parent's prompt names the shared mailboxes it
         // takes with it (#31). No is the default: the prompt can be reached by a stray Alt+D or "d",
         // and a Yes/No box ignores Escape, so a default of Yes would let the next Enter delete.
@@ -123,6 +125,7 @@ public partial class AccountManagerDialog : Window
         _vm.SignInIdentityMismatch -= WarnIdentityMismatch;
         _vm.PasswordCleared -= OnPasswordCleared;
         _vm.EmailAddressRejected -= OnEmailAddressRejected;
+        _vm.Accounts.CollectionChanged -= OnAccountsChanged;
         base.OnClosed(e);
     }
 
@@ -216,6 +219,27 @@ public partial class AccountManagerDialog : Window
         {
             AccountListBox.Focus();
         }
+    }
+
+    /// <summary>
+    /// A deleted row takes keyboard focus with it, which leaves focus on the list itself — read as
+    /// just "Account list" — while the next account has been selected in its place (#834). When focus
+    /// was in the list, put it on the selected row. Delete pressed from its button keeps focus there.
+    /// </summary>
+    private void OnAccountsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action != NotifyCollectionChangedAction.Remove) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!AccountListBox.IsKeyboardFocusWithin || _vm.SelectedAccount is not { } selected) return;
+            AccountListBox.ScrollIntoView(selected);
+            AccountListBox.UpdateLayout();
+            if (AccountListBox.ItemContainerGenerator.ContainerFromItem(selected) is ListBoxItem row)
+            {
+                row.Focus();
+                Keyboard.Focus(row);
+            }
+        }), System.Windows.Threading.DispatcherPriority.Input);
     }
 
     private void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
