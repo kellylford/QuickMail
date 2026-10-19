@@ -29,6 +29,7 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
@@ -200,7 +201,7 @@
                                           AutomationProperties.Name="IMAP use SSL"
                                           Margin="0,6"/>
 
-                                <CheckBox Content="Accept _invalid certificates"
+                                <CheckBox Content="Accept invalid certificates"
                                           IsChecked="{Binding ImapAcceptInvalidCert}"
                                           AutomationProperties.Name="IMAP accept invalid SSL certificates"
                                           Margin="0,0,0,6"/>
@@ -226,7 +227,7 @@
                                           AutomationProperties.Name="POP3 use SSL"
                                           Margin="0,6"/>
 
-                                <CheckBox Content="Accept _invalid certificates"
+                                <CheckBox Content="Accept invalid certificates"
                                           IsChecked="{Binding Pop3AcceptInvalidCert}"
                                           AutomationProperties.Name="POP3 accept invalid SSL certificates"
                                           Margin="0,0,0,6"/>
@@ -325,7 +326,18 @@
              landed on Add Account. Enter (IsDefault) and Escape (IsCancel) work from anywhere, so
              nothing is lost by Cancel being the last stop. Cancel has no access key, like the Cancel
              button in Windows' own dialogs: Escape is its key, and Alt+C belongs to Sync contacts. -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+        <!-- A new install only (#507, #834): first run opens this dialog directly, so the offer to bring
+             settings from another computer is made here. Its own line, above the buttons: the row
+             below has no room for a fourth. Declared before them, so Tab meets it after the form and
+             before Add Account. The invalid-certificate boxes gave up Alt+I for it. -->
+        <Button x:Name="ImportSettingsButton" Grid.Row="2"
+                Content="_Import Settings…"
+                Click="ImportSettingsButton_Click"
+                AutomationProperties.Name="Import settings"
+                Visibility="{Binding OfferImportSettings, Converter={StaticResource BoolToVisibility}}"
+                HorizontalAlignment="Left" MinWidth="110" Margin="0,0,0,8"/>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="AddButton"
                     Content="_Add Account"
                     IsDefault="True"

@@ -628,8 +628,14 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     [RelayCommand]
     private async Task DeleteAccountAsync()
     {
-        if (SelectedAccount == null) return;
+        if (SelectedAccount == null)
+        {
+            // The button is always enabled; pressing it to no effect, in silence, is the bug (#834).
+            SetStatusOutcome(Accounts.Count == 0 ? "There are no accounts to delete." : "Select an account in the list first.");
+            return;
+        }
         var account = SelectedAccount;
+        var index = Accounts.IndexOf(account);
 
         // #31: a shared mailbox has no independent existence — it lives entirely through its parent's
         // token and backend — so removing the parent removes its shared mailboxes too. Confirm and name
@@ -644,10 +650,16 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
               + $"{string.Join(", ", sharedChildren.Select(c => c.AccountLabel))}. This only removes them from QuickMail — your mail on the server is not affected.";
         if (ConfirmAccountRemoval?.Invoke(prompt) != true) return;
 
+        // Where the next account will be once this one and its shared mailboxes are gone: a shared
+        // mailbox moved above its parent shifts everything below it up by one.
+        index -= sharedChildren.Count(c => Accounts.IndexOf(c) < index);
+
         _credentials.DeletePassword(account.Id);
         Accounts.Remove(account);
         foreach (var child in sharedChildren) Accounts.Remove(child);
-        SelectedAccount = null;
+        // The next account takes its place (the one before, if it was last), so the list and the
+        // buttons go on acting on something rather than on nothing (#834).
+        SelectedAccount = Accounts.Count == 0 ? null : Accounts[Math.Clamp(index, 0, Accounts.Count - 1)];
         SaveAccountsPreservingConversionMarkers();
 
         var config = _configService.Load();

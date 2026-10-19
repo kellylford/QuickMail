@@ -219,15 +219,21 @@ public class AccountDialogButtonsAndAccessKeyTests
     [InlineData(ProviderCatalog.GmailOAuthId, true)]
     public void AddAccount_NoTwoVisibleControlsShareAnAccessKey(string providerId, bool advancedOpen)
     {
-        var vm = NewAddVm();
-        vm.SelectedProvider = Catalog.All.First(p => p.Id == providerId);
-        var window = Show(new AddAccountDialog(vm));
-        try
+        // Both the usual dialog and first run on a new install, which adds Import Settings (Alt+I).
+        foreach (var offerImport in new[] { false, true })
         {
-            vm.IsAdvancedExpanded = advancedOpen;
-            AssertNoSharedAccessKeys(window, $"Add Account, {providerId}, Advanced {(advancedOpen ? "open" : "closed")}");
+            var vm = NewAddVm();
+            vm.SelectedProvider = Catalog.All.First(p => p.Id == providerId);
+            vm.OfferImportSettings = offerImport;
+            var window = Show(new AddAccountDialog(vm));
+            try
+            {
+                vm.IsAdvancedExpanded = advancedOpen;
+                AssertNoSharedAccessKeys(window,
+                    $"Add Account, {providerId}, Advanced {(advancedOpen ? "open" : "closed")}, Import {(offerImport ? "offered" : "not offered")}");
+            }
+            finally { window.Close(); }
         }
-        finally { window.Close(); }
     }
 
     [StaFact]

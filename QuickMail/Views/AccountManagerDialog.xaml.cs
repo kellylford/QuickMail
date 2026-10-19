@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -40,6 +41,7 @@ public partial class AccountManagerDialog : Window
         // password itself — otherwise the box keeps showing dots for a password that is gone.
         vm.PasswordCleared += OnPasswordCleared;
         vm.EmailAddressRejected += OnEmailAddressRejected;
+        vm.Accounts.CollectionChanged += OnAccountsChanged;
         // Every account removal is confirmed (#834); a parent's prompt names the shared mailboxes it
         // takes with it (#31). No is the default: the prompt can be reached by a stray Alt+D or "d",
         // and a Yes/No box ignores Escape, so a default of Yes would let the next Enter delete.
@@ -123,6 +125,7 @@ public partial class AccountManagerDialog : Window
         _vm.SignInIdentityMismatch -= WarnIdentityMismatch;
         _vm.PasswordCleared -= OnPasswordCleared;
         _vm.EmailAddressRejected -= OnEmailAddressRejected;
+        _vm.Accounts.CollectionChanged -= OnAccountsChanged;
         base.OnClosed(e);
     }
 
@@ -198,12 +201,16 @@ public partial class AccountManagerDialog : Window
             return;
         }
 
-        // Land keyboard focus on the FIRST account item (not the list container, which a screen
-        // reader announces as "0 items"). Focusing the item container gives it keyboard focus
-        // WITHOUT selecting it — selection happens only on arrow/Space/click — so the user hears
-        // the first account and can then choose one. Realize the container first.
+        // Land keyboard focus on an account item (not the list container, which a screen reader
+        // announces as "0 items"), and SELECT it too (#834). Focus used to land on the first row
+        // without selecting it, so the user heard an account and pressed Delete or Set Default and
+        // nothing happened: those act on the selection, and there was none. The row is the one
+        // the caller pre-selected (Account Settings… from the main window), else the first.
+        var target = _vm.SelectedAccount ?? _vm.Accounts[0];
+        _vm.SelectedAccount = target;
+        AccountListBox.ScrollIntoView(target);
         AccountListBox.UpdateLayout();
-        if (AccountListBox.ItemContainerGenerator.ContainerFromIndex(0) is ListBoxItem first)
+        if (AccountListBox.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem first)
         {
             first.Focus();
             Keyboard.Focus(first);
@@ -212,6 +219,27 @@ public partial class AccountManagerDialog : Window
         {
             AccountListBox.Focus();
         }
+    }
+
+    /// <summary>
+    /// A deleted row takes keyboard focus with it, which leaves focus on the list itself — read as
+    /// just "Account list" — while the next account has been selected in its place (#834). When focus
+    /// was in the list, put it on the selected row. Delete pressed from its button keeps focus there.
+    /// </summary>
+    private void OnAccountsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action != NotifyCollectionChangedAction.Remove) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!AccountListBox.IsKeyboardFocusWithin || _vm.SelectedAccount is not { } selected) return;
+            AccountListBox.ScrollIntoView(selected);
+            AccountListBox.UpdateLayout();
+            if (AccountListBox.ItemContainerGenerator.ContainerFromItem(selected) is ListBoxItem row)
+            {
+                row.Focus();
+                Keyboard.Focus(row);
+            }
+        }), System.Windows.Threading.DispatcherPriority.Input);
     }
 
     private void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
@@ -251,35 +279,20 @@ public partial class AccountManagerDialog : Window
 
     private void RunAddAccountDialogs()
     {
-        while (true)
+        if (AddAccountDialog.RunUntilDone(this, _vm) == AddAccountOutcome.Done)
         {
-            var addVm = _vm.CreateAddAccountViewModel();
-            var dialog = new AddAccountDialog(addVm) { Owner = this };
-            dialog.CommitAccount = () =>
-            {
-                var account = addVm.ToAccountModel();
-                _vm.CommitNewAccount(account, addVm.Password);
-                return account.AccountLabel;
-            };
-            dialog.ShowDialog();
-
-            if (dialog.Outcome == AddAccountOutcome.AddAnother) continue;
-            if (dialog.Outcome == AddAccountOutcome.Done)
-            {
-                // The window that opened this one reports any contact/calendar failure, once the
-                // follow-ups finish (MainWindow.ReportNewAccountFollowUpsAsync).
-                _vm.ShowAddedAccountAfterClose = true;
-                DialogResult = true;
-                Close();
-                return;
-            }
-
-            // Back in this window (Cancel on a fresh form): say anything that failed while the
-            // Add Account dialog had the floor and this window was muted.
-            var failures = _vm.TakeNewAccountFailures();
-            if (failures.Count > 0) _vm.SetStatusOutcome(string.Join(" ", failures));
+            // The window that opened this one reports any contact/calendar failure, once the
+            // follow-ups finish (MainWindow.ReportNewAccountFollowUpsAsync).
+            _vm.ShowAddedAccountAfterClose = true;
+            DialogResult = true;
+            Close();
             return;
         }
+
+        // Back in this window (Cancel on a fresh form): say anything that failed while the
+        // Add Account dialog had the floor and this window was muted.
+        var failures = _vm.TakeNewAccountFailures();
+        if (failures.Count > 0) _vm.SetStatusOutcome(string.Join(" ", failures));
     }
 
     // #507: the import itself opens after this dialog has closed (MainWindow.OpenAccountManager),

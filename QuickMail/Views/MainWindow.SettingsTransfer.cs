@@ -70,16 +70,17 @@ public partial class MainWindow
         }
     }
 
-    /// <param name="fromNewInstallOffer">Started from Manage Accounts on a new install. If the user then
-    /// backs out, they are taken back there: closing it was only to make way for the import, and an
-    /// empty main window gives a new user nowhere obvious to go.</param>
+    /// <param name="fromNewInstallOffer">Started from the new-install offer in Add Account (first run) or
+    /// Manage Accounts. If the user then backs out, they are taken back to adding an account: closing
+    /// that was only to make way for the import, and an empty main window gives a new user nowhere
+    /// obvious to go.</param>
     private void OpenImportSettings(bool fromNewInstallOffer = false)
     {
         if (BringForward(_importSettingsWindow) || ProfileDir is not { } dir) return;
         void BackOut()
         {
             if (fromNewInstallOffer && _vm.Accounts.Count == 0)
-                Dispatcher.BeginInvoke(OpenAccountManager, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                Dispatcher.BeginInvoke(OpenFirstAccountSetup, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         }
         var restoreTo = Keyboard.FocusedElement;
         var dialog = new OpenFileDialog
