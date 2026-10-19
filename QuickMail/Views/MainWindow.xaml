@@ -969,7 +969,8 @@
                     ToolTip="Empty Trash (Ctrl+Shift+E)"
                     Content="Empty Trash"/>
             <Separator/>
-            <Button Style="{DynamicResource ToolbarButton}"
+            <Button x:Name="ManageAccountsToolbarButton"
+                    Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ManageAccountsCommand}"
                     AutomationProperties.Name="Manage email accounts"
                     ToolTip="Manage email accounts"

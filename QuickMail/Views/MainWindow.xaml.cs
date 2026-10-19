@@ -6163,10 +6163,18 @@ public partial class MainWindow : Window
 
         if (accountVm.LastAddedAccountId == null)
         {
-            // Cancelled before adding anything. Say where adding lives, since nothing on screen does.
-            AccessibilityHelper.Announce(this,
-                "No account added. To add one, choose Accounts on the toolbar, or Manage Accounts on the File menu.",
-                category: AnnouncementCategory.Hint);
+            // Cancelled before adding anything. With no accounts the main window has nothing to land
+            // on, and focus was left on the window itself. Put it on the toolbar's Accounts button —
+            // the way back in, so Enter is all it takes — and say so.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                ManageAccountsToolbarButton.Focus();
+                Keyboard.Focus(ManageAccountsToolbarButton);
+            }), DispatcherPriority.Input);
+            Dispatcher.BeginInvoke(new Action(() => AccessibilityHelper.Announce(this,
+                    "No account added. Press Enter here to add one, or choose Manage Accounts on the File menu.",
+                    category: AnnouncementCategory.Hint)),
+                DispatcherPriority.Background);
             return;
         }
 

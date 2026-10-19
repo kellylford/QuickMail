@@ -166,7 +166,7 @@ A provider is fixed when the account is created. Manage Accounts shows it as tex
 
 ### Adding an account
 
-The first time QuickMail starts, with no accounts yet, the Add Account dialog opens by itself. After that, press **New** in Manage Accounts. Add Account opens with focus on the **Provider** list. On a new install it also has an **Import Settings…** button (**Alt+I**), just above the buttons at the bottom, for bringing your accounts from another computer instead; QuickMail mentions it when the dialog opens. If you close Add Account without adding anything, QuickMail says where to add an account later: **Accounts** on the toolbar, or **File → Manage Accounts…**.
+The first time QuickMail starts, with no accounts yet, the Add Account dialog opens by itself. After that, press **New** in Manage Accounts. Add Account opens with focus on the **Provider** list. On a new install it also has an **Import Settings…** button (**Alt+I**), just above the buttons at the bottom, for bringing your accounts from another computer instead; QuickMail mentions it when the dialog opens. If you close Add Account without adding anything, focus goes to the **Accounts** button on the toolbar — press Enter there when you are ready — and **File → Manage Accounts…** works too.
 
 1. Choose your **Provider** — or skip to step 2 and let your address choose it.
 2. Tab to **Email address** and type it. Leaving this field is also what starts the settings lookup for an address QuickMail does not already know; see [Automatic settings lookup](#automatic-settings-lookup).
