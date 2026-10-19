@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.61 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.60.html">Older: 0.8.60</a></div>
+  <h1 id="quickmail-v0.8.61-release-notes">QuickMail v0.8.61 Release
+Notes</h1>
+<p class="version">Released October 19, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.61">downloads for this release</a></p>
+<h2 id="fixed">Fixed</h2>
+<h3 id="adding-an-account-is-easier-to-follow">Adding an account is
+easier to follow</h3>
+<p>These are the first changes from a review of adding an account
+(#834).</p>
+<ul>
+<li><strong>Focus no longer jumps out of the Password box.</strong> For
+an address QuickMail doesn’t recognize, it looks up the server settings
+after you leave the Email address field. When nothing was found, focus
+moved to the IMAP host field a few seconds later, usually while you were
+typing your password, so the rest of the password went into the server
+field, where it can be read. Focus now stays where you are. Advanced
+settings still opens, and the message saying nothing was found is now
+read even if you have turned off status announcements. Pressing
+<strong>Add Account</strong> with no server settings still takes you to
+IMAP host.</li>
+<li><strong>The buttons at the bottom tab in the order they
+appear.</strong> In Add Account they read Add Account, Test Connection,
+Cancel, but Tab reached Cancel first, and Shift+Tab from the first field
+went straight to Add Account. Manage Accounts had the same problem with
+Save, Test Connection and Close. Tab now goes through the form, then the
+buttons from left to right, so Cancel and Close are the last stops.
+<strong>Enter</strong> and <strong>Escape</strong> work as before.</li>
+<li><strong>Alt+N opens New in Manage Accounts.</strong> New was Alt+W,
+which it shared with the Password field and the Sign in buttons, so
+pressing it with an account selected only moved focus to New. Other
+shared keys are fixed too. In Manage Accounts:
+<ul>
+<li>Import Settings is now <strong>Alt+I</strong></li>
+<li>Set Default is <strong>Alt+F</strong></li>
+<li>Convert to Microsoft 365 is <strong>Alt+3</strong></li>
+<li>Account name is <strong>Alt+M</strong></li>
+<li>Sender display name is <strong>Alt+Y</strong></li>
+<li>Use SSL is <strong>Alt+9</strong></li>
+</ul>
+Cancel, Close, Authentication, the IMAP and POP3 port fields, and the
+second Accept invalid certificates checkbox no longer have an access
+key: Escape closes the dialog, and the fields are a Tab away.</li>
+<li><strong>After adding an account, choose Add another account or
+Done.</strong> Pressing Add Account used to close the dialog and leave
+you in Manage Accounts with the new account selected, so pressing Tab
+took you back through every setting you had just entered. Now the dialog
+confirms the account was added and offers <strong>Add another
+account</strong>, which opens an empty form, and <strong>Done</strong>,
+which closes Manage Accounts too and puts you on the new account in the
+Accounts list. Focus starts on Done, and Escape also means Done, since
+the account is already saved.</li>
+<li><strong>First run opens Add Account.</strong> With no accounts yet,
+QuickMail used to open Manage Accounts, which was mostly a greyed-out
+settings form, and you had to find New. It now opens Add Account
+directly. On a new install, Add Account also has <strong>Import
+Settings…</strong> (<strong>Alt+I</strong>) for bringing your accounts
+from another computer, which QuickMail mentions when the dialog opens.
+If you close it without adding anything, focus goes to the Accounts
+button on the toolbar (read as “Manage email accounts”), and Enter
+brings Add Account back; until you have an account, the File menu and
+the Command Palette open Add Account too. In Add Account, the two Accept
+invalid certificates checkboxes no longer have an access key: Alt+I is
+Import Settings.</li>
+<li><strong>Manage Accounts selects the account you land on.</strong> It
+used to put focus on the first account without selecting it, so pressing
+Delete or Set Default did nothing. Now the account you hear is the one
+the buttons act on. After a delete, the next account is selected, and
+Delete with nothing selected says so.</li>
+<li><strong>Delete in Manage Accounts always asks first.</strong> It
+used to ask only when the account had shared mailboxes. Now that
+<strong>Alt+D</strong> reaches Delete directly, one keystroke would
+otherwise remove an account.</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.60.html">Older: 0.8.60</a></div>
+</body>
+</html>

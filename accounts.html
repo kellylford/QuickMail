@@ -34,19 +34,28 @@ the toolbar, or from the Command Palette (<strong>Ctrl+Shift+P</strong>)
 by choosing <strong>Manage Accounts</strong>. It has no keyboard
 shortcut of its own to begin with; you can give it one under
 <strong>File → Settings → Keyboard Shortcuts</strong>.</p>
-<p>Manage Accounts opens with focus on the first entry in the
-<strong>Accounts</strong> list, so you can arrow through your accounts
-straight away. <strong>New</strong>, <strong>Delete</strong>, and
-<strong>Set Default</strong> sit below the list; the settings for
-whichever account is selected fill the rest of the window;
-<strong>Save</strong>, <strong>Test Connection</strong>, and
-<strong>Close</strong> are at the bottom. When you have no accounts yet
-there is nothing to land on, so focus goes to <strong>New</strong>
-instead. On a new install, where no account has been added yet, an
-<strong>Import Settings…</strong> button (<strong>Alt+M</strong>) sits
-beside <strong>New</strong>, for bringing your settings from another
-computer instead (see <em>Moving Your Settings to Another
-Computer</em>).</p>
+<p>Manage Accounts opens with the first account in the
+<strong>Accounts</strong> list selected and focused — or, when you open
+it from an account’s <strong>Account Settings…</strong>, that account —
+so <strong>Delete</strong> and <strong>Set Default</strong> act on the
+account you hear, and you can arrow through the others straight away.
+<strong>New</strong>, <strong>Delete</strong>, and <strong>Set
+Default</strong> sit below the list; the settings for whichever account
+is selected fill the rest of the window; <strong>Save</strong>,
+<strong>Test Connection</strong>, and <strong>Close</strong> are at the
+bottom, and Tab reaches them in that order, so <strong>Close</strong> is
+the last stop in the window. <strong>Enter</strong> in a text field
+saves, and <strong>Escape</strong> closes the window. Removing an
+account with <strong>Delete</strong> (<strong>Alt+D</strong>) always
+asks first, and afterwards the next account in the list is selected. If
+you delete your last account, there is nothing left to land on, so focus
+goes to <strong>New</strong> (<strong>Alt+N</strong>). While you have no
+accounts, the <strong>Accounts</strong> toolbar button, <strong>File →
+Manage Accounts…</strong> and the Command Palette open Add Account
+directly instead of this window; on a new install, that is also where
+<strong>Import Settings…</strong> (<strong>Alt+I</strong>) is, for
+bringing your settings from another computer (see <em>Moving Your
+Settings to Another Computer</em>).</p>
 <p>For most accounts you need three things: your provider, your email
 address, and your password. QuickMail knows the server settings for the
 providers it lists, and looks them up for the ones it does not.</p>
@@ -81,8 +90,19 @@ shows it as text at the top of the account’s settings rather than as a
 list you can change — to move an account to a different provider, remove
 it and add it again.</p>
 <h3 id="adding-an-account">Adding an account</h3>
-<p>Press <strong>New</strong> in Manage Accounts. The Add Account dialog
-opens with focus on the <strong>Provider</strong> list.</p>
+<p>The first time QuickMail starts, with no accounts yet, the Add
+Account dialog opens by itself. After that, press <strong>New</strong>
+in Manage Accounts. Add Account opens with focus on the
+<strong>Provider</strong> list. On a new install it also has an
+<strong>Import Settings…</strong> button (<strong>Alt+I</strong>), just
+above the buttons at the bottom, for bringing your accounts from another
+computer instead; QuickMail mentions it when the dialog opens. If you
+close Add Account without adding anything, focus goes to the
+<strong>Accounts</strong> button on the toolbar (read as “Manage email
+accounts”) — press Enter there when you are ready. Until you have an
+account, the toolbar button, <strong>File → Manage Accounts…</strong>
+and the Command Palette all open Add Account rather than Manage
+Accounts.</p>
 <ol type="1">
 <li>Choose your <strong>Provider</strong> — or skip to step 2 and let
 your address choose it.</li>
@@ -110,6 +130,23 @@ part of the same sign-in. (A Gmail account using an app password has no
 contact or calendar sync, so the boxes do not appear.)</li>
 <li>Press <strong>Add Account</strong>.</li>
 </ol>
+<p>The account is saved, and the dialog says so — “<em>account name</em>
+added.”, using your email address when you left the name blank — with
+two buttons in place of the form:</p>
+<ul>
+<li><strong>Add another account</strong> (<strong>Alt+N</strong>) opens
+an empty form for the next one.</li>
+<li><strong>Done</strong> (<strong>Alt+D</strong>) closes Add Account
+and Manage Accounts together, and puts you on the new account in the
+<strong>Accounts</strong> list, where QuickMail is already connecting to
+it. Focus starts on <strong>Done</strong>, so Enter finishes; Escape, or
+closing the window, does the same, since the account is already saved.
+If contact or calendar sync could not be turned on for the new account,
+QuickMail says so once it has finished trying.</li>
+</ul>
+<p>Either way you are not taken back through the settings you just
+typed. To change them later, open Manage Accounts and choose the
+account.</p>
 <p>Whether that permission really is part of the same sign-in depends on
 the account. Google sign-in folds it in, and so does a personal
 Outlook.com account set to connect over <strong>Microsoft 365
@@ -122,9 +159,14 @@ sign-in, and no account at all.</p>
 settings</strong>, an expander that stays closed unless you need it. Tab
 reaches its header before its contents, so one keystroke moves past the
 whole thing. <strong>Sign in with Microsoft</strong> and <strong>Sign in
-with Google</strong> come last of all, after Advanced settings and
+with Google</strong> come last in the form, after Advanced settings and
 everything inside it — signing in is the last thing you do, so it is the
-last thing you tab to. The same is true in Manage Accounts.</p>
+last field you tab to. The same is true in Manage Accounts.</p>
+<p>The buttons at the bottom follow the form in the order you see them:
+<strong>Add Account</strong>, <strong>Test Connection</strong>, then
+<strong>Cancel</strong> as the last stop in the dialog.
+<strong>Enter</strong> in a text field adds the account, and
+<strong>Escape</strong> cancels.</p>
 <p>If something required is missing, <strong>Add Account</strong> does
 not close the dialog. It says what is missing and moves focus to the
 field that needs attention — the email address, the password, or, when
@@ -173,10 +215,14 @@ are encrypted, so a lookup can never quietly hand your password to a
 server that would take it in the clear. Servers you type yourself are
 your own business and are left alone.</p>
 <p>When nothing is found, <strong>Advanced settings</strong> opens
-automatically and focus moves to the <strong>IMAP host</strong> field,
-so you can type the settings yourself. The message also names the way
-out for a work or school Microsoft 365 account, which has no IMAP host
-to type: choose <strong>Outlook.com / Microsoft 365</strong> as the
+automatically so you can type the settings yourself, and you hear why.
+Focus stays where you are: the lookup finishes a moment after you have
+moved on, usually into <strong>Password</strong>, and moving you then
+would send whatever you were typing into the wrong field. <strong>Add
+Account</strong> takes you to the <strong>IMAP host</strong> field if
+you press it with no server settings. The message also names the way out
+for a work or school Microsoft 365 account, which has no IMAP host to
+type: choose <strong>Outlook.com / Microsoft 365</strong> as the
 provider and sign in.</p>
 <p>To turn off steps 2, 3, and 4, set
 <code>AutoDiscoverOnline = off</code> in <code>config.ini</code>. The
@@ -276,8 +322,8 @@ Live.com</strong> accounts alike.</p>
 <strong>Outlook.com / Microsoft 365</strong> — or just type your
 address, which selects it for you. The password box disappears;
 Microsoft accounts sign in instead.</li>
-<li>Activate <strong>Sign in with Microsoft</strong> — the last tab stop
-in the dialog, after Advanced settings. A Microsoft sign-in window opens
+<li>Activate <strong>Sign in with Microsoft</strong> — the last field in
+the dialog, after Advanced settings. A Microsoft sign-in window opens
 inside QuickMail. Sign in and approve the permissions QuickMail
 requests; the window closes itself and returns you to the dialog.</li>
 <li>Activate <strong>Add Account</strong>.</li>
