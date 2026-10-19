@@ -36,9 +36,10 @@ public partial class AccountManagerDialog : Window
         // password itself — otherwise the box keeps showing dots for a password that is gone.
         vm.PasswordCleared += OnPasswordCleared;
         vm.EmailAddressRejected += OnEmailAddressRejected;
-        // #31: removing a parent takes its shared mailboxes with it — confirm, naming them, first.
-        vm.ConfirmCascadeRemoval = message =>
-            MessageBox.Show(this, message, "Remove shared mailboxes",
+        // Every account removal is confirmed (#834); a parent's prompt names the shared mailboxes it
+        // takes with it (#31).
+        vm.ConfirmAccountRemoval = message =>
+            MessageBox.Show(this, message, "Remove Account",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
         // #529 step 4: the convert re-downloads the mailbox and can leave older mail off this PC — confirm
         // first. A plain Yes/No MessageBox (no editable field) is safe here, the same as the cascade

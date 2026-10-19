@@ -572,11 +572,14 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
-    /// <summary>Set by the View to confirm removing a parent that has shared mailboxes (#31): message →
-    /// user's yes/no. With no children, delete proceeds as before. When there ARE children this is the
-    /// only way to get the required yes, so an unset callback fails closed — the cascade is treated as
-    /// declined and nothing is removed, never removed unconfirmed. The shipped View always wires it.</summary>
-    public Func<string, bool>? ConfirmCascadeRemoval { get; set; }
+    /// <summary>Set by the View to confirm removing an account: message → user's yes/no. Every delete
+    /// asks, as the main window's account delete does. It used to ask only when the account had shared
+    /// mailboxes (#31), which was survivable while Delete's access key D was shared with Set Default and
+    /// Sender display name, so Alt+D only moved focus. With D now Delete's alone (#834), Alt+D, or a
+    /// bare "d" typed with focus on a button or checkbox, pressed it, and the account, its password and
+    /// its stored mail went at once. An unset callback fails closed: nothing is removed unconfirmed.
+    /// The shipped View always wires it.</summary>
+    public Func<string, bool>? ConfirmAccountRemoval { get; set; }
 
     [RelayCommand]
     private async Task DeleteAccountAsync()
@@ -588,16 +591,14 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         // token and backend — so removing the parent removes its shared mailboxes too. Confirm and name
         // them first. Removing a shared mailbox on its own is an ordinary single-account delete.
         var sharedChildren = AccountModel.SharedChildrenOf(account, Accounts);
-        if (sharedChildren.Count > 0)
-        {
-            // The cascade needs an explicit yes. With no confirmation mechanism wired we cannot get one,
-            // so fail closed (?? false) — never remove a parent's shared mailboxes unconfirmed.
-            var names = string.Join(", ", sharedChildren.Select(c => c.AccountLabel));
-            var one = sharedChildren.Count == 1;
-            var confirmed = ConfirmCascadeRemoval?.Invoke(
-                $"Removing {account.AccountLabel} will also remove its shared mailbox{(one ? "" : "es")}: {names}. Continue?") ?? false;
-            if (!confirmed) return;
-        }
+
+        // Every removal needs an explicit yes. With no confirmation mechanism wired we cannot get one,
+        // so fail closed (?? false). Same wording as the main window's account delete.
+        var prompt = sharedChildren.Count == 0
+            ? $"Remove the account '{account.AccountLabel}'? This only removes it from QuickMail — your mail on the server is not affected."
+            : $"Removing '{account.AccountLabel}' will also remove its shared mailbox{(sharedChildren.Count == 1 ? "" : "es")}: "
+              + $"{string.Join(", ", sharedChildren.Select(c => c.AccountLabel))}. This only removes them from QuickMail — your mail on the server is not affected.";
+        if (ConfirmAccountRemoval?.Invoke(prompt) != true) return;
 
         _credentials.DeletePassword(account.Id);
         Accounts.Remove(account);

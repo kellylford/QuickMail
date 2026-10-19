@@ -36,24 +36,34 @@ public class AccountDialogButtonsAndAccessKeyTests
 
     private static void Drain() => TabOrderWalker.Drain();
 
+    /// <summary>Every feature flag on, so the access-key scans see every control the app can show.</summary>
+    private static StubFeatureGate AllFlags()
+    {
+        var gate = new StubFeatureGate();
+        foreach (var flag in Enum.GetValues<FeatureFlag>()) gate[flag] = true;
+        return gate;
+    }
+
     private static AddAccountViewModel NewAddVm(IAutoDiscoverService? discover = null) =>
-        new(new StubFeatureGate { [FeatureFlag.GraphBackend] = true },
-            new StubImapMailService(), new StubOAuthService(), Catalog, discover);
+        new(AllFlags(), new StubImapMailService(), new StubOAuthService(), Catalog, discover);
 
     private static AccountManagerViewModel NewManagerVm() =>
         new(new StubAccountService(), new StubCredentialService(), new StubImapMailService(),
             new StubOAuthService(), new StubLocalStoreService(), new StubConfigService(),
-            new StubFeatureGate(), Catalog);
+            AllFlags(), Catalog);
 
-    private static AccountModel SelectAccount(AccountManagerViewModel vm, AuthType authType, string user = "kelly@example.com")
+    private static AccountModel SelectAccount(AccountManagerViewModel vm, AuthType authType,
+        BackendKind backend = BackendKind.ImapSmtp)
     {
         var account = new AccountModel
         {
             Id = Guid.NewGuid(),
             AccountName = "Test account",
-            Username = user,
+            Username = "kelly@example.com",
             AuthType = authType,
+            BackendKind = backend,
             ImapHost = "imap.example.com",
+            Pop3Host = "pop.example.com",
             SmtpHost = "smtp.example.com",
         };
         vm.Accounts.Add(account);
@@ -162,16 +172,17 @@ public class AccountDialogButtonsAndAccessKeyTests
     // ── 2. No shared access keys ─────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Every access key a visible control offers, keyed by letter. A control inside a collapsed
-    /// expander, or one hidden by its mode, is not visible and so cannot clash — which is how
-    /// Password and Sign in with Microsoft legitimately share Alt+W.
+    /// Every access key a visible, enabled control offers, keyed by letter. That is WPF's own rule:
+    /// AccessKeyManager skips a target that is hidden or disabled. So a control inside a collapsed
+    /// expander, or one hidden by its mode, cannot clash — which is how Password and Sign in with
+    /// Microsoft legitimately share Alt+W.
     /// </summary>
     private static Dictionary<char, List<string>> VisibleAccessKeys(Window window)
     {
         var keys = new Dictionary<char, List<string>>();
         void Visit(DependencyObject node)
         {
-            if (node is AccessText { IsVisible: true } text && text.AccessKey != '\0')
+            if (node is AccessText { IsVisible: true, IsEnabled: true } text && text.AccessKey != '\0')
             {
                 var key = char.ToUpperInvariant(text.AccessKey);
                 if (!keys.TryGetValue(key, out var owners)) keys[key] = owners = new List<string>();
@@ -203,6 +214,8 @@ public class AccountDialogButtonsAndAccessKeyTests
     [InlineData(ProviderCatalog.MicrosoftId, false)]
     [InlineData(ProviderCatalog.MicrosoftId, true)]
     [InlineData(ProviderCatalog.ICloudId, true)]
+    [InlineData(ProviderCatalog.GmailOAuthId, false)]
+    [InlineData(ProviderCatalog.GmailOAuthId, true)]
     public void AddAccount_NoTwoVisibleControlsShareAnAccessKey(string providerId, bool advancedOpen)
     {
         var vm = NewAddVm();
@@ -212,6 +225,25 @@ public class AccountDialogButtonsAndAccessKeyTests
         {
             vm.IsAdvancedExpanded = advancedOpen;
             AssertNoSharedAccessKeys(window, $"Add Account, {providerId}, Advanced {(advancedOpen ? "open" : "closed")}");
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void AddAccount_NoTwoVisibleControlsShareAnAccessKey_Pop3()
+    {
+        var vm = NewAddVm();
+        vm.SelectedProvider = Catalog.Other;
+        var window = Show(new AddAccountDialog(vm));
+        try
+        {
+            vm.IsAdvancedExpanded = true;
+            var pop3 = vm.AvailableBackends.FirstOrDefault(b => b.Kind == BackendKind.Pop3Smtp);
+            Assert.NotNull(pop3);
+            vm.SelectedBackend = pop3;
+            window.UpdateLayout();
+            Assert.True(Named(window, "Pop3HostBox").IsVisible);
+            AssertNoSharedAccessKeys(window, "Add Account, POP3, Advanced open");
         }
         finally { window.Close(); }
     }
@@ -237,6 +269,7 @@ public class AccountDialogButtonsAndAccessKeyTests
     [InlineData(AuthType.OAuth2Microsoft, true)]
     public void ManageAccounts_NoTwoVisibleControlsShareAnAccessKey(AuthType authType, bool advancedOpen)
     {
+        // OAuth on the IMAP backend is also the state that offers Convert to Microsoft 365.
         var vm = NewManagerVm();
         SelectAccount(vm, authType);
         var window = Show(new AccountManagerDialog(vm));
@@ -244,6 +277,45 @@ public class AccountDialogButtonsAndAccessKeyTests
         {
             vm.IsAdvancedExpanded = advancedOpen;
             AssertNoSharedAccessKeys(window, $"Manage Accounts, {authType}, Advanced {(advancedOpen ? "open" : "closed")}");
+        }
+        finally { window.Close(); }
+    }
+
+    [StaTheory]
+    [InlineData(BackendKind.MicrosoftGraph, false)]
+    [InlineData(BackendKind.MicrosoftGraph, true)]
+    [InlineData(BackendKind.Pop3Smtp, true)]
+    public void ManageAccounts_NoTwoVisibleControlsShareAnAccessKey_OtherBackends(BackendKind backend, bool advancedOpen)
+    {
+        var vm = NewManagerVm();
+        SelectAccount(vm, backend == BackendKind.MicrosoftGraph ? AuthType.OAuth2Microsoft : AuthType.Password, backend);
+        var window = Show(new AccountManagerDialog(vm));
+        try
+        {
+            vm.IsAdvancedExpanded = advancedOpen;
+            AssertNoSharedAccessKeys(window, $"Manage Accounts, {backend}, Advanced {(advancedOpen ? "open" : "closed")}");
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void ManageAccounts_NoTwoVisibleControlsShareAnAccessKey_SharedMailboxSelected()
+    {
+        var vm = NewManagerVm();
+        var parent = SelectAccount(vm, AuthType.OAuth2Microsoft, BackendKind.MicrosoftGraph);
+        var shared = new AccountModel
+        {
+            Id = Guid.NewGuid(), AccountName = "support@work.com", Username = "support@work.com",
+            SharedAddress = "support@work.com", IsShared = true, ParentAccountId = parent.Id,
+            BackendKind = parent.BackendKind, AuthType = parent.AuthType,
+        };
+        vm.Accounts.Add(shared);
+        vm.SelectedAccount = shared;
+        var window = Show(new AccountManagerDialog(vm));
+        try
+        {
+            Assert.True(Named(window, "SharedNotifyCheckBox").IsVisible);
+            AssertNoSharedAccessKeys(window, "Manage Accounts, shared mailbox selected");
         }
         finally { window.Close(); }
     }
@@ -264,6 +336,38 @@ public class AccountDialogButtonsAndAccessKeyTests
         finally { window.Close(); }
     }
 
+    [Fact]
+    public async Task ManageAccounts_DeleteAsksFirst_EvenWithNoSharedMailboxes()
+    {
+        var vm = NewManagerVm();
+        var account = SelectAccount(vm, AuthType.Password);
+        string? asked = null;
+        vm.ConfirmAccountRemoval = message => { asked = message; return false; };
+
+        await vm.DeleteAccountCommand.ExecuteAsync(null);
+
+        Assert.NotNull(asked);
+        Assert.Contains("Test account", asked, StringComparison.Ordinal);
+        Assert.Contains(vm.Accounts, a => a.Id == account.Id);   // declined: nothing removed
+
+        vm.SelectedAccount = account;
+        vm.ConfirmAccountRemoval = _ => true;
+        await vm.DeleteAccountCommand.ExecuteAsync(null);
+        Assert.DoesNotContain(vm.Accounts, a => a.Id == account.Id);
+    }
+
+    [Fact]
+    public async Task ManageAccounts_DeleteFailsClosed_WhenNothingCanAsk()
+    {
+        var vm = NewManagerVm();
+        var account = SelectAccount(vm, AuthType.Password);
+        // ConfirmAccountRemoval deliberately unset.
+
+        await vm.DeleteAccountCommand.ExecuteAsync(null);
+
+        Assert.Contains(vm.Accounts, a => a.Id == account.Id);
+    }
+
     // ── 3. A settings lookup never moves focus ───────────────────────────────────────────────────
 
     private sealed class FindsNothing : IAutoDiscoverService
@@ -272,16 +376,27 @@ public class AccountDialogButtonsAndAccessKeyTests
             Task.FromResult<DiscoveredSettings?>(null);
     }
 
-    [StaFact]
-    public async Task AddAccount_ALookupThatFindsNothing_LeavesFocusInPassword()
+    /// <summary>
+    /// Needs real keyboard focus in an active window, so it is an input test: on an inactive window
+    /// the old code's <c>ImapHostBox.Focus()</c> could not take focus from Password either, and the
+    /// test would pass against the bug it is here to catch.
+    /// </summary>
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
+    public async Task AddAccount_ALookupThatFindsNothing_LeavesKeyboardFocusInPassword()
     {
         var vm = NewAddVm(new FindsNothing());
-        var window = Show(new AddAccountDialog(vm));
+        vm.SelectedProvider = Catalog.Other;
+        var window = new AddAccountDialog(vm) { ShowInTaskbar = false };
+        window.Show();
         try
         {
+            window.Activate();
             vm.Username = "kelly@nowhere.example";
             var password = Named(window, "PasswordBox");
-            TabOrderWalker.StartAt(window, password, "PasswordBox");
+            Keyboard.Focus(password);
+            Drain();
+            Assert.Same(password, Keyboard.FocusedElement);   // setup: the window really has focus
 
             await vm.DiscoverSettingsCommand.ExecuteAsync(null);
             window.UpdateLayout();
@@ -289,7 +404,8 @@ public class AccountDialogButtonsAndAccessKeyTests
             Drain();
 
             Assert.True(vm.IsAdvancedExpanded);   // the fields to fill in are still opened
-            Assert.Same(password, FocusManager.GetFocusedElement(window));
+            Assert.True(Named(window, "ImapHostBox").IsVisible);
+            Assert.Same(password, Keyboard.FocusedElement);
         }
         finally { window.Close(); }
     }
