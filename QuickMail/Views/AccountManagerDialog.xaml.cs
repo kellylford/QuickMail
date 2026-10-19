@@ -37,10 +37,11 @@ public partial class AccountManagerDialog : Window
         vm.PasswordCleared += OnPasswordCleared;
         vm.EmailAddressRejected += OnEmailAddressRejected;
         // Every account removal is confirmed (#834); a parent's prompt names the shared mailboxes it
-        // takes with it (#31).
+        // takes with it (#31). No is the default: the prompt can be reached by a stray Alt+D or "d",
+        // and a Yes/No box ignores Escape, so a default of Yes would let the next Enter delete.
         vm.ConfirmAccountRemoval = message =>
             MessageBox.Show(this, message, "Remove Account",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
         // #529 step 4: the convert re-downloads the mailbox and can leave older mail off this PC — confirm
         // first. A plain Yes/No MessageBox (no editable field) is safe here, the same as the cascade
         // confirmation above; an unset callback fails closed in the VM, so nothing converts unconfirmed.
