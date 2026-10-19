@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.60 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.59.html">Older: 0.8.59</a></div>
+  <h1 id="quickmail-v0.8.60-release-notes">QuickMail v0.8.60 Release
+Notes</h1>
+<p class="version">Released October 18, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.60">downloads for this release</a></p>
+<h2 id="fixed">Fixed</h2>
+<h3
+id="server-rules-made-in-quickmail-work-with-outlook-classic-again">Server
+rules made in QuickMail work with Outlook Classic again</h3>
+<p>Server-side rules that QuickMail made on a Microsoft 365 account
+could break rule management in Outlook Classic. Outlook could not show
+them, and when it saved its own rules it reported that “one or more
+rules cannot be uploaded” and switched QuickMail’s rule off. There were
+two causes, and both are fixed (#810).</p>
+<ul>
+<li><strong>Names on addresses are kept.</strong> A rule’s From, Sent to
+and Forward to entries now keep the name that goes with each address, as
+Outlook expects. Editing a rule made in Outlook no longer strips those
+names. The address boxes show a named entry as
+<code>Name &lt;address&gt;</code>, and you can type entries in that form
+yourself.</li>
+<li><strong>Mark as read is now a client-side action</strong>, as it is
+in Outlook Classic. A new rule that marks messages as read is saved as a
+client-side rule, and its checkbox reads “Mark as read (client-side
+only)”. A server-side rule that already marks messages as read is never
+changed for you. Editing one explains why it can’t be saved as it is; to
+save your changes, clear the Mark as read checkbox, then press
+Save.</li>
+</ul>
+<h3
+id="moving-to-the-next-unread-message-no-longer-reads-another-message-first">Moving
+to the next unread message no longer reads another message first</h3>
+<p>Pressing <strong>Alt+Down</strong> or <strong>Alt+Up</strong> to move
+to the next or previous unread message could make screen readers speak
+the subject of some other message before the one you landed on. The
+subject came from a tooltip that opened when the list scrolled under the
+mouse pointer. Message rows no longer have that tooltip. The subject is
+still on screen and read as part of each row (#638).</p>
+<h3
+id="focus-stays-in-the-address-book-list-after-you-delete-something">Focus
+stays in the address book list after you delete something</h3>
+<p>Deleting a contact, a group, or a member of a group in the address
+book left keyboard focus nowhere, so the next arrow key started again
+from the top of the list. Focus now moves to the next item in the list,
+or to the one before it if you deleted the last. With a search typed in,
+it moves to the next match still showing. Screen readers read where you
+landed, and the arrow keys carry on from there (#265).</p>
+<h3 id="synced-contacts-cant-be-deleted-with-the-delete-key">Synced
+contacts can’t be deleted with the Delete key</h3>
+<p>In the address book, pressing <strong>Delete</strong> deleted
+contacts synced from your accounts, which are read-only. The Delete
+button refused them only when the first contact selected was synced. Now
+the key and the button follow the same rule. Pressing Delete on a synced
+contact leaves it in place, and QuickMail says it is read-only, with the
+same message shown under the contact details. If you select several
+contacts and some are synced, only the contacts you added yourself are
+deleted. The confirmation says how many synced contacts will be kept.
+The Delete button is available whenever your selection includes at least
+one contact you added yourself. Error messages under the contact
+details, such as a missing email address, now appear on screen; before,
+they were hidden (#827).</p>
+<h3
+id="attachment-sizes-are-shown-on-screen-and-fewer-tooltips-get-read-by-mistake">Attachment
+sizes are shown on screen, and fewer tooltips get read by mistake</h3>
+<p>An attachment’s size was shown only in a tooltip. When the attachment
+list changed under a resting mouse pointer, for example on moving to the
+next message, that tooltip could open and screen readers would read it.
+The size is now shown beside each file name, in the reading pane, in a
+message window and in the list of files attached to a new message. A
+long file name is shortened so the size stays visible. Screen readers
+still read the name and size together, once.</p>
+<p>For the same reason, the tab strip and the Open Tabs window no longer
+show tooltips on their tabs or close buttons. A tab’s full subject is in
+the window title when the tab is selected (#825).</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.59.html">Older: 0.8.59</a></div>
+</body>
+</html>
