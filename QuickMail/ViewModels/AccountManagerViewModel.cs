@@ -650,6 +650,10 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
               + $"{string.Join(", ", sharedChildren.Select(c => c.AccountLabel))}. This only removes them from QuickMail — your mail on the server is not affected.";
         if (ConfirmAccountRemoval?.Invoke(prompt) != true) return;
 
+        // Where the next account will be once this one and its shared mailboxes are gone: a shared
+        // mailbox moved above its parent shifts everything below it up by one.
+        index -= sharedChildren.Count(c => Accounts.IndexOf(c) < index);
+
         _credentials.DeletePassword(account.Id);
         Accounts.Remove(account);
         foreach (var child in sharedChildren) Accounts.Remove(child);

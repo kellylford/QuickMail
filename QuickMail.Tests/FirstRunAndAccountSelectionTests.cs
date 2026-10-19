@@ -181,4 +181,39 @@ public class FirstRunAndAccountSelectionTests
         await vm.DeleteAccountCommand.ExecuteAsync(null);   // nothing left
         Assert.Null(vm.SelectedAccount);
     }
+
+    [Fact]
+    public async Task Delete_WithNoAccounts_SaysThereAreNone()
+    {
+        var vm = NewManagerVm();
+        var recorder = StatusAnnouncementRecorder.Watch(vm);
+
+        await vm.DeleteAccountCommand.ExecuteAsync(null);
+
+        Assert.Equal("There are no accounts to delete.", recorder.Last.Text);
+    }
+
+    [Fact]
+    public async Task Delete_OfAParentWhoseSharedMailboxSitsAboveIt_SelectsTheRealNextAccount()
+    {
+        // Accounts can be reordered, so a shared mailbox can be listed above its parent. Removing it
+        // with the parent shifts the list up by one, and the next account must still be the one below.
+        var x = Account("x@example.com");
+        var parent = Account("parent@work.com");
+        var y = Account("y@example.com");
+        var z = Account("z@example.com");
+        var shared = new AccountModel
+        {
+            Id = Guid.NewGuid(), Username = "support@work.com", SharedAddress = "support@work.com",
+            IsShared = true, ParentAccountId = parent.Id,
+        };
+        var vm = NewManagerVm(shared, x, parent, y, z);
+        vm.ConfirmAccountRemoval = _ => true;
+        vm.SelectedAccount = parent;
+
+        await vm.DeleteAccountCommand.ExecuteAsync(null);
+
+        Assert.Equal(new[] { x, y, z }, vm.Accounts);
+        Assert.Same(y, vm.SelectedAccount);
+    }
 }

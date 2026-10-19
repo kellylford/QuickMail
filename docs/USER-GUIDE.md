@@ -166,7 +166,7 @@ A provider is fixed when the account is created. Manage Accounts shows it as tex
 
 ### Adding an account
 
-The first time QuickMail starts, with no accounts yet, the Add Account dialog opens by itself. After that, press **New** in Manage Accounts. Add Account opens with focus on the **Provider** list. On a new install it also has an **Import Settings…** button (**Alt+I**), just above the buttons at the bottom, for bringing your accounts from another computer instead; QuickMail mentions it when the dialog opens. If you close Add Account without adding anything, focus goes to the **Accounts** button on the toolbar — press Enter there when you are ready — and **File → Manage Accounts…** works too.
+The first time QuickMail starts, with no accounts yet, the Add Account dialog opens by itself. After that, press **New** in Manage Accounts. Add Account opens with focus on the **Provider** list. On a new install it also has an **Import Settings…** button (**Alt+I**), just above the buttons at the bottom, for bringing your accounts from another computer instead; QuickMail mentions it when the dialog opens. If you close Add Account without adding anything, focus goes to the **Accounts** button on the toolbar (read as "Manage email accounts") — press Enter there when you are ready. Until you have an account, the toolbar button, **File → Manage Accounts…** and the Command Palette all open Add Account rather than Manage Accounts.
 
 1. Choose your **Provider** — or skip to step 2 and let your address choose it.
 2. Tab to **Email address** and type it. Leaving this field is also what starts the settings lookup for an address QuickMail does not already know; see [Automatic settings lookup](#automatic-settings-lookup).
@@ -1950,7 +1950,7 @@ Your mail is not in the file. It comes back from your mail servers on the other 
 
 ### Importing them on the other computer
 
-**On a new install**, you do not need to turn anything on. The first time QuickMail starts, **Add Account** opens with an **Import Settings…** button (**Alt+I**). Choose it, pick the `.qmsettings` file, and carry on from step 5 below. The button is there until the first account is added — in Add Account, and beside **New** in **Manage Accounts** — so you can close the dialog and come back to it later. If you cancel the import, you are taken back to Add Account. Using it does not turn on **Allow exporting and importing settings**: that stays off until you turn it on yourself.
+**On a new install**, you do not need to turn anything on. The first time QuickMail starts, **Add Account** opens with an **Import Settings…** button (**Alt+I**). Choose it, pick the `.qmsettings` file, and carry on from step 5 below. The button is there until the first account is added, so you can close Add Account and come back to it later from the **Accounts** button on the toolbar. If you cancel the import, you are taken back to Add Account. Using it does not turn on **Allow exporting and importing settings**: that stays off until you turn it on yourself.
 
 **On a computer that already has QuickMail set up:**
 

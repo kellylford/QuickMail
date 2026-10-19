@@ -319,7 +319,9 @@ public partial class MainWindow : Window
             app.SessionEnding += (_, _) => _explicitExit = true;
         vm.ComposeRequested += OpenComposeWindow;
         vm.SelectAttachmentsForForwardRequested += ShowForwardAttachmentDialogAsync;
-        vm.ManageAccountsRequested += OpenAccountManager;
+        // With no accounts yet, Manage Accounts would only be an empty list and a disabled form; every
+        // way in (toolbar, File menu, palette) goes to Add Account instead, as first run does (#834).
+        vm.ManageAccountsRequested += () => { if (_vm.Accounts.Count == 0) OpenFirstAccountSetup(); else OpenAccountManager(); };
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
         vm.MessageListFocusNowRequested += FocusSelectedMessageRowNow;
@@ -1708,7 +1710,7 @@ public partial class MainWindow : Window
         if (firstAccount == null)
         {
             // Stamp the running version even on the account-less path (dialog suppressed —
-            // the Account Manager is already up) so an update applied before the first
+            // Add Account is about to open) so an update applied before the first
             // account exists still gets its one installed notice later.
             _vm.MaybeShowUpdateInstalledNotice(dialogAllowed: false);
             // A quiet start (#770) must not open a modal at sign-in over a window never shown.
@@ -1720,7 +1722,7 @@ public partial class MainWindow : Window
             {
                 OpenFirstAccountSetup();
                 // An import that left no accounts (one that failed, or carried none) still reports
-                // at this start (#507), once the Account Manager is out of the way.
+                // at this start (#507), once Add Account is out of the way.
                 ShowSettingsImportResult();
             }
             return;
@@ -6168,8 +6170,9 @@ public partial class MainWindow : Window
             // the way back in, so Enter is all it takes — and say so.
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                ManageAccountsToolbarButton.Focus();
-                Keyboard.Focus(ManageAccountsToolbarButton);
+                // A narrow window can push the button into the toolbar's overflow, where it cannot
+                // take focus; the Accounts list is the next best place, and Ctrl+1 reaches it too.
+                if (!ManageAccountsToolbarButton.Focus()) AccountList.Focus();
             }), DispatcherPriority.Input);
             Dispatcher.BeginInvoke(new Action(() => AccessibilityHelper.Announce(this,
                     "No account added. Press Enter here to add one, or choose Manage Accounts on the File menu.",
