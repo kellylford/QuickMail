@@ -143,7 +143,7 @@ The same notes are on each version's own page on GitHub, alongside that version'
 
 Adding an account, changing one, testing it, and removing it all happen in **Manage Accounts**. Open it from **File → Manage Accounts…**, from the **Accounts** button on the toolbar, or from the Command Palette (**Ctrl+Shift+P**) by choosing **Manage Accounts**. It has no keyboard shortcut of its own to begin with; you can give it one under **File → Settings → Keyboard Shortcuts**.
 
-Manage Accounts opens with focus on the first entry in the **Accounts** list, so you can arrow through your accounts straight away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom. When you have no accounts yet there is nothing to land on, so focus goes to **New** instead. On a new install, where no account has been added yet, an **Import Settings…** button (**Alt+M**) sits beside **New**, for bringing your settings from another computer instead (see *Moving Your Settings to Another Computer*).
+Manage Accounts opens with focus on the first entry in the **Accounts** list, so you can arrow through your accounts straight away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom, and Tab reaches them in that order, so **Close** is the last stop in the window. **Enter** saves and **Escape** closes from anywhere in it. When you have no accounts yet there is nothing to land on, so focus goes to **New** (**Alt+N**) instead. On a new install, where no account has been added yet, an **Import Settings…** button (**Alt+I**) sits beside **New**, for bringing your settings from another computer instead (see *Moving Your Settings to Another Computer*).
 
 For most accounts you need three things: your provider, your email address, and your password. QuickMail knows the server settings for the providers it lists, and looks them up for the ones it does not.
 
@@ -177,7 +177,9 @@ Press **New** in Manage Accounts. The Add Account dialog opens with focus on the
 
 Whether that permission really is part of the same sign-in depends on the account. Google sign-in folds it in, and so does a personal Outlook.com account set to connect over **Microsoft 365 (Graph)** — one screen lists mail, contacts, and calendar together. A work or school Microsoft account asks separately once the account is added, on purpose: organizations that restrict what their users may approve would turn one over-asking screen into a failed sign-in, and no account at all.
 
-Server names, ports, and SSL settings are behind **Advanced settings**, an expander that stays closed unless you need it. Tab reaches its header before its contents, so one keystroke moves past the whole thing. **Sign in with Microsoft** and **Sign in with Google** come last of all, after Advanced settings and everything inside it — signing in is the last thing you do, so it is the last thing you tab to. The same is true in Manage Accounts.
+Server names, ports, and SSL settings are behind **Advanced settings**, an expander that stays closed unless you need it. Tab reaches its header before its contents, so one keystroke moves past the whole thing. **Sign in with Microsoft** and **Sign in with Google** come last in the form, after Advanced settings and everything inside it — signing in is the last thing you do, so it is the last field you tab to. The same is true in Manage Accounts.
+
+The buttons at the bottom follow the form in the order you see them: **Add Account**, **Test Connection**, then **Cancel** as the last stop in the dialog. **Enter** adds the account and **Escape** cancels from anywhere in the dialog.
 
 If something required is missing, **Add Account** does not close the dialog. It says what is missing and moves focus to the field that needs attention — the email address, the password, or, when there are no server settings at all, the **IMAP host** with Advanced settings opened for you.
 
@@ -198,7 +200,7 @@ This step reads where your mail *goes*, rather than who your organisation is wit
 
 Settings that arrive over the network are never accepted unless they are encrypted, so a lookup can never quietly hand your password to a server that would take it in the clear. Servers you type yourself are your own business and are left alone.
 
-When nothing is found, **Advanced settings** opens automatically and focus moves to the **IMAP host** field, so you can type the settings yourself. The message also names the way out for a work or school Microsoft 365 account, which has no IMAP host to type: choose **Outlook.com / Microsoft 365** as the provider and sign in.
+When nothing is found, **Advanced settings** opens automatically so you can type the settings yourself, and you hear why. Focus stays where you are: the lookup finishes a moment after you have moved on, usually into **Password**, and moving you then would send whatever you were typing into the wrong field. **Add Account** takes you to the **IMAP host** field if you press it with no server settings. The message also names the way out for a work or school Microsoft 365 account, which has no IMAP host to type: choose **Outlook.com / Microsoft 365** as the provider and sign in.
 
 To turn off steps 2, 3, and 4, set `AutoDiscoverOnline = off` in `config.ini`. The built-in provider list keeps working either way.
 
@@ -247,7 +249,7 @@ The result is announced and stays on screen as status text near the buttons. In 
 QuickMail signs in to Microsoft mailboxes rather than asking for a password — work or school **Microsoft 365 / Exchange Online** accounts and personal **Outlook.com / Hotmail / Live.com** accounts alike.
 
 1. In the Add Account dialog, set **Provider** to **Outlook.com / Microsoft 365** — or just type your address, which selects it for you. The password box disappears; Microsoft accounts sign in instead.
-2. Activate **Sign in with Microsoft** — the last tab stop in the dialog, after Advanced settings. A Microsoft sign-in window opens inside QuickMail. Sign in and approve the permissions QuickMail requests; the window closes itself and returns you to the dialog.
+2. Activate **Sign in with Microsoft** — the last field in the dialog, after Advanced settings. A Microsoft sign-in window opens inside QuickMail. Sign in and approve the permissions QuickMail requests; the window closes itself and returns you to the dialog.
 3. Activate **Add Account**.
 
 Sign in as **the same address you typed** into the account. If the account you sign in with does not match, QuickMail warns you and keeps the address you entered rather than silently switching to a different mailbox — this matters most in organizations where an administrator signs in at the approval screen.
@@ -1941,7 +1943,7 @@ Your mail is not in the file. It comes back from your mail servers on the other 
 
 ### Importing them on the other computer
 
-**On a new install**, you do not need to turn anything on. The first time QuickMail starts, **Manage Accounts** opens with an **Import Settings…** button (**Alt+M**) beside **New**. Choose it, pick the `.qmsettings` file, and carry on from step 5 below. The button is there until the first account is added, so you can close Manage Accounts and come back to it later. If you cancel the import, you are taken back to Manage Accounts. Using it does not turn on **Allow exporting and importing settings**: that stays off until you turn it on yourself.
+**On a new install**, you do not need to turn anything on. The first time QuickMail starts, **Manage Accounts** opens with an **Import Settings…** button (**Alt+I**) beside **New**. Choose it, pick the `.qmsettings` file, and carry on from step 5 below. The button is there until the first account is added, so you can close Manage Accounts and come back to it later. If you cancel the import, you are taken back to Manage Accounts. Using it does not turn on **Allow exporting and importing settings**: that stays off until you turn it on yourself.
 
 **On a computer that already has QuickMail set up:**
 
