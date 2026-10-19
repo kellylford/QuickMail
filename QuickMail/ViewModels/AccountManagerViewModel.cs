@@ -323,6 +323,33 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     public AddAccountViewModel CreateAddAccountViewModel() =>
         new(_featureGate, MailService, OAuthService, Catalog, _autoDiscover, _sendMail);
 
+    /// <summary>The account most recently added in this session of the dialog, if any.</summary>
+    public Guid? LastAddedAccountId { get; private set; }
+
+    // The contact and calendar consent started for a new account (#256, #282) can outlive this
+    // dialog: since #834 the usual way out is Done, which closes it at once, often while a consent
+    // request is still running. The window that opened the dialog awaits these and reports what
+    // failed, so a failure is not announced from a window that has gone. UI-thread only.
+    private readonly List<Task> _newAccountFollowUps = [];
+    private readonly List<string> _newAccountFailures = [];
+
+    /// <summary>Completes when every contact/calendar follow-up started for a new account has finished.</summary>
+    public Task NewAccountFollowUpsCompletion => Task.WhenAll(_newAccountFollowUps);
+
+    /// <summary>Returns the follow-up failures not yet reported, and forgets them, so each is said once.</summary>
+    public IReadOnlyList<string> TakeNewAccountFailures()
+    {
+        var failures = _newAccountFailures.ToList();
+        _newAccountFailures.Clear();
+        return failures;
+    }
+
+    /// <summary>
+    /// Set when the user finished adding with Done (#834): the dialog closes, and the window that
+    /// opened it puts focus on <see cref="LastAddedAccountId"/> instead of wherever focus was.
+    /// </summary>
+    public bool ShowAddedAccountAfterClose { get; set; }
+
     public void CommitNewAccount(AccountModel account, string password)
     {
         if (!string.IsNullOrEmpty(password))
@@ -330,18 +357,19 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Accounts.Add(account);
         SaveAccountsPreservingConversionMarkers();
         SelectedAccount = account;
+        LastAddedAccountId = account.Id;
         StatusText = "Account added.";
 
         // If the user checked "sync contacts" while adding the account (issue #256), finish enabling
         // it: Google already granted contacts during sign-in, Microsoft needs the read-only contact
         // scope granted now (silent when the app registration declares it). Then pull the first batch.
         if (account.SyncContacts && _contactSync != null && _contactSync.CanSync(account))
-            _ = FinishNewAccountContactSyncAsync(account);
+            _newAccountFollowUps.Add(FinishNewAccountContactSyncAsync(account));
 
         // Same for calendar (#282): Microsoft needs a calendar-scope grant now; Google already has it
         // from sign-in; iCloud uses the app-specific password just saved above. Then pull the first batch.
         if (account.SyncCalendar && _graphCalendarSync != null)
-            _ = FinishNewAccountCalendarSyncAsync(account);
+            _newAccountFollowUps.Add(FinishNewAccountCalendarSyncAsync(account));
     }
 
     private async Task FinishNewAccountContactSyncAsync(AccountModel account)
@@ -356,8 +384,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         catch (Exception ex)
         {
             account.SyncContacts = false;
-            SaveAccountsPreservingConversionMarkers();
+            PersistOneAccount(account.Id, a => a.SyncContacts = false);
             StatusText = $"Account added, but contact sync couldn't be enabled: {ex.Message}";
+            _newAccountFailures.Add($"{account.AccountLabel} was added, but contact sync couldn't be enabled: {ex.Message}");
             LogService.Log($"AccountManager: new-account contact sync failed for {account.AccountLabel} — {ex.Message}");
         }
     }
@@ -374,8 +403,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         catch (Exception ex)
         {
             account.SyncCalendar = false;
-            SaveAccountsPreservingConversionMarkers();
+            PersistOneAccount(account.Id, a => a.SyncCalendar = false);
             StatusText = $"Account added, but calendar sync couldn't be enabled: {ex.Message}";
+            _newAccountFailures.Add($"{account.AccountLabel} was added, but calendar sync couldn't be enabled: {ex.Message}");
             LogService.Log($"AccountManager: new-account calendar sync failed for {account.AccountLabel} — {ex.Message}");
         }
     }
@@ -456,6 +486,20 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// full re-download on the next launch. ConvertToGraphAsync is the one place that legitimately
     /// RAISES the marker, so it saves directly instead of calling this.
     /// </summary>
+    /// <summary>
+    /// Changes one account on disk and nothing else. A follow-up that fails after this dialog has
+    /// closed must not save the dialog's whole snapshot of the account list over whatever the main
+    /// window has saved since — a reordered list, say.
+    /// </summary>
+    private void PersistOneAccount(Guid id, Action<AccountModel> change)
+    {
+        var stored = _accountService.LoadAccounts();
+        var match = stored.FirstOrDefault(a => a.Id == id);
+        if (match == null) return;
+        change(match);
+        _accountService.SaveAccounts(stored);
+    }
+
     private void SaveAccountsPreservingConversionMarkers()
     {
         // Not ToDictionary: a duplicated id in accounts.json must not turn a tolerable data oddity into

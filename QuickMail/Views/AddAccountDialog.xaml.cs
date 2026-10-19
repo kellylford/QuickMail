@@ -11,10 +11,34 @@ using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
 
+/// <summary>How the Add Account dialog was left (#834).</summary>
+public enum AddAccountOutcome
+{
+    /// <summary>Cancelled, or closed before an account was added.</summary>
+    None,
+    // Closing the window at the "added" step (its close box, Alt+F4) counts as Done, like Escape:
+    // the account exists, and leaving it should not drop the user into its settings.
+    /// <summary>An account was added and the user chose Add another account.</summary>
+    AddAnother,
+    /// <summary>An account was added and the user chose Done.</summary>
+    Done,
+}
+
 public partial class AddAccountDialog : Window
 {
     private readonly AddAccountViewModel _vm;
     private bool _restoreFocusToTestButton;
+
+    /// <summary>
+    /// Saves the account, set by the window that opened this dialog. It runs when Add Account is
+    /// pressed and the form is complete, before the dialog moves to its "added" step, so the account
+    /// exists whichever way the user leaves from there. Returns the label to report ("… added.").
+    /// Unset, the dialog closes with DialogResult true and the owner saves, as it used to.
+    /// </summary>
+    public Func<string>? CommitAccount { get; set; }
+
+    /// <summary>How the dialog was left; read by the owner after ShowDialog returns.</summary>
+    public AddAccountOutcome Outcome { get; private set; } = AddAccountOutcome.None;
 
     public AddAccountDialog(AddAccountViewModel vm)
     {
@@ -23,7 +47,9 @@ public partial class AddAccountDialog : Window
         DataContext = vm;
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
+            // Once the account is added the form is gone; a lookup or Test Connection still
+            // finishing must not speak about fields that are no longer there.
+            if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText) && !vm.IsAdded)
                 // The category lives on the VM (AccountEditorViewModel.StatusCategory) so both
                 // account dialogs classify status the same way, and so a VM-side refusal can mark
                 // itself a Result without the View having to guess from the wording.
@@ -264,6 +290,43 @@ public partial class AddAccountDialog : Window
             return;
         }
 
+        // Focus sits on the now-hidden Add button until the Input-priority move to Done runs; a
+        // repeated Enter in that gap must not save the account a second time.
+        if (_vm.IsAdded) return;
+
+        if (CommitAccount is null)
+        {
+            DialogResult = true;
+            Close();
+            return;
+        }
+
+        var label = CommitAccount();
+        _vm.MarkAdded(label);
+
+        // The form has just collapsed under the focused Add Account button. Put focus on Done once
+        // the panel is laid out, then say what happened: focus first, so the outcome is not cut off
+        // by the button being read.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            DoneButton.Focus();
+            Keyboard.Focus(DoneButton);
+        }), System.Windows.Threading.DispatcherPriority.Input);
+        Dispatcher.BeginInvoke(new Action(() =>
+            AccessibilityHelper.Announce(this, _vm.AddedMessage, category: AnnouncementCategory.Result)),
+            System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void AddAnotherButton_Click(object sender, RoutedEventArgs e)
+    {
+        Outcome = AddAccountOutcome.AddAnother;
+        DialogResult = true;
+        Close();
+    }
+
+    private void DoneButton_Click(object sender, RoutedEventArgs e)
+    {
+        Outcome = AddAccountOutcome.Done;
         DialogResult = true;
         Close();
     }
@@ -272,6 +335,12 @@ public partial class AddAccountDialog : Window
     {
         DialogResult = false;
         Close();
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (_vm.IsAdded && Outcome == AddAccountOutcome.None) Outcome = AddAccountOutcome.Done;
+        base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)

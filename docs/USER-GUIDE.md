@@ -175,6 +175,13 @@ Press **New** in Manage Accounts. The Add Account dialog opens with focus on the
 5. **Sync contacts from this account** and **Sync calendar from this account** appear for iCloud accounts and for accounts that sign in — Microsoft, and Gmail when you choose Google sign-in. Check them *before* signing in, so the permission can be part of the same sign-in. (A Gmail account using an app password has no contact or calendar sync, so the boxes do not appear.)
 6. Press **Add Account**.
 
+The account is saved, and the dialog says so — "*account name* added.", using your email address when you left the name blank — with two buttons in place of the form:
+
+- **Add another account** (**Alt+N**) opens an empty form for the next one.
+- **Done** (**Alt+D**) closes Add Account and Manage Accounts together, and puts you on the new account in the **Accounts** list, where QuickMail is already connecting to it. Focus starts on **Done**, so Enter finishes; Escape, or closing the window, does the same, since the account is already saved. If contact or calendar sync could not be turned on for the new account, QuickMail says so once it has finished trying.
+
+Either way you are not taken back through the settings you just typed. To change them later, open Manage Accounts and choose the account.
+
 Whether that permission really is part of the same sign-in depends on the account. Google sign-in folds it in, and so does a personal Outlook.com account set to connect over **Microsoft 365 (Graph)** — one screen lists mail, contacts, and calendar together. A work or school Microsoft account asks separately once the account is added, on purpose: organizations that restrict what their users may approve would turn one over-asking screen into a failed sign-in, and no account at all.
 
 Server names, ports, and SSL settings are behind **Advanced settings**, an expander that stays closed unless you need it. Tab reaches its header before its contents, so one keystroke moves past the whole thing. **Sign in with Microsoft** and **Sign in with Google** come last in the form, after Advanced settings and everything inside it — signing in is the last thing you do, so it is the last field you tab to. The same is true in Manage Accounts.

@@ -6148,6 +6148,8 @@ public partial class MainWindow : Window
         // immediately (persisted without a Save step), so the calendar tree must reflect them even
         // when the dialog is closed with Cancel.
         _vm.RefreshAccountList();
+        FocusAddedAccountIfDone(accountVm);
+        ReportNewAccountFollowUpsAsync(accountVm).LogFaults("new-account follow-up report");
 
         // After the dialog has closed: the import's own dialogs must not open inside its modal loop.
         // This path does not need AllowSettingsTransfer; the offer was the user's way in.
@@ -6164,6 +6166,57 @@ public partial class MainWindow : Window
         accountVm.SelectedAccount = accountVm.Accounts.FirstOrDefault(a => a.Id == account.Id);
         dialog.ShowDialog();
         _vm.RefreshAccountList();   // see note above — reflect immediate sync toggles
+        FocusAddedAccountIfDone(accountVm);
+        ReportNewAccountFollowUpsAsync(accountVm).LogFaults("new-account follow-up report");
+    }
+
+    /// <summary>
+    /// A new account's contact and calendar consent can still be running when Manage Accounts closes
+    /// — Done closes it straight after adding (#834). Wait for it here, and if it failed, say so from
+    /// this window and refresh, so the calendar tree and the account's sync flags match what was saved.
+    /// </summary>
+    private async Task ReportNewAccountFollowUpsAsync(AccountManagerViewModel accountVm)
+    {
+        await accountVm.NewAccountFollowUpsCompletion;
+        var failures = accountVm.TakeNewAccountFailures();
+        if (failures.Count == 0) return;
+        _vm.RefreshAccountList();
+        Report(string.Join(" ", failures));
+    }
+
+    /// <summary>
+    /// #834: an account was added and the user chose Done. Select it in the Accounts list and put
+    /// focus on its row, so the user lands on what they just made — on first run especially, where
+    /// focus was otherwise left on the window itself with nothing focused. The row reads the
+    /// account and its connection state; Enter opens it.
+    /// </summary>
+    private void FocusAddedAccountIfDone(AccountManagerViewModel accountVm)
+    {
+        if (!accountVm.ShowAddedAccountAfterClose || accountVm.LastAddedAccountId is not { } id) return;
+        var account = _vm.Accounts.FirstOrDefault(a => a.Id == id);
+        if (account == null) return;
+
+        _vm.SelectedAccount = account;   // AccountList.SelectedItem is bound two-way to this
+        FocusAccountRow(account);
+    }
+
+    /// <summary>
+    /// Puts keyboard focus on an account's row. ScrollIntoView first: the list virtualizes, so a row
+    /// out of sight has no container, and the AccountList.Focus() fallback lands on the ListBox rather
+    /// than a row, because List_GotKeyboardFocus only redirects into a row for the message list.
+    /// </summary>
+    private void FocusAccountRow(AccountModel account)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            AccountList.ScrollIntoView(account);
+            AccountList.UpdateLayout();
+
+            if (AccountList.ItemContainerGenerator.ContainerFromItem(account) is ListBoxItem row)
+                row.Focus();
+            else
+                AccountList.Focus();
+        }, DispatcherPriority.Input);
     }
 
     // ── Tab & Window Management handlers ────────────────────────────────────────
@@ -6928,22 +6981,8 @@ public partial class MainWindow : Window
         Report(move(account));
         if (account == null) return;
 
-        Dispatcher.InvokeAsync(() =>
-        {
-            // ScrollIntoView first, or Move to End strands the user on an empty list. The account
-            // list is a plain virtualizing ListBox showing a handful of rows, so a row scrolled out
-            // of sight has no container at all and ContainerFromItem returns null — and the
-            // AccountList.Focus() fallback lands on the ListBox, not on a row, because
-            // List_GotKeyboardFocus only redirects into a row for the message list. Focus would
-            // then be nowhere near the account QuickMail had just said it moved.
-            AccountList.ScrollIntoView(account);
-            AccountList.UpdateLayout();
-
-            if (AccountList.ItemContainerGenerator.ContainerFromItem(account) is ListBoxItem row)
-                row.Focus();
-            else
-                AccountList.Focus();
-        }, DispatcherPriority.Input);
+        // Move to End would otherwise strand the user on an empty list: see FocusAccountRow.
+        FocusAccountRow(account);
     }
 
     // Deletes the folder and lands focus on the folder above. The VM splices the node out of the

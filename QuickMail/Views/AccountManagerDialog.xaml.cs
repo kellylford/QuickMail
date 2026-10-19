@@ -22,7 +22,11 @@ public partial class AccountManagerDialog : Window
         DataContext = vm;
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
+            // Not while Add Account is open over this window (#834): it commits the account itself
+            // and says so, and this window's "Account added." — or a sync result arriving while the
+            // user types the next account — would be a second voice from a window that is behind.
+            // Follow-up failures are collected by the VM and reported when the adding ends.
+            if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText) && !_addingAccounts)
                 // The VM classifies its own status text — a refused save is a Result, not progress,
                 // and must not be silent for a user who has progress announcements off (#396).
                 AccessibilityHelper.Announce(this, vm.StatusText,
@@ -233,10 +237,49 @@ public partial class AccountManagerDialog : Window
 
     private void NewButton_Click(object sender, RoutedEventArgs e)
     {
-        var addVm = _vm.CreateAddAccountViewModel();
-        var dialog = new AddAccountDialog(addVm) { Owner = this };
-        if (dialog.ShowDialog() == true)
-            _vm.CommitNewAccount(addVm.ToAccountModel(), addVm.Password);
+        // #834: Add Account saves the account itself and then offers Add another account or Done,
+        // rather than dropping the user back here with the new account selected and its settings
+        // next in the Tab order. Add another opens a fresh form; Done closes this window too, and
+        // the main window puts focus on the account just added.
+        _addingAccounts = true;
+        try { RunAddAccountDialogs(); }
+        finally { _addingAccounts = false; }
+    }
+
+    /// <summary>True while Add Account dialogs are open over this window; mutes its status announcements.</summary>
+    private bool _addingAccounts;
+
+    private void RunAddAccountDialogs()
+    {
+        while (true)
+        {
+            var addVm = _vm.CreateAddAccountViewModel();
+            var dialog = new AddAccountDialog(addVm) { Owner = this };
+            dialog.CommitAccount = () =>
+            {
+                var account = addVm.ToAccountModel();
+                _vm.CommitNewAccount(account, addVm.Password);
+                return account.AccountLabel;
+            };
+            dialog.ShowDialog();
+
+            if (dialog.Outcome == AddAccountOutcome.AddAnother) continue;
+            if (dialog.Outcome == AddAccountOutcome.Done)
+            {
+                // The window that opened this one reports any contact/calendar failure, once the
+                // follow-ups finish (MainWindow.ReportNewAccountFollowUpsAsync).
+                _vm.ShowAddedAccountAfterClose = true;
+                DialogResult = true;
+                Close();
+                return;
+            }
+
+            // Back in this window (Cancel on a fresh form): say anything that failed while the
+            // Add Account dialog had the floor and this window was muted.
+            var failures = _vm.TakeNewAccountFailures();
+            if (failures.Count > 0) _vm.SetStatusOutcome(string.Join(" ", failures));
+            return;
+        }
     }
 
     // #507: the import itself opens after this dialog has closed (MainWindow.OpenAccountManager),
