@@ -17,6 +17,7 @@ These are the first changes from a review of adding an account (#834).
   - Use SSL is **Alt+9**
 
   Cancel, Close, Authentication, the IMAP and POP3 port fields, and the second Accept invalid certificates checkbox no longer have an access key: Escape closes the dialog, and the fields are a Tab away.
+- **Delete in Manage Accounts always asks first.** It used to ask only when the account had shared mailboxes. Now that **Alt+D** reaches Delete directly, one keystroke would otherwise remove an account.
 
 ## Reporting Issues
 
