@@ -1714,11 +1714,11 @@ public partial class MainWindow : Window
             // A quiet start (#770) must not open a modal at sign-in over a window never shown.
             if (IsQuietStart)
             {
-                CompleteQuietStartLoad(() => { OpenAccountManager(); ShowSettingsImportResult(); });
+                CompleteQuietStartLoad(() => { OpenFirstAccountSetup(); ShowSettingsImportResult(); });
             }
             else
             {
-                OpenAccountManager();
+                OpenFirstAccountSetup();
                 // An import that left no accounts (one that failed, or carried none) still reports
                 // at this start (#507), once the Account Manager is out of the way.
                 ShowSettingsImportResult();
@@ -6134,14 +6134,54 @@ public partial class MainWindow : Window
         return Task.FromResult(vm.Result);
     }
 
-    private void OpenAccountManager()
+    private AccountManagerViewModel CreateAccountManagerViewModel()
     {
         var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _providerCatalog, _autoDiscover, _smtp, _contactSyncService, _graphCalendarSyncService);
-        // #507: a new install with no account yet is offered Import Settings beside New.
-        accountVm.OfferImportSettings = _vm.IsNewInstall;
         // #529 step 4: keep the main sync loop safe in-session after an IMAP→Graph convert (disconnect,
         // flip our copy, seed the rule-refire baseline, rebind the router).
         accountVm.AccountConvertedToGraph = id => _vm.OnAccountConvertedToGraphAsync(id);
+        return accountVm;
+    }
+
+    /// <summary>
+    /// First run, with no accounts (#834): Add Account straight away, rather than Manage Accounts —
+    /// mostly a greyed-out settings form at that point, where the user had to find New. On a new
+    /// install Add Account also offers Import Settings (#507), which used to sit beside New.
+    /// </summary>
+    private void OpenFirstAccountSetup()
+    {
+        var accountVm = CreateAccountManagerViewModel();
+        var outcome = AddAccountDialog.RunUntilDone(this, accountVm, offerImportSettings: _vm.IsNewInstall);
+        _vm.RefreshAccountList();
+
+        if (outcome == AddAccountOutcome.ImportSettings)
+        {
+            // After the dialog has closed: the import's own dialogs must not open inside its loop.
+            OpenImportSettings(fromNewInstallOffer: true);
+            return;
+        }
+
+        if (accountVm.LastAddedAccountId == null)
+        {
+            // Cancelled before adding anything. Say where adding lives, since nothing on screen does.
+            AccessibilityHelper.Announce(this,
+                "No account added. To add one, choose Accounts on the toolbar, or Manage Accounts on the File menu.",
+                category: AnnouncementCategory.Hint);
+            return;
+        }
+
+        // Done, Escape or the close box at the "added" step — or Cancel on the form after Add another
+        // account: either way accounts exist now, and the last one is where the user should land.
+        accountVm.ShowAddedAccountAfterClose = true;
+        FocusAddedAccountIfDone(accountVm);
+        ReportNewAccountFollowUpsAsync(accountVm).LogFaults("new-account follow-up report");
+    }
+
+    private void OpenAccountManager()
+    {
+        var accountVm = CreateAccountManagerViewModel();
+        // #507: a new install with no account yet is offered Import Settings beside New.
+        accountVm.OfferImportSettings = _vm.IsNewInstall;
         var dialog = new AccountManagerDialog(accountVm) { Owner = this };
         dialog.ShowDialog();
         // Refresh regardless of the dialog result: the contact- and calendar-sync toggles apply
@@ -6159,8 +6199,7 @@ public partial class MainWindow : Window
 
     private void OpenAccountManagerForAccount(AccountModel account)
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _providerCatalog, _autoDiscover, _smtp, _contactSyncService, _graphCalendarSyncService);
-        accountVm.AccountConvertedToGraph = id => _vm.OnAccountConvertedToGraphAsync(id);  // #529 step 4 (see OpenAccountManager)
+        var accountVm = CreateAccountManagerViewModel();
         var dialog    = new AccountManagerDialog(accountVm) { Owner = this };
         // Pre-select the account in the manager
         accountVm.SelectedAccount = accountVm.Accounts.FirstOrDefault(a => a.Id == account.Id);

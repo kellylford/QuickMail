@@ -221,6 +221,7 @@ public class AccountDialogButtonsAndAccessKeyTests
     {
         var vm = NewAddVm();
         vm.SelectedProvider = Catalog.All.First(p => p.Id == providerId);
+        vm.OfferImportSettings = true;   // first run on a new install: the most controls at once (Alt+I)
         var window = Show(new AddAccountDialog(vm));
         try
         {

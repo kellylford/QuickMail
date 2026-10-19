@@ -69,6 +69,12 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
     /// <summary>The form is shown until the account has been added.</summary>
     public bool IsFormShown => !IsAdded;
 
+    /// <summary>
+    /// A new install's first account (#834): first run opens Add Account directly, so the Import
+    /// Settings offer (#507) that used to sit beside New in Manage Accounts is made here instead.
+    /// </summary>
+    [ObservableProperty] private bool _offerImportSettings;
+
     /// <summary>What the "added" step says, for example "kelly@example.com added."</summary>
     [ObservableProperty] private string _addedMessage = string.Empty;
 

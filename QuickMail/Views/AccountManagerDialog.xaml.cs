@@ -198,12 +198,16 @@ public partial class AccountManagerDialog : Window
             return;
         }
 
-        // Land keyboard focus on the FIRST account item (not the list container, which a screen
-        // reader announces as "0 items"). Focusing the item container gives it keyboard focus
-        // WITHOUT selecting it — selection happens only on arrow/Space/click — so the user hears
-        // the first account and can then choose one. Realize the container first.
+        // Land keyboard focus on an account item (not the list container, which a screen reader
+        // announces as "0 items"), and SELECT it too (#834). Focus used to land on the first row
+        // without selecting it, so the user heard an account and pressed Delete or Set Default and
+        // nothing happened: those act on the selection, and there was none. The row is the one
+        // the caller pre-selected (Account Settings… from the main window), else the first.
+        var target = _vm.SelectedAccount ?? _vm.Accounts[0];
+        _vm.SelectedAccount = target;
+        AccountListBox.ScrollIntoView(target);
         AccountListBox.UpdateLayout();
-        if (AccountListBox.ItemContainerGenerator.ContainerFromIndex(0) is ListBoxItem first)
+        if (AccountListBox.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem first)
         {
             first.Focus();
             Keyboard.Focus(first);
@@ -251,35 +255,20 @@ public partial class AccountManagerDialog : Window
 
     private void RunAddAccountDialogs()
     {
-        while (true)
+        if (AddAccountDialog.RunUntilDone(this, _vm) == AddAccountOutcome.Done)
         {
-            var addVm = _vm.CreateAddAccountViewModel();
-            var dialog = new AddAccountDialog(addVm) { Owner = this };
-            dialog.CommitAccount = () =>
-            {
-                var account = addVm.ToAccountModel();
-                _vm.CommitNewAccount(account, addVm.Password);
-                return account.AccountLabel;
-            };
-            dialog.ShowDialog();
-
-            if (dialog.Outcome == AddAccountOutcome.AddAnother) continue;
-            if (dialog.Outcome == AddAccountOutcome.Done)
-            {
-                // The window that opened this one reports any contact/calendar failure, once the
-                // follow-ups finish (MainWindow.ReportNewAccountFollowUpsAsync).
-                _vm.ShowAddedAccountAfterClose = true;
-                DialogResult = true;
-                Close();
-                return;
-            }
-
-            // Back in this window (Cancel on a fresh form): say anything that failed while the
-            // Add Account dialog had the floor and this window was muted.
-            var failures = _vm.TakeNewAccountFailures();
-            if (failures.Count > 0) _vm.SetStatusOutcome(string.Join(" ", failures));
+            // The window that opened this one reports any contact/calendar failure, once the
+            // follow-ups finish (MainWindow.ReportNewAccountFollowUpsAsync).
+            _vm.ShowAddedAccountAfterClose = true;
+            DialogResult = true;
+            Close();
             return;
         }
+
+        // Back in this window (Cancel on a fresh form): say anything that failed while the
+        // Add Account dialog had the floor and this window was muted.
+        var failures = _vm.TakeNewAccountFailures();
+        if (failures.Count > 0) _vm.SetStatusOutcome(string.Join(" ", failures));
     }
 
     // #507: the import itself opens after this dialog has closed (MainWindow.OpenAccountManager),

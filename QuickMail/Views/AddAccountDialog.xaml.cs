@@ -22,6 +22,8 @@ public enum AddAccountOutcome
     AddAnother,
     /// <summary>An account was added and the user chose Done.</summary>
     Done,
+    /// <summary>The user chose Import Settings (a new install only); nothing was added.</summary>
+    ImportSettings,
 }
 
 public partial class AddAccountDialog : Window
@@ -39,6 +41,36 @@ public partial class AddAccountDialog : Window
 
     /// <summary>How the dialog was left; read by the owner after ShowDialog returns.</summary>
     public AddAccountOutcome Outcome { get; private set; } = AddAccountOutcome.None;
+
+    /// <summary>
+    /// Shows Add Account over <paramref name="owner"/> until the user is finished: Add another
+    /// account opens a fresh form, and anything else ends it. Each account is saved through
+    /// <paramref name="accounts"/> the moment Add Account is pressed. Shared by Manage Accounts' New
+    /// and by first run, which opens this directly (#834).
+    /// </summary>
+    /// <returns>How the last dialog was left. Done, or None after Add another and then Cancel, can
+    /// follow accounts having been added; <see cref="AccountManagerViewModel.LastAddedAccountId"/>
+    /// says whether any were.</returns>
+    public static AddAccountOutcome RunUntilDone(Window owner, AccountManagerViewModel accounts,
+        bool offerImportSettings = false)
+    {
+        while (true)
+        {
+            var addVm = accounts.CreateAddAccountViewModel();
+            // Only while there is still nothing to lose by importing over it.
+            addVm.OfferImportSettings = offerImportSettings && accounts.Accounts.Count == 0;
+            var dialog = new AddAccountDialog(addVm) { Owner = owner };
+            dialog.CommitAccount = () =>
+            {
+                var account = addVm.ToAccountModel();
+                accounts.CommitNewAccount(account, addVm.Password);
+                return account.AccountLabel;
+            };
+            dialog.ShowDialog();
+
+            if (dialog.Outcome != AddAccountOutcome.AddAnother) return dialog.Outcome;
+        }
+    }
 
     public AddAccountDialog(AddAccountViewModel vm)
     {
@@ -184,6 +216,24 @@ public partial class AddAccountDialog : Window
         // comes before the fields it populates.
         ProviderComboBox.Focus();
         Keyboard.Focus(ProviderComboBox);
+
+        // First run on a new install: say once that there is another way in. A Hint, after the
+        // window and the Provider list have been read, so it neither cuts them off nor speaks
+        // for a user who has turned hints off.
+        if (_vm.OfferImportSettings)
+            Dispatcher.BeginInvoke(new Action(() => AccessibilityHelper.Announce(this,
+                    "Already use QuickMail on another computer? Import Settings, Alt+I, brings your accounts across.",
+                    category: AnnouncementCategory.Hint)),
+                System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+    }
+
+    // #507/#834: the import opens after this dialog has closed (MainWindow.OpenFirstAccountSetup),
+    // never inside its modal loop.
+    private void ImportSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        Outcome = AddAccountOutcome.ImportSettings;
+        DialogResult = false;
+        Close();
     }
 
     private void OnIsBusyChanged()
