@@ -2,7 +2,7 @@
 
 ## Fixed
 
-### Adding an account: focus stays in the password box, and the buttons tab in the order you see them
+### Adding an account is easier to follow
 
 These are the first changes from a review of adding an account (#834).
 
@@ -17,6 +17,7 @@ These are the first changes from a review of adding an account (#834).
   - Use SSL is **Alt+9**
 
   Cancel, Close, Authentication, the IMAP and POP3 port fields, and the second Accept invalid certificates checkbox no longer have an access key: Escape closes the dialog, and the fields are a Tab away.
+- **After adding an account, choose Add another account or Done.** Pressing Add Account used to close the dialog and leave you in Manage Accounts with the new account selected, so pressing Tab took you back through every setting you had just entered. Now the dialog confirms the account was added and offers **Add another account**, which opens an empty form, and **Done**, which closes Manage Accounts too and puts you on the new account in the Accounts list. Focus starts on Done, and Escape also means Done, since the account is already saved.
 - **Delete in Manage Accounts always asks first.** It used to ask only when the account had shared mailboxes. Now that **Alt+D** reaches Delete directly, one keystroke would otherwise remove an account.
 
 ## Reporting Issues

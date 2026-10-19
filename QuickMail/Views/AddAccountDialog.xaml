@@ -19,7 +19,12 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
     </Window.Resources>
 
-    <Grid Margin="16" GotKeyboardFocus="OnFieldFocused">
+    <Grid>
+    <!-- The form. Collapsed once the account is added, so none of it is a Tab stop in the
+         "added" step below (#834). -->
+    <Grid Margin="16" GotKeyboardFocus="OnFieldFocused"
+          x:Name="FormGrid"
+          Visibility="{Binding IsFormShown, Converter={StaticResource BoolToVisibility}}">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
@@ -339,5 +344,33 @@
                     AutomationProperties.Name="Cancel"
                     MinWidth="80" Margin="6,0,0,0"/>
         </StackPanel>
+    </Grid>
+
+    <!-- #834: after Add Account, the next step instead of a return to Manage Accounts with the new
+         account's settings in the Tab order. Two stops only: Add another account, and Done. Done
+         is the default and the cancel button: the account is already saved, so Escape means Done,
+         not "undo". -->
+    <StackPanel x:Name="AddedPanel" Margin="16" VerticalAlignment="Top"
+                Visibility="{Binding IsAdded, Converter={StaticResource BoolToVisibility}}">
+        <TextBlock x:Name="AddedMessageText"
+                   Text="{Binding AddedMessage}"
+                   TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,8"/>
+        <TextBlock TextWrapping="Wrap" Margin="0,0,0,16"
+                   Text="Add another account, or choose Done to go to your mail."/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="AddAnotherButton"
+                    Content="Add a_nother account"
+                    Click="AddAnotherButton_Click"
+                    AutomationProperties.Name="Add another account"
+                    MinWidth="140"/>
+            <Button x:Name="DoneButton"
+                    Content="_Done"
+                    IsDefault="True"
+                    IsCancel="True"
+                    Click="DoneButton_Click"
+                    AutomationProperties.Name="Done"
+                    MinWidth="80" Margin="6,0,0,0"/>
+        </StackPanel>
+    </StackPanel>
     </Grid>
 </Window>

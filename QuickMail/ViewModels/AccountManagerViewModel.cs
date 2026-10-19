@@ -323,6 +323,15 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     public AddAccountViewModel CreateAddAccountViewModel() =>
         new(_featureGate, MailService, OAuthService, Catalog, _autoDiscover, _sendMail);
 
+    /// <summary>The account most recently added in this session of the dialog, if any.</summary>
+    public Guid? LastAddedAccountId { get; private set; }
+
+    /// <summary>
+    /// Set when the user finished adding with Done (#834): the dialog closes, and the window that
+    /// opened it puts focus on <see cref="LastAddedAccountId"/> instead of wherever focus was.
+    /// </summary>
+    public bool ShowAddedAccountAfterClose { get; set; }
+
     public void CommitNewAccount(AccountModel account, string password)
     {
         if (!string.IsNullOrEmpty(password))
@@ -330,6 +339,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Accounts.Add(account);
         SaveAccountsPreservingConversionMarkers();
         SelectedAccount = account;
+        LastAddedAccountId = account.Id;
         StatusText = "Account added.";
 
         // If the user checked "sync contacts" while adding the account (issue #256), finish enabling

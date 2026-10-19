@@ -233,10 +233,31 @@ public partial class AccountManagerDialog : Window
 
     private void NewButton_Click(object sender, RoutedEventArgs e)
     {
-        var addVm = _vm.CreateAddAccountViewModel();
-        var dialog = new AddAccountDialog(addVm) { Owner = this };
-        if (dialog.ShowDialog() == true)
-            _vm.CommitNewAccount(addVm.ToAccountModel(), addVm.Password);
+        // #834: Add Account saves the account itself and then offers Add another account or Done,
+        // rather than dropping the user back here with the new account selected and its settings
+        // next in the Tab order. Add another opens a fresh form; Done closes this window too, and
+        // the main window puts focus on the account just added.
+        while (true)
+        {
+            var addVm = _vm.CreateAddAccountViewModel();
+            var dialog = new AddAccountDialog(addVm) { Owner = this };
+            dialog.CommitAccount = () =>
+            {
+                var account = addVm.ToAccountModel();
+                _vm.CommitNewAccount(account, addVm.Password);
+                return account.AccountLabel;
+            };
+            dialog.ShowDialog();
+
+            if (dialog.Outcome == AddAccountOutcome.AddAnother) continue;
+            if (dialog.Outcome == AddAccountOutcome.Done)
+            {
+                _vm.ShowAddedAccountAfterClose = true;
+                DialogResult = true;
+                Close();
+            }
+            return;
+        }
     }
 
     // #507: the import itself opens after this dialog has closed (MainWindow.OpenAccountManager),

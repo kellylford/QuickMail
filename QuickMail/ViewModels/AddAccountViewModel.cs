@@ -54,6 +54,31 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         // constructor). Typing an address whose domain is in the catalog moves the picker for the user.
     }
 
+    // ── After adding (#834) ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// True once the account has been added. The dialog then swaps its form for a short "added"
+    /// step offering Add another account or Done, instead of closing back into Manage Accounts —
+    /// where the new account was selected and Tab walked the user back through every setting they
+    /// had just typed, which was the confusing part of adding an account (#834).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFormShown))]
+    private bool _isAdded;
+
+    /// <summary>The form is shown until the account has been added.</summary>
+    public bool IsFormShown => !IsAdded;
+
+    /// <summary>What the "added" step says, for example "kelly@example.com added."</summary>
+    [ObservableProperty] private string _addedMessage = string.Empty;
+
+    /// <summary>Moves the dialog to its "added" step for the account just committed.</summary>
+    public void MarkAdded(string accountLabel)
+    {
+        AddedMessage = $"{accountLabel} added.";
+        IsAdded = true;
+    }
+
     // ── Provider selection ───────────────────────────────────────────────────────
 
     /// <summary>

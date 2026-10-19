@@ -11,10 +11,32 @@ using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
 
+/// <summary>How the Add Account dialog was left (#834).</summary>
+public enum AddAccountOutcome
+{
+    /// <summary>Cancelled, or closed before an account was added.</summary>
+    None,
+    /// <summary>An account was added and the user chose Add another account.</summary>
+    AddAnother,
+    /// <summary>An account was added and the user chose Done.</summary>
+    Done,
+}
+
 public partial class AddAccountDialog : Window
 {
     private readonly AddAccountViewModel _vm;
     private bool _restoreFocusToTestButton;
+
+    /// <summary>
+    /// Saves the account, set by the window that opened this dialog. It runs when Add Account is
+    /// pressed and the form is complete, before the dialog moves to its "added" step, so the account
+    /// exists whichever way the user leaves from there. Returns the label to report ("… added.").
+    /// Unset, the dialog closes with DialogResult true and the owner saves, as it used to.
+    /// </summary>
+    public Func<string>? CommitAccount { get; set; }
+
+    /// <summary>How the dialog was left; read by the owner after ShowDialog returns.</summary>
+    public AddAccountOutcome Outcome { get; private set; } = AddAccountOutcome.None;
 
     public AddAccountDialog(AddAccountViewModel vm)
     {
@@ -264,6 +286,39 @@ public partial class AddAccountDialog : Window
             return;
         }
 
+        if (CommitAccount is null)
+        {
+            DialogResult = true;
+            Close();
+            return;
+        }
+
+        var label = CommitAccount();
+        _vm.MarkAdded(label);
+
+        // The form has just collapsed under the focused Add Account button. Put focus on Done once
+        // the panel is laid out, then say what happened: focus first, so the outcome is not cut off
+        // by the button being read.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            DoneButton.Focus();
+            Keyboard.Focus(DoneButton);
+        }), System.Windows.Threading.DispatcherPriority.Input);
+        Dispatcher.BeginInvoke(new Action(() =>
+            AccessibilityHelper.Announce(this, _vm.AddedMessage, category: AnnouncementCategory.Result)),
+            System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void AddAnotherButton_Click(object sender, RoutedEventArgs e)
+    {
+        Outcome = AddAccountOutcome.AddAnother;
+        DialogResult = true;
+        Close();
+    }
+
+    private void DoneButton_Click(object sender, RoutedEventArgs e)
+    {
+        Outcome = AddAccountOutcome.Done;
         DialogResult = true;
         Close();
     }
