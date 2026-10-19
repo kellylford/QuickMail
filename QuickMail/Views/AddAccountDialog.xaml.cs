@@ -38,7 +38,6 @@ public partial class AddAccountDialog : Window
         // reader can miss the soft cue — the account is intentionally left bound to the entered user.
         vm.SignInIdentityMismatch += WarnIdentityMismatch;
         vm.ProviderApplied += OnProviderApplied;
-        vm.DiscoveryCompleted += OnDiscoveryCompleted;
         vm.PasswordCleared += OnPasswordCleared;
     }
 
@@ -88,23 +87,6 @@ public partial class AddAccountDialog : Window
             ? provider.AppPasswordHint
             : $"{provider.DisplayName} settings applied.";
         AccessibilityHelper.Announce(this, message ?? string.Empty, category: AnnouncementCategory.Hint);
-    }
-
-    /// <summary>
-    /// A lookup finished. The message itself is announced by the StatusText handler above; what this
-    /// adds is putting the caret where the work now is — the incoming host field — when nothing was
-    /// found. Exactly one of the IMAP and POP3 panels is visible, so the host box to focus follows
-    /// the connection method; without the POP3 branch, a POP3 account's error announced the field
-    /// and then stranded focus where it was.
-    /// </summary>
-    private void OnDiscoveryCompleted(bool found, string message)
-    {
-        if (found) return;
-
-        // Advanced was just expanded by the VM. Let the expander realize its content before focusing
-        // into it, or Focus() lands on an element that does not exist yet.
-        Dispatcher.BeginInvoke(new Action(FocusIncomingHostBox),
-            System.Windows.Threading.DispatcherPriority.Input);
     }
 
     /// <summary>Focuses whichever incoming-server host box is currently presented.</summary>
@@ -298,7 +280,6 @@ public partial class AddAccountDialog : Window
         // before disposing so a late event can't reach a disposed VM.
         _vm.SignInIdentityMismatch -= WarnIdentityMismatch;
         _vm.ProviderApplied -= OnProviderApplied;
-        _vm.DiscoveryCompleted -= OnDiscoveryCompleted;
         _vm.PasswordCleared -= OnPasswordCleared;
         // Cancels any in-flight settings lookup. ToAccountModel() (read by the caller after
         // ShowDialog returns) touches none of the disposed state.

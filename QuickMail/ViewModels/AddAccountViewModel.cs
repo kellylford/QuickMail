@@ -213,12 +213,12 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
 
     // ── Settings discovery ───────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Raised when a lookup finishes: (found, message). The View announces the message as a Result
-    /// and, when nothing was found, moves focus into Advanced settings — where the user now has to
-    /// type.
-    /// </summary>
-    public event Action<bool, string>? DiscoveryCompleted;
+    // A lookup's outcome is reported through StatusText only. A failure is a Result (the outcome of
+    // leaving the address field, and the user has to act on it); a success stays a Status. The View
+    // used to listen for an event here and move focus to IMAP host on failure. It no longer exists
+    // and must not come back: the lookup finishes seconds after the user has tabbed on, usually into
+    // Password, and pulling focus then put the rest of their password into a plain-text server field
+    // (#834). Pressing Add Account with no server settings is what moves focus to the host box.
 
     protected override void OnUsernameChangedInternal(string value)
     {
@@ -413,10 +413,9 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
                 // Never a silent empty state: say what happened, name the routes that need no server
                 // settings at all, and open the fields to be filled in.
                 IsAdvancedExpanded = true;
-                StatusText = $"No settings found for {domain}. If this is a work or school Microsoft 365 "
-                           + "account, choose Outlook.com / Microsoft 365 as the provider and sign in. "
-                           + "Otherwise enter your IMAP host under Advanced settings.";
-                DiscoveryCompleted?.Invoke(false, StatusText);
+                SetStatusOutcome($"No settings found for {domain}. If this is a work or school Microsoft 365 "
+                               + "account, choose Outlook.com / Microsoft 365 as the provider and sign in. "
+                               + "Otherwise enter your IMAP host under Advanced settings.");
             }
             else if (found.Source == DiscoverySource.DnsMailHost && ApplyDiscovered(found))
             {
@@ -425,7 +424,6 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
                 var provider = SelectedProvider?.DisplayName ?? found.DisplayName ?? domain;
                 StatusText = $"{domain} delivers its mail to {provider}, according to its DNS records. "
                            + "Open Advanced settings if you would rather enter your own servers.";
-                DiscoveryCompleted?.Invoke(true, StatusText);
             }
             else if (found.Source != DiscoverySource.DnsMailHost && ApplyDiscovered(found))
             {
@@ -434,14 +432,12 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
                 // user's password and they arrived over the network, so they should not be applied
                 // behind a collapsed expander without ever being stated.
                 StatusText = $"Settings found for {label}: {found.ImapHost} and {found.SmtpHost}.";
-                DiscoveryCompleted?.Invoke(true, StatusText);
             }
             else
             {
                 // Settings WERE found, but the user typed their own hosts while the lookup ran and
                 // those win. Saying "no settings found" here would be a lie.
                 StatusText = $"Settings found for {domain}, but your own server settings were kept.";
-                DiscoveryCompleted?.Invoke(true, StatusText);
             }
         }
         catch (Exception ex)
@@ -449,8 +445,7 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
             // DiscoverAsync already absorbs network failures, so reaching here is unexpected — still
             // surface it rather than leaving the dialog looking like nothing happened.
             IsAdvancedExpanded = true;
-            StatusText = $"Couldn't look up settings for {domain}: {ex.Message}";
-            DiscoveryCompleted?.Invoke(false, StatusText);
+            SetStatusOutcome($"Couldn't look up settings for {domain}: {ex.Message}");
         }
         finally
         {

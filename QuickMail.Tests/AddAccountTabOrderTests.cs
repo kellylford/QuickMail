@@ -162,7 +162,7 @@ public class AddAccountTabOrderTests
             Assert.True(At("SyncCalendarCheckBox") >= 0 && At("SyncCalendarCheckBox") < At(SignIn),
                 $"sync calendar opt-in is unreachable or falls after sign-in. Order: {order}");
 
-            // Backward (Shift+Tab): from the Add button, past the bottom row, going back reaches
+            // Backward (Shift+Tab): from the Add button, the stop straight after the form, going back reaches
             // sign-in first, then the Advanced contents — the exact reverse of Tab.
             var add = (Control)window.FindName("AddButton");
             TabOrderWalker.StartAt(window, add, "AddButton");

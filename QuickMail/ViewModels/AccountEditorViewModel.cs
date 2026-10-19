@@ -414,7 +414,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     ///
     /// Defaults back to Status after every raise, because these VMs assign StatusText directly in
     /// several dozen places and a category left latched to Result would re-classify all of them —
-    /// announcing a settings lookup as an interrupting outcome. Same one-shot contract, and same
+    /// announcing "Looking up settings…" as an interrupting outcome. Same one-shot contract, and same
     /// reasoning, as <see cref="MainViewModel.StatusAnnouncementCategory"/>.
     /// </summary>
     public AnnouncementCategory StatusCategory { get; private set; } = AnnouncementCategory.Status;

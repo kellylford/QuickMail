@@ -45,7 +45,7 @@ public class SharedMailboxRemovalTests
         var shared = SharedOf(parent, "support@work.com");
         var other  = Parent("Home");
         var vm = Manager(parent, shared, other);
-        vm.ConfirmCascadeRemoval = _ => true;   // user confirms the cascade
+        vm.ConfirmAccountRemoval = _ => true;   // user confirms the cascade
         vm.SelectedAccount = parent;
 
         await vm.DeleteAccountCommand.ExecuteAsync(null);
@@ -62,6 +62,7 @@ public class SharedMailboxRemovalTests
         var shared = SharedOf(parent, "support@work.com");
         var vm = Manager(parent, shared);
         vm.SelectedAccount = shared;
+        vm.ConfirmAccountRemoval = _ => true;
 
         await vm.DeleteAccountCommand.ExecuteAsync(null);
 
@@ -75,7 +76,7 @@ public class SharedMailboxRemovalTests
         var parent = Parent("Work");
         var shared = SharedOf(parent, "support@work.com");
         var vm = Manager(parent, shared);
-        vm.ConfirmCascadeRemoval = _ => false;   // user declines
+        vm.ConfirmAccountRemoval = _ => false;   // user declines
         vm.SelectedAccount = parent;
 
         await vm.DeleteAccountCommand.ExecuteAsync(null);
@@ -90,7 +91,7 @@ public class SharedMailboxRemovalTests
         var parent = Parent("Work");
         var shared = SharedOf(parent, "support@work.com");
         var vm = Manager(parent, shared);
-        // ConfirmCascadeRemoval deliberately not wired: with children present there is no way to obtain
+        // ConfirmAccountRemoval deliberately not wired: with children present there is no way to obtain
         // the required confirmation, so the delete must fail closed and remove nothing.
         vm.SelectedAccount = parent;
 
