@@ -17,6 +17,16 @@ Pressing **Alt+Down** or **Alt+Up** to move to the next or previous unread messa
 
 Deleting a contact, a group, or a member of a group in the address book left keyboard focus nowhere, so the next arrow key started again from the top of the list. Focus now moves to the next item in the list, or to the one before it if you deleted the last. With a search typed in, it moves to the next match still showing. Screen readers read where you landed, and the arrow keys carry on from there (#265).
 
+### Synced contacts can't be deleted with the Delete key
+
+In the address book, pressing **Delete** deleted contacts synced from your accounts, which are read-only. The Delete button refused them only when the first contact selected was synced. Now the key and the button follow the same rule. Pressing Delete on a synced contact leaves it in place, and QuickMail says it is read-only, with the same message shown under the contact details. If you select several contacts and some are synced, only the contacts you added yourself are deleted. The confirmation says how many synced contacts will be kept. The Delete button is available whenever your selection includes at least one contact you added yourself. Error messages under the contact details, such as a missing email address, now appear on screen; before, they were hidden (#827).
+
+### Attachment sizes are shown on screen, and fewer tooltips get read by mistake
+
+An attachment's size was shown only in a tooltip. When the attachment list changed under a resting mouse pointer, for example on moving to the next message, that tooltip could open and screen readers would read it. The size is now shown beside each file name, in the reading pane, in a message window and in the list of files attached to a new message. A long file name is shortened so the size stays visible. Screen readers still read the name and size together, once.
+
+For the same reason, the tab strip and the Open Tabs window no longer show tooltips on their tabs or close buttons. A tab's full subject is in the window title when the tab is selected (#825).
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
