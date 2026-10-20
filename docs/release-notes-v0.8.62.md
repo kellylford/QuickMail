@@ -6,6 +6,18 @@
 
 In **Export Settings**, the box below the list that says what will be exported could be read only to the end of its first line: arrowing in it went no further. The same was true of the preview in **Import Settings**, the report shown after an import, and the note in **File → Settings → Startup** explaining why starting at sign-in is not available in a portable copy. Up and Down arrow now move through every line of each. (#840)
 
+### Row Fields buttons show their whole label at larger text sizes
+
+In the **Message List Fields** dialog, the **Move Up**, **Move Down** and **Reset to Defaults** buttons were a fixed width, so at a larger text size their labels were cut off — "Move U", "Move Dc", "Reset to Defa". The buttons now grow to fit their labels, and wrap onto a second line if the window is too narrow for all of them. (#549)
+
+### Theme Manager shows all of its buttons
+
+In the **Theme Manager**, the column of buttons beside the theme list was given only the height of the list, so **Open themes folder** was cut in half, and at a larger text size **Import…** disappeared below it, while the space beside the theme description stayed empty. The column now runs the full height of the window, so every button shows in full. (#546)
+
+### Calendar times are no longer cut short in the agenda
+
+In the calendar's list of appointments, the **When** column had a fixed width, so a longer time was cut off with nothing to show it — "11:00 AM–12:00" with the end time's "PM" gone, which reads as a complete and wrong time. **Status** was cut off the same way at larger text sizes, while an empty column sat unused at the right. The **When**, **Status** and **Calendar** columns now widen to fit what they hold, **Subject** takes the rest of the width, and the empty column is gone. If the window is too narrow for everything, a cut-off value ends in "…" so it is clear something is missing. (#547)
+
 ### Calendar says why an event can't be changed
 
 Deleting or editing an event your account is not allowed to change used to fail with only "Could not update your online calendar." Now QuickMail says why:

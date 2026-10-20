@@ -59,11 +59,13 @@
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <!-- Action buttons — F6 stop 2. The ScrollViewer keeps every button
-             reachable when large text scales outgrow the fixed window height
-             (at 150% the column clipped the Import button — sweep finding,
-             #421); keyboard focus scrolls the focused button into view. -->
-        <ScrollViewer Grid.Row="0" Grid.Column="1"
+        <!-- Action buttons — F6 stop 2. The column runs the full height of the
+             list AND the description beside it (RowSpan 3): confined to the list's
+             row it had only half the window, so Open themes folder was cut in half
+             at 100% and Import… lost at 150% while the space below sat empty (#546).
+             The ScrollViewer stays as the last resort for text scales that outgrow
+             even that (#421); keyboard focus scrolls the focused button into view. -->
+        <ScrollViewer Grid.Row="0" Grid.RowSpan="3" Grid.Column="1"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
                       Focusable="False">
@@ -112,12 +114,12 @@
              and where they are used, for users who cannot see the swatches.
              Read-only TextBox so a screen reader can arrow through the text. -->
         <Label x:Name="DescriptionLabel"
-               Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+               Grid.Row="1" Grid.Column="0"
                Content="Theme description"
                Target="{Binding ElementName=DescriptionBox}"
                Margin="0,10,0,2"/>
         <TextBox x:Name="DescriptionBox"
-                 Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                 Grid.Row="2" Grid.Column="0"
                  Text="{Binding SelectedThemeDescription, Mode=OneWay}"
                  IsReadOnly="True"
                  IsReadOnlyCaretVisible="True"
