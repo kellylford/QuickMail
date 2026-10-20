@@ -149,6 +149,49 @@ public class AddressBookFilterMenuTests
         finally { window!.Close(); cleanup(dir); }
     }
 
+    /// <summary>
+    /// Issue #693, with real keyboard focus: Enter on the Filter button, sent through Windows, moves
+    /// focus exactly once, straight to the filter in effect. Before the fix the menu took focus
+    /// itself first. Needs the foreground, so it is an input test.
+    /// </summary>
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
+    public void EnterOnTheButton_MovesFocusOnce_StraightToTheActiveFilter()
+    {
+        EnsureApplication();
+        var (vm, window, dir) = BuildWindow(out var cleanup);
+        try
+        {
+            var button = window!.FindName("AccountFilterButton") as Button;
+            Assert.NotNull(button);
+            var menu = button!.ContextMenu;
+            Assert.NotNull(menu);
+
+            vm.SelectAccountFilter(vm.AccountFilterOptions.Single(o => o.Name == "Work"));
+            DoEvents();
+            Keyboard.Focus(button);
+            DoEvents();
+            Assert.Same(button, Keyboard.FocusedElement);   // setup: the window really has focus
+
+            var gained = ContextMenuInitialFocusTests.RecordFocus(() =>
+            {
+                OsInput.PressKey(OsInput.VK_RETURN);
+                Assert.True(PumpUntil(() => menu!.IsOpen && Keyboard.FocusedElement is MenuItem),
+                    "Enter on the Filter button did not open the menu with an item focused.");
+                DoEvents();
+            });
+
+            var active = ItemFor(menu!, vm.SelectedAccountFilter);
+            Assert.NotNull(active);
+            Assert.Same(active, Keyboard.FocusedElement);
+            Assert.Equal(new object?[] { active }, gained);
+
+            menu!.IsOpen = false;
+            DoEvents();
+        }
+        finally { window!.Close(); cleanup(dir); }
+    }
+
     [StaFact]
     public void MenuItems_AreCheckable_AndTheActiveOneIsChecked()
     {

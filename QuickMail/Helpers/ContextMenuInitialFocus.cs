@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -116,18 +117,32 @@ public static class ContextMenuInitialFocus
     /// </summary>
     internal static MenuItem? InitialItemFor(ContextMenu menu)
     {
+        if (menu.Items.Count == 0) return null;
+
+        // Defensive: the popup measures its content, generating every container, before it reports
+        // itself open. If the containers are ever not there yet, one layout pass makes them, before
+        // either a menu's own chooser or the first-item search looks for one.
+        if (menu.ItemContainerGenerator.Status != GeneratorStatus.ContainersGenerated)
+            menu.UpdateLayout();
+
         if (GetInitialItem(menu)?.Invoke(menu) is { } chosen && CanTakeFocus(chosen))
             return chosen;
 
-        var first = FirstFocusableItem(menu);
-        if (first is null && menu.Items.Count > 0)
+        return FirstFocusableItem(menu);
+    }
+
+    /// <summary>
+    /// A chooser for <see cref="SetInitialItem"/> on a menu of choices: the item that is checked,
+    /// which is the choice in effect. Null when none is, so the menu opens on its first item.
+    /// </summary>
+    public static MenuItem? CheckedItem(ContextMenu menu)
+    {
+        foreach (var item in menu.Items)
         {
-            // Defensive: the popup measures its content, generating every container, before it
-            // reports itself open. If a container is ever missing anyway, one layout pass makes it.
-            menu.UpdateLayout();
-            first = FirstFocusableItem(menu);
+            if (menu.ItemContainerGenerator.ContainerFromItem(item) is MenuItem { IsChecked: true } container)
+                return container;
         }
-        return first;
+        return null;
     }
 
     private static MenuItem? FirstFocusableItem(ContextMenu menu)

@@ -62,6 +62,29 @@ public class ContextMenuInitialFocusTests
     }
 
     [StaFact]
+    public void AChoiceMenu_OpensOnItsCheckedItem()
+    {
+        // The toolbar's Sync range and View mode menus use CheckedItem this way.
+        using var fx = new MenuFixture(fromKeyboard: true);
+        fx.Forward.IsCheckable = true;
+        fx.Forward.IsChecked = true;
+        ContextMenuInitialFocus.SetInitialItem(fx.Menu, ContextMenuInitialFocus.CheckedItem);
+        fx.Open();
+
+        Assert.Same(fx.Forward, FocusManager.GetFocusedElement(fx.Menu));
+    }
+
+    [StaFact]
+    public void AChoiceMenuWithNothingChecked_OpensOnItsFirstItem()
+    {
+        using var fx = new MenuFixture(fromKeyboard: true);
+        ContextMenuInitialFocus.SetInitialItem(fx.Menu, ContextMenuInitialFocus.CheckedItem);
+        fx.Open();
+
+        Assert.Same(fx.Reply, FocusManager.GetFocusedElement(fx.Menu));
+    }
+
+    [StaFact]
     public void AChosenItemThatCannotTakeFocus_FallsBackToTheFirst()
     {
         using var fx = new MenuFixture(fromKeyboard: true);
@@ -98,19 +121,7 @@ public class ContextMenuInitialFocusTests
         MenuFixture.DoEvents();
         Assert.Same(fx.Row, Keyboard.FocusedElement);   // setup: the window really has focus
 
-        var gained = new List<object?>();
-        void Record(object? s, ProcessInputEventArgs e)
-        {
-            if (e.StagingItem.Input is KeyboardFocusChangedEventArgs k
-                && k.RoutedEvent == Keyboard.GotKeyboardFocusEvent)
-                gained.Add(k.NewFocus);
-        }
-        InputManager.Current.PostProcessInput += Record;
-        try
-        {
-            fx.Open();
-        }
-        finally { InputManager.Current.PostProcessInput -= Record; }
+        var gained = RecordFocus(fx.Open);
 
         Assert.Same(fx.Reply, Keyboard.FocusedElement);
         Assert.Equal(new object?[] { fx.Reply }, gained);
@@ -138,6 +149,70 @@ public class ContextMenuInitialFocusTests
     }
 
     /// <summary>
+    /// Real Shift+F10, sent through Windows, with nothing pinned: this is the shipped check on the
+    /// most recent input device, and WPF's own route from the key to the row's context menu. Focus
+    /// moves once, from the row straight to Reply.
+    /// </summary>
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
+    public void RealShiftF10_OnARow_FocusMovesOnce_StraightToReply()
+    {
+        using var fx = new MenuFixture(fromKeyboard: null);
+        Keyboard.Focus(fx.Row);
+        MenuFixture.DoEvents();
+        Assert.Same(fx.Row, Keyboard.FocusedElement);   // setup: the window really has focus
+
+        var gained = RecordFocus(() =>
+        {
+            OsInput.PressKey(OsInput.VK_F10, shift: true);
+            Assert.True(MenuFixture.PumpUntil(() => fx.Menu.IsOpen && Keyboard.FocusedElement is MenuItem),
+                $"Shift+F10 did not open the menu with an item focused; focus is on {Keyboard.FocusedElement?.GetType().Name ?? "nothing"}.");
+            MenuFixture.DoEvents();
+        });
+
+        Assert.Same(fx.Reply, Keyboard.FocusedElement);
+        Assert.Equal(new object?[] { fx.Reply }, gained);
+    }
+
+    /// <summary>
+    /// A real right-click, with nothing pinned: the menu opens as WPF has always opened it for the
+    /// mouse, with no item focused or highlighted.
+    /// </summary>
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
+    public void RealRightClick_OpensWithNoItemFocused()
+    {
+        using var fx = new MenuFixture(fromKeyboard: null);
+        Keyboard.Focus(fx.Row);
+        MenuFixture.DoEvents();
+        Assert.Same(fx.Row, Keyboard.FocusedElement);
+
+        var centre = fx.Row.PointToScreen(new Point(fx.Row.ActualWidth / 2, fx.Row.ActualHeight / 2));
+        OsInput.RightClickAt(centre);
+        Assert.True(MenuFixture.PumpUntil(() => fx.Menu.IsOpen), "A right-click did not open the menu.");
+        MenuFixture.DoEvents();
+
+        Assert.IsNotType<MenuItem>(Keyboard.FocusedElement);
+        Assert.DoesNotContain(fx.Menu.Items.OfType<MenuItem>(), m => m.IsHighlighted || m.IsKeyboardFocused);
+    }
+
+    /// <summary>Every element that gains keyboard focus while <paramref name="act"/> runs, in order.</summary>
+    internal static List<object?> RecordFocus(Action act)
+    {
+        var gained = new List<object?>();
+        void Record(object? s, ProcessInputEventArgs e)
+        {
+            if (e.StagingItem.Input is KeyboardFocusChangedEventArgs k
+                && k.RoutedEvent == Keyboard.GotKeyboardFocusEvent)
+                gained.Add(k.NewFocus);
+        }
+        InputManager.Current.PostProcessInput += Record;
+        try { act(); }
+        finally { InputManager.Current.PostProcessInput -= Record; }
+        return gained;
+    }
+
+    /// <summary>
     /// A window with one list row whose context menu reads Reply (optionally disabled), a separator,
     /// then Forward and Delete: the shape of the message menu's opening items.
     /// </summary>
@@ -151,12 +226,14 @@ public class ContextMenuInitialFocusTests
         public MenuItem Forward { get; }
         public ListBoxItem Row { get; }
 
-        public MenuFixture(bool fromKeyboard, bool firstItemEnabled = true)
+        /// <param name="fromKeyboard">Pins whether the menu counts as opened from the keyboard.
+        /// Null leaves the shipped check alone, for the tests that send real input.</param>
+        public MenuFixture(bool? fromKeyboard, bool firstItemEnabled = true)
         {
             WpfTestHost.EnsureApplication();
-            ContextMenuInitialFocus.Install();
             _savedPredicate = ContextMenuInitialFocus.OpenedFromKeyboard;
-            ContextMenuInitialFocus.OpenedFromKeyboard = () => fromKeyboard;
+            if (fromKeyboard is { } pinned)
+                ContextMenuInitialFocus.OpenedFromKeyboard = () => pinned;
 
             Reply   = new MenuItem { Header = "_Reply", IsEnabled = firstItemEnabled };
             Forward = new MenuItem { Header = "_Forward" };

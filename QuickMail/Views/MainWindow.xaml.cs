@@ -344,6 +344,13 @@ public partial class MainWindow : Window
         vm.FlagDefinitions.CollectionChanged += (_, _) => RebuildFlagSubmenuItems();
         FilterFlaggedItem.SubmenuOpened += (_, _) => UpdateFlagSubmenuChecks();
 
+        // The toolbar's choice menus open on the choice in effect, the way the address book's Filter
+        // menu does, rather than on their first item (#693).
+        if (SyncRangeButton.ContextMenu is { } syncRangeMenu)
+            ContextMenuInitialFocus.SetInitialItem(syncRangeMenu, ContextMenuInitialFocus.CheckedItem);
+        if (ViewModeButton.ContextMenu is { } viewModeMenu)
+            ContextMenuInitialFocus.SetInitialItem(viewModeMenu, ContextMenuInitialFocus.CheckedItem);
+
         ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => RebuildMessageContextFlagsSubmenu();
         var messageMenu = (ContextMenu)FindResource("MessageContextMenu");
         _createRuleSeparator = messageMenu.Items.OfType<Separator>().FirstOrDefault(s => Equals(s.Tag, "CreateRuleSeparator"));
