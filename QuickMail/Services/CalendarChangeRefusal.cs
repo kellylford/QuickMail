@@ -45,10 +45,41 @@ public static class CalendarChangeRefusal
                                                  && string.Equals(s.CalendarId, evt.CalendarId, StringComparison.Ordinal));
         if (source == null || source.CanWrite) return null;
 
-        var name = string.IsNullOrWhiteSpace(source.CalendarName) ? evt.CalendarName : source.CalendarName;
-        var calendar = string.IsNullOrWhiteSpace(name) ? "this calendar" : $"the {name.Trim()} calendar";
+        // Google's contact birthdays: either a birthday-type event, or the older separate
+        // "Birthdays" calendar Google generates from Contacts (accessRole reader). Saying only that
+        // the calendar is read-only would never send the user to Google Contacts, where the fix is.
+        if (string.Equals(evt.ProviderEventType, "birthday", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(evt.CalendarId, GoogleContactsBirthdaysCalendarId, StringComparison.OrdinalIgnoreCase))
+            return GoogleKindMessage("birthday");
+
+        var name = (string.IsNullOrWhiteSpace(source.CalendarName) ? evt.CalendarName : source.CalendarName).Trim();
+        // "the Calendar calendar" / "the Work Calendar calendar" read badly; the name already says it.
+        var calendar = name.Length == 0 ? "this calendar"
+            : name.EndsWith("calendar", StringComparison.OrdinalIgnoreCase) ? $"the {name}"
+            : $"the {name} calendar";
         return $"Your account can only read {calendar}, so this event can't be {(delete ? "deleted" : "edited")} here.";
     }
+
+    /// <summary>The id of the calendar Google generates from the birthdays in Google Contacts.</summary>
+    internal const string GoogleContactsBirthdaysCalendarId = "addressbook#contacts@group.v.calendar.google.com";
+
+    /// <summary>
+    /// Google error reasons that mean the change itself is not allowed. Google also answers 403 for
+    /// rate and quota limits (rateLimitExceeded, userRateLimitExceeded, quotaExceeded,
+    /// dailyLimitExceeded) and for a token missing a scope (insufficientPermissions) — none of which
+    /// say anything about the event, so explaining them as a refusal would give wrong advice.
+    /// </summary>
+    private static readonly HashSet<string> GoogleRefusalReasons = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "forbiddenForNonOrganizer", "requiredAccessLevel", "forbidden", "eventTypeRestriction",
+    };
+
+    private static readonly System.Text.RegularExpressions.Regex ReasonPattern =
+        new("\"reason\"\\s*:\\s*\"([^\"]+)\"", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>The <c>reason</c> values in a Google error body carried in the exception message.</summary>
+    internal static IReadOnlyList<string> ErrorReasons(string message)
+        => ReasonPattern.Matches(message).Select(m => m.Groups[1].Value).ToList();
 
     /// <summary>
     /// The sentence to speak when the provider refused an edit or delete of <paramref name="evt"/>.
@@ -59,18 +90,26 @@ public static class CalendarChangeRefusal
         var http = ex as HttpRequestException ?? ex.InnerException as HttpRequestException;
         if (http == null) return GenericFailure;
 
-        // Google answers a change it does not allow on one of its own kinds of event with
-        // 400 "eventTypeRestriction" (seen for a birthday, issue #294). A 403 on such an event
-        // means the same thing as far as the user is concerned.
-        var typeRestricted = http.Message.Contains("eventTypeRestriction", StringComparison.OrdinalIgnoreCase);
         var forbidden = http.StatusCode == HttpStatusCode.Forbidden;
-        if (typeRestricted || (forbidden && !string.IsNullOrEmpty(evt.ProviderEventType)))
-            return GoogleKindMessage(evt.ProviderEventType);
+        var reasons = ErrorReasons(http.Message);
 
-        if (forbidden)
-            return $"{provider} doesn't allow your account to change this event.";
+        // Google: trust a refusal only when its reason says the change is not allowed. A 403 for a
+        // rate limit, a quota or a missing scope is not about this event at all.
+        if (string.Equals(provider, "Google", StringComparison.OrdinalIgnoreCase))
+        {
+            var refused = reasons.Any(GoogleRefusalReasons.Contains);
+            if (!refused) return GenericFailure;
 
-        return GenericFailure;
+            // Google answers a change it does not allow on one of its own kinds of event with
+            // 400 "eventTypeRestriction" (seen for a birthday, issue #294); a trusted 403 on such
+            // an event means the same thing as far as the user is concerned.
+            var typeRestricted = reasons.Contains("eventTypeRestriction", StringComparer.OrdinalIgnoreCase);
+            if (typeRestricted || (forbidden && !string.IsNullOrEmpty(evt.ProviderEventType)))
+                return GoogleKindMessage(evt.ProviderEventType);
+            return forbidden ? $"{provider} doesn't allow your account to change this event." : GenericFailure;
+        }
+
+        return forbidden ? $"{provider} doesn't allow your account to change this event." : GenericFailure;
     }
 
     /// <summary>The explanation for one of Google's own kinds of event, with where to change it instead.</summary>

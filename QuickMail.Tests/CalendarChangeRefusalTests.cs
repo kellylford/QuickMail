@@ -98,9 +98,71 @@ public class CalendarChangeRefusalTests
     [Fact]
     public void Forbidden_OnAGoogleKind_NamesTheKind()
     {
-        var ex = Http(HttpStatusCode.Forbidden, "{}");
+        var ex = Http(HttpStatusCode.Forbidden, """{ "error": { "errors": [ { "reason": "forbidden" } ], "code": 403 } }""");
         Assert.StartsWith("Google doesn't let other programs change out of office events.",
             CalendarChangeRefusal.DescribeFailure(ex, ServerRow(eventType: "outOfOffice"), "Google"));
+    }
+
+    [Theory]
+    [InlineData("forbiddenForNonOrganizer")]
+    [InlineData("requiredAccessLevel")]
+    public void GoogleForbidden_WithATrustedReason_OnAnOrdinaryEvent_SaysTheAccountIsNotAllowed(string reason)
+    {
+        var ex = Http(HttpStatusCode.Forbidden, $$"""{ "error": { "errors": [ { "reason": "{{reason}}" } ] } }""");
+        Assert.Equal("Google doesn't allow your account to change this event.",
+            CalendarChangeRefusal.DescribeFailure(ex, ServerRow(), "Google"));
+    }
+
+    [Theory]
+    [InlineData("rateLimitExceeded", "birthday")]
+    [InlineData("rateLimitExceeded", "")]
+    [InlineData("userRateLimitExceeded", "birthday")]
+    [InlineData("quotaExceeded", "")]
+    [InlineData("dailyLimitExceeded", "outOfOffice")]
+    [InlineData("insufficientPermissions", "birthday")]
+    [InlineData("ACCESS_TOKEN_SCOPE_INSUFFICIENT", "")]
+    public void GoogleForbidden_ForALimitOrAScope_IsNotARefusal(string reason, string eventType)
+    {
+        // A rate limit on a birthday row must not be explained as "Google doesn't let other
+        // programs change birthday events" — that would be wrong advice.
+        var ex = Http(HttpStatusCode.Forbidden, $$"""{ "error": { "errors": [ { "domain": "usageLimits", "reason": "{{reason}}" } ], "code": 403 } }""");
+        Assert.Equal(CalendarChangeRefusal.GenericFailure,
+            CalendarChangeRefusal.DescribeFailure(ex, ServerRow(eventType: eventType), "Google"));
+    }
+
+    [Fact]
+    public void GoogleForbidden_WithNoReason_IsNotTrusted()
+        => Assert.Equal(CalendarChangeRefusal.GenericFailure,
+            CalendarChangeRefusal.DescribeFailure(Http(HttpStatusCode.Forbidden, "{}"), ServerRow(), "Google"));
+
+    [Theory]
+    [InlineData("Calendar", "Your account can only read the Calendar, so this event can't be deleted here.")]
+    [InlineData("Team calendar", "Your account can only read the Team calendar, so this event can't be deleted here.")]
+    [InlineData("Holidays", "Your account can only read the Holidays calendar, so this event can't be deleted here.")]
+    public void ReadOnlyCalendarName_IsNotDoubled(string name, string expected)
+    {
+        var sources = new[] { new CalendarSourceInfo(AccountId, "cal-1", name, CanWrite: false) };
+        Assert.Equal(expected,
+            CalendarChangeRefusal.ReadOnlyCalendarReason(ServerRow(calendarName: name), sources, delete: true));
+    }
+
+    [Fact]
+    public void ReadOnlyGoogleContactsBirthdays_PointsToGoogleContacts()
+    {
+        var id = CalendarChangeRefusal.GoogleContactsBirthdaysCalendarId;
+        var sources = new[] { new CalendarSourceInfo(AccountId, id, "Birthdays", CanWrite: false) };
+        Assert.Equal(
+            "Google doesn't let other programs change birthday events. Change the birthday on the contact in Google Contacts.",
+            CalendarChangeRefusal.ReadOnlyCalendarReason(ServerRow(calendarId: id), sources, delete: true));
+    }
+
+    [Fact]
+    public void ReadOnlyCalendar_BirthdayEvent_PointsToGoogleContacts()
+    {
+        var sources = new[] { new CalendarSourceInfo(AccountId, "cal-1", "Family", CanWrite: false) };
+        Assert.StartsWith("Google doesn't let other programs change birthday events.",
+            CalendarChangeRefusal.ReadOnlyCalendarReason(ServerRow(calendarName: "Family", eventType: "birthday"),
+                                                         sources, delete: false));
     }
 
     [Theory]
@@ -282,5 +344,28 @@ public class CalendarChangeRefusalTests
         confirm!();
 
         Assert.Equal("Microsoft doesn't allow your account to change this event.", Assert.Single(spoken));
+    }
+
+    [Fact]
+    public async Task ICloudForbidsAnEdit_NamesICloud()
+    {
+        var account = new AccountModel
+        {
+            Id = AccountId, AuthType = AuthType.Password, BackendKind = BackendKind.ImapSmtp,
+            ImapHost = "imap.mail.me.com", Username = "me@icloud.com", SyncCalendar = true,
+        };
+        var (vm, store, sync, spoken) = MakeVm(account);
+        store.StoredEvents.Add(ServerRow(calendarName: "Home"));
+        await vm.LoadAsync();
+        sync.WriteFailure = Http(HttpStatusCode.Forbidden);
+        spoken.Clear();
+
+        EventEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.EditEventCommand.Execute(vm.VisibleEvents[0]);
+        editor!.Title = "Moved";
+        editor.SaveCommand.Execute(null);
+
+        Assert.Equal("iCloud doesn't allow your account to change this event.", Assert.Single(spoken));
     }
 }
