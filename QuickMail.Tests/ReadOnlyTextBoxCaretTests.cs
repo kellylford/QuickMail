@@ -6,6 +6,7 @@
 // Deliberately NOT in the "WpfTests" collection — nothing here loads a window; it is XML parsing.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
@@ -26,14 +27,26 @@ public class ReadOnlyTextBoxCaretTests
             .ToList();
         Assert.NotEmpty(files);
 
+        // Known blind spots: property-element syntax (<TextBox.IsReadOnly>), values set by binding,
+        // styles from another file, and bound text with newlines in a box that neither wraps nor
+        // accepts returns. None exists today; same-file keyed styles (ViewManagerWindow's
+        // ReadonlyField) are resolved below.
         var missing = files
-            .SelectMany(file => XDocument.Load(file, LoadOptions.SetLineInfo).Descendants()
-                .Where(e => e.Name.LocalName == "TextBox"
-                         && Is(e, "IsReadOnly", "True")
-                         && (Is(e, "TextWrapping", "Wrap") || Is(e, "AcceptsReturn", "True"))
-                         && !Is(e, "IsReadOnlyCaretVisible", "True"))
-                .Select(e => $"{Path.GetFileName(file)}:{((System.Xml.IXmlLineInfo)e).LineNumber} " +
-                             $"({(string?)e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) ?? (string?)e.Attribute("AutomationProperties.Name") ?? "unnamed"})"))
+            .SelectMany(file =>
+            {
+                var doc = XDocument.Load(file, LoadOptions.SetLineInfo);
+                var styles = doc.Descendants()
+                    .Where(e => e.Name.LocalName == "Style" && e.Attribute(XName.Get("Key", XamlNs)) != null)
+                    .GroupBy(e => (string)e.Attribute(XName.Get("Key", XamlNs))!)
+                    .ToDictionary(g => g.Key, g => g.First());
+                return doc.Descendants()
+                    .Where(e => e.Name.LocalName == "TextBox"
+                             && Is(e, styles, "IsReadOnly", "True")
+                             && (Is(e, styles, "TextWrapping", "Wrap") || Is(e, styles, "AcceptsReturn", "True"))
+                             && !Is(e, styles, "IsReadOnlyCaretVisible", "True"))
+                    .Select(e => $"{Path.GetFileName(file)}:{((System.Xml.IXmlLineInfo)e).LineNumber} " +
+                                 $"({(string?)e.Attribute(XName.Get("Name", XamlNs)) ?? (string?)e.Attribute("AutomationProperties.Name") ?? "unnamed"})");
+            })
             .ToList();
 
         Assert.True(missing.Count == 0,
@@ -53,8 +66,22 @@ public class ReadOnlyTextBoxCaretTests
         Assert.True(Is(box, "IsReadOnlyCaretVisible", "True"));
     }
 
+    private const string XamlNs = "http://schemas.microsoft.com/winfx/2006/xaml";
+
     private static bool Is(XElement element, string attribute, string value) =>
         string.Equals((string?)element.Attribute(attribute), value, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The element's own attribute, or failing that a Setter in its same-file keyed Style.</summary>
+    private static bool Is(XElement element, IReadOnlyDictionary<string, XElement> styles, string property, string value)
+    {
+        if (element.Attribute(property) != null) return Is(element, property, value);
+        var styleRef = (string?)element.Attribute("Style");
+        if (styleRef == null) return false;
+        var key = styleRef.Replace("{StaticResource", "").Replace("{DynamicResource", "").Trim(' ', '}');
+        return styles.TryGetValue(key, out var style) && style.Descendants()
+            .Any(s => s.Name.LocalName == "Setter" && (string?)s.Attribute("Property") == property
+                   && string.Equals((string?)s.Attribute("Value"), value, StringComparison.OrdinalIgnoreCase));
+    }
 
     private static string RepoRoot()
     {

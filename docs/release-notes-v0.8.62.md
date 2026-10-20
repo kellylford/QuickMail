@@ -4,7 +4,7 @@
 
 ### Settings export and import summaries can be read line by line
 
-In **Export Settings**, the box below the list that says what will be exported could be read only to the end of its first line: arrowing in it went no further. The same was true of the preview in **Import Settings**, the report shown after an import, and the note in **Settings > Startup** explaining why starting at sign-in is not available in a portable copy. Up and Down arrow now move through every line of each. (#840)
+In **Export Settings**, the box below the list that says what will be exported could be read only to the end of its first line: arrowing in it went no further. The same was true of the preview in **Import Settings**, the report shown after an import, and the note in **File → Settings → Startup** explaining why starting at sign-in is not available in a portable copy. Up and Down arrow now move through every line of each. (#840)
 
 ## Reporting Issues
 
