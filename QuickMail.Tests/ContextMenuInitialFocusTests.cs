@@ -75,8 +75,9 @@ public class ContextMenuInitialFocusTests
     [StaFact]
     public void AMenuWithNoItemThatCanTakeFocus_KeepsFocusItself()
     {
-        using var fx = new MenuFixture(fromKeyboard: true, firstItemEnabled: false);
-        fx.Forward.IsEnabled = false;
+        using var fx = new MenuFixture(fromKeyboard: true);
+        foreach (var item in fx.Menu.Items.OfType<MenuItem>())
+            item.IsEnabled = false;
         fx.Open();
 
         Assert.IsNotType<MenuItem>(FocusManager.GetFocusedElement(fx.Menu));
