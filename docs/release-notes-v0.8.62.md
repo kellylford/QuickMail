@@ -6,6 +6,10 @@
 
 In **Export Settings**, the box below the list that says what will be exported could be read only to the end of its first line: arrowing in it went no further. The same was true of the preview in **Import Settings**, the report shown after an import, and the note in **File → Settings → Startup** explaining why starting at sign-in is not available in a portable copy. Up and Down arrow now move through every line of each. (#840)
 
+### Row Fields buttons show their whole label at larger text sizes
+
+In the **Message List Fields** dialog, the **Move Up**, **Move Down** and **Reset to Defaults** buttons were a fixed width, so at a larger text size their labels were cut off — "Move U", "Move Dc", "Reset to Defa". The buttons now grow to fit their labels, and wrap onto a second line if the window is too narrow for all of them. (#549)
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
