@@ -8,7 +8,7 @@ In **Export Settings**, the box below the list that says what will be exported c
 
 ### Context menus opened from the keyboard land on their first item at once
 
-Opening a message's context menu with Shift+F10 or the Applications key moved focus in two steps: first to the menu itself, then a moment later to its first item, **Reply**. A screen reader started speaking the first and was cut off by the second, and on a braille display the menu seemed to open twice. Focus now goes once, straight to the first item. The same is true of every other context menu in QuickMail, including the folder and account lists and the attachment lists; the address book's **Filter** menu opens on the filter in effect, as before. Menus opened with the mouse are unchanged. (#693)
+Opening a message's context menu with Shift+F10 or the Applications key moved focus in two steps: first to the menu itself, then a moment later to its first item, **Reply**. A screen reader started speaking the first and was cut off by the second, and on a braille display the menu seemed to open twice. Focus now goes once, straight to the first item. The same is true of every other context menu in QuickMail, including the folder and account lists and the attachment lists; the address book's **Filter** menu opens on the filter in effect, as before, and the toolbar's **Sync range** and **View mode** menus now open on the choice in effect too. Menus opened with the mouse are unchanged. (#693)
 
 ### Row Fields buttons show their whole label at larger text sizes
 
