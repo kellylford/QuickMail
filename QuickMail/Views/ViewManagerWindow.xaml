@@ -27,6 +27,8 @@
         </Style>
         <Style x:Key="ReadonlyField" TargetType="TextBox">
             <Setter Property="IsReadOnly" Value="True"/>
+            <!-- Without a caret only the first wrapped line can be read (#558, #840). -->
+            <Setter Property="IsReadOnlyCaretVisible" Value="True"/>
             <Setter Property="IsTabStop" Value="False"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>

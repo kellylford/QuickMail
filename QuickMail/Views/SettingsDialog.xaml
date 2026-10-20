@@ -741,7 +741,7 @@
                                 <!-- Read-only rather than a disabled check box: a disabled control is
                                      skipped by Tab, so the reason would be unreachable from the keyboard. -->
                                 <TextBox Text="Available in the installed version of QuickMail. This copy is portable or a development build, and Windows would lose track of it if it were moved."
-                                         IsReadOnly="True" TextWrapping="Wrap"
+                                         IsReadOnly="True" IsReadOnlyCaretVisible="True" TextWrapping="Wrap"
                                          AutomationProperties.Name="Start at sign-in"
                                          Visibility="{Binding IsLaunchAtSignInUnsupported, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </StackPanel>
