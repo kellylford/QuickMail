@@ -10,6 +10,10 @@ In **Export Settings**, the box below the list that says what will be exported c
 
 In the **Message List Fields** dialog, the **Move Up**, **Move Down** and **Reset to Defaults** buttons were a fixed width, so at a larger text size their labels were cut off — "Move U", "Move Dc", "Reset to Defa". The buttons now grow to fit their labels, and wrap onto a second line if the window is too narrow for all of them. (#549)
 
+### Theme Manager shows all of its buttons
+
+In the **Theme Manager**, the column of buttons beside the theme list was given only the height of the list, so **Open themes folder** was cut in half, and at a larger text size **Import…** disappeared below it, while the space beside the theme description stayed empty. The column now runs the full height of the window, so every button shows in full. (#546)
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
