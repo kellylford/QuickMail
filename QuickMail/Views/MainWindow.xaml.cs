@@ -345,6 +345,13 @@ public partial class MainWindow : Window
         vm.FlagDefinitions.CollectionChanged += (_, _) => RebuildFlagSubmenuItems();
         FilterFlaggedItem.SubmenuOpened += (_, _) => UpdateFlagSubmenuChecks();
 
+        // The toolbar's choice menus open on the choice in effect, the way the address book's Filter
+        // menu does, rather than on their first item (#693).
+        if (SyncRangeButton.ContextMenu is { } syncRangeMenu)
+            ContextMenuInitialFocus.SetInitialItem(syncRangeMenu, ContextMenuInitialFocus.CheckedItem);
+        if (ViewModeButton.ContextMenu is { } viewModeMenu)
+            ContextMenuInitialFocus.SetInitialItem(viewModeMenu, ContextMenuInitialFocus.CheckedItem);
+
         ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => RebuildMessageContextFlagsSubmenu();
         var messageMenu = (ContextMenu)FindResource("MessageContextMenu");
         _createRuleSeparator = messageMenu.Items.OfType<Separator>().FirstOrDefault(s => Equals(s.Tag, "CreateRuleSeparator"));
@@ -3008,9 +3015,9 @@ public partial class MainWindow : Window
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
         menu.Closed += (_, _) => Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
 
-        // A ContextMenu opened programmatically (IsOpen = true) does not reliably land keyboard focus
-        // on the first item the way a right-click does — so a screen reader may not announce the menu.
-        // Focus the first item explicitly once the menu is up so the user hears "Accept" straight away.
+        // Opened from the keyboard (Enter on the row), ContextMenuInitialFocus has already put focus on
+        // "Accept" as the menu opened, and this finds it there and does nothing (#693). It remains for
+        // a menu opened by double-clicking the row, where WPF would otherwise leave focus on the menu.
         menu.Opened += (_, _) => Dispatcher.InvokeAsync(() =>
         {
             if (menu.ItemContainerGenerator.ContainerFromIndex(0) is MenuItem first)

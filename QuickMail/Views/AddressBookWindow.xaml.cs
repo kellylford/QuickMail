@@ -21,6 +21,12 @@ public partial class AddressBookWindow : Window
         InitializeComponent();
         DataContext = vm;
 
+        // Opened from the keyboard, the filter menu takes focus once, on the filter in effect,
+        // rather than on the menu and then that item (#693).
+        if (AccountFilterButton.ContextMenu is { } filterMenu)
+            Helpers.ContextMenuInitialFocus.SetInitialItem(filterMenu,
+                m => m.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) as MenuItem);
+
         // Register the address-book-specific commands.  These are per-window so
         // the main window's registry isn't polluted with commands that are only
         // meaningful while the address book is open.  The palette inside the
@@ -212,7 +218,9 @@ public partial class AddressBookWindow : Window
     private void AccountFilterMenu_Opened(object sender, RoutedEventArgs e)
     {
         // Land on the filter that is currently in effect rather than on the first item,
-        // so the menu opens where the user left it and the check state is read out.
+        // so the menu opens where the user left it and the check state is read out. From the
+        // keyboard, ContextMenuInitialFocus (set up in the constructor) has already focused it and
+        // this changes nothing; this covers a mouse click on the button.
         var menu = (ContextMenu)sender;
         var item = menu.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) as MenuItem;
         if (item is null)
