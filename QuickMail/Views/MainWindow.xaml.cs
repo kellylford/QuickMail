@@ -4052,6 +4052,8 @@ public partial class MainWindow : Window
     private void OnThemeChanged(object? sender, EventArgs e)
     {
         if (_themeService is null) return;
+        // Font, text scale and row density all live in the theme resources (#547).
+        InvalidateCalendarColumnFit();
 
         var hc = _themeService.IsHighContrastActive;
         var text = hc && !_lastAnnouncedHighContrast
