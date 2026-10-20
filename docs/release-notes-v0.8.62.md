@@ -6,6 +6,10 @@
 
 In **Export Settings**, the box below the list that says what will be exported could be read only to the end of its first line: arrowing in it went no further. The same was true of the preview in **Import Settings**, the report shown after an import, and the note in **File → Settings → Startup** explaining why starting at sign-in is not available in a portable copy. Up and Down arrow now move through every line of each. (#840)
 
+### Context menus opened from the keyboard land on their first item at once
+
+Opening a message's context menu with Shift+F10 or the Applications key moved focus in two steps: first to the menu itself, then a moment later to its first item, **Reply**. A screen reader started speaking the first and was cut off by the second, and on a braille display the menu seemed to open twice. Focus now goes once, straight to the first item. The same is true of every other context menu in QuickMail, including the folder and account lists and the attachment lists; the address book's **Filter** menu opens on the filter in effect, as before. Menus opened with the mouse are unchanged. (#693)
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

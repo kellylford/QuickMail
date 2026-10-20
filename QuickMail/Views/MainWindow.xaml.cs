@@ -3006,9 +3006,9 @@ public partial class MainWindow : Window
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
         menu.Closed += (_, _) => Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
 
-        // A ContextMenu opened programmatically (IsOpen = true) does not reliably land keyboard focus
-        // on the first item the way a right-click does — so a screen reader may not announce the menu.
-        // Focus the first item explicitly once the menu is up so the user hears "Accept" straight away.
+        // Opened from the keyboard (Enter on the row), ContextMenuInitialFocus has already put focus on
+        // "Accept" as the menu opened, and this finds it there and does nothing (#693). It remains for
+        // a menu opened by double-clicking the row, where WPF would otherwise leave focus on the menu.
         menu.Opened += (_, _) => Dispatcher.InvokeAsync(() =>
         {
             if (menu.ItemContainerGenerator.ContainerFromIndex(0) is MenuItem first)
