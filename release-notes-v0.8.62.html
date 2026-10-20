@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.62 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.61.html">Older: 0.8.61</a></div>
+  <h1 id="quickmail-v0.8.62-release-notes">QuickMail v0.8.62 Release
+Notes</h1>
+<p class="version">Released October 20, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.62">downloads for this release</a></p>
+<h2 id="fixed">Fixed</h2>
+<h3
+id="settings-export-and-import-summaries-can-be-read-line-by-line">Settings
+export and import summaries can be read line by line</h3>
+<p>In <strong>Export Settings</strong>, the box below the list that says
+what will be exported could be read only to the end of its first line:
+arrowing in it went no further. The same was true of the preview in
+<strong>Import Settings</strong>, the report shown after an import, and
+the note in <strong>File → Settings → Startup</strong> explaining why
+starting at sign-in is not available in a portable copy. Up and Down
+arrow now move through every line of each. (#840)</p>
+<h3
+id="context-menus-opened-from-the-keyboard-land-on-their-first-item-at-once">Context
+menus opened from the keyboard land on their first item at once</h3>
+<p>Opening a message’s context menu with Shift+F10 or the Applications
+key moved focus in two steps: first to the menu itself, then a moment
+later to its first item, <strong>Reply</strong>. A screen reader started
+speaking the first and was cut off by the second, and on a braille
+display the menu seemed to open twice. Focus now goes once, straight to
+the first item. The same is true of every other context menu in
+QuickMail, including the folder and account lists and the attachment
+lists; the address book’s <strong>Filter</strong> menu opens on the
+filter in effect, as before, and the toolbar’s <strong>Sync
+range</strong> and <strong>View mode</strong> menus now open on the
+choice in effect too. Menus opened with the mouse are unchanged.
+(#693)</p>
+<h3
+id="row-fields-buttons-show-their-whole-label-at-larger-text-sizes">Row
+Fields buttons show their whole label at larger text sizes</h3>
+<p>In the <strong>Message List Fields</strong> dialog, the <strong>Move
+Up</strong>, <strong>Move Down</strong> and <strong>Reset to
+Defaults</strong> buttons were a fixed width, so at a larger text size
+their labels were cut off — “Move U”, “Move Dc”, “Reset to Defa”. The
+buttons now grow to fit their labels, and wrap onto a second line if the
+window is too narrow for all of them. (#549)</p>
+<h3 id="theme-manager-shows-all-of-its-buttons">Theme Manager shows all
+of its buttons</h3>
+<p>In the <strong>Theme Manager</strong>, the column of buttons beside
+the theme list was given only the height of the list, so <strong>Open
+themes folder</strong> was cut in half, and at a larger text size
+<strong>Import…</strong> disappeared below it, while the space beside
+the theme description stayed empty. The column now runs the full height
+of the window, so every button shows in full. (#546)</p>
+<h3 id="calendar-times-are-no-longer-cut-short-in-the-agenda">Calendar
+times are no longer cut short in the agenda</h3>
+<p>In the calendar’s list of appointments, the <strong>When</strong>
+column had a fixed width, so a longer time was cut off with nothing to
+show it — “11:00 AM–12:00” with the end time’s “PM” gone, which reads as
+a complete and wrong time. <strong>Status</strong> was cut off the same
+way at larger text sizes, while an empty column sat unused at the right.
+The <strong>When</strong>, <strong>Status</strong> and
+<strong>Calendar</strong> columns now widen to fit what they hold,
+<strong>Subject</strong> takes the rest of the width, and the empty
+column is gone. If the window is too narrow for everything, a cut-off
+value ends in “…” so it is clear something is missing. (#547)</p>
+<h3 id="calendar-says-why-an-event-cant-be-changed">Calendar says why an
+event can’t be changed</h3>
+<p>Deleting or editing an event your account is not allowed to change
+used to fail with only “Could not update your online calendar.” Now
+QuickMail says why:</p>
+<ul>
+<li>On a calendar Microsoft or Google reports as read-only for your
+account — one shared with you read-only, or one you subscribe to —
+pressing <strong>Delete</strong> or <strong>E</strong> tells you
+straight away, for example “Your account can only read the Holidays
+calendar, so this event can’t be deleted here.”, without trying.</li>
+<li>When Google refuses a change to an event it manages itself — a
+birthday, out of office, working location, focus time, or an event Gmail
+created — QuickMail names the kind of event and where to change it
+instead, such as “Google doesn’t let other programs change birthday
+events. Change the birthday on the contact in Google Contacts.”</li>
+<li>When any provider refuses because your account is not allowed to
+make the change, QuickMail says that rather than reporting a general
+failure.</li>
+</ul>
+<p>The event is left as it was in every case. (#326)</p>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.61.html">Older: 0.8.61</a></div>
+</body>
+</html>
