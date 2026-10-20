@@ -33,6 +33,7 @@
                  Grid.Row="0"
                  Text="{Binding Report, Mode=OneWay}"
                  IsReadOnly="True"
+                 IsReadOnlyCaretVisible="True"
                  TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto"
                  AutomationProperties.Name="Import report"/>
