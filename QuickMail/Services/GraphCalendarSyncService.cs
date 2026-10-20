@@ -323,6 +323,11 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             EndTimeTicks    = endTicks,
             IsAllDay        = allDay,
             ResponseStatus  = MapGoogleResponseStatus(e),
+            // Kept so a refused edit or delete can say why (#326). "default" is an ordinary event.
+            ProviderEventType = string.IsNullOrWhiteSpace(e.EventType)
+                                || string.Equals(e.EventType, "default", StringComparison.OrdinalIgnoreCase)
+                ? string.Empty
+                : e.EventType.Trim(),
             SourceMessageId = string.Empty, // not an invite email
             SourceFolder    = string.Empty,
             RecurrenceRule  = null, // singleEvents=true already expanded any series server-side

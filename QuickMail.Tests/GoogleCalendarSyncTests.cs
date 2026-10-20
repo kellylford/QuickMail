@@ -510,4 +510,75 @@ public class GoogleCalendarSyncTests : IDisposable
         Assert.Equal("POST", handler.Methods[0]);
         Assert.Contains("/calendars/primary/events", handler.Urls[0]);
     }
+
+    // ── Google's own kinds of event (#326) ──────────────────────────────────────
+
+    private static string WithEventType(string eventJson, string eventType)
+        => eventJson.Replace("\"status\":", $"\"eventType\": \"{eventType}\", \"status\":");
+
+    [Fact]
+    public async Task Sync_KeepsGooglesEventType_AndTreatsDefaultAsOrdinary()
+    {
+        var handler = OneCalendarHandler(Json(Page(null,
+            WithEventType(EventJson("gid-b", "Happy birthday!", startDate: "2026-08-01", endDate: "2026-08-02"), "birthday"),
+            WithEventType(EventJson("gid-o", "Away", startDateTime: "2026-08-03T09:00:00Z", endDateTime: "2026-08-03T17:00:00Z"), "outOfOffice"),
+            WithEventType(EventJson("gid-d", "Lunch", startDateTime: "2026-08-04T12:00:00Z", endDateTime: "2026-08-04T13:00:00Z"), "default"),
+            EventJson("gid-n", "Old event", startDateTime: "2026-08-05T12:00:00Z", endDateTime: "2026-08-05T13:00:00Z"))));
+
+        await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        // Read back from the real store: the kind has to survive a restart to be any use.
+        var rows = (await _store.LoadCalendarEventsAsync()).ToDictionary(r => r.Uid);
+        Assert.Equal("birthday", rows["gid-b"].ProviderEventType);
+        Assert.Equal("outOfOffice", rows["gid-o"].ProviderEventType);
+        Assert.Equal(string.Empty, rows["gid-d"].ProviderEventType);
+        Assert.Equal(string.Empty, rows["gid-n"].ProviderEventType);
+    }
+
+    [Fact]
+    public async Task UpdateEvent_StoresTheServersEventType()
+    {
+        var handler = new RecordingHandler(Json(WithEventType(EventJson(
+            "gid-x", "Lunch", startDateTime: "2026-08-01T16:00:00+00:00", endDateTime: "2026-08-01T17:00:00+00:00"),
+            "focusTime")));
+
+        await Service(handler).UpdateEventAsync(GoogleAccount(), GoogleEvt("gid-x", "primary"),
+                                                TestContext.Current.CancellationToken);
+
+        Assert.Equal("focusTime", Assert.Single(await _store.LoadCalendarEventsAsync()).ProviderEventType);
+    }
+
+    [Fact]
+    public async Task DeleteRefusedForABirthday_CarriesTheStatus_AndIsExplained()
+    {
+        // The exact refusal Google sent for a birthday delete (issue #294).
+        var handler = new RecordingHandler(Json("""
+            { "error": { "errors": [ { "domain": "calendar", "reason": "eventTypeRestriction",
+            "message": "Attempt made to modify 'birthday' event in a way that is not valid for this event type." } ],
+            "code": 400 } }
+            """, HttpStatusCode.BadRequest));
+        var evt = GoogleEvt("gid-b", "primary");
+        evt.ProviderEventType = "birthday";
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            Service(handler).DeleteEventAsync(GoogleAccount(), evt, TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
+        Assert.Equal(
+            "Google doesn't let other programs change birthday events. Change the birthday on the contact in Google Contacts.",
+            CalendarChangeRefusal.DescribeFailure(ex, evt, "Google"));
+    }
+
+    [Fact]
+    public async Task UpdateRefusedAsForbidden_CarriesTheStatus()
+    {
+        var handler = new RecordingHandler(Json("""{ "error": { "code": 403, "message": "Forbidden" } }""",
+                                                HttpStatusCode.Forbidden));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            Service(handler).UpdateEventAsync(GoogleAccount(), GoogleEvt("gid-x", "primary"),
+                                              TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
 }
