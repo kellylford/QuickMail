@@ -18,6 +18,16 @@ In the **Theme Manager**, the column of buttons beside the theme list was given 
 
 In the calendar's list of appointments, the **When** column had a fixed width, so a longer time was cut off with nothing to show it — "11:00 AM–12:00" with the end time's "PM" gone, which reads as a complete and wrong time. **Status** was cut off the same way at larger text sizes, while an empty column sat unused at the right. The **When**, **Status** and **Calendar** columns now widen to fit what they hold, **Subject** takes the rest of the width, and the empty column is gone. If the window is too narrow for everything, a cut-off value ends in "…" so it is clear something is missing. (#547)
 
+### Calendar says why an event can't be changed
+
+Deleting or editing an event your account is not allowed to change used to fail with only "Could not update your online calendar." Now QuickMail says why:
+
+- On a calendar Microsoft or Google reports as read-only for your account — one shared with you read-only, or one you subscribe to — pressing **Delete** or **E** tells you straight away, for example "Your account can only read the Holidays calendar, so this event can't be deleted here.", without trying.
+- When Google refuses a change to an event it manages itself — a birthday, out of office, working location, focus time, or an event Gmail created — QuickMail names the kind of event and where to change it instead, such as "Google doesn't let other programs change birthday events. Change the birthday on the contact in Google Contacts."
+- When any provider refuses because your account is not allowed to make the change, QuickMail says that rather than reporting a general failure.
+
+The event is left as it was in every case. (#326)
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
