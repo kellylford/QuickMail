@@ -6,6 +6,16 @@
 
 In **Export Settings**, the box below the list that says what will be exported could be read only to the end of its first line: arrowing in it went no further. The same was true of the preview in **Import Settings**, the report shown after an import, and the note in **File → Settings → Startup** explaining why starting at sign-in is not available in a portable copy. Up and Down arrow now move through every line of each. (#840)
 
+### Calendar says why an event can't be changed
+
+Deleting or editing an event your account is not allowed to change used to fail with only "Could not update your online calendar." Now QuickMail says why:
+
+- On a calendar Microsoft or Google reports as read-only for your account — one shared with you read-only, or one you subscribe to — pressing **Delete** or **E** tells you straight away, for example "Your account can only read the Holidays calendar, so this event can't be deleted here.", without trying.
+- When Google refuses a change to an event it manages itself — a birthday, out of office, working location, focus time, or an event Gmail created — QuickMail names the kind of event and where to change it instead, such as "Google doesn't let other programs change birthday events. Change the birthday on the contact in Google Contacts."
+- When any provider refuses because your account is not allowed to make the change, QuickMail says that rather than reporting a general failure.
+
+The event is left as it was in every case. (#326)
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

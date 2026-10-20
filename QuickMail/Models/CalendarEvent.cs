@@ -67,6 +67,16 @@ public partial class CalendarEvent : ObservableObject
     public string ResourceUrl { get; set; } = string.Empty;
 
     /// <summary>
+    /// The provider's own kind for a server-synced event when it is anything other than an
+    /// ordinary appointment — Google's <c>eventType</c>: "birthday", "outOfOffice",
+    /// "workingLocation", "focusTime" or "fromGmail" (issue #326). Google manages these itself and
+    /// restricts what other programs may change on them, so this is what lets QuickMail name the
+    /// reason when Google refuses an edit or delete. Empty for ordinary events and for every
+    /// non-Google row (Microsoft and CalDAV report no such per-event kind).
+    /// </summary>
+    public string ProviderEventType { get; set; } = string.Empty;
+
+    /// <summary>
     /// iCalendar RRULE string for a repeating appointment (e.g. "FREQ=WEEKLY;BYDAY=TU"), or null/empty
     /// for a one-off. Parse with <see cref="Models.RecurrenceRule.Parse"/>.
     /// </summary>
