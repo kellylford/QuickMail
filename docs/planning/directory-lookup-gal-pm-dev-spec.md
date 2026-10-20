@@ -22,10 +22,16 @@ disk unless you choose to save one.
 
 **Recommendation:** use the People API search that QuickMail already has consent for
 (`/me/people?$search=` with the `X-PeopleQuery-QuerySources: Mailbox,Directory` header, scope
-`People.Read`). It needs **no new permission**, so the org-wide admin-consent URL Tim is about to hand
-his Global Admin stays the same, and the admin does not have to consent again later. The directory
-endpoint (`/users?$search=`, scope `User.ReadBasic.All`) is the fallback if the verification step
-(§5) shows the People API misses directory entries that matter.
+`People.Read`). It needs no permission beyond what QuickMail already requests. The directory endpoint
+(`/users?$search=`, scope `User.ReadBasic.All`) is the fallback if the verification step (§5) shows
+the People API misses directory entries that matter.
+
+**Consent decision (Tim, 2026-10-19):** `User.ReadBasic.All` is included in Tim's org admin-consent
+grant **now**, before any code uses it. So on Tim's tenant both options are already consented, and
+neither needs a re-consent step. Consent no longer decides between (a) and (b) for Tim's tenant. The
+choice rests on result quality (§4 decision table, §5 spike). Whether `AllGraphAdminConsentScopes`, and
+therefore the admin-consent URL every other organization uses, should also gain `User.ReadBasic.All` is
+a separate open question (K5).
 
 ---
 
@@ -97,13 +103,14 @@ ConsistencyLevel: eventual
   starts-with only on the whole string.
 - **Consent:** `User.ReadBasic.All`, delegated. Microsoft does not require admin consent for it by
   default, but many tenants (Tim's included) turn off user consent, so in practice an admin grants it.
-  It is **not** in today's admin-consent URL, so choosing (b) means:
-  `AllGraphAdminConsentScopes` gains it, so `BuildAdminConsentUrl` changes, `AdminConsentUrlTests`
-  changes, and **every organization that already consented must consent again**. That includes Tim's,
-  if his admin consents with today's URL first. `ExtraConsentScopesForMicrosoftSignIn` would also add
-  it to every work/school sign-in, the onboarding risk the `GraphMailScopesWorkSchool` comment warns
-  about. The mail-only retry in `SignInInteractiveAsync` covers that, but a user who cannot consent
-  then has no directory lookup until the admin acts.
+  **On Tim's tenant it is already granted:** Tim's admin includes it in the org grant now (decision,
+  §1), so no re-consent step is planned for it there. **For other organizations** it is not in
+  today's code-built admin-consent URL (`AllGraphAdminConsentScopes`). If (b) ships, either that list
+  gains it (`BuildAdminConsentUrl` and `AdminConsentUrlTests` change, organizations that consented
+  without it must grant it once, and `ExtraConsentScopesForMicrosoftSignIn` would add it to every
+  work/school sign-in, the onboarding risk the `GraphMailScopesWorkSchool` comment warns about), or
+  their admins grant it some other way. Which one is open question K5. With no grant, the call fails
+  silent-only and §6.7 applies: no directory rows, local suggestions unaffected.
 - **Data-quality problems:** `/users` is the Entra directory, not the Exchange address list. It
   includes accounts the GAL hides (disabled accounts, service accounts, mailboxes hidden from address
   lists; `showInAddressList` is not reliably readable). It includes users without a mailbox, whose
@@ -123,8 +130,9 @@ reason.
 
 | | (a) People search | (b) `/users` search |
 |---|---|---|
-| New scope | None | `User.ReadBasic.All` |
-| Admin-consent URL change | No | Yes, so organizations consent again |
+| Scope | `People.Read` (already requested) | `User.ReadBasic.All` (no call site yet) |
+| Consented on Tim's tenant | Yes | Yes (in the org grant now, by decision) |
+| Code admin-consent URL change | No | Open question (K5) |
 | Ranking | Relevance to the user | None (alphabetical / arbitrary) |
 | Fuzzy matching | Yes | No |
 | Honors GAL hiding | To verify (expected yes) | No |
@@ -150,8 +158,9 @@ Tim's work account. It answers the unknowns in (a):
    assumption.
 
 If test 1 fails (the People API does not reach people with no relationship to the user), switch the
-recommendation to (b) and re-plan consent **before** wide rollout. That is why §12 asks whether Tim's
-admin should wait for this result.
+recommendation to (b). Tim's tenant already has the grant, so the spike, and a (b) build, can run
+there with no consent step. Only K5 (other organizations) remains. Test 6 can therefore run as a real
+comparison on Tim's tenant.
 
 ---
 
@@ -337,8 +346,9 @@ spoken result during manual testing.
 - **`AccountModel`:** `SearchDirectory` (bool, default true), if Q4 keeps the setting.
 - **`OAuthService`:** no scope change under (a). Update the `GraphContactScopes` comment: `People.Read`
   now also covers live directory search, and that use is **not** gated on contact sync. Under (b):
-  new `GraphDirectoryScopes`, added to `AllGraphAdminConsentScopes`; `AdminConsentUrlTests` and
-  `OAuthServiceScopeSelectionTests` updated.
+  a new `GraphDirectoryScopes` array that the directory call requests silent-only. Whether it is also
+  added to `AllGraphAdminConsentScopes` is K5. If it is, `AdminConsentUrlTests` and
+  `OAuthServiceScopeSelectionTests` change too.
 - **F6 ring:** no change. The suggestion popup and the address book list are already reachable.
 - **CommandRegistry:** no main-window command. The address book's local command palette gains
   "Search directory" (no default key; Enter in the search box is in-control behavior, like the arrows).
@@ -418,9 +428,8 @@ accurate before Tim's admin reads it.
 
 **For Tim:**
 
-- **Q0 (timing).** Should your Global Admin consent now with today's URL? Under (a) nothing changes
-  later, so yes. Under (b) they would have to consent again. Recommendation: consent now. (a) is the
-  likely outcome, and today's grant also covers contacts and calendar, which work today.
+- **Q0 (timing). Resolved 2026-10-19:** your admin consents now, and the grant includes
+  `User.ReadBasic.All` ahead of any code, so neither option needs a re-consent on your tenant.
 - **Q1 (row wording).** Should a directory suggestion's accessible name say where it came from (for
   example "Pat Roberts pat.roberts@org, directory"), or read exactly like a local row?
 - **Q2 (arrival announcement).** When directory rows arrive while you are typing, should QuickMail say
@@ -441,3 +450,10 @@ accurate before Tim's admin reads it.
 - **K3.** OK with the address book making network calls while modal, given that the calls are
   silent-only and cancellable?
 - **K4.** Take the User Guide permission-table correction (§11) as its own small PR now?
+- **K5 (for Tim and Kelly).** Should `OAuthService.AllGraphAdminConsentScopes`, and so the admin-consent
+  URL `BuildAdminConsentUrl` gives every organization, gain `User.ReadBasic.All` now, to match what
+  Tim's tenant is granting? Doing so changes `AdminConsentUrlTests`, the `privacy.html` scope table,
+  and the `AllGraphAdminConsentScopes` comment (which today calls it a forward declaration with
+  nothing to consent). It also adds the scope to every work/school sign-in through
+  `ExtraConsentScopesForMicrosoftSignIn`. Not doing so means only organizations whose admins grant it
+  by hand get (b). No code changes are made by this spec either way.
