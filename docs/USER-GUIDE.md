@@ -1738,7 +1738,11 @@ If saving a change to an online account ever fails, QuickMail saves your appoint
 
 ### Events your account will not let QuickMail change
 
-Some events on a connected calendar are managed by the provider itself, not by you, and the provider refuses to let **any** outside mail or calendar program edit or delete them. Google is the one you are most likely to meet. Its protected events are:
+Some events on a connected calendar can't be changed from QuickMail, because your account or your provider does not allow it. There are two kinds.
+
+**Events on a calendar you can only read.** A calendar someone shared with you as read-only, or a calendar you subscribe to (such as a holidays calendar), is read-only for your account. Microsoft and Google tell QuickMail which of your calendars are read-only when they sync, so pressing **Delete** or **E** on an event from one tells you straight away — for example, "Your account can only read the Holidays calendar, so this event can't be deleted here." — and nothing is attempted. Change such an event wherever it comes from: the person who shared the calendar, or the subscription. Birthdays on a Microsoft account follow your contacts, so change or clear the birthday on the contact in your Microsoft account.
+
+**Events your provider manages itself.** Google keeps some events under its own control and restricts what any outside mail or calendar program may change on them:
 
 - **Birthdays** — generated from your Google Contacts, usually titled "Happy birthday!"
 - **Out of office**
@@ -1746,9 +1750,11 @@ Some events on a connected calendar are managed by the provider itself, not by y
 - **Focus time**
 - **Events Gmail created for you** from a message, such as a flight, hotel, or delivery.
 
-Pressing **Delete** or saving an edit on one of these fails, and QuickMail currently reports it only as **"Could not update your online calendar."** The event is not damaged and nothing is lost — Google simply declined the change. A clearer message naming the reason is planned.
+Google allows some changes to these and refuses others, so QuickMail tries what you ask. If Google refuses, QuickMail tells you why in plain words, such as "Google doesn't let other programs change birthday events. Change the birthday on the contact in Google Contacts." The event is not damaged and nothing is lost — Google simply declined the change, and QuickMail leaves the event as it was.
 
-What to do instead, depending on the event:
+If any provider refuses a change because your account is not allowed to make it, QuickMail says so, for example "Microsoft doesn't allow your account to change this event." Any other failure, such as a lost connection, is still reported as "Could not update your online calendar."
+
+What to do instead, depending on the Google event:
 
 - **Birthday** — it follows the contact, so change or clear the birthday on that person in **Google Contacts**. To stop seeing birthdays altogether, hide the **Birthdays** calendar in Google Calendar's settings; QuickMail will stop showing them at the next sync.
 - **Out of office, Working location, Focus time** — create, change, or remove these in **Google Calendar** on the web or in its mobile app, where the special editors for them live.
@@ -1826,7 +1832,7 @@ To set expectations clearly:
 - Work in online mode — it needs the local cache.
 - Send **repeating** appointments to an online account (repeating appointments are saved to the Local Calendar).
 - Edit or delete **repeating** events that came from an online calendar (repeating server events are read-only).
-- Edit or delete the events your provider manages for you — Google birthdays, out-of-office, working location, focus time, and events Gmail created from a message. Google blocks this for every outside program, not just QuickMail; see [Events your account will not let QuickMail change](#events-your-account-will-not-let-quickmail-change).
+- Edit or delete the events your provider manages for you — Google birthdays, out-of-office, working location, focus time, and events Gmail created from a message. Google restricts this for every outside program, not just QuickMail; when it refuses a change, QuickMail tells you why. See [Events your account will not let QuickMail change](#events-your-account-will-not-let-quickmail-change).
 - Connect calendars from generic CalDAV servers other than iCloud (Fastmail, Nextcloud, and the like).
 - Subscribe to public `.ics` calendar feeds (holidays, sports schedules, and the like).
 - Offer multiple named calendars, calendar colors, per-appointment reminder times, or reminder snoozing.

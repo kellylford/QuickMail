@@ -72,7 +72,8 @@ public sealed class GoogleCalendarClient : IDisposable
             {
                 var body = await resp.Content.ReadAsStringAsync(ct);
                 throw new HttpRequestException(
-                    $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}");
+                    $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}",
+                    inner: null, statusCode: resp.StatusCode);
             }
 
             var page = await resp.Content.ReadFromJsonAsync<GoogleCalendarListResponse>(JsonOpts, ct);
@@ -114,7 +115,8 @@ public sealed class GoogleCalendarClient : IDisposable
             {
                 var body = await resp.Content.ReadAsStringAsync(ct);
                 throw new HttpRequestException(
-                    $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}");
+                    $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}",
+                    inner: null, statusCode: resp.StatusCode);
             }
 
             var page = await resp.Content.ReadFromJsonAsync<GoogleCalendarEventsResponse>(JsonOpts, ct);
@@ -161,7 +163,8 @@ public sealed class GoogleCalendarClient : IDisposable
         {
             var respBody = await resp.Content.ReadAsStringAsync(ct);
             throw new HttpRequestException(
-                $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(respBody, 500)}");
+                $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(respBody, 500)}",
+                inner: null, statusCode: resp.StatusCode);
         }
     }
 
@@ -178,7 +181,8 @@ public sealed class GoogleCalendarClient : IDisposable
         var respBody = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
             throw new HttpRequestException(
-                $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(respBody, 500)}");
+                $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(respBody, 500)}",
+                inner: null, statusCode: resp.StatusCode);
 
         return JsonSerializer.Deserialize<GoogleCalendarEvent>(respBody, JsonOpts)
             ?? throw new InvalidOperationException("Calendar API returned no event body.");
@@ -247,6 +251,13 @@ internal sealed class GoogleCalendarEvent
     [JsonPropertyName("start")]       public GoogleEventTime? Start { get; set; }
     [JsonPropertyName("end")]         public GoogleEventTime? End { get; set; }
     [JsonPropertyName("attendees")]   public List<GoogleEventAttendee>? Attendees { get; set; }
+
+    /// <summary>
+    /// "default" for an ordinary event; "birthday", "outOfOffice", "workingLocation", "focusTime"
+    /// or "fromGmail" for the kinds Google manages itself and restricts other programs from
+    /// changing (issue #326).
+    /// </summary>
+    [JsonPropertyName("eventType")]   public string? EventType { get; set; }
 }
 
 /// <summary>Either <c>dateTime</c> (timed, RFC3339 with offset) or <c>date</c> (all-day, "yyyy-MM-dd").</summary>

@@ -565,6 +565,13 @@ public partial class CalendarViewModel : ObservableObject
             var pushAccount = ServerAccountFor(evt);
             if (pushAccount != null)
             {
+                // A calendar the provider says is read-only (shared read-only, or subscribed) could
+                // only fail — say so now rather than after the user has made an edit (#326).
+                if (ReadOnlyCalendarReason(evt, delete: false) is { } readOnly)
+                {
+                    Announce(readOnly, AnnouncementCategory.Result);
+                    return;
+                }
                 if (evt.IsRecurring)
                 {
                     Announce("Repeating events from your online calendar can't be edited yet.",
@@ -710,6 +717,11 @@ public partial class CalendarViewModel : ObservableObject
         if (!evt.IsUserCreated)
         {
             var pushAccount = ServerAccountFor(evt);
+            if (pushAccount != null && ReadOnlyCalendarReason(evt, delete: true) is { } readOnly)
+            {
+                Announce(readOnly, AnnouncementCategory.Result);
+                return;
+            }
             if (pushAccount != null && !evt.IsRecurring)
             {
                 var serverTarget = evt;
@@ -745,6 +757,16 @@ public partial class CalendarViewModel : ObservableObject
             ? _graphAccountsProvider?.Invoke().FirstOrDefault(a => a.Id == evt.AccountId)
             : null;
 
+    /// <summary>Why the provider will not let this event be changed at all, or null (#326).</summary>
+    private string? ReadOnlyCalendarReason(CalendarEvent evt, bool delete)
+        => CalendarChangeRefusal.ReadOnlyCalendarReason(evt, _calendarSourcesProvider?.Invoke() ?? [], delete);
+
+    /// <summary>The provider's name as the user knows it, for a refusal message.</summary>
+    private static string ProviderName(AccountModel account)
+        => account.AuthType == AuthType.OAuth2Google ? "Google"
+         : IsICloudAccount(account) ? "iCloud"
+         : "Microsoft";
+
     /// <summary>Pushes an edit of a server-synced event to its calendar; local state only changes on success.</summary>
     private async Task ServerUpdateAsync(AccountModel account, CalendarEvent original, CalendarEvent edited)
     {
@@ -767,7 +789,8 @@ public partial class CalendarViewModel : ObservableObject
         catch (Exception ex)
         {
             LogService.Log("Calendar server update", ex);
-            Announce("Could not update your online calendar.", AnnouncementCategory.Result);
+            Announce(CalendarChangeRefusal.DescribeFailure(ex, original, ProviderName(account)),
+                     AnnouncementCategory.Result);
         }
         ListFocusRequested?.Invoke();
     }
@@ -789,7 +812,8 @@ public partial class CalendarViewModel : ObservableObject
         catch (Exception ex)
         {
             LogService.Log("Calendar server delete", ex);
-            Announce("Could not update your online calendar.", AnnouncementCategory.Result);
+            Announce(CalendarChangeRefusal.DescribeFailure(ex, evt, ProviderName(account)),
+                     AnnouncementCategory.Result);
         }
         ListFocusRequested?.Invoke();
     }

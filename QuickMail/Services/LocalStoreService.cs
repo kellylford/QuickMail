@@ -144,6 +144,11 @@ public partial class LocalStoreService : ILocalStoreService
         // invite rows. Unversioned idempotent ALTER, like calendar_id/calendar_name above.
         RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN resource_url TEXT NOT NULL DEFAULT '';");
 
+        // The provider's own kind for a server-synced event (Google's eventType: birthday,
+        // outOfOffice, ...), kept so a refused edit or delete can name the reason (#326). Empty for
+        // ordinary events and every non-Google row. Unversioned idempotent ALTER, like resource_url.
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN event_type TEXT NOT NULL DEFAULT '';");
+
         // CalendarSource table: an account's real calendar list, as the provider reports it.
         //
         // The calendar list used to be derived with SELECT DISTINCT over CalendarEvent — the
@@ -1745,8 +1750,8 @@ public partial class LocalStoreService : ILocalStoreService
                                       organizer, organizer_name, start_time_ticks, end_time_ticks,
                                       sequence, method, source_message_id, source_folder, response_status,
                                       is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name,
-                                      resource_url)
-            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph, $calid, $calname, $resurl)
+                                      resource_url, event_type)
+            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph, $calid, $calname, $resurl, $etype)
             ON CONFLICT(uid, account_id) DO UPDATE SET
                 summary           = excluded.summary,
                 description       = excluded.description,
@@ -1769,7 +1774,9 @@ public partial class LocalStoreService : ILocalStoreService
                 calendar_name     = CASE WHEN excluded.calendar_name = '' THEN calendar_name ELSE excluded.calendar_name END,
                 -- Preserve a stored CalDAV resource href when the incoming row carries none (a local
                 -- create/edit write-back has no href until the next read-sync captures the real one).
-                resource_url      = CASE WHEN excluded.resource_url  = '' THEN resource_url  ELSE excluded.resource_url  END
+                resource_url      = CASE WHEN excluded.resource_url  = '' THEN resource_url  ELSE excluded.resource_url  END,
+                -- The server's copy always carries the event's current kind (empty = ordinary).
+                event_type        = excluded.event_type
             WHERE CalendarEvent.is_graph = 0 OR excluded.is_graph = 1;
             """;
         // The DO UPDATE ... WHERE guard: server-synced rows (is_graph=1) are owned by the calendar
@@ -1799,6 +1806,7 @@ public partial class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$calid", evt.CalendarId);
         cmd.Parameters.AddWithValue("$calname", evt.CalendarName);
         cmd.Parameters.AddWithValue("$resurl", evt.ResourceUrl);
+        cmd.Parameters.AddWithValue("$etype", evt.ProviderEventType);
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
     }
@@ -1829,8 +1837,8 @@ public partial class LocalStoreService : ILocalStoreService
                                           organizer, organizer_name, start_time_ticks, end_time_ticks,
                                           sequence, method, source_message_id, source_folder, response_status,
                                           is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name,
-                                          resource_url)
-                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1, $calid, $calname, $resurl);
+                                          resource_url, event_type)
+                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1, $calid, $calname, $resurl, $etype);
                 """;
             var pUid  = ins.Parameters.Add("$uid",  Microsoft.Data.Sqlite.SqliteType.Text);
             var pAid  = ins.Parameters.Add("$aid",  Microsoft.Data.Sqlite.SqliteType.Text);
@@ -1852,6 +1860,7 @@ public partial class LocalStoreService : ILocalStoreService
             var pCid  = ins.Parameters.Add("$calid",   Microsoft.Data.Sqlite.SqliteType.Text);
             var pCn   = ins.Parameters.Add("$calname", Microsoft.Data.Sqlite.SqliteType.Text);
             var pRes  = ins.Parameters.Add("$resurl",  Microsoft.Data.Sqlite.SqliteType.Text);
+            var pEtp  = ins.Parameters.Add("$etype",   Microsoft.Data.Sqlite.SqliteType.Text);
 
             foreach (var evt in events)
             {
@@ -1875,6 +1884,7 @@ public partial class LocalStoreService : ILocalStoreService
                 pCid.Value  = evt.CalendarId;
                 pCn.Value   = evt.CalendarName;
                 pRes.Value  = evt.ResourceUrl;
+                pEtp.Value  = evt.ProviderEventType;
                 await ins.ExecuteNonQueryAsync();
             }
         }
@@ -1891,7 +1901,7 @@ public partial class LocalStoreService : ILocalStoreService
             SELECT uid, account_id, summary, description, location, organizer, organizer_name,
                    start_time_ticks, end_time_ticks, sequence, method, source_message_id,
                    source_folder, response_status, is_all_day, recurrence_rule, exdates, is_graph,
-                   calendar_id, calendar_name, resource_url
+                   calendar_id, calendar_name, resource_url, event_type
             FROM CalendarEvent
             ORDER BY start_time_ticks IS NULL, start_time_ticks ASC;
             """;
@@ -1921,6 +1931,7 @@ public partial class LocalStoreService : ILocalStoreService
                 CalendarId       = r.IsDBNull(18) ? string.Empty : r.GetString(18),
                 CalendarName     = r.IsDBNull(19) ? string.Empty : r.GetString(19),
                 ResourceUrl      = r.IsDBNull(20) ? string.Empty : r.GetString(20),
+                ProviderEventType = r.IsDBNull(21) ? string.Empty : r.GetString(21),
             });
         }
         return list;

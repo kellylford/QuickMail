@@ -216,6 +216,20 @@ public class CalDavCalendarWriteTests : IDisposable
         Assert.Contains("resource exists", ex.Message);
     }
 
+    [Fact]
+    public async Task Delete_Forbidden_CarriesTheStatusCode()
+    {
+        // The status is what lets the calendar say the account is not allowed (#326), rather than
+        // reporting a general failure.
+        var handler = new RecordingHandler(new HttpResponseMessage(HttpStatusCode.Forbidden));
+        using var client = new CalDavCalendarClient(new HttpClient(handler));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.DeleteEventAsync($"{Collection}/lunch-1.ics", Username, "app-pass",
+                                    TestContext.Current.CancellationToken));
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+    }
+
     // ── Sync service iCloud write branch ─────────────────────────────────────────
 
     [Fact]
