@@ -14,6 +14,10 @@ In the **Message List Fields** dialog, the **Move Up**, **Move Down** and **Rese
 
 In the **Theme Manager**, the column of buttons beside the theme list was given only the height of the list, so **Open themes folder** was cut in half, and at a larger text size **Import…** disappeared below it, while the space beside the theme description stayed empty. The column now runs the full height of the window, so every button shows in full. (#546)
 
+### Calendar times are no longer cut short in the agenda
+
+In the calendar's list of appointments, the **When** column had a fixed width, so a longer time was cut off with nothing to show it — "11:00 AM–12:00" with the end time's "PM" gone, which reads as a complete and wrong time. **Status** was cut off the same way at larger text sizes, while an empty column sat unused at the right. The **When**, **Status** and **Calendar** columns now widen to fit what they hold, **Subject** takes the rest of the width, and the empty column is gone. If the window is too narrow for everything, a cut-off value ends in "…" so it is clear something is missing. (#547)
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

@@ -283,6 +283,7 @@ public partial class MainWindow : Window
         // The region's own Visibility, not IsVisible: IsVisible also changes when the window hides to the tray, and
         // does not change at all when the region empties while the window is hidden (review of #806).
         SenderAddressRegionVisibility.AddValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
+        WireCalendarColumnFit(); // #547: agenda columns sized to their content
 
         // Focus moving to the message body, or away from it, is recorded in one place, so no pane
         // handler has to remember to clear it. handledEventsToo is needed for the CLEARING half:
@@ -865,6 +866,7 @@ public partial class MainWindow : Window
         _rulesWindow?.Close(); // unowned (#347), so not auto-closed with the main window
         // A DependencyPropertyDescriptor holds its handlers strongly, so the window would never be collected.
         SenderAddressRegionVisibility.RemoveValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
+        UnwireCalendarColumnFit(); // #547: the same, for the calendar list's font descriptors
         _trayIcon?.Dispose(); // remove the tray icon so it doesn't linger after exit
         // Cancels all in-flight VM operations (sync, prefetch, loads) and releases
         // their CTS handles. OnClosed, not OnClosing — the close cannot be cancelled here.

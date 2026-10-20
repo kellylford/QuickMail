@@ -1634,6 +1634,15 @@
                                   ScrollViewer.VerticalScrollBarVisibility="Auto"
                                   GotKeyboardFocus="CalendarList_GotKeyboardFocus"
                                   PreviewKeyDown="CalendarList_PreviewKeyDown">
+                            <ListView.Resources>
+                                <!-- The cells DisplayMemberBinding generates are plain TextBlocks; this gives
+                                     them an ellipsis when a column is narrower than its value, so a cut-off
+                                     time never reads as a complete one (#547). The widths themselves are fitted
+                                     to the content in MainWindow.CalendarColumns.cs. -->
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                </Style>
+                            </ListView.Resources>
                             <ListView.ItemContainerStyle>
                                 <!-- BasedOn the GRIDVIEW container style, not the plain ListViewItem
                                      style: the plain one's template hosts a ContentPresenter, so rows
@@ -1650,6 +1659,9 @@
                                 </Style>
                             </ListView.ItemContainerStyle>
                             <ListView.View>
+                                <!-- Starting widths only: FitCalendarColumns resizes When, Status and Calendar
+                                     to their widest value and gives Subject the rest, so no empty filler
+                                     column is left at the right (#547). -->
                                 <GridView>
                                     <GridViewColumn Header="Subject" Width="260"
                                                     DisplayMemberBinding="{Binding Summary}"/>
