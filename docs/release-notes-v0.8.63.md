@@ -5,8 +5,12 @@
 ### Updated mail and encryption libraries
 
 QuickMail now uses MailKit and MimeKit 4.18.1, which bring the Bouncy Castle encryption library up
-to 2.7.0. A security scan had flagged the older Bouncy Castle version. The debug log also no
-longer records the email address of each contact you save.
+to 2.7.0. A security scan had flagged the older Bouncy Castle version.
+
+### Contact addresses no longer in the debug log
+
+With debug logging on, QuickMail no longer writes the email address of each contact you save
+to its log.
 
 ## Reporting Issues
 
