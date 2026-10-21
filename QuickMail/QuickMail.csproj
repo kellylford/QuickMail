@@ -114,7 +114,7 @@
          dropped from the graph and an explicit reference only draws NU1510 (#472). -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="MailKit" Version="4.17.0" />
+    <PackageReference Include="MailKit" Version="4.18.1" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.89.0" />
     <PackageReference Include="Microsoft.Identity.Client.Desktop" Version="4.89.0" />
     <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.89.0" />
