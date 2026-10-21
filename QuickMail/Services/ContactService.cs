@@ -48,7 +48,7 @@ public class ContactService : IContactService, IDisposable
                 contact.Id = _contactsCache.Count > 0 ? _contactsCache.Max(c => c.Id) + 1 : 1;
                 _contactsCache.Add(contact);
             }
-            LogService.Debug($"[ContactService] UpsertContactAsync: email={contact.EmailAddress} assignedId={contact.Id} cacheCount={_contactsCache.Count}");
+            LogService.Debug($"[ContactService] UpsertContactAsync: assignedId={contact.Id} cacheCount={_contactsCache.Count}");
             await SaveContactsAsyncLocked();
         }
         finally
