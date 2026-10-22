@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:QuickMail.Views"
+        xmlns:sc="clr-namespace:QuickMail.Helpers"
         xmlns:models="clr-namespace:QuickMail.Models"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:prim="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
@@ -225,12 +226,15 @@
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
             <MenuItem Header="_Reply"
                       AutomationProperties.Name="Reply"
+                      sc:CommandShortcut.Id="mail.reply"
                       Command="{Binding ReplyCommand}"/>
             <MenuItem Header="Reply _All"
                       AutomationProperties.Name="Reply All"
+                      sc:CommandShortcut.Id="mail.replyAll"
                       Command="{Binding ReplyAllCommand}"/>
             <MenuItem Header="_Forward"
                       AutomationProperties.Name="Forward"
+                      sc:CommandShortcut.Id="mail.forward"
                       Command="{Binding ForwardCommand}"/>
             <Separator/>
             <MenuItem Header="_Move to Folder…"
@@ -240,19 +244,20 @@
                       AutomationProperties.Name="Copy to Folder"
                       Click="MessageContextMenu_CopyToFolder_Click"/>
             <MenuItem Header="Sa_ve As…"
-                      InputGestureText="F12"
+                      sc:CommandShortcut.Id="mail.saveAs"
                       AutomationProperties.Name="Save As"
                       Click="MenuSaveAs_Click"/>
             <MenuItem Header="_Print…"
-                      InputGestureText="Ctrl+P"
+                      sc:CommandShortcut.Id="mail.print"
                       AutomationProperties.Name="Print"
                       Click="MenuPrint_Click"/>
             <Separator/>
             <MenuItem Header="_Delete"
                       AutomationProperties.Name="Delete"
+                      sc:CommandShortcut.Id="mail.delete"
                       Click="MessageContextMenu_Delete_Click"/>
             <MenuItem Header="Move to Arc_hive"
-                      InputGestureText="Ctrl+Shift+M"
+                      sc:CommandShortcut.Id="mail.archive"
                       AutomationProperties.Name="Move to Archive"
                       Click="MessageContextMenu_Archive_Click"/>
             <Separator/>
@@ -263,9 +268,8 @@
             <Separator Tag="CreateRuleSeparator"/>
             <MenuItem Header="Crea_te Rule from Message…"
                       Tag="CreateRuleItem"
-                      InputGestureText="Ctrl+Shift+T"
+                      sc:CommandShortcut.Id="mail.createRuleFromMessage"
                       AutomationProperties.Name="Create Rule from Message"
-                      AutomationProperties.AcceleratorKey="Ctrl+Shift+T"
                       Command="{Binding CreateRuleFromMessageCommand}"/>
         </ContextMenu>
 
@@ -304,6 +308,7 @@
             <Separator/>
             <MenuItem Header="_Delete Folder"
                       AutomationProperties.Name="Delete Folder"
+                      sc:CommandShortcut.Id="folder.delete"
                       Click="FolderContextMenu_DeleteFolder_Click"/>
             <Separator/>
             <!-- #590. Access keys still free after the items above (N, M, C, A, U, S, F, D): X, P,
@@ -397,14 +402,14 @@
             <MenuItem Header="_File" SubmenuOpened="FileMenu_SubmenuOpened">
                 <MenuItem Header="_New Message"
                           Command="{Binding NewMessageCommand}"
-                          InputGestureText="Ctrl+N"/>
+                          sc:CommandShortcut.Id="mail.new"/>
                 <Separator/>
                 <!-- Save, Save As, Print (#728). Click, not Command: what they act on (a multi-selection,
                      a group header's messages) is resolved by the window. Dimmed rather than disabled,
                      like the Message menu's filing items, so they stay keyboard-navigable;
                      HasMessageTarget is recomputed as this menu opens (FileMenu_SubmenuOpened). -->
                 <MenuItem Header="_Save"
-                          InputGestureText="Ctrl+S"
+                          sc:CommandShortcut.Id="mail.save"
                           Click="MenuSave_Click">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
@@ -417,7 +422,7 @@
                     </MenuItem.Style>
                 </MenuItem>
                 <MenuItem Header="Save _As…"
-                          InputGestureText="F12"
+                          sc:CommandShortcut.Id="mail.saveAs"
                           Click="MenuSaveAs_Click">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
@@ -430,7 +435,7 @@
                     </MenuItem.Style>
                 </MenuItem>
                 <MenuItem Header="_Print…"
-                          InputGestureText="Ctrl+P"
+                          sc:CommandShortcut.Id="mail.print"
                           Click="MenuPrint_Click">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
@@ -460,7 +465,7 @@
                 <Separator/>
                 <MenuItem Header="S_ettings…"
                           Click="MenuSettings_Click"
-                          InputGestureText="Ctrl+,"/>
+                          sc:CommandShortcut.Id="settings.open"/>
                 <Separator/>
                 <MenuItem Header="E_xit"
                           Command="{Binding ExitCommand}"/>
@@ -470,23 +475,23 @@
             <MenuItem Header="_Message" SubmenuOpened="MessageMenu_SubmenuOpened">
                 <MenuItem Header="_Reply"
                           Command="{Binding ReplyCommand}"
-                          InputGestureText="Ctrl+R"/>
+                          sc:CommandShortcut.Id="mail.reply"/>
                 <MenuItem Header="Reply _All"
                           Command="{Binding ReplyAllCommand}"
-                          InputGestureText="Ctrl+Shift+R"/>
+                          sc:CommandShortcut.Id="mail.replyAll"/>
                 <MenuItem Header="_Forward"
                           Command="{Binding ForwardCommand}"
-                          InputGestureText="Ctrl+Shift+F"/>
+                          sc:CommandShortcut.Id="mail.forward"/>
                 <Separator/>
                 <MenuItem Header="_Delete"
                           Command="{Binding DeleteMessageCommand}"
-                          InputGestureText="Del"/>
+                          sc:CommandShortcut.Id="mail.delete"/>
                 <MenuItem Header="Move to Arc_hive"
                           Command="{Binding ArchiveMessageCommand}"
-                          InputGestureText="Ctrl+Shift+M"/>
+                          sc:CommandShortcut.Id="mail.archive"/>
                 <MenuItem Header="Empty _Trash"
                           Command="{Binding EmptyTrashCommand}"
-                          InputGestureText="Ctrl+Shift+E"/>
+                          sc:CommandShortcut.Id="mail.emptyTrash"/>
                 <!-- No gesture: the Outbox drains on its own when the connection returns (#637). -->
                 <MenuItem Header="Send _Outbox Now"
                           Command="{Binding SendOutboxNowCommand}"/>
@@ -498,7 +503,7 @@
                           IsCheckable="True"
                           IsChecked="{Binding IsWatchTargetWatched, Mode=OneWay}"
                           Click="MenuWatchConversation_Click"
-                          InputGestureText="Ctrl+Shift+W">
+                          sc:CommandShortcut.Id="mail.toggleWatch">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                             <Style.Triggers>
@@ -543,7 +548,7 @@
                 <Separator/>
                 <MenuItem Header="_Grab Addresses from Message"
                           Click="MenuGrabAddresses_Click"
-                          InputGestureText="Ctrl+Shift+G">
+                          sc:CommandShortcut.Id="contacts.grabAddresses">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                             <Style.Triggers>
@@ -559,7 +564,7 @@
                      rather than doing nothing. "u" because Empty Trash already has "t" on this menu. -->
                 <MenuItem Header="Create R_ule from Message…"
                           Click="MenuCreateRule_Click"
-                          InputGestureText="Ctrl+Shift+T"
+                          sc:CommandShortcut.Id="mail.createRuleFromMessage"
                           AutomationProperties.Name="Create Rule from Message">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
@@ -599,16 +604,16 @@
             <MenuItem Header="_View">
                 <MenuItem Header="_Refresh"
                           Command="{Binding RefreshCommand}"
-                          InputGestureText="F5"/>
+                          sc:CommandShortcut.Id="mail.refresh"/>
                 <Separator/>
                 <MenuItem Header="_Plain Text View"
                           IsCheckable="True"
                           IsChecked="{Binding ReadAsPlainText, Mode=OneWay}"
                           Click="MenuPlainText_Click"
-                          InputGestureText="Ctrl+Shift+H"/>
+                          sc:CommandShortcut.Id="view.togglePlainText"/>
                 <MenuItem Header="_Load Pictures"
                           Click="MenuLoadPictures_Click"
-                          InputGestureText="Ctrl+Shift+U"/>
+                          sc:CommandShortcut.Id="view.loadPictures"/>
                 <Separator/>
                 <!-- Only the four modes that apply are in the tree at all (#663) — see
                      ViewModeMenuItemStyle. -->
@@ -789,10 +794,10 @@
                           Click="MenuFolderPicker_Click"/>
                 <MenuItem Header="_Search Folders…"
                           Click="MenuSearchFolders_Click"
-                          InputGestureText="Ctrl+Shift+Y"/>
+                          sc:CommandShortcut.Id="view.searchFolders"/>
                 <MenuItem Header="_Advanced Search…"
                           Click="MenuAdvancedSearch_Click"
-                          InputGestureText="Ctrl+/"/>
+                          sc:CommandShortcut.Id="mail.advancedSearch"/>
             </MenuItem>
 
             <!-- Tools — always available (mirrors the Compose window's Tools menu).
@@ -800,12 +805,11 @@
             <MenuItem Header="_Tools">
                 <MenuItem Header="Address _Book…"
                           Click="MenuAddressBook_Click"
-                          InputGestureText="Ctrl+Shift+B"/>
+                          sc:CommandShortcut.Id="contacts.openAddressBook"/>
                 <MenuItem Header="_Rules…"
                           Command="{Binding OpenRulesManagerCommand}"
-                          InputGestureText="Ctrl+Shift+L"
-                          AutomationProperties.Name="Manage Rules"
-                          AutomationProperties.AcceleratorKey="Ctrl+Shift+L"/>
+                          sc:CommandShortcut.Id="mail.rules"
+                          AutomationProperties.Name="Manage Rules"/>
                 <!-- The manager belongs here with the other managers, not beside Watch
                      Conversation on the Message menu: that one acts on the selected message,
                      this one is a surface for reviewing what you have accumulated. Same split
@@ -816,7 +820,7 @@
                 <Separator/>
                 <MenuItem Header="Command _Palette…"
                           Click="MenuCommandPalette_Click"
-                          InputGestureText="Ctrl+Shift+P"/>
+                          InputGestureText="Ctrl+Shift+P" AutomationProperties.AcceleratorKey="Ctrl+Shift+P"/>
             </MenuItem>
 
             <!-- Help -->
@@ -833,7 +837,7 @@
                 <Separator/>
                 <MenuItem Header="User _Guide"
                           Command="{Binding ViewUserGuideCommand}"
-                          InputGestureText="F1"/>
+                          sc:CommandShortcut.Id="help.userGuide"/>
                 <MenuItem Header="_Keyboard Tutorial"
                           AutomationProperties.Name="Keyboard Tutorial"
                           Click="MenuKeyboardTutorial_Click"/>
@@ -870,41 +874,41 @@
                     Style="{DynamicResource ToolbarButton}"
                     Command="{Binding NewMessageCommand}"
                     AutomationProperties.Name="New Message"
-                    AutomationProperties.AcceleratorKey="Ctrl+N"
-                    ToolTip="New Message (Ctrl+N)"
+                    sc:CommandShortcut.Id="mail.new"
+                    sc:CommandShortcut.ToolTip="New Message"
                     Content="New"/>
             <Separator/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ReplyCommand}"
                     AutomationProperties.Name="Reply"
-                    AutomationProperties.AcceleratorKey="Ctrl+R"
-                    ToolTip="Reply (Ctrl+R)"
+                    sc:CommandShortcut.Id="mail.reply"
+                    sc:CommandShortcut.ToolTip="Reply"
                     Content="Reply"/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ReplyAllCommand}"
                     AutomationProperties.Name="Reply All"
-                    AutomationProperties.AcceleratorKey="Ctrl+Shift+R"
-                    ToolTip="Reply All (Ctrl+Shift+R)"
+                    sc:CommandShortcut.Id="mail.replyAll"
+                    sc:CommandShortcut.ToolTip="Reply All"
                     Content="Reply All"/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ForwardCommand}"
                     AutomationProperties.Name="Forward"
-                    AutomationProperties.AcceleratorKey="Ctrl+Shift+F"
-                    ToolTip="Forward (Ctrl+Shift+F)"
+                    sc:CommandShortcut.Id="mail.forward"
+                    sc:CommandShortcut.ToolTip="Forward"
                     Content="Forward"/>
             <Separator/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding DeleteMessageCommand}"
                     AutomationProperties.Name="Delete message"
-                    AutomationProperties.AcceleratorKey="Delete"
-                    ToolTip="Delete (Del)"
+                    sc:CommandShortcut.Id="mail.delete"
+                    sc:CommandShortcut.ToolTip="Delete"
                     Content="Delete"/>
             <Separator/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding RefreshCommand}"
                     AutomationProperties.Name="Refresh"
-                    AutomationProperties.AcceleratorKey="F5"
-                    ToolTip="Refresh (F5)"
+                    sc:CommandShortcut.Id="mail.refresh"
+                    sc:CommandShortcut.ToolTip="Refresh"
                     Content="Refresh"/>
             <Button x:Name="SyncRangeButton"
                     Style="{DynamicResource ToolbarButton}"
@@ -949,7 +953,7 @@
                     Style="{DynamicResource ToolbarButton}"
                     Content="{Binding ViewModeLabel}"
                     AutomationProperties.Name="View mode"
-                    ToolTip="Select message view mode (Ctrl+Shift+V)"
+                    sc:CommandShortcut.Id="view.openViewMenu" sc:CommandShortcut.ToolTip="Select message view mode"
                     Click="ViewModeButton_Click">
                 <Button.ContextMenu>
                     <!-- Same collection the View menu binds, so the toolbar offers exactly the
@@ -965,8 +969,8 @@
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding EmptyTrashCommand}"
                     AutomationProperties.Name="Empty Trash"
-                    AutomationProperties.AcceleratorKey="Ctrl+Shift+E"
-                    ToolTip="Empty Trash (Ctrl+Shift+E)"
+                    sc:CommandShortcut.Id="mail.emptyTrash"
+                    sc:CommandShortcut.ToolTip="Empty Trash"
                     Content="Empty Trash"/>
             <Separator/>
             <Button x:Name="ManageAccountsToolbarButton"
@@ -979,8 +983,8 @@
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ViewUserGuideCommand}"
                     AutomationProperties.Name="View User Guide"
-                    AutomationProperties.AcceleratorKey="F1"
-                    ToolTip="View User Guide (F1)"
+                    sc:CommandShortcut.Id="help.userGuide"
+                    sc:CommandShortcut.ToolTip="View User Guide"
                     Content="User Guide"/>
         </ToolBar>
 
@@ -1075,19 +1079,19 @@
                                  and S are taken above; U, W, R and N are free. -->
                             <MenuItem Header="Move _Up"
                                       AutomationProperties.Name="Move Up"
-                                      InputGestureText="Alt+Up"
+                                      sc:CommandShortcut.Id="account.moveUp"
                                       Click="AccountContextMenu_MoveUp_Click"/>
                             <MenuItem Header="Move Do_wn"
                                       AutomationProperties.Name="Move Down"
-                                      InputGestureText="Alt+Down"
+                                      sc:CommandShortcut.Id="account.moveDown"
                                       Click="AccountContextMenu_MoveDown_Click"/>
                             <MenuItem Header="Move to Sta_rt"
                                       AutomationProperties.Name="Move to Start"
-                                      InputGestureText="Alt+Home"
+                                      sc:CommandShortcut.Id="account.moveToStart"
                                       Click="AccountContextMenu_MoveToStart_Click"/>
                             <MenuItem Header="Move to E_nd"
                                       AutomationProperties.Name="Move to End"
-                                      InputGestureText="Alt+End"
+                                      sc:CommandShortcut.Id="account.moveToEnd"
                                       Click="AccountContextMenu_MoveToEnd_Click"/>
                         </ContextMenu>
                     </ListBox.ContextMenu>
@@ -1414,7 +1418,7 @@
                                     Content="Close"
                                     Click="CloseContactMailResults_Click"
                                     AutomationProperties.Name="Close search results"
-                                    ToolTip="Close these results and go back (Escape)"
+                                    sc:CommandShortcut.Id="view.closeContactMail" sc:CommandShortcut.ToolTip="Close these results and go back"
                                     IsTabStop="True"/>
                             <TextBlock VerticalAlignment="Center"
                                        Margin="0,0,6,0"
@@ -1437,13 +1441,13 @@
                                     Content="Close"
                                     Click="CloseSearchResults_Click"
                                     AutomationProperties.Name="Close search results"
-                                    ToolTip="Close these results and go back (Escape)"
+                                    sc:CommandShortcut.Id="view.closeSearchResults" sc:CommandShortcut.ToolTip="Close these results and go back"
                                     Margin="6,0,0,0"
                                     IsTabStop="True"/>
                             <Button DockPanel.Dock="Right"
                                     Content="Change Search"
                                     Click="ChangeSearch_Click"
-                                    ToolTip="Open Advanced Search with this search (Ctrl+/)"
+                                    sc:CommandShortcut.Id="mail.advancedSearch" sc:CommandShortcut.ToolTip="Open Advanced Search with this search"
                                     Margin="6,0,0,0"
                                     IsTabStop="True"/>
                             <Button DockPanel.Dock="Right"
@@ -2336,7 +2340,7 @@
                         Content="{Binding RulesStatusText, Mode=OneWay}"
                         Click="RulesStatusButton_Click"
                         AutomationProperties.Name="{Binding RulesStatusText, Mode=OneWay}"
-                        ToolTip="Open Rules Manager (Ctrl+Shift+L)"/>
+                        sc:CommandShortcut.Id="mail.rules" sc:CommandShortcut.ToolTip="Open Rules Manager"/>
             </StatusBarItem>
 
             <!-- Region 4 (focus order): Offline reading (#717) — how many messages have their full text, and whether more

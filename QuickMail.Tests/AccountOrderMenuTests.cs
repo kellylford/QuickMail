@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using QuickMail.Helpers;
 using QuickMail.ViewModels;
 using QuickMail.Views;
 using Xunit;
@@ -70,19 +71,20 @@ public class AccountOrderMenuTests
     [StaFact]
     public void TheMovesShowTheirKeysAndKeepTheirAccessKeysUnique()
     {
-        // InputGestureText must match the registered default, or the menu advertises a key that
-        // does nothing. And WPF cycles between duplicate access keys instead of invoking, so a
-        // collision turns a menu item into a highlight that does nothing (#516).
+        // Each move names the command its key runs, which is where the shown and spoken key come
+        // from (#849); ShortcutExposureTests checks the ids are registered. And WPF cycles between
+        // duplicate access keys instead of invoking, so a collision turns a menu item into a
+        // highlight that does nothing (#516).
         var window = MakeWindow();
         try
         {
             var items = AccountMenuItems(window);
 
-            var gestures = items.ToDictionary(AutomationProperties.GetName, i => i.InputGestureText);
-            Assert.Equal("Alt+Up",   gestures["Move Up"]);
-            Assert.Equal("Alt+Down", gestures["Move Down"]);
-            Assert.Equal("Alt+Home", gestures["Move to Start"]);
-            Assert.Equal("Alt+End",  gestures["Move to End"]);
+            var ids = items.ToDictionary(AutomationProperties.GetName, i => CommandShortcut.GetId(i));
+            Assert.Equal("account.moveUp",      ids["Move Up"]);
+            Assert.Equal("account.moveDown",    ids["Move Down"]);
+            Assert.Equal("account.moveToStart", ids["Move to Start"]);
+            Assert.Equal("account.moveToEnd",   ids["Move to End"]);
 
             var keys = items.Select(i => AccessKeyOf(i.Header as string)).Where(k => k != null).ToList();
             Assert.Equal(keys.Count, keys.Distinct(StringComparer.OrdinalIgnoreCase).Count());

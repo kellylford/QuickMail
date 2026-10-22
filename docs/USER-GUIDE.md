@@ -829,6 +829,8 @@ Other windows have their own palettes on the same key — the compose window, an
 
 Open **File → Settings → Keyboard Shortcuts** to reassign any shortcut to a different key. Select a command's field and press the key combination you want — QuickMail captures it, shows you what it heard, and asks you to confirm with **OK**, pick another with **Change**, or **Cancel**. If the combination is already assigned to something else, a warning names the existing command so you can decide whether to reassign it. Changes take effect immediately and survive restarts.
 
+**Your keys show everywhere.** A key you assign is the one shown after the command in the menus, in toolbar tooltips and in the command palette. It is also the key screen readers are given as the command's shortcut key, so they can read it with the menu item or button. Whether that key is read out is a setting in your screen reader, not in QuickMail.
+
 **Bare keys as shortcuts.** You can assign a shortcut with no modifier key using **Delete, Backspace, Insert, or any function key (F1–F24)** — for example, bare **Delete** to delete a message, or **F5** to sync. (Bare **Delete** ships as a default binding for exactly this reason.) Plain letters, digits, and the Spacebar cannot be bound on their own — they would swallow ordinary typing — so pair them with **Ctrl**, **Alt**, or **Shift**. **Enter**, **Escape**, and **Tab** are reserved for navigating dialogs and are never captured as shortcuts.
 
 ### Checking for Updates

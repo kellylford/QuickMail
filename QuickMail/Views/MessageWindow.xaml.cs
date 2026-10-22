@@ -89,6 +89,8 @@ public partial class MessageWindow : Window
         RegisterLocalCommands();
         if (_configService != null)
             _localRegistry.ApplyUserOverrides(TranslateMainOverrides(_configService.Load().CustomHotkeys));
+        // After the commands and the user's keys, so the menus and toolbar show them at once (#849).
+        CommandShortcut.SetRegistry(this, _localRegistry);
 
         Loaded += OnLoaded;
     }
