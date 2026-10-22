@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -82,6 +83,46 @@ public partial class SettingsDialog : Window
     private void HotkeyListView_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         UpdateActionButtons();
+    }
+
+    // First-letter navigation in the shortcuts list (#852), the same hand-rolled type-ahead as the
+    // folder tree: W moves to the next command whose name starts with W, W again a moment later to
+    // the one after, and letters typed quickly match more of the name.
+    //
+    // Every typed character is taken here and marked handled, matched or not, capitals and AltGr
+    // characters included. Text that reaches the window fires the dialog's access keys without Alt:
+    // Shift+S would run Save, Shift+C Cancel, G switch to the General tab, as "c" once closed the
+    // folder picker (#418). WPF's own TextSearch is off on this list; it lets unmatched text through.
+    // Alt+letter arrives as system text, not here, so the access keys still work with Alt.
+    internal TypeAheadPrefixTracker HotkeyTypeAhead { get; set; } = new();
+
+    private void HotkeyListView_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Text) || e.Text.Any(char.IsControl)) return;
+        e.Handled = true;
+        TryHotkeyTypeAhead(e.Text);
+    }
+
+    /// <summary>Moves the shortcuts list to the next command matching the typed text; false if none does.</summary>
+    internal bool TryHotkeyTypeAhead(string text)
+    {
+        // Recorded matched or not, like the other lists: "r", "x", "e" searches for "rxe".
+        if (!HotkeyTypeAhead.TryAppend(text, HotkeyListView, out var prefix)) return false;
+
+        var rows = _vm.HotkeyRows;
+        var current = _vm.SelectedHotkey is { } selected ? rows.IndexOf(selected) : -1;
+        // A longer prefix ("wa" after "w") checks the current command first, so it stays put while
+        // its name still matches; a single letter, new or repeated, moves on to the next one.
+        var start = prefix.Length > 1 && current >= 0 ? current - 1 : current;
+        var index = TypeAheadMatcher.FindNext(rows, r => r.Title, start, prefix);
+        if (index < 0) return false;
+
+        var row = rows[index];
+        _vm.SelectedHotkey = row;
+        HotkeyListView.ScrollIntoView(row);
+        HotkeyListView.UpdateLayout();
+        (HotkeyListView.ItemContainerGenerator.ContainerFromItem(row) as UIElement)?.Focus();
+        return true;
     }
 
     private void HotkeyListView_KeyDown(object sender, KeyEventArgs e)

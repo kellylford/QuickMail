@@ -30,6 +30,9 @@ screen. Your screen reader's settings decide whether the key is read out. (#849)
 
 ## Fixed
 
+- **First-letter navigation in Settings → Keyboard Shortcuts.** Typing a letter in the list of
+  commands now moves to the next command whose name starts with it, as in the folder list.
+  Before, typing a letter did nothing. (#852)
 - **Ctrl+, opens Settings.** The File menu has long shown Ctrl+, for Settings, but the key did
   nothing. (#849)
 
