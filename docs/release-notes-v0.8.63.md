@@ -5,7 +5,7 @@
 ### Updated mail and encryption libraries
 
 QuickMail now uses MailKit and MimeKit 4.18.1, which bring the Bouncy Castle encryption library up
-to 2.7.0. A security scan had flagged the older Bouncy Castle version.
+to 2.7.0.
 
 ### Contact addresses no longer in the debug log
 
