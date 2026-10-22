@@ -84,6 +84,44 @@ public partial class SettingsDialog : Window
         UpdateActionButtons();
     }
 
+    // First-letter navigation in the shortcuts list (#852), the same hand-rolled type-ahead as the
+    // folder tree: W moves to the next command whose name starts with W, W again a moment later to
+    // the one after, and letters typed quickly match more of the name. Handled in PreviewKeyDown and
+    // always marked handled, matched or not: a bare letter that reached the window would fire one of
+    // the dialog's access keys without Alt (G for the General tab, A for Advanced), as "c" once
+    // closed the folder picker (#418). Handling the key down also suppresses its TextInput, so WPF's
+    // own TextSearch, which this list leaves off, never sees it.
+    private readonly TypeAheadPrefixTracker _hotkeyTypeAhead = new();
+
+    private void HotkeyListView_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!TreeViewFocusHelper.TryGetTypeAheadKeyText(e, out var text)) return;
+        e.Handled = true;
+        TryHotkeyTypeAhead(text);
+    }
+
+    /// <summary>Moves the shortcuts list to the next command matching the typed text; false if none does.</summary>
+    internal bool TryHotkeyTypeAhead(string text)
+    {
+        if (!_hotkeyTypeAhead.TryPeek(text, HotkeyListView, out var prefix)) return false;
+
+        var rows = _vm.HotkeyRows;
+        var current = _vm.SelectedHotkey is { } selected ? rows.IndexOf(selected) : -1;
+        // A longer prefix ("wa" after "w") checks the current command first, so it stays put while
+        // its name still matches; a single letter, new or repeated, moves on to the next one.
+        var start = prefix.Length > 1 && current >= 0 ? current - 1 : current;
+        var index = TypeAheadMatcher.FindNext(rows, r => r.Title, start, prefix);
+        if (index < 0) return false;
+
+        _hotkeyTypeAhead.Commit(prefix, HotkeyListView);
+        var row = rows[index];
+        _vm.SelectedHotkey = row;
+        HotkeyListView.ScrollIntoView(row);
+        HotkeyListView.UpdateLayout();
+        (HotkeyListView.ItemContainerGenerator.ContainerFromItem(row) as UIElement)?.Focus();
+        return true;
+    }
+
     private void HotkeyListView_KeyDown(object sender, KeyEventArgs e)
     {
         if (_vm.SelectedHotkey == null) return;

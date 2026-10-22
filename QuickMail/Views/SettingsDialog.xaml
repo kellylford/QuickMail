@@ -610,6 +610,8 @@
                               SelectionMode="Single"
                               BorderThickness="1"
                               Margin="0,0,0,6"
+                              IsTextSearchEnabled="False"
+                              PreviewKeyDown="HotkeyListView_PreviewKeyDown"
                               KeyDown="HotkeyListView_KeyDown"
                               SelectionChanged="HotkeyListView_SelectionChanged"
                               AutomationProperties.Name="Keyboard shortcuts list">
