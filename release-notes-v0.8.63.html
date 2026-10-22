@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail 0.8.63 Release Notes</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.62.html">Older: 0.8.62</a></div>
+  <h1 id="quickmail-v0.8.63-release-notes">QuickMail v0.8.63 Release
+Notes</h1>
+<p class="version">Released October 22, 2026 — <a href="https://github.com/kellylford/QuickMail/releases/tag/v0.8.63">downloads for this release</a></p>
+<h2 id="changed">Changed</h2>
+<h3 id="updated-mail-and-encryption-libraries">Updated mail and
+encryption libraries</h3>
+<p>QuickMail now uses MailKit and MimeKit 4.18.1, which bring the Bouncy
+Castle encryption library up to 2.7.0.</p>
+<h3 id="contact-addresses-no-longer-in-the-debug-log">Contact addresses
+no longer in the debug log</h3>
+<p>With debug logging on, QuickMail no longer writes the email address
+of each contact you save to its log.</p>
+<h3 id="shortcut-keys-are-reported-to-screen-readers">Shortcut keys are
+reported to screen readers</h3>
+<p>Menu items, toolbar buttons and context menu items now give screen
+readers their shortcut keys, so Reply’s Ctrl+R can be heard along with
+it. Until now most menus only showed the key on screen. Your screen
+reader’s settings decide whether the key is read out. (#849)</p>
+<ul>
+<li>Keys you reassign in <strong>Settings → Keyboard Shortcuts</strong>
+now show in the menus, toolbar tooltips and command palette, and are the
+keys screen readers are given. Before, all of them kept showing the
+original key.</li>
+<li>Toolbar buttons no longer read their name and shortcut twice.</li>
+<li>A key you assign to a command that has none by default, such as
+Calendar at Bottom of Folder List, now shows on its menu item too, in
+the context menus and the Help menu as well as the main menus.
+(#854)</li>
+<li>The message list’s context menu now shows the keys for Reply, Reply
+All, Forward and Delete, and the folder menu shows Delete for Delete
+Folder.</li>
+</ul>
+<h2 id="fixed">Fixed</h2>
+<ul>
+<li><strong>First-letter navigation in Settings → Keyboard
+Shortcuts.</strong> Typing a letter in the list of commands now moves to
+the next command whose name starts with it, as in the folder list.
+Before, typing a letter did nothing. (#852)</li>
+<li><strong>Ctrl+, opens Settings.</strong> The File menu has long shown
+Ctrl+, for Settings, but the key did nothing. (#849)</li>
+</ul>
+
+  <div class="nav"><a href="index.html">User Guide</a> | <a href="releases.html">Release History</a> | <a href="release-notes-v0.8.62.html">Older: 0.8.62</a></div>
+</body>
+</html>
