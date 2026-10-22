@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -110,7 +111,13 @@ public class CommandShortcutTests
             window.Show();
             Assert.Equal("Ctrl+R", item.InputGestureText);
 
+            // Not the active window (as under a modal dialog, which is where the View Manager
+            // rebinds keys): the change waits rather than touching the window under the loop.
+            Assert.False(window.IsActive);
             registry.ApplyUserOverrides(ReplyOnCtrlShiftY);
+            Assert.Equal("Ctrl+R", item.InputGestureText);
+
+            RaiseActivated(window);
 
             Assert.Equal("Ctrl+Shift+Y", item.InputGestureText);
             Assert.Equal("Ctrl+Shift+Y", AutomationProperties.GetAcceleratorKey(item));
@@ -121,6 +128,11 @@ public class CommandShortcutTests
         registry.ApplyUserOverrides([]);
         Assert.Equal("Ctrl+Shift+Y", item.InputGestureText);
     }
+
+    // Activating a window for real depends on the foreground lock, so raise the event directly.
+    private static void RaiseActivated(Window window) =>
+        typeof(Window).GetMethod("OnActivated", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(window, [EventArgs.Empty]);
 
     [StaFact]
     public void AContextMenuItemUsesTheRegistryOfTheControlItOpensOn()
@@ -152,10 +164,33 @@ public class CommandShortcutTests
         CommandShortcut.SetId(button, "mail.reply");
         CommandShortcut.SetToolTip(button, "Reply");
 
+        // Written as it would be on opening, which keyboard focus also does: the help text must be
+        // empty with the tooltip's text in place, not only while it is closed.
+        CommandShortcut.UpdateToolTip(button);
+
         var peer = new ButtonAutomationPeer(button);
         Assert.Equal("Ctrl+R", peer.GetAcceleratorKey());
         Assert.Equal(string.Empty, peer.GetHelpText());
-        Assert.IsType<ToolTip>(button.ToolTip);
+        var tip = Assert.IsType<ToolTip>(button.ToolTip);
+        var text = Assert.IsType<TextBlock>(Assert.IsType<Border>(tip.Content).Child);
+        Assert.Equal("Reply (Ctrl+R)", text.Text);
+    }
+
+    [StaFact]
+    public void ATooltipThatSaysMoreThanTheNameKeepsItAsHelpText()
+    {
+        // The status-bar Rules button is named by its status text; "Open Rules Manager" is said only
+        // through its help text, which XAML gives explicitly so the tooltip need not carry it.
+        var registry = RegistryWithReply();
+        var button = new Button();
+        AutomationProperties.SetName(button, "3 rules");
+        AutomationProperties.SetHelpText(button, "Open Rules Manager");
+        CommandShortcut.SetRegistry(button, registry);
+        CommandShortcut.SetId(button, "mail.reply");
+        CommandShortcut.SetToolTip(button, "Open Rules Manager");
+        CommandShortcut.UpdateToolTip(button);
+
+        Assert.Equal("Open Rules Manager", new ButtonAutomationPeer(button).GetHelpText());
     }
 
     [Fact]

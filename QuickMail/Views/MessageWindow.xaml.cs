@@ -125,6 +125,10 @@ public partial class MessageWindow : Window
             ["window.close"]            = "mail.closeMessage",
         };
 
+    /// <summary>Takes the main window's key assignments after Settings has changed them (#849).</summary>
+    internal void ApplyMainWindowKeys(IEnumerable<HotkeyBinding> mainBindings) =>
+        _localRegistry.ApplyUserOverrides(TranslateMainOverrides(mainBindings));
+
     /// <summary>The user's key assignments for the main window's commands, re-keyed to this window's ids.</summary>
     internal static List<HotkeyBinding> TranslateMainOverrides(IEnumerable<HotkeyBinding> mainBindings)
     {

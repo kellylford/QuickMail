@@ -41,7 +41,7 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `mail.watchManager` | Watched Conversations… (review, rename, stop watching) |
 | *(unassigned)* | `view.filterWatched` | Show Watched Conversations Only |
 | Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
-| Ctrl+, | `settings.open` | Settings… (File menu). Shown on the menu for years before anything handled it (#849) |
+| Ctrl+, | `settings.open` | Settings… (File menu). The File menu showed it before anything handled it (#849) |
 | Ctrl+Shift+Y | `view.searchFolders` | Search Folders… |
 | Ctrl+Shift+S | `view.search` | Search Messages… |
 | *(unassigned)* | `mail.searchServer` | Search the Server Too — in Search Results, asks each account's server for the same search and adds what it finds (#717) |

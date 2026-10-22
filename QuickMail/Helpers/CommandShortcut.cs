@@ -23,10 +23,12 @@ namespace QuickMail.Helpers;
 /// </list>
 ///
 /// <para>
-/// <c>CommandShortcut.ToolTip="Reply"</c> adds the visible tooltip "Reply (Ctrl+R)". It is built only
-/// while the tooltip is open. A tooltip that is always there is reported as the control's help text,
-/// and a toolbar button then read its name and shortcut twice:
-/// "New Message button New Message (Ctrl+N) Ctrl+N".
+/// <c>CommandShortcut.ToolTip="Reply"</c> adds the visible tooltip "Reply (Ctrl+R)", written each time it
+/// opens. Its text sits in a <see cref="Border"/>, never directly in the tooltip: WPF reports a
+/// tooltip's plain text as the control's help text when it has none of its own, and a toolbar button
+/// was read as "New Message button New Message (Ctrl+N) Ctrl+N". A Border has no plain text, so the
+/// help text stays empty even while the tooltip is open, which keyboard focus also does. Where the
+/// tooltip says more than the name, give that as <c>AutomationProperties.HelpText</c>, without the key.
 /// </para>
 ///
 /// <para>
@@ -35,7 +37,10 @@ namespace QuickMail.Helpers;
 /// registries. A context menu is not inside its window's tree, so a menu item there uses the
 /// registry of the control the menu was opened from. Everything is re-read whenever the element
 /// is loaded (each time a menu opens) and whenever the registry raises
-/// <see cref="ICommandRegistry.BindingsChanged"/> while it is.
+/// <see cref="ICommandRegistry.BindingsChanged"/> while it is. A change that arrives while the
+/// element's window is not active waits for the window to be activated again: the View Manager
+/// rebinds keys from inside its own ShowDialog loop, and the parent window's controls must not be
+/// changed while a modal loop runs over them (CLAUDE.md, Modal Dialog Rules).
 /// </para>
 /// </summary>
 public static class CommandShortcut
@@ -62,7 +67,15 @@ public static class CommandShortcut
     private static readonly DependencyProperty SubscriptionProperty = DependencyProperty.RegisterAttached(
         "Subscription", typeof(Subscription), typeof(CommandShortcut), new PropertyMetadata(null));
 
-    private sealed record Subscription(ICommandRegistry Registry, EventHandler Handler);
+    private sealed class Subscription(ICommandRegistry registry, EventHandler handler)
+    {
+        public ICommandRegistry Registry { get; } = registry;
+        public EventHandler Handler { get; } = handler;
+
+        // Set while a change waits for the window to be activated.
+        public Window? WaitingOn { get; set; }
+        public EventHandler? OnActivated { get; set; }
+    }
 
     /// <summary>"Reply (Ctrl+R)", or just the title when the command has no shortcut.</summary>
     public static string FormatToolTip(string title, string gesture) =>
@@ -85,6 +98,8 @@ public static class CommandShortcut
         if (element is MenuItem item)
             item.InputGestureText = gesture;
         AutomationProperties.SetAcceleratorKey(element, gesture);
+        if (element is FrameworkElement fe)
+            UpdateToolTip(fe);
     }
 
     private static ICommandRegistry? ResolveRegistry(DependencyObject element)
@@ -137,13 +152,44 @@ public static class CommandShortcut
         Unsubscribe(fe);
         if (ResolveRegistry(fe) is not { } registry) return;
 
+        Subscription? subscription = null;
         EventHandler handler = (_, _) =>
         {
-            if (fe.Dispatcher.CheckAccess()) Refresh(fe);
-            else fe.Dispatcher.BeginInvoke(() => Refresh(fe));
+            if (fe.Dispatcher.CheckAccess()) RefreshWhenActive(fe, subscription!);
+            else fe.Dispatcher.BeginInvoke(() => RefreshWhenActive(fe, subscription!));
         };
+        subscription = new Subscription(registry, handler);
         registry.BindingsChanged += handler;
-        fe.SetValue(SubscriptionProperty, new Subscription(registry, handler));
+        fe.SetValue(SubscriptionProperty, subscription);
+    }
+
+    // See the class remarks: no change to a window that a modal dialog is running over. A context
+    // menu's items have no window of their own and change at once; the menu is open and in front.
+    private static void RefreshWhenActive(FrameworkElement fe, Subscription s)
+    {
+        var window = Window.GetWindow(fe);
+        if (window is null || window.IsActive)
+        {
+            Refresh(fe);
+            return;
+        }
+        if (s.WaitingOn is not null) return;
+
+        s.WaitingOn = window;
+        s.OnActivated = (_, _) =>
+        {
+            StopWaiting(s);
+            Refresh(fe);
+        };
+        window.Activated += s.OnActivated;
+    }
+
+    private static void StopWaiting(Subscription s)
+    {
+        if (s.WaitingOn is { } window && s.OnActivated is { } onActivated)
+            window.Activated -= onActivated;
+        s.WaitingOn = null;
+        s.OnActivated = null;
     }
 
     private static void Unsubscribe(FrameworkElement fe)
@@ -151,6 +197,7 @@ public static class CommandShortcut
         if (fe.GetValue(SubscriptionProperty) is Subscription s)
         {
             s.Registry.BindingsChanged -= s.Handler;
+            StopWaiting(s);
             fe.ClearValue(SubscriptionProperty);
         }
     }
@@ -166,21 +213,19 @@ public static class CommandShortcut
             return;
         }
 
-        // Empty until it opens, and emptied again once it has closed (not while it is closing,
-        // which would blank it during the fade): see the class remarks on help text.
-        if (fe.ToolTip is not ToolTip)
-        {
-            var tip = new ToolTip();
-            tip.Closed += (_, _) => tip.Content = null;
-            fe.ToolTip = tip;
-        }
+        // The text inside a Border: see the class remarks on help text.
+        if (fe.ToolTip is not ToolTip { Content: Border { Child: TextBlock } })
+            fe.ToolTip = new ToolTip { Content = new Border { Child = new TextBlock() } };
+        UpdateToolTip(fe);
         fe.ToolTipOpening += OnToolTipOpening;
     }
 
-    private static void OnToolTipOpening(object sender, ToolTipEventArgs e)
+    private static void OnToolTipOpening(object sender, ToolTipEventArgs e) => UpdateToolTip((FrameworkElement)sender);
+
+    /// <summary>Writes the tooltip's text with the key the command has now.</summary>
+    public static void UpdateToolTip(FrameworkElement fe)
     {
-        var fe = (FrameworkElement)sender;
-        if (fe.ToolTip is ToolTip tip)
-            tip.Content = FormatToolTip(GetToolTip(fe) ?? string.Empty, CurrentGesture(fe));
+        if (fe.ToolTip is ToolTip { Content: Border { Child: TextBlock text } })
+            text.Text = FormatToolTip(GetToolTip(fe) ?? string.Empty, CurrentGesture(fe));
     }
 }

@@ -7689,6 +7689,10 @@ public partial class MainWindow : Window
             var cfg = _configService.Load();
             _vm.ApplySettings(cfg);
             _registry.ApplyUserOverrides(cfg.CustomHotkeys);
+            // Open message windows keep their own registry; give them the new keys too, so what
+            // they run, show and report matches Settings without being reopened (#849).
+            foreach (var messageWindow in Application.Current.Windows.OfType<MessageWindow>())
+                messageWindow.ApplyMainWindowKeys(cfg.CustomHotkeys);
             // The plain-text preference may have changed; re-render the open message so a
             // Settings change takes effect live (focus is preserved). Theme changes already
             // re-render via ThemeChanged; this covers the plain-text flag when the theme is

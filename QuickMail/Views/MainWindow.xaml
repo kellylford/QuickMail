@@ -953,7 +953,7 @@
                     Style="{DynamicResource ToolbarButton}"
                     Content="{Binding ViewModeLabel}"
                     AutomationProperties.Name="View mode"
-                    sc:CommandShortcut.Id="view.openViewMenu" sc:CommandShortcut.ToolTip="Select message view mode"
+                    AutomationProperties.HelpText="Select message view mode" sc:CommandShortcut.Id="view.openViewMenu" sc:CommandShortcut.ToolTip="Select message view mode"
                     Click="ViewModeButton_Click">
                 <Button.ContextMenu>
                     <!-- Same collection the View menu binds, so the toolbar offers exactly the
@@ -1418,7 +1418,7 @@
                                     Content="Close"
                                     Click="CloseContactMailResults_Click"
                                     AutomationProperties.Name="Close search results"
-                                    sc:CommandShortcut.Id="view.closeContactMail" sc:CommandShortcut.ToolTip="Close these results and go back"
+                                    AutomationProperties.HelpText="Close these results and go back" sc:CommandShortcut.Id="view.closeContactMail" sc:CommandShortcut.ToolTip="Close these results and go back"
                                     IsTabStop="True"/>
                             <TextBlock VerticalAlignment="Center"
                                        Margin="0,0,6,0"
@@ -1441,13 +1441,13 @@
                                     Content="Close"
                                     Click="CloseSearchResults_Click"
                                     AutomationProperties.Name="Close search results"
-                                    sc:CommandShortcut.Id="view.closeSearchResults" sc:CommandShortcut.ToolTip="Close these results and go back"
+                                    AutomationProperties.HelpText="Close these results and go back" sc:CommandShortcut.Id="view.closeSearchResults" sc:CommandShortcut.ToolTip="Close these results and go back"
                                     Margin="6,0,0,0"
                                     IsTabStop="True"/>
                             <Button DockPanel.Dock="Right"
                                     Content="Change Search"
                                     Click="ChangeSearch_Click"
-                                    sc:CommandShortcut.Id="mail.advancedSearch" sc:CommandShortcut.ToolTip="Open Advanced Search with this search"
+                                    AutomationProperties.HelpText="Open Advanced Search with this search" sc:CommandShortcut.Id="mail.advancedSearch" sc:CommandShortcut.ToolTip="Open Advanced Search with this search"
                                     Margin="6,0,0,0"
                                     IsTabStop="True"/>
                             <Button DockPanel.Dock="Right"
@@ -2340,7 +2340,7 @@
                         Content="{Binding RulesStatusText, Mode=OneWay}"
                         Click="RulesStatusButton_Click"
                         AutomationProperties.Name="{Binding RulesStatusText, Mode=OneWay}"
-                        sc:CommandShortcut.Id="mail.rules" sc:CommandShortcut.ToolTip="Open Rules Manager"/>
+                        AutomationProperties.HelpText="Open Rules Manager" sc:CommandShortcut.Id="mail.rules" sc:CommandShortcut.ToolTip="Open Rules Manager"/>
             </StatusBarItem>
 
             <!-- Region 4 (focus order): Offline reading (#717) — how many messages have their full text, and whether more
