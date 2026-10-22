@@ -141,6 +141,8 @@ public class ShortcutExposureTests
             // Given a key by #849 that they did not show before.
             ["Delete"] = "Delete", ["Delete Folder"] = "Delete", ["View mode"] = "Ctrl+Shift+V",
             ["Close search results"] = "Escape", ["Change Search"] = "Ctrl+/", ["RulesStatusButton"] = "Ctrl+Shift+L",
+            // The group menus' Save As, given F12 by #854.
+            ["Save Messages from Sender As"] = "F12", ["Save Messages to Recipient As"] = "F12", ["Save Conversation As"] = "F12",
             ["Save As"] = "F12",
             ["Print"] = "Ctrl+P",
             ["Move to Archive"] = "Ctrl+Shift+M",
@@ -261,13 +263,141 @@ public class ShortcutExposureTests
             if (id is null) continue;
 
             var label = Label(e);
+            defaults.TryGetValue(id, out var actual);
             if (!expected.TryGetValue(label, out var key))
-                problems.Add($"{label} ({id}) is not in the table; add the key it should show.");
-            else if (!defaults.TryGetValue(id, out var actual) || actual != key)
-                problems.Add($"{label} names {id}, whose default is {actual ?? "unknown"}, but it showed {key}.");
+            {
+                // A command with no default key shows nothing until the user assigns one; which
+                // command it is, MenuItemsNamedLikeACommandNameThatCommand pins.
+                if (actual is not null)
+                    problems.Add($"{label} ({id}) is not in the table; add the key it should show.");
+            }
+            else if (actual != key)
+                problems.Add($"{label} names {id}, whose default is {actual ?? "none"}, but it showed {key}.");
         }
 
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+    }
+
+    /// <summary>
+    /// Menu items named like a command that they do not run: each would show a key that does
+    /// something else. Keyed by what they run (see <see cref="Action"/>), not by their wording.
+    /// </summary>
+    private static readonly HashSet<string> NotTheCommandOfTheSameName =
+    [
+        // The attachment lists' Save… saves the attachment, not the message (mail.save).
+        "PlacementTarget.DataContext.SaveAttachmentCommand|",
+    ];
+
+    /// <summary>
+    /// A menu item named like a registered command must name that command, or a key the user
+    /// assigns to it in Settings is never shown or reported there (#854: Calendar at Bottom of
+    /// Folder List, whose command has no default key, so #849 never gave its item an id).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(WindowFiles))]
+    public void MenuItemsNamedLikeACommandNameThatCommand(string xamlFile)
+    {
+        var titles = RegisteredTitles(Windows[xamlFile]);
+        var problems = new List<string>();
+        var items = Elements(xamlFile).Where(e => e.Name.LocalName == "MenuItem").ToList();
+
+        // What an item runs, as far as the XAML says: its Click handler, or its bound command and
+        // parameter. Items that run the same thing must name the same command.
+        var namedByAction = items
+            .Where(e => Action(e) is not null && NamedId(e) is not null)
+            .GroupBy(e => Action(e)!)
+            .ToDictionary(g => g.Key, g => NamedId(g.First())!);
+
+        foreach (var e in items)
+        {
+            var action = Action(e);
+            if (action is not null && NotTheCommandOfTheSameName.Contains(action)) continue;
+
+            string? id = null;
+            if (action is not null && CommandsRunBy.TryGetValue(action, out var byAction)) id = byAction;
+            else if (action is not null && namedByAction.TryGetValue(action, out var bySibling)) id = bySibling;
+            else
+            {
+                // By name: the accessible name or the header, either of which may be the title.
+                foreach (var text in new[] { e.Attribute("AutomationProperties.Name")?.Value, e.Attribute("Header")?.Value })
+                    if (text is not null && titles.TryGetValue(Normalize(text), out var byTitle)) { id = byTitle; break; }
+            }
+            if (id is null) continue;
+
+            var named = NamedId(e);
+            if (named != id)
+                problems.Add($"{Label(e)} runs {id} but names {named ?? "no command"}.");
+        }
+
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+    }
+
+    /// <summary>
+    /// Items worded unlike their command's title ("_Unread" for Show Unread Only), keyed by what
+    /// they run: the bound command and its parameter, or the Click handler.
+    /// </summary>
+    private static readonly Dictionary<string, string> CommandsRunBy = new()
+    {
+        ["SetListDensityCommand|comfortable"] = "view.density.comfortable",
+        ["SetListDensityCommand|compact"] = "view.density.compact",
+        ["SetFilterCommand|all"] = "view.filterAll",
+        ["SetFilterCommand|unread"] = "view.filterUnread",
+        ["SetFilterCommand|read"] = "view.filterRead",
+        ["SetFilterCommand|attachments"] = "view.filterWithAttachments",
+        ["SetFilterCommand|replied"] = "view.filterReplied",
+        ["SetFilterCommand|forwarded"] = "view.filterForwarded",
+        ["SetFilterCommand|tome"] = "view.filterToMe",
+        ["SetFilterCommand|watched"] = "view.filterWatched",
+        ["SetSortCommand|dateDesc"] = "view.sortDateDesc",
+        ["SetSortCommand|dateAsc"] = "view.sortDateAsc",
+        ["SetSortCommand|alphaAsc"] = "view.sortAlphaAsc",
+        ["SetSortCommand|alphaDesc"] = "view.sortAlphaDesc",
+        ["SetSortCommand|flaggedFirst"] = "view.sortFlaggedFirst",
+        ["SetSortCommand|countDesc"] = "view.sortCountDesc",
+        ["SetSortCommand|countAsc"] = "view.sortCountAsc",
+        ["PlacementTarget.DataContext.ReconnectAccountCommand|"] = "account.reconnect",
+        ["click:MenuImportCalendarFile_Click"] = "calendar.importIcs",
+        ["click:SenderGroupContextMenu_MoveToFolder_Click"] = "mail.moveToFolder",
+        ["click:ToGroupContextMenu_MoveToFolder_Click"] = "mail.moveToFolder",
+        ["click:ConversationContextMenu_MoveToFolder_Click"] = "mail.moveToFolder",
+        ["click:SenderGroupContextMenu_CopyToFolder_Click"] = "mail.copyToFolder",
+        ["click:ToGroupContextMenu_CopyToFolder_Click"] = "mail.copyToFolder",
+        ["click:ConversationContextMenu_CopyToFolder_Click"] = "mail.copyToFolder",
+    };
+
+    private static string? NamedId(XElement e) => e.Attribute(XName.Get("CommandShortcut.Id", HelpersNs))?.Value;
+
+    private static string? Action(XElement e)
+    {
+        // A shared handler tells its items apart by Tag (compose's paragraph styles), so the Tag is
+        // part of what the item runs.
+        if (e.Attribute("Click")?.Value is { } click)
+            return "click:" + click + (e.Attribute("Tag")?.Value is { } tag ? "#" + tag : "");
+        var command = Regex.Match(e.Attribute("Command")?.Value ?? "", @"^\{Binding ([\w.]+)");
+        if (!command.Success) return null;
+        var parameter = e.Attribute("CommandParameter")?.Value ?? "";
+        return command.Groups[1].Value + "|" + (parameter.StartsWith('{') ? "" : parameter);
+    }
+
+    // "Move to _Folder…" and the title "Move to Folder…" compare equal.
+    private static string Normalize(string label) =>
+        label.Replace("_", "").TrimEnd('…', '.', ' ').ToLowerInvariant();
+
+    private static Dictionary<string, string> RegisteredTitles(IEnumerable<string> sources)
+    {
+        var titles = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var source in sources)
+        {
+            var text = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", source));
+            foreach (Match m in Regex.Matches(text, @"new CommandDefinition\((.*?)\)\);", RegexOptions.Singleline))
+            {
+                var id = Regex.Match(m.Groups[1].Value, @"id:\s*""([^""]+)""");
+                var title = Regex.Match(m.Groups[1].Value, @"title:\s*""([^""]+)""");
+                if (id.Success && title.Success)
+                    titles[Normalize(title.Groups[1].Value)] = id.Groups[1].Value;
+            }
+        }
+        return titles;
     }
 
     private static string Label(XElement e) =>

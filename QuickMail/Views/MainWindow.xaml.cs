@@ -2986,30 +2986,33 @@ public partial class MainWindow : Window
     {
         var menu = new ContextMenu();
 
-        MenuItem Item(string header, RoutedEventHandler onClick)
+        // Each response names the calendar command it matches, so a key assigned to it shows here too
+        // (#854). Open full appointment names none: its command's Enter is what opened this menu.
+        MenuItem Item(string header, string? commandId, RoutedEventHandler onClick)
         {
             var mi = new MenuItem { Header = header };
+            CommandShortcut.SetId(mi, commandId);
             mi.Click += onClick;
             return mi;
         }
 
-        menu.Items.Add(Item("Accept", async (_, _) =>
+        menu.Items.Add(Item("Accept", "calendar.acceptInvite", async (_, _) =>
         {
             await _vm.RespondToCalendarInviteAsync(evt, "ACCEPTED", "accepted");
             FocusCalendarList();
         }));
-        menu.Items.Add(Item("Tentative", async (_, _) =>
+        menu.Items.Add(Item("Tentative", "calendar.tentativeInvite", async (_, _) =>
         {
             await _vm.RespondToCalendarInviteAsync(evt, "TENTATIVE", "tentatively accepted");
             FocusCalendarList();
         }));
-        menu.Items.Add(Item("Decline", async (_, _) =>
+        menu.Items.Add(Item("Decline", "calendar.declineInvite", async (_, _) =>
         {
             await _vm.RespondToCalendarInviteAsync(evt, "DECLINED", "declined");
             FocusCalendarList();
         }));
         menu.Items.Add(new Separator());
-        menu.Items.Add(Item("Open full appointment", (_, _) =>
+        menu.Items.Add(Item("Open full appointment", null, (_, _) =>
             _vm.CalendarVm?.OpenSourceMessageCommand.Execute(evt)));
 
         // Anchor below the focused row when we can obtain its container; otherwise the list itself.
@@ -8387,6 +8390,7 @@ public partial class MainWindow : Window
         flagsMenu.Items.Add(clearItem);
         flagsMenu.Items.Add(new Separator());
         var manageItem = new MenuItem { Header = "_Manage Flags…" };
+        CommandShortcut.SetId(manageItem, "mail.openFlagManager");
         manageItem.Click += (_, _) => OpenFlagManager();
         flagsMenu.Items.Add(manageItem);
     }
@@ -8408,6 +8412,7 @@ public partial class MainWindow : Window
         flagsMenu.Items.Add(clearItem);
         flagsMenu.Items.Add(new Separator());
         var manageItem = new MenuItem { Header = "_Manage Flags…" };
+        CommandShortcut.SetId(manageItem, "mail.openFlagManager");
         manageItem.Click += (_, _) => OpenFlagManager();
         flagsMenu.Items.Add(manageItem);
     }

@@ -88,7 +88,7 @@
                           Command="{Binding NextMessageCommand}"
                           sc:CommandShortcut.Id="window.nextMessage"/>
                 <Separator/>
-                <MenuItem Header="Move to _Main Window"
+                <MenuItem sc:CommandShortcut.Id="window.moveToMainWindow" Header="Move to _Main Window"
                           AutomationProperties.Name="Move to Main Window"
                           Command="{Binding MoveToMainWindowCommand}"/>
             </MenuItem>

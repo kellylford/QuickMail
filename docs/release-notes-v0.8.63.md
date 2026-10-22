@@ -22,6 +22,9 @@ screen. Your screen reader's settings decide whether the key is read out. (#849)
   and command palette, and are the keys screen readers are given. Before, all of them kept
   showing the original key.
 - Toolbar buttons no longer read their name and shortcut twice.
+- A key you assign to a command that has none by default, such as Calendar at Bottom of Folder
+  List, now shows on its menu item too, in the context menus and the Help menu as well as the
+  main menus. (#854)
 - The message list's context menu now shows the keys for Reply, Reply All, Forward and Delete,
   and the folder menu shows Delete for Delete Folder.
 
