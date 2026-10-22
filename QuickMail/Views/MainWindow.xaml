@@ -67,13 +67,13 @@
                       Command="{Binding ForwardSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="_Move to Folder…"
+            <MenuItem sc:CommandShortcut.Id="mail.moveToFolder" Header="_Move to Folder…"
                       AutomationProperties.Name="Move Sender Group to Folder"
                       Click="SenderGroupContextMenu_MoveToFolder_Click"/>
-            <MenuItem Header="_Copy to Folder…"
+            <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Sender Group to Folder"
                       Click="SenderGroupContextMenu_CopyToFolder_Click"/>
-            <MenuItem Header="Sa_ve Messages As…"
+            <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Messages As…"
                       AutomationProperties.Name="Save Messages from Sender As"
                       Click="MenuSaveAs_Click"/>
             <Separator/>
@@ -123,13 +123,13 @@
                       Command="{Binding ForwardToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="_Move to Folder…"
+            <MenuItem sc:CommandShortcut.Id="mail.moveToFolder" Header="_Move to Folder…"
                       AutomationProperties.Name="Move Recipient Group to Folder"
                       Click="ToGroupContextMenu_MoveToFolder_Click"/>
-            <MenuItem Header="_Copy to Folder…"
+            <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Recipient Group to Folder"
                       Click="ToGroupContextMenu_CopyToFolder_Click"/>
-            <MenuItem Header="Sa_ve Messages As…"
+            <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Messages As…"
                       AutomationProperties.Name="Save Messages to Recipient As"
                       Click="MenuSaveAs_Click"/>
             <Separator/>
@@ -180,13 +180,13 @@
                       Command="{Binding ForwardConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="_Move to Folder…"
+            <MenuItem sc:CommandShortcut.Id="mail.moveToFolder" Header="_Move to Folder…"
                       AutomationProperties.Name="Move Conversation to Folder"
                       Click="ConversationContextMenu_MoveToFolder_Click"/>
-            <MenuItem Header="_Copy to Folder…"
+            <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Conversation to Folder"
                       Click="ConversationContextMenu_CopyToFolder_Click"/>
-            <MenuItem Header="Sa_ve Conversation As…"
+            <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Conversation As…"
                       AutomationProperties.Name="Save Conversation As"
                       Click="MenuSaveAs_Click"/>
             <Separator/>
@@ -341,17 +341,17 @@
             <MenuItem sc:CommandShortcut.Id="calendar.clearDefaultCalendar" Header="_Clear Default Calendar"
                       AutomationProperties.Name="Clear Default Calendar"
                       Click="CalendarContextMenu_ClearDefault_Click"/>
-            <MenuItem Header="_Import Calendar File (.ics)…"
+            <MenuItem sc:CommandShortcut.Id="calendar.importIcs" Header="_Import Calendar File (.ics)…"
                       AutomationProperties.Name="Import Calendar File"
                       Click="MenuImportCalendarFile_Click"/>
             <Separator/>
             <!-- #590. Calendar nodes sit in the same tree and nest the same way, so they get the
                  same expansion actions — worded for a calendar, since "Expand Folder" on the
                  Calendar node would name something the user is not looking at. -->
-            <MenuItem Header="E_xpand Calendar"
+            <MenuItem sc:CommandShortcut.Id="folder.expand" Header="E_xpand Calendar"
                       AutomationProperties.Name="Expand Calendar"
                       Click="FolderContextMenu_ExpandFolder_Click"/>
-            <MenuItem Header="Colla_pse Calendar"
+            <MenuItem sc:CommandShortcut.Id="folder.collapse" Header="Colla_pse Calendar"
                       AutomationProperties.Name="Collapse Calendar"
                       Click="FolderContextMenu_CollapseFolder_Click"/>
             <MenuItem sc:CommandShortcut.Id="folder.expandAll" Header="_Expand All Folders"
@@ -448,7 +448,7 @@
                     </MenuItem.Style>
                 </MenuItem>
                 <Separator/>
-                <MenuItem Header="_Import Calendar File (.ics)…"
+                <MenuItem sc:CommandShortcut.Id="calendar.importIcs" Header="_Import Calendar File (.ics)…"
                           AutomationProperties.Name="Import Calendar File"
                           Click="MenuImportCalendarFile_Click"/>
                 <MenuItem Header="Expo_rt Settings…"
@@ -625,12 +625,12 @@
                      adjustable in place. Padding only — never the accessibility
                      surface. Registered as view.density.* for palette/hotkeys. -->
                 <MenuItem Header="_Density">
-                    <MenuItem Header="_Comfortable"
+                    <MenuItem sc:CommandShortcut.Id="view.density.comfortable" Header="_Comfortable"
                               IsCheckable="True"
                               IsChecked="{Binding IsListDensityComfortable, Mode=OneWay}"
                               Command="{Binding SetListDensityCommand}"
                               CommandParameter="comfortable"/>
-                    <MenuItem Header="Co_mpact"
+                    <MenuItem sc:CommandShortcut.Id="view.density.compact" Header="Co_mpact"
                               IsCheckable="True"
                               IsChecked="{Binding IsListDensityCompact, Mode=OneWay}"
                               Command="{Binding SetListDensityCommand}"
@@ -641,45 +641,45 @@
                 <MenuItem sc:CommandShortcut.Id="view.rowFields" x:Name="RowFieldsMenuItem"
                           Header="Message List Fi_elds…"/>
                 <MenuItem Header="F_ilter">
-                    <MenuItem Header="S_how All"
+                    <MenuItem sc:CommandShortcut.Id="view.filterAll" Header="S_how All"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterAll, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="all"/>
                     <Separator/>
-                    <MenuItem Header="_Unread"
+                    <MenuItem sc:CommandShortcut.Id="view.filterUnread" Header="_Unread"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterUnread, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="unread"/>
-                    <MenuItem Header="_Read"
+                    <MenuItem sc:CommandShortcut.Id="view.filterRead" Header="_Read"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterRead, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="read"/>
                     <Separator/>
-                    <MenuItem Header="With _Attachments"
+                    <MenuItem sc:CommandShortcut.Id="view.filterWithAttachments" Header="With _Attachments"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterWithAttachments, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="attachments"/>
-                    <MenuItem Header="Re_plied"
+                    <MenuItem sc:CommandShortcut.Id="view.filterReplied" Header="Re_plied"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterReplied, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="replied"/>
-                    <MenuItem Header="_Forwarded"
+                    <MenuItem sc:CommandShortcut.Id="view.filterForwarded" Header="_Forwarded"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterForwarded, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="forwarded"/>
                     <Separator/>
-                    <MenuItem Header="To _Me"
+                    <MenuItem sc:CommandShortcut.Id="view.filterToMe" Header="To _Me"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterToMe, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="tome"/>
-                    <MenuItem Header="_Watched"
+                    <MenuItem sc:CommandShortcut.Id="view.filterWatched" Header="_Watched"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterWatched, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
@@ -697,41 +697,41 @@
                     </MenuItem>
                 </MenuItem>
                 <MenuItem Header="S_ort">
-                    <MenuItem Header="Newest _First"
+                    <MenuItem sc:CommandShortcut.Id="view.sortDateDesc" Header="Newest _First"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortDateDesc, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="dateDesc"/>
-                    <MenuItem Header="_Oldest First"
+                    <MenuItem sc:CommandShortcut.Id="view.sortDateAsc" Header="_Oldest First"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortDateAsc, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="dateAsc"/>
                     <Separator/>
-                    <MenuItem Header="_A → Z"
+                    <MenuItem sc:CommandShortcut.Id="view.sortAlphaAsc" Header="_A → Z"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortAlphaAsc, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="alphaAsc"/>
-                    <MenuItem Header="_Z → A"
+                    <MenuItem sc:CommandShortcut.Id="view.sortAlphaDesc" Header="_Z → A"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortAlphaDesc, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="alphaDesc"/>
                     <Separator/>
-                    <MenuItem Header="Fla_gged First"
+                    <MenuItem sc:CommandShortcut.Id="view.sortFlaggedFirst" Header="Fla_gged First"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortFlaggedFirst, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="flaggedFirst"/>
                     <Separator/>
-                    <MenuItem Header="_Most Messages"
+                    <MenuItem sc:CommandShortcut.Id="view.sortCountDesc" Header="_Most Messages"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortCountDesc, Mode=OneWay}"
                               IsEnabled="{Binding IsCountSortAvailable}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="countDesc"/>
-                    <MenuItem Header="Fe_west Messages"
+                    <MenuItem sc:CommandShortcut.Id="view.sortCountAsc" Header="Fe_west Messages"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortCountAsc, Mode=OneWay}"
                               IsEnabled="{Binding IsCountSortAvailable}"
@@ -1058,7 +1058,7 @@
 
                     <ListBox.ContextMenu>
                         <ContextMenu AutomationProperties.Name="Account actions">
-                            <MenuItem Header="Re_connect"
+                            <MenuItem sc:CommandShortcut.Id="account.reconnect" Header="Re_connect"
                                       AutomationProperties.Name="Reconnect"
                                       Command="{Binding PlacementTarget.DataContext.ReconnectAccountCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
