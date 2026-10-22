@@ -54,15 +54,15 @@
         <ContextMenu x:Key="SenderGroupContextMenu"
                      AutomationProperties.Name="Sender group actions"
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-            <MenuItem Header="_Reply"
+            <MenuItem sc:CommandShortcut.Id="mail.reply" Header="_Reply"
                       AutomationProperties.Name="Reply"
                       Command="{Binding ReplySenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Reply _All"
+            <MenuItem sc:CommandShortcut.Id="mail.replyAll" Header="Reply _All"
                       AutomationProperties.Name="Reply All"
                       Command="{Binding ReplyAllSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="_Forward"
+            <MenuItem sc:CommandShortcut.Id="mail.forward" Header="_Forward"
                       AutomationProperties.Name="Forward"
                       Command="{Binding ForwardSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
@@ -110,15 +110,15 @@
         <ContextMenu x:Key="ToGroupContextMenu"
                      AutomationProperties.Name="Recipient group actions"
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-            <MenuItem Header="_Reply"
+            <MenuItem sc:CommandShortcut.Id="mail.reply" Header="_Reply"
                       AutomationProperties.Name="Reply"
                       Command="{Binding ReplyToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Reply _All"
+            <MenuItem sc:CommandShortcut.Id="mail.replyAll" Header="Reply _All"
                       AutomationProperties.Name="Reply All"
                       Command="{Binding ReplyAllToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="_Forward"
+            <MenuItem sc:CommandShortcut.Id="mail.forward" Header="_Forward"
                       AutomationProperties.Name="Forward"
                       Command="{Binding ForwardToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
@@ -167,15 +167,15 @@
         <ContextMenu x:Key="ConversationGroupContextMenu"
                      AutomationProperties.Name="Conversation actions"
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-            <MenuItem Header="_Reply"
+            <MenuItem sc:CommandShortcut.Id="mail.reply" Header="_Reply"
                       AutomationProperties.Name="Reply"
                       Command="{Binding ReplyConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Reply _All"
+            <MenuItem sc:CommandShortcut.Id="mail.replyAll" Header="Reply _All"
                       AutomationProperties.Name="Reply All"
                       Command="{Binding ReplyAllConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="_Forward"
+            <MenuItem sc:CommandShortcut.Id="mail.forward" Header="_Forward"
                       AutomationProperties.Name="Forward"
                       Command="{Binding ForwardConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
@@ -237,10 +237,10 @@
                       sc:CommandShortcut.Id="mail.forward"
                       Command="{Binding ForwardCommand}"/>
             <Separator/>
-            <MenuItem Header="_Move to Folder…"
+            <MenuItem sc:CommandShortcut.Id="mail.moveToFolder" Header="_Move to Folder…"
                       AutomationProperties.Name="Move to Folder"
                       Click="MessageContextMenu_MoveToFolder_Click"/>
-            <MenuItem Header="_Copy to Folder…"
+            <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy to Folder"
                       Click="MessageContextMenu_CopyToFolder_Click"/>
             <MenuItem Header="Sa_ve As…"
@@ -278,7 +278,7 @@
              Style setters (it emits GridSplitter instead of MenuItem), causing an APPCRASH. -->
         <ContextMenu x:Key="FolderContextMenu"
                      AutomationProperties.Name="Folder actions">
-            <MenuItem Header="_New Folder…"
+            <MenuItem sc:CommandShortcut.Id="folder.new" Header="_New Folder…"
                       AutomationProperties.Name="New Folder"
                       Click="FolderContextMenu_NewFolder_Click"/>
             <Separator/>
@@ -299,10 +299,10 @@
             <!-- #516. N, M, C, A, U and D are taken by the items above — note U, from "Use A_utomatic
                  Archive Folder" — leaving S and F. WPF cycles between duplicate access keys instead
                  of invoking, so a collision here would make the key highlight rather than activate. -->
-            <MenuItem Header="Set as _Startup Folder"
+            <MenuItem sc:CommandShortcut.Id="folder.setStartupFolder" Header="Set as _Startup Folder"
                       AutomationProperties.Name="Set as Startup Folder"
                       Click="FolderContextMenu_SetStartupFolder_Click"/>
-            <MenuItem Header="Clear Startup _Folder"
+            <MenuItem sc:CommandShortcut.Id="folder.clearStartupFolder" Header="Clear Startup _Folder"
                       AutomationProperties.Name="Clear Startup Folder"
                       Click="FolderContextMenu_ClearStartupFolder_Click"/>
             <Separator/>
@@ -314,16 +314,16 @@
             <!-- #590. Access keys still free after the items above (N, M, C, A, U, S, F, D): X, P,
                  E and L. Both single-folder items act on the whole branch, not one level — Right
                  and Left arrow already do one level. -->
-            <MenuItem Header="E_xpand Folder"
+            <MenuItem sc:CommandShortcut.Id="folder.expand" Header="E_xpand Folder"
                       AutomationProperties.Name="Expand Folder"
                       Click="FolderContextMenu_ExpandFolder_Click"/>
-            <MenuItem Header="Colla_pse Folder"
+            <MenuItem sc:CommandShortcut.Id="folder.collapse" Header="Colla_pse Folder"
                       AutomationProperties.Name="Collapse Folder"
                       Click="FolderContextMenu_CollapseFolder_Click"/>
-            <MenuItem Header="_Expand All Folders"
+            <MenuItem sc:CommandShortcut.Id="folder.expandAll" Header="_Expand All Folders"
                       AutomationProperties.Name="Expand All Folders"
                       Click="FolderContextMenu_ExpandAllFolders_Click"/>
-            <MenuItem Header="Collapse A_ll Folders"
+            <MenuItem sc:CommandShortcut.Id="folder.collapseAll" Header="Collapse A_ll Folders"
                       AutomationProperties.Name="Collapse All Folders"
                       Click="FolderContextMenu_CollapseAllFolders_Click"/>
         </ContextMenu>
@@ -335,10 +335,10 @@
         <ContextMenu x:Key="CalendarContextMenu"
                      AutomationProperties.Name="Calendar actions"
                      Opened="CalendarContextMenu_Opened">
-            <MenuItem Header="Use as _Default Calendar for New Appointments"
+            <MenuItem sc:CommandShortcut.Id="calendar.setDefaultCalendar" Header="Use as _Default Calendar for New Appointments"
                       AutomationProperties.Name="Use as Default Calendar for New Appointments"
                       Click="CalendarContextMenu_SetDefault_Click"/>
-            <MenuItem Header="_Clear Default Calendar"
+            <MenuItem sc:CommandShortcut.Id="calendar.clearDefaultCalendar" Header="_Clear Default Calendar"
                       AutomationProperties.Name="Clear Default Calendar"
                       Click="CalendarContextMenu_ClearDefault_Click"/>
             <MenuItem Header="_Import Calendar File (.ics)…"
@@ -354,10 +354,10 @@
             <MenuItem Header="Colla_pse Calendar"
                       AutomationProperties.Name="Collapse Calendar"
                       Click="FolderContextMenu_CollapseFolder_Click"/>
-            <MenuItem Header="_Expand All Folders"
+            <MenuItem sc:CommandShortcut.Id="folder.expandAll" Header="_Expand All Folders"
                       AutomationProperties.Name="Expand All Folders"
                       Click="FolderContextMenu_ExpandAllFolders_Click"/>
-            <MenuItem Header="Collapse A_ll Folders"
+            <MenuItem sc:CommandShortcut.Id="folder.collapseAll" Header="Collapse A_ll Folders"
                       AutomationProperties.Name="Collapse All Folders"
                       Click="FolderContextMenu_CollapseAllFolders_Click"/>
             <Separator/>
@@ -367,11 +367,11 @@
                  on: a ContextMenu in Window.Resources has its own name scope, so x:Name here does
                  not give the code-behind a field to reach. Access keys D, C, X, P, E and L are
                  taken by the items above, leaving T and B. -->
-            <MenuItem Header="Calendar at _Top of Folder List"
+            <MenuItem sc:CommandShortcut.Id="calendar.calendarAtTopOfFolderList" Header="Calendar at _Top of Folder List"
                       AutomationProperties.Name="Calendar at Top of Folder List"
                       Tag="calendarFirst" IsCheckable="True"
                       Click="CalendarContextMenu_CalendarFirst_Click"/>
-            <MenuItem Header="Calendar at _Bottom of Folder List"
+            <MenuItem sc:CommandShortcut.Id="calendar.calendarAtBottomOfFolderList" Header="Calendar at _Bottom of Folder List"
                       AutomationProperties.Name="Calendar at Bottom of Folder List"
                       Tag="calendarLast" IsCheckable="True"
                       Click="CalendarContextMenu_CalendarLast_Click"/>
@@ -460,7 +460,7 @@
                           Visibility="{Binding IsSettingsTransferEnabled, Converter={StaticResource BoolToVisibilityConverter}}"
                           Click="MenuImportSettings_Click"/>
                 <Separator/>
-                <MenuItem Header="_Manage Accounts…"
+                <MenuItem sc:CommandShortcut.Id="account.manage" Header="_Manage Accounts…"
                           Command="{Binding ManageAccountsCommand}"/>
                 <Separator/>
                 <MenuItem Header="S_ettings…"
@@ -493,7 +493,7 @@
                           Command="{Binding EmptyTrashCommand}"
                           sc:CommandShortcut.Id="mail.emptyTrash"/>
                 <!-- No gesture: the Outbox drains on its own when the connection returns (#637). -->
-                <MenuItem Header="Send _Outbox Now"
+                <MenuItem sc:CommandShortcut.Id="mail.sendOutboxNow" Header="Send _Outbox Now"
                           Command="{Binding SendOutboxNowCommand}"/>
                 <Separator/>
                 <!-- Click, not Command: the target depends on which group tree is selected, which
@@ -521,7 +521,7 @@
                 <!-- HasMessageTarget, not HasSelectedMessage: these also file a selected conversation,
                      whose header selection leaves SelectedMessage untouched (issue #566). It is
                      recomputed in MessageMenu_SubmenuOpened, as HasWatchTarget above is. -->
-                <MenuItem Header="_Move to Folder…"
+                <MenuItem sc:CommandShortcut.Id="mail.moveToFolder" Header="_Move to Folder…"
                           Click="MenuMoveToFolder_Click">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
@@ -533,7 +533,7 @@
                         </Style>
                     </MenuItem.Style>
                 </MenuItem>
-                <MenuItem Header="_Copy to Folder…"
+                <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                           Click="MenuCopyToFolder_Click">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
@@ -580,22 +580,22 @@
 
             <!-- Folder -->
             <MenuItem Header="Fol_der">
-                <MenuItem Header="_New Folder…"
+                <MenuItem sc:CommandShortcut.Id="folder.new" Header="_New Folder…"
                           Click="MenuNewFolder_Click"
                           AutomationProperties.Name="New Folder"/>
                 <Separator/>
                 <!-- #590. These act on the folder tree's selection, so they work the same whether
                      the user got here from the menu bar or from the tree's own context menu. -->
-                <MenuItem Header="E_xpand Folder"
+                <MenuItem sc:CommandShortcut.Id="folder.expand" Header="E_xpand Folder"
                           Click="MenuExpandFolder_Click"
                           AutomationProperties.Name="Expand Folder"/>
-                <MenuItem Header="Colla_pse Folder"
+                <MenuItem sc:CommandShortcut.Id="folder.collapse" Header="Colla_pse Folder"
                           Click="MenuCollapseFolder_Click"
                           AutomationProperties.Name="Collapse Folder"/>
-                <MenuItem Header="_Expand All Folders"
+                <MenuItem sc:CommandShortcut.Id="folder.expandAll" Header="_Expand All Folders"
                           Click="MenuExpandAllFolders_Click"
                           AutomationProperties.Name="Expand All Folders"/>
-                <MenuItem Header="Collapse A_ll Folders"
+                <MenuItem sc:CommandShortcut.Id="folder.collapseAll" Header="Collapse A_ll Folders"
                           Click="MenuCollapseAllFolders_Click"
                           AutomationProperties.Name="Collapse All Folders"/>
             </MenuItem>
@@ -638,7 +638,7 @@
                 </MenuItem>
                 <!-- Which fields each kind of list row speaks, and in what order.
                      Registered as view.rowFields; opened modeless. -->
-                <MenuItem x:Name="RowFieldsMenuItem"
+                <MenuItem sc:CommandShortcut.Id="view.rowFields" x:Name="RowFieldsMenuItem"
                           Header="Message List Fi_elds…"/>
                 <MenuItem Header="F_ilter">
                     <MenuItem Header="S_how All"
@@ -747,10 +747,10 @@
                     <MenuItem Header="_Manage Views…"
                               Command="{Binding ManageViewsCommand}"
                               AutomationProperties.Name="Open View Manager"/>
-                    <MenuItem Header="_Clear View"
+                    <MenuItem sc:CommandShortcut.Id="view.clearView" Header="_Clear View"
                               Command="{Binding ClearViewCommand}"
                               AutomationProperties.Name="Clear View"/>
-                    <MenuItem Header="_Reset Folder View"
+                    <MenuItem sc:CommandShortcut.Id="view.resetFolderView" Header="_Reset Folder View"
                               Command="{Binding ResetFolderViewCommand}"
                               AutomationProperties.Name="Reset Folder View"/>
                 </MenuItem>
@@ -786,11 +786,11 @@
                 <!-- Moved from Tools: choosing how the app looks belongs on View.
                      Next/Previous Theme remain palette commands (theme.next/previous)
                      without menu items, per design. -->
-                <MenuItem Header="Manage _Themes…"
+                <MenuItem sc:CommandShortcut.Id="theme.manager.open" Header="Manage _Themes…"
                           Click="MenuManageThemes_Click"
                           AutomationProperties.Name="Manage Themes"/>
                 <Separator/>
-                <MenuItem Header="Go to _Folder…"
+                <MenuItem sc:CommandShortcut.Id="view.folderPicker" Header="Go to _Folder…"
                           Click="MenuFolderPicker_Click"/>
                 <MenuItem Header="_Search Folders…"
                           Click="MenuSearchFolders_Click"
@@ -814,7 +814,7 @@
                      Conversation on the Message menu: that one acts on the selected message,
                      this one is a surface for reviewing what you have accumulated. Same split
                      as toggling a flag versus managing flags. -->
-                <MenuItem Header="_Watched Conversations…"
+                <MenuItem sc:CommandShortcut.Id="mail.watchManager" Header="_Watched Conversations…"
                           Click="MenuWatchedConversations_Click"
                           AutomationProperties.Name="Watched Conversations"/>
                 <Separator/>
@@ -830,7 +830,7 @@
                 <!-- Only on an ARM64 PC running the x64 build: nothing migrates an install
                      across architectures, so this entry is how those users find the native
                      build. Hidden everywhere else. -->
-                <MenuItem Header="Get the ARM _Version"
+                <MenuItem sc:CommandShortcut.Id="help.armVersion" Header="Get the ARM _Version"
                           AutomationProperties.Name="Get the ARM Version"
                           Visibility="{Binding IsNativeArmAvailable, Converter={StaticResource BoolToVisibilityConverter}}"
                           Command="{Binding OpenArmDownloadPageCommand}"/>
@@ -838,25 +838,25 @@
                 <MenuItem Header="User _Guide"
                           Command="{Binding ViewUserGuideCommand}"
                           sc:CommandShortcut.Id="help.userGuide"/>
-                <MenuItem Header="_Keyboard Tutorial"
+                <MenuItem sc:CommandShortcut.Id="help.keyboardTutorial" Header="_Keyboard Tutorial"
                           AutomationProperties.Name="Keyboard Tutorial"
                           Click="MenuKeyboardTutorial_Click"/>
                 <Separator/>
-                <MenuItem Header="_Report a Bug"
+                <MenuItem sc:CommandShortcut.Id="help.reportBug" Header="_Report a Bug"
                           AutomationProperties.Name="Report a Bug"
                           Click="MenuReportBug_Click"/>
-                <MenuItem Header="Connection _Diagnostics"
+                <MenuItem sc:CommandShortcut.Id="help.connectionDiagnostics" Header="Connection _Diagnostics"
                           AutomationProperties.Name="Connection Diagnostics"
                           Visibility="{Binding IsConnectionDiagnosticsEnabled, Converter={StaticResource BoolToVisibilityConverter}}"
                           Click="MenuConnectionDiagnostics_Click"/>
                 <Separator/>
                 <!-- #607: one-time org setup for a Global Admin — grants QuickMail's Graph permissions
                      tenant-wide so users then sign in with no consent prompts. -->
-                <MenuItem Header="Grant Admin _Consent for Your Organization…"
+                <MenuItem sc:CommandShortcut.Id="help.adminConsent" Header="Grant Admin _Consent for Your Organization…"
                           AutomationProperties.Name="Grant Admin Consent for Your Organization"
                           Click="MenuAdminConsent_Click"/>
                 <Separator/>
-                <MenuItem Header="_About QuickMail"
+                <MenuItem sc:CommandShortcut.Id="help.about" Header="_About QuickMail"
                           AutomationProperties.Name="About QuickMail"
                           Click="MenuAbout_Click"/>
             </MenuItem>

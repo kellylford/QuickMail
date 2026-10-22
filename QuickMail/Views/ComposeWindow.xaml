@@ -39,8 +39,8 @@
                 <MenuItem Header="_Send" sc:CommandShortcut.Id="compose.send" Click="MenuSend_Click"/>
                 <MenuItem Header="Save _Draft" Command="{Binding SaveDraftCommand}" sc:CommandShortcut.Id="compose.saveDraft"/>
                 <Separator/>
-                <MenuItem Header="_Insert Template…" Command="{Binding InsertTemplateCommand}"/>
-                <MenuItem Header="Save as _Template" Command="{Binding SaveAsTemplateCommand}"/>
+                <MenuItem sc:CommandShortcut.Id="compose.insertTemplate" Header="_Insert Template…" Command="{Binding InsertTemplateCommand}"/>
+                <MenuItem sc:CommandShortcut.Id="compose.saveAsTemplate" Header="Save as _Template" Command="{Binding SaveAsTemplateCommand}"/>
                 <Separator/>
                 <MenuItem Header="_Add Attachments…" Command="{Binding AddAttachmentsCommand}" sc:CommandShortcut.Id="compose.addAttachments"/>
                 <Separator/>
@@ -126,7 +126,7 @@
                 <MenuItem Header="Pre_vious Misspelling" sc:CommandShortcut.Id="compose.prevMisspelling"
                           IsEnabled="{Binding IsSpellNavAvailable}"
                           Click="MenuPrevMisspelling_Click"/>
-                <MenuItem Header="_Toggle Spelling Announcements" Click="MenuToggleSpelling_Click"/>
+                <MenuItem sc:CommandShortcut.Id="compose.toggleSpellingAnnouncements" Header="_Toggle Spelling Announcements" Click="MenuToggleSpelling_Click"/>
                 <Separator/>
                 <MenuItem Header="_Address Book…" sc:CommandShortcut.Id="compose.openAddressBook" Click="MenuAddressBook_Click"/>
                 <MenuItem Header="Chec_k Addresses" sc:CommandShortcut.Id="compose.checkAddresses" Click="MenuCheckAddresses_Click"/>

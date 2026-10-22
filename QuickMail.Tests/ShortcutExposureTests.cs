@@ -261,13 +261,74 @@ public class ShortcutExposureTests
             if (id is null) continue;
 
             var label = Label(e);
+            defaults.TryGetValue(id, out var actual);
             if (!expected.TryGetValue(label, out var key))
-                problems.Add($"{label} ({id}) is not in the table; add the key it should show.");
-            else if (!defaults.TryGetValue(id, out var actual) || actual != key)
-                problems.Add($"{label} names {id}, whose default is {actual ?? "unknown"}, but it showed {key}.");
+            {
+                // A command with no default key shows nothing until the user assigns one; which
+                // command it is, MenuItemsNamedLikeACommandNameThatCommand pins.
+                if (actual is not null)
+                    problems.Add($"{label} ({id}) is not in the table; add the key it should show.");
+            }
+            else if (actual != key)
+                problems.Add($"{label} names {id}, whose default is {actual ?? "none"}, but it showed {key}.");
         }
 
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+    }
+
+    /// <summary>
+    /// Menu items that are not commands by the same name: each would show a key that does
+    /// something else. Keyed by the item's label as <see cref="Label"/> reads it.
+    /// </summary>
+    private static readonly HashSet<string> NotTheCommandOfTheSameName =
+    [
+        "_Save…", // the attachment lists' Save saves the attachment, not the message (mail.save)
+    ];
+
+    /// <summary>
+    /// A menu item named like a registered command must name that command, or a key the user
+    /// assigns to it in Settings is never shown or reported there (#854: Calendar at Bottom of
+    /// Folder List, whose command has no default key, so #849 never gave its item an id).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(WindowFiles))]
+    public void MenuItemsNamedLikeACommandNameThatCommand(string xamlFile)
+    {
+        var titles = RegisteredTitles(Windows[xamlFile]);
+        var problems = new List<string>();
+        foreach (var e in Elements(xamlFile).Where(e => e.Name.LocalName == "MenuItem"))
+        {
+            var label = Label(e);
+            if (NotTheCommandOfTheSameName.Contains(label)) continue;
+            if (!titles.TryGetValue(Normalize(label), out var id)) continue;
+
+            var named = e.Attribute(XName.Get("CommandShortcut.Id", HelpersNs))?.Value;
+            if (named != id)
+                problems.Add($"{label} runs {id} but names {named ?? "no command"}.");
+        }
+
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+    }
+
+    // "Move to _Folder…" and the title "Move to Folder…" compare equal.
+    private static string Normalize(string label) =>
+        label.Replace("_", "").TrimEnd('…', '.', ' ').ToLowerInvariant();
+
+    private static Dictionary<string, string> RegisteredTitles(IEnumerable<string> sources)
+    {
+        var titles = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var source in sources)
+        {
+            var text = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", source));
+            foreach (Match m in Regex.Matches(text, @"new CommandDefinition\((.*?)\)\);", RegexOptions.Singleline))
+            {
+                var id = Regex.Match(m.Groups[1].Value, @"id:\s*""([^""]+)""");
+                var title = Regex.Match(m.Groups[1].Value, @"title:\s*""([^""]+)""");
+                if (id.Success && title.Success)
+                    titles[Normalize(title.Groups[1].Value)] = id.Groups[1].Value;
+            }
+        }
+        return titles;
     }
 
     private static string Label(XElement e) =>
