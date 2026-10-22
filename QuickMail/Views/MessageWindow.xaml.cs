@@ -89,6 +89,8 @@ public partial class MessageWindow : Window
         RegisterLocalCommands();
         if (_configService != null)
             _localRegistry.ApplyUserOverrides(TranslateMainOverrides(_configService.Load().CustomHotkeys));
+        // After the commands and the user's keys, so the menus and toolbar show them at once (#849).
+        CommandShortcut.SetRegistry(this, _localRegistry);
 
         Loaded += OnLoaded;
     }
@@ -122,6 +124,10 @@ public partial class MessageWindow : Window
             ["window.declineInvite"]    = "mail.declineInvite",
             ["window.close"]            = "mail.closeMessage",
         };
+
+    /// <summary>Takes the main window's key assignments after Settings has changed them (#849).</summary>
+    internal void ApplyMainWindowKeys(IEnumerable<HotkeyBinding> mainBindings) =>
+        _localRegistry.ApplyUserOverrides(TranslateMainOverrides(mainBindings));
 
     /// <summary>The user's key assignments for the main window's commands, re-keyed to this window's ids.</summary>
     internal static List<HotkeyBinding> TranslateMainOverrides(IEnumerable<HotkeyBinding> mainBindings)

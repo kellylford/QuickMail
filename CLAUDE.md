@@ -374,13 +374,14 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
     new site through it rather than testing `Keyboard.FocusedElement` directly, which is null both
     at startup and while the reading pane holds focus (issues #148, #672). See
     `docs/KEYBOARD-SHORTCUTS.md`.
-- **`InputGestureText` in menus** must match the registered default key, e.g. `InputGestureText="Ctrl+Shift+F"`.
+- **Show a shortcut with `sc:CommandShortcut.Id="mail.forward"`, never a literal** (`Helpers/CommandShortcut.cs`, issue #849). On a menu item or button it sets both what is drawn (`InputGestureText`) and what a screen reader is told (`AutomationProperties.AcceleratorKey`) from the window's registry, and follows a key rebound in Settings. `InputGestureText` on its own is visual only: WPF's `MenuItemAutomationPeer` never reports it, so a menu written that way showed Ctrl+R and was read as just "Reply R". For a button's tooltip use `sc:CommandShortcut.ToolTip="Forward"`, which shows "Forward (Ctrl+Shift+F)" from text inside a `Border`. WPF reports a tooltip's plain text as help text when there is none, and the toolbar was read as "New Message button New Message (Ctrl+N) Ctrl+N"; a Border has no plain text. Where a tooltip says more than the name, give that as `AutomationProperties.HelpText`, without the key. Each window sets `CommandShortcut.Registry` on itself; context menus resolve it through `PlacementTarget`. A key that is not a registry command (Ctrl+Shift+P, WPF's own editing commands) is written as a literal `InputGestureText` *and* a matching `AutomationProperties.AcceleratorKey`. `ShortcutExposureTests` enforces all of this against the XAML; add any new literal to its allowlist with the reason.
+- **No app setting for spoken shortcuts.** Whether a shortcut is read out is the screen reader's own setting; the app's job is only to report it.
 - **Category** must be one of: `View`, `Mail`, `Account`, `Contacts`, `Calendar`, `Settings`, `Help`. (`Calendar` added 2026-07-17 per the full-calendar spec, resolved question Q4.)
 
 ### Adding a new shortcut — checklist
 
 1. `_registry.Register(new CommandDefinition(id: "category.name", category: "…", title: "…", execute: MyMethod, defaultKey: Key.X, defaultModifiers: ModifierKeys.Control));`
-2. Add a menu item with matching `InputGestureText` if applicable.
+2. Add a menu item (and any toolbar button) with `sc:CommandShortcut.Id="category.name"`, not a literal `InputGestureText`.
 3. Do **not** add a duplicate hardcoded branch in `PreviewKeyDown`.
 
 See `docs/KEYBOARD-SHORTCUTS.md` for the full registered shortcut table and compose window details.

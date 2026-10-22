@@ -862,6 +862,10 @@ sealed class StubCommandRegistry : ICommandRegistry
     public void Unregister(string id) => _commands.Remove(id);
     public void ApplyUserOverrides(IEnumerable<HotkeyBinding> bindings) { }
     public IReadOnlyList<string> GetOrphanOverrideCommandIds() => [];
+    public string GetGestureText(string id) => FindById(id)?.GestureText ?? string.Empty;
+#pragma warning disable CS0067 // the stub never rebinds anything, so nothing ever raises it
+    public event EventHandler? BindingsChanged;
+#pragma warning restore CS0067
 
     // Test helpers
     public void RegisterTestCommand(string id, string category, string title)

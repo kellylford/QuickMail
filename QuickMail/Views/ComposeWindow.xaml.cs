@@ -136,6 +136,8 @@ public partial class ComposeWindow : Window
 
         // ── Compose command palette ──────────────────────────────────────────────
         RegisterComposeCommands();
+        // After registering, so the menus and toolbar are given their shortcuts at once (#849).
+        CommandShortcut.SetRegistry(this, _registry);
 
         vm.PropertyChanged += (_, e) =>
         {

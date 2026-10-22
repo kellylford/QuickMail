@@ -280,6 +280,7 @@ public partial class MainWindow : Window
         _connectivity     = connectivity;
         InitializeComponent();
         DataContext = vm;
+        CommandShortcut.SetRegistry(this, _registry);
         // The region's own Visibility, not IsVisible: IsVisible also changes when the window hides to the tray, and
         // does not change at all when the region empties while the window is hidden (review of #806).
         SenderAddressRegionVisibility.AddValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
@@ -1117,6 +1118,12 @@ public partial class MainWindow : Window
             id: "calendar.syncNow", category: "Calendar", title: "Sync Calendars Now",
             execute: SyncCalendarsNow,
             isAvailable: () => _graphCalendarSyncService != null));
+
+        // File > Settings… has shown Ctrl+, for a long time without anything handling it (#849).
+        _registry.Register(new CommandDefinition(
+            id: "settings.open", category: "Settings", title: "Settings…",
+            execute: () => MenuSettings_Click(this, new RoutedEventArgs()),
+            defaultKey: Key.OemComma, defaultModifiers: ModifierKeys.Control));
 
         _registry.Register(new CommandDefinition(
             id: "settings.toggleCustomAnnouncements", category: "Settings", title: "Toggle Custom Announcements",
@@ -7682,6 +7689,10 @@ public partial class MainWindow : Window
             var cfg = _configService.Load();
             _vm.ApplySettings(cfg);
             _registry.ApplyUserOverrides(cfg.CustomHotkeys);
+            // Open message windows keep their own registry; give them the new keys too, so what
+            // they run, show and report matches Settings without being reopened (#849).
+            foreach (var messageWindow in Application.Current.Windows.OfType<MessageWindow>())
+                messageWindow.ApplyMainWindowKeys(cfg.CustomHotkeys);
             // The plain-text preference may have changed; re-render the open message so a
             // Settings change takes effect live (focus is preserved). Theme changes already
             // re-render via ThemeChanged; this covers the plain-text flag when the theme is
@@ -8276,9 +8287,8 @@ public partial class MainWindow : Window
             var viewId  = view.Id.ToString();
             item.Click += (_, _) => _vm.SelectViewCommand.Execute(viewId);
 
-            // Show hotkey in menu if one is assigned.
-            if (!string.IsNullOrEmpty(view.Hotkey))
-                item.InputGestureText = view.Hotkey;
+            // The view's hotkey, if one is assigned, shown and spoken from its registry command (#849).
+            CommandShortcut.SetId(item, $"view.saved.{viewId}");
 
             ViewsMenuItem.Items.Insert(i, item);
         }

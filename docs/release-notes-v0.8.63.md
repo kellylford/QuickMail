@@ -12,6 +12,24 @@ to 2.7.0. A security scan had flagged the older Bouncy Castle version.
 With debug logging on, QuickMail no longer writes the email address of each contact you save
 to its log.
 
+### Shortcut keys are reported to screen readers
+
+Menu items, toolbar buttons and context menu items now give screen readers their shortcut keys,
+so Reply's Ctrl+R can be heard along with it. Until now most menus only showed the key on
+screen. Your screen reader's settings decide whether the key is read out. (#849)
+
+- Keys you reassign in **Settings → Keyboard Shortcuts** now show in the menus, toolbar tooltips
+  and command palette, and are the keys screen readers are given. Before, all of them kept
+  showing the original key.
+- Toolbar buttons no longer read their name and shortcut twice.
+- The message list's context menu now shows the keys for Reply, Reply All, Forward and Delete,
+  and the folder menu shows Delete for Delete Folder.
+
+## Fixed
+
+- **Ctrl+, opens Settings.** The File menu has long shown Ctrl+, for Settings, but the key did
+  nothing. (#849)
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
