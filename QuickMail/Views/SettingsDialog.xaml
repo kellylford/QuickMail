@@ -611,7 +611,7 @@
                               BorderThickness="1"
                               Margin="0,0,0,6"
                               IsTextSearchEnabled="False"
-                              PreviewKeyDown="HotkeyListView_PreviewKeyDown"
+                              PreviewTextInput="HotkeyListView_PreviewTextInput"
                               KeyDown="HotkeyListView_KeyDown"
                               SelectionChanged="HotkeyListView_SelectionChanged"
                               AutomationProperties.Name="Keyboard shortcuts list">

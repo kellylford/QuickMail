@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -86,24 +87,27 @@ public partial class SettingsDialog : Window
 
     // First-letter navigation in the shortcuts list (#852), the same hand-rolled type-ahead as the
     // folder tree: W moves to the next command whose name starts with W, W again a moment later to
-    // the one after, and letters typed quickly match more of the name. Handled in PreviewKeyDown and
-    // always marked handled, matched or not: a bare letter that reached the window would fire one of
-    // the dialog's access keys without Alt (G for the General tab, A for Advanced), as "c" once
-    // closed the folder picker (#418). Handling the key down also suppresses its TextInput, so WPF's
-    // own TextSearch, which this list leaves off, never sees it.
-    private readonly TypeAheadPrefixTracker _hotkeyTypeAhead = new();
+    // the one after, and letters typed quickly match more of the name.
+    //
+    // Every typed character is taken here and marked handled, matched or not, capitals and AltGr
+    // characters included. Text that reaches the window fires the dialog's access keys without Alt:
+    // Shift+S would run Save, Shift+C Cancel, G switch to the General tab, as "c" once closed the
+    // folder picker (#418). WPF's own TextSearch is off on this list; it lets unmatched text through.
+    // Alt+letter arrives as system text, not here, so the access keys still work with Alt.
+    internal TypeAheadPrefixTracker HotkeyTypeAhead { get; set; } = new();
 
-    private void HotkeyListView_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void HotkeyListView_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
-        if (!TreeViewFocusHelper.TryGetTypeAheadKeyText(e, out var text)) return;
+        if (string.IsNullOrWhiteSpace(e.Text) || e.Text.Any(char.IsControl)) return;
         e.Handled = true;
-        TryHotkeyTypeAhead(text);
+        TryHotkeyTypeAhead(e.Text);
     }
 
     /// <summary>Moves the shortcuts list to the next command matching the typed text; false if none does.</summary>
     internal bool TryHotkeyTypeAhead(string text)
     {
-        if (!_hotkeyTypeAhead.TryPeek(text, HotkeyListView, out var prefix)) return false;
+        // Recorded matched or not, like the other lists: "r", "x", "e" searches for "rxe".
+        if (!HotkeyTypeAhead.TryAppend(text, HotkeyListView, out var prefix)) return false;
 
         var rows = _vm.HotkeyRows;
         var current = _vm.SelectedHotkey is { } selected ? rows.IndexOf(selected) : -1;
@@ -113,7 +117,6 @@ public partial class SettingsDialog : Window
         var index = TypeAheadMatcher.FindNext(rows, r => r.Title, start, prefix);
         if (index < 0) return false;
 
-        _hotkeyTypeAhead.Commit(prefix, HotkeyListView);
         var row = rows[index];
         _vm.SelectedHotkey = row;
         HotkeyListView.ScrollIntoView(row);
