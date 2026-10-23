@@ -737,8 +737,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         // count: a switched-off condition never reaches the saved rule (#665).
         var addressProblems = new[]
             {
-                ("From addresses", UseFromAddresses ? FromAddresses : null),
-                ("Sent to addresses", UseSentToAddresses ? SentToAddresses : null),
+                ("From any of these addresses", UseFromAddresses ? FromAddresses : null),
+                ("Sent to any of these addresses", UseSentToAddresses ? SentToAddresses : null),
                 ("Forward to", ForwardTo),
             }
             .Select(f => RuleRecipient.FindProblem(f.Item2) is { } problem ? $"{f.Item1} {problem}." : null)

@@ -55,7 +55,7 @@ to", the same way a Microsoft 365 server-side rule already did, rather than "fro
 - **Ctrl+, opens Settings.** The File menu has long shown Ctrl+, for Settings, but the key did
   nothing. (#849)
 
-### Switched-off From addresses are kept
+### A rule's switched-off addresses are kept
 
 If you switched **From any of these addresses** off and **Sender contains** on, then saved, the
 addresses were thrown away, so switching back found an empty box. They are now kept, switched
