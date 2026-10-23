@@ -665,7 +665,8 @@ public class ClientRuleConditionsTests
         // MailMessageSummary.From is the sender's DISPLAY NAME where there is one, and an Exchange
         // address book routinely makes that "Last, First". Carried into an address field, the comma
         // would be read as a separator and "Rule for Ford, Kelly" would file mail from anyone called
-        // Ford as well as anyone called Kelly. The prefill is a substring match on the sender instead.
+        // Ford as well as anyone called Kelly. So the name only ever goes in Sender contains, a substring match on
+        // the sender; Create Rule from Message puts the sender's bare address, never the name, in the address list.
         var vm = ServerRuleEditorViewModel.ForNewFromTemplate(new MailRule
         {
             Name = "Rule for Ford, Kelly",

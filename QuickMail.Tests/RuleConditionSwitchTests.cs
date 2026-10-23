@@ -31,7 +31,7 @@ public class RuleConditionSwitchTests
         SenderContains = from,
         UseSenderCondition = true,
         SubjectContains = subject,
-        UseSubjectCondition = false,   // what MainViewModel.CreateRuleFromMessage now builds
+        UseSubjectCondition = false,   // Create Rule from Message's shape for a row with no address yet
     };
 
     // ── Ctrl+Shift+T prefill ────────────────────────────────────────────────
