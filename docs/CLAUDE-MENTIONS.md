@@ -49,7 +49,10 @@ cannot edit anything under `.github/workflows/` when mentioned.
 
 ### 2. An authentication secret
 
-One of these, as a repository secret:
+One of these, as a secret of a GitHub environment that the Claude job enters (with a
+deployment-branch policy or required reviewer), not as a repository secret: any workflow a
+collaborator pushes to any branch can read a repository secret. See "Secrets, environments
+and releasing" in CLAUDE.md.
 
 - **`ANTHROPIC_API_KEY`** — an API key from the Claude Console. Usage bills to the API
   account.

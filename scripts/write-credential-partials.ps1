@@ -34,11 +34,17 @@ function ConvertTo-CSharpLiteral([string]$value) {
 $names = 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'BUG_REPORT_RELAY_URL', 'BUG_REPORT_RELAY_KEY'
 $values = @{}
 foreach ($name in $names) {
-    $values[$name] = if ($Release) { [Environment]::GetEnvironmentVariable($name) } else { '' }
+    # Trimmed: a secret pasted with a trailing newline or space is the usual way a value goes
+    # wrong, and an embedded line break would end the C# string literal mid-value.
+    $values[$name] = if ($Release) { "$([Environment]::GetEnvironmentVariable($name))".Trim() } else { '' }
 }
 
 if ($Release) {
-    $missing = @($names | Where-Object { [string]::IsNullOrEmpty($values[$_]) })
+    $broken = @($names | Where-Object { $values[$_] -match "[`r`n]" })
+    if ($broken.Count -gt 0) {
+        throw "Release build: $($broken -join ', ') contains a line break inside the value. Re-set the secret in the 'azure-signing' environment."
+    }
+    $missing = @($names | Where-Object { [string]::IsNullOrWhiteSpace($values[$_]) })
     if ($missing.Count -gt 0) {
         throw ("Release build is missing: $($missing -join ', '). The secrets live in the " +
                "'azure-signing' environment (BUG_REPORT_RELAY_URL is a repository variable); " +

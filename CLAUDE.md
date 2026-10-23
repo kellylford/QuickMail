@@ -90,15 +90,12 @@ tags, so a run started on any other branch is refused rather than publishing tha
 **Automatic publish** — the `publish-guide` job at the end of `quickmail.yml` calls this
 workflow after the release job, on every `v*` tag.
 
-Do **not** rely on the `release: published` trigger in `publish-user-guide.yml` for that.
-It is real but never fires for our releases: `softprops/action-gh-release` creates them
-with `GITHUB_TOKEN`, and GitHub does not start workflow runs from events a `GITHUB_TOKEN`
-raised. It has never worked (the trigger dates from the workflow's first commit,
-53ae694), and went unnoticed because somebody always ran the workflow by hand a minute
-after tagging — until 0.8.44 shipped and nobody did, leaving the site saying 0.8.43 with
-none of the offline documentation on it. The trigger is kept only for a release made
-by hand in the GitHub UI, which does raise the event; that path does not re-run
-`quickmail.yml`, so the two cannot double up.
+There is no `release: published` trigger any more. It never fired for our releases
+(`softprops/action-gh-release` creates them with `GITHUB_TOKEN`, and GitHub does not start
+workflow runs from events a `GITHUB_TOKEN` raised — 0.8.44 shipped with the site still
+saying 0.8.43 because of it), and for a release made by hand it let anyone with write access
+republish an old tag's docs. The publish job runs only on `main` or in a `v*` tag push's
+release run; after a release made by hand, run the workflow on `main`.
 
 The version shown on the page comes from the **v\* tags**, not from anything in
 `USER-GUIDE.md` — the guide contains no version string. It is the tag on the commit being
@@ -155,6 +152,17 @@ environment**, and the environment's protection decides which runs get in:
 | `live-smoke` | `main` only | `LIVE_IMAP_HOST`, `LIVE_IMAP_PORT`, `LIVE_IMAP_SSL`, `LIVE_SMTP_HOST`, `LIVE_SMTP_PORT`, `LIVE_SMTP_SSL`, `LIVE_USER`, `LIVE_PASSWORD` | `live-smoke.yml` |
 | `github-pages` | `main` and `v*` tags | none | `publish-user-guide.yml` |
 
+These protections lean on two repository rules as well, and neither may be loosened: the
+**"Tags: admins only"** tag ruleset (otherwise a collaborator could push a `v*` tag and the
+`github-pages` environment would admit their run), and **code-owner review on `main`**
+(otherwise a collaborator could merge an edited workflow to `main` and the main-only
+environments would hand it their secrets).
+
+Known gap: app code under `QuickMail/` is not code-owned, and the live smoke tests run it in
+the same process as the `LIVE_*` variables. Code a collaborator merged could read the
+mailbox password on the next Live Smoke run. A required reviewer on `live-smoke` closes it,
+at the cost of every scheduled run waiting for approval.
+
 - **Pull requests, `main` pushes, CodeQL, the flaky hunt and the winget matrix read no
   secrets.** They compile against empty placeholder credentials written by
   `scripts/write-credential-partials.ps1`; nothing they run signs in to Google or files a bug
@@ -163,7 +171,21 @@ environment**, and the environment's protection decides which runs get in:
   if a value is missing rather than shipping an app whose Google sign-in silently fails.
 - `BUG_REPORT_RELAY_KEY` is in two environments and **the two copies must match** — the app
   compiled in `azure-signing` sends the key the Worker deployed from `relay` checks.
-- Every workflow declares its own `permissions:`; the repository default token is read-only.
+- Every workflow declares its own `permissions:`; set the repository default token to
+  read-only (Settings → Actions → Workflow permissions).
+
+**Settings that go with this** (all at once, right around merging the change that brought it
+in, or releases break or holes stay open):
+1. Create the environments and their secrets as in the table above.
+2. `azure-signing`: Kelly as required reviewer, no self-review bypass for others.
+3. `relay` and `live-smoke`: deployment branches `main` only.
+4. Pages: build type "GitHub Actions" (`scripts/setup-gh-pages.ps1`). `github-pages`:
+   deployment branches `main` and tags `v*` only — remove `gh-pages`, which would let anyone
+   push a workflow to that branch and deploy from it.
+5. `main` ruleset: require review from Code Owners.
+6. Workflow permissions default: read.
+7. Delete **every** repository secret (`gh secret list` must come back empty), including any
+   no workflow uses. A repository secret left behind is readable from any branch.
 
 **A tag run waits for Kelly's approval.** Pushing `v<version>` starts `quickmail.yml`, whose
 `build` job then waits on `azure-signing`. After Kelly says "go", approve **only the tag run he

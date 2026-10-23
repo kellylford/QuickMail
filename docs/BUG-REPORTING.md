@@ -58,7 +58,6 @@ repository secret, but an environment's secrets reach only jobs the environment 
 | `RELAY_GITHUB_INSTALLATION_ID` | `relay` | deploy workflow | synced to the Worker |
 | `RELAY_GITHUB_PRIVATE_KEY` | `relay` | deploy workflow | synced to the Worker |
 | `CLOUDFLARE_API_TOKEN` | `relay` | deploy workflow | authenticates the deploy |
-| `BUG_REPORT_TOKEN` | *legacy* | nothing | the pre-relay PAT — see "Retiring the old token" |
 
 `azure-signing` requires Kelly's approval; `relay` admits only runs of `main`.
 
@@ -228,7 +227,7 @@ Once a release carrying the relay has been out long enough that un-updated insta
 matter:
 
 1. Revoke the PAT at <https://github.com/settings/tokens>.
-2. Delete the `BUG_REPORT_TOKEN` repository secret (nothing reads it).
+2. The `BUG_REPORT_TOKEN` repository secret that once held it has already been deleted.
 
 After that, old builds fall back to the clipboard path rather than filing silently as you.
 

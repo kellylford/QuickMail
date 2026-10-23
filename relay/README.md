@@ -191,7 +191,7 @@ dashboard** → **Workers & Pages** → `quickmail-bug-relay` → **Logs**.
 Installs that have not updated yet still post to `api.github.com` with the old PAT, so
 revoking it early breaks bug reporting for exactly the users least likely to notice why.
 Ship the release first, give it a few weeks, then revoke the PAT at
-<https://github.com/settings/tokens> and delete the `BUG_REPORT_TOKEN` repository secret.
+<https://github.com/settings/tokens> (the `BUG_REPORT_TOKEN` repository secret is already gone).
 
 ## If the relay key leaks
 
