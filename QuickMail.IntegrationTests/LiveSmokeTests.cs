@@ -97,8 +97,8 @@ public sealed class LiveSmokeTests
     // ── Environment plumbing ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Builds the account from LIVE_* environment variables (populated from repository
-    /// secrets by the workflow). Skips the test when they are absent — locally and on every
+    /// Builds the account from LIVE_* environment variables (populated from the live-smoke
+    /// environment's secrets by the workflow, on main only). Skips the test when they are absent — locally and on every
     /// PR run, this suite is a no-op by design.
     /// </summary>
     private static (AccountModel Account, string Password) RequireLiveAccount()

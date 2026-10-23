@@ -8,9 +8,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Read-only by default; each job asks for exactly what it needs below.
 permissions:
-  contents: write   # create the GitHub release
-  id-token: write   # OIDC token azure/login exchanges for Azure creds (signing)
+  contents: read
 
 jobs:
   # Protocol integration tests against a local GreenMail server (IMAP/SMTP), per
@@ -28,36 +28,11 @@ jobs:
           dotnet-version: '10.0.x'
 
       # The gitignored credential partial classes are required to compile QuickMail.csproj.
-      # Same generation as the build job; the values themselves are never used by these tests.
-      - name: Write Google OAuth credentials
+      # These tests never use the values, so they are empty placeholders on every event: this
+      # job runs code from any branch a collaborator pushes, so it must never see a secret.
+      - name: Write placeholder credential partials
         shell: pwsh
-        env:
-          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class GoogleOAuthService
-          {
-              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
-              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
-
-      - name: Write bug-report credentials
-        shell: pwsh
-        env:
-          BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
-          BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class BugReportService
-          {
-              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
-              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+        run: ./scripts/write-credential-partials.ps1
 
       - name: Cache GreenMail jar
         uses: actions/cache@v6
@@ -115,13 +90,27 @@ jobs:
 
   build:
     runs-on: windows-latest
-    # Runs in the `azure-signing` environment so the OIDC token's subject is
-    # repo:kellylford/QuickMail:environment:azure-signing, which the Azure
-    # federated credential trusts (wildcard tag subjects aren't supported in this
-    # tenant). This is ONLY a claim-matching mechanism, not a deployment gate — do
-    # not add protection rules to this environment or every build, including PRs,
-    # will require approval. Signing still only runs on v* tags (below).
-    environment: azure-signing
+    # contents: write creates the GitHub release; id-token: write lets azure/login exchange
+    # the OIDC token for Azure credentials. Both are only used on v* tag runs, but a job's
+    # permissions cannot depend on the event, and splitting the release into its own job
+    # would rename or duplicate this required `build` check. Neither grants anything on a
+    # PR run: a collaborator already has write access, and the OIDC subject of a run outside
+    # the environment is not one the Azure federated credential trusts.
+    permissions:
+      contents: write
+      id-token: write
+    # The `azure-signing` environment holds every secret this job can use (the Azure ids and
+    # the release copies of the Google OAuth and bug-report credentials), and its OIDC
+    # subject, repo:kellylford/QuickMail:environment:azure-signing, is the only one the
+    # Azure federated credential trusts (wildcard tag subjects aren't supported in this
+    # tenant). It REQUIRES KELLY'S APPROVAL, and that is the point: repository secrets are
+    # readable by any workflow a collaborator pushes to any branch, environment secrets only
+    # by a job the environment's protection lets in. So only v* tag runs enter it; PR, main
+    # and dispatch runs build with placeholder credentials, read no secrets and never wait.
+    # Do not remove the reviewer, and do not make this environment unconditional: either one
+    # would put signing and the release secrets back within reach of any branch. An empty
+    # string here means "no environment".
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'azure-signing' || '' }}
 
     steps:
       - uses: actions/checkout@v7
@@ -130,35 +119,23 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Write Google OAuth credentials
+      # Real values only on a tag run, which is inside azure-signing; the script fails the
+      # release if any is missing rather than shipping an app whose Google sign-in and bug
+      # reports silently do not work. Every other run gets empty placeholders.
+      - name: Write release credential partials
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class GoogleOAuthService
-          {
-              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
-              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
-
-      - name: Write bug-report credentials
-        shell: pwsh
-        env:
           BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
           BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class BugReportService
-          {
-              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
-              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+        run: ./scripts/write-credential-partials.ps1 -Release
+
+      - name: Write placeholder credential partials
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        shell: pwsh
+        run: ./scripts/write-credential-partials.ps1
 
       - name: Test
         shell: pwsh
@@ -654,12 +631,16 @@ jobs:
   # when nobody did, 0.8.44 shipped while the site kept saying 0.8.43. Calling the
   # workflow directly needs no PAT and cannot be forgotten.
   #
-  # The version on the published page is read from QuickMail.csproj, not from the tag,
-  # so this must run off the same tagged commit the release was built from -- which a
-  # `needs: build` job in this run does by construction.
+  # The guide's content must come from the same tagged commit the release was built from --
+  # which a `needs: build` job in this run gives by construction. Because build waits for
+  # Kelly's approval of azure-signing on a tag, so does this.
   publish-guide:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     uses: ./.github/workflows/publish-user-guide.yml
+    # The called workflow deploys through the official Pages action into the github-pages
+    # environment; these are the most it may ask for.
     permissions:
-      contents: write   # the called workflow pushes the gh-pages branch
+      contents: read
+      pages: write
+      id-token: write

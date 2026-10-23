@@ -3,7 +3,13 @@
 # required check (real servers bring rate limits and flakiness; GreenMail covers the per-PR
 # regression surface). Skips cleanly when the LIVE_* secrets are absent (e.g. forks).
 #
-# Required repository secrets (see docs/TESTING-INTEGRATION.md):
+# The LIVE_* values are secrets of the `live-smoke` environment, not repository secrets, and
+# that environment only admits runs of main (deployment-branch policy). Repository secrets
+# are readable by any workflow a collaborator pushes to any branch; these are a real
+# mailbox's password, so only main's reviewed copy of this workflow may read them. A
+# dispatch from another branch is refused by the environment rather than run.
+#
+# Required secrets in the live-smoke environment (see docs/TESTING-INTEGRATION.md):
 #   LIVE_IMAP_HOST   IMAP server hostname
 #   LIVE_USER        full account/login (also the self-send address)
 #   LIVE_PASSWORD    account password or app password
@@ -28,6 +34,8 @@ concurrency:
 jobs:
   smoke:
     runs-on: windows-latest
+    # Holds the LIVE_* secrets; main only. See the header.
+    environment: live-smoke
 
     steps:
       - uses: actions/checkout@v7
@@ -37,35 +45,11 @@ jobs:
           dotnet-version: '10.0.x'
 
       # The gitignored credential partial classes are required to compile QuickMail.csproj.
-      - name: Write Google OAuth credentials
+      # The smoke tests talk IMAP/SMTP to the LIVE_* account and never use the Google OAuth
+      # or bug-report values, so those are empty placeholders, not secrets.
+      - name: Write placeholder credential partials
         shell: pwsh
-        env:
-          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class GoogleOAuthService
-          {
-              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
-              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
-
-      - name: Write bug-report credentials
-        shell: pwsh
-        env:
-          BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
-          BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class BugReportService
-          {
-              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
-              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+        run: ./scripts/write-credential-partials.ps1
 
       - name: Run live smoke tests
         shell: pwsh

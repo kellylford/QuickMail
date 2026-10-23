@@ -80,7 +80,9 @@ send-to-self round-trip that deletes what it sent — against a **real** mail ac
 skip everywhere the `LIVE_*` environment variables are absent, so they are a no-op locally and
 in the per-PR integration job.
 
-Setup (repository secrets): `LIVE_IMAP_HOST`, `LIVE_USER`, `LIVE_PASSWORD` required;
+Setup (secrets of the **`live-smoke` environment**, which admits only runs of `main` — not
+repository secrets, which any collaborator's branch could read): `LIVE_IMAP_HOST`,
+`LIVE_USER`, `LIVE_PASSWORD` required;
 `LIVE_IMAP_PORT` (993), `LIVE_IMAP_SSL` (1), `LIVE_SMTP_HOST` (=IMAP host), `LIVE_SMTP_PORT`
 (587), `LIVE_SMTP_SSL` (0 = STARTTLS) optional. Use a **dedicated mailbox on an owned domain**
 — the suite writes to and deletes from the real INBOX. On failure the workflow comments on (or

@@ -35,6 +35,11 @@ on:
     branches:
       - 'flaky-hunt/**'
 
+# Checkout only. No secrets either: a pushed flaky-hunt/** branch runs its own copy of this
+# file, so anything it could read, any collaborator could.
+permissions:
+  contents: read
+
 jobs:
   hunt:
     runs-on: windows-latest
@@ -48,37 +53,11 @@ jobs:
           dotnet-version: '10.0.x'
 
       # The two credential partials are gitignored, so the tree does not build without
-      # them. The values are irrelevant here — nothing in the unit tests calls out — but
-      # they must exist and must be the real secrets on this repo, same as every other job.
-      - name: Write Google OAuth credentials
+      # them. The values are irrelevant here — nothing in the unit tests calls out — so they
+      # are empty placeholders: this runs on any flaky-hunt/** branch, so no secrets.
+      - name: Write placeholder credential partials
         shell: pwsh
-        env:
-          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class GoogleOAuthService
-          {
-              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
-              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
-
-      - name: Write bug-report credentials
-        shell: pwsh
-        env:
-          BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
-          BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class BugReportService
-          {
-              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
-              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+        run: ./scripts/write-credential-partials.ps1
 
       - name: Build once
         shell: pwsh

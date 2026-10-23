@@ -1,2 +1,50 @@
-# All files — Kelly reviews all PRs (add @CityDweller here when ready to share review load)
-* @kellylford
+# Paths that need Kelly's review before they reach main.
+#
+# Not every file: collaborators can review and merge ordinary app changes among themselves.
+# These are the files that decide what CI runs, what a release build compiles and signs,
+# what the website publishes, and where secrets go. Release and deploy runs execute main's
+# copy of them with the secrets of the azure-signing, relay and live-smoke environments in
+# reach (and the github-pages deploy permission), so a change here that slipped through
+# review could reach those secrets, the signing certificate or the live site at the next
+# release or deploy. With code-owner review required on main, a change to any of them waits
+# for @kellylford.
+#
+# Every rule names the same owner, so their order does not matter.
+
+# CI: workflows, the pinned vpk version, Dependabot, and this file itself.
+/.github/                          @kellylford
+
+# The bug-report relay: main pushes under relay/ deploy to Cloudflare automatically.
+/relay/                            @kellylford
+
+# Test projects and the fixtures library they build. Tests run inside the release build job,
+# before signing, in the same job that holds the release credentials.
+/QuickMail.Tests/                  @kellylford
+/QuickMail.IntegrationTests/       @kellylford
+/Tools/                            @kellylford
+
+# Build and packaging: MSBuild inputs (anything here runs during the release build), the SDK
+# pin, the solution, the local build script, and the installer and winget configuration.
+/Directory.Build.props             @kellylford
+/global.json                       @kellylford
+/QuickMail.sln                     @kellylford
+/build.bat                         @kellylford
+*.csproj                           @kellylford
+*.props                            @kellylford
+*.targets                          @kellylford
+nuget.config                       @kellylford
+NuGet.config                       @kellylford
+/installer/                        @kellylford
+
+# Scripts CI runs: credential partials, test servers, the release-history generator the
+# Pages deploy uses, the winget matrix probe.
+/scripts/                          @kellylford
+
+# What the release and the Pages site publish verbatim.
+/docs/USER-GUIDE.md                @kellylford
+/docs/release-notes-*.md           @kellylford
+/docs/download-footer.md           @kellylford
+/docs/reporting-issues-footer.md   @kellylford
+/docs/privacy.html                 @kellylford
+/docs/github-release-download-numbers.md  @kellylford
+/docs/*.Credentials.example        @kellylford
