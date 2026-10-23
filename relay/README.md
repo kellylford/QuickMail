@@ -25,8 +25,8 @@ time rather than install time.
 
 The **Deploy bug-report relay** workflow
 (`.github/workflows/deploy-relay.yml`) runs on x64 Linux instead. Every value the Worker
-needs is a repository secret; the workflow pushes both the code and the secrets. You never
-run wrangler.
+needs is a secret of the `relay` GitHub environment; the workflow pushes both the code and
+the secrets. You never run wrangler.
 
 The tests in `test/` deliberately use only the Node standard library, so they stay runnable
 here:
@@ -86,9 +86,13 @@ permissions and a zone-scoped one, and there is no zone here to scope it to.
 
 Copy the token. Like the private key, it is shown once.
 
-### 3. Set the repository secrets
+### 3. Set the relay environment's secrets
 
-At <https://github.com/kellylford/QuickMail/settings/secrets/actions>:
+At <https://github.com/kellylford/QuickMail/settings/environments>, in the **`relay`**
+environment (create it if needed, with the deployment-branch policy "Selected branches and
+tags" → `main` only). Not as repository secrets: any workflow a collaborator pushes to any
+branch can read a repository secret, while the `relay` environment only lets `main`'s deploy
+job in.
 
 | Secret | Value |
 |---|---|
@@ -98,8 +102,11 @@ At <https://github.com/kellylford/QuickMail/settings/secrets/actions>:
 | `RELAY_GITHUB_PRIVATE_KEY` | the entire `.pem` file, `-----BEGIN`/`-----END` lines included |
 | `BUG_REPORT_RELAY_KEY` | a long random string you generate (below) |
 
-The `RELAY_` prefixes are not decoration: GitHub rejects repository secrets whose names begin
-with `GITHUB_`.
+The `RELAY_` prefixes are not decoration: GitHub rejects secrets whose names begin with
+`GITHUB_`.
+
+`BUG_REPORT_RELAY_KEY` must **also** be set, to the same value, in the `azure-signing`
+environment: that is where the release build reads the copy it compiles into the app.
 
 Either PEM format works — the Worker converts PKCS#1 to PKCS#8 itself, so paste whichever
 GitHub gave you.
@@ -110,7 +117,8 @@ To generate the relay key:
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Keep that value: step 5 needs it again, and it is not readable back out of GitHub.
+Keep that value: the `azure-signing` copy above needs it, and it is not readable back out of
+GitHub.
 
 ### 3b. Register a workers.dev subdomain
 
@@ -132,7 +140,8 @@ The workflow must be on `main` before it can be run — GitHub only registers
 with a 404 that reads as if the file does not exist.
 
 **Actions** → **Deploy bug-report relay** → **Run workflow**, and tick **Also push the
-Worker's secrets from repository secrets**. That box is off by default so a routine code
+Worker's secrets from the relay environment's secrets**, on `main`. That box is off by
+default so a routine code
 redeploy cannot blank the Worker's secrets; it needs to be on for this first run and any time
 a secret changes.
 
@@ -152,8 +161,9 @@ repository **variable** (not a secret):
 |---|---|
 | `BUG_REPORT_RELAY_URL` | the Worker URL from step 4, plus `/report` |
 
-CI compiles that URL and `BUG_REPORT_RELAY_KEY` into release builds. The next release picks
-them up; nothing further is needed per build.
+CI compiles that URL and the `azure-signing` environment's `BUG_REPORT_RELAY_KEY` into
+release builds (and the on-demand installer); no other build reads them. The next release
+picks them up; nothing further is needed per build.
 
 ### 6. Check it works
 
@@ -187,8 +197,8 @@ Ship the release first, give it a few weeks, then revoke the PAT at
 
 It will eventually — it ships in a public binary, and that is the design assumption, not a
 failure. The blast radius is junk issues on one repo. To cut it off: update the
-`BUG_REPORT_RELAY_KEY` repository secret, re-run the deploy workflow **with the secrets box
-ticked**, and ship a build. Older installs fall back to the pre-filled issue URL and
+`BUG_REPORT_RELAY_KEY` secret in both the `relay` and `azure-signing` environments, re-run the
+deploy workflow on `main` **with the secrets box ticked**, and ship a build. Older installs fall back to the pre-filled issue URL and
 clipboard path, which needs no relay at all.
 
 Nothing about a leaked relay key touches your GitHub account, the App's private key, or any

@@ -15,11 +15,17 @@ name: Build Installer (on demand)
 # license acceptance, conclusion — nor MSI packing and signing. Those first run on a pushed
 # v* tag. Test the wizard against a release candidate, not against this artifact.
 #
-# Why this exists: the real Google OAuth client id/secret and the bug-report token
-# live only in GitHub Actions secrets. A locally built installer compiles against the
-# placeholder credentials in the working tree, so Google account sign-in does not work.
-# Only a CI build injects the real secrets, so this is the way to get a testable
-# installer before you are ready to cut a release.
+# Why this exists: the real Google OAuth client id/secret and the bug-report relay key
+# live only in the `azure-signing` environment's secrets. A locally built installer
+# compiles against the placeholder credentials in the working tree, so Google account
+# sign-in does not work. Only a CI build injects the real secrets, so this is the way to
+# get a testable installer before you are ready to cut a release.
+#
+# EVERY RUN WAITS FOR KELLY'S APPROVAL. The job enters `azure-signing`, which requires his
+# review, because it signs with the project's certificate and reads the release secrets --
+# and since it can be started on any branch, without that gate anyone with write access
+# could sign their own code or read those secrets. That is intended: signing is Kelly-only.
+# Approve a run only when you know what branch and commit it is building.
 #
 # Publishing a release is still the job of .github/workflows/quickmail.yml, which runs
 # only on a pushed v* tag. This workflow never creates a release.
@@ -47,8 +53,10 @@ permissions:
 jobs:
   build-installer:
     runs-on: windows-latest
-    # Same azure-signing environment the release workflow uses, so the OIDC token
-    # subject matches the Azure federated credential. Unprotected; not a gate.
+    # Same azure-signing environment the release workflow uses: it holds the secrets read
+    # below, and its OIDC subject is the one the Azure federated credential trusts. It is
+    # protected by a required reviewer (Kelly), so this job waits for approval -- see the
+    # header. Do not remove the reviewer to skip the wait.
     environment: azure-signing
 
     strategy:
@@ -65,37 +73,17 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # Inject the real Google OAuth credentials from repo secrets — the whole reason
-      # this workflow exists. Mirrors the step in quickmail.yml.
-      - name: Write Google OAuth credentials
+      # Inject the real Google OAuth and bug-report credentials from the azure-signing
+      # environment -- the whole reason this workflow exists. The script fails the run if
+      # any is missing, rather than producing an installer whose sign-in silently fails.
+      - name: Write release credential partials
         shell: pwsh
         env:
           GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class GoogleOAuthService
-          {
-              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
-              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
-
-      - name: Write bug-report credentials
-        shell: pwsh
-        env:
           BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
           BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class BugReportService
-          {
-              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
-              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+        run: ./scripts/write-credential-partials.ps1 -Release
 
       - name: Publish
         # -warnaserror: fail the build on any warning, matching quickmail.yml. An

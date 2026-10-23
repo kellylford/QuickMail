@@ -80,9 +80,12 @@ The user guide (`docs/USER-GUIDE.md`) is automatically converted to HTML and pub
 ### Publishing the User Guide
 
 **Manual publish** — any time, independent of release:
-1. Go to **Actions** → **Publish User Guide** → **Run workflow** (green button)
+1. Go to **Actions** → **Publish User Guide** → **Run workflow** (green button), **on `main`**
 2. Workflow generates single-page (`full.html`) and sectioned HTML with navigation (`index.html`)
 3. Deployed to `https://kellylford.github.io/QuickMail/`
+
+The deploy goes through the `github-pages` environment, which admits only `main` and `v*`
+tags, so a run started on any other branch is refused rather than publishing that branch.
 
 **Automatic publish** — the `publish-guide` job at the end of `quickmail.yml` calls this
 workflow after the release job, on every `v*` tag.
@@ -121,7 +124,7 @@ without needing pandoc.
 **Before you ship a release**: Update `docs/USER-GUIDE.md` with any changes. The tag
 publishes it; a manual run is only for guide edits between releases.
 
-**The Pages site is more than the user guide.** `peaceiris/actions-gh-pages` replaces the whole `gh-pages` branch on every run, so anything that is not written into `build/docs/` during the workflow is deleted on deploy — a file added to the branch by hand does not survive. That is why `docs/privacy.html` 404'd for months while sitting in the repository (issue #556). Every standalone page is therefore either generated (the articles step) or copied (`docs/privacy.html`) inside the workflow. The privacy URL, `https://kellylford.github.io/QuickMail/privacy.html`, is cited by Google OAuth verification and by the winget manifest's `PrivacyUrl`; the copy step fails the run rather than deploying without it.
+**The Pages site is more than the user guide.** Every deploy (GitHub's `actions/deploy-pages`, formerly `peaceiris/actions-gh-pages` onto a `gh-pages` branch) replaces the whole site, so anything that is not written into `build/docs/` during the workflow is deleted on deploy — there is no branch to add a file to by hand, and the old `gh-pages` branch is no longer served. That is why `docs/privacy.html` 404'd for months while sitting in the repository (issue #556). Every standalone page is therefore either generated (the articles step) or copied (`docs/privacy.html`) inside the workflow. The privacy URL, `https://kellylford.github.io/QuickMail/privacy.html`, is cited by Google OAuth verification and by the winget manifest's `PrivacyUrl`; the copy step fails the run rather than deploying without it.
 
 **Keep `docs/privacy.html` current with the code.** It enumerates the OAuth scopes QuickMail requests, every network destination it contacts, and what a bug report carries. Adding a scope (`Services/OAuthService.cs`, `Services/GoogleOAuthService.cs`), a new outbound host, or a new field in a bug report means updating that page in the same change, and giving it a new effective date.
 
@@ -136,7 +139,46 @@ Run the setup script once:
 .\scripts\setup-gh-pages.ps1
 ```
 
-This enables GitHub Pages to serve from the `gh-pages` branch. The published guide appears at `https://kellylford.github.io/QuickMail/`.
+This sets GitHub Pages to serve what `publish-user-guide.yml` deploys (build type "GitHub Actions"), not a branch. Serving a branch would let anyone with write access publish the site by pushing to it. The published guide appears at `https://kellylford.github.io/QuickMail/`.
+
+## Secrets, environments and releasing
+
+A collaborator with write access must not be able to read a secret, sign, release, deploy the
+relay or publish the website from a branch of their own. Repository secrets cannot promise
+that — any workflow pushed to any branch can read them — so **every secret lives in a GitHub
+environment**, and the environment's protection decides which runs get in:
+
+| Environment | Protection | Secrets | Entered by |
+|---|---|---|---|
+| `azure-signing` | Kelly's approval | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `BUG_REPORT_RELAY_KEY` | `quickmail.yml` `build` on `v*` tags only; `build-installer.yml` |
+| `relay` | `main` only | `CLOUDFLARE_API_TOKEN`, `RELAY_GITHUB_APP_ID`, `RELAY_GITHUB_INSTALLATION_ID`, `RELAY_GITHUB_PRIVATE_KEY`, `BUG_REPORT_RELAY_KEY` | `deploy-relay.yml` `deploy` |
+| `live-smoke` | `main` only | `LIVE_IMAP_HOST`, `LIVE_IMAP_PORT`, `LIVE_IMAP_SSL`, `LIVE_SMTP_HOST`, `LIVE_SMTP_PORT`, `LIVE_SMTP_SSL`, `LIVE_USER`, `LIVE_PASSWORD` | `live-smoke.yml` |
+| `github-pages` | `main` and `v*` tags | none | `publish-user-guide.yml` |
+
+- **Pull requests, `main` pushes, CodeQL, the flaky hunt and the winget matrix read no
+  secrets.** They compile against empty placeholder credentials written by
+  `scripts/write-credential-partials.ps1`; nothing they run signs in to Google or files a bug
+  report. Do not add a `secrets.` reference to any of them: whatever such a job can read, any
+  collaborator can read. Release builds call the script with `-Release`, which fails the run
+  if a value is missing rather than shipping an app whose Google sign-in silently fails.
+- `BUG_REPORT_RELAY_KEY` is in two environments and **the two copies must match** — the app
+  compiled in `azure-signing` sends the key the Worker deployed from `relay` checks.
+- Every workflow declares its own `permissions:`; the repository default token is read-only.
+
+**A tag run waits for Kelly's approval.** Pushing `v<version>` starts `quickmail.yml`, whose
+`build` job then waits on `azure-signing`. After Kelly says "go", approve **only the tag run he
+asked for** — never a run on someone else's branch, never a `build-installer.yml` run you did
+not start for him, and never by removing the environment's reviewer:
+
+```bash
+env_id=$(gh api repos/kellylford/QuickMail/environments/azure-signing --jq .id)
+id=$(gh run list -R kellylford/QuickMail -w QuickMail -b v<version> --json databaseId -q '.[0].databaseId')
+gh api repos/kellylford/QuickMail/actions/runs/$id/pending_deployments   # check it is the tag run, waiting on azure-signing
+gh api -X POST repos/kellylford/QuickMail/actions/runs/$id/pending_deployments -F "environment_ids[]=$env_id" -f state=approved -f comment=release
+```
+
+The on-demand signed installer (`build-installer.yml`) waits for the same approval, because
+it signs and can be started on any branch.
 
 ### Help Menu Link
 

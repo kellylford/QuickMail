@@ -1,5 +1,17 @@
 name: Publish User Guide
 
+# Deployed with GitHub's own Pages actions into the `github-pages` environment, whose
+# deployment-branch policy admits only main and v* tags. It used to push the gh-pages branch
+# with peaceiris/actions-gh-pages and Pages served that branch, which meant anyone with write
+# access could publish the website: by dispatching this workflow from their own branch, or
+# simply by pushing to gh-pages. Now the site is whatever the last admitted run of this
+# workflow uploaded, and the gh-pages branch is no longer served (Pages' source must be set
+# to "GitHub Actions" for that).
+#
+# Each deploy replaces the whole site, exactly as peaceiris did (it never kept files), so
+# every page must be written into build/docs below; a page added any other way is gone on
+# the next publish.
+
 on:
   workflow_dispatch:
   # Called by the release job in quickmail.yml once a v* tag's release is out. This,
@@ -16,11 +28,26 @@ on:
   release:
     types: [published]
 
+# Nothing by default; the job asks for exactly what the Pages deploy needs.
+permissions: {}
+
 jobs:
   publish-guide:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # peaceiris/actions-gh-pages pushes the gh-pages branch
+      contents: read    # checkout (with tags, for the version and release history)
+      pages: write      # deploy-pages publishes the uploaded site
+      id-token: write   # deploy-pages proves the run's identity to Pages via OIDC
+    # main and v* tags only (the environment's deployment-branch policy): a dispatch from
+    # any other branch is refused here instead of publishing that branch's docs.
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    # One deploy at a time, and never cancel one halfway: a manual run and a release's run
+    # can overlap, and the later one should simply follow the earlier.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
@@ -98,8 +125,8 @@ jobs:
       - name: Generate standalone articles
         run: |
           # Standalone pages that are not part of the user guide. Generated here so
-          # they survive deployment: peaceiris/actions-gh-pages replaces the whole
-          # branch each run, so a file added to gh-pages by hand would be wiped.
+          # they survive deployment: each deploy replaces the whole site, so a page
+          # that is not written into build/docs is gone.
           pandoc docs/github-release-download-numbers.md \
             --from markdown \
             --to html5 \
@@ -113,8 +140,8 @@ jobs:
         run: |
           # The privacy policy is hand-written HTML, not generated from Markdown, so it is
           # copied rather than converted. It must be copied here for the same reason the
-          # articles above are generated here: peaceiris/actions-gh-pages replaces the whole
-          # gh-pages branch each run, so anything not in build/docs is deleted on deploy.
+          # articles above are generated here: each deploy replaces the whole site, so
+          # anything not in build/docs is deleted on deploy.
           # That is why https://kellylford.github.io/QuickMail/privacy.html 404'd (issue #556)
           # while the file existed in the repository the whole time. The URL is cited by
           # Google OAuth verification and by the winget manifest's PrivacyUrl, so it must
@@ -236,8 +263,14 @@ jobs:
           print(f"Generated {len(section_files)} sections")
           EOF
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/docs
+          path: ./build/docs
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v5

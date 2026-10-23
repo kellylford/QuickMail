@@ -47,30 +47,39 @@ relay exists to avoid.
 | App installation | `151714686`, scoped to this repo, Issues read/write only | <https://github.com/settings/installations> |
 | Cloudflare account | `7c86d5a72a98b9de96e24f55aaecf9af`, under kelly@kellford.com | <https://dash.cloudflare.com> |
 
-**Repository secrets** (<https://github.com/kellylford/QuickMail/settings/secrets/actions>):
+**Environment secrets** (<https://github.com/kellylford/QuickMail/settings/environments>).
+They are not repository secrets: any workflow a collaborator pushes to any branch can read a
+repository secret, but an environment's secrets reach only jobs the environment admits.
 
-| Secret | Used by | For |
-|---|---|---|
-| `BUG_REPORT_RELAY_KEY` | build workflows + deploy workflow | compiled into the app; synced to the Worker |
-| `RELAY_GITHUB_APP_ID` | deploy workflow | synced to the Worker |
-| `RELAY_GITHUB_INSTALLATION_ID` | deploy workflow | synced to the Worker |
-| `RELAY_GITHUB_PRIVATE_KEY` | deploy workflow | synced to the Worker |
-| `CLOUDFLARE_API_TOKEN` | deploy workflow | authenticates the deploy |
-| `BUG_REPORT_TOKEN` | *legacy* | the pre-relay PAT — see "Retiring the old token" |
+| Secret | Environment | Used by | For |
+|---|---|---|---|
+| `BUG_REPORT_RELAY_KEY` | `azure-signing` **and** `relay` (keep the two identical) | release build + installer build; deploy workflow | compiled into the app; synced to the Worker |
+| `RELAY_GITHUB_APP_ID` | `relay` | deploy workflow | synced to the Worker |
+| `RELAY_GITHUB_INSTALLATION_ID` | `relay` | deploy workflow | synced to the Worker |
+| `RELAY_GITHUB_PRIVATE_KEY` | `relay` | deploy workflow | synced to the Worker |
+| `CLOUDFLARE_API_TOKEN` | `relay` | deploy workflow | authenticates the deploy |
+| `BUG_REPORT_TOKEN` | *legacy* | nothing | the pre-relay PAT — see "Retiring the old token" |
 
-**Repository variables** (same page, Variables tab): `BUG_REPORT_RELAY_URL`,
-`CLOUDFLARE_ACCOUNT_ID`.
+`azure-signing` requires Kelly's approval; `relay` admits only runs of `main`.
+
+**Repository variables** (<https://github.com/kellylford/QuickMail/settings/variables/actions>):
+`BUG_REPORT_RELAY_URL`, `CLOUDFLARE_ACCOUNT_ID`. Not secret; readable by every workflow.
 
 **Worker secrets** at Cloudflare — `GITHUB_APP_ID`, `GITHUB_INSTALLATION_ID`,
 `GITHUB_PRIVATE_KEY`, `RELAY_KEY`. These are *copies*, pushed by the deploy workflow. Changing
-a repository secret does nothing until the workflow re-runs **with the secrets box ticked**.
+a `relay` environment secret does nothing until the workflow re-runs **with the secrets box
+ticked**.
 
-**Compiled into the app**: the four build workflows (`quickmail.yml`, `codeql.yml`,
-`build-installer.yml`, `live-smoke.yml`) each write
-`QuickMail/Services/BugReportService.Credentials.cs` at build time from
-`BUG_REPORT_RELAY_URL` and `BUG_REPORT_RELAY_KEY`. That file is gitignored; locally it holds
-empty placeholders, which is why **local debug builds always take the clipboard fallback.**
-That is expected, not a bug.
+**Compiled into the app**: only the release build (`quickmail.yml` on a `v*` tag) and the
+on-demand installer (`build-installer.yml`) write
+`QuickMail/Services/BugReportService.Credentials.cs` with the real `BUG_REPORT_RELAY_URL` and
+`BUG_REPORT_RELAY_KEY`, from the `azure-signing` environment
+(`scripts/write-credential-partials.ps1 -Release`, which fails the build if either is
+missing). Every other CI build — pull requests, `main` pushes, CodeQL, the flaky hunt, the
+live smoke test — writes empty placeholders and reads no secret. The file is gitignored;
+locally it holds empty placeholders too, which is why **local debug builds and the CI
+artifacts of ordinary `main`/PR builds always take the clipboard fallback.** That is
+expected, not a bug.
 
 ---
 
@@ -112,12 +121,13 @@ straight to the clipboard path.
 - **Local builds**: expected. `BugReportService.Credentials.cs` holds empty placeholders.
   To test the real path locally, copy `docs/BugReportService.Credentials.example` over it and
   fill in the two values.
-- **Released builds**: the CI variable or secret is missing. Check that
-  `BUG_REPORT_RELAY_URL` exists as a repository **variable** (not a secret) and
-  `BUG_REPORT_RELAY_KEY` as a **secret**:
+- **Released builds**: cannot happen silently any more — a release build fails if either
+  value is missing. If one did fail that way, check that `BUG_REPORT_RELAY_URL` exists as a
+  repository **variable** (not a secret) and `BUG_REPORT_RELAY_KEY` as a secret of the
+  `azure-signing` **environment**:
 
 ```bash
-gh variable list && gh secret list
+gh variable list && gh secret list --env azure-signing
 ```
 
 The URL must end in `/report`. Without it the Worker returns 404 and the app reports a
@@ -146,7 +156,8 @@ readable after being set, so you cannot compare them — you can only re-set bot
 value.
 
 1. Generate a new key: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
-2. Set it as the `BUG_REPORT_RELAY_KEY` repository secret.
+2. Set it as the `BUG_REPORT_RELAY_KEY` secret in **both** the `relay` and the
+   `azure-signing` environments.
 3. Re-run the deploy workflow **with the secrets box ticked** — this pushes it to Cloudflare.
 4. Ship a build so the app carries the matching key.
 
@@ -217,18 +228,19 @@ Once a release carrying the relay has been out long enough that un-updated insta
 matter:
 
 1. Revoke the PAT at <https://github.com/settings/tokens>.
-2. Delete the `BUG_REPORT_TOKEN` repository secret.
+2. Delete the `BUG_REPORT_TOKEN` repository secret (nothing reads it).
 
 After that, old builds fall back to the clipboard path rather than filing silently as you.
 
 ## G. Changing a secret
 
-Repository secrets are not live at Cloudflare until they are pushed there.
+The `relay` environment's secrets are not live at Cloudflare until they are pushed there.
 
 **Actions** → **Deploy bug-report relay** → **Run workflow** → tick **Also push the Worker's
-secrets from repository secrets**.
+secrets from the relay environment's secrets** (run it on `main`; the environment refuses any
+other branch).
 
-The box is off by default on purpose: a routine code redeploy whose repository secrets were
+The box is off by default on purpose: a routine code redeploy whose environment secrets were
 missing would otherwise overwrite working Worker secrets with empty strings and break bug
 reporting silently. The sync step fails loudly on an empty secret instead of writing it.
 

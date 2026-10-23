@@ -8,6 +8,9 @@ on:
   schedule:
     - cron: '0 6 * * 1'  # weekly Monday 6am UTC
 
+# Nothing by default; the analyze job asks for what CodeQL needs.
+permissions: {}
+
 jobs:
   analyze:
     name: Analyze (csharp)
@@ -24,35 +27,12 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Write Google OAuth credentials
+      # The gitignored credential partial classes are required to compile QuickMail.csproj.
+      # CodeQL analyses the code, not the values, so they are empty placeholders: this runs
+      # on pull requests from any branch and must never see a secret.
+      - name: Write placeholder credential partials
         shell: pwsh
-        env:
-          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class GoogleOAuthService
-          {
-              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
-              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
-
-      - name: Write bug-report credentials
-        shell: pwsh
-        env:
-          BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
-          BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class BugReportService
-          {
-              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
-              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+        run: ./scripts/write-credential-partials.ps1
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
