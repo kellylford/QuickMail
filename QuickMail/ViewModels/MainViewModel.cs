@@ -1186,6 +1186,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Raw messages before search filtering; repopulated by SetMessages().
     private List<MailMessageSummary> _rawMessages = [];
 
+    /// <summary>
+    /// The aggregate/virtual view whose folder labels <see cref="_rawMessages"/> was stamped for by
+    /// <see cref="SetMessages"/>, or null when the list belongs to a single real folder (whose rows
+    /// carry no label). Lets <see cref="RestampDisplayedFolderLabels"/> re-label exactly the rows it
+    /// labelled before, and never a single folder's rows caught mid-navigation (#451).
+    /// </summary>
+    private string? _rawMessagesStampedForView;
+
     /// <summary>All messages loaded for the current folder/view, before filtering.</summary>
     public IReadOnlyList<MailMessageSummary> LoadedMessages => _rawMessages;
 
@@ -4442,12 +4450,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // folder list (first run, fresh --profileDir, rebuilt mail.db) it is still empty, ranking is
         // neutral (date/name tie-break), and the representative settles on the first fetch — collapse
         // is correct either way.
+        string? stampedFor = null;
         if (IsVirtualFolder(SelectedFolder))
         {
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
             ApplyFolderDisplayNames(list);
+            stampedFor = SelectedFolder!.FullName;
         }
         _rawMessages = list;
+        _rawMessagesStampedForView = stampedFor;
         // Watch state is derived, not persisted, so it has to be stamped onto every freshly
         // materialized row — in every folder, not just the watched one. The row's spoken "watched"
         // field is meant to be readable wherever the message appears.
@@ -4506,6 +4517,40 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 folderNames[(kvp.Key, f.FullName)] = f.DisplayName;
 
         StampFolderDisplayNames(list, AggregateSpansMultipleAccounts(), accountLabels, folderNames);
+    }
+
+    /// <summary>
+    /// #451: re-labels the rows already on screen in an aggregate/virtual view after the folder list
+    /// changes. A row stamped while <see cref="_cachedFolders"/> did not know its folder is correctly
+    /// left blank (never a raw id), and before #451 nothing labelled it once the folders arrived, so
+    /// the source folder stayed silent until the user navigated away and back. That happens when the
+    /// message cache has rows but the persisted folder list does not cover them: the first launch
+    /// after upgrading from a version before #516 (0.8.38 or earlier), which persisted no folder
+    /// list, or a folder save that failed or was cut off. A folder renamed on the server (a Graph
+    /// folder keeps its id and gets a new display name) is relabelled the same way.
+    /// <para>Runs on the UI thread: its one caller, <see cref="RebuildFolderListFromCache"/>, replaces
+    /// the bound <see cref="Folders"/> collection. O(rows) with the same precomputed lookups as a load,
+    /// and only on a folder-list rebuild, never per message; a row whose label is unchanged raises no
+    /// PropertyChanged, so an already-labelled list costs no UI work.</para>
+    /// <para>Does not re-run <see cref="MessageDeduplicator.CollapseForAggregate"/>: a Gmail message
+    /// whose representative was picked before folder kinds were known may keep its "[Gmail]/All Mail"
+    /// label until the view is reloaded. That predates #451.</para>
+    /// </summary>
+    private void RestampDisplayedFolderLabels()
+    {
+        // Only the aggregate these rows were stamped for: a single real folder's rows carry no label,
+        // and rows left over from the previous view mid-navigation (or under the calendar) are not
+        // the current view's to label.
+        if (_rawMessagesStampedForView == null) return;
+        if (!string.Equals(SelectedFolder?.FullName, _rawMessagesStampedForView, StringComparison.Ordinal)) return;
+
+        // _rawMessages and Messages, by reference: the phase-2 server fetches of All Mail, per-account
+        // All Mail and saved views insert their rows straight into Messages without adding them to
+        // _rawMessages, and those rows are on screen too.
+        var rows = _rawMessages.Union(Messages, ReferenceEqualityComparer.Instance)
+                               .Cast<MailMessageSummary>()
+                               .ToList();
+        ApplyFolderDisplayNames(rows);
     }
 
     /// <summary>
@@ -5057,6 +5102,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         BuildFolderTree();
+
+        // Folder names the displayed aggregate rows could not be labelled with may be known now (#451).
+        RestampDisplayedFolderLabels();
 
         // The Outbox count is a local read, so it is right from the first tree the user sees (#637).
         RefreshOutboxCountAsync().LogFaults("Outbox count");
@@ -9103,7 +9151,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (ct.IsCancellationRequested) return;
             _ui.Post(() => ApplyFolderCounts(accountId, fresh));
         }
-        catch (OperationCanceledException) { /* superseded or shutting down — fine */ }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { /* superseded or shutting down — fine */ }
+        catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, ct))
+        {
+            // A sweep that lands mid-connect or mid-reconnect: expected, and the next sweep after the account
+            // is back puts the counts right. Not an error, so it does not bury real ones in the log (#278).
+            LogService.Debug(
+                $"RefreshFolderCounts {accountId} skipped (connection failure): {LogService.FormatException(ex)}");
+        }
         catch (Exception ex)
         {
             LogService.Log($"RefreshFolderCounts {accountId}", ex);

@@ -1,5 +1,9 @@
 # Keyboard Shortcuts Reference
 
+## How a shortcut is shown and spoken (#849)
+
+A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/CommandShortcut.cs`). That one attribute sets the key drawn after a menu item (`InputGestureText`) and the key a screen reader is told (`AutomationProperties.AcceleratorKey`), both read from the window's `CommandRegistry` through `ICommandRegistry.GetGestureText`. They are re-read whenever the element loads, which is every time a menu opens, and on `ICommandRegistry.BindingsChanged`, so a key rebound in Settings shows everywhere at once, the command palette included. Toolbar tooltips come from `sc:CommandShortcut.ToolTip` and exist only while open, so they are not also read as help text. `ShortcutExposureTests` fails on a literal key in any of the three windows' XAML.
+
 ## Registered shortcut table (MainWindow)
 
 | Key | Command ID | Title |
@@ -37,6 +41,7 @@
 | *(unassigned)* | `mail.watchManager` | Watched Conversations… (review, rename, stop watching) |
 | *(unassigned)* | `view.filterWatched` | Show Watched Conversations Only |
 | Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
+| Ctrl+, | `settings.open` | Settings… (File menu). The File menu showed it before anything handled it (#849) |
 | Ctrl+Shift+Y | `view.searchFolders` | Search Folders… |
 | Ctrl+Shift+S | `view.search` | Search Messages… |
 | *(unassigned)* | `mail.searchServer` | Search the Server Too — in Search Results, asks each account's server for the same search and adds what it finds (#717) |
@@ -229,7 +234,7 @@ editable, because changing it would silently change which messages the watch col
 
 **Spell checking**: `F7` (`compose.checkSpelling`) opens the **Check Spelling dialog** — a modeless "Spelling" window that reviews the body and then the subject. Each error is announced as "Not in dictionary: \<word\>" with focus on the suggestions list (first suggestion selected). In-dialog keys: `Alt+C` Change (also the Enter default), `Alt+L` Change All, `Alt+I` Ignore, `Alt+G` Ignore All, `Alt+A` Add to Dictionary (persists to `custom.lex` in the profile directory), `Alt+R` Read in Context, `Alt+T` / `Alt+S` / `Alt+N` focus Change-to / Suggestions / context, `F6` cycles panes, `Ctrl+Shift+P` opens the dialog's palette, `Escape` cancels. Inline navigation is `Ctrl+F7` / `Ctrl+Shift+F7` (`compose.nextMisspelling` / `compose.prevMisspelling`; these were `F7` / `Shift+F7` before the dialog took the classic F7 binding — user overrides in `hotkeys.json` are unaffected). `Alt+F7` repeats the current spelling announcement; `Alt+1/2/3` accept an inline suggestion.
 
-**Menu bar**: `ComposeWindow` has a standard menu bar (File / Edit / View / Format / Tools). It is not a tab stop (reached with Alt or F10, per platform convention). Every item dispatches to the same handler or command as its keyboard shortcut, and `InputGestureText` must match the registered default gesture. **Top-level menus are never disabled** (Windows standard — a disabled top-level menu is skipped by arrow navigation, stranding its items); availability is expressed per item. Format items gray out in Plain Text mode only, and because WPF skips disabled items during arrow navigation, opening the Format menu in Plain Text announces a Hint explaining why. The View menu's mode items get radio-style check marks synced in `SyncModeSelector`. The window's `PreviewKeyDown` steps aside on Escape when a menu, combo dropdown, or the autocomplete popup is open so transient UI can close itself.
+**Menu bar**: `ComposeWindow` has a standard menu bar (File / Edit / View / Format / Tools). It is not a tab stop (reached with Alt or F10, per platform convention). Every item dispatches to the same handler or command as its keyboard shortcut, and `sc:CommandShortcut.Id` shows and reports its key from the registry (#849). **Top-level menus are never disabled** (Windows standard — a disabled top-level menu is skipped by arrow navigation, stranding its items); availability is expressed per item. Format items gray out in Plain Text mode only, and because WPF skips disabled items during arrow navigation, opening the Format menu in Plain Text announces a Hint explaining why. The View menu's mode items get radio-style check marks synced in `SyncModeSelector`. The window's `PreviewKeyDown` steps aside on Escape when a menu, combo dropdown, or the autocomplete popup is open so transient UI can close itself.
 
 **Formatting** works in both rich modes. HTML mode applies real formatting to the RichTextBox; Markdown mode inserts the equivalent syntax through `MarkdownEditing` (`Helpers/MarkdownEditing.cs` — pure, unit-tested text operations applied via `TextBox.SelectedText` so each toggle is one undo unit). Exception: underline has no Markdown form and the Markdig pipeline uses `DisableHtml()`, so underline in Markdown announces that it requires HTML mode. Formatting result announcements go through `ComposeWindow.AnnounceFormatting`, which defers to `DispatcherPriority.ApplicationIdle` and interrupts — menu invocations restore focus to the editor on close, and an immediate announcement would be silenced by the screen reader's focus speech.
 

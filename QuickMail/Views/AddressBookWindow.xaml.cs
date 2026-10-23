@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -20,6 +21,12 @@ public partial class AddressBookWindow : Window
         InitializeComponent();
         DataContext = vm;
 
+        // Opened from the keyboard, the filter menu takes focus once, on the filter in effect,
+        // rather than on the menu and then that item (#693).
+        if (AccountFilterButton.ContextMenu is { } filterMenu)
+            Helpers.ContextMenuInitialFocus.SetInitialItem(filterMenu,
+                m => m.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) as MenuItem);
+
         // Register the address-book-specific commands.  These are per-window so
         // the main window's registry isn't polluted with commands that are only
         // meaningful while the address book is open.  The palette inside the
@@ -36,6 +43,12 @@ public partial class AddressBookWindow : Window
             vm.AnnouncementRequested += OnAnnouncement;
             vm.ConfirmRequested     += OnConfirm;
             vm.PropertiesRequested  += OnPropertiesRequested;
+            vm.ContactListFocusNowRequested += FocusSelectedContactRowNow;
+            vm.ContactListFocusRequested    += QueueFocusContactList;
+            vm.GroupsListFocusNowRequested  += FocusSelectedGroupRowNow;
+            vm.GroupsListFocusRequested     += QueueFocusGroupsList;
+            vm.GroupMemberFocusNowRequested   += FocusGroupMemberNow;
+            vm.GroupMembersListFocusRequested += QueueFocusGroupMembersList;
             await vm.LoadAsync();
             SearchBox.Focus();
         };
@@ -46,6 +59,12 @@ public partial class AddressBookWindow : Window
             vm.AnnouncementRequested -= OnAnnouncement;
             vm.ConfirmRequested     -= OnConfirm;
             vm.PropertiesRequested  -= OnPropertiesRequested;
+            vm.ContactListFocusNowRequested -= FocusSelectedContactRowNow;
+            vm.ContactListFocusRequested    -= QueueFocusContactList;
+            vm.GroupsListFocusNowRequested  -= FocusSelectedGroupRowNow;
+            vm.GroupsListFocusRequested     -= QueueFocusGroupsList;
+            vm.GroupMemberFocusNowRequested   -= FocusGroupMemberNow;
+            vm.GroupMembersListFocusRequested -= QueueFocusGroupMembersList;
         };
 
         // When edit mode is activated, focus the name field and select it
@@ -55,6 +74,22 @@ public partial class AddressBookWindow : Window
             {
                 ContactNameBox.Focus();
                 ContactNameBox.SelectAll();
+            }
+            // The message line under the details takes room from the contact list when it appears,
+            // which can push the row a delete just landed on out of view. Bring it back once
+            // layout has run. Scrolling only: keyboard focus is not touched. In a multi-select
+            // SelectedItem is the anchor, not the row with focus, so prefer the focused row.
+            else if (e.PropertyName == nameof(vm.ContactError) && vm.ContactError.Length > 0
+                     && !vm.IsEditingContact)
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+                {
+                    var focusedRow = ContactList.IsKeyboardFocusWithin
+                        ? (Keyboard.FocusedElement as FrameworkElement)?.DataContext as ContactModel
+                        : null;
+                    if ((focusedRow ?? ContactList.SelectedItem) is { } row)
+                        ContactList.ScrollIntoView(row);
+                });
             }
         };
     }
@@ -183,7 +218,9 @@ public partial class AddressBookWindow : Window
     private void AccountFilterMenu_Opened(object sender, RoutedEventArgs e)
     {
         // Land on the filter that is currently in effect rather than on the first item,
-        // so the menu opens where the user left it and the check state is read out.
+        // so the menu opens where the user left it and the check state is read out. From the
+        // keyboard, ContextMenuInitialFocus (set up in the constructor) has already focused it and
+        // this changes nothing; this covers a mouse click on the button.
         var menu = (ContextMenu)sender;
         var item = menu.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) as MenuItem;
         if (item is null)
@@ -224,10 +261,17 @@ public partial class AddressBookWindow : Window
     private void OnAnnouncement(string text, AnnouncementCategory category) =>
         AccessibilityHelper.Announce(this, text, category: category);
 
+    /// <summary>
+    /// Answers confirmations in place of the MessageBox. For window tests only: a real MessageBox
+    /// would wait for a person, and nothing in a test could dismiss it.
+    /// </summary>
+    internal Func<string, bool>? ConfirmForTests { get; set; }
+
     private Task<bool> OnConfirm(string title, string body) =>
-        Task.FromResult(
-            MessageBox.Show(this, body, title, MessageBoxButton.YesNo, MessageBoxImage.Question)
-            == MessageBoxResult.Yes);
+        Task.FromResult(ConfirmForTests is { } answer
+            ? answer(body)
+            : MessageBox.Show(this, body, title, MessageBoxButton.YesNo, MessageBoxImage.Question)
+              == MessageBoxResult.Yes);
 
     private void OnPropertiesRequested(PropertiesViewModel vm)
     {
@@ -417,8 +461,12 @@ public partial class AddressBookWindow : Window
 
         if (e.Key == Key.Delete && ContactList.SelectedItems.Count > 0)
         {
-            await DeleteSelectedContactsAsync();
+            // Handled before the await: once this handler yields, routing has moved on and a
+            // later assignment is ignored.
             e.Handled = true;
+            // What the Delete button runs, so the key and the button apply the same rules —
+            // synced contacts are read-only (issue #827).
+            await _vm.DeleteSelectedContactsAsync();
         }
     }
 
@@ -519,6 +567,69 @@ public partial class AddressBookWindow : Window
         }
     }
 
+    // ── Focus after a delete (issue #265) ────────────────────────────────────
+    // The ViewModel moves the selection onto the neighbouring row and raises these; see the
+    // "Focus after a delete" block in AddressBookViewModel for the ordering and why it matters.
+
+    // Synchronous on purpose: the ViewModel calls this just BEFORE it removes the deleted rows, so
+    // keyboard focus is off them by the time they go. The target comes from the ViewModel's own
+    // selection rather than the list's SelectedItem, which depends on the binding having already
+    // propagated. Returns whether keyboard focus actually reached the row.
+    private bool FocusSelectedContactRowNow() => FocusRowNow(ContactList, _vm.SelectedContact);
+
+    private bool FocusSelectedGroupRowNow() => FocusRowNow(GroupsList, _vm.SelectedGroup);
+
+    private static bool FocusRowNow(ListView list, object? target)
+    {
+        // A list on a tab that is not showing is not where the user is; leave focus alone.
+        if (target is null || !list.IsVisible) return false;
+        var idx = list.Items.IndexOf(target);
+        if (idx < 0) return false;
+
+        list.ScrollIntoView(target);
+        // ScrollIntoView only schedules the panel's measure pass; without this the container for
+        // a row that was off screen does not exist yet and there is nothing to focus.
+        list.UpdateLayout();
+        return list.ItemContainerGenerator.ContainerFromIndex(idx) is ListViewItem row && row.Focus();
+    }
+
+    // The fallback when focus could not land before the removal — most often because the list is
+    // now empty. Queued so it runs after the removal's layout pass.
+    private void QueueFocusContactList() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (!ContactList.IsVisible) return;
+            if (!FocusRowNow(ContactList, _vm.SelectedContact))
+                ContactList.Focus();
+        });
+
+    private void QueueFocusGroupsList() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (!GroupsList.IsVisible) return;
+            if (FocusRowNow(GroupsList, _vm.SelectedGroup)) return;
+            // As FocusGroupsPane does: with no groups left, New Group is the useful place to be.
+            if (_vm.Groups.Count == 0) NewGroupButton.Focus();
+            else GroupsList.Focus();
+        });
+
+    // The members list's selection belongs to the View (it is not bound), so the ViewModel names
+    // the member to land on and this selects it as well as focusing it.
+    private bool FocusGroupMemberNow(ContactModel landing)
+    {
+        if (!GroupMembersList.IsVisible) return false;
+        GroupMembersList.SelectedItem = landing;
+        return FocusRowNow(GroupMembersList, landing);
+    }
+
+    private void QueueFocusGroupMembersList() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (!GroupMembersList.IsVisible) return;
+            if (!FocusRowNow(GroupMembersList, GroupMembersList.SelectedItem))
+                GroupMembersList.Focus();
+        });
+
     private void FocusGroupsPane()
     {
         // If the name entry panel was open, dismiss it before switching.
@@ -581,25 +692,13 @@ public partial class AddressBookWindow : Window
             ShowGroupNameEntry(g.Name);
     }
 
-    private async void DeleteButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (ContactList.SelectedItems.Count == 0) return;
-        await DeleteSelectedContactsAsync();
-    }
+    private async void DeleteButton_Click(object sender, RoutedEventArgs e) =>
+        await _vm.DeleteSelectedContactsAsync();
 
-    private async Task DeleteSelectedContactsAsync()
-    {
-        var selected = ContactList.SelectedItems.OfType<ContactModel>().ToList();
-        if (selected.Count == 0) return;
-
-        var prompt = selected.Count == 1
-            ? $"Delete {selected[0].Display}?"
-            : $"Delete {selected.Count} contacts?";
-        var result = MessageBox.Show(prompt, "Confirm Delete",
-            MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (result == MessageBoxResult.Yes)
-            await _vm.DeleteMultipleAsync(selected);
-    }
+    // The list is multi-select and SelectedItems cannot be bound, so hand the selection to the
+    // ViewModel: Delete acts on all of it, and the Delete button's availability depends on it.
+    private void ContactList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        _vm.SetSelectedContacts(ContactList.SelectedItems.OfType<ContactModel>());
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

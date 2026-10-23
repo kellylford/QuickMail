@@ -61,8 +61,48 @@ public class AddressBookRowSpeechTests
             SelectGroupsTab(window);
             var names = ItemPeerNames(window, "GroupsList");
 
-            Assert.Contains(names, n => n.StartsWith("Work", StringComparison.Ordinal));
+            Assert.Contains("Work, 1 member", names);
+            // #649: an empty group used to read as just "Empty group", whichever group it was.
+            Assert.Contains("Holiday, no members", names);
             AssertNoTypeNames(names);
+        }
+        finally { Cleanup(window, dir); }
+    }
+
+    /// <summary>
+    /// #650: the member count beside the bold name was bound through a converter that was handed the
+    /// Display string, rejected it as not a group, and drew nothing, so it never appeared on screen.
+    /// </summary>
+    [StaFact]
+    public void GroupsList_Rows_ShowTheMemberCountOnScreen()
+    {
+        var (window, dir) = BuildWindow();
+        try
+        {
+            SelectGroupsTab(window);
+            var list = window.FindName("GroupsList") as ListView;
+            Assert.NotNull(list);
+
+            Assert.Equal(["Work", "1 member"], RowTexts(list!, "Work"));
+            Assert.Equal(["Holiday", "no members"], RowTexts(list!, "Holiday"));
+        }
+        finally { Cleanup(window, dir); }
+    }
+
+    [StaFact]
+    public void GroupMembersHeader_NamesTheGroupAlone()
+    {
+        var (window, dir) = BuildWindow();
+        try
+        {
+            SelectGroupsTab(window);
+            var groups = window.FindName("GroupsList") as ListView;
+            Assert.NotNull(groups);
+            groups!.SelectedItem = groups.Items.Cast<GroupModel>().First(g => g.Name == "Holiday");
+            window.UpdateLayout();
+            Drain();
+
+            Assert.Contains("Members of Holiday", AllTexts(window));
         }
         finally { Cleanup(window, dir); }
     }
@@ -167,6 +207,7 @@ public class AddressBookRowSpeechTests
         var alice  = svc.LoadAllContactsAsync().GetAwaiter().GetResult()
                         .First(c => c.EmailAddress == "alice@example.com");
         svc.AddMemberAsync(workId, alice.Id).GetAwaiter().GetResult();
+        svc.CreateGroupAsync("Holiday").GetAwaiter().GetResult();
 
         var vm = new AddressBookViewModel(svc);
         var window = new AddressBookWindow(vm)
@@ -206,6 +247,30 @@ public class AddressBookRowSpeechTests
             .Select(p => p.GetName())
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .ToList();
+    }
+
+    /// <summary>The non-blank text each TextBlock in the named group's row renders, in visual order.</summary>
+    private static List<string> RowTexts(ListView list, string groupName)
+    {
+        list.UpdateLayout();
+        Drain();
+        var item = list.Items.Cast<GroupModel>().First(g => g.Name == groupName);
+        var container = list.ItemContainerGenerator.ContainerFromItem(item) as ListViewItem;
+        Assert.NotNull(container);
+        return AllTexts(container!);
+    }
+
+    private static List<string> AllTexts(DependencyObject root)
+    {
+        var texts = new List<string>();
+        void Walk(DependencyObject node)
+        {
+            if (node is TextBlock tb && !string.IsNullOrWhiteSpace(tb.Text)) texts.Add(tb.Text);
+            for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(node); i++)
+                Walk(System.Windows.Media.VisualTreeHelper.GetChild(node, i));
+        }
+        Walk(root);
+        return texts;
     }
 
     /// <summary>The failure mode of #644: the row announced as its CLR type name.</summary>

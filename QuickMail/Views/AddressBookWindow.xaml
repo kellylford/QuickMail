@@ -181,7 +181,11 @@
                                     AutomationProperties.Name="Edit contact"
                                     IsEnabled="{Binding CanEditContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="9"/>
+                            <!-- Runs what the Delete key runs in the contact list (issue #827). A Click
+                                 handler rather than an async command: an async command disables its
+                                 button while it runs, and this button holds focus during the delete. -->
                             <Button Content="_Delete"
+                                    x:Name="DeleteContactButton"
                                     Click="DeleteButton_Click"
                                     AutomationProperties.Name="Delete selected contact"
                                     IsEnabled="{Binding CanDeleteContact}"
@@ -217,12 +221,16 @@
                                     Click="Close_Click"/>
                         </StackPanel>
 
-                        <!-- Row 2: Error message (shown only when non-empty) -->
-                        <TextBlock Grid.Row="2" Text="{Binding ContactError}"
+                        <!-- Row 2: Error message (shown only when non-empty). It also carries
+                             the "synced contacts are read-only" message from a Delete (issue #827).
+                             The default Setter used to be Collapsed as well, so nothing written
+                             here was ever shown. -->
+                        <TextBlock Grid.Row="2" x:Name="ContactErrorText" Text="{Binding ContactError}"
+                                   TextWrapping="Wrap"
                                    Foreground="{DynamicResource Theme.Error}" Margin="0,4,0,0">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Setter Property="Visibility" Value="Visible"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding ContactError}" Value="">
                                             <Setter Property="Visibility" Value="Collapsed"/>
@@ -251,6 +259,7 @@
                               KeyboardNavigation.TabNavigation="Once"
                               KeyboardNavigation.DirectionalNavigation="Contained"
                               PreviewKeyDown="ContactList_PreviewKeyDown"
+                              SelectionChanged="ContactList_SelectionChanged"
                               ContextMenuOpening="ContactList_ContextMenuOpening">
                         <ListView.ContextMenu>
                             <!-- Items are built in ContactList_ContextMenuOpening: the two
@@ -307,8 +316,7 @@
                         <TextBlock DockPanel.Dock="Top"
                                    Text="Groups"
                                    FontWeight="SemiBold"
-                                   Margin="0,0,0,3"
-                                   AutomationProperties.Name="Groups header"/>
+                                   Margin="0,0,0,3"/>
                         <ListView x:Name="GroupsList"
                                   ItemsSource="{Binding Groups}"
                                   SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
@@ -330,7 +338,7 @@
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                                         <TextBlock Text="  "/>
-                                        <TextBlock Text="{Binding Display, Converter={x:Static local:GroupSubtitleConverter.Instance}}"
+                                        <TextBlock Text="{Binding MemberSummary}"
                                                    Opacity="0.75"/>
                                     </StackPanel>
                                 </DataTemplate>
@@ -341,10 +349,9 @@
                     <!-- Right: members of selected group + insert buttons -->
                     <DockPanel Grid.Row="0" Grid.Column="1" Margin="8,0,0,0">
                         <TextBlock DockPanel.Dock="Top"
-                                   Text="{Binding SelectedGroup.Display, StringFormat='Members of {0}'}"
+                                   Text="{Binding SelectedGroup.Name, StringFormat='Members of {0}'}"
                                    FontWeight="SemiBold"
-                                   Margin="0,0,0,3"
-                                   AutomationProperties.Name="Group member list header"/>
+                                   Margin="0,0,0,3"/>
                         <StackPanel DockPanel.Dock="Top"
                                     Style="{StaticResource InsertRow}"
                                     Orientation="Horizontal"

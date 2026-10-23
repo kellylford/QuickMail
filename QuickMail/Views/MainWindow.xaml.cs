@@ -280,9 +280,11 @@ public partial class MainWindow : Window
         _connectivity     = connectivity;
         InitializeComponent();
         DataContext = vm;
+        CommandShortcut.SetRegistry(this, _registry);
         // The region's own Visibility, not IsVisible: IsVisible also changes when the window hides to the tray, and
         // does not change at all when the region empties while the window is hidden (review of #806).
         SenderAddressRegionVisibility.AddValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
+        WireCalendarColumnFit(); // #547: agenda columns sized to their content
 
         // Focus moving to the message body, or away from it, is recorded in one place, so no pane
         // handler has to remember to clear it. handledEventsToo is needed for the CLEARING half:
@@ -319,7 +321,9 @@ public partial class MainWindow : Window
             app.SessionEnding += (_, _) => _explicitExit = true;
         vm.ComposeRequested += OpenComposeWindow;
         vm.SelectAttachmentsForForwardRequested += ShowForwardAttachmentDialogAsync;
-        vm.ManageAccountsRequested += OpenAccountManager;
+        // With no accounts yet, Manage Accounts would only be an empty list and a disabled form; every
+        // way in (toolbar, File menu, palette) goes to Add Account instead, as first run does (#834).
+        vm.ManageAccountsRequested += () => { if (_vm.Accounts.Count == 0) OpenFirstAccountSetup(); else OpenAccountManager(); };
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
         vm.MessageListFocusNowRequested += FocusSelectedMessageRowNow;
@@ -341,6 +345,13 @@ public partial class MainWindow : Window
         };
         vm.FlagDefinitions.CollectionChanged += (_, _) => RebuildFlagSubmenuItems();
         FilterFlaggedItem.SubmenuOpened += (_, _) => UpdateFlagSubmenuChecks();
+
+        // The toolbar's choice menus open on the choice in effect, the way the address book's Filter
+        // menu does, rather than on their first item (#693).
+        if (SyncRangeButton.ContextMenu is { } syncRangeMenu)
+            ContextMenuInitialFocus.SetInitialItem(syncRangeMenu, ContextMenuInitialFocus.CheckedItem);
+        if (ViewModeButton.ContextMenu is { } viewModeMenu)
+            ContextMenuInitialFocus.SetInitialItem(viewModeMenu, ContextMenuInitialFocus.CheckedItem);
 
         ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => RebuildMessageContextFlagsSubmenu();
         var messageMenu = (ContextMenu)FindResource("MessageContextMenu");
@@ -863,6 +874,7 @@ public partial class MainWindow : Window
         _rulesWindow?.Close(); // unowned (#347), so not auto-closed with the main window
         // A DependencyPropertyDescriptor holds its handlers strongly, so the window would never be collected.
         SenderAddressRegionVisibility.RemoveValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
+        UnwireCalendarColumnFit(); // #547: the same, for the calendar list's font descriptors
         _trayIcon?.Dispose(); // remove the tray icon so it doesn't linger after exit
         // Cancels all in-flight VM operations (sync, prefetch, loads) and releases
         // their CTS handles. OnClosed, not OnClosing — the close cannot be cancelled here.
@@ -1106,6 +1118,12 @@ public partial class MainWindow : Window
             id: "calendar.syncNow", category: "Calendar", title: "Sync Calendars Now",
             execute: SyncCalendarsNow,
             isAvailable: () => _graphCalendarSyncService != null));
+
+        // File > Settings… has shown Ctrl+, for a long time without anything handling it (#849).
+        _registry.Register(new CommandDefinition(
+            id: "settings.open", category: "Settings", title: "Settings…",
+            execute: () => MenuSettings_Click(this, new RoutedEventArgs()),
+            defaultKey: Key.OemComma, defaultModifiers: ModifierKeys.Control));
 
         _registry.Register(new CommandDefinition(
             id: "settings.toggleCustomAnnouncements", category: "Settings", title: "Toggle Custom Announcements",
@@ -1708,19 +1726,19 @@ public partial class MainWindow : Window
         if (firstAccount == null)
         {
             // Stamp the running version even on the account-less path (dialog suppressed —
-            // the Account Manager is already up) so an update applied before the first
+            // Add Account is about to open) so an update applied before the first
             // account exists still gets its one installed notice later.
             _vm.MaybeShowUpdateInstalledNotice(dialogAllowed: false);
             // A quiet start (#770) must not open a modal at sign-in over a window never shown.
             if (IsQuietStart)
             {
-                CompleteQuietStartLoad(() => { OpenAccountManager(); ShowSettingsImportResult(); });
+                CompleteQuietStartLoad(() => { OpenFirstAccountSetup(); ShowSettingsImportResult(); });
             }
             else
             {
-                OpenAccountManager();
+                OpenFirstAccountSetup();
                 // An import that left no accounts (one that failed, or carried none) still reports
-                // at this start (#507), once the Account Manager is out of the way.
+                // at this start (#507), once Add Account is out of the way.
                 ShowSettingsImportResult();
             }
             return;
@@ -2968,30 +2986,33 @@ public partial class MainWindow : Window
     {
         var menu = new ContextMenu();
 
-        MenuItem Item(string header, RoutedEventHandler onClick)
+        // Each response names the calendar command it matches, so a key assigned to it shows here too
+        // (#854). Open full appointment names none: its command's Enter is what opened this menu.
+        MenuItem Item(string header, string? commandId, RoutedEventHandler onClick)
         {
             var mi = new MenuItem { Header = header };
+            CommandShortcut.SetId(mi, commandId);
             mi.Click += onClick;
             return mi;
         }
 
-        menu.Items.Add(Item("Accept", async (_, _) =>
+        menu.Items.Add(Item("Accept", "calendar.acceptInvite", async (_, _) =>
         {
             await _vm.RespondToCalendarInviteAsync(evt, "ACCEPTED", "accepted");
             FocusCalendarList();
         }));
-        menu.Items.Add(Item("Tentative", async (_, _) =>
+        menu.Items.Add(Item("Tentative", "calendar.tentativeInvite", async (_, _) =>
         {
             await _vm.RespondToCalendarInviteAsync(evt, "TENTATIVE", "tentatively accepted");
             FocusCalendarList();
         }));
-        menu.Items.Add(Item("Decline", async (_, _) =>
+        menu.Items.Add(Item("Decline", "calendar.declineInvite", async (_, _) =>
         {
             await _vm.RespondToCalendarInviteAsync(evt, "DECLINED", "declined");
             FocusCalendarList();
         }));
         menu.Items.Add(new Separator());
-        menu.Items.Add(Item("Open full appointment", (_, _) =>
+        menu.Items.Add(Item("Open full appointment", null, (_, _) =>
             _vm.CalendarVm?.OpenSourceMessageCommand.Execute(evt)));
 
         // Anchor below the focused row when we can obtain its container; otherwise the list itself.
@@ -3004,9 +3025,9 @@ public partial class MainWindow : Window
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
         menu.Closed += (_, _) => Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
 
-        // A ContextMenu opened programmatically (IsOpen = true) does not reliably land keyboard focus
-        // on the first item the way a right-click does — so a screen reader may not announce the menu.
-        // Focus the first item explicitly once the menu is up so the user hears "Accept" straight away.
+        // Opened from the keyboard (Enter on the row), ContextMenuInitialFocus has already put focus on
+        // "Accept" as the menu opened, and this finds it there and does nothing (#693). It remains for
+        // a menu opened by double-clicking the row, where WPF would otherwise leave focus on the menu.
         menu.Opened += (_, _) => Dispatcher.InvokeAsync(() =>
         {
             if (menu.ItemContainerGenerator.ContainerFromIndex(0) is MenuItem first)
@@ -4048,6 +4069,8 @@ public partial class MainWindow : Window
     private void OnThemeChanged(object? sender, EventArgs e)
     {
         if (_themeService is null) return;
+        // Font, text scale and row density all live in the theme resources (#547).
+        InvalidateCalendarColumnFit();
 
         var hc = _themeService.IsHighContrastActive;
         var text = hc && !_lastAnnouncedHighContrast
@@ -6134,20 +6157,71 @@ public partial class MainWindow : Window
         return Task.FromResult(vm.Result);
     }
 
-    private void OpenAccountManager()
+    private AccountManagerViewModel CreateAccountManagerViewModel()
     {
         var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _providerCatalog, _autoDiscover, _smtp, _contactSyncService, _graphCalendarSyncService);
-        // #507: a new install with no account yet is offered Import Settings beside New.
-        accountVm.OfferImportSettings = _vm.IsNewInstall;
         // #529 step 4: keep the main sync loop safe in-session after an IMAP→Graph convert (disconnect,
         // flip our copy, seed the rule-refire baseline, rebind the router).
         accountVm.AccountConvertedToGraph = id => _vm.OnAccountConvertedToGraphAsync(id);
+        return accountVm;
+    }
+
+    /// <summary>
+    /// First run, with no accounts (#834): Add Account straight away, rather than Manage Accounts —
+    /// mostly a greyed-out settings form at that point, where the user had to find New. On a new
+    /// install Add Account also offers Import Settings (#507), which used to sit beside New.
+    /// </summary>
+    private void OpenFirstAccountSetup()
+    {
+        var accountVm = CreateAccountManagerViewModel();
+        var outcome = AddAccountDialog.RunUntilDone(this, accountVm, offerImportSettings: _vm.IsNewInstall);
+        _vm.RefreshAccountList();
+
+        if (outcome == AddAccountOutcome.ImportSettings)
+        {
+            // After the dialog has closed: the import's own dialogs must not open inside its loop.
+            OpenImportSettings(fromNewInstallOffer: true);
+            return;
+        }
+
+        if (accountVm.LastAddedAccountId == null)
+        {
+            // Cancelled before adding anything. With no accounts the main window has nothing to land
+            // on, and focus was left on the window itself. Put it on the toolbar's Accounts button —
+            // the way back in, so Enter is all it takes — and say so.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                // A narrow window can push the button into the toolbar's overflow, where it cannot
+                // take focus; the Accounts list is the next best place, and Ctrl+1 reaches it too.
+                if (!ManageAccountsToolbarButton.Focus()) AccountList.Focus();
+            }), DispatcherPriority.Input);
+            Dispatcher.BeginInvoke(new Action(() => AccessibilityHelper.Announce(this,
+                    "No account added. Press Enter here to add one, or choose Manage Accounts on the File menu.",
+                    category: AnnouncementCategory.Hint)),
+                DispatcherPriority.Background);
+            return;
+        }
+
+        // Done, Escape or the close box at the "added" step — or Cancel on the form after Add another
+        // account: either way accounts exist now, and the last one is where the user should land.
+        accountVm.ShowAddedAccountAfterClose = true;
+        FocusAddedAccountIfDone(accountVm);
+        ReportNewAccountFollowUpsAsync(accountVm).LogFaults("new-account follow-up report");
+    }
+
+    private void OpenAccountManager()
+    {
+        var accountVm = CreateAccountManagerViewModel();
+        // #507: a new install with no account yet is offered Import Settings beside New.
+        accountVm.OfferImportSettings = _vm.IsNewInstall;
         var dialog = new AccountManagerDialog(accountVm) { Owner = this };
         dialog.ShowDialog();
         // Refresh regardless of the dialog result: the contact- and calendar-sync toggles apply
         // immediately (persisted without a Save step), so the calendar tree must reflect them even
         // when the dialog is closed with Cancel.
         _vm.RefreshAccountList();
+        FocusAddedAccountIfDone(accountVm);
+        ReportNewAccountFollowUpsAsync(accountVm).LogFaults("new-account follow-up report");
 
         // After the dialog has closed: the import's own dialogs must not open inside its modal loop.
         // This path does not need AllowSettingsTransfer; the offer was the user's way in.
@@ -6157,13 +6231,63 @@ public partial class MainWindow : Window
 
     private void OpenAccountManagerForAccount(AccountModel account)
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _providerCatalog, _autoDiscover, _smtp, _contactSyncService, _graphCalendarSyncService);
-        accountVm.AccountConvertedToGraph = id => _vm.OnAccountConvertedToGraphAsync(id);  // #529 step 4 (see OpenAccountManager)
+        var accountVm = CreateAccountManagerViewModel();
         var dialog    = new AccountManagerDialog(accountVm) { Owner = this };
         // Pre-select the account in the manager
         accountVm.SelectedAccount = accountVm.Accounts.FirstOrDefault(a => a.Id == account.Id);
         dialog.ShowDialog();
         _vm.RefreshAccountList();   // see note above — reflect immediate sync toggles
+        FocusAddedAccountIfDone(accountVm);
+        ReportNewAccountFollowUpsAsync(accountVm).LogFaults("new-account follow-up report");
+    }
+
+    /// <summary>
+    /// A new account's contact and calendar consent can still be running when Manage Accounts closes
+    /// — Done closes it straight after adding (#834). Wait for it here, and if it failed, say so from
+    /// this window and refresh, so the calendar tree and the account's sync flags match what was saved.
+    /// </summary>
+    private async Task ReportNewAccountFollowUpsAsync(AccountManagerViewModel accountVm)
+    {
+        await accountVm.NewAccountFollowUpsCompletion;
+        var failures = accountVm.TakeNewAccountFailures();
+        if (failures.Count == 0) return;
+        _vm.RefreshAccountList();
+        Report(string.Join(" ", failures));
+    }
+
+    /// <summary>
+    /// #834: an account was added and the user chose Done. Select it in the Accounts list and put
+    /// focus on its row, so the user lands on what they just made — on first run especially, where
+    /// focus was otherwise left on the window itself with nothing focused. The row reads the
+    /// account and its connection state; Enter opens it.
+    /// </summary>
+    private void FocusAddedAccountIfDone(AccountManagerViewModel accountVm)
+    {
+        if (!accountVm.ShowAddedAccountAfterClose || accountVm.LastAddedAccountId is not { } id) return;
+        var account = _vm.Accounts.FirstOrDefault(a => a.Id == id);
+        if (account == null) return;
+
+        _vm.SelectedAccount = account;   // AccountList.SelectedItem is bound two-way to this
+        FocusAccountRow(account);
+    }
+
+    /// <summary>
+    /// Puts keyboard focus on an account's row. ScrollIntoView first: the list virtualizes, so a row
+    /// out of sight has no container, and the AccountList.Focus() fallback lands on the ListBox rather
+    /// than a row, because List_GotKeyboardFocus only redirects into a row for the message list.
+    /// </summary>
+    private void FocusAccountRow(AccountModel account)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            AccountList.ScrollIntoView(account);
+            AccountList.UpdateLayout();
+
+            if (AccountList.ItemContainerGenerator.ContainerFromItem(account) is ListBoxItem row)
+                row.Focus();
+            else
+                AccountList.Focus();
+        }, DispatcherPriority.Input);
     }
 
     // ── Tab & Window Management handlers ────────────────────────────────────────
@@ -6928,22 +7052,8 @@ public partial class MainWindow : Window
         Report(move(account));
         if (account == null) return;
 
-        Dispatcher.InvokeAsync(() =>
-        {
-            // ScrollIntoView first, or Move to End strands the user on an empty list. The account
-            // list is a plain virtualizing ListBox showing a handful of rows, so a row scrolled out
-            // of sight has no container at all and ContainerFromItem returns null — and the
-            // AccountList.Focus() fallback lands on the ListBox, not on a row, because
-            // List_GotKeyboardFocus only redirects into a row for the message list. Focus would
-            // then be nowhere near the account QuickMail had just said it moved.
-            AccountList.ScrollIntoView(account);
-            AccountList.UpdateLayout();
-
-            if (AccountList.ItemContainerGenerator.ContainerFromItem(account) is ListBoxItem row)
-                row.Focus();
-            else
-                AccountList.Focus();
-        }, DispatcherPriority.Input);
+        // Move to End would otherwise strand the user on an empty list: see FocusAccountRow.
+        FocusAccountRow(account);
     }
 
     // Deletes the folder and lands focus on the folder above. The VM splices the node out of the
@@ -7582,6 +7692,10 @@ public partial class MainWindow : Window
             var cfg = _configService.Load();
             _vm.ApplySettings(cfg);
             _registry.ApplyUserOverrides(cfg.CustomHotkeys);
+            // Open message windows keep their own registry; give them the new keys too, so what
+            // they run, show and report matches Settings without being reopened (#849).
+            foreach (var messageWindow in Application.Current.Windows.OfType<MessageWindow>())
+                messageWindow.ApplyMainWindowKeys(cfg.CustomHotkeys);
             // The plain-text preference may have changed; re-render the open message so a
             // Settings change takes effect live (focus is preserved). Theme changes already
             // re-render via ThemeChanged; this covers the plain-text flag when the theme is
@@ -8176,9 +8290,8 @@ public partial class MainWindow : Window
             var viewId  = view.Id.ToString();
             item.Click += (_, _) => _vm.SelectViewCommand.Execute(viewId);
 
-            // Show hotkey in menu if one is assigned.
-            if (!string.IsNullOrEmpty(view.Hotkey))
-                item.InputGestureText = view.Hotkey;
+            // The view's hotkey, if one is assigned, shown and spoken from its registry command (#849).
+            CommandShortcut.SetId(item, $"view.saved.{viewId}");
 
             ViewsMenuItem.Items.Insert(i, item);
         }
@@ -8277,6 +8390,7 @@ public partial class MainWindow : Window
         flagsMenu.Items.Add(clearItem);
         flagsMenu.Items.Add(new Separator());
         var manageItem = new MenuItem { Header = "_Manage Flags…" };
+        CommandShortcut.SetId(manageItem, "mail.openFlagManager");
         manageItem.Click += (_, _) => OpenFlagManager();
         flagsMenu.Items.Add(manageItem);
     }
@@ -8298,6 +8412,7 @@ public partial class MainWindow : Window
         flagsMenu.Items.Add(clearItem);
         flagsMenu.Items.Add(new Separator());
         var manageItem = new MenuItem { Header = "_Manage Flags…" };
+        CommandShortcut.SetId(manageItem, "mail.openFlagManager");
         manageItem.Click += (_, _) => OpenFlagManager();
         flagsMenu.Items.Add(manageItem);
     }

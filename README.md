@@ -97,7 +97,7 @@ dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release
 
 ## Releases
 
-Every push to `main` and every pull request is built by GitHub Actions. Pushing a `v*` tag publishes a GitHub Release with the installers and portable executables attached, and republishes the User Guide.
+Every push to `main` and every pull request is built and tested by GitHub Actions, without any of the project's secrets. Pushing a `v*` tag builds the signed release: once the maintainer approves the signing step, it publishes a GitHub Release with the installers and portable executables attached, and republishes the User Guide.
 
 ## Contributing and Support
 

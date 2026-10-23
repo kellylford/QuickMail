@@ -1,33 +1,43 @@
 # QuickMail v0.8.59 Release Notes
 
-## Changed
-
-### Create Rule from Message fills in the sender's address and their name
-
-**Create Rule from Message** (`Ctrl+Shift+T`) now puts the sender's email address in **From any of
-these addresses**, checked, so the rule matches everything from that address and nothing from
-anyone else using the same name. Their name goes in **Sender contains**, unchecked; check it as
-well if you want a rule that needs both the address and the name. If QuickMail doesn't have the
-sender's address yet, it fills in the name alone, as before.
-
-### The rule editor's address conditions
-
-**From addresses** has moved out of **Advanced conditions & actions** to sit straight after
-**Sender contains**, so the sender's name and address are together. It is now called **From any
-of these addresses**, and **Sent to addresses** is now **Sent to any of these addresses**, since
-a message matches when it has any one of the addresses listed.
-
-In the Rules Manager's list, a client-side rule now reads "If from" and the address, or "sent
-to", the same way a Microsoft 365 server-side rule already did, rather than "from contains" or
-"to contains".
-
 ## Fixed
 
-### Switched-off From addresses are kept
+### Auto-save no longer stops after a save that never finishes
 
-If you switched **From any of these addresses** off and **Sender contains** on, then saved, the
-addresses were thrown away, so switching back found an empty box. They are now kept, switched
-off, like the text of every other condition you turn off.
+If saving a draft hung, for example on a connection that had quietly dropped, auto-save stopped
+for the rest of the session without saying so, and edits made after that could be lost. A save
+that does not finish within about 35 seconds is now given up on: the draft is kept on this
+computer, as it already is when you are offline, and auto-save carries on. Saving with **Ctrl+S**
+and saving when you close the window give up the same way, so the window can always close. If the
+abandoned save reaches the server later, QuickMail tidies up so you are not left with two copies
+(#781).
+
+### A sender is listed once in a conversation's Properties
+
+**Properties** (**Alt+Enter**) on a conversation listed a sender twice in Participants when they
+had written once with a display name and once without: once as their name and address, and again
+as the address alone. They are now listed once, with their name. Someone who never gave a name is
+still listed by their address (#814).
+
+Contributed by [valiant8086](https://github.com/valiant8086).
+
+### Address book groups say which group they are, and how many members they have
+
+In the address book's Groups list and in the Group Manager, a group with no members was shown and
+read as just "Empty group", so several empty groups could not be told apart. It now gives its name
+first, such as "Work, no members" (#649).
+
+The member count beside each group's name in the address book was never drawn on screen. It now shows
+beside the name, and the heading above the member list reads "Members of Work".
+Screen readers now read both headings as shown, instead of a fixed label (#650).
+
+### Rows in All Mail say their folder as soon as the folder list arrives
+
+In All Mail and the other views that gather several folders, each message says which folder it is
+in. When the message list appeared before QuickMail knew the folder names, such as on the first
+start after an upgrade, those messages said no folder until you left the view and came back. They
+now pick up the folder as soon as the list arrives, and pick up a folder's new name when it is
+renamed (#451).
 
 ## Reporting Issues
 

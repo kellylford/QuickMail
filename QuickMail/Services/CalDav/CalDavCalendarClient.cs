@@ -372,7 +372,8 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
             {
                 var errBody = await resp.Content.ReadAsStringAsync(ct);
                 throw new HttpRequestException(
-                    $"CalDAV request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(errBody, 300)}");
+                    $"CalDAV request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(errBody, 300)}",
+                    inner: null, statusCode: resp.StatusCode);
             }
 
             return (await resp.Content.ReadAsStringAsync(ct), uri);

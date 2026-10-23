@@ -737,7 +737,7 @@ public partial class SettingsViewModel : ObservableObject
         public string Category  => _command.Category;
         public string Title     => _command.Title;
 
-        public string DefaultGesture => _command.GestureText;
+        public string DefaultGesture => _command.DefaultGestureText;
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(ActiveGesture))]

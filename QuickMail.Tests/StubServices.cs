@@ -226,7 +226,10 @@ sealed class StubOAuthService : IOAuthService
     }
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(SignInResult());
     private OAuthResult SignInResult() => new(string.Empty, SignInUsername ?? string.Empty, SignInIsPersonalAccount);
-    public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>When set, RequestContactsConsentAsync waits for it, and fails if it faults — to
+    /// simulate a contact consent that is still running, or declined, after the dialog has closed.</summary>
+    public Task? ContactsConsent { get; set; }
+    public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => ContactsConsent ?? Task.CompletedTask;
     public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
 
     /// <summary>Parent account ids RequestSharedMailboxConsentAsync was called for (#31) — lets a test
@@ -707,8 +710,12 @@ sealed class StubOutboxService : IOutboxService
     public void RaiseChanged() => Changed?.Invoke();
     public void RaiseFlushCompleted(OutboxFlushResult r) => FlushCompleted?.Invoke(r);
 
+    /// <summary>Runs at the start of every enqueue — something that happens while the store write is in flight.</summary>
+    public Action? DuringEnqueue { get; set; }
+
     private Task<string> Enqueue(OutboxKind kind, ComposeModel compose, Guid accountId, string? existingId)
     {
+        DuringEnqueue?.Invoke();
         if (!IsAvailable) throw new InvalidOperationException("The Outbox is not available in --online mode.");
         if (EnqueueFailure != null) return Task.FromException<string>(EnqueueFailure);
         var id = existingId ?? OutboxItem.NewId();
@@ -855,6 +862,10 @@ sealed class StubCommandRegistry : ICommandRegistry
     public void Unregister(string id) => _commands.Remove(id);
     public void ApplyUserOverrides(IEnumerable<HotkeyBinding> bindings) { }
     public IReadOnlyList<string> GetOrphanOverrideCommandIds() => [];
+    public string GetGestureText(string id) => FindById(id)?.GestureText ?? string.Empty;
+#pragma warning disable CS0067 // the stub never rebinds anything, so nothing ever raises it
+    public event EventHandler? BindingsChanged;
+#pragma warning restore CS0067
 
     // Test helpers
     public void RegisterTestCommand(string id, string category, string title)

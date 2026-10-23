@@ -11,10 +11,66 @@ using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
 
+/// <summary>How the Add Account dialog was left (#834).</summary>
+public enum AddAccountOutcome
+{
+    /// <summary>Cancelled, or closed before an account was added.</summary>
+    None,
+    // Closing the window at the "added" step (its close box, Alt+F4) counts as Done, like Escape:
+    // the account exists, and leaving it should not drop the user into its settings.
+    /// <summary>An account was added and the user chose Add another account.</summary>
+    AddAnother,
+    /// <summary>An account was added and the user chose Done.</summary>
+    Done,
+    /// <summary>The user chose Import Settings (a new install only); nothing was added.</summary>
+    ImportSettings,
+}
+
 public partial class AddAccountDialog : Window
 {
     private readonly AddAccountViewModel _vm;
     private bool _restoreFocusToTestButton;
+
+    /// <summary>
+    /// Saves the account, set by the window that opened this dialog. It runs when Add Account is
+    /// pressed and the form is complete, before the dialog moves to its "added" step, so the account
+    /// exists whichever way the user leaves from there. Returns the label to report ("… added.").
+    /// Unset, the dialog closes with DialogResult true and the owner saves, as it used to.
+    /// </summary>
+    public Func<string>? CommitAccount { get; set; }
+
+    /// <summary>How the dialog was left; read by the owner after ShowDialog returns.</summary>
+    public AddAccountOutcome Outcome { get; private set; } = AddAccountOutcome.None;
+
+    /// <summary>
+    /// Shows Add Account over <paramref name="owner"/> until the user is finished: Add another
+    /// account opens a fresh form, and anything else ends it. Each account is saved through
+    /// <paramref name="accounts"/> the moment Add Account is pressed. Shared by Manage Accounts' New
+    /// and by first run, which opens this directly (#834).
+    /// </summary>
+    /// <returns>How the last dialog was left. Done, or None after Add another and then Cancel, can
+    /// follow accounts having been added; <see cref="AccountManagerViewModel.LastAddedAccountId"/>
+    /// says whether any were.</returns>
+    public static AddAccountOutcome RunUntilDone(Window owner, AccountManagerViewModel accounts,
+        bool offerImportSettings = false)
+    {
+        while (true)
+        {
+            var addVm = accounts.CreateAddAccountViewModel();
+            // Only while there is still nothing to lose by importing over it.
+            addVm.OfferImportSettings = offerImportSettings && accounts.Accounts.Count == 0;
+            var dialog = new AddAccountDialog(addVm) { Owner = owner };
+            dialog.CommitAccount = () =>
+            {
+                var account = addVm.ToAccountModel();
+                accounts.CommitNewAccount(account, addVm.Password);
+                return account.AccountLabel;
+            };
+            dialog.ShowDialog();
+
+            if (dialog.Outcome != AddAccountOutcome.AddAnother) return dialog.Outcome;
+        }
+    }
 
     public AddAccountDialog(AddAccountViewModel vm)
     {
@@ -23,7 +79,9 @@ public partial class AddAccountDialog : Window
         DataContext = vm;
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
+            // Once the account is added the form is gone; a lookup or Test Connection still
+            // finishing must not speak about fields that are no longer there.
+            if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText) && !vm.IsAdded)
                 // The category lives on the VM (AccountEditorViewModel.StatusCategory) so both
                 // account dialogs classify status the same way, and so a VM-side refusal can mark
                 // itself a Result without the View having to guess from the wording.
@@ -38,7 +96,6 @@ public partial class AddAccountDialog : Window
         // reader can miss the soft cue — the account is intentionally left bound to the entered user.
         vm.SignInIdentityMismatch += WarnIdentityMismatch;
         vm.ProviderApplied += OnProviderApplied;
-        vm.DiscoveryCompleted += OnDiscoveryCompleted;
         vm.PasswordCleared += OnPasswordCleared;
     }
 
@@ -88,23 +145,6 @@ public partial class AddAccountDialog : Window
             ? provider.AppPasswordHint
             : $"{provider.DisplayName} settings applied.";
         AccessibilityHelper.Announce(this, message ?? string.Empty, category: AnnouncementCategory.Hint);
-    }
-
-    /// <summary>
-    /// A lookup finished. The message itself is announced by the StatusText handler above; what this
-    /// adds is putting the caret where the work now is — the incoming host field — when nothing was
-    /// found. Exactly one of the IMAP and POP3 panels is visible, so the host box to focus follows
-    /// the connection method; without the POP3 branch, a POP3 account's error announced the field
-    /// and then stranded focus where it was.
-    /// </summary>
-    private void OnDiscoveryCompleted(bool found, string message)
-    {
-        if (found) return;
-
-        // Advanced was just expanded by the VM. Let the expander realize its content before focusing
-        // into it, or Focus() lands on an element that does not exist yet.
-        Dispatcher.BeginInvoke(new Action(FocusIncomingHostBox),
-            System.Windows.Threading.DispatcherPriority.Input);
     }
 
     /// <summary>Focuses whichever incoming-server host box is currently presented.</summary>
@@ -176,6 +216,24 @@ public partial class AddAccountDialog : Window
         // comes before the fields it populates.
         ProviderComboBox.Focus();
         Keyboard.Focus(ProviderComboBox);
+
+        // First run on a new install: say once that there is another way in. A Hint, after the
+        // window and the Provider list have been read, so it neither cuts them off nor speaks
+        // for a user who has turned hints off.
+        if (_vm.OfferImportSettings)
+            Dispatcher.BeginInvoke(new Action(() => AccessibilityHelper.Announce(this,
+                    "Already use QuickMail on another computer? Import Settings, Alt+I, brings your accounts across.",
+                    category: AnnouncementCategory.Hint)),
+                System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+    }
+
+    // #507/#834: the import opens after this dialog has closed (MainWindow.OpenFirstAccountSetup),
+    // never inside its modal loop.
+    private void ImportSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        Outcome = AddAccountOutcome.ImportSettings;
+        DialogResult = false;
+        Close();
     }
 
     private void OnIsBusyChanged()
@@ -282,6 +340,43 @@ public partial class AddAccountDialog : Window
             return;
         }
 
+        // Focus sits on the now-hidden Add button until the Input-priority move to Done runs; a
+        // repeated Enter in that gap must not save the account a second time.
+        if (_vm.IsAdded) return;
+
+        if (CommitAccount is null)
+        {
+            DialogResult = true;
+            Close();
+            return;
+        }
+
+        var label = CommitAccount();
+        _vm.MarkAdded(label);
+
+        // The form has just collapsed under the focused Add Account button. Put focus on Done once
+        // the panel is laid out, then say what happened: focus first, so the outcome is not cut off
+        // by the button being read.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            DoneButton.Focus();
+            Keyboard.Focus(DoneButton);
+        }), System.Windows.Threading.DispatcherPriority.Input);
+        Dispatcher.BeginInvoke(new Action(() =>
+            AccessibilityHelper.Announce(this, _vm.AddedMessage, category: AnnouncementCategory.Result)),
+            System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void AddAnotherButton_Click(object sender, RoutedEventArgs e)
+    {
+        Outcome = AddAccountOutcome.AddAnother;
+        DialogResult = true;
+        Close();
+    }
+
+    private void DoneButton_Click(object sender, RoutedEventArgs e)
+    {
+        Outcome = AddAccountOutcome.Done;
         DialogResult = true;
         Close();
     }
@@ -292,13 +387,18 @@ public partial class AddAccountDialog : Window
         Close();
     }
 
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (_vm.IsAdded && Outcome == AddAccountOutcome.None) Outcome = AddAccountOutcome.Done;
+        base.OnClosing(e);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         // OnClosed, not OnClosing: the window can still cancel a close and stay open. Unsubscribe
         // before disposing so a late event can't reach a disposed VM.
         _vm.SignInIdentityMismatch -= WarnIdentityMismatch;
         _vm.ProviderApplied -= OnProviderApplied;
-        _vm.DiscoveryCompleted -= OnDiscoveryCompleted;
         _vm.PasswordCleared -= OnPasswordCleared;
         // Cancels any in-flight settings lookup. ToAccountModel() (read by the caller after
         // ShowDialog returns) touches none of the disposed state.

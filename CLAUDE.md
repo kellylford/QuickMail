@@ -80,22 +80,22 @@ The user guide (`docs/USER-GUIDE.md`) is automatically converted to HTML and pub
 ### Publishing the User Guide
 
 **Manual publish** — any time, independent of release:
-1. Go to **Actions** → **Publish User Guide** → **Run workflow** (green button)
+1. Go to **Actions** → **Publish User Guide** → **Run workflow** (green button), **on `main`**
 2. Workflow generates single-page (`full.html`) and sectioned HTML with navigation (`index.html`)
 3. Deployed to `https://kellylford.github.io/QuickMail/`
+
+The deploy goes through the `github-pages` environment, which admits only `main` and `v*`
+tags, so a run started on any other branch is refused rather than publishing that branch.
 
 **Automatic publish** — the `publish-guide` job at the end of `quickmail.yml` calls this
 workflow after the release job, on every `v*` tag.
 
-Do **not** rely on the `release: published` trigger in `publish-user-guide.yml` for that.
-It is real but never fires for our releases: `softprops/action-gh-release` creates them
-with `GITHUB_TOKEN`, and GitHub does not start workflow runs from events a `GITHUB_TOKEN`
-raised. It has never worked (the trigger dates from the workflow's first commit,
-53ae694), and went unnoticed because somebody always ran the workflow by hand a minute
-after tagging — until 0.8.44 shipped and nobody did, leaving the site saying 0.8.43 with
-none of the offline documentation on it. The trigger is kept only for a release made
-by hand in the GitHub UI, which does raise the event; that path does not re-run
-`quickmail.yml`, so the two cannot double up.
+There is no `release: published` trigger any more. It never fired for our releases
+(`softprops/action-gh-release` creates them with `GITHUB_TOKEN`, and GitHub does not start
+workflow runs from events a `GITHUB_TOKEN` raised — 0.8.44 shipped with the site still
+saying 0.8.43 because of it), and for a release made by hand it let anyone with write access
+republish an old tag's docs. The publish job runs only on `main` or in a `v*` tag push's
+release run; after a release made by hand, run the workflow on `main`.
 
 The version shown on the page comes from the **v\* tags**, not from anything in
 `USER-GUIDE.md` — the guide contains no version string. It is the tag on the commit being
@@ -121,7 +121,7 @@ without needing pandoc.
 **Before you ship a release**: Update `docs/USER-GUIDE.md` with any changes. The tag
 publishes it; a manual run is only for guide edits between releases.
 
-**The Pages site is more than the user guide.** `peaceiris/actions-gh-pages` replaces the whole `gh-pages` branch on every run, so anything that is not written into `build/docs/` during the workflow is deleted on deploy — a file added to the branch by hand does not survive. That is why `docs/privacy.html` 404'd for months while sitting in the repository (issue #556). Every standalone page is therefore either generated (the articles step) or copied (`docs/privacy.html`) inside the workflow. The privacy URL, `https://kellylford.github.io/QuickMail/privacy.html`, is cited by Google OAuth verification and by the winget manifest's `PrivacyUrl`; the copy step fails the run rather than deploying without it.
+**The Pages site is more than the user guide.** Every deploy (GitHub's `actions/deploy-pages`, formerly `peaceiris/actions-gh-pages` onto a `gh-pages` branch) replaces the whole site, so anything that is not written into `build/docs/` during the workflow is deleted on deploy — there is no branch to add a file to by hand, and the old `gh-pages` branch is no longer served. That is why `docs/privacy.html` 404'd for months while sitting in the repository (issue #556). Every standalone page is therefore either generated (the articles step) or copied (`docs/privacy.html`) inside the workflow. The privacy URL, `https://kellylford.github.io/QuickMail/privacy.html`, is cited by Google OAuth verification and by the winget manifest's `PrivacyUrl`; the copy step fails the run rather than deploying without it.
 
 **Keep `docs/privacy.html` current with the code.** It enumerates the OAuth scopes QuickMail requests, every network destination it contacts, and what a bug report carries. Adding a scope (`Services/OAuthService.cs`, `Services/GoogleOAuthService.cs`), a new outbound host, or a new field in a bug report means updating that page in the same change, and giving it a new effective date.
 
@@ -136,7 +136,71 @@ Run the setup script once:
 .\scripts\setup-gh-pages.ps1
 ```
 
-This enables GitHub Pages to serve from the `gh-pages` branch. The published guide appears at `https://kellylford.github.io/QuickMail/`.
+This sets GitHub Pages to serve what `publish-user-guide.yml` deploys (build type "GitHub Actions"), not a branch. Serving a branch would let anyone with write access publish the site by pushing to it. The published guide appears at `https://kellylford.github.io/QuickMail/`.
+
+## Secrets, environments and releasing
+
+A collaborator with write access must not be able to read a secret, sign, release, deploy the
+relay or publish the website from a branch of their own. Repository secrets cannot promise
+that — any workflow pushed to any branch can read them — so **every secret lives in a GitHub
+environment**, and the environment's protection decides which runs get in:
+
+| Environment | Protection | Secrets | Entered by |
+|---|---|---|---|
+| `azure-signing` | Kelly's approval | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `BUG_REPORT_RELAY_KEY` | `quickmail.yml` `build` on `v*` tags only; `build-installer.yml` |
+| `relay` | `main` only | `CLOUDFLARE_API_TOKEN`, `RELAY_GITHUB_APP_ID`, `RELAY_GITHUB_INSTALLATION_ID`, `RELAY_GITHUB_PRIVATE_KEY`, `BUG_REPORT_RELAY_KEY` | `deploy-relay.yml` `deploy` |
+| `live-smoke` | `main` only | `LIVE_IMAP_HOST`, `LIVE_IMAP_PORT`, `LIVE_IMAP_SSL`, `LIVE_SMTP_HOST`, `LIVE_SMTP_PORT`, `LIVE_SMTP_SSL`, `LIVE_USER`, `LIVE_PASSWORD` | `live-smoke.yml` |
+| `github-pages` | `main` and `v*` tags | none | `publish-user-guide.yml` |
+
+These protections lean on two repository rules as well, and neither may be loosened: the
+**"Tags: admins only"** tag ruleset (otherwise a collaborator could push a `v*` tag and the
+`github-pages` environment would admit their run), and **code-owner review on `main`**
+(otherwise a collaborator could merge an edited workflow to `main` and the main-only
+environments would hand it their secrets).
+
+Known gap: app code under `QuickMail/` is not code-owned, and the live smoke tests run it in
+the same process as the `LIVE_*` variables. Code a collaborator merged could read the
+mailbox password on the next Live Smoke run. A required reviewer on `live-smoke` closes it,
+at the cost of every scheduled run waiting for approval.
+
+- **Pull requests, `main` pushes, CodeQL, the flaky hunt and the winget matrix read no
+  secrets.** They compile against empty placeholder credentials written by
+  `scripts/write-credential-partials.ps1`; nothing they run signs in to Google or files a bug
+  report. Do not add a `secrets.` reference to any of them: whatever such a job can read, any
+  collaborator can read. Release builds call the script with `-Release`, which fails the run
+  if a value is missing rather than shipping an app whose Google sign-in silently fails.
+- `BUG_REPORT_RELAY_KEY` is in two environments and **the two copies must match** — the app
+  compiled in `azure-signing` sends the key the Worker deployed from `relay` checks.
+- Every workflow declares its own `permissions:`; set the repository default token to
+  read-only (Settings → Actions → Workflow permissions).
+
+**Settings that go with this** (all at once, right around merging the change that brought it
+in, or releases break or holes stay open):
+1. Create the environments and their secrets as in the table above.
+2. `azure-signing`: Kelly as required reviewer, no self-review bypass for others.
+3. `relay` and `live-smoke`: deployment branches `main` only.
+4. Pages: build type "GitHub Actions" (`scripts/setup-gh-pages.ps1`). `github-pages`:
+   deployment branches `main` and tags `v*` only — remove `gh-pages`, which would let anyone
+   push a workflow to that branch and deploy from it.
+5. `main` ruleset: require review from Code Owners.
+6. Workflow permissions default: read.
+7. Delete **every** repository secret (`gh secret list` must come back empty), including any
+   no workflow uses. A repository secret left behind is readable from any branch.
+
+**A tag run waits for Kelly's approval.** Pushing `v<version>` starts `quickmail.yml`, whose
+`build` job then waits on `azure-signing`. After Kelly says "go", approve **only the tag run he
+asked for** — never a run on someone else's branch, never a `build-installer.yml` run you did
+not start for him, and never by removing the environment's reviewer:
+
+```bash
+env_id=$(gh api repos/kellylford/QuickMail/environments/azure-signing --jq .id)
+id=$(gh run list -R kellylford/QuickMail -w QuickMail -b v<version> --json databaseId -q '.[0].databaseId')
+gh api repos/kellylford/QuickMail/actions/runs/$id/pending_deployments   # check it is the tag run, waiting on azure-signing
+gh api -X POST repos/kellylford/QuickMail/actions/runs/$id/pending_deployments -F "environment_ids[]=$env_id" -f state=approved -f comment=release
+```
+
+The on-demand signed installer (`build-installer.yml`) waits for the same approval, because
+it signs and can be started on any branch.
 
 ### Help Menu Link
 
@@ -374,13 +438,14 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
     new site through it rather than testing `Keyboard.FocusedElement` directly, which is null both
     at startup and while the reading pane holds focus (issues #148, #672). See
     `docs/KEYBOARD-SHORTCUTS.md`.
-- **`InputGestureText` in menus** must match the registered default key, e.g. `InputGestureText="Ctrl+Shift+F"`.
+- **Show a shortcut with `sc:CommandShortcut.Id="mail.forward"`, never a literal** (`Helpers/CommandShortcut.cs`, issue #849). On a menu item or button it sets both what is drawn (`InputGestureText`) and what a screen reader is told (`AutomationProperties.AcceleratorKey`) from the window's registry, and follows a key rebound in Settings. `InputGestureText` on its own is visual only: WPF's `MenuItemAutomationPeer` never reports it, so a menu written that way showed Ctrl+R and was read as just "Reply R". For a button's tooltip use `sc:CommandShortcut.ToolTip="Forward"`, which shows "Forward (Ctrl+Shift+F)" from text inside a `Border`. WPF reports a tooltip's plain text as help text when there is none, and the toolbar was read as "New Message button New Message (Ctrl+N) Ctrl+N"; a Border has no plain text. Where a tooltip says more than the name, give that as `AutomationProperties.HelpText`, without the key. Each window sets `CommandShortcut.Registry` on itself; context menus resolve it through `PlacementTarget`. A key that is not a registry command (Ctrl+Shift+P, WPF's own editing commands) is written as a literal `InputGestureText` *and* a matching `AutomationProperties.AcceleratorKey`. Every menu item that runs a registered command names it, including commands with no default key: a key the user assigns later shows only where the id is (#854). `ShortcutExposureTests` enforces all of this against the XAML; add any new literal to its allowlist with the reason.
+- **No app setting for spoken shortcuts.** Whether a shortcut is read out is the screen reader's own setting; the app's job is only to report it.
 - **Category** must be one of: `View`, `Mail`, `Account`, `Contacts`, `Calendar`, `Settings`, `Help`. (`Calendar` added 2026-07-17 per the full-calendar spec, resolved question Q4.)
 
 ### Adding a new shortcut — checklist
 
 1. `_registry.Register(new CommandDefinition(id: "category.name", category: "…", title: "…", execute: MyMethod, defaultKey: Key.X, defaultModifiers: ModifierKeys.Control));`
-2. Add a menu item with matching `InputGestureText` if applicable.
+2. Add a menu item (and any toolbar button) with `sc:CommandShortcut.Id="category.name"`, not a literal `InputGestureText`.
 3. Do **not** add a duplicate hardcoded branch in `PreviewKeyDown`.
 
 See `docs/KEYBOARD-SHORTCUTS.md` for the full registered shortcut table and compose window details.

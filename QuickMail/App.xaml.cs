@@ -318,6 +318,10 @@ public partial class App : Application
         // with tabs added later cannot be left out.
         TabStripNavigation.Install();
 
+        // A context menu opened from the keyboard takes focus once, on its first item, rather than
+        // on the menu and then the item (#693). A class handler, so no menu can be left out.
+        ContextMenuInitialFocus.Install();
+
         // Debug screenshot capture (#175): the real engine exists only under /debug;
         // otherwise a null object keeps the feature structurally unreachable. One
         // class handler covers all Window subclasses — no per-window edits.

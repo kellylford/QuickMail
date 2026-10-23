@@ -323,6 +323,33 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     public AddAccountViewModel CreateAddAccountViewModel() =>
         new(_featureGate, MailService, OAuthService, Catalog, _autoDiscover, _sendMail);
 
+    /// <summary>The account most recently added in this session of the dialog, if any.</summary>
+    public Guid? LastAddedAccountId { get; private set; }
+
+    // The contact and calendar consent started for a new account (#256, #282) can outlive this
+    // dialog: since #834 the usual way out is Done, which closes it at once, often while a consent
+    // request is still running. The window that opened the dialog awaits these and reports what
+    // failed, so a failure is not announced from a window that has gone. UI-thread only.
+    private readonly List<Task> _newAccountFollowUps = [];
+    private readonly List<string> _newAccountFailures = [];
+
+    /// <summary>Completes when every contact/calendar follow-up started for a new account has finished.</summary>
+    public Task NewAccountFollowUpsCompletion => Task.WhenAll(_newAccountFollowUps);
+
+    /// <summary>Returns the follow-up failures not yet reported, and forgets them, so each is said once.</summary>
+    public IReadOnlyList<string> TakeNewAccountFailures()
+    {
+        var failures = _newAccountFailures.ToList();
+        _newAccountFailures.Clear();
+        return failures;
+    }
+
+    /// <summary>
+    /// Set when the user finished adding with Done (#834): the dialog closes, and the window that
+    /// opened it puts focus on <see cref="LastAddedAccountId"/> instead of wherever focus was.
+    /// </summary>
+    public bool ShowAddedAccountAfterClose { get; set; }
+
     public void CommitNewAccount(AccountModel account, string password)
     {
         if (!string.IsNullOrEmpty(password))
@@ -330,18 +357,19 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Accounts.Add(account);
         SaveAccountsPreservingConversionMarkers();
         SelectedAccount = account;
+        LastAddedAccountId = account.Id;
         StatusText = "Account added.";
 
         // If the user checked "sync contacts" while adding the account (issue #256), finish enabling
         // it: Google already granted contacts during sign-in, Microsoft needs the read-only contact
         // scope granted now (silent when the app registration declares it). Then pull the first batch.
         if (account.SyncContacts && _contactSync != null && _contactSync.CanSync(account))
-            _ = FinishNewAccountContactSyncAsync(account);
+            _newAccountFollowUps.Add(FinishNewAccountContactSyncAsync(account));
 
         // Same for calendar (#282): Microsoft needs a calendar-scope grant now; Google already has it
         // from sign-in; iCloud uses the app-specific password just saved above. Then pull the first batch.
         if (account.SyncCalendar && _graphCalendarSync != null)
-            _ = FinishNewAccountCalendarSyncAsync(account);
+            _newAccountFollowUps.Add(FinishNewAccountCalendarSyncAsync(account));
     }
 
     private async Task FinishNewAccountContactSyncAsync(AccountModel account)
@@ -356,8 +384,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         catch (Exception ex)
         {
             account.SyncContacts = false;
-            SaveAccountsPreservingConversionMarkers();
+            PersistOneAccount(account.Id, a => a.SyncContacts = false);
             StatusText = $"Account added, but contact sync couldn't be enabled: {ex.Message}";
+            _newAccountFailures.Add($"{account.AccountLabel} was added, but contact sync couldn't be enabled: {ex.Message}");
             LogService.Log($"AccountManager: new-account contact sync failed for {account.AccountLabel} — {ex.Message}");
         }
     }
@@ -374,8 +403,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         catch (Exception ex)
         {
             account.SyncCalendar = false;
-            SaveAccountsPreservingConversionMarkers();
+            PersistOneAccount(account.Id, a => a.SyncCalendar = false);
             StatusText = $"Account added, but calendar sync couldn't be enabled: {ex.Message}";
+            _newAccountFailures.Add($"{account.AccountLabel} was added, but calendar sync couldn't be enabled: {ex.Message}");
             LogService.Log($"AccountManager: new-account calendar sync failed for {account.AccountLabel} — {ex.Message}");
         }
     }
@@ -456,6 +486,20 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// full re-download on the next launch. ConvertToGraphAsync is the one place that legitimately
     /// RAISES the marker, so it saves directly instead of calling this.
     /// </summary>
+    /// <summary>
+    /// Changes one account on disk and nothing else. A follow-up that fails after this dialog has
+    /// closed must not save the dialog's whole snapshot of the account list over whatever the main
+    /// window has saved since — a reordered list, say.
+    /// </summary>
+    private void PersistOneAccount(Guid id, Action<AccountModel> change)
+    {
+        var stored = _accountService.LoadAccounts();
+        var match = stored.FirstOrDefault(a => a.Id == id);
+        if (match == null) return;
+        change(match);
+        _accountService.SaveAccounts(stored);
+    }
+
     private void SaveAccountsPreservingConversionMarkers()
     {
         // Not ToDictionary: a duplicated id in accounts.json must not turn a tolerable data oddity into
@@ -572,37 +616,50 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
-    /// <summary>Set by the View to confirm removing a parent that has shared mailboxes (#31): message →
-    /// user's yes/no. With no children, delete proceeds as before. When there ARE children this is the
-    /// only way to get the required yes, so an unset callback fails closed — the cascade is treated as
-    /// declined and nothing is removed, never removed unconfirmed. The shipped View always wires it.</summary>
-    public Func<string, bool>? ConfirmCascadeRemoval { get; set; }
+    /// <summary>Set by the View to confirm removing an account: message → user's yes/no. Every delete
+    /// asks, as the main window's account delete does. It used to ask only when the account had shared
+    /// mailboxes (#31), which was survivable while Delete's access key D was shared with Set Default and
+    /// Sender display name, so Alt+D only moved focus. With D now Delete's alone (#834), Alt+D, or a
+    /// bare "d" typed with focus on a button or checkbox, pressed it, and the account, its password and
+    /// its stored mail went at once. An unset callback fails closed: nothing is removed unconfirmed.
+    /// The shipped View always wires it.</summary>
+    public Func<string, bool>? ConfirmAccountRemoval { get; set; }
 
     [RelayCommand]
     private async Task DeleteAccountAsync()
     {
-        if (SelectedAccount == null) return;
+        if (SelectedAccount == null)
+        {
+            // The button is always enabled; pressing it to no effect, in silence, is the bug (#834).
+            SetStatusOutcome(Accounts.Count == 0 ? "There are no accounts to delete." : "Select an account in the list first.");
+            return;
+        }
         var account = SelectedAccount;
+        var index = Accounts.IndexOf(account);
 
         // #31: a shared mailbox has no independent existence — it lives entirely through its parent's
         // token and backend — so removing the parent removes its shared mailboxes too. Confirm and name
         // them first. Removing a shared mailbox on its own is an ordinary single-account delete.
         var sharedChildren = AccountModel.SharedChildrenOf(account, Accounts);
-        if (sharedChildren.Count > 0)
-        {
-            // The cascade needs an explicit yes. With no confirmation mechanism wired we cannot get one,
-            // so fail closed (?? false) — never remove a parent's shared mailboxes unconfirmed.
-            var names = string.Join(", ", sharedChildren.Select(c => c.AccountLabel));
-            var one = sharedChildren.Count == 1;
-            var confirmed = ConfirmCascadeRemoval?.Invoke(
-                $"Removing {account.AccountLabel} will also remove its shared mailbox{(one ? "" : "es")}: {names}. Continue?") ?? false;
-            if (!confirmed) return;
-        }
+
+        // Every removal needs an explicit yes. With no confirmation mechanism wired we cannot get one,
+        // so fail closed (?? false). Same wording as the main window's account delete.
+        var prompt = sharedChildren.Count == 0
+            ? $"Remove the account '{account.AccountLabel}'? This only removes it from QuickMail — your mail on the server is not affected."
+            : $"Removing '{account.AccountLabel}' will also remove its shared mailbox{(sharedChildren.Count == 1 ? "" : "es")}: "
+              + $"{string.Join(", ", sharedChildren.Select(c => c.AccountLabel))}. This only removes them from QuickMail — your mail on the server is not affected.";
+        if (ConfirmAccountRemoval?.Invoke(prompt) != true) return;
+
+        // Where the next account will be once this one and its shared mailboxes are gone: a shared
+        // mailbox moved above its parent shifts everything below it up by one.
+        index -= sharedChildren.Count(c => Accounts.IndexOf(c) < index);
 
         _credentials.DeletePassword(account.Id);
         Accounts.Remove(account);
         foreach (var child in sharedChildren) Accounts.Remove(child);
-        SelectedAccount = null;
+        // The next account takes its place (the one before, if it was last), so the list and the
+        // buttons go on acting on something rather than on nothing (#834).
+        SelectedAccount = Accounts.Count == 0 ? null : Accounts[Math.Clamp(index, 0, Accounts.Count - 1)];
         SaveAccountsPreservingConversionMarkers();
 
         var config = _configService.Load();

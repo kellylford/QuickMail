@@ -92,6 +92,24 @@
                     </TextBlock.Style>
                 </TextBlock>
 
+                <!-- An existing server rule that marks messages read (#810): Save refuses it until Mark as read
+                     is cleared, so say why before the user gets there. A focus stop only while it has something
+                     to say, the same pattern as the notice above. -->
+                <TextBlock Text="{Binding ServerMarkAsReadNotice}" TextWrapping="Wrap"
+                           Margin="0,4,0,0" Focusable="True"
+                           KeyboardNavigation.IsTabStop="{Binding HasServerMarkAsReadNotice}"
+                           AutomationProperties.Name="{Binding ServerMarkAsReadNotice}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasServerMarkAsReadNotice}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
                 <!-- Common conditions -->
                 <TextBlock Text="Apply when a message matches" Style="{StaticResource SectionHeader}"/>
                 <Separator/>
@@ -143,8 +161,14 @@
                         Command="{Binding PickFolderCommand}" HorizontalAlignment="Left"
                         Padding="8,3" Margin="0,0,0,8" AutomationProperties.Name="{Binding MoveToFolderButtonName}"/>
 
-                <CheckBox Content="Mark as read" IsChecked="{Binding MarkAsRead}"
-                          Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Mark as read"/>
+                <!-- Client-only since #810, like Mark as unread below and for the same reason it has no
+                     AutomationProperties.Name: the qualifier is part of the spoken name, because the save-time
+                     notice that the rule went client-side is a Result announcement a user may have turned off.
+                     Turned off while editing a server-side rule, unless that rule already marks read, so the
+                     user can clear it (VM.CanMarkAsRead). -->
+                <CheckBox Content="Mark as read (client-side only)" IsChecked="{Binding MarkAsRead}"
+                          IsEnabled="{Binding CanMarkAsRead}"
+                          Style="{StaticResource EditorCheckBox}"/>
 
                 <!-- Named "Delete" on purpose, dropping the parenthetical from speech: "(move to Deleted
                      Items)" explains what Delete means and is left to the screen. Compare Mark as unread
@@ -236,8 +260,10 @@
                     </StackPanel>
                 </Expander>
 
-                <TextBlock Text="{Binding FolderError}" Foreground="{DynamicResource Theme.Error}"
+                <TextBlock Text="{Binding AddressError}" Foreground="{DynamicResource Theme.Error}"
                            TextWrapping="Wrap" Margin="0,8,0,0" KeyboardNavigation.IsTabStop="False"/>
+                <TextBlock Text="{Binding FolderError}" Foreground="{DynamicResource Theme.Error}"
+                           TextWrapping="Wrap" KeyboardNavigation.IsTabStop="False"/>
                 <TextBlock Text="{Binding ActionsError}" Foreground="{DynamicResource Theme.Error}"
                            TextWrapping="Wrap" KeyboardNavigation.IsTabStop="False"/>
             </StackPanel>

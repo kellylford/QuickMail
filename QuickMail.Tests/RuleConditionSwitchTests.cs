@@ -170,14 +170,14 @@ public class RuleConditionSwitchTests
         {
             Id = "r1",
             DisplayName = "Newsletters",
-            FromAddresses = ["a@x.com", "b@x.com"],
+            FromAddresses = [new("a@x.com"), new("b@x.com")],
             SubjectContains = "Digest",
             MarkAsRead = true,
         };
 
         var model = ServerRuleEditorViewModel.ForEdit(original).ToModel();
 
-        Assert.Equal(["a@x.com", "b@x.com"], model.FromAddresses);
+        Assert.Equal(["a@x.com", "b@x.com"], model.FromAddresses.Select(r => r.Address));
         Assert.Equal("Digest", model.SubjectContains);
     }
 

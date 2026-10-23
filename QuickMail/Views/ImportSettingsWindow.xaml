@@ -34,6 +34,7 @@
                  Grid.Row="0"
                  Text="{Binding Summary, Mode=OneWay}"
                  IsReadOnly="True"
+                 IsReadOnlyCaretVisible="True"
                  TextWrapping="Wrap"
                  BorderThickness="0"
                  Background="Transparent"

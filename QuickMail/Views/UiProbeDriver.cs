@@ -100,7 +100,30 @@ internal sealed class UiProbeDriver
                 return await CaptureSettledAsync(_window, path);
 
             case "reading-pane":
-                return await CaptureReadingPaneAsync(path);
+                return await CaptureReadingPaneAsync(path, UiProbeFixture.HtmlMessageId);
+
+            // #825: the attachment row shows its file size as visible text instead of a tooltip.
+            case "reading-pane-attachment":
+                return await CaptureReadingPaneAsync(path, UiProbeFixture.AttachmentMessageId);
+
+            // The same with the first (long-named) attachment selected and focused, to check the
+            // size stays readable on a selected row.
+            case "reading-pane-attachment-selected":
+                return await CaptureReadingPaneAsync(path, UiProbeFixture.AttachmentMessageId,
+                    SelectFirstReadingPaneAttachment);
+
+            case "compose-attachment":
+                return await CaptureChildWindowAsync(() => ExecuteCommand("mail.new"),
+                    w => w is ComposeWindow, path,
+                    w =>
+                    {
+                        if (w.DataContext is not ComposeViewModel vm) return;
+                        vm.Attachments.Add(new AttachmentModel { FileName = UiProbeFixture.LongAttachmentName, FileSize = 3_250_586 });
+                        vm.Attachments.Add(new AttachmentModel { FileName = "notes.txt", FileSize = 812 });
+                    },
+                    // Close without the "Save Draft?" prompt the added files would raise: a
+                    // modal box left open stops the probe from exiting, and it times out.
+                    cleanup: w => { if (w is ComposeWindow compose) compose.ConfirmSaveOnClose = null; });
 
             case "calendar":
                 ExecuteCommand("view.calendar");
@@ -206,7 +229,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, reading-pane-attachment-selected, compose-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }
@@ -219,11 +242,12 @@ internal sealed class UiProbeDriver
     }
 
     /// <summary>
-    /// Selects the fixture HTML message and awaits the window's render-complete
+    /// Opens the given fixture message (the HTML message, or the one with attachments)
+    /// and awaits the window's render-complete
     /// signal (WebView2 NavigationCompleted + an idle turn) — the strongest
     /// settle signal available, per spec Decision F.
     /// </summary>
-    private async Task<bool> CaptureReadingPaneAsync(string path)
+    private async Task<bool> CaptureReadingPaneAsync(string path, string messageId, Action? afterRender = null)
     {
         var rendered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnRendered() => rendered.TrySetResult(true);
@@ -233,7 +257,7 @@ internal sealed class UiProbeDriver
             // Through the window's open path (the notification-activation route):
             // the VM command alone loads the detail but never renders the body.
             _ = _window.OpenMessageForProbeAsync(
-                UiProbeFixture.AccountId, UiProbeFixture.InboxFolder, UiProbeFixture.HtmlMessageId);
+                UiProbeFixture.AccountId, UiProbeFixture.InboxFolder, messageId);
 
             var done = await Task.WhenAny(rendered.Task, Task.Delay(SurfaceTimeout)) == rendered.Task;
             if (!done)
@@ -242,6 +266,11 @@ internal sealed class UiProbeDriver
                 return false;
             }
             await IdleAsync();
+            if (afterRender != null)
+            {
+                afterRender();
+                await IdleAsync();
+            }
             return await CaptureSettledAsync(_window, path);
         }
         finally
@@ -250,12 +279,24 @@ internal sealed class UiProbeDriver
         }
     }
 
+    private void SelectFirstReadingPaneAttachment()
+    {
+        if (_window.FindName("ReadingPaneAttachmentList") is not ListBox list || list.Items.Count == 0)
+        {
+            LogService.Log("ui-probe: reading-pane attachment list missing or empty.");
+            return;
+        }
+        list.SelectedIndex = 0;
+        list.UpdateLayout();
+        (list.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem)?.Focus();
+    }
+
     /// <summary>
     /// Opens a surface that lives in its own window (modal or modeless), waits
     /// for the window to appear and settle, captures it, and closes it.
     /// </summary>
     private async Task<bool> CaptureChildWindowAsync(Action open, Func<Window, bool> match,
-        string path, Action<Window>? prepare = null)
+        string path, Action<Window>? prepare = null, Action<Window>? cleanup = null)
     {
         // Modal ShowDialog would block this method if called directly — fire it
         // through the dispatcher and poll from within whatever loop is pumping.
@@ -282,6 +323,7 @@ internal sealed class UiProbeDriver
         {
             // Always close: a leaked modal child would leave its nested message
             // loop running while RunAsync tries to shut the app down.
+            try { cleanup?.Invoke(child); } catch (Exception ex) { LogService.Debug($"ui-probe: child cleanup failed: {ex.Message}"); }
             try { child.Close(); } catch (Exception ex) { LogService.Debug($"ui-probe: child close failed: {ex.Message}"); }
             await IdleAsync();
         }

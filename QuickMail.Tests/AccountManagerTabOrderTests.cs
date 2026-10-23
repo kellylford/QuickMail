@@ -194,7 +194,7 @@ public class AccountManagerTabOrderTests
             Assert.True(At("HeaderSite") < At(SignIn), $"sign-in precedes the Advanced expander. Order: {order}");
             Assert.True(At("SignatureBox") < At(SignIn), $"sign-in precedes the Advanced contents. Order: {order}");
 
-            // Backward (Shift+Tab): from Close, the stop after sign-in, going back reaches sign-in
+            // Backward (Shift+Tab): from Close, back through Test Connection and Save, going back reaches sign-in
             // first, then the Advanced contents, then the expander header — the exact reverse.
             TabOrderWalker.StartAt(window, close!, "Close");
             var back = TabOrderWalker.WalkBackward(window);

@@ -6,12 +6,18 @@ name: Deploy bug-report relay
 # runner is x64 Linux, so this sidesteps the problem and makes redeploys reproducible.
 #
 # Setup and the meaning of each secret are in relay/README.md. Issue #501.
+#
+# The secrets (CLOUDFLARE_API_TOKEN, RELAY_GITHUB_*, BUG_REPORT_RELAY_KEY) live in the `relay`
+# environment, which only admits runs of main (deployment-branch policy). Without that, a
+# dispatch from any branch -- or a branch's own edited copy of this file -- could deploy
+# that branch's code to the live relay or read the GitHub App's private key. The `test` job
+# needs no secrets and stays outside the environment.
 
 on:
   workflow_dispatch:
     inputs:
       sync_secrets:
-        description: "Also push the Worker's secrets from repository secrets"
+        description: "Also push the Worker's secrets from the relay environment's secrets"
         type: boolean
         default: false
   push:
@@ -46,6 +52,8 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    # Holds every secret below; main only. See the header.
+    environment: relay
     steps:
       - uses: actions/checkout@v7
 
@@ -60,7 +68,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: npx --yes wrangler@4 deploy
 
-      # Opt-in, because a run whose repository secrets are missing would otherwise overwrite
+      # Opt-in, because a run whose environment secrets are missing would otherwise overwrite
       # working Worker secrets with empty strings and silently break bug reporting.
       - name: Sync Worker secrets
         if: inputs.sync_secrets
@@ -75,7 +83,7 @@ jobs:
         run: |
           for name in APP_ID INSTALLATION_ID PRIVATE_KEY RELAY_KEY; do
             if [ -z "${!name}" ]; then
-              echo "::error::Repository secret for $name is empty. Set it before syncing, or the Worker will be left unable to reach GitHub."
+              echo "::error::The relay environment's secret for $name is empty. Set it before syncing, or the Worker will be left unable to reach GitHub."
               exit 1
             fi
           done

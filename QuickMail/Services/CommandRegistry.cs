@@ -17,10 +17,34 @@ public sealed class CommandRegistry : ICommandRegistry
 
     private readonly record struct ParsedOverride(string CommandId, Key Key, ModifierKeys Modifiers);
 
-    public void Register(CommandDefinition command) =>
-        _byId[command.Id] = command;
+    public event EventHandler? BindingsChanged;
 
-    public void Unregister(string id) => _byId.Remove(id);
+    public void Register(CommandDefinition command)
+    {
+        _byId[command.Id] = command;
+        command.GestureText = EffectiveGestureText(command);
+        BindingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Unregister(string id)
+    {
+        if (_byId.Remove(id))
+            BindingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public string GetGestureText(string id) => FindById(id)?.GestureText ?? string.Empty;
+
+    // The user's binding when there is one, else the default. The first binding wins when a
+    // command has several, matching the one the Settings Keyboard tab shows.
+    private string EffectiveGestureText(CommandDefinition command)
+    {
+        foreach (var o in _userOverrides)
+        {
+            if (string.Equals(o.CommandId, command.Id, StringComparison.OrdinalIgnoreCase))
+                return GestureHelper.Format(o.Key, o.Modifiers);
+        }
+        return command.DefaultGestureText;
+    }
 
     public IReadOnlyList<CommandDefinition> GetAll() =>
         _byId.Values.OrderBy(c => c.Category).ThenBy(c => c.Title).ToList();
@@ -115,5 +139,9 @@ public sealed class CommandRegistry : ICommandRegistry
             if (b.Key != 0)
                 _userOverrides.Add(new ParsedOverride(b.CommandId, (Key)b.Key, (ModifierKeys)b.Modifiers));
         }
+
+        foreach (var cmd in _byId.Values)
+            cmd.GestureText = EffectiveGestureText(cmd);
+        BindingsChanged?.Invoke(this, EventArgs.Empty);
     }
 }

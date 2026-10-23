@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:vm="clr-namespace:QuickMail.ViewModels"
+        xmlns:sc="clr-namespace:QuickMail.Helpers"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
         AutomationProperties.Name="{Binding WindowTitle}"
@@ -30,64 +31,64 @@
                 <MenuItem Header="_Save"
                           AutomationProperties.Name="Save"
                           Command="{Binding SaveMessageCommand}"
-                          InputGestureText="Ctrl+S"/>
+                          sc:CommandShortcut.Id="message.save"/>
                 <MenuItem Header="Save _As…"
                           AutomationProperties.Name="Save As"
                           Command="{Binding SaveMessageAsCommand}"
-                          InputGestureText="F12"/>
+                          sc:CommandShortcut.Id="message.saveAs"/>
                 <MenuItem Header="_Print…"
                           AutomationProperties.Name="Print"
                           Command="{Binding PrintMessageCommand}"
-                          InputGestureText="Ctrl+P"/>
+                          sc:CommandShortcut.Id="message.print"/>
                 <Separator/>
                 <MenuItem Header="Close _Window"
                           AutomationProperties.Name="Close Window"
                           Command="{Binding CloseCommand}"
-                          InputGestureText="Ctrl+W"/>
+                          sc:CommandShortcut.Id="window.close"/>
             </MenuItem>
             <MenuItem Header="_Message">
                 <MenuItem Header="_Reply"
                           AutomationProperties.Name="Reply"
                           Command="{Binding ReplyCommand}"
-                          InputGestureText="Ctrl+R"/>
+                          sc:CommandShortcut.Id="message.reply"/>
                 <MenuItem Header="Reply _All"
                           AutomationProperties.Name="Reply All"
                           Command="{Binding ReplyAllCommand}"
-                          InputGestureText="Ctrl+Shift+R"/>
+                          sc:CommandShortcut.Id="message.replyAll"/>
                 <MenuItem Header="_Forward"
                           AutomationProperties.Name="Forward"
                           Command="{Binding ForwardCommand}"
-                          InputGestureText="Ctrl+Shift+F"/>
+                          sc:CommandShortcut.Id="message.forward"/>
                 <Separator/>
                 <MenuItem Header="_Delete"
                           AutomationProperties.Name="Delete"
                           Command="{Binding DeleteMessageCommand}"
-                          InputGestureText="Delete"/>
+                          sc:CommandShortcut.Id="message.delete"/>
                 <MenuItem Header="_Mark as Read"
                           AutomationProperties.Name="Mark as Read"
                           Command="{Binding MarkReadCommand}"
-                          InputGestureText="Ctrl+Q"/>
+                          sc:CommandShortcut.Id="message.markRead"/>
                 <Separator/>
                 <MenuItem Header="_Grab Addresses from Message"
                           AutomationProperties.Name="Grab Addresses from Message"
                           Command="{Binding GrabAddressesCommand}"
-                          InputGestureText="Ctrl+Shift+G"/>
+                          sc:CommandShortcut.Id="message.grabAddresses"/>
                 <MenuItem Header="Crea_te Rule from Message…"
                           AutomationProperties.Name="Create Rule from Message"
                           Command="{Binding CreateRuleFromMessageCommand}"
-                          InputGestureText="Ctrl+Shift+T"/>
+                          sc:CommandShortcut.Id="message.createRule"/>
             </MenuItem>
             <MenuItem Header="_Navigate">
                 <MenuItem Header="_Previous Message"
                           AutomationProperties.Name="Previous Message"
                           Command="{Binding PreviousMessageCommand}"
-                          InputGestureText="Alt+Left"/>
+                          sc:CommandShortcut.Id="window.previousMessage"/>
                 <MenuItem Header="_Next Message"
                           AutomationProperties.Name="Next Message"
                           Command="{Binding NextMessageCommand}"
-                          InputGestureText="Alt+Right"/>
+                          sc:CommandShortcut.Id="window.nextMessage"/>
                 <Separator/>
-                <MenuItem Header="Move to _Main Window"
+                <MenuItem sc:CommandShortcut.Id="window.moveToMainWindow" Header="Move to _Main Window"
                           AutomationProperties.Name="Move to Main Window"
                           Command="{Binding MoveToMainWindowCommand}"/>
             </MenuItem>
@@ -97,7 +98,7 @@
                 <MenuItem Header="_Rules…"
                           AutomationProperties.Name="Manage Rules"
                           Command="{Binding ManageRulesCommand}"
-                          InputGestureText="Ctrl+Shift+L"/>
+                          sc:CommandShortcut.Id="window.manageRules"/>
             </MenuItem>
         </Menu>
 
@@ -108,35 +109,35 @@
                         Content="◀ Previous"
                         Command="{Binding PreviousMessageCommand}"
                         Padding="6,2"
-                        ToolTip="Previous message (Alt+Left)"
+                        sc:CommandShortcut.Id="window.previousMessage" sc:CommandShortcut.ToolTip="Previous message"
                         AutomationProperties.Name="Previous message"/>
                 <Button x:Name="NextButton"
                         Content="Next ▶"
                         Command="{Binding NextMessageCommand}"
                         Padding="6,2"
-                        ToolTip="Next message (Alt+Right)"
+                        sc:CommandShortcut.Id="window.nextMessage" sc:CommandShortcut.ToolTip="Next message"
                         AutomationProperties.Name="Next message"/>
                 <Separator/>
                 <Button Content="Reply"
                         Command="{Binding ReplyCommand}"
                         Padding="6,2"
-                        ToolTip="Reply (Ctrl+R)"
+                        sc:CommandShortcut.Id="message.reply" sc:CommandShortcut.ToolTip="Reply"
                         AutomationProperties.Name="Reply"/>
                 <Button Content="Reply All"
                         Command="{Binding ReplyAllCommand}"
                         Padding="6,2"
-                        ToolTip="Reply All (Ctrl+Shift+R)"
+                        sc:CommandShortcut.Id="message.replyAll" sc:CommandShortcut.ToolTip="Reply All"
                         AutomationProperties.Name="Reply All"/>
                 <Button Content="Forward"
                         Command="{Binding ForwardCommand}"
                         Padding="6,2"
-                        ToolTip="Forward (Ctrl+Shift+F)"
+                        sc:CommandShortcut.Id="message.forward" sc:CommandShortcut.ToolTip="Forward"
                         AutomationProperties.Name="Forward"/>
                 <Separator/>
                 <Button Content="Delete"
                         Command="{Binding DeleteMessageCommand}"
                         Padding="6,2"
-                        ToolTip="Delete (Delete)"
+                        sc:CommandShortcut.Id="message.delete" sc:CommandShortcut.ToolTip="Delete"
                         AutomationProperties.Name="Delete"/>
                 <Separator/>
                 <Button Content="Move to Main Window"
@@ -213,6 +214,7 @@
                                       FallbackValue=Collapsed}"
                          KeyboardNavigation.TabNavigation="Once"
                          KeyboardNavigation.DirectionalNavigation="Contained"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          AutomationProperties.Name="Attachments"
                          PreviewKeyDown="AttachmentList_PreviewKeyDown"
                          GotKeyboardFocus="AttachmentList_GotKeyboardFocus"
@@ -224,7 +226,17 @@
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding FileName}" ToolTip="{Binding FileSizeDisplay}"/>
+                            <!-- Size as visible text, not a tooltip (issue #825). Docked right so a long
+                                 file name trims with an ellipsis instead of pushing the size off the row. The
+                                 container's AccessibleName still reads "name, size". -->
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right"
+                                           Text="{Binding FileSizeDisplay}"
+                                           Style="{StaticResource RowSecondaryText}"
+                                           Margin="8,0,4,0"/>
+                                <TextBlock Text="{Binding FileName}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </DockPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                     <ListBox.ContextMenu>

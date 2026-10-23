@@ -19,9 +19,15 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
     </Window.Resources>
 
-    <Grid Margin="16" GotKeyboardFocus="OnFieldFocused">
+    <Grid>
+    <!-- The form. Collapsed once the account is added, so none of it is a Tab stop in the
+         "added" step below (#834). -->
+    <Grid Margin="16" GotKeyboardFocus="OnFieldFocused"
+          x:Name="FormGrid"
+          Visibility="{Binding IsFormShown, Converter={StaticResource BoolToVisibility}}">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -137,7 +143,7 @@
 
                         <!-- Authentication — hidden for Microsoft 365 (Graph), which is always OAuth. -->
                         <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
-                            <Label x:Name="LblAuthType" Content="_Authentication:" Target="{Binding ElementName=AuthTypeCombo}" Padding="0" Margin="0,0,0,2"/>
+                            <Label x:Name="LblAuthType" Content="Authentication:" Target="{Binding ElementName=AuthTypeCombo}" Padding="0" Margin="0,0,0,2"/>
                             <ComboBox x:Name="AuthTypeCombo"
                                       SelectedIndex="{Binding AuthTypeIndex, Mode=TwoWay}"
                                       AutomationProperties.LabeledBy="{Binding ElementName=LblAuthType}"
@@ -184,7 +190,7 @@
                                          AutomationProperties.LabeledBy="{Binding ElementName=LblImapHost}"
                                         />
 
-                                <Label x:Name="LblImapPort" Content="IMAP _port:" Target="{Binding ElementName=ImapPortBox}" Padding="0" Margin="0,6,0,2"/>
+                                <Label x:Name="LblImapPort" Content="IMAP port:" Target="{Binding ElementName=ImapPortBox}" Padding="0" Margin="0,6,0,2"/>
                                 <TextBox x:Name="ImapPortBox"
                                          Text="{Binding ImapPort, UpdateSourceTrigger=PropertyChanged}"
                                          AutomationProperties.LabeledBy="{Binding ElementName=LblImapPort}"
@@ -195,7 +201,7 @@
                                           AutomationProperties.Name="IMAP use SSL"
                                           Margin="0,6"/>
 
-                                <CheckBox Content="Accept _invalid certificates"
+                                <CheckBox Content="Accept invalid certificates"
                                           IsChecked="{Binding ImapAcceptInvalidCert}"
                                           AutomationProperties.Name="IMAP accept invalid SSL certificates"
                                           Margin="0,0,0,6"/>
@@ -210,7 +216,7 @@
                                          AutomationProperties.LabeledBy="{Binding ElementName=LblPop3Host}"
                                         />
 
-                                <Label x:Name="LblPop3Port" Content="POP3 _port:" Target="{Binding ElementName=Pop3PortBox}" Padding="0" Margin="0,6,0,2"/>
+                                <Label x:Name="LblPop3Port" Content="POP3 port:" Target="{Binding ElementName=Pop3PortBox}" Padding="0" Margin="0,6,0,2"/>
                                 <TextBox x:Name="Pop3PortBox"
                                          Text="{Binding Pop3Port, UpdateSourceTrigger=PropertyChanged}"
                                          AutomationProperties.LabeledBy="{Binding ElementName=LblPop3Port}"
@@ -221,7 +227,7 @@
                                           AutomationProperties.Name="POP3 use SSL"
                                           Margin="0,6"/>
 
-                                <CheckBox Content="Accept _invalid certificates"
+                                <CheckBox Content="Accept invalid certificates"
                                           IsChecked="{Binding Pop3AcceptInvalidCert}"
                                           AutomationProperties.Name="POP3 accept invalid SSL certificates"
                                           Margin="0,0,0,6"/>
@@ -313,28 +319,70 @@
                    Margin="0,8,0,4"
                    TextWrapping="Wrap"/>
 
-        <!-- Buttons -->
-        <DockPanel Grid.Row="2">
-            <Button DockPanel.Dock="Right"
-                    Content="_Cancel"
-                    IsCancel="True"
-                    Click="CancelButton_Click"
-                    AutomationProperties.Name="Cancel"
-                    MinWidth="80" Margin="6,0,0,0"/>
-            <Button x:Name="TestConnectionButton"
-                    DockPanel.Dock="Right"
-                    Content="_Test Connection"
-                    Command="{Binding TestConnectionCommand}"
-                    AutomationProperties.Name="Test connection"
-                    MinWidth="120" Margin="6,0,0,0"/>
+        <!-- Buttons. Declared in the order they appear, so Tab meets them left to right: the form, then
+             Add Account, then Test Connection, then Cancel last (#834). They used to be
+             DockPanel.Dock="Right" buttons declared Cancel-first, which docking reversed on screen but
+             not in the Tab order: Tab reached Cancel before Add, and Shift+Tab from the first field
+             landed on Add Account. Enter (IsDefault) and Escape (IsCancel) work from anywhere, so
+             nothing is lost by Cancel being the last stop. Cancel has no access key, like the Cancel
+             button in Windows' own dialogs: Escape is its key, and Alt+C belongs to Sync contacts. -->
+        <!-- A new install only (#507, #834): first run opens this dialog directly, so the offer to bring
+             settings from another computer is made here. Its own line, above the buttons: the row
+             below has no room for a fourth. Declared before them, so Tab meets it after the form and
+             before Add Account. The invalid-certificate boxes gave up Alt+I for it. -->
+        <Button x:Name="ImportSettingsButton" Grid.Row="2"
+                Content="_Import Settings…"
+                Click="ImportSettingsButton_Click"
+                AutomationProperties.Name="Import settings"
+                Visibility="{Binding OfferImportSettings, Converter={StaticResource BoolToVisibility}}"
+                HorizontalAlignment="Left" MinWidth="110" Margin="0,0,0,8"/>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="AddButton"
-                    DockPanel.Dock="Right"
                     Content="_Add Account"
                     IsDefault="True"
                     Click="AddButton_Click"
                     AutomationProperties.Name="Add account"
                     MinWidth="100"/>
-            <TextBlock/>
-        </DockPanel>
+            <Button x:Name="TestConnectionButton"
+                    Content="_Test Connection"
+                    Command="{Binding TestConnectionCommand}"
+                    AutomationProperties.Name="Test connection"
+                    MinWidth="120" Margin="6,0,0,0"/>
+            <Button x:Name="CancelButton"
+                    Content="Cancel"
+                    IsCancel="True"
+                    Click="CancelButton_Click"
+                    AutomationProperties.Name="Cancel"
+                    MinWidth="80" Margin="6,0,0,0"/>
+        </StackPanel>
+    </Grid>
+
+    <!-- #834: after Add Account, the next step instead of a return to Manage Accounts with the new
+         account's settings in the Tab order. Two stops only: Add another account, and Done. Done
+         is the default and the cancel button: the account is already saved, so Escape means Done,
+         not "undo". -->
+    <StackPanel x:Name="AddedPanel" Margin="16" VerticalAlignment="Top"
+                Visibility="{Binding IsAdded, Converter={StaticResource BoolToVisibility}}">
+        <TextBlock x:Name="AddedMessageText"
+                   Text="{Binding AddedMessage}"
+                   TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,8"/>
+        <TextBlock TextWrapping="Wrap" Margin="0,0,0,16"
+                   Text="Add another account, or choose Done to go to your mail."/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="AddAnotherButton"
+                    Content="Add a_nother account"
+                    Click="AddAnotherButton_Click"
+                    AutomationProperties.Name="Add another account"
+                    MinWidth="140"/>
+            <Button x:Name="DoneButton"
+                    Content="_Done"
+                    IsDefault="True"
+                    IsCancel="True"
+                    Click="DoneButton_Click"
+                    AutomationProperties.Name="Done"
+                    MinWidth="80" Margin="6,0,0,0"/>
+        </StackPanel>
+    </StackPanel>
     </Grid>
 </Window>
