@@ -31,34 +31,39 @@ public static class Kb {
 $VK_SHIFT = 0x10; $VK_CONTROL = 0x11; $VK_F10 = 0x79; $VK_APPS = 0x5D; $VK_ESC = 0x1B
 $VK_DOWN = 0x28; $VK_3 = 0x33
 
-$clock = [Diagnostics.Stopwatch]::StartNew()
-$lines = [Collections.Concurrent.ConcurrentQueue[string]]::new()
-function Note([string]$text) { $lines.Enqueue(('{0,8:N0} ms  {1}' -f $clock.Elapsed.TotalMilliseconds, $text)) }
-function Describe($el) {
-    try {
-        $c = $el.Current
-        $sel = ''
+# The UIA callbacks arrive on UI Automation's own threads, where a PowerShell scriptblock has no
+# runspace and silently never runs, so the recorder is compiled C#.
+Add-Type -ReferencedAssemblies UIAutomationClient, UIAutomationTypes, WindowsBase @'
+using System;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Windows.Automation;
+public static class Rec {
+    public static readonly Stopwatch Clock = Stopwatch.StartNew();
+    public static readonly ConcurrentQueue<string> Lines = new ConcurrentQueue<string>();
+    public static void Note(string text) { Lines.Enqueue(string.Format("{0,8:N0} ms  {1}", Clock.Elapsed.TotalMilliseconds, text)); }
+    static string Describe(object o) {
+        var el = o as AutomationElement;
+        if (el == null) return "(not an element)";
         try {
-            $p = $el.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)
-            if ($p.Current.IsSelected) { $sel = ' [selected]' }
-        } catch {}
-        '{0} "{1}" id={2} pid={3}{4}' -f $c.ControlType.ProgrammaticName.Replace('ControlType.', ''), $c.Name, $c.AutomationId, $c.ProcessId, $sel
-    } catch { '(element gone)' }
+            var c = el.Current;
+            string sel = "";
+            object p;
+            if (el.TryGetCurrentPattern(SelectionItemPattern.Pattern, out p) && ((SelectionItemPattern)p).Current.IsSelected) sel = " [selected]";
+            return string.Format("{0} \"{1}\" id={2} class={3} pid={4}{5}",
+                c.ControlType.ProgrammaticName.Replace("ControlType.", ""), c.Name, c.AutomationId, c.ClassName, c.ProcessId, sel);
+        } catch (Exception ex) { return "(element gone: " + ex.GetType().Name + ")"; }
+    }
+    public static void Start() {
+        Automation.AddAutomationFocusChangedEventHandler((s, e) => Note("FOCUS        " + Describe(s)));
+        foreach (var ev in new[] { AutomationElement.MenuOpenedEvent, AutomationElement.MenuClosedEvent })
+            Automation.AddAutomationEventHandler(ev, AutomationElement.RootElement, TreeScope.Subtree,
+                (s, e) => Note(string.Format("{0,-12} ", e.EventId == AutomationElement.MenuOpenedEvent ? "MENU OPENED" : "MENU CLOSED") + Describe(s)));
+    }
 }
-
-$root = [Windows.Automation.AutomationElement]::RootElement
-$focusHandler = [Windows.Automation.AutomationFocusChangedEventHandler]{
-    param($s, $e) Note ('FOCUS        ' + (Describe $s))
-}
-$menuHandler = [Windows.Automation.AutomationEventHandler]{
-    param($s, $e)
-    $name = $e.EventId.ProgrammaticName -replace '^.*Identifiers\.', '' -replace 'Event$', ''
-    Note (('{0,-12} ' -f $name) + (Describe $s))
-}
-[Windows.Automation.Automation]::AddAutomationFocusChangedEventHandler($focusHandler)
-foreach ($ev in [Windows.Automation.AutomationElement]::MenuOpenedEvent, [Windows.Automation.AutomationElement]::MenuClosedEvent) {
-    [Windows.Automation.Automation]::AddAutomationEventHandler($ev, $root, [Windows.Automation.TreeScope]::Subtree, $menuHandler)
-}
+'@
+function Note([string]$text) { [Rec]::Note($text) }
+[Rec]::Start()
 
 function Shot([string]$name) {
     $b = [Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -117,7 +122,7 @@ finally {
     [Windows.Automation.Automation]::RemoveAllEventHandlers()
     try { $proc.Kill() } catch {}
     $out = @(); $item = $null
-    while ($lines.TryDequeue([ref]$item)) { $out += $item }
+    while ([Rec]::Lines.TryDequeue([ref]$item)) { $out += $item }
     $out | Set-Content -Encoding utf8 $log
     Get-Content $log
 }
