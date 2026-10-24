@@ -1,0 +1,61 @@
+# Throwaway diagnostic: records the UI Automation events a screen reader would receive when a
+# context menu opens from the keyboard in the real app (#693 / #861). Lives only on the
+# probe/context-menu-a11y branch. No secrets, like every branch-pushed workflow.
+name: Probe context menu events
+
+on:
+  push:
+    branches: ['probe/context-menu-a11y']
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Write placeholder credential partials
+        shell: pwsh
+        run: ./scripts/write-credential-partials.ps1
+
+      - name: Build QuickMail and the fixture generator
+        shell: pwsh
+        run: |
+          dotnet build QuickMail/QuickMail.csproj -c Debug --nologo -v quiet
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          dotnet build Tools/QuickMail.Fixtures/QuickMail.Fixtures.csproj -c Debug --nologo -v quiet
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Seed the fixture profile
+        shell: pwsh
+        run: dotnet run --project Tools/QuickMail.Fixtures -c Debug --no-build -- --out "$env:RUNNER_TEMP\qm-profile"
+
+      - name: Record events
+        # Windows PowerShell: System.Windows.Automation's client assemblies ship with .NET Framework.
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'QuickMail\bin\Debug\QuickMail.exe').Path
+          .\scripts\probe\context-menu-events.ps1 -Exe $exe -ProfileDir "$env:RUNNER_TEMP\qm-profile" -OutDir "$env:RUNNER_TEMP\probe"
+
+      - name: Collect the app's own focus trace
+        if: always()
+        shell: pwsh
+        run: |
+          Get-ChildItem "$env:RUNNER_TEMP\qm-profile" -Filter '*.log' -Recurse |
+            Copy-Item -Destination "$env:RUNNER_TEMP\probe" -ErrorAction SilentlyContinue
+          Get-ChildItem "$env:RUNNER_TEMP\probe\*.log" | ForEach-Object {
+            Write-Host "== $($_.Name)"; Get-Content $_ | Select-String '\[INPUT\]|ContextMenu|menu' | Select-Object -Last 80
+          }
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: context-menu-probe
+          path: ${{ runner.temp }}/probe
