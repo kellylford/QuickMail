@@ -27,9 +27,11 @@ Startup flags: `/debug` enables verbose file logging. `--profileDir <path>` over
 
 ## Tests
 
-xUnit v3 (`xunit.v3` 3.2.2) with `Xunit.StaFact` 3.0.13 for WPF STA-thread tests. Note the v3 API
+xUnit v3 (`xunit.v3` 4.0.2) with `Xunit.StaFact` 4.0.24 for WPF STA-thread tests. Note the v3 API
 differences from v2: async tests take `TestContext.Current.CancellationToken` (xUnit1051), and
-`Assert.Skip`/`SkipWhen` replace the v2 skip patterns.
+`Assert.Skip`/`SkipWhen` replace the v2 skip patterns. Both test projects set
+`IsTestingPlatformApplication=false`: xunit 4 otherwise makes them Microsoft Testing Platform apps,
+which the .NET 10 SDK's VSTest-mode `dotnet test` (what CI and the commands below use) refuses to run.
 
 ```bat
 dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release

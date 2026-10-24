@@ -11,6 +11,12 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- xunit v4 makes every test project a Microsoft Testing Platform (v2) app by default, and
+         under the .NET 10 SDK that refuses the VSTest-mode `dotnet test` CI and build.bat use
+         ("Testing with VSTest target is no longer supported"). Opting out keeps VSTest through
+         xunit.runner.visualstudio, so the trx logger and test filters behave as before. Moving to the
+         new MTP `dotnet test` is its own change: global.json, every workflow switch, CLAUDE.md. -->
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
     <!-- Match the main project's RID and self-contained mode so the ProjectReference output
          path resolves correctly and NETSDK1151 is satisfied. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -20,10 +26,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
-    <PackageReference Include="WireMock.Net" Version="2.15.0" />
-    <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="WireMock.Net" Version="2.20.0" />
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
   </ItemGroup>
 
   <ItemGroup>

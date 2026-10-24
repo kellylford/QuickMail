@@ -159,13 +159,16 @@ public class WindowingPreferencesTests
     {
         var profile = MakeTempProfile();
         var config = new ConfigService(profile).Load();
-        config.AnnounceHints                      = false;
+        // Not an Announce* setting: Save also pushes those into AccessibilityHelper's process-wide
+        // switches, and this class is outside the WpfTests collection, so turning hints off here
+        // silenced the hint tests running alongside or after it.
+        config.ConfirmEmptyTrash                  = false;
         config.Windowing.MessageOpenMode          = MessageOpenMode.Tab;
         new ConfigService(profile).Save(config);
 
         var reloaded = new ConfigService(profile).Load();
 
-        Assert.False(reloaded.AnnounceHints);
+        Assert.False(reloaded.ConfirmEmptyTrash);
         Assert.Equal(MessageOpenMode.Tab, reloaded.Windowing.MessageOpenMode);
     }
 }
