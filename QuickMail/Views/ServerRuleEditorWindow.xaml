@@ -121,11 +121,12 @@
                      keystroke. The checkbox Content IS the field's label, so it carries the accessible
                      name — no AutomationProperties.Name restating it in different words.
 
-                     Sender contains is the common one and From addresses is in Advanced, not the other
-                     way round (#682): Create Rule from Message prefills the sender, its address where
-                     QuickMail has one (#803) and otherwise its display name, which may well hold a comma
-                     — an Exchange address book writes "Last, First" — and the address list reads a comma
-                     as a separator. The prefilled field is the one that has to be first. -->
+                     The two sender conditions sit together, the name and then the address, since Create Rule
+                     from Message fills in both: the sender's address in From addresses, switched on, and their
+                     display name in Sender contains, switched off; with no address known yet, the name alone,
+                     switched on. The address list was in Advanced while Sender contains was all that was
+                     prefilled (#682), and now holds the condition in use. Its label says what it means: a
+                     message from any one of the addresses matches. -->
                 <CheckBox Content="Sender contains" IsChecked="{Binding UseSenderContains}"
                           Style="{StaticResource EditorCheckBox}"/>
                 <TextBox Text="{Binding SenderContains, UpdateSourceTrigger=PropertyChanged}"
@@ -133,6 +134,14 @@
                          IsReadOnly="{Binding UseSenderContains, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
                          IsTabStop="{Binding UseSenderContains}"
                          AutomationProperties.Name="Sender contains"/>
+
+                <CheckBox Content="From any of these addresses (comma-separated)" IsChecked="{Binding UseFromAddresses}"
+                          Style="{StaticResource EditorCheckBox}"/>
+                <TextBox Text="{Binding FromAddresses, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource EditorTextBox}"
+                         IsReadOnly="{Binding UseFromAddresses, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
+                         IsTabStop="{Binding UseFromAddresses}"
+                         AutomationProperties.Name="From any of these addresses"/>
 
                 <CheckBox Content="Subject contains" IsChecked="{Binding UseSubjectContains}"
                           Style="{StaticResource EditorCheckBox}"/>
@@ -181,21 +190,13 @@
                     <StackPanel Margin="0,6,0,0">
                         <TextBlock Text="More conditions" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
 
-                        <CheckBox Content="From addresses (comma-separated)" IsChecked="{Binding UseFromAddresses}"
-                                  Style="{StaticResource EditorCheckBox}"/>
-                        <TextBox Text="{Binding FromAddresses, UpdateSourceTrigger=PropertyChanged}"
-                                 Style="{StaticResource EditorTextBox}"
-                                 IsReadOnly="{Binding UseFromAddresses, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
-                                 IsTabStop="{Binding UseFromAddresses}"
-                                 AutomationProperties.Name="From addresses"/>
-
-                        <CheckBox Content="Sent to addresses (comma-separated)" IsChecked="{Binding UseSentToAddresses}"
+                        <CheckBox Content="Sent to any of these addresses (comma-separated)" IsChecked="{Binding UseSentToAddresses}"
                                   Style="{StaticResource EditorCheckBox}"/>
                         <TextBox Text="{Binding SentToAddresses, UpdateSourceTrigger=PropertyChanged}"
                                  Style="{StaticResource EditorTextBox}"
                                  IsReadOnly="{Binding UseSentToAddresses, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
                                  IsTabStop="{Binding UseSentToAddresses}"
-                                 AutomationProperties.Name="Sent to addresses"/>
+                                 AutomationProperties.Name="Sent to any of these addresses"/>
 
                         <CheckBox Content="Subject or body contains" IsChecked="{Binding UseBodyOrSubjectContains}"
                                   Style="{StaticResource EditorCheckBox}"/>

@@ -172,6 +172,7 @@ public class RuleService : IRuleService
         FromAddresses = source.FromAddresses is null ? null : [.. source.FromAddresses],
         UseSenderCondition = source.UseSenderCondition,
         SenderContains = source.SenderContains,
+        FromAddressesOff = source.FromAddressesOff is null ? null : [.. source.FromAddressesOff],
         UseToCondition = source.UseToCondition,
         ToContains = source.ToContains,
         SentToAddresses = source.SentToAddresses is null ? null : [.. source.SentToAddresses],

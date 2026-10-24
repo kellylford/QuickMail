@@ -83,6 +83,17 @@ public class MailRule
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SenderContains { get; set; }
 
+    /// <summary>
+    /// From addresses the user switched off while <see cref="SenderContains"/> is the condition in use, kept only
+    /// so the editor offers them back, as every other switched-off condition's text is (#665, review of #806).
+    /// Never read by the engine or the row summaries. It needs a field of its own: with Sender contains live,
+    /// <see cref="FromContains"/> is the sender's mirror for a QuickMail from before #682, and
+    /// <see cref="FromAddresses"/> would be read as a live condition. A build that doesn't know the field ignores
+    /// it. Null except in that shape.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? FromAddressesOff { get; set; }
+
     /// <summary>When true, the Sent-to condition is active — <see cref="SentToAddresses"/> where the rule
     /// has them, otherwise <see cref="ToContains"/>.</summary>
     public bool UseToCondition { get; set; } = true;

@@ -231,9 +231,9 @@ public class ServerRuleRecipientNameTests
     }
 
     [Theory]
-    [InlineData("a@b.com, \"c@d.com, e@f.com", "From addresses has a quotation mark or < that is never closed.")]
-    [InlineData("Bob <bob@x.com, c@d.com", "From addresses has a quotation mark or < that is never closed.")]
-    [InlineData("a@b.com, Nobody <>", "From addresses has an entry with no address.")]
+    [InlineData("a@b.com, \"c@d.com, e@f.com", "From any of these addresses has a quotation mark or < that is never closed.")]
+    [InlineData("Bob <bob@x.com, c@d.com", "From any of these addresses has a quotation mark or < that is never closed.")]
+    [InlineData("a@b.com, Nobody <>", "From any of these addresses has an entry with no address.")]
     public void AnAddressBoxThatCantBeReadAsItLooks_IsRefusedOnSave(string from, string error)
     {
         // Read quietly, these would save one long "address" that matches nothing, or lose an entry.
