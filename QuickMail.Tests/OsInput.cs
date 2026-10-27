@@ -87,6 +87,15 @@ internal static class OsInput
         Send(Mouse(x, y, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK));
     }
 
+    /// <summary>
+    /// Moves the pointer to the top-left corner of the virtual desktop, away from a centred test
+    /// window. A menu that opens under the pointer has the item beneath it hovered, and in menu
+    /// mode WPF focuses a hovered item (issue #864).
+    /// </summary>
+    public static void ParkPointer() =>
+        // Absolute 0,0 with VIRTUALDESK is the virtual desktop's top-left, whatever its origin.
+        Send(Mouse(0, 0, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK));
+
     /// <summary>Right-clicks at <paramref name="screen"/> (physical pixels).</summary>
     public static void RightClickAt(Point screen)
     {
