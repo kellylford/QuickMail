@@ -222,10 +222,19 @@ public class ConfigServiceSaveTests
 
         var config = service.Load();
         config.AnnounceMessageActions = false;
-        service.Save(config);
+        try
+        {
+            service.Save(config);
 
-        var reloaded = new ConfigService(profile).Load();
-        Assert.False(reloaded.AnnounceMessageActions);
+            var reloaded = new ConfigService(profile).Load();
+            Assert.False(reloaded.AnnounceMessageActions);
+        }
+        finally
+        {
+            // Save also turned off AccessibilityHelper's process-wide message-action switch; put
+            // the defaults back so tests that run after this one still hear those announcements.
+            QuickMail.Views.AccessibilityHelper.Configure(new ConfigModel());
+        }
     }
 
     [Fact]

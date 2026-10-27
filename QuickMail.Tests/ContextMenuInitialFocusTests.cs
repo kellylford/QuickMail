@@ -126,8 +126,10 @@ public class ContextMenuInitialFocusTests
 
         var gained = RecordFocus(fx.Open);
 
+        // The focus history first: when this fails, the order focus moved in is the diagnosis.
+        Assert.True(gained.Count == 1 && ReferenceEquals(gained[0], fx.Reply),
+            "Focus moved through: " + DescribeFocus(gained));
         Assert.Same(fx.Reply, Keyboard.FocusedElement);
-        Assert.Equal(new object?[] { fx.Reply }, gained);
     }
 
     /// <summary>
@@ -179,8 +181,10 @@ public class ContextMenuInitialFocusTests
             MenuFixture.DoEvents();
         });
 
+        // The focus history first: when this fails, the order focus moved in is the diagnosis.
+        Assert.True(gained.Count == 1 && ReferenceEquals(gained[0], fx.Reply),
+            "Focus moved through: " + DescribeFocus(gained));
         Assert.Same(fx.Reply, Keyboard.FocusedElement);
-        Assert.Equal(new object?[] { fx.Reply }, gained);
     }
 
     /// <summary>
@@ -204,6 +208,14 @@ public class ContextMenuInitialFocusTests
         Assert.IsNotType<MenuItem>(Keyboard.FocusedElement);
         Assert.DoesNotContain(fx.Menu.Items.OfType<MenuItem>(), m => m.IsHighlighted || m.IsKeyboardFocused);
     }
+
+    private static string DescribeFocus(IEnumerable<object?> gained) =>
+        string.Join(" -> ", gained.Select(g => g switch
+        {
+            MenuItem m   => $"MenuItem {m.Header}",
+            null         => "(nothing)",
+            _            => g.GetType().Name,
+        }));
 
     /// <summary>Every element that gains keyboard focus while <paramref name="act"/> runs, in order.</summary>
     internal static List<object?> RecordFocus(Action act)
