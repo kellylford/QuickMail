@@ -93,7 +93,8 @@ internal static class OsInput
     /// mode WPF focuses a hovered item (issue #864).
     /// </summary>
     public static void ParkPointer() =>
-        MoveTo(new Point(GetSystemMetrics(76), GetSystemMetrics(77)));
+        // Absolute 0,0 with VIRTUALDESK is the virtual desktop's top-left, whatever its origin.
+        Send(Mouse(0, 0, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK));
 
     /// <summary>Right-clicks at <paramref name="screen"/> (physical pixels).</summary>
     public static void RightClickAt(Point screen)

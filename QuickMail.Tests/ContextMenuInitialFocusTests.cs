@@ -117,7 +117,9 @@ public class ContextMenuInitialFocusTests
     public void FromTheKeyboard_FocusMovesOnce_StraightToTheFirstItem()
     {
         using var fx = new MenuFixture(fromKeyboard: true);
-        OsInput.ParkPointer();   // the menu opens at the centred row; see ParkPointer
+        // Open() leaves the default MousePoint placement, so the menu opens at the pointer with
+        // its corner, not an item, under it. Parking keeps that true wherever a test left it.
+        OsInput.ParkPointer();
         Keyboard.Focus(fx.Row);
         MenuFixture.DoEvents();
         Assert.Same(fx.Row, Keyboard.FocusedElement);   // setup: the window really has focus
@@ -137,7 +139,9 @@ public class ContextMenuInitialFocusTests
     public void ClosingTheMenu_ReturnsFocusToWhereItWasOpened()
     {
         using var fx = new MenuFixture(fromKeyboard: true);
-        OsInput.ParkPointer();   // the menu opens at the centred row; see ParkPointer
+        // Open() leaves the default MousePoint placement, so the menu opens at the pointer with
+        // its corner, not an item, under it. Parking keeps that true wherever a test left it.
+        OsInput.ParkPointer();
         Keyboard.Focus(fx.Row);
         MenuFixture.DoEvents();
         Assert.Same(fx.Row, Keyboard.FocusedElement);
@@ -160,7 +164,9 @@ public class ContextMenuInitialFocusTests
     public void RealShiftF10_OnARow_FocusMovesOnce_StraightToReply()
     {
         using var fx = new MenuFixture(fromKeyboard: null);
-        OsInput.ParkPointer();   // the menu opens at the centred row; see ParkPointer
+        // Shift+F10 opens the menu at the row, at the screen centre where a pointer rests on a
+        // fresh runner, and an item under the pointer takes focus (#864).
+        OsInput.ParkPointer();
         Keyboard.Focus(fx.Row);
         MenuFixture.DoEvents();
         Assert.Same(fx.Row, Keyboard.FocusedElement);   // setup: the window really has focus
