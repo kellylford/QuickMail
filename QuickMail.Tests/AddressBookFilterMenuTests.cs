@@ -169,6 +169,7 @@ public class AddressBookFilterMenuTests
 
             vm.SelectAccountFilter(vm.AccountFilterOptions.Single(o => o.Name == "Work"));
             DoEvents();
+            OsInput.ParkPointer();   // off the menu, which opens below the button (#864)
             Keyboard.Focus(button);
             DoEvents();
             Assert.Same(button, Keyboard.FocusedElement);   // setup: the window really has focus
