@@ -28,6 +28,13 @@ on iCloud, Google and Microsoft calendars. (#866)
   a second copy of the appointment or be refused, because QuickMail saved the change under the
   wrong name on the server. It also dropped the people invited to the meeting. (#866)
 
+## A note on meeting invitations
+
+Every attempt was made to test the calendar features on a range of accounts, but invitations,
+acceptances, declines and updates can play out in many different ways from one calendar to the
+next. If anything behaves unexpectedly, please report it with as much detail as you can: which
+account, what you did, and what you expected to happen.
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
