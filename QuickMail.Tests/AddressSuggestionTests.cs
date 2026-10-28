@@ -70,6 +70,7 @@ public class AddressSuggestionTests
     {
         EnsureApplication();
         var box = new TextBox { Text = "ann@example.com; bo" };
+        box.CaretIndex = box.Text.Length; // typing at the end
         var entry = new TextBoxAddressEntry(box);
         Assert.Equal("bo", entry.CurrentInput);
 
@@ -121,7 +122,8 @@ public class AddressSuggestionTests
     {
         EnsureApplication();
         var vm = new EventEditorViewModel(new DateTime(2026, 11, 3, 9, 0, 0));
-        var window = new EventEditorWindow(vm, new Contacts());
+        var window = new EventEditorWindow(vm, new Contacts()) { ShowInTaskbar = false };
+        window.Show(); // a popup opens only over a window that is on screen
         try
         {
             var invite = window.FindName("InviteBox") as TextBox;
@@ -166,7 +168,8 @@ public class AddressSuggestionTests
         var contacts = new Contacts();
         contacts.Groups.Add(new GroupModel { Id = 9, Name = "Team", MemberContactIds = [1, 2] });
         var vm = new EventEditorViewModel(new DateTime(2026, 11, 3, 9, 0, 0));
-        var window = new EventEditorWindow(vm, contacts);
+        var window = new EventEditorWindow(vm, contacts) { ShowInTaskbar = false };
+        window.Show();
         try
         {
             var invite = (TextBox)window.FindName("InviteBox");
@@ -264,7 +267,9 @@ public class AddressSuggestionTests
             rig.Controller.List_PreviewKeyDown(rig.List, escape);
             Assert.True(escape.Handled);
             Assert.False(rig.Popup.IsOpen);
-            Assert.False(rig.Box.SuppressLostFocusCommit);
+            // The popup reports Closed once its window has gone, a moment later; that is what
+            // hands the field back its normal commit-on-leaving.
+            PumpUntil(() => !rig.Box.SuppressLostFocusCommit);
         }
         finally
         {
