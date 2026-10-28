@@ -280,6 +280,8 @@ internal sealed class GoogleEventOrganizer
 {
     [JsonPropertyName("email")]       public string? Email { get; set; }
     [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
+    /// <summary>True when the organizer is the signed-in user.</summary>
+    [JsonPropertyName("self")]        public bool? Self { get; set; }
 }
 
 internal sealed class GoogleEventAttendee
@@ -289,6 +291,9 @@ internal sealed class GoogleEventAttendee
     [JsonPropertyName("displayName")]    public string? DisplayName { get; set; }
     /// <summary>True for the entry that is the event's organizer, who is not one of its invitees.</summary>
     [JsonPropertyName("organizer")]      public bool Organizer { get; set; }
+    [JsonPropertyName("optional")]       public bool Optional { get; set; }
+    /// <summary>True for a room or equipment booked by the event.</summary>
+    [JsonPropertyName("resource")]       public bool Resource { get; set; }
     /// <summary>"needsAction" | "declined" | "tentative" | "accepted".</summary>
     [JsonPropertyName("responseStatus")] public string? ResponseStatus { get; set; }
 }
@@ -321,4 +326,8 @@ internal sealed class GoogleAttendeeWrite
     [JsonPropertyName("displayName")]    public string? DisplayName { get; set; }
     /// <summary>Carried through so a patch that adds one person does not reset the others' answers.</summary>
     [JsonPropertyName("responseStatus")] public string? ResponseStatus { get; set; }
+    /// <summary>Sent only when true, like the two below: a patch that drops them would make an
+    /// optional guest required and turn a booked room into a guest.</summary>
+    [JsonPropertyName("optional")]       public bool? Optional { get; set; }
+    [JsonPropertyName("resource")]       public bool? Resource { get; set; }
 }

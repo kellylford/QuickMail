@@ -339,8 +339,12 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
                     Email    = a.Email!.Trim(),
                     Name     = a.DisplayName?.Trim() ?? string.Empty,
                     Response = MapGoogleAttendeeResponse(a.ResponseStatus),
+                    Kind     = a.Resource ? AttendeeKind.Resource
+                             : a.Optional ? AttendeeKind.Optional
+                             : AttendeeKind.Required,
                 })
                 .ToList(),
+            UserIsOrganizer = e.Organizer?.Self,
         };
     }
 
@@ -422,8 +426,28 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             throw;
         }
 
+        await StampICloudOrganizersAsync(account, union, password, ct);
         await _store.ReplaceGraphCalendarEventsAsync(account.Id, union);
         return union.Count;
+    }
+
+    /// <summary>
+    /// Records, on each iCloud meeting, whether the user organizes it — by the addresses the server
+    /// knows them by, which can include aliases (@me.com beside @icloud.com) that the account's own
+    /// address does not match. Best-effort: when the server cannot be asked the rows say nothing,
+    /// and <see cref="CalendarEvent.IsOrganizedBy"/> falls back to comparing addresses.
+    /// </summary>
+    private async Task StampICloudOrganizersAsync(AccountModel account, List<CalendarEvent> events,
+                                                  string password, CancellationToken ct)
+    {
+        var meetings = events.Where(e => e.HasAttendees && !string.IsNullOrWhiteSpace(e.Organizer)).ToList();
+        if (meetings.Count == 0) return;
+        var addresses = (await ICloudSchedulingAsync(account, password, ct))?.UserAddresses;
+        if (addresses is null) return;
+        foreach (var e in meetings)
+            e.UserIsOrganizer = addresses.Any(a => string.Equals(a, e.Organizer.Trim(), StringComparison.OrdinalIgnoreCase))
+                                || string.Equals(e.Organizer.Trim(), account.Username, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(e.Organizer.Trim(), account.AuthUsername, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -576,7 +600,10 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         if (string.IsNullOrWhiteSpace(evt.Uid))
             evt.Uid = Guid.NewGuid().ToString("N") + "@quickmail";
         if (evt.HasAttendees)
+        {
             await StampICloudOrganizerAsync(account, evt, password, ct);
+            evt.UserIsOrganizer = true;
+        }
 
         var ics = IcsModel.ExportEvent(evt, includeMethod: false); // RFC 4791: no METHOD on a stored CalDAV resource
         // A new resource: QuickMail chooses its name (after the UID). Record the URL it PUT to so an
@@ -602,11 +629,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         // A meeting the user organizes: attendees must see this as a newer version than the one
         // they have, or their calendars ignore the update (RFC 5546 §2.1.4). Someone else's meeting
         // keeps its sequence — only the organizer may move it.
-        var organizes = NotifiesAttendees(account, evt)
-            || ((evt.HasAttendees || evt.PreviousAttendees.Count > 0)
-                && (await ICloudSchedulingAsync(account, password, ct))?.UserAddresses
-                       .Any(a => string.Equals(a, evt.Organizer.Trim(), StringComparison.OrdinalIgnoreCase)) == true);
-        if (organizes)
+        if (NotifiesAttendees(account, evt))
         {
             if (string.IsNullOrWhiteSpace(evt.Organizer))
                 await StampICloudOrganizerAsync(account, evt, password, ct);
@@ -912,6 +935,8 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
                       Email          = a.Email,
                       DisplayName    = string.IsNullOrWhiteSpace(a.Name) ? null : a.Name,
                       ResponseStatus = GoogleResponseOf(a.Response),
+                      Optional       = a.Kind == AttendeeKind.Optional ? true : null,
+                      Resource       = a.IsResource ? true : null,
                   }).ToList()
                 : null,
         };
@@ -964,7 +989,12 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
                           Address = a.Email,
                           Name    = string.IsNullOrWhiteSpace(a.Name) ? null : a.Name,
                       },
-                      Type = "required",
+                      Type = a.Kind switch
+                      {
+                          AttendeeKind.Resource => "resource",
+                          AttendeeKind.Optional => "optional",
+                          _                     => "required",
+                      },
                   }).ToList()
                 : null,
         };
@@ -1039,17 +1069,25 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             // calendarView already expanded the series server-side; leaving RecurrenceRule null
             // prevents the local RecurrenceExpander from expanding each occurrence again.
             RecurrenceRule  = null,
-            // Rooms and equipment are booked, not invited; they are not people to list.
+            // Rooms are kept, marked as such, so a change to the guest list sends them back and
+            // Exchange does not release the booking.
             Attendees       = (e.Attendees ?? [])
-                .Where(a => !string.IsNullOrWhiteSpace(a.EmailAddress?.Address)
-                            && !string.Equals(a.Type, "resource", StringComparison.OrdinalIgnoreCase))
+                .Where(a => !string.IsNullOrWhiteSpace(a.EmailAddress?.Address))
                 .Select(a => new EventAttendee
                 {
                     Email    = a.EmailAddress!.Address!.Trim(),
                     Name     = a.EmailAddress.Name?.Trim() ?? string.Empty,
                     Response = MapGraphAttendeeResponse(a.Status?.Response),
+                    Kind     = a.Type?.ToLowerInvariant() switch
+                    {
+                        "resource" => AttendeeKind.Resource,
+                        "optional" => AttendeeKind.Optional,
+                        _          => AttendeeKind.Required,
+                    },
                 })
                 .ToList(),
+            // Graph says outright whether the user organizes it, whatever address that is under.
+            UserIsOrganizer = e.IsOrganizer,
         };
     }
 

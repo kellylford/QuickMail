@@ -6,16 +6,17 @@ namespace QuickMail.Services;
 
 /// <summary>
 /// What happened to a meeting's invitations after a save or delete (issue #866), for the
-/// announcement. <paramref name="Invited"/> people were sent the invitation or its update and
-/// <paramref name="Cancelled"/> people a cancellation. <paramref name="Error"/> is set when
-/// QuickMail had to send them itself and could not; the appointment is saved either way.
+/// announcement. <paramref name="Invited"/> people were newly invited, <paramref name="Updated"/>
+/// people already invited were sent the change, and <paramref name="Cancelled"/> people a
+/// cancellation. Rooms are not counted: they are booked, not told. <paramref name="Error"/> is set
+/// when QuickMail had to send them itself and could not; the appointment is saved either way.
 /// </summary>
-public sealed record InvitationOutcome(int Invited, int Cancelled, string? Error = null)
+public sealed record InvitationOutcome(int Invited, int Updated, int Cancelled, string? Error = null)
 {
-    public static readonly InvitationOutcome None = new(0, 0);
+    public static readonly InvitationOutcome None = new(0, 0, 0);
 
     /// <summary>True when nobody was, or was meant to be, told anything.</summary>
-    public bool IsNone => Invited == 0 && Cancelled == 0 && Error is null;
+    public bool IsNone => Invited == 0 && Updated == 0 && Cancelled == 0 && Error is null;
 }
 
 /// <summary>

@@ -241,7 +241,8 @@ public partial class CalendarViewModel : ObservableObject
 
     private readonly ICalendarInvitationService? _invitations;
 
-    /// <summary>What happened to a meeting's invitations after a save (issue #866). Never throws.</summary>
+    /// <summary>What happened to a meeting's invitations after a save (issue #866). Never throws.
+    /// The service bounds its own wait on the mail server, so the announcement is never held long.</summary>
     private Task<InvitationOutcome> InvitationsAfterSaveAsync(AccountModel account, CalendarEvent saved, bool isNew)
         => _invitations?.AfterSaveAsync(account, saved, isNew) ?? Task.FromResult(InvitationOutcome.None);
 
@@ -250,15 +251,23 @@ public partial class CalendarViewModel : ObservableObject
     /// somewhere: who was invited, updated or told it is cancelled, or why they were not. Empty
     /// for an appointment nobody is invited to.
     /// </summary>
-    internal static string DescribeInvitations(InvitationOutcome outcome, bool isNew)
+    internal static string DescribeInvitations(InvitationOutcome outcome)
     {
         if (outcome.IsNone) return string.Empty;
         static string People(int n) => n == 1 ? "1 person" : $"{n} people";
         if (outcome.Error is { } error)
-            return $" The invitations were not sent: {error}";
+        {
+            // Name what was lost: a delete loses its cancellation, a first save its invitations.
+            var what = outcome is { Invited: 0, Updated: 0 } ? "The cancellation was"
+                     : outcome is { Updated: 0, Cancelled: 0 } ? "The invitations were"
+                     : "The update was";
+            return $" {what} not sent: {error}";
+        }
         var parts = new List<string>();
         if (outcome.Invited > 0)
-            parts.Add((isNew ? "Invitation sent to " : "Update sent to ") + People(outcome.Invited));
+            parts.Add("Invitation sent to " + People(outcome.Invited));
+        if (outcome.Updated > 0)
+            parts.Add("Update sent to " + People(outcome.Updated));
         if (outcome.Cancelled > 0)
             parts.Add("Cancellation sent to " + People(outcome.Cancelled));
         return " " + string.Join(". ", parts) + ".";
@@ -563,7 +572,7 @@ public partial class CalendarViewModel : ObservableObject
             SelectedEvent = Events.FirstOrDefault(e => e.Uid == created.Uid && e.AccountId == created.AccountId);
             var when = created.StartTime?.ToString("ddd, MMM d 'at' t") ?? "no date";
             Announce($"Appointment created on {account.AccountLabel}. {created.Summary}, {when}."
-                     + DescribeInvitations(invitations, isNew: true),
+                     + DescribeInvitations(invitations),
                      AnnouncementCategory.Result);
             ListFocusRequested?.Invoke();
         }
@@ -636,7 +645,9 @@ public partial class CalendarViewModel : ObservableObject
         var source = evt.OccurrenceStart.HasValue
             ? evt
             : _calendarService.Events.FirstOrDefault(x => x.Uid == evt.Uid && x.AccountId == evt.AccountId) ?? evt;
-        var editor = new EventEditorViewModel(source);
+        // A Local appointment cannot send invitations, so a guest list it carries (an imported
+        // meeting) is shown read-only rather than offered for editing that could only be refused.
+        var editor = new EventEditorViewModel(source, userOrganizes: !source.HasAttendees);
         editor.Saved += updated => _ = editor.IsDetachSave && editor.OccurrenceStart.HasValue
             ? DetachOccurrenceAsync(source, editor.OccurrenceStart.Value, updated)
             : source.OccurrenceStart.HasValue
@@ -802,7 +813,9 @@ public partial class CalendarViewModel : ObservableObject
         var account = ServerAccountFor(evt);
         if (account is null || !evt.HasAttendees || !evt.IsOrganizedBy(account.Username, account.AuthUsername))
             return question;
-        var who = evt.Attendees.Count == 1 ? evt.Attendees[0].DisplayName : $"The {evt.Attendees.Count} people invited";
+        var people = EventAttendees.People(evt.Attendees);
+        if (people.Count == 0) return question;
+        var who = people.Count == 1 ? people[0].DisplayName : $"The {people.Count} people invited";
         return $"{question}\n\n{who} will be sent a cancellation.";
     }
 
@@ -848,7 +861,7 @@ public partial class CalendarViewModel : ObservableObject
             ApplyFilters();
             SelectedEvent = Events.FirstOrDefault(e => e.Uid == updated.Uid && e.AccountId == account.Id);
             Announce($"Updated on your online calendar. {updated.Summary}."
-                     + DescribeInvitations(invitations, isNew: false),
+                     + DescribeInvitations(invitations),
                      AnnouncementCategory.Result);
         }
         catch (Exception ex)
@@ -876,7 +889,7 @@ public partial class CalendarViewModel : ObservableObject
                 ? Events[Math.Min(Math.Max(index, 0), VisibleEvents.Count - 1)]
                 : null;
             Announce($"Deleted from your online calendar. {evt.Summary}."
-                     + DescribeInvitations(invitations, isNew: false),
+                     + DescribeInvitations(invitations),
                      AnnouncementCategory.Result);
         }
         catch (Exception ex)
@@ -1212,6 +1225,10 @@ public partial class CalendarViewModel : ObservableObject
             CalendarName    = master.CalendarName,
             RecurrenceRule  = master.RecurrenceRule,
             ExDates         = master.ExDates,
+            ResourceUrl     = master.ResourceUrl,
+            // Each occurrence is the same meeting: the same people, and the same organizer.
+            Attendees       = master.Attendees,
+            UserIsOrganizer = master.UserIsOrganizer,
             OccurrenceStart = occStart,
         };
     }

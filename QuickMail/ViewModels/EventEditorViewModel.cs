@@ -156,10 +156,14 @@ public partial class EventEditorViewModel : ObservableObject
     // who was invited before (so removed people get a cancellation), who organizes it, its
     // version, and where a CalDAV server keeps it.
     private readonly List<EventAttendee> _originalAttendees = [];
+    // Rooms and equipment the meeting books. Not shown in Invite (they are not people to invite)
+    // but written back with it, so changing the guest list does not release a booking.
+    private readonly List<EventAttendee> _resources = [];
     private readonly string _organizer = string.Empty;
     private readonly string _organizerName = string.Empty;
     private readonly string? _sequence;
     private readonly string _resourceUrl = string.Empty;
+    private readonly bool? _userIsOrganizer;
 
     /// <summary>
     /// How long the appointment lasts. Preserved when the start moves; re-derived whenever the end
@@ -436,7 +440,9 @@ public partial class EventEditorViewModel : ObservableObject
         _organizerName = existing.OrganizerName;
         _sequence = existing.Sequence;
         _resourceUrl = existing.ResourceUrl;
-        _inviteText = EventAttendees.Format(existing.Attendees);
+        _userIsOrganizer = existing.UserIsOrganizer;
+        _resources = existing.Attendees.Where(a => a.IsResource).ToList();
+        _inviteText = EventAttendees.Format(EventAttendees.People(existing.Attendees));
         _uid = existing.Uid;
         IsEdit = true;
         _editAccountId = existing.AccountId;   // server rows keep their account; the
@@ -629,8 +635,14 @@ public partial class EventEditorViewModel : ObservableObject
             field = EditorField.Invite;
             return false;
         }
+        else
+        {
+            attendees.AddRange(_resources);
+        }
         var attendeesChanged = !IsInviteReadOnly && !EventAttendees.SameAddresses(attendees, _originalAttendees);
-        if (attendees.Count > 0 && targetAccountId == CalendarEvent.LocalAccountId)
+        // Refused only when the user is inviting someone: a guest list a Local appointment already
+        // carries (a meeting imported from a .ics file) is not something it will send.
+        if (attendeesChanged && attendees.Count > 0 && targetAccountId == CalendarEvent.LocalAccountId)
         {
             // Local Calendar lives on this computer only: there is no server to send from, and no
             // account to be the organizer that replies come back to.
@@ -669,6 +681,7 @@ public partial class EventEditorViewModel : ObservableObject
             OrganizerName  = IsDetachSave ? string.Empty : _organizerName,
             Sequence       = IsDetachSave ? null : _sequence,
             ResourceUrl    = IsDetachSave ? string.Empty : _resourceUrl,
+            UserIsOrganizer = IsDetachSave ? null : _userIsOrganizer,
         };
         return true;
     }

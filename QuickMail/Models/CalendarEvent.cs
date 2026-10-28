@@ -159,9 +159,20 @@ public partial class CalendarEvent : ObservableObject
     /// account's mail address and its Apple ID can differ, and either can be the organizer.
     /// </remarks>
     public bool IsOrganizedBy(params string?[] ownAddresses)
-        => string.IsNullOrWhiteSpace(Organizer)
-           || ownAddresses.Any(a => SameAddress(Organizer, a))
-           || SameAddress(Organizer, CalendarId);
+        => UserIsOrganizer
+           ?? (string.IsNullOrWhiteSpace(Organizer)
+               || ownAddresses.Any(a => SameAddress(Organizer, a))
+               || SameAddress(Organizer, CalendarId));
+
+    /// <summary>
+    /// What the provider itself says about who organizes this appointment, when it says: Microsoft's
+    /// <c>isOrganizer</c>, Google's <c>organizer.self</c>, and for iCloud whether the organizer is
+    /// one of the addresses the server knows the user by. Null when nobody has said, and then
+    /// <see cref="IsOrganizedBy"/> compares addresses. The provider's answer wins because the user
+    /// can organize under an address QuickMail does not know — a Microsoft account that signs in
+    /// with a Gmail address organizes as an outlook.com alias. Persisted in <c>user_organizes</c>.
+    /// </summary>
+    public bool? UserIsOrganizer { get; set; }
 
     private static bool SameAddress(string a, string? b)
         => !string.IsNullOrWhiteSpace(b)

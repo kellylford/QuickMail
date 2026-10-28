@@ -189,7 +189,7 @@ public class IcsAttendeeTests
     public void Parse_ReadsAttendees_WithNamesAndAnswers_IncludingFoldedLines()
     {
         const string ics =
-            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x\r\n" +
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x\r\nSUMMARY:Planning\r\n" +
             "ORGANIZER;CN=Kelly:mailto:me@icloud.com\r\n" +
             "ATTENDEE;CN=\"Doe, Ann\";PARTSTAT=ACCEPTED;ROLE=REQ-PARTICIPANT:mailto:ann@\r\n example.com\r\n" +
             "ATTENDEE;PARTSTAT=TENTATIVE:mailto:bob@example.com\r\n" +
@@ -210,7 +210,7 @@ public class IcsAttendeeTests
     public void ToCalendarEvent_DropsTheOrganizer_WhoAppleListsAsAnAttendee()
     {
         const string ics =
-            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x\r\n" +
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x\r\nSUMMARY:Planning\r\n" +
             "ORGANIZER;CN=Kelly:mailto:me@icloud.com\r\n" +
             "ATTENDEE;PARTSTAT=ACCEPTED:mailto:me@icloud.com\r\n" +
             "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:ann@example.com\r\n" +
@@ -290,15 +290,70 @@ public class IcsAttendeeTests
     }
 
     [Fact]
-    public void ExportScheduling_Cancel_NamesOnlyItsRecipients_AndIsCancelled()
+    public void ExportScheduling_UninvitingSomeone_NamesOnlyThem_AndLeavesTheMeetingStanding()
     {
         var bob = Meeting().Attendees[1];
         var ics = Unfold(IcsModel.ExportScheduling(Meeting(), "CANCEL", [bob]));
         Assert.Contains("METHOD:CANCEL", ics);
-        Assert.Contains("STATUS:CANCELLED", ics);
+        Assert.DoesNotContain("STATUS:CANCELLED", ics); // RFC 5546 §3.2.5: the meeting goes ahead
         Assert.Contains("bob@example.com", ics);
         Assert.DoesNotContain("ann@example.com", ics);
         Assert.DoesNotContain("RSVP", ics);
+    }
+
+    [Fact]
+    public void ExportScheduling_CancellingTheMeeting_IsStatusCancelled()
+    {
+        var ics = IcsModel.ExportScheduling(Meeting(), "CANCEL", Meeting().Attendees, wholeEvent: true);
+        Assert.Contains("STATUS:CANCELLED", ics);
+    }
+
+    [Theory]
+    [InlineData("Team: Ops")]
+    [InlineData("Doe; Jane")]
+    [InlineData("Doe, Jane")]
+    public void ExportEvent_NamesWithPunctuation_ReadBackIntact(string name)
+    {
+        var evt = Meeting();
+        evt.Attendees = [new() { Email = "ops@example.com", Name = name }];
+
+        var back = Assert.Single(IcsModel.ParseAllEvents(IcsModel.ExportEvent(evt, includeMethod: false)))
+            .ToCalendarEvent(Guid.Empty);
+
+        var a = Assert.Single(back.Attendees);
+        Assert.Equal(("ops@example.com", name), (a.Email, a.Name));
+    }
+
+    [Fact]
+    public void Parse_AddressInTheEmailParameter_WhenTheValueIsNotMailto()
+    {
+        const string ics =
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x\r\nSUMMARY:Planning\r\n" +
+            "ORGANIZER;CN=Kelly;EMAIL=me@icloud.com:urn:uuid:1234\r\n" +
+            "ATTENDEE;EMAIL=ann@example.com:/123456/principal/\r\n" +
+            "ATTENDEE:urn:uuid:9999\r\n" +
+            "END:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        var model = Assert.Single(IcsModel.ParseAllEvents(ics));
+
+        Assert.Equal("me@icloud.com", model.Organizer);
+        Assert.Equal("ann@example.com", Assert.Single(model.Attendees).Email); // the bare URN is not an address
+    }
+
+    [Fact]
+    public void RoomsAndOptionalGuests_RoundTripThroughIcs()
+    {
+        var evt = Meeting();
+        evt.Attendees =
+        [
+            new() { Email = "ann@example.com", Kind = AttendeeKind.Optional },
+            new() { Email = "room4@example.com", Name = "Room 4", Kind = AttendeeKind.Resource },
+        ];
+        var ics = IcsModel.ExportEvent(evt, includeMethod: false);
+        Assert.Contains("CUTYPE=ROOM", ics);
+
+        var back = Assert.Single(IcsModel.ParseAllEvents(ics)).ToCalendarEvent(Guid.Empty);
+        Assert.Equal([AttendeeKind.Optional, AttendeeKind.Resource], back.Attendees.Select(a => a.Kind));
     }
 
     [Theory]
@@ -346,7 +401,8 @@ public class CalDavSchedulingParsingTests
     public void ChooseOrganizerAddress_PrefersTheMailAddress_ThenTheAppleId_ThenTheServersFirst()
     {
         var account = new AccountModel { Username = "me@icloud.com", LoginUsername = "me@gmail.com" };
-        Assert.Equal("me@icloud.com", GraphCalendarSyncService.ChooseOrganizerAddress(account, ["me@gmail.com", "ME@icloud.com"]));
+        // The server's own spelling of the address, since that is what it matches the organizer to.
+        Assert.Equal("ME@icloud.com", GraphCalendarSyncService.ChooseOrganizerAddress(account, ["me@gmail.com", "ME@icloud.com"]));
         Assert.Equal("me@gmail.com", GraphCalendarSyncService.ChooseOrganizerAddress(account, ["x@me.com", "me@gmail.com"]));
         Assert.Equal("x@me.com", GraphCalendarSyncService.ChooseOrganizerAddress(account, ["x@me.com"]));
         Assert.Equal("me@icloud.com", GraphCalendarSyncService.ChooseOrganizerAddress(account, []));
@@ -402,7 +458,7 @@ public class ProviderAttendeeMappingTests
             Id = "g1",
             Start = new GoogleEventTime { DateTime = "2026-11-03T17:00:00Z" },
             End = new GoogleEventTime { DateTime = "2026-11-03T18:00:00Z" },
-            Organizer = new GoogleEventOrganizer { Email = "me@gmail.com" },
+            Organizer = new GoogleEventOrganizer { Email = "me@gmail.com", Self = true },
             Attendees =
             [
                 new() { Email = "me@gmail.com", Organizer = true, Self = true, ResponseStatus = "accepted" },
@@ -416,6 +472,7 @@ public class ProviderAttendeeMappingTests
         Assert.Equal(["ann@example.com", "bob@example.com"], evt.Attendees.Select(a => a.Email));
         Assert.Equal([AttendeeResponse.Tentative, AttendeeResponse.NoReply], evt.Attendees.Select(a => a.Response));
         Assert.Equal("Ann", evt.Attendees[0].Name);
+        Assert.True(evt.UserIsOrganizer);
     }
 
     [Fact]
@@ -441,6 +498,50 @@ public class ProviderAttendeeMappingTests
 
         Assert.Equal(["ann@example.com", "bob@example.com"], evt.Attendees.Select(a => a.Email));
         Assert.Equal([AttendeeResponse.Accepted, AttendeeResponse.Tentative], evt.Attendees.Select(a => a.Response));
+    }
+
+    [Fact]
+    public void MapGraphEvent_TakesGraphsWordForWhoOrganizes_AndKeepsRoomsAndOptionalGuests()
+    {
+        var e = new GraphCalendarEvent
+        {
+            Id = "m2",
+            Start = new GraphDateTimeTimeZone { DateTime = "2026-11-03T17:00:00", TimeZone = "UTC" },
+            End = new GraphDateTimeTimeZone { DateTime = "2026-11-03T18:00:00", TimeZone = "UTC" },
+            IsOrganizer = true,
+            // A personal Microsoft account that signs in with a Gmail address organizes as an alias.
+            Organizer = new GraphRecipient { EmailAddress = new GraphEmailAddress { Address = "outlook_ABC@outlook.com" } },
+            Attendees =
+            [
+                new() { EmailAddress = new GraphEmailAddress { Address = "ann@example.com" }, Type = "optional" },
+                new() { EmailAddress = new GraphEmailAddress { Address = "room1@contoso.com" }, Type = "resource" },
+            ],
+        };
+
+        var evt = GraphCalendarSyncService.MapEvent(e, Guid.NewGuid());
+
+        Assert.True(evt.IsOrganizedBy("me@gmail.com"));
+        Assert.Equal([AttendeeKind.Optional, AttendeeKind.Resource], evt.Attendees.Select(a => a.Kind));
+
+        // Adding someone sends the room back as a room and the optional guest as optional.
+        evt.Attendees.Add(new EventAttendee { Email = "bob@example.com" });
+        evt.AttendeesChanged = true;
+        var body = GraphCalendarSyncService.BuildCreateBody(evt).Attendees!;
+        Assert.Equal(["optional", "resource", "required"], body.Select(a => a.Type));
+    }
+
+    [Fact]
+    public void GoogleBody_KeepsRoomsAndOptionalGuests()
+    {
+        var evt = Edited(changed: true);
+        evt.Attendees =
+        [
+            new() { Email = "ann@example.com", Kind = AttendeeKind.Optional },
+            new() { Email = "room@resource.calendar.google.com", Kind = AttendeeKind.Resource },
+            new() { Email = "bob@example.com" },
+        ];
+        var body = GraphCalendarSyncService.BuildGoogleWriteBody(evt).Attendees!;
+        Assert.Equal([(true, (bool?)null), (null, true), (null, null)], body.Select(a => (a.Optional, a.Resource)));
     }
 
     [Fact]
@@ -699,6 +800,52 @@ public class ProviderInvitationWriteTests : IDisposable
     }
 
     [Fact]
+    public async Task GoogleUpdate_OfTheUsersMeeting_SendsTheUpdate()
+    {
+        var handler = new RoutingHandler((_, _) => Json("""{ "id": "g1", "start": { "dateTime": "2026-11-03T17:00:00Z" }, "end": { "dateTime": "2026-11-03T18:00:00Z" } }"""));
+        var svc = GoogleService(handler);
+        var evt = NewMeeting(calendarId: "primary");
+        evt.Uid = "g1";
+        evt.AttendeesChanged = false;
+
+        await svc.UpdateEventAsync(GoogleAccount(), evt, TestContext.Current.CancellationToken);
+
+        var patch = Assert.Single(handler.Requests);
+        Assert.Equal("PATCH", patch.Method);
+        Assert.EndsWith("/events/g1?sendUpdates=all", patch.Url);
+        Assert.DoesNotContain("attendees", patch.Body); // unchanged list: the server's is left alone
+    }
+
+    [Fact]
+    public async Task ICloudSync_RecordsWhoOrganizesEachMeeting_FromTheServersAddresses()
+    {
+        static string Vevent(string uid, string organizer) => string.Join("\n",
+            "BEGIN:VCALENDAR", "BEGIN:VEVENT", $"UID:{uid}", "SUMMARY:Meeting",
+            "DTSTART:20261103T170000Z", "DTEND:20261103T180000Z",
+            $"ORGANIZER:mailto:{organizer}", "ATTENDEE:mailto:ann@example.com",
+            "END:VEVENT", "END:VCALENDAR");
+        var report =
+            "<d:multistatus xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">"
+            + "<d:response><d:href>/123456/calendars/home/1.ics</d:href><d:propstat><d:prop><c:calendar-data>"
+            + Vevent("mine", "me@me.com") // an alias the server lists, not the account's own address
+            + "</c:calendar-data></d:prop></d:propstat></d:response>"
+            + "<d:response><d:href>/123456/calendars/home/2.ics</d:href><d:propstat><d:prop><c:calendar-data>"
+            + Vevent("theirs", "boss@example.com")
+            + "</c:calendar-data></d:prop></d:propstat></d:response></d:multistatus>";
+        var handler = new RoutingHandler((req, body) => req.Method.Method == "REPORT"
+            ? Xml(report)
+            : ICloudRespond(req, body, "calendar-auto-schedule"));
+        var svc = ICloudService(handler);
+
+        await svc.SyncAccountCalendarAsync(ICloudAccount(), TestContext.Current.CancellationToken);
+
+        var rows = (await _store.LoadCalendarEventsAsync()).ToDictionary(e => e.Uid);
+        Assert.True(rows["mine"].UserIsOrganizer);
+        Assert.True(rows["mine"].IsOrganizedBy("me@icloud.com"));
+        Assert.False(rows["theirs"].UserIsOrganizer);
+    }
+
+    [Fact]
     public async Task GoogleDelete_OfTheUsersMeeting_SendsCancellations()
     {
         var handler = new RoutingHandler((_, _) => new HttpResponseMessage(HttpStatusCode.NoContent));
@@ -762,7 +909,7 @@ public class CalendarInvitationServiceTests
         var outcome = await svc.AfterSaveAsync(Me, Meeting(), isNew: true, TestContext.Current.CancellationToken);
 
         Assert.Empty(smtp.SentPrepared);
-        Assert.Equal(new InvitationOutcome(2, 0), outcome);
+        Assert.Equal(new InvitationOutcome(2, 0, 0), outcome);
     }
 
     [Fact]
@@ -778,27 +925,88 @@ public class CalendarInvitationServiceTests
         Assert.Equal(["ann@example.com", "bob@example.com"], message.To.Mailboxes.Select(m => m.Address));
         Assert.StartsWith("Invitation: Planning, ", message.Subject);
         Assert.Contains("METHOD:REQUEST", CalendarPart(message));
-        Assert.Equal(new InvitationOutcome(2, 0), outcome);
+        Assert.Equal(new InvitationOutcome(2, 0, 0), outcome);
     }
 
     [Fact]
-    public async Task Edit_UpdatesThoseStillInvited_AndCancelsForThoseRemoved()
+    public async Task Edit_InvitesTheAdded_UpdatesTheKept_AndCancelsForTheRemoved()
     {
         var (svc, _, smtp) = Make(serverSends: false);
-        var edited = Meeting();
+        var edited = Meeting(); // Ann and Bob
         edited.PreviousAttendees = [new() { Email = "ann@example.com" }, new() { Email = "carol@example.com" }];
 
         var outcome = await svc.AfterSaveAsync(Me, edited, isNew: false, TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, smtp.SentPrepared.Count);
-        var update = smtp.SentPrepared[0].Message;
+        Assert.Equal(3, smtp.SentPrepared.Count);
+        var invite = smtp.SentPrepared[0].Message;
+        Assert.StartsWith("Invitation: ", invite.Subject);
+        Assert.Equal("bob@example.com", Assert.Single(invite.To.Mailboxes).Address);
+        var update = smtp.SentPrepared[1].Message;
         Assert.StartsWith("Updated invitation: ", update.Subject);
-        Assert.Equal(["ann@example.com", "bob@example.com"], update.To.Mailboxes.Select(m => m.Address));
-        var cancel = smtp.SentPrepared[1].Message;
+        Assert.Equal("ann@example.com", Assert.Single(update.To.Mailboxes).Address);
+        // Both copies of the meeting list everyone invited, as each attendee's copy should.
+        Assert.Contains("bob@example.com", CalendarPart(update).Replace("\r\n ", string.Empty));
+        var cancel = smtp.SentPrepared[2].Message;
         Assert.StartsWith("Cancelled: ", cancel.Subject);
         Assert.Equal("carol@example.com", Assert.Single(cancel.To.Mailboxes).Address);
         Assert.Contains("METHOD:CANCEL", CalendarPart(cancel));
-        Assert.Equal(new InvitationOutcome(2, 1), outcome);
+        Assert.DoesNotContain("STATUS:CANCELLED", CalendarPart(cancel));
+        Assert.Equal(new InvitationOutcome(1, 1, 1), outcome);
+    }
+
+    [Fact]
+    public async Task RoomsAreNeitherEmailedNorCounted()
+    {
+        var (svc, _, smtp) = Make(serverSends: false);
+        var meeting = Meeting();
+        meeting.Attendees.Add(new EventAttendee { Email = "room4@example.com", Kind = AttendeeKind.Resource });
+
+        var outcome = await svc.AfterSaveAsync(Me, meeting, isNew: true, TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(Assert.Single(smtp.SentPrepared).Message.To.Mailboxes, m => m.Address == "room4@example.com");
+        Assert.Equal(new InvitationOutcome(2, 0, 0), outcome);
+    }
+
+    [Fact]
+    public async Task AMeetingWithNoRecordedOrganizer_IsSentAsTheAccount()
+    {
+        var (svc, _, smtp) = Make(serverSends: false);
+        var meeting = Meeting();
+        meeting.Organizer = string.Empty;
+        meeting.OrganizerName = string.Empty;
+
+        await svc.AfterDeleteAsync(Me, meeting, TestContext.Current.CancellationToken);
+
+        Assert.Contains("ORGANIZER;CN=\"Kelly Ford\":mailto:me@icloud.com", CalendarPart(Assert.Single(smtp.SentPrepared).Message));
+    }
+
+    [Fact]
+    public async Task AStalledMailServer_IsReportedAsUnsent_NotWaitedOnForever()
+    {
+        var (svc, _, _) = Make(serverSends: false);
+        var hanging = new HangingSmtp();
+        svc = new CalendarInvitationService(new StubGraphCalendarSyncService { ServerSendsInvitations = false },
+                                            hanging, new Credentials());
+        var before = CalendarInvitationService.SendTimeout;
+        CalendarInvitationService.SendTimeout = TimeSpan.FromMilliseconds(200);
+        try
+        {
+            var outcome = await svc.AfterSaveAsync(Me, Meeting(), isNew: true, TestContext.Current.CancellationToken);
+            Assert.Equal("the mail server did not answer in time.", outcome.Error);
+        }
+        finally
+        {
+            CalendarInvitationService.SendTimeout = before;
+        }
+    }
+
+    private sealed class HangingSmtp : ISendMailService
+    {
+        public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default) => Task.CompletedTask;
+        public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password, string organizerEmail, CancellationToken ct = default) => Task.CompletedTask;
+        public Task SendPreparedAsync(MimeMessage message, AccountModel account, string? password, CancellationToken ct = default)
+            => Task.Delay(Timeout.Infinite, ct);
+        public Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     [Fact]
@@ -813,8 +1021,9 @@ public class CalendarInvitationServiceTests
         var message = Assert.Single(smtp.SentPrepared).Message;
         var ics = CalendarPart(message);
         Assert.Contains("METHOD:CANCEL", ics);
+        Assert.Contains("STATUS:CANCELLED", ics);
         Assert.Contains("SEQUENCE:2", ics);
-        Assert.Equal(new InvitationOutcome(0, 2), outcome);
+        Assert.Equal(new InvitationOutcome(0, 0, 2), outcome);
     }
 
     [Fact]
@@ -996,6 +1205,41 @@ public class EventEditorInviteTests
     }
 
     [Fact]
+    public void Edit_MeetingWithARoom_HidesTheRoom_ButKeepsItBooked()
+    {
+        var meeting = ServerMeeting("me@icloud.com");
+        meeting.Attendees.Add(new EventAttendee { Email = "room4@example.com", Name = "Room 4", Kind = AttendeeKind.Resource });
+        var editor = new EventEditorViewModel(meeting);
+        Assert.Equal("Ann <ann@example.com>", editor.InviteText);
+
+        editor.InviteText += "; bob@example.com";
+        Assert.True(editor.TryBuildEvent(out var evt, out _));
+
+        Assert.Contains(evt.Attendees, a => a.Email == "room4@example.com" && a.IsResource);
+        Assert.Equal(3, evt.Attendees.Count);
+    }
+
+    [Fact]
+    public void Edit_ImportedMeetingOnLocalCalendar_SavesWithItsGuestListUntouched()
+    {
+        // A meeting imported from a .ics file into Local Calendar keeps its guest list. Editing its
+        // title must still save: refusing would leave the user emptying a list they never typed.
+        var imported = new CalendarEvent
+        {
+            Uid = "imported-1", AccountId = CalendarEvent.LocalAccountId, Summary = "Board meeting",
+            StartTimeTicks = DateTime.UtcNow.Ticks, EndTimeTicks = DateTime.UtcNow.AddHours(1).Ticks,
+            Organizer = "chair@example.com",
+            Attendees = [new() { Email = "ann@example.com" }],
+        };
+        var editor = new EventEditorViewModel(imported, userOrganizes: false);
+        editor.Title = "Board meeting (moved)";
+
+        Assert.True(editor.TryBuildEvent(out var evt, out var error), error);
+        Assert.Equal("ann@example.com", Assert.Single(evt.Attendees).Email);
+        Assert.False(evt.AttendeesChanged);
+    }
+
+    [Fact]
     public void Edit_LocalAppointment_TypingAnInvitee_IsRefusedAtInvite()
     {
         var local = new CalendarEvent
@@ -1053,14 +1297,16 @@ public class CalendarPaneInvitationTests
     };
 
     [Theory]
-    [InlineData(0, 0, null, true, "")]
-    [InlineData(1, 0, null, true, " Invitation sent to 1 person.")]
-    [InlineData(3, 0, null, false, " Update sent to 3 people.")]
-    [InlineData(2, 1, null, false, " Update sent to 2 people. Cancellation sent to 1 person.")]
-    [InlineData(0, 2, null, false, " Cancellation sent to 2 people.")]
-    [InlineData(2, 0, "535 Authentication failed", true, " The invitations were not sent: 535 Authentication failed")]
-    public void DescribeInvitations_SaysWhoWasTold(int invited, int cancelled, string? error, bool isNew, string expected)
-        => Assert.Equal(expected, CalendarViewModel.DescribeInvitations(new InvitationOutcome(invited, cancelled, error), isNew));
+    [InlineData(0, 0, 0, null, "")]
+    [InlineData(1, 0, 0, null, " Invitation sent to 1 person.")]
+    [InlineData(0, 3, 0, null, " Update sent to 3 people.")]
+    [InlineData(1, 2, 1, null, " Invitation sent to 1 person. Update sent to 2 people. Cancellation sent to 1 person.")]
+    [InlineData(0, 0, 2, null, " Cancellation sent to 2 people.")]
+    [InlineData(2, 0, 0, "535 Authentication failed", " The invitations were not sent: 535 Authentication failed")]
+    [InlineData(0, 0, 2, "535 Authentication failed", " The cancellation was not sent: 535 Authentication failed")]
+    [InlineData(1, 2, 0, "535 Authentication failed", " The update was not sent: 535 Authentication failed")]
+    public void DescribeInvitations_SaysWhoWasTold(int invited, int updated, int cancelled, string? error, string expected)
+        => Assert.Equal(expected, CalendarViewModel.DescribeInvitations(new InvitationOutcome(invited, updated, cancelled, error)));
 
     [Fact]
     public async Task EditingAMeeting_AnnouncesTheUpdate_AndKeepsWhereTheServerStoresIt()
@@ -1094,6 +1340,27 @@ public class CalendarPaneInvitationTests
         vm.EditEventCommand.Execute(row);
 
         Assert.True(editor!.IsInviteReadOnly);
+    }
+
+    [Fact]
+    public async Task ImportedMeetingOnLocalCalendar_OpensWithInviteReadOnly_AndSaves()
+    {
+        var (vm, store, _, said) = Make();
+        var row = Row(organizer: "chair@example.com");
+        row.AccountId = CalendarEvent.LocalAccountId;
+        row.IsGraph = false;
+        store.StoredEvents.Add(row);
+        await vm.LoadAsync();
+        EventEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+
+        vm.EditEventCommand.Execute(row);
+        Assert.True(editor!.IsInviteReadOnly);
+        editor.Title = "Planning, moved";
+        editor.SaveCommand.Execute(null);
+
+        Assert.False(editor.HasError);
+        Assert.Equal("Planning, moved", Assert.Single(store.StoredEvents).Summary);
     }
 
     [Fact]

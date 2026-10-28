@@ -29,29 +29,56 @@ public sealed class CalendarInvitationService : ICalendarInvitationService
         if (!GraphCalendarSyncService.NotifiesAttendees(account, saved))
             return InvitationOutcome.None;
 
-        // An edit reaches the people still invited with the update, and the people it removed with
-        // a cancellation. A create has nobody to cancel.
-        var invited = saved.Attendees;
-        var removed = isNew
-            ? []
-            : saved.PreviousAttendees.Where(p => !invited.Any(a => a.IsSameAddress(p.Email))).ToList();
-        var outcome = new InvitationOutcome(invited.Count, removed.Count);
+        // People only: a room is booked by the meeting, and its booking is the server's business.
+        // An edit invites the people it added, sends the change to the people already invited, and
+        // tells the people it removed that they are no longer expected.
+        var people = EventAttendees.People(saved.Attendees);
+        var before = isNew ? [] : EventAttendees.People(saved.PreviousAttendees);
+        var added = people.Where(a => !before.Any(p => p.IsSameAddress(a.Email))).ToList();
+        var kept = people.Where(a => before.Any(p => p.IsSameAddress(a.Email))).ToList();
+        var removed = before.Where(p => !people.Any(a => a.IsSameAddress(p.Email))).ToList();
+        var outcome = new InvitationOutcome(added.Count, kept.Count, removed.Count);
+        if (outcome.IsNone) return outcome;
 
+        return await TrySendAsync(account, outcome, async (password, token) =>
+        {
+            if (added.Count > 0)
+                await SendAsync(account, password, saved, "REQUEST", added, "Invitation: " + Describe(saved), false, token);
+            if (kept.Count > 0)
+                await SendAsync(account, password, saved, "REQUEST", kept, "Updated invitation: " + Describe(saved), false, token);
+            if (removed.Count > 0)
+                await SendAsync(account, password, saved, "CANCEL", removed, "Cancelled: " + Describe(saved), false, token);
+        }, ct);
+    }
+
+    /// <summary>
+    /// How long QuickMail waits on the mail server for an invitation before reporting it unsent.
+    /// The announcement waits on this, so a stalled server must not hold the user's feedback for
+    /// as long as the mail library would.
+    /// </summary>
+    internal static TimeSpan SendTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Sends through <paramref name="send"/> unless the server already does, and turns a failure
+    /// into the outcome's <see cref="InvitationOutcome.Error"/>. Only the caller's own cancellation
+    /// escapes; running out of time is a failure to report like any other.
+    /// </summary>
+    private async Task<InvitationOutcome> TrySendAsync(AccountModel account, InvitationOutcome outcome,
+        Func<string?, CancellationToken, Task> send, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(SendTimeout);
         try
         {
-            if (await _calendarSync.ServerSendsInvitationsAsync(account, ct))
+            if (await _calendarSync.ServerSendsInvitationsAsync(account, timeout.Token))
                 return outcome;
-
-            var password = _credentials.GetPassword(account.Id);
-            if (invited.Count > 0)
-            {
-                var updated = !isNew && saved.PreviousAttendees.Count > 0;
-                await SendAsync(account, password, saved, "REQUEST", invited,
-                                (updated ? "Updated invitation: " : "Invitation: ") + Describe(saved), ct);
-            }
-            if (removed.Count > 0)
-                await SendAsync(account, password, saved, "CANCEL", removed, "Cancelled: " + Describe(saved), ct);
+            await send(_credentials.GetPassword(account.Id), timeout.Token);
             return outcome;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            LogService.Log($"CalendarInvitations: timed out sending for {account.AccountLabel}");
+            return outcome with { Error = "the mail server did not answer in time." };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -63,32 +90,31 @@ public sealed class CalendarInvitationService : ICalendarInvitationService
     public async Task<InvitationOutcome> AfterDeleteAsync(AccountModel account, CalendarEvent deleted,
                                                           CancellationToken ct = default)
     {
-        if (!deleted.HasAttendees || !GraphCalendarSyncService.NotifiesAttendees(account, deleted))
+        var people = EventAttendees.People(deleted.Attendees);
+        if (people.Count == 0 || !GraphCalendarSyncService.NotifiesAttendees(account, deleted))
             return InvitationOutcome.None;
 
-        var outcome = new InvitationOutcome(0, deleted.Attendees.Count);
-        try
+        return await TrySendAsync(account, new InvitationOutcome(0, 0, people.Count), (password, token) =>
         {
-            if (await _calendarSync.ServerSendsInvitationsAsync(account, ct))
-                return outcome;
-
             // The cancellation must be a newer version than the invitation the attendees hold.
             deleted.Sequence = IcsModel.NextSequence(deleted.Sequence);
-            await SendAsync(account, _credentials.GetPassword(account.Id), deleted, "CANCEL", deleted.Attendees,
-                            "Cancelled: " + Describe(deleted), ct);
-            return outcome;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            LogService.Log($"CalendarInvitations: could not send the cancellation for {account.AccountLabel}", ex);
-            return outcome with { Error = ex.Message };
-        }
+            return SendAsync(account, password, deleted, "CANCEL", people, "Cancelled: " + Describe(deleted),
+                             wholeEvent: true, token);
+        }, ct);
     }
 
     private Task SendAsync(AccountModel account, string? password, CalendarEvent evt, string method,
-                           IReadOnlyList<EventAttendee> recipients, string subject, CancellationToken ct)
+                           IReadOnlyList<EventAttendee> recipients, string subject, bool wholeEvent,
+                           CancellationToken ct)
     {
-        var ics = IcsModel.ExportScheduling(evt, method, recipients);
+        // A meeting saved before anyone recorded its organizer is still the user's (that is why it
+        // reached here): name them, or the message carries neither ORGANIZER nor ATTENDEE.
+        if (string.IsNullOrWhiteSpace(evt.Organizer))
+        {
+            evt.Organizer = account.Username;
+            evt.OrganizerName = account.SenderDisplayName;
+        }
+        var ics = IcsModel.ExportScheduling(evt, method, recipients, wholeEvent);
         var message = MimeMessageBuilder.BuildInvitation(account, ics, method, subject,
                                                          PlainText(evt, method), recipients);
         return _mail.SendPreparedAsync(message, account, password, ct);

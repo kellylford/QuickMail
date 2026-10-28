@@ -17,6 +17,18 @@ public enum AttendeeResponse
 }
 
 /// <summary>
+/// What an attendee is to the meeting: a person whose presence is required or optional, or a room
+/// or piece of equipment being booked. Carried so a change to the guest list writes each one back
+/// as it was — sending a room back as a person would release its booking.
+/// </summary>
+public enum AttendeeKind
+{
+    Required,
+    Optional,
+    Resource,
+}
+
+/// <summary>
 /// One person invited to an appointment (issue #866). Stored on <see cref="CalendarEvent.Attendees"/>,
 /// persisted as JSON in the <c>attendees_json</c> column, written to the provider as an iCalendar
 /// ATTENDEE (CalDAV), a Google <c>attendees</c> entry or a Graph <c>attendees</c> entry.
@@ -26,6 +38,10 @@ public sealed class EventAttendee
     public string Email { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public AttendeeResponse Response { get; set; } = AttendeeResponse.NoReply;
+    public AttendeeKind Kind { get; set; } = AttendeeKind.Required;
+
+    /// <summary>True for a room or equipment: booked by the meeting, not invited to it.</summary>
+    public bool IsResource => Kind == AttendeeKind.Resource;
 
     /// <summary>The name if there is one, otherwise the address.</summary>
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Email : Name;
@@ -39,7 +55,11 @@ public sealed class EventAttendee
         _                          => "no reply",
     };
 
-    public override string ToString() => $"{DisplayName} ({ResponseText})";
+    public override string ToString() => IsResource
+        ? $"{DisplayName} (room, {ResponseText})"
+        : Kind == AttendeeKind.Optional
+            ? $"{DisplayName} (optional, {ResponseText})"
+            : $"{DisplayName} ({ResponseText})";
 
     /// <summary>Same person: addresses compare case-insensitively.</summary>
     public bool IsSameAddress(string? email)
@@ -52,13 +72,15 @@ public static class EventAttendees
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    private sealed record Stored(string Email, string Name, AttendeeResponse Response);
+    // Kind defaults to Required, which is what a row written before it existed reads back as.
+    private sealed record Stored(string Email, string Name, AttendeeResponse Response,
+                                 AttendeeKind Kind = AttendeeKind.Required);
 
     /// <summary>Serializes for the <c>attendees_json</c> column. Empty string for no attendees.</summary>
     public static string ToJson(IReadOnlyList<EventAttendee> attendees)
         => attendees.Count == 0
             ? string.Empty
-            : JsonSerializer.Serialize(attendees.Select(a => new Stored(a.Email, a.Name, a.Response)).ToList(), JsonOptions);
+            : JsonSerializer.Serialize(attendees.Select(a => new Stored(a.Email, a.Name, a.Response, a.Kind)).ToList(), JsonOptions);
 
     /// <summary>Reads the <c>attendees_json</c> column. Anything unreadable is treated as no attendees.</summary>
     public static List<EventAttendee> FromJson(string? json)
@@ -68,7 +90,7 @@ public static class EventAttendees
         {
             return (JsonSerializer.Deserialize<List<Stored>>(json, JsonOptions) ?? [])
                 .Where(s => !string.IsNullOrWhiteSpace(s.Email))
-                .Select(s => new EventAttendee { Email = s.Email, Name = s.Name ?? string.Empty, Response = s.Response })
+                .Select(s => new EventAttendee { Email = s.Email, Name = s.Name ?? string.Empty, Response = s.Response, Kind = s.Kind })
                 .ToList();
         }
         catch (JsonException)
@@ -83,14 +105,19 @@ public static class EventAttendees
     /// </summary>
     public static string Format(IEnumerable<EventAttendee> attendees)
         => string.Join("; ", attendees.Select(a =>
-            string.IsNullOrWhiteSpace(a.Name) ? a.Email : new MailboxAddress(a.Name, a.Email).ToString()));
+            string.IsNullOrWhiteSpace(a.Name) ? a.Email
+            // A plain name reads as itself; only one with punctuation that would split or confuse
+            // the list is quoted, the way MimeKit writes it.
+            : a.Name.IndexOfAny(['"', ',', ';', '<', '>', '@', ':', '(', ')', '[', ']', '\\']) < 0
+                ? $"{a.Name.Trim()} <{a.Email}>"
+                : new MailboxAddress(a.Name, a.Email).ToString()));
 
     /// <summary>
     /// Reads the Invite field: addresses separated by semicolons or commas, each either bare or as
     /// <c>Name &lt;address&gt;</c>. Duplicates (by address) collapse to the first. Returns false
     /// with the offending entry in <paramref name="invalid"/> when one is not an email address.
-    /// <paramref name="previous"/> supplies each surviving attendee's response, so editing the list
-    /// does not reset the answers already received.
+    /// <paramref name="previous"/> supplies each surviving attendee's response and kind, so editing
+    /// the list does not reset the answers already received or make an optional guest required.
     /// </summary>
     public static bool TryParse(string? text, IReadOnlyList<EventAttendee>? previous,
                                 out List<EventAttendee> attendees, out string invalid)
@@ -119,10 +146,15 @@ public static class EventAttendees
                 Email = email,
                 Name = string.IsNullOrWhiteSpace(mailbox.Name) ? before?.Name ?? string.Empty : mailbox.Name.Trim(),
                 Response = before?.Response ?? AttendeeResponse.NoReply,
+                Kind = before?.Kind is AttendeeKind.Optional ? AttendeeKind.Optional : AttendeeKind.Required,
             });
         }
         return true;
     }
+
+    /// <summary>The people on a list, leaving out rooms and equipment.</summary>
+    public static List<EventAttendee> People(IEnumerable<EventAttendee> attendees)
+        => attendees.Where(a => !a.IsResource).ToList();
 
     /// <summary>True when both lists invite the same addresses, ignoring order and case.</summary>
     public static bool SameAddresses(IReadOnlyList<EventAttendee> a, IReadOnlyList<EventAttendee> b)
