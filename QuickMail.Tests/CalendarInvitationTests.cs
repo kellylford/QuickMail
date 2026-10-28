@@ -1151,6 +1151,11 @@ public class EventEditorInviteTests
 
         Assert.Equal("bob is not an email address. Separate addresses with semicolons.", editor.ErrorText);
         Assert.Equal(EditorField.Invite, focused);
+        // The View selects only this, so typing the fix keeps ann@example.com.
+        Assert.Equal("bob", editor.InvalidInviteEntry);
+
+        editor.InviteText = "ann@example.com; bob@example.com";
+        Assert.Equal(string.Empty, editor.InvalidInviteEntry);
     }
 
     private static CalendarEvent ServerMeeting(string organizer) => new()

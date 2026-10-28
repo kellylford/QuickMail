@@ -148,6 +148,13 @@ public partial class EventEditorViewModel : ObservableObject
     public bool IsInviteReadOnly { get; }
 
     /// <summary>What the Invite field is for, given to screen readers as help text.</summary>
+    /// <summary>
+    /// The Invite entry a refused save blamed, so the View can select just that one: selecting the
+    /// whole field, as the other fields do, would let the correction overwrite every good address
+    /// typed beside it. Empty when Invite is fine.
+    /// </summary>
+    public string InvalidInviteEntry { get; private set; } = string.Empty;
+
     public string InviteHelpText => IsInviteReadOnly
         ? "The people invited by the organizer. Only the organizer can change who is invited."
         : "Email addresses of the people to invite, separated by semicolons.";
@@ -625,12 +632,14 @@ public partial class EventEditorViewModel : ObservableObject
         // Who is invited. A meeting someone else organized keeps its list as it was: the field is
         // read-only there, and its text is only the display of that list.
         List<EventAttendee> attendees;
+        InvalidInviteEntry = string.Empty;
         if (IsInviteReadOnly)
         {
             attendees = _originalAttendees.ToList();
         }
         else if (!EventAttendees.TryParse(InviteText, _originalAttendees, out attendees, out var invalid))
         {
+            InvalidInviteEntry = invalid;
             error = $"{invalid} is not an email address. Separate addresses with semicolons.";
             field = EditorField.Invite;
             return false;
