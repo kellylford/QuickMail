@@ -9,6 +9,9 @@ want at a meeting, separated by semicolons, and save the appointment to an onlin
 They get a meeting invitation they can accept or decline in their own mail program. This works
 on iCloud, Google and Microsoft calendars. (#866)
 
+- As you type in Invite, people and groups from your address book are suggested, the same as in
+  a message's To field. Press Down to choose from the list, or Enter to take the first; a group
+  adds all its members. (#869)
 - Changing the meeting's time, place or title sends the people invited an update. Adding
   someone invites them; removing someone sends them a cancellation.
 - Deleting a meeting you organized sends everyone a cancellation. The delete confirmation tells

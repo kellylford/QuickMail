@@ -159,6 +159,41 @@
                    TextWrapping="Wrap"
                    MaxLength="4000" Margin="0,0,0,10"/>
 
+        <!-- Address book suggestions for Invite (#869), driven by AddressSuggestionController
+             exactly as compose's To field is. A Popup takes no layout space. -->
+        <Popup x:Name="InviteSuggestionPopup" Grid.Row="5" Grid.Column="1"
+               StaysOpen="True"
+               AllowsTransparency="True"
+               PopupAnimation="None">
+            <Border BorderBrush="{DynamicResource Theme.Border}"
+                    BorderThickness="1"
+                    Background="{DynamicResource Theme.WindowBackground}">
+                <ListBox x:Name="InviteSuggestionList"
+                         MaxHeight="200"
+                         MinWidth="300"
+                         AutomationProperties.Name="Address suggestions"
+                         IsTabStop="True"
+                         KeyboardNavigation.TabNavigation="Cycle">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
+                            <Setter Property="Padding" Value="6,3"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding PrimaryText}" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding SecondaryText}"
+                                           Opacity="0.75"
+                                           FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+        </Popup>
+
         <!-- Repeat -->
         <TextBlock Grid.Row="6" Grid.Column="0" Text="Repeat:" Margin="0,0,8,10" VerticalAlignment="Center"/>
         <StackPanel Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3"
