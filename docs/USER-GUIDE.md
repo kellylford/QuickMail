@@ -1687,7 +1687,7 @@ Press **Enter** (or the **Save** button) to save, or **Escape** to cancel. If so
 
 ### Inviting people to an appointment
 
-To make an appointment a meeting, type the people's email addresses in the editor's **Invite** field (**Alt+I** moves there), separated by semicolons. You can write a name with an address, as in `Ann Lee <ann@example.com>`. Save the appointment to an iCloud, Google or Microsoft calendar, and each person gets a meeting invitation in their email that they can accept or decline in their own mail program.
+To make an appointment a meeting, type the people's email addresses in the editor's **Invite** field (**Alt+I** moves there), separated by semicolons. You can write a name with an address, as in `Ann Lee <ann@example.com>`. As you type, matching people and groups from your address book are suggested, just as in a message's **To** field: press **Down** to move into the suggestions and **Enter** to choose one, or press **Enter** straight away to take the first. A group adds all its members. Save the appointment to an iCloud, Google or Microsoft calendar, and each person gets a meeting invitation in their email that they can accept or decline in their own mail program.
 
 - **Who sends it.** Google and Microsoft send the invitations themselves. iCloud does too when its server offers to; if it does not, QuickMail emails them from your iCloud account. Either way, after you save QuickMail says how many people the invitation went to — or, if it could not be sent, why. The appointment is saved either way.
 - **Changing a meeting.** Edit it as you would any appointment. When you save, the people invited get an update. Anyone you add to **Invite** gets an invitation, and anyone you remove gets a cancellation.
@@ -1848,7 +1848,7 @@ To set expectations clearly:
 
 - Work in online mode — it needs the local cache.
 - Send **repeating** appointments to an online account (repeating appointments are saved to the Local Calendar).
-- Send invitations from the Local Calendar, or suggest addresses as you type in the **Invite** field.
+- Send invitations from the Local Calendar.
 - Edit or delete **repeating** events that came from an online calendar (repeating server events are read-only).
 - Edit or delete the events your provider manages for you — Google birthdays, out-of-office, working location, focus time, and events Gmail created from a message. Google restricts this for every outside program, not just QuickMail; when it refuses a change, QuickMail tells you why. See [Events your account will not let QuickMail change](#events-your-account-will-not-let-quickmail-change).
 - Connect calendars from generic CalDAV servers other than iCloud (Fastmail, Nextcloud, and the like).

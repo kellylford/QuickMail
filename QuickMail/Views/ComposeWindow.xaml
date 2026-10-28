@@ -299,9 +299,7 @@
                          MinWidth="300"
                          AutomationProperties.Name="Address suggestions"
                          IsTabStop="True"
-                         KeyboardNavigation.TabNavigation="Cycle"
-                         PreviewKeyDown="SuggestionList_PreviewKeyDown"
-                         MouseLeftButtonUp="SuggestionList_MouseLeftButtonUp">
+                         KeyboardNavigation.TabNavigation="Cycle">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                             <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>

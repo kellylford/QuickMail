@@ -13,16 +13,31 @@ namespace QuickMail.Views;
 /// not use <c>ShowDialog()</c>. Escape / Cancel / Ctrl+Enter and the command palette are wired
 /// explicitly because a modeless window has no <c>DialogResult</c>.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "_suggestions is disposed in OnClosed; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
 public partial class EventEditorWindow : Window
 {
     private readonly EventEditorViewModel _vm;
     private readonly CommandRegistry _registry = new();
 
-    public EventEditorWindow(EventEditorViewModel vm)
+    // Address book suggestions for the Invite field (#869), the same ones compose's To field
+    // offers. Null where no contact service is given (the XAML tests).
+    private readonly AddressSuggestionController? _suggestions;
+
+    /// <summary>The Invite field's suggestions, for tests.</summary>
+    internal AddressSuggestionController? Suggestions => _suggestions;
+
+    public EventEditorWindow(EventEditorViewModel vm, IContactService? contactService = null)
     {
         _vm = vm;
         DataContext = vm;
         InitializeComponent();
+
+        if (contactService != null)
+        {
+            _suggestions = new AddressSuggestionController(this, contactService, InviteSuggestionPopup, InviteSuggestionList);
+            _suggestions.Attach(new TextBoxAddressEntry(InviteBox));
+        }
+        Closed += (_, _) => _suggestions?.Dispose();
 
         _vm.Saved += _ => Close();
         _vm.Cancelled += Close;
@@ -59,6 +74,13 @@ public partial class EventEditorWindow : Window
             defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None));
     }
 
+    /// <summary>
+    /// Enter with no modifiers, in Invite, while its suggestions show: choose the first. Any other
+    /// key, or Enter anywhere else or with the list closed, is left to mean what it usually does.
+    /// </summary>
+    internal bool TryChooseSuggestionOnEnter(Key key, ModifierKeys modifiers, bool inInvite)
+        => key == Key.Enter && modifiers == ModifierKeys.None && inInvite && _suggestions?.AcceptFirst() == true;
+
     private void Save_Click(object sender, RoutedEventArgs e) => _vm.SaveCommand.Execute(null);
     private void Cancel_Click(object sender, RoutedEventArgs e) => _vm.CancelCommand.Execute(null);
 
@@ -80,11 +102,20 @@ public partial class EventEditorWindow : Window
             return;
         }
 
+        // Enter in Invite while its suggestions show picks the first one, as choosing from the
+        // list would, rather than saving with the half-typed address the list was offering to
+        // complete. With the list closed, Enter saves as everywhere else in the editor.
+        if (TryChooseSuggestionOnEnter(e.Key, Keyboard.Modifiers, InviteBox.IsKeyboardFocusWithin))
+        {
+            e.Handled = true;
+            return;
+        }
+
         // Escape while a ComboBox dropdown is open: let the control consume it (the
         // modeless-dialog Escape guard in CLAUDE.md). The two DatePickers that used to be listed
         // here are gone — their date entry is now a plain editable field with no popup at all.
         if (e.Key == Key.Escape
-            && (RepeatCombo.IsDropDownOpen || SaveTargetCombo.IsDropDownOpen))
+            && (RepeatCombo.IsDropDownOpen || SaveTargetCombo.IsDropDownOpen || _suggestions?.IsOpen == true))
             return;
 
         // Registry dispatch (ComposeWindow pattern) — so editor.save / editor.cancel rebindings
