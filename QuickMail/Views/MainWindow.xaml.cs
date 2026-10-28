@@ -3232,9 +3232,7 @@ public partial class MainWindow : Window
     /// <summary>Confirms deleting an appointment (View concern); invokes the callback on Yes.</summary>
     private void ConfirmDeleteAppointment(CalendarEvent evt, Action confirmed)
     {
-        var prompt = evt.IsRecurring
-            ? $"Delete the repeating appointment “{evt.Summary}” and all its occurrences?"
-            : $"Delete the appointment “{evt.Summary}”?";
+        var prompt = _vm.CalendarVm?.DeletePrompt(evt) ?? $"Delete the appointment “{evt.Summary}”?";
         var result = MessageBox.Show(this, prompt,
             "Delete appointment",
             MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);

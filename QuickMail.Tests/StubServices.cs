@@ -127,6 +127,17 @@ sealed class StubSmtpService : ISendMailService
         return Task.CompletedTask;
     }
 
+    /// <summary>Every prepared message sent (meeting invitations and cancellations, #866).</summary>
+    public List<(MimeKit.MimeMessage Message, AccountModel Account, string? Password)> SentPrepared { get; } = new();
+
+    public Task SendPreparedAsync(MimeKit.MimeMessage message, AccountModel account, string? password,
+        CancellationToken ct = default)
+    {
+        if (SendFailure is not null) return Task.FromException(SendFailure);
+        SentPrepared.Add((message, account, password));
+        return Task.CompletedTask;
+    }
+
     /// <summary>Set to make Test Connection's SMTP leg report a failure.</summary>
     public Exception? VerifyFailure { get; set; }
 
@@ -1062,6 +1073,13 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
         RemovedAccounts.Add(accountId);
         return Task.CompletedTask;
     }
+
+    /// <summary>What <see cref="ServerSendsInvitationsAsync"/> answers (#866). The real service says
+    /// true for Microsoft and Google, and whatever an iCloud server advertises.</summary>
+    public bool ServerSendsInvitations { get; set; } = true;
+
+    public Task<bool> ServerSendsInvitationsAsync(AccountModel account, CancellationToken ct = default)
+        => Task.FromResult(ServerSendsInvitations);
 
     public Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
     {

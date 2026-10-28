@@ -136,26 +136,35 @@ public sealed class GoogleCalendarClient : IDisposable
 
     /// <summary>Creates an event (<c>POST calendars/{calendarId}/events</c>) and returns the server's copy.</summary>
     internal Task<GoogleCalendarEvent> CreateEventAsync(
-        string username, GoogleEventWriteBody body, string calendarId = "primary", CancellationToken ct = default)
+        string username, GoogleEventWriteBody body, string calendarId = "primary", bool sendUpdates = false,
+        CancellationToken ct = default)
         => SendWriteAsync(username, HttpMethod.Post,
-                          $"calendars/{Uri.EscapeDataString(calendarId)}/events", body, ct);
+                          $"calendars/{Uri.EscapeDataString(calendarId)}/events{SendUpdatesQuery(sendUpdates)}", body, ct);
+
+    /// <summary>
+    /// <c>?sendUpdates=all</c> when the write should email the attendees: an invitation on create,
+    /// an update on patch, a cancellation on delete (issue #866). Google sends nothing without it,
+    /// so a meeting created through the API would reach nobody.
+    /// </summary>
+    private static string SendUpdatesQuery(bool sendUpdates) => sendUpdates ? "?sendUpdates=all" : string.Empty;
 
     /// <summary>Patches an event (<c>PATCH calendars/{calendarId}/events/{id}</c>) and returns the server's copy.
     /// Omitted (null) body fields are left unchanged on the server.</summary>
     internal Task<GoogleCalendarEvent> UpdateEventAsync(
         string username, string eventId, GoogleEventWriteBody body,
-        string calendarId = "primary", CancellationToken ct = default)
+        string calendarId = "primary", bool sendUpdates = false, CancellationToken ct = default)
         => SendWriteAsync(username, HttpMethod.Patch,
-                          $"calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}", body, ct);
+                          $"calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}{SendUpdatesQuery(sendUpdates)}", body, ct);
 
     /// <summary>Deletes an event (<c>DELETE calendars/{calendarId}/events/{id}</c>).</summary>
     internal async Task DeleteEventAsync(
-        string username, string eventId, string calendarId = "primary", CancellationToken ct = default)
+        string username, string eventId, string calendarId = "primary", bool sendUpdates = false,
+        CancellationToken ct = default)
     {
         var token = await _oauth.GetAccessTokenAsync(username, ct);
         using var req = new HttpRequestMessage(
             HttpMethod.Delete,
-            $"{_baseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}");
+            $"{_baseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}{SendUpdatesQuery(sendUpdates)}");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var resp = await _http.SendAsync(req, ct);
@@ -276,6 +285,10 @@ internal sealed class GoogleEventOrganizer
 internal sealed class GoogleEventAttendee
 {
     [JsonPropertyName("self")]           public bool Self { get; set; }
+    [JsonPropertyName("email")]          public string? Email { get; set; }
+    [JsonPropertyName("displayName")]    public string? DisplayName { get; set; }
+    /// <summary>True for the entry that is the event's organizer, who is not one of its invitees.</summary>
+    [JsonPropertyName("organizer")]      public bool Organizer { get; set; }
     /// <summary>"needsAction" | "declined" | "tentative" | "accepted".</summary>
     [JsonPropertyName("responseStatus")] public string? ResponseStatus { get; set; }
 }
@@ -293,4 +306,19 @@ internal sealed class GoogleEventWriteBody
     [JsonPropertyName("location")]    public string? Location { get; set; }
     [JsonPropertyName("start")]       public GoogleEventTime? Start { get; set; }
     [JsonPropertyName("end")]         public GoogleEventTime? End { get; set; }
+
+    /// <summary>
+    /// Who is invited (issue #866). Null leaves a PATCH's attendee list as it is; an empty list
+    /// removes everyone. Sent only when the user changed who is invited.
+    /// </summary>
+    [JsonPropertyName("attendees")]   public List<GoogleAttendeeWrite>? Attendees { get; set; }
+}
+
+/// <summary>One attendee in a create/patch body.</summary>
+internal sealed class GoogleAttendeeWrite
+{
+    [JsonPropertyName("email")]          public string Email { get; set; } = string.Empty;
+    [JsonPropertyName("displayName")]    public string? DisplayName { get; set; }
+    /// <summary>Carried through so a patch that adds one person does not reset the others' answers.</summary>
+    [JsonPropertyName("responseStatus")] public string? ResponseStatus { get; set; }
 }

@@ -149,6 +149,10 @@ public partial class LocalStoreService : ILocalStoreService
         // ordinary events and every non-Google row. Unversioned idempotent ALTER, like resource_url.
         RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN event_type TEXT NOT NULL DEFAULT '';");
 
+        // The people invited to an appointment (#866), as JSON (EventAttendees.ToJson). Empty when
+        // nobody is invited. Unversioned idempotent ALTER, like event_type.
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN attendees_json TEXT NOT NULL DEFAULT '';");
+
         // CalendarSource table: an account's real calendar list, as the provider reports it.
         //
         // The calendar list used to be derived with SELECT DISTINCT over CalendarEvent — the
@@ -1750,8 +1754,8 @@ public partial class LocalStoreService : ILocalStoreService
                                       organizer, organizer_name, start_time_ticks, end_time_ticks,
                                       sequence, method, source_message_id, source_folder, response_status,
                                       is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name,
-                                      resource_url, event_type)
-            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph, $calid, $calname, $resurl, $etype)
+                                      resource_url, event_type, attendees_json)
+            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph, $calid, $calname, $resurl, $etype, $attn)
             ON CONFLICT(uid, account_id) DO UPDATE SET
                 summary           = excluded.summary,
                 description       = excluded.description,
@@ -1776,7 +1780,8 @@ public partial class LocalStoreService : ILocalStoreService
                 -- create/edit write-back has no href until the next read-sync captures the real one).
                 resource_url      = CASE WHEN excluded.resource_url  = '' THEN resource_url  ELSE excluded.resource_url  END,
                 -- The server's copy always carries the event's current kind (empty = ordinary).
-                event_type        = excluded.event_type
+                event_type        = excluded.event_type,
+                attendees_json    = excluded.attendees_json
             WHERE CalendarEvent.is_graph = 0 OR excluded.is_graph = 1;
             """;
         // The DO UPDATE ... WHERE guard: server-synced rows (is_graph=1) are owned by the calendar
@@ -1807,6 +1812,7 @@ public partial class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$calname", evt.CalendarName);
         cmd.Parameters.AddWithValue("$resurl", evt.ResourceUrl);
         cmd.Parameters.AddWithValue("$etype", evt.ProviderEventType);
+        cmd.Parameters.AddWithValue("$attn", EventAttendees.ToJson(evt.Attendees));
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
     }
@@ -1837,8 +1843,8 @@ public partial class LocalStoreService : ILocalStoreService
                                           organizer, organizer_name, start_time_ticks, end_time_ticks,
                                           sequence, method, source_message_id, source_folder, response_status,
                                           is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name,
-                                          resource_url, event_type)
-                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1, $calid, $calname, $resurl, $etype);
+                                          resource_url, event_type, attendees_json)
+                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1, $calid, $calname, $resurl, $etype, $attn);
                 """;
             var pUid  = ins.Parameters.Add("$uid",  Microsoft.Data.Sqlite.SqliteType.Text);
             var pAid  = ins.Parameters.Add("$aid",  Microsoft.Data.Sqlite.SqliteType.Text);
@@ -1861,6 +1867,7 @@ public partial class LocalStoreService : ILocalStoreService
             var pCn   = ins.Parameters.Add("$calname", Microsoft.Data.Sqlite.SqliteType.Text);
             var pRes  = ins.Parameters.Add("$resurl",  Microsoft.Data.Sqlite.SqliteType.Text);
             var pEtp  = ins.Parameters.Add("$etype",   Microsoft.Data.Sqlite.SqliteType.Text);
+            var pAttn = ins.Parameters.Add("$attn",    Microsoft.Data.Sqlite.SqliteType.Text);
 
             foreach (var evt in events)
             {
@@ -1885,6 +1892,7 @@ public partial class LocalStoreService : ILocalStoreService
                 pCn.Value   = evt.CalendarName;
                 pRes.Value  = evt.ResourceUrl;
                 pEtp.Value  = evt.ProviderEventType;
+                pAttn.Value = EventAttendees.ToJson(evt.Attendees);
                 await ins.ExecuteNonQueryAsync();
             }
         }
@@ -1901,7 +1909,7 @@ public partial class LocalStoreService : ILocalStoreService
             SELECT uid, account_id, summary, description, location, organizer, organizer_name,
                    start_time_ticks, end_time_ticks, sequence, method, source_message_id,
                    source_folder, response_status, is_all_day, recurrence_rule, exdates, is_graph,
-                   calendar_id, calendar_name, resource_url, event_type
+                   calendar_id, calendar_name, resource_url, event_type, attendees_json
             FROM CalendarEvent
             ORDER BY start_time_ticks IS NULL, start_time_ticks ASC;
             """;
@@ -1932,6 +1940,7 @@ public partial class LocalStoreService : ILocalStoreService
                 CalendarName     = r.IsDBNull(19) ? string.Empty : r.GetString(19),
                 ResourceUrl      = r.IsDBNull(20) ? string.Empty : r.GetString(20),
                 ProviderEventType = r.IsDBNull(21) ? string.Empty : r.GetString(21),
+                Attendees        = EventAttendees.FromJson(r.IsDBNull(22) ? null : r.GetString(22)),
             });
         }
         return list;

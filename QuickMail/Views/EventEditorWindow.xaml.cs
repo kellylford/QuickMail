@@ -115,6 +115,7 @@ public partial class EventEditorWindow : Window
             EditorField.RepeatInterval => RepeatIntervalField,
             EditorField.RepeatUntil => RepeatUntilField,
             EditorField.SaveTarget => SaveTargetCombo,
+            EditorField.Invite => InviteBox,
             _ => null,
         };
         if (target is null) return;
@@ -123,10 +124,10 @@ public partial class EventEditorWindow : Window
         if (target is TextBox box) box.SelectAll();
     }
 
-    /// <summary>Cycles focus across the editor's logical stops: Title → Start → Notes → Save.</summary>
+    /// <summary>Cycles focus across the editor's logical stops: Title → Start → Invite → Notes → Save.</summary>
     private void CycleFocus(bool forward)
     {
-        Control[] stops = { TitleBox, StartDateField, NotesBox, SaveButton };
+        Control[] stops = { TitleBox, StartDateField, InviteBox, NotesBox, SaveButton };
         var current = System.Array.FindIndex(stops, c => c.IsKeyboardFocusWithin);
         if (current < 0) current = 0;
         var next = forward

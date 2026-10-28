@@ -225,7 +225,8 @@ public partial class CalendarViewModel : ObservableObject
                              IGraphCalendarSyncService? graphSync = null,
                              Func<IReadOnlyList<AccountModel>>? graphAccountsProvider = null,
                              Func<IReadOnlyList<AccountModel>>? allAccountsProvider = null,
-                             Func<IReadOnlyList<CalendarSourceInfo>>? calendarSourcesProvider = null)
+                             Func<IReadOnlyList<CalendarSourceInfo>>? calendarSourcesProvider = null,
+                             ICalendarInvitationService? invitations = null)
     {
         _calendarService = calendarService;
         _onlineMode = onlineMode;
@@ -235,6 +236,32 @@ public partial class CalendarViewModel : ObservableObject
         _graphAccountsProvider = graphAccountsProvider;
         _allAccountsProvider = allAccountsProvider;
         _calendarSourcesProvider = calendarSourcesProvider;
+        _invitations = invitations;
+    }
+
+    private readonly ICalendarInvitationService? _invitations;
+
+    /// <summary>What happened to a meeting's invitations after a save (issue #866). Never throws.</summary>
+    private Task<InvitationOutcome> InvitationsAfterSaveAsync(AccountModel account, CalendarEvent saved, bool isNew)
+        => _invitations?.AfterSaveAsync(account, saved, isNew) ?? Task.FromResult(InvitationOutcome.None);
+
+    /// <summary>
+    /// The sentence the save or delete announcement ends with when a meeting's invitations went
+    /// somewhere: who was invited, updated or told it is cancelled, or why they were not. Empty
+    /// for an appointment nobody is invited to.
+    /// </summary>
+    internal static string DescribeInvitations(InvitationOutcome outcome, bool isNew)
+    {
+        if (outcome.IsNone) return string.Empty;
+        static string People(int n) => n == 1 ? "1 person" : $"{n} people";
+        if (outcome.Error is { } error)
+            return $" The invitations were not sent: {error}";
+        var parts = new List<string>();
+        if (outcome.Invited > 0)
+            parts.Add((isNew ? "Invitation sent to " : "Update sent to ") + People(outcome.Invited));
+        if (outcome.Cancelled > 0)
+            parts.Add("Cancellation sent to " + People(outcome.Cancelled));
+        return " " + string.Join(". ", parts) + ".";
     }
 
     /// <summary>
@@ -528,11 +555,15 @@ public partial class CalendarViewModel : ObservableObject
         try
         {
             var created = await _graphSync.CreateEventAsync(account, evt);
+            // The editor's copy, not the server's: it is the one that knows who the user invited
+            // (an iCloud create returns this same object; Microsoft and Google return their own).
+            var invitations = await InvitationsAfterSaveAsync(account, evt, isNew: true);
             await _calendarService.RefreshAsync(); // reload the in-memory list from the store
             ApplyFilters();
             SelectedEvent = Events.FirstOrDefault(e => e.Uid == created.Uid && e.AccountId == created.AccountId);
             var when = created.StartTime?.ToString("ddd, MMM d 'at' t") ?? "no date";
-            Announce($"Appointment created on {account.AccountLabel}. {created.Summary}, {when}.",
+            Announce($"Appointment created on {account.AccountLabel}. {created.Summary}, {when}."
+                     + DescribeInvitations(invitations, isNew: true),
                      AnnouncementCategory.Result);
             ListFocusRequested?.Invoke();
         }
@@ -542,10 +573,17 @@ public partial class CalendarViewModel : ObservableObject
             evt.AccountId = CalendarEvent.LocalAccountId;
             evt.CalendarId = string.Empty;
             evt.CalendarName = string.Empty;
+            // Local Calendar cannot invite anyone (there is no server to send from), so the copy kept
+            // here is a plain appointment — and the announcement has to say nobody was invited.
+            var hadAttendees = evt.HasAttendees;
+            evt.Attendees = [];
+            evt.Organizer = string.Empty;
+            evt.OrganizerName = string.Empty;
             await _calendarService.UpsertEventAsync(evt);
             ApplyFilters();
             SelectedEvent = Events.FirstOrDefault(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
-            Announce($"Could not save to {account.AccountLabel}. Saved to Local Calendar instead.",
+            Announce($"Could not save to {account.AccountLabel}. Saved to Local Calendar instead."
+                     + (hadAttendees ? " Nobody was invited." : string.Empty),
                      AnnouncementCategory.Result);
             ListFocusRequested?.Invoke();
         }
@@ -578,7 +616,10 @@ public partial class CalendarViewModel : ObservableObject
                              AnnouncementCategory.Result);
                     return;
                 }
-                var serverEditor = new EventEditorViewModel(evt);
+                // Only the organizer changes who is invited (#866); on someone else's meeting the
+                // Invite field shows the list read-only.
+                var serverEditor = new EventEditorViewModel(evt,
+                    userOrganizes: evt.IsOrganizedBy(pushAccount.Username, pushAccount.AuthUsername));
                 serverEditor.Saved += updated => _ = ServerUpdateAsync(pushAccount, evt, updated);
                 EditorRequested?.Invoke(serverEditor);
                 return;
@@ -749,6 +790,23 @@ public partial class CalendarViewModel : ObservableObject
     }
 
     /// <summary>
+    /// The question the delete confirmation asks. For a meeting the user organized it also says
+    /// who will be told (issue #866): deleting it is what sends the cancellations, so the user
+    /// should know that before answering, not learn it from the announcement afterwards.
+    /// </summary>
+    public string DeletePrompt(CalendarEvent evt)
+    {
+        var question = evt.IsRecurring
+            ? $"Delete the repeating appointment “{evt.Summary}” and all its occurrences?"
+            : $"Delete the appointment “{evt.Summary}”?";
+        var account = ServerAccountFor(evt);
+        if (account is null || !evt.HasAttendees || !evt.IsOrganizedBy(account.Username, account.AuthUsername))
+            return question;
+        var who = evt.Attendees.Count == 1 ? evt.Attendees[0].DisplayName : $"The {evt.Attendees.Count} people invited";
+        return $"{question}\n\n{who} will be sent a cancellation.";
+    }
+
+    /// <summary>
     /// The server-backed account (Microsoft or Google) a synced row can write back to, or null
     /// when the row is not writable from here (local rows, CalDAV rows, no sync service wired).
     /// </summary>
@@ -780,11 +838,18 @@ public partial class CalendarViewModel : ObservableObject
             edited.AccountId = account.Id;
             edited.CalendarId = original.CalendarId;
             edited.CalendarName = original.CalendarName;
+            // Where the server keeps it. Without this an iCloud event made on an iPhone (stored
+            // under a random name, not its UID) was PUT to {uid}.ics — a second copy, or a refusal.
+            if (string.IsNullOrEmpty(edited.ResourceUrl))
+                edited.ResourceUrl = original.ResourceUrl;
             var updated = await _graphSync!.UpdateEventAsync(account, edited);
+            var invitations = await InvitationsAfterSaveAsync(account, edited, isNew: false);
             await _calendarService.RefreshAsync();
             ApplyFilters();
             SelectedEvent = Events.FirstOrDefault(e => e.Uid == updated.Uid && e.AccountId == account.Id);
-            Announce($"Updated on your online calendar. {updated.Summary}.", AnnouncementCategory.Result);
+            Announce($"Updated on your online calendar. {updated.Summary}."
+                     + DescribeInvitations(invitations, isNew: false),
+                     AnnouncementCategory.Result);
         }
         catch (Exception ex)
         {
@@ -802,12 +867,17 @@ public partial class CalendarViewModel : ObservableObject
         {
             var index = _filteredEvents.FindIndex(e => e.Uid == evt.Uid && e.StartTimeTicks == evt.StartTimeTicks);
             await _graphSync!.DeleteEventAsync(account, evt);
+            var invitations = _invitations is null
+                ? InvitationOutcome.None
+                : await _invitations.AfterDeleteAsync(account, evt);
             await _calendarService.RefreshAsync();
             ApplyFilters();
             SelectedEvent = VisibleEvents.Count > 0
                 ? Events[Math.Min(Math.Max(index, 0), VisibleEvents.Count - 1)]
                 : null;
-            Announce($"Deleted from your online calendar. {evt.Summary}.", AnnouncementCategory.Result);
+            Announce($"Deleted from your online calendar. {evt.Summary}."
+                     + DescribeInvitations(invitations, isNew: false),
+                     AnnouncementCategory.Result);
         }
         catch (Exception ex)
         {

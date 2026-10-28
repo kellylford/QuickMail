@@ -27,6 +27,9 @@ public class GraphSendMailService : ISendMailService, IDisposable
         string organizerEmail, CancellationToken ct = default)
         => SendMimeAsync(account, MimeMessageBuilder.BuildIcsReply(account, icsReplyContent, organizerEmail), ct);
 
+    public Task SendPreparedAsync(MimeMessage message, AccountModel account, string? password, CancellationToken ct = default)
+        => SendMimeAsync(account, message, ct);
+
     /// <summary>
     /// No-op for Graph. There is no separate outgoing server to probe: sending uses the same token
     /// and endpoint the mail backend's <c>GET /me</c> connectivity check already exercises, so

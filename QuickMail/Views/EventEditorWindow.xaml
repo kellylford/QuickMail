@@ -32,6 +32,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -144,9 +145,23 @@
                    Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}"
                    MaxLength="300" Margin="0,0,0,10"/>
 
+        <!-- Invite (#866): the people to send the meeting to, separated by semicolons or commas.
+             Read-only on a meeting someone else organized — its guest list is theirs. -->
+        <Label     Grid.Row="5" Grid.Column="0" Content="_Invite:" Target="{Binding ElementName=InviteBox}"
+                   Padding="0" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <TextBox   Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3"
+                   x:Name="InviteBox"
+                   AutomationProperties.Name="Invite"
+                   AutomationProperties.HelpText="{Binding InviteHelpText}"
+                   Text="{Binding InviteText, UpdateSourceTrigger=PropertyChanged}"
+                   IsReadOnly="{Binding IsInviteReadOnly}"
+                   IsReadOnlyCaretVisible="True"
+                   TextWrapping="Wrap"
+                   MaxLength="4000" Margin="0,0,0,10"/>
+
         <!-- Repeat -->
-        <TextBlock Grid.Row="5" Grid.Column="0" Text="Repeat:" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3"
+        <TextBlock Grid.Row="6" Grid.Column="0" Text="Repeat:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <StackPanel Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3"
                     Orientation="Horizontal" Margin="0,0,0,10"
                     IsEnabled="{Binding CanEditRepeat}"
                     KeyboardNavigation.TabNavigation="Continue">
@@ -182,9 +197,9 @@
         </StackPanel>
 
         <!-- Weekly day picker — visible only when Repeat = Weekly. All unchecked = start day. -->
-        <TextBlock Grid.Row="6" Grid.Column="0" Text="On days:" Margin="0,0,8,10" VerticalAlignment="Center"
+        <TextBlock Grid.Row="7" Grid.Column="0" Text="On days:" Margin="0,0,8,10" VerticalAlignment="Center"
                    Visibility="{Binding IsWeekly, Converter={StaticResource BoolToVis}}"/>
-        <WrapPanel Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,0,0,10"
+        <WrapPanel Grid.Row="7" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,0,0,10"
                    Visibility="{Binding IsWeekly, Converter={StaticResource BoolToVis}}"
                    IsEnabled="{Binding CanEditRepeat}"
                    KeyboardNavigation.TabNavigation="Continue"
@@ -206,11 +221,11 @@
         </WrapPanel>
 
         <!-- Notes label -->
-        <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="4"
+        <TextBlock Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="4"
                    Text="Notes:" Margin="0,0,0,4"/>
 
         <!-- Notes body -->
-        <TextBox   Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="4"
+        <TextBox   Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="4"
                    x:Name="NotesBox"
                    AutomationProperties.Name="Notes"
                    Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"
@@ -221,7 +236,7 @@
         <!-- Why a save was refused. A read-only TextBox rather than a TextBlock so it is a real
              tab stop that a screen reader will read, the same reason the Calendar line above uses
              one. Collapsed while the fields are valid, so it is not an empty stop in the way. -->
-        <TextBox Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="4"
+        <TextBox Grid.Row="10" Grid.Column="0" Grid.ColumnSpan="4"
                  x:Name="ErrorLine"
                  AutomationProperties.Name="Error"
                  Text="{Binding ErrorText, Mode=OneWay}"
@@ -233,7 +248,7 @@
                  Margin="0,0,0,8"/>
 
         <!-- Buttons -->
-        <StackPanel Grid.Row="10" Grid.Column="0" Grid.ColumnSpan="4"
+        <StackPanel Grid.Row="11" Grid.Column="0" Grid.ColumnSpan="4"
                     Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="SaveButton"
                     Content="_Save"

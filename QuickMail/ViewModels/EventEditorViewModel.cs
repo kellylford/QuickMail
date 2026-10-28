@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
@@ -28,6 +29,7 @@ public enum EditorField
     RepeatInterval,
     RepeatUntil,
     SaveTarget,
+    Invite,
 }
 
 /// <summary>
@@ -125,6 +127,39 @@ public partial class EventEditorViewModel : ObservableObject
 
     [ObservableProperty] private string _location = string.Empty;
     [ObservableProperty] private string _notes = string.Empty;
+
+    /// <summary>
+    /// The Invite field (issue #866): the people to send the meeting to, as addresses separated by
+    /// semicolons or commas, each optionally <c>Name &lt;address&gt;</c>. Read back with
+    /// <see cref="EventAttendees.TryParse"/> on save.
+    /// </summary>
+    [ObservableProperty] private string _inviteText = string.Empty;
+
+    partial void OnInviteTextChanged(string value) => Revalidate();
+
+    // Inviting from the local calendar is refused, so choosing it after typing addresses has to
+    // revalidate too — or the refusal would only appear on the next Save.
+    partial void OnSelectedTargetIndexChanged(int value) => Revalidate();
+
+    /// <summary>
+    /// True on a meeting someone else organized: the field shows who is invited but cannot change
+    /// it, because the guest list is the organizer's.
+    /// </summary>
+    public bool IsInviteReadOnly { get; }
+
+    /// <summary>What the Invite field is for, given to screen readers as help text.</summary>
+    public string InviteHelpText => IsInviteReadOnly
+        ? "The people invited by the organizer. Only the organizer can change who is invited."
+        : "Email addresses of the people to invite, separated by semicolons.";
+
+    // What an edit must carry through from the stored appointment that the editor does not show:
+    // who was invited before (so removed people get a cancellation), who organizes it, its
+    // version, and where a CalDAV server keeps it.
+    private readonly List<EventAttendee> _originalAttendees = [];
+    private readonly string _organizer = string.Empty;
+    private readonly string _organizerName = string.Empty;
+    private readonly string? _sequence;
+    private readonly string _resourceUrl = string.Empty;
 
     /// <summary>
     /// How long the appointment lasts. Preserved when the start moves; re-derived whenever the end
@@ -390,9 +425,18 @@ public partial class EventEditorViewModel : ObservableObject
     /// Creates an editor populated from an existing locally-created event. For an expanded
     /// occurrence of a repeating series (OccurrenceStart set), the editor opens on the
     /// occurrence's own date/time and offers the This event / All events scope choice.
+    /// <paramref name="userOrganizes"/> is false for a meeting someone else invited the user to,
+    /// whose Invite field is then read-only.
     /// </summary>
-    public EventEditorViewModel(CalendarEvent existing)
+    public EventEditorViewModel(CalendarEvent existing, bool userOrganizes = true)
     {
+        IsInviteReadOnly = !userOrganizes;
+        _originalAttendees = existing.Attendees.ToList();
+        _organizer = existing.Organizer;
+        _organizerName = existing.OrganizerName;
+        _sequence = existing.Sequence;
+        _resourceUrl = existing.ResourceUrl;
+        _inviteText = EventAttendees.Format(existing.Attendees);
         _uid = existing.Uid;
         IsEdit = true;
         _editAccountId = existing.AccountId;   // server rows keep their account; the
@@ -572,6 +616,33 @@ public partial class EventEditorViewModel : ObservableObject
             return false;
         }
 
+        // Who is invited. A meeting someone else organized keeps its list as it was: the field is
+        // read-only there, and its text is only the display of that list.
+        List<EventAttendee> attendees;
+        if (IsInviteReadOnly)
+        {
+            attendees = _originalAttendees.ToList();
+        }
+        else if (!EventAttendees.TryParse(InviteText, _originalAttendees, out attendees, out var invalid))
+        {
+            error = $"{invalid} is not an email address. Separate addresses with semicolons.";
+            field = EditorField.Invite;
+            return false;
+        }
+        var attendeesChanged = !IsInviteReadOnly && !EventAttendees.SameAddresses(attendees, _originalAttendees);
+        if (attendees.Count > 0 && targetAccountId == CalendarEvent.LocalAccountId)
+        {
+            // Local Calendar lives on this computer only: there is no server to send from, and no
+            // account to be the organizer that replies come back to.
+            error = IsDetachSave
+                ? "Only the whole meeting can have people invited. Remove the people from Invite, or change all events in the series."
+                : "To invite people, save the appointment to an online calendar (iCloud, Google or Microsoft), not Local Calendar.";
+            field = IsEdit || !ShowSaveTarget ? EditorField.Invite : EditorField.SaveTarget;
+            return false;
+        }
+        // A repeating meeting needs no check of its own: repeating appointments are already held
+        // to Local Calendar above, where inviting is refused.
+
         evt = new CalendarEvent
         {
             Uid            = IsDetachSave ? "local-" + Guid.NewGuid().ToString("N") : _uid,
@@ -589,6 +660,15 @@ public partial class EventEditorViewModel : ObservableObject
             IsAllDay       = IsAllDay,
             RecurrenceRule = rrule,
             ResponseStatus = CalendarResponseStatus.Accepted,
+            Attendees         = attendees,
+            AttendeesChanged  = attendeesChanged,
+            PreviousAttendees = _originalAttendees.ToList(),
+            // An edit is the same appointment: same organizer, same version to build on, same place
+            // on the server. A detached occurrence is a new appointment and starts clean.
+            Organizer      = IsDetachSave ? string.Empty : _organizer,
+            OrganizerName  = IsDetachSave ? string.Empty : _organizerName,
+            Sequence       = IsDetachSave ? null : _sequence,
+            ResourceUrl    = IsDetachSave ? string.Empty : _resourceUrl,
         };
         return true;
     }

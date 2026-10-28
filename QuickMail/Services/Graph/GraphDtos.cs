@@ -212,6 +212,20 @@ internal sealed class GraphCalendarEvent
     [JsonPropertyName("isAllDay")] public bool IsAllDay { get; set; }
     [JsonPropertyName("isOrganizer")] public bool IsOrganizer { get; set; }
     [JsonPropertyName("responseStatus")] public GraphResponseStatus? ResponseStatus { get; set; }
+    [JsonPropertyName("attendees")] public List<GraphAttendee>? Attendees { get; set; }
+}
+
+/// <summary>
+/// One invitee (issue #866). On read, <see cref="Status"/> is their answer; on write only the
+/// address and <see cref="Type"/> are sent, and Exchange emails the invitation itself.
+/// </summary>
+internal sealed class GraphAttendee
+{
+    [JsonPropertyName("emailAddress")] public GraphEmailAddress? EmailAddress { get; set; }
+    /// <summary>"required" | "optional" | "resource".</summary>
+    [JsonPropertyName("type")] public string? Type { get; set; }
+    [JsonPropertyName("status"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GraphResponseStatus? Status { get; set; }
 }
 
 /// <summary>Graph's dateTimeTimeZone shape: a wall-clock string plus the zone it is expressed in.</summary>
@@ -243,4 +257,10 @@ internal sealed class GraphCreateEventBody
     [JsonPropertyName("location"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public GraphLocation? Location { get; set; }
     [JsonPropertyName("isAllDay")] public bool IsAllDay { get; set; }
+    /// <summary>
+    /// Who is invited (issue #866). Null leaves a PATCH's attendees as they are; an empty list
+    /// removes everyone. Sent only when the user changed who is invited.
+    /// </summary>
+    [JsonPropertyName("attendees"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<GraphAttendee>? Attendees { get; set; }
 }

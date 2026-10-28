@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -124,6 +125,47 @@ public partial class CalendarEvent : ObservableObject
     public string Location { get; set; } = string.Empty;
     public string Organizer { get; set; } = string.Empty;
     public string OrganizerName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The people invited to this appointment, other than its organizer (issue #866). Read from
+    /// the provider on sync (CalDAV ATTENDEE, Google and Graph <c>attendees</c>) and written back
+    /// on save. Persisted as JSON in <c>attendees_json</c>.
+    /// </summary>
+    public List<EventAttendee> Attendees { get; set; } = [];
+
+    /// <summary>True when anyone is invited.</summary>
+    public bool HasAttendees => Attendees.Count > 0;
+
+    /// <summary>
+    /// Set by the editor when the user changed who is invited — added, removed or both — so the
+    /// write sends the new list rather than leaving the provider's alone. Not persisted.
+    /// <see cref="PreviousAttendees"/> holds the list before the edit, which is who an update or a
+    /// cancellation also has to reach.
+    /// </summary>
+    public bool AttendeesChanged { get; set; }
+
+    /// <summary>Who was invited before this edit (see <see cref="AttendeesChanged"/>). Not persisted.</summary>
+    public List<EventAttendee> PreviousAttendees { get; set; } = [];
+
+    /// <summary>
+    /// True when the user, at one of <paramref name="ownAddresses"/>, is the one who sends this
+    /// appointment's invitations: there is no organizer yet (nobody has been invited, or it is a
+    /// new appointment), or the organizer is that address, or it is the calendar the appointment
+    /// is on (Google names a secondary calendar's own events as organized by the calendar). False
+    /// for a meeting someone else invited the user to, whose attendee list is theirs to change.
+    /// </summary>
+    /// <remarks>
+    /// Takes several addresses because an account can organize under more than one: an iCloud
+    /// account's mail address and its Apple ID can differ, and either can be the organizer.
+    /// </remarks>
+    public bool IsOrganizedBy(params string?[] ownAddresses)
+        => string.IsNullOrWhiteSpace(Organizer)
+           || ownAddresses.Any(a => SameAddress(Organizer, a))
+           || SameAddress(Organizer, CalendarId);
+
+    private static bool SameAddress(string a, string? b)
+        => !string.IsNullOrWhiteSpace(b)
+           && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Event start (UTC ticks). Null if the ICS had no DTSTART.</summary>
     public long? StartTimeTicks { get; set; }
@@ -345,6 +387,9 @@ public partial class CalendarEvent : ObservableObject
                 if (org != null)
                     sb.Append("Organizer: ").Append(org).Append('\n');
             }
+
+            if (HasAttendees)
+                sb.Append("Invited: ").Append(string.Join(", ", Attendees)).Append('\n');
 
             if (!string.IsNullOrWhiteSpace(Description))
                 sb.Append('\n').Append(Description).Append('\n');

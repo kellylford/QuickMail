@@ -64,7 +64,24 @@ public interface ICalDavCalendarClient
 
     /// <summary>DELETEs an event resource by its absolute .ics URL. Throws on a non-success status.</summary>
     Task DeleteEventAsync(string eventResourceUrl, string username, string password, CancellationToken ct = default);
+
+    /// <summary>
+    /// What the server does about invitations (issue #866): whether the calendar at
+    /// <paramref name="calendarUrl"/> advertises <c>calendar-auto-schedule</c> in its <c>DAV</c>
+    /// header — RFC 6638 implicit scheduling, where saving a meeting is what sends its invitations —
+    /// and the addresses the account may organize meetings as (<c>calendar-user-address-set</c>).
+    /// Throws on a failed request.
+    /// </summary>
+    Task<CalDavScheduling> GetSchedulingAsync(string serverUrl, string calendarUrl, string username, string password,
+                                              CancellationToken ct = default);
 }
+
+/// <summary>
+/// The server's scheduling support for one account: whether it delivers invitations itself
+/// (<paramref name="ServerSchedules"/>) and the email addresses it knows the user by, in the
+/// server's order (<paramref name="UserAddresses"/>, without <c>mailto:</c>).
+/// </summary>
+public sealed record CalDavScheduling(bool ServerSchedules, IReadOnlyList<string> UserAddresses);
 
 /// <summary>
 /// Raw-HttpClient CalDAV client (no new NuGet dependency, mirroring
@@ -221,6 +238,57 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
         => SendCoreAsync(NormalizeUri(eventResourceUrl), username, password,
                          target => new HttpRequestMessage(HttpMethod.Delete, target), ct);
 
+    // ── Scheduling (RFC 6638) ────────────────────────────────────────────────────
+
+    private const string AddressSetBody =
+        """<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-user-address-set/></d:prop></d:propfind>""";
+
+    public async Task<CalDavScheduling> GetSchedulingAsync(string serverUrl, string calendarUrl,
+        string username, string password, CancellationToken ct = default)
+    {
+        // The DAV header is only promised on OPTIONS; PROPFIND responses need not carry it.
+        string? davHeader = null;
+        await SendCoreAsync(NormalizeUri(calendarUrl), username, password,
+            target => new HttpRequestMessage(HttpMethod.Options, target), ct,
+            resp => davHeader = resp.Headers.TryGetValues("DAV", out var values)
+                ? string.Join(",", values)
+                : null);
+
+        var (principalXml, principalReqUri) =
+            await SendAsync(PropfindMethod, NormalizeUri(serverUrl), PrincipalBody, depth: "0", username, password, ct);
+        var principalHref = ParseInnerHref(principalXml, "current-user-principal");
+        var addresses = new List<string>();
+        if (principalHref != null)
+        {
+            var (addressXml, _) = await SendAsync(PropfindMethod, new Uri(principalReqUri, principalHref),
+                                                  AddressSetBody, depth: "0", username, password, ct);
+            addresses = ParseUserAddresses(addressXml);
+        }
+        return new CalDavScheduling(AdvertisesAutoSchedule(davHeader), addresses);
+    }
+
+    /// <summary>True when a DAV header lists <c>calendar-auto-schedule</c> (compared token by token).</summary>
+    internal static bool AdvertisesAutoSchedule(string? davHeader)
+        => !string.IsNullOrWhiteSpace(davHeader)
+           && davHeader.Split(',').Any(t => string.Equals(t.Trim(), "calendar-auto-schedule", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The <c>mailto:</c> hrefs in a calendar-user-address-set, as bare addresses, in order.</summary>
+    internal static List<string> ParseUserAddresses(string xml)
+    {
+        var doc = XDocument.Parse(xml);
+        var set = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName.Equals("calendar-user-address-set", StringComparison.OrdinalIgnoreCase));
+        if (set == null) return [];
+        return set.Descendants()
+            .Where(e => e.Name.LocalName == "href")
+            .Select(e => e.Value.Trim())
+            .Where(v => v.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase))
+            .Select(v => v[7..].Trim())
+            .Where(v => v.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private static string Stamp(DateTime utc)
         => DateTime.SpecifyKind(utc, DateTimeKind.Utc)
             .ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
@@ -348,7 +416,8 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
     /// request URI. Throws on a non-success status with the response body.
     /// </summary>
     private async Task<(string Body, Uri FinalUri)> SendCoreAsync(Uri uri, string username, string password,
-        Func<Uri, HttpRequestMessage> buildRequest, CancellationToken ct)
+        Func<Uri, HttpRequestMessage> buildRequest, CancellationToken ct,
+        Action<HttpResponseMessage>? inspectSuccess = null)
     {
         var auth = new AuthenticationHeaderValue("Basic",
             Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}")));
@@ -376,6 +445,7 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
                     inner: null, statusCode: resp.StatusCode);
             }
 
+            inspectSuccess?.Invoke(resp);
             return (await resp.Content.ReadAsStringAsync(ct), uri);
         }
 
