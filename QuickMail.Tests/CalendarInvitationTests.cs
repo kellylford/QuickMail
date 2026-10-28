@@ -476,7 +476,7 @@ public class ProviderAttendeeMappingTests
     }
 
     [Fact]
-    public void MapGraphEvent_ListsPeople_NotRooms()
+    public void MapGraphEvent_ListsPeopleWithAnswers_AndKeepsRoomsMarkedAsRooms()
     {
         var e = new GraphCalendarEvent
         {
@@ -496,8 +496,10 @@ public class ProviderAttendeeMappingTests
 
         var evt = GraphCalendarSyncService.MapEvent(e, Guid.NewGuid());
 
-        Assert.Equal(["ann@example.com", "bob@example.com"], evt.Attendees.Select(a => a.Email));
-        Assert.Equal([AttendeeResponse.Accepted, AttendeeResponse.Tentative], evt.Attendees.Select(a => a.Response));
+        Assert.Equal(["ann@example.com", "bob@example.com", "room1@contoso.com"], evt.Attendees.Select(a => a.Email));
+        Assert.Equal([AttendeeResponse.Accepted, AttendeeResponse.Tentative, AttendeeResponse.NoReply],
+                     evt.Attendees.Select(a => a.Response));
+        Assert.Equal([AttendeeKind.Required, AttendeeKind.Optional, AttendeeKind.Resource], evt.Attendees.Select(a => a.Kind));
     }
 
     [Fact]
