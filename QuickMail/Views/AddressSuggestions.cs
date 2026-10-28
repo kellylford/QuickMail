@@ -105,8 +105,10 @@ internal sealed class TokenizedAddressEntry : IAddressEntry
 
 /// <summary>
 /// A plain text box holding addresses separated by semicolons or commas, as the appointment
-/// editor's Invite field does. The partial input is whatever follows the last separator, and a
-/// chosen address replaces it and is followed by "; " so the next one can be typed straight away.
+/// editor's Invite field does. The partial input is the entry the caret is in — the user may be
+/// correcting one in the middle, which is where a refused save puts them — and a chosen address
+/// replaces just that entry. At the end of the field it is followed by "; " so the next one can
+/// be typed straight away.
 /// </summary>
 internal sealed class TextBoxAddressEntry : IAddressEntry
 {
@@ -117,49 +119,91 @@ internal sealed class TextBoxAddressEntry : IAddressEntry
         _box.TextChanged += (_, _) => InputChanged?.Invoke(this, EventArgs.Empty);
     }
     public FrameworkElement Element => _box;
-    public string CurrentInput => _box.Text[TailStart(_box.Text)..].Trim();
+    public string CurrentInput
+    {
+        get
+        {
+            var (start, end) = EntryBounds(_box.Text, _box.CaretIndex);
+            return _box.Text[start..end].Trim();
+        }
+    }
     public bool CanEdit => !_box.IsReadOnly && _box.IsEnabled;
     public event EventHandler? InputChanged;
 
     public void AcceptSuggestion(string displayName, string email)
     {
         var text = _box.Text;
-        var start = TailStart(text);
-        // Keep a single space after the separator the tail follows, if there was one.
+        var (start, end) = EntryBounds(text, _box.CaretIndex);
+        // Keep a single space after the separator the entry follows, if there was one.
         var head = text[..start].TrimEnd();
         if (head.Length > 0) head += " ";
-        _box.Text = head + Formatted(displayName, email) + "; ";
-        _box.CaretIndex = _box.Text.Length;
+        var tail = text[end..];
+        var inserted = Formatted(displayName, email);
+        if (tail.Trim().Length == 0)
+        {
+            // The last entry: leave the field ready for the next address.
+            _box.Text = head + inserted + "; ";
+            _box.CaretIndex = _box.Text.Length;
+        }
+        else
+        {
+            // An entry in the middle: the separator after it is still there in the tail.
+            _box.Text = head + inserted + tail;
+            _box.CaretIndex = head.Length + inserted.Length;
+        }
     }
 
+    /// <summary>Adds an address after the entry the caret is at the end of (a group's next member).</summary>
     public void AddAddress(string displayName, string email)
     {
-        _box.Text += Formatted(displayName, email) + "; ";
-        _box.CaretIndex = _box.Text.Length;
+        var text = _box.Text;
+        var caret = _box.CaretIndex;
+        var inserted = Formatted(displayName, email);
+        if (text[caret..].Trim().Length == 0)
+        {
+            var head = text.TrimEnd();
+            if (head.Length > 0 && !head.EndsWith(';') && !head.EndsWith(',')) head += ";";
+            if (head.Length > 0) head += " ";
+            _box.Text = head + inserted + "; ";
+            _box.CaretIndex = _box.Text.Length;
+        }
+        else
+        {
+            var insert = "; " + inserted;
+            _box.Text = text[..caret] + insert + text[caret..];
+            _box.CaretIndex = caret + insert.Length;
+        }
     }
 
-    public void FocusInput()
-    {
-        _box.Focus();
-        _box.CaretIndex = _box.Text.Length;
-    }
+    // The caret stays where accepting left it, so the user carries on from the address chosen.
+    public void FocusInput() => _box.Focus();
 
     public bool SuppressLostFocusCommit { set { } } // a text box commits nothing on losing focus
 
     private static string Formatted(string displayName, string email)
         => EventAttendees.Format([new EventAttendee { Email = email, Name = displayName ?? string.Empty }]);
 
-    /// <summary>Where the entry being typed starts: after the last separator outside quotes.</summary>
-    internal static int TailStart(string text)
+    /// <summary>
+    /// The entry containing <paramref name="caret"/>: from just after the separator before it to
+    /// the next separator (or the end), counting only separators outside quotes, so a name such as
+    /// "Lee, Ann" stays one entry.
+    /// </summary>
+    internal static (int Start, int End) EntryBounds(string text, int caret)
     {
+        caret = Math.Clamp(caret, 0, text.Length);
         var start = 0;
+        var end = text.Length;
         var quoted = false;
         for (var i = 0; i < text.Length; i++)
         {
             if (text[i] == '"') quoted = !quoted;
-            else if (!quoted && (text[i] == ';' || text[i] == ',')) start = i + 1;
+            else if (!quoted && (text[i] == ';' || text[i] == ','))
+            {
+                if (i < caret) start = i + 1;
+                else { end = i; break; }
+            }
         }
-        return start;
+        return (start, end);
     }
 }
 
@@ -194,6 +238,17 @@ internal sealed class AddressSuggestionController : IDisposable
         _list.MouseLeftButtonUp += (_, _) =>
         {
             if (_list.SelectedItem is AddressSuggestion s) Accept(s);
+        };
+        // Focus leaving the list for anywhere but the field it serves closes it: left open, a
+        // stale list would swallow the next Enter in the field and make Escape mean Cancel.
+        _list.IsKeyboardFocusWithinChanged += (_, e) =>
+        {
+            if ((bool)e.NewValue) return;
+            _owner.Dispatcher.InvokeAsync(() =>
+            {
+                if (!_list.IsKeyboardFocusWithin && _active?.Element.IsKeyboardFocusWithin != true)
+                    _popup.IsOpen = false;
+            }, DispatcherPriority.Background);
         };
         // However the popup closes, the field goes back to committing normally on losing focus.
         _popup.Closed += (_, _) =>
@@ -341,7 +396,18 @@ internal sealed class AddressSuggestionController : IDisposable
     /// </summary>
     private async Task AcceptGroupAsync(IAddressEntry target, GroupModel group)
     {
-        var allContacts = await _contacts.LoadAllContactsAsync();
+        List<ContactModel> allContacts;
+        try
+        {
+            allContacts = await _contacts.LoadAllContactsAsync();
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"AddressSuggestions: could not load the members of group '{group.Name}'", ex);
+            AccessibilityHelper.Announce(_owner, $"Couldn't add the members of group '{group.Name}'.",
+                category: AnnouncementCategory.Result);
+            return;
+        }
         var byId = allContacts.ToDictionary(c => c.Id);
         var members = group.MemberContactIds
             .Where(byId.ContainsKey)

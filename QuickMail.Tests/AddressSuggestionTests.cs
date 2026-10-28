@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Controls;
+using System.Windows.Input;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -54,13 +55,15 @@ public class AddressSuggestionTests
     }
 
     [Theory]
-    [InlineData("", 0)]
-    [InlineData("an", 0)]
-    [InlineData("ann@example.com; bo", 16)]
-    [InlineData("ann@example.com,bo", 16)]
-    [InlineData("\"Lee; Ann\" <ann@example.com>; bo", 29)] // a separator inside quotes is part of a name
-    public void TailStart_IsAfterTheLastSeparatorOutsideQuotes(string text, int expected)
-        => Assert.Equal(expected, TextBoxAddressEntry.TailStart(text));
+    [InlineData("", 0, 0, 0)]
+    [InlineData("an", 2, 0, 2)]
+    [InlineData("ann@example.com; bo", 19, 16, 19)]
+    [InlineData("ann@example.com,bo", 18, 16, 18)]
+    [InlineData("\"Lee; Ann\" <ann@example.com>; bo", 32, 29, 32)] // a separator inside quotes is part of a name
+    [InlineData("ann@example.com; b; carol@example.com", 18, 16, 18)] // the caret in a middle entry
+    [InlineData("ann@example.com; b; carol@example.com", 3, 0, 15)]
+    public void EntryBounds_IsTheEntryAroundTheCaret(string text, int caret, int start, int end)
+        => Assert.Equal((start, end), TextBoxAddressEntry.EntryBounds(text, caret));
 
     [StaFact]
     public void TextBoxEntry_AcceptingReplacesOnlyWhatIsBeingTyped()
@@ -81,6 +84,28 @@ public class AddressSuggestionTests
         // And it all reads back as three invitees.
         Assert.True(EventAttendees.TryParse(box.Text, null, out var parsed, out _));
         Assert.Equal(3, parsed.Count);
+    }
+
+    [StaFact]
+    public void TextBoxEntry_InTheMiddle_ReplacesOnlyThatEntry()
+    {
+        // Where a refused save leaves the user: the bad entry in the middle, retyped.
+        EnsureApplication();
+        var box = new TextBox { Text = "ann@example.com; b; carol@example.com" };
+        box.CaretIndex = 18; // just after the "b"
+        var entry = new TextBoxAddressEntry(box);
+        Assert.Equal("b", entry.CurrentInput);
+
+        entry.AcceptSuggestion("Bob Ray", "bob@example.com");
+
+        Assert.Equal("ann@example.com; Bob Ray <bob@example.com>; carol@example.com", box.Text);
+        Assert.Equal("ann@example.com; Bob Ray <bob@example.com>".Length, box.CaretIndex);
+
+        // A group's next member goes in right after it, not at the end.
+        entry.AddAddress("", "dave@example.com");
+        Assert.Equal("ann@example.com; Bob Ray <bob@example.com>; dave@example.com; carol@example.com", box.Text);
+        Assert.True(EventAttendees.TryParse(box.Text, null, out var parsed, out _));
+        Assert.Equal(4, parsed.Count);
     }
 
     [StaFact]
@@ -107,21 +132,26 @@ public class AddressSuggestionTests
             Assert.NotNull(list);
 
             invite.Text = "an";
+            invite.CaretIndex = invite.Text.Length;
             await WaitUntilAsync(() => popup.IsOpen);
 
             var only = Assert.Single(list.Items.Cast<object>());
             Assert.Equal("Ann Lee ann@example.com", only.ToString()); // what a screen reader is given
 
-            // Enter with the list showing picks the suggestion instead of saving the appointment
-            // (the window calls AcceptFirst for Enter in Invite).
+            // Ctrl+Enter, or Enter outside Invite, keeps its meaning and takes nothing.
+            Assert.False(window.TryChooseSuggestionOnEnter(Key.Enter, ModifierKeys.Control, inInvite: true));
+            Assert.False(window.TryChooseSuggestionOnEnter(Key.Enter, ModifierKeys.None, inInvite: false));
+            Assert.True(popup.IsOpen);
+
+            // Enter in Invite with the list showing picks the suggestion instead of saving.
             var saved = false;
             vm.Saved += _ => saved = true;
-            Assert.True(window.Suggestions!.AcceptFirst());
+            Assert.True(window.TryChooseSuggestionOnEnter(Key.Enter, ModifierKeys.None, inInvite: true));
             Assert.Equal("Ann Lee <ann@example.com>; ", vm.InviteText);
             Assert.False(popup.IsOpen);
             Assert.False(saved);
             // With the list closed there is nothing to accept, so Enter keeps meaning Save.
-            Assert.False(window.Suggestions.AcceptFirst());
+            Assert.False(window.TryChooseSuggestionOnEnter(Key.Enter, ModifierKeys.None, inInvite: true));
         }
         finally
         {
@@ -142,6 +172,7 @@ public class AddressSuggestionTests
             var invite = (TextBox)window.FindName("InviteBox");
             var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("InviteSuggestionPopup");
             invite.Text = "Tea";
+            invite.CaretIndex = invite.Text.Length;
             await WaitUntilAsync(() => popup.IsOpen);
 
             Assert.True(window.Suggestions!.AcceptFirst());
@@ -179,6 +210,122 @@ public class AddressSuggestionTests
         finally
         {
             window.Close();
+        }
+    }
+
+    // ── Compose's side of the shared controller ──────────────────────────────
+
+    private sealed record ComposeRig(System.Windows.Window Window, QuickMail.Controls.TokenizedAddressBox Box,
+        System.Windows.Controls.Primitives.Popup Popup, ListBox List, AddressSuggestionController Controller);
+
+    /// <summary>A shown window with one chip box, wired the way ComposeWindow wires To.</summary>
+    private static ComposeRig BuildComposeRig(Contacts contacts)
+    {
+        var box = new QuickMail.Controls.TokenizedAddressBox();
+        var list = new ListBox();
+        var popup = new System.Windows.Controls.Primitives.Popup { Child = list, StaysOpen = true };
+        var window = new System.Windows.Window
+        {
+            Content = new StackPanel { Children = { box } },
+            Width = 400, Height = 200, ShowInTaskbar = false,
+        };
+        window.Show();
+        var controller = new AddressSuggestionController(window, contacts, popup, list);
+        controller.Attach(new TokenizedAddressEntry(box));
+        return new ComposeRig(window, box, popup, list, controller);
+    }
+
+    private static KeyEventArgs Key_(System.Windows.Media.Visual source, Key key)
+        => new(Keyboard.PrimaryDevice, System.Windows.PresentationSource.FromVisual(source)!, 0, key)
+        {
+            RoutedEvent = Keyboard.PreviewKeyDownEvent,
+        };
+
+    [StaFact]
+    public async Task Compose_DownIntoTheList_HoldsTheFieldsCommit_UntilTheListCloses()
+    {
+        EnsureApplication();
+        var rig = BuildComposeRig(new Contacts());
+        try
+        {
+            var entering = 0;
+            rig.Controller.EnteringSuggestions += () => entering++;
+            rig.Box.InputBox.Text = "an";
+            await WaitUntilAsync(() => rig.Popup.IsOpen);
+
+            rig.Box.InputBox.RaiseEvent(Key_(rig.Window, Key.Down));
+
+            // ComposeWindow listens for this to skip reading the chips again on the way back.
+            Assert.Equal(1, entering);
+            Assert.True(rig.Box.SuppressLostFocusCommit);
+
+            // Escape in the list closes it, and the field commits normally again.
+            var escape = Key_(rig.Window, Key.Escape);
+            rig.Controller.List_PreviewKeyDown(rig.List, escape);
+            Assert.True(escape.Handled);
+            Assert.False(rig.Popup.IsOpen);
+            Assert.False(rig.Box.SuppressLostFocusCommit);
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public async Task Compose_EnterInTheList_AddsTheChip_AndAGroupAddsAChipPerMember()
+    {
+        EnsureApplication();
+        var contacts = new Contacts();
+        contacts.Groups.Add(new GroupModel { Id = 9, Name = "Team", MemberContactIds = [1, 2] });
+        var rig = BuildComposeRig(contacts);
+        try
+        {
+            rig.Box.InputBox.Text = "bo";
+            await WaitUntilAsync(() => rig.Popup.IsOpen);
+            rig.List.SelectedIndex = 0;
+            var enter = Key_(rig.Window, Key.Enter);
+            rig.Controller.List_PreviewKeyDown(rig.List, enter);
+            Assert.True(enter.Handled); // never reaches a default button
+            await WaitUntilAsync(() => rig.Box.GetChips().Count == 1);
+            Assert.Equal("bob@example.com", rig.Box.GetChips()[0].EmailAddress);
+
+            rig.Box.InputBox.Text = "Tea";
+            await WaitUntilAsync(() => rig.Popup.IsOpen);
+            rig.List.SelectedIndex = 0;
+            rig.Controller.List_PreviewKeyDown(rig.List, Key_(rig.Window, Key.Tab));
+            await WaitUntilAsync(() => rig.Box.GetChips().Count == 3);
+            Assert.Equal(["bob@example.com", "ann@example.com", "bob@example.com"],
+                         rig.Box.GetChips().Select(c => c.EmailAddress));
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public async Task Compose_UpFromTheTop_ReturnsToTheField()
+    {
+        EnsureApplication();
+        var rig = BuildComposeRig(new Contacts());
+        try
+        {
+            rig.Box.InputBox.Text = "an";
+            await WaitUntilAsync(() => rig.Popup.IsOpen);
+            rig.List.SelectedIndex = 0;
+            var up = Key_(rig.Window, Key.Up);
+            rig.Controller.List_PreviewKeyDown(rig.List, up);
+            Assert.True(up.Handled);
+            Assert.False(rig.Popup.IsOpen);
+            Assert.Empty(rig.Box.GetChips()); // nothing chosen
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
         }
     }
 

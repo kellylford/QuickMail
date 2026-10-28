@@ -74,6 +74,13 @@ public partial class EventEditorWindow : Window
             defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None));
     }
 
+    /// <summary>
+    /// Enter with no modifiers, in Invite, while its suggestions show: choose the first. Any other
+    /// key, or Enter anywhere else or with the list closed, is left to mean what it usually does.
+    /// </summary>
+    internal bool TryChooseSuggestionOnEnter(Key key, ModifierKeys modifiers, bool inInvite)
+        => key == Key.Enter && modifiers == ModifierKeys.None && inInvite && _suggestions?.AcceptFirst() == true;
+
     private void Save_Click(object sender, RoutedEventArgs e) => _vm.SaveCommand.Execute(null);
     private void Cancel_Click(object sender, RoutedEventArgs e) => _vm.CancelCommand.Execute(null);
 
@@ -98,8 +105,7 @@ public partial class EventEditorWindow : Window
         // Enter in Invite while its suggestions show picks the first one, as choosing from the
         // list would, rather than saving with the half-typed address the list was offering to
         // complete. With the list closed, Enter saves as everywhere else in the editor.
-        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None
-            && InviteBox.IsKeyboardFocusWithin && _suggestions?.AcceptFirst() == true)
+        if (TryChooseSuggestionOnEnter(e.Key, Keyboard.Modifiers, InviteBox.IsKeyboardFocusWithin))
         {
             e.Handled = true;
             return;
