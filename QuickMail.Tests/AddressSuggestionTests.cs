@@ -117,7 +117,7 @@ public class AddressSuggestionTests
     }
 
     [StaFact]
-    public async Task Editor_TypingInInvite_SuggestsContacts_AndEnterChoosesTheFirst()
+    public void Editor_TypingInInvite_SuggestsContacts_AndEnterChoosesTheFirst()
     {
         EnsureApplication();
         var vm = new EventEditorViewModel(new DateTime(2026, 11, 3, 9, 0, 0));
@@ -133,7 +133,7 @@ public class AddressSuggestionTests
 
             invite.Text = "an";
             invite.CaretIndex = invite.Text.Length;
-            await WaitUntilAsync(() => popup.IsOpen);
+            PumpUntil(() => popup.IsOpen);
 
             var only = Assert.Single(list.Items.Cast<object>());
             Assert.Equal("Ann Lee ann@example.com", only.ToString()); // what a screen reader is given
@@ -160,7 +160,7 @@ public class AddressSuggestionTests
     }
 
     [StaFact]
-    public async Task Editor_AGroup_ExpandsToItsMembers()
+    public void Editor_AGroup_ExpandsToItsMembers()
     {
         EnsureApplication();
         var contacts = new Contacts();
@@ -173,10 +173,10 @@ public class AddressSuggestionTests
             var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("InviteSuggestionPopup");
             invite.Text = "Tea";
             invite.CaretIndex = invite.Text.Length;
-            await WaitUntilAsync(() => popup.IsOpen);
+            PumpUntil(() => popup.IsOpen);
 
             Assert.True(window.Suggestions!.AcceptFirst());
-            await WaitUntilAsync(() => vm.InviteText.Contains("bob@example.com", StringComparison.Ordinal));
+            PumpUntil(() => vm.InviteText.Contains("bob@example.com", StringComparison.Ordinal));
 
             // Most recently used first, as compose orders a group's members.
             Assert.Equal("Ann Lee <ann@example.com>; Bob Ray <bob@example.com>; ", vm.InviteText);
@@ -188,7 +188,7 @@ public class AddressSuggestionTests
     }
 
     [StaFact]
-    public async Task Editor_SomeoneElsesMeeting_SuggestsNothing()
+    public void Editor_SomeoneElsesMeeting_SuggestsNothing()
     {
         EnsureApplication();
         var meeting = new CalendarEvent
@@ -204,7 +204,7 @@ public class AddressSuggestionTests
             var invite = (TextBox)window.FindName("InviteBox");
             var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("InviteSuggestionPopup");
             invite.Text = "an"; // cannot happen through a read-only box, but must not open the list either
-            await Task.Delay(200, TestContext.Current.CancellationToken);
+            PumpFor(TimeSpan.FromMilliseconds(200));
             Assert.False(popup.IsOpen);
         }
         finally
@@ -242,7 +242,7 @@ public class AddressSuggestionTests
         };
 
     [StaFact]
-    public async Task Compose_DownIntoTheList_HoldsTheFieldsCommit_UntilTheListCloses()
+    public void Compose_DownIntoTheList_HoldsTheFieldsCommit_UntilTheListCloses()
     {
         EnsureApplication();
         var rig = BuildComposeRig(new Contacts());
@@ -251,7 +251,7 @@ public class AddressSuggestionTests
             var entering = 0;
             rig.Controller.EnteringSuggestions += () => entering++;
             rig.Box.InputBox.Text = "an";
-            await WaitUntilAsync(() => rig.Popup.IsOpen);
+            PumpUntil(() => rig.Popup.IsOpen);
 
             rig.Box.InputBox.RaiseEvent(Key_(rig.Window, Key.Down));
 
@@ -274,7 +274,7 @@ public class AddressSuggestionTests
     }
 
     [StaFact]
-    public async Task Compose_EnterInTheList_AddsTheChip_AndAGroupAddsAChipPerMember()
+    public void Compose_EnterInTheList_AddsTheChip_AndAGroupAddsAChipPerMember()
     {
         EnsureApplication();
         var contacts = new Contacts();
@@ -283,19 +283,19 @@ public class AddressSuggestionTests
         try
         {
             rig.Box.InputBox.Text = "bo";
-            await WaitUntilAsync(() => rig.Popup.IsOpen);
+            PumpUntil(() => rig.Popup.IsOpen);
             rig.List.SelectedIndex = 0;
             var enter = Key_(rig.Window, Key.Enter);
             rig.Controller.List_PreviewKeyDown(rig.List, enter);
             Assert.True(enter.Handled); // never reaches a default button
-            await WaitUntilAsync(() => rig.Box.GetChips().Count == 1);
+            PumpUntil(() => rig.Box.GetChips().Count == 1);
             Assert.Equal("bob@example.com", rig.Box.GetChips()[0].EmailAddress);
 
             rig.Box.InputBox.Text = "Tea";
-            await WaitUntilAsync(() => rig.Popup.IsOpen);
+            PumpUntil(() => rig.Popup.IsOpen);
             rig.List.SelectedIndex = 0;
             rig.Controller.List_PreviewKeyDown(rig.List, Key_(rig.Window, Key.Tab));
-            await WaitUntilAsync(() => rig.Box.GetChips().Count == 3);
+            PumpUntil(() => rig.Box.GetChips().Count == 3);
             Assert.Equal(["bob@example.com", "ann@example.com", "bob@example.com"],
                          rig.Box.GetChips().Select(c => c.EmailAddress));
         }
@@ -307,14 +307,14 @@ public class AddressSuggestionTests
     }
 
     [StaFact]
-    public async Task Compose_UpFromTheTop_ReturnsToTheField()
+    public void Compose_UpFromTheTop_ReturnsToTheField()
     {
         EnsureApplication();
         var rig = BuildComposeRig(new Contacts());
         try
         {
             rig.Box.InputBox.Text = "an";
-            await WaitUntilAsync(() => rig.Popup.IsOpen);
+            PumpUntil(() => rig.Popup.IsOpen);
             rig.List.SelectedIndex = 0;
             var up = Key_(rig.Window, Key.Up);
             rig.Controller.List_PreviewKeyDown(rig.List, up);
@@ -329,15 +329,36 @@ public class AddressSuggestionTests
         }
     }
 
-    /// <summary>Pumps the dispatcher until <paramref name="condition"/> holds, or fails after two seconds.</summary>
-    private static async Task WaitUntilAsync(Func<bool> condition)
+    /// <summary>
+    /// Pumps the dispatcher until <paramref name="condition"/> holds, failing after five seconds.
+    /// Synchronous on purpose, like the other WPF tests here: an [StaFact] thread has no
+    /// dispatcher loop of its own, so awaiting the dispatcher would wait forever.
+    /// </summary>
+    private static void PumpUntil(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(2);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        DoEvents();
         while (!condition())
         {
-            if (DateTime.UtcNow > deadline) Assert.Fail("Condition was not met within two seconds.");
-            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
-            await Task.Delay(10, TestContext.Current.CancellationToken);
+            if (clock.Elapsed >= TimeSpan.FromSeconds(5))
+                Assert.Fail("Condition was not met within five seconds.");
+            Thread.Sleep(10);
+            DoEvents();
         }
+    }
+
+    private static void PumpFor(TimeSpan time)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        do { Thread.Sleep(10); DoEvents(); } while (clock.Elapsed < time);
+    }
+
+    private static void DoEvents()
+    {
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Background,
+            new Action(() => frame.Continue = false));
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
     }
 }
