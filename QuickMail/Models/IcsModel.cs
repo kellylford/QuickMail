@@ -50,6 +50,10 @@ public class IcsModel
     /// untouched series.</summary>
     public List<DateTime> ExDates { get; } = [];
 
+    /// <summary>The VEVENT's ATTENDEE properties, in order (issue #866). May include the organizer
+    /// — Apple lists the organizer as an accepted attendee; <see cref="ToCalendarEvent"/> drops it.</summary>
+    public List<EventAttendee> Attendees { get; } = [];
+
     /// <summary>
     /// Human-readable summary for screen reader announcement and display.
     /// </summary>
@@ -195,23 +199,38 @@ public class IcsModel
     /// <summary>Applies one unfolded content line to the VEVENT being built.</summary>
     private static void ParseVEventLine(IcsModel model, string line)
     {
-        var colonIdx = line.IndexOf(':');
+        // The name part ends at the first colon outside a quoted parameter value: a CN such as
+        // "Team: Ops" carries a colon of its own, and splitting there read the rest of the
+        // parameters back as the address.
+        var colonIdx = IndexOutsideQuotes(line, ':');
         if (colonIdx < 0) return;
 
         var prop = line[..colonIdx];
         var value = line[(colonIdx + 1)..];
 
         // Handle property parameters (e.g. "DTSTART;TZID=America/Chicago:20260101T120000")
-        var semicolonIdx = prop.IndexOf(';');
+        var semicolonIdx = IndexOutsideQuotes(prop, ';');
         var propName = semicolonIdx >= 0 ? prop[..semicolonIdx] : prop;
 
         switch (propName.ToUpperInvariant())
         {
             case "ORGANIZER":
                 model.OrganizerName = ExtractCnParam(prop);
-                model.Organizer = ExtractMailtoValue(value);
+                model.Organizer = CalendarUserAddress(prop, value);
                 if (string.IsNullOrWhiteSpace(model.OrganizerName))
                     model.OrganizerName = model.Organizer;
+                break;
+            case "ATTENDEE":
+                var attendeeEmail = CalendarUserAddress(prop, value);
+                if (!string.IsNullOrWhiteSpace(attendeeEmail)
+                    && !model.Attendees.Any(a => a.IsSameAddress(attendeeEmail)))
+                    model.Attendees.Add(new EventAttendee
+                    {
+                        Email = attendeeEmail,
+                        Name = ExtractCnParam(prop)?.Trim() ?? string.Empty,
+                        Response = ParsePartStat(ExtractParam(prop, "PARTSTAT")),
+                        Kind = KindOf(ExtractParam(prop, "CUTYPE"), ExtractParam(prop, "ROLE")),
+                    });
                 break;
             case "SUMMARY":
                 model.Summary = UnescapeIcsText(value);
@@ -329,6 +348,37 @@ public class IcsModel
     }
 
     /// <summary>
+    /// Builds an iMIP scheduling message (RFC 6047 / RFC 5546) for the people invited to
+    /// <paramref name="evt"/>, which QuickMail emails itself when the calendar server does not
+    /// (issue #866). <paramref name="method"/> is <c>REQUEST</c> for a new or updated invitation
+    /// and <c>CANCEL</c> to withdraw it. A CANCEL names only <paramref name="recipients"/> — the
+    /// people it is going to — and a REQUEST lists everyone invited, as every attendee's copy of
+    /// the meeting should. <paramref name="wholeEvent"/> marks a CANCEL of the meeting itself with
+    /// <c>STATUS:CANCELLED</c>; uninviting some people from a meeting that goes ahead must not
+    /// carry it (RFC 5546 §3.2.5).
+    /// </summary>
+    public static string ExportScheduling(CalendarEvent evt, string method, IReadOnlyList<EventAttendee> recipients,
+                                          bool wholeEvent = false)
+    {
+        var cancel = string.Equals(method, "CANCEL", StringComparison.OrdinalIgnoreCase);
+        var sb = new StringBuilder();
+        sb.AppendLine("BEGIN:VCALENDAR");
+        sb.AppendLine("VERSION:2.0");
+        sb.AppendLine("PRODID:-//QuickMail//EN");
+        sb.AppendLine($"METHOD:{(cancel ? "CANCEL" : "REQUEST")}");
+        AppendEvent(sb, evt, cancel ? recipients : evt.Attendees, cancelling: cancel, eventCancelled: cancel && wholeEvent);
+        sb.AppendLine("END:VCALENDAR");
+        return sb.ToString();
+    }
+
+    /// <summary>The next SEQUENCE after <paramref name="sequence"/> (an absent or unreadable one
+    /// counts as 0), as an organizer bumps it for every change attendees must see (RFC 5546 §2.1.4).</summary>
+    public static string NextSequence(string? sequence)
+        => (int.TryParse(sequence, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var n) && n >= 0 ? n + 1 : 1)
+            .ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
     /// Serializes several events into one VCALENDAR: the Local Calendar in a settings file (issue
     /// #507). Read back by <see cref="Services.CalendarIcsImporter"/>, which updates an appointment
     /// with the same UID rather than duplicating it.
@@ -346,11 +396,36 @@ public class IcsModel
         return sb.ToString();
     }
 
-    private static void AppendEvent(StringBuilder sb, CalendarEvent evt)
+    private static void AppendEvent(StringBuilder sb, CalendarEvent evt,
+                                    IReadOnlyList<EventAttendee>? attendees = null,
+                                    bool cancelling = false, bool eventCancelled = false)
     {
+        attendees ??= evt.Attendees;
         sb.AppendLine("BEGIN:VEVENT");
         sb.AppendLine($"UID:{(string.IsNullOrWhiteSpace(evt.Uid) ? Guid.NewGuid().ToString("N") : evt.Uid)}");
         sb.AppendLine($"DTSTAMP:{DateTime.UtcNow:yyyyMMdd'T'HHmmss'Z'}");
+        if (!string.IsNullOrWhiteSpace(evt.Sequence)
+            && int.TryParse(evt.Sequence, System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture, out var sequence))
+            sb.AppendLine($"SEQUENCE:{sequence.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (eventCancelled)
+            sb.AppendLine("STATUS:CANCELLED");
+
+        // A meeting: who sends it and who it goes to. Only when someone is invited — an
+        // ORGANIZER on an appointment with no attendees would turn it into a meeting of one, which
+        // some servers then try to schedule.
+        if (attendees.Count > 0 && !string.IsNullOrWhiteSpace(evt.Organizer))
+        {
+            AppendFolded(sb, $"ORGANIZER{CnParam(evt.OrganizerName)}:mailto:{evt.Organizer.Trim()}");
+            foreach (var a in attendees)
+                AppendFolded(sb, $"ATTENDEE{CnParam(a.Name)}"
+                                 + (a.IsResource ? ";CUTYPE=ROOM;ROLE=NON-PARTICIPANT"
+                                    : a.Kind == AttendeeKind.Optional ? ";CUTYPE=INDIVIDUAL;ROLE=OPT-PARTICIPANT"
+                                    : ";CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT")
+                                 + $";PARTSTAT={PartStatOf(a.Response)}"
+                                 + (a.Response == AttendeeResponse.NoReply && !cancelling ? ";RSVP=TRUE" : string.Empty)
+                                 + $":mailto:{a.Email.Trim()}");
+        }
 
         if (evt.StartTime.HasValue)
         {
@@ -383,6 +458,8 @@ public class IcsModel
         }
         if (!string.IsNullOrWhiteSpace(evt.Summary))
             sb.AppendLine($"SUMMARY:{EscapeIcsText(evt.Summary)}");
+        else if (attendees.Count > 0)
+            sb.AppendLine("SUMMARY:"); // RFC 5546 requires a SUMMARY on a REQUEST, even an empty one
         if (!string.IsNullOrWhiteSpace(evt.Location))
             sb.AppendLine($"LOCATION:{EscapeIcsText(evt.Location)}");
         if (!string.IsNullOrWhiteSpace(evt.Description))
@@ -444,6 +521,8 @@ public class IcsModel
         };
         foreach (var exDate in ExDates)
             evt.AddExDate(exDate);
+        // The organizer is not one of the people it invited, even where the server lists them.
+        evt.Attendees = Attendees.Where(a => !a.IsSameAddress(Organizer)).ToList();
         return evt;
     }
 
@@ -478,16 +557,123 @@ public class IcsModel
     /// <summary>Extracts the CN parameter from a property like "ORGANIZER;CN=John Doe:mailto:john@example.com".</summary>
     private static string? ExtractCnParam(string prop)
     {
-        var match = Regex.Match(prop, @"CN=""?([^"":;]+)""?", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[1].Value : null;
+        var cn = ExtractParam(prop, "CN");
+        return string.IsNullOrEmpty(cn) ? null : cn;
     }
 
-    /// <summary>Extracts the email address from a mailto: URI value.</summary>
-    private static string? ExtractMailtoValue(string value)
+    /// <summary>
+    /// The value of one named parameter (e.g. PARTSTAT) in a property's name part, or null.
+    /// Parameters are separated by semicolons outside quotes, and a quoted value keeps whatever
+    /// it quotes: "Doe; Jane" is one name, not "Doe".
+    /// </summary>
+    private static string? ExtractParam(string prop, string name)
     {
-        return value.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
-            ? value[7..]
-            : value;
+        var start = IndexOutsideQuotes(prop, ';');
+        while (start >= 0)
+        {
+            var rest = prop[(start + 1)..];
+            var end = IndexOutsideQuotes(rest, ';');
+            var part = end < 0 ? rest : rest[..end];
+            var eq = part.IndexOf('=');
+            if (eq > 0 && string.Equals(part[..eq].Trim(), name, StringComparison.OrdinalIgnoreCase))
+                return part[(eq + 1)..].Trim().Trim('"');
+            start = end < 0 ? -1 : start + 1 + end;
+        }
+        return null;
+    }
+
+    /// <summary>The first <paramref name="c"/> in <paramref name="text"/> outside double quotes, or -1.</summary>
+    private static int IndexOutsideQuotes(string text, char c)
+    {
+        var quoted = false;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '"') quoted = !quoted;
+            else if (text[i] == c && !quoted) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// The email address of an ORGANIZER or ATTENDEE: its <c>mailto:</c> value, else its
+    /// <c>EMAIL</c> parameter (servers in Apple's family can name a calendar user by a
+    /// <c>urn:uuid:</c> or a principal path), else a bare address. Null when none of those is an
+    /// address, so a URN is never stored, shown, or written back as one.
+    /// </summary>
+    private static string? CalendarUserAddress(string prop, string value)
+    {
+        var v = value.Trim();
+        if (v.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase))
+            return v[7..].Trim();
+        var email = ExtractParam(prop, "EMAIL");
+        if (!string.IsNullOrWhiteSpace(email)) return email.Trim();
+        return v.Contains('@') && !v.Contains(':') ? v : null;
+    }
+
+    /// <summary>A room or resource (CUTYPE), an optional guest (ROLE), or else a required one.</summary>
+    private static AttendeeKind KindOf(string? cuType, string? role)
+        => cuType?.ToUpperInvariant() is "ROOM" or "RESOURCE"
+            ? AttendeeKind.Resource
+            : role?.ToUpperInvariant() is "OPT-PARTICIPANT" or "NON-PARTICIPANT"
+                ? AttendeeKind.Optional
+                : AttendeeKind.Required;
+
+    private static AttendeeResponse ParsePartStat(string? partStat) => partStat?.ToUpperInvariant() switch
+    {
+        "ACCEPTED"  => AttendeeResponse.Accepted,
+        "TENTATIVE" => AttendeeResponse.Tentative,
+        "DECLINED"  => AttendeeResponse.Declined,
+        _           => AttendeeResponse.NoReply,
+    };
+
+    private static string PartStatOf(AttendeeResponse response) => response switch
+    {
+        AttendeeResponse.Accepted  => "ACCEPTED",
+        AttendeeResponse.Tentative => "TENTATIVE",
+        AttendeeResponse.Declined  => "DECLINED",
+        _                          => "NEEDS-ACTION",
+    };
+
+    /// <summary>
+    /// <c>;CN="name"</c>, or nothing for a blank name. Always quoted, because a name with a comma,
+    /// semicolon or colon in it must be (RFC 5545 §3.2), and a quote cannot appear inside one.
+    /// </summary>
+    private static string CnParam(string? name)
+    {
+        var clean = name?.Replace("\"", string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
+        return string.IsNullOrEmpty(clean) ? string.Empty : $";CN=\"{clean}\"";
+    }
+
+    /// <summary>
+    /// Appends a content line folded at 75 octets (RFC 5545 §3.1): continuation lines start with a
+    /// single space, and a UTF-8 sequence is never split. ATTENDEE lines with a name and an
+    /// address routinely pass 75, and strict servers reject unfolded ones.
+    /// </summary>
+    internal static void AppendFolded(StringBuilder sb, string line)
+    {
+        const int limit = 75;
+        var octets = 0;
+        var first = true;
+        var current = new StringBuilder();
+        var i = 0;
+        while (i < line.Length)
+        {
+            // One whole code point at a time, so a surrogate pair stays together.
+            var len = char.IsHighSurrogate(line[i]) && i + 1 < line.Length ? 2 : 1;
+            var size = Encoding.UTF8.GetByteCount(line.AsSpan(i, len));
+            var room = first ? limit : limit - 1; // a continuation line spends one octet on its space
+            if (octets + size > room)
+            {
+                sb.Append(first ? string.Empty : " ").AppendLine(current.ToString());
+                current.Clear();
+                octets = 0;
+                first = false;
+            }
+            current.Append(line, i, len);
+            octets += size;
+            i += len;
+        }
+        sb.Append(first ? string.Empty : " ").AppendLine(current.ToString());
     }
 
     /// <summary>

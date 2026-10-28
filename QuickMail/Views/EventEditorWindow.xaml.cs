@@ -115,18 +115,50 @@ public partial class EventEditorWindow : Window
             EditorField.RepeatInterval => RepeatIntervalField,
             EditorField.RepeatUntil => RepeatUntilField,
             EditorField.SaveTarget => SaveTargetCombo,
+            EditorField.Invite => InviteBox,
             _ => null,
         };
         if (target is null) return;
 
         target.Focus();
-        if (target is TextBox box) box.SelectAll();
+        if (target == InviteBox)
+        {
+            // Just the bad address, so typing the correction leaves the others alone.
+            var at = EntryStart(InviteBox.Text, _vm.InvalidInviteEntry);
+            if (at >= 0)
+                InviteBox.Select(at, _vm.InvalidInviteEntry.Length);
+            else
+                InviteBox.CaretIndex = InviteBox.Text.Length;
+        }
+        else if (target is TextBox box)
+        {
+            box.SelectAll();
+        }
     }
 
-    /// <summary>Cycles focus across the editor's logical stops: Title → Start → Notes → Save.</summary>
+    /// <summary>
+    /// Where <paramref name="entry"/> stands as a whole entry of the Invite text — bounded by the
+    /// start or end, a separator or a space — so "bob" is not found inside "bob.lee@example.com".
+    /// -1 when it is not there.
+    /// </summary>
+    private static int EntryStart(string text, string entry)
+    {
+        if (entry.Length == 0) return -1;
+        static bool Edge(char c) => c is ';' or ',' or ' ';
+        for (var at = text.IndexOf(entry, System.StringComparison.Ordinal); at >= 0;
+             at = text.IndexOf(entry, at + 1, System.StringComparison.Ordinal))
+        {
+            var end = at + entry.Length;
+            if ((at == 0 || Edge(text[at - 1])) && (end == text.Length || Edge(text[end])))
+                return at;
+        }
+        return -1;
+    }
+
+    /// <summary>Cycles focus across the editor's logical stops: Title → Start → Invite → Notes → Save.</summary>
     private void CycleFocus(bool forward)
     {
-        Control[] stops = { TitleBox, StartDateField, NotesBox, SaveButton };
+        Control[] stops = { TitleBox, StartDateField, InviteBox, NotesBox, SaveButton };
         var current = System.Array.FindIndex(stops, c => c.IsKeyboardFocusWithin);
         if (current < 0) current = 0;
         var next = forward

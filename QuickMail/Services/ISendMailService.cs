@@ -16,6 +16,15 @@ public interface ISendMailService
         string organizerEmail, CancellationToken ct = default);
 
     /// <summary>
+    /// Sends a message that is already built — a meeting invitation or cancellation (issue #866),
+    /// from <see cref="MimeMessageBuilder.BuildInvitation"/>. Like <see cref="SendIcsReplyAsync"/>
+    /// it bypasses the Outbox and keeps no Sent copy: it is calendar traffic, not correspondence.
+    /// Throws on failure.
+    /// </summary>
+    Task SendPreparedAsync(MimeKit.MimeMessage message, AccountModel account, string? password,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Proves the outgoing settings work: connects, authenticates, disconnects. Sends nothing.
     /// Throws on failure so the caller can report the server's own message.
     ///

@@ -132,6 +132,7 @@ public static class CalendarIcsImporter
         Sequence = e.Sequence, Method = e.Method,
         SourceMessageId = e.SourceMessageId, SourceFolder = e.SourceFolder,
         ResponseStatus = e.ResponseStatus,
+        Attendees = e.Attendees.ToList(), UserIsOrganizer = e.UserIsOrganizer,
     };
 
     private static void AddExDateOnce(CalendarEvent evt, DateTime occurrenceStartLocal)

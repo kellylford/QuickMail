@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Text;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -49,15 +50,19 @@ public static partial class MimeMessageBuilder
     public static string EnsureOutgoingMessageId(ComposeModel compose, AccountModel account)
     {
         if (string.IsNullOrEmpty(compose.OutgoingMessageId))
-        {
-            var at = account.Username.LastIndexOf('@');
-            var domain = at >= 0 ? account.Username[(at + 1)..].Trim() : string.Empty;
-            compose.OutgoingMessageId = AsciiDomain().IsMatch(domain)
-                    && !domain.Contains("xn--", StringComparison.OrdinalIgnoreCase)
-                ? MimeKit.Utils.MimeUtils.GenerateMessageId(domain)
-                : MimeKit.Utils.MimeUtils.GenerateMessageId(FallbackMessageIdDomain);
-        }
+            compose.OutgoingMessageId = NewMessageId(account);
         return compose.OutgoingMessageId;
+    }
+
+    /// <summary>A fresh Message-ID on the sender's domain, or the fallback (see above).</summary>
+    private static string NewMessageId(AccountModel account)
+    {
+        var at = account.Username.LastIndexOf('@');
+        var domain = at >= 0 ? account.Username[(at + 1)..].Trim() : string.Empty;
+        return AsciiDomain().IsMatch(domain)
+                && !domain.Contains("xn--", StringComparison.OrdinalIgnoreCase)
+            ? MimeKit.Utils.MimeUtils.GenerateMessageId(domain)
+            : MimeKit.Utils.MimeUtils.GenerateMessageId(FallbackMessageIdDomain);
     }
 
     /// <summary>Right-hand side of an outgoing Message-ID when the sender's own domain will not do.</summary>
@@ -200,6 +205,41 @@ public static partial class MimeMessageBuilder
         calendarPart.SetText(Encoding.UTF8, icsReplyContent);
 
         message.Body = calendarPart;
+        return message;
+    }
+
+    /// <summary>
+    /// Builds a meeting invitation, update or cancellation (iMIP, RFC 6047) from the organizer's
+    /// account to <paramref name="recipients"/> — what QuickMail sends when the calendar server does
+    /// not send invitations itself (issue #866). <c>multipart/alternative</c> with the readable
+    /// summary first and the <c>text/calendar</c> part last, which is the form mail programs show
+    /// as an invitation with Accept / Decline; the calendar part names its
+    /// <paramref name="method"/> (REQUEST or CANCEL) on its Content-Type, as RFC 6047 requires.
+    /// </summary>
+    public static MimeMessage BuildInvitation(AccountModel account, string icsContent, string method,
+        string subject, string plainText, IReadOnlyList<EventAttendee> recipients)
+    {
+        if (string.IsNullOrWhiteSpace(icsContent))
+            throw new ArgumentException("Calendar content is required.", nameof(icsContent));
+        if (recipients.Count == 0)
+            throw new ArgumentException("An invitation needs at least one recipient.", nameof(recipients));
+
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(account.SenderDisplayName, account.Username));
+        foreach (var r in recipients)
+            message.To.Add(new MailboxAddress(string.IsNullOrWhiteSpace(r.Name) ? null : r.Name, r.Email));
+        message.Subject = subject;
+        message.MessageId = NewMessageId(account);
+        message.Headers.Add(HeaderId.UserAgent, AppUserAgent);
+
+        var text = new TextPart("plain");
+        text.SetText(Encoding.UTF8, plainText);
+
+        var calendarPart = new TextPart("calendar") { ContentTransferEncoding = ContentEncoding.Base64 };
+        calendarPart.ContentType.Parameters.Add("method", method.ToUpperInvariant());
+        calendarPart.SetText(Encoding.UTF8, icsContent);
+
+        message.Body = new MultipartAlternative { text, calendarPart };
         return message;
     }
 }

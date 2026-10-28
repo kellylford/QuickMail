@@ -58,6 +58,7 @@ public sealed class ProbeOfflineSendMailService : ISendMailService
 
     public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default) => Task.FromException(Refused());
     public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password, string organizerEmail, CancellationToken ct = default) => Task.FromException(Refused());
+    public Task SendPreparedAsync(MimeKit.MimeMessage message, AccountModel account, string? password, CancellationToken ct = default) => Task.FromException(Refused());
     public Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default) => Task.FromException(Refused());
 }
 
