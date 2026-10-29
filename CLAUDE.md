@@ -32,6 +32,14 @@ differences from v2: async tests take `TestContext.Current.CancellationToken` (x
 `Assert.Skip`/`SkipWhen` replace the v2 skip patterns. Both test projects set
 `IsTestingPlatformApplication=false`: xunit 4 otherwise makes them Microsoft Testing Platform apps,
 which the .NET 10 SDK's VSTest-mode `dotnet test` (what CI and the commands below use) refuses to run.
+xunit fails a run in which every test passed when a foreground thread outlives the tests
+("Foreground threads were left running, forcing process exit" in the trx, `[FATAL ERROR]
+TestPipelineException` in the log). Xunit.StaFact makes its STA threads foreground, so
+`ShutDownStaDispatcherAttribute.Before` marks them background; any thread a test starts itself
+must set `IsBackground = true` too. That alone did not stop it in CI, so when it happens CI now
+prints each surviving foreground thread's managed stack (`ForegroundThreadReport`, enabled by
+`QUICKMAIL_FOREGROUND_THREAD_REPORT`) in the Test step and uploads it with the trx: read it there
+rather than guessing. It has never reproduced in the test VM.
 
 ```bat
 dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release

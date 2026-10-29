@@ -281,6 +281,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = vm;
         CommandShortcut.SetRegistry(this, _registry);
+        PreviewGotKeyboardFocus += (_, _) => _focusChanges++;
         // The region's own Visibility, not IsVisible: IsVisible also changes when the window hides to the tray, and
         // does not change at all when the region empties while the window is hidden (review of #806).
         SenderAddressRegionVisibility.AddValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
@@ -487,7 +488,8 @@ public partial class MainWindow : Window
             var stayInSidePane = e.PropertyName is nameof(MainViewModel.Messages) or nameof(MainViewModel.Conversations)
                                      or nameof(MainViewModel.SenderGroups) or nameof(MainViewModel.ToGroups)
                                  && IsSameFolderAsLastRebuild()
-                                 && IsFocusInSidePane();
+                                 && IsFocusInSidePane()
+                                 && _keyboardNavigationsPending == 0;
 
             if (e.PropertyName == nameof(MainViewModel.Messages) && IsActive)
             {
@@ -2474,10 +2476,41 @@ public partial class MainWindow : Window
                              f.FullName.Equals(folder.FullName, StringComparison.OrdinalIgnoreCase) &&
                              (folder.AccountId == Guid.Empty || f.AccountId == folder.AccountId))
                          ?? folder;
-            await _vm.SelectFolderCommand.ExecuteAsync(target);
-            FocusActiveMessagePanel();
+            await NavigateThenFocusAsync(() => _vm.SelectFolderCommand.ExecuteAsync(target));
         }
     }
+
+    /// <summary>
+    /// Runs a navigation the user started from the keyboard, then puts focus in the message panel —
+    /// unless they went somewhere else while it loaded. Focus already follows the cached list into
+    /// the message area the moment it is shown (the Messages handler); the navigation itself goes on
+    /// to wait for the server, which for All Mail is every account. Refocusing unconditionally at
+    /// the end dragged back a user who had moved to another pane or opened a message meanwhile.
+    /// </summary>
+    private Task NavigateThenFocusAsync(Func<Task> navigate) =>
+        NavigateThenFocusAsync(async () => { await navigate(); return true; });
+
+    /// <param name="navigate">Returns false when it went nowhere, and focus is left alone.</param>
+    private async Task NavigateThenFocusAsync(Func<Task<bool>> navigate)
+    {
+        var focusChangesBefore = _focusChanges;
+        _keyboardNavigationsPending++;
+        bool navigated;
+        try { navigated = await navigate(); }
+        finally { _keyboardNavigationsPending--; }
+
+        if (NavigationFocusPolicy.ShouldFocusMessagePanel(
+                navigated, IsActive, _focusChanges != focusChangesBefore, IsMessageAreaFocused()))
+            FocusActiveMessagePanel();
+    }
+
+    /// <summary>Every keyboard focus change inside this window, for <see cref="NavigateThenFocusAsync"/>:
+    /// "did focus move while it ran" has to count a trip away and back to the same element.</summary>
+    private int _focusChanges;
+
+    /// <summary>Keyboard navigations in flight. While one is, a list rebuild for the open folder is
+    /// the user's own Enter, not background work, so focus follows it in (see stayInSidePane).</summary>
+    private int _keyboardNavigationsPending;
 
     // Deferred like every other command that can arrive from the reading pane: there the key is
     // delivered inside WebView2's AcceleratorKeyPressed callback, and leaving the message calls
@@ -2485,8 +2518,7 @@ public partial class MainWindow : Window
     private void GoToStartupFolder() =>
         Dispatcher.InvokeAsync(async () =>
         {
-            if (await _vm.GoToStartupFolderAsync())
-                FocusActiveMessagePanel();
+            await NavigateThenFocusAsync(_vm.GoToStartupFolderAsync);
         }, DispatcherPriority.Input);
 
     // When keyboard focus enters a list, ensure an item is selected and — for the
@@ -2559,8 +2591,7 @@ public partial class MainWindow : Window
             node.Folder != null)
         {
             e.Handled = true;
-            await _vm.SelectFolderCommand.ExecuteAsync(node.Folder);
-            FocusActiveMessagePanel();
+            await NavigateThenFocusAsync(() => _vm.SelectFolderCommand.ExecuteAsync(node.Folder));
         }
     }
 
