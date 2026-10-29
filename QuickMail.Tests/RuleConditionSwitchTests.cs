@@ -387,6 +387,64 @@ public class RuleConditionSwitchTests
     }
 
     [Fact]
+    public void CreateRuleFromMessage_KeepsALastFirstNameOutOfTheAddressList()
+    {
+        // Review of #858: the comma in "Ford, Kelly" is a separator to an address list, so the name must only ever
+        // reach Sender contains, through the template, the editor and the save alike.
+        var template = TemplateFor("Ford, Kelly", "kelly@example.com");
+
+        Assert.Equal(["kelly@example.com"], template.FromValues());
+        Assert.Equal(["kelly@example.com"], template.FromAddresses);
+        Assert.Equal("Ford, Kelly", template.SenderContains);
+        Assert.False(template.UseSenderCondition);
+        Assert.Equal("Rule for Ford, Kelly", template.Name);
+
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(template);
+        Assert.Equal("kelly@example.com", vm.FromAddresses);
+        Assert.Equal("Ford, Kelly", vm.SenderContains);
+
+        vm.MarkAsRead = true;
+        var rule = vm.ToClientRule(Guid.NewGuid());
+        Assert.Equal(["kelly@example.com"], rule.FromValues());
+        Assert.Equal("Ford, Kelly", rule.SenderContains);
+        Assert.False(rule.UseSenderCondition);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_ForASenderWithOnlyAnAddress_NamesTheRuleAfterIt()
+    {
+        // A row with an address and no name at all: the rule is titled with what there is, not "Rule for ".
+        var template = TemplateFor("", "news@company.example");
+
+        Assert.Equal(["news@company.example"], template.FromValues());
+        Assert.Equal("news@company.example", template.SenderContains);
+        Assert.False(template.UseSenderCondition);
+        Assert.Equal("Rule for news@company.example", template.Name);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_ForAMessageWithNoSender_FillsInNoSenderCondition()
+    {
+        // Review of #858: nothing to fill in, so nothing is filled in or switched on, and the name is left empty as
+        // for New Rule, so the editor asks for one rather than saving a rule called "Rule for ".
+        var template = TemplateFor("", "");
+
+        Assert.Empty(template.FromValues());
+        Assert.Null(template.FromAddresses);
+        Assert.False(template.UseFromCondition);
+        Assert.Null(template.SenderContains);
+        Assert.False(template.UseSenderCondition);
+        Assert.Equal(string.Empty, template.Name);
+
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(template);
+        Assert.Equal(string.Empty, vm.FromAddresses);
+        Assert.False(vm.UseFromAddresses);
+        Assert.Equal(string.Empty, vm.SenderContains);
+        Assert.False(vm.UseSenderContains);
+        Assert.Equal(string.Empty, vm.Name);
+    }
+
+    [Fact]
     public void TheEditor_OpensWithTheAddressOn_AndTheNameFilledInButOff()
     {
         var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("PayPal", "service@paypal.example"));

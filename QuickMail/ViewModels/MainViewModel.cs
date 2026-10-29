@@ -8771,7 +8771,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // The rule is written in the shape the editor saves that combination in (see
         // ServerRuleEditorViewModel.ToClientRule), so it reads back like any saved rule and means the same thing
         // if it is ever run as it stands. The rule's name keeps the display name, which is how the user knows
-        // the sender.
+        // the sender, or the address for a sender with no name. With no sender at all it is left empty, as for
+        // New Rule, so the editor asks for a name rather than saving "Rule for " (review of #858).
         var addresses = (source.FromEmail ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
@@ -8779,7 +8780,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var rule = new MailRule
         {
-            Name = $"Rule for {source.From}",
+            Name = sender is null ? string.Empty : $"Rule for {sender}",
             SenderContains = sender,
             UseSenderCondition = addresses.Count == 0 && sender is not null,
             SubjectContains = string.IsNullOrWhiteSpace(source.Subject) ? null : source.Subject,
