@@ -371,4 +371,118 @@ public class MainViewModelStartupTests
         Assert.Same(before, vm.SelectedFolder);
         Assert.Contains("still loading", vm.StatusText, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task GoToStartupFolder_FolderGone_SaysWhyOnce_AsAResult()
+    {
+        // The View speaks every StatusText change in StatusAnnouncementCategory; an Announce on top
+        // of it would say the sentence twice.
+        var (vm, _, _) = MakeVm(c =>
+        {
+            c.StartupFolder        = "INBOX/GoneAway";
+            c.StartupFolderAccount = WorkId.ToString();
+            c.StartupFolderLabel   = "GoneAway";
+        });
+        await vm.InitialLoadAsync();
+        var announced = new List<string>();
+        var statusCategories = new List<AnnouncementCategory>();
+        vm.AnnouncementRequested += (_, a) => announced.Add(a.Text);
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.StatusText) && vm.StatusText.Contains("GoneAway"))
+                statusCategories.Add(vm.StatusAnnouncementCategory);
+        };
+
+        await vm.GoToStartupFolderAsync();
+
+        Assert.DoesNotContain(announced, t => t.Contains("GoneAway", StringComparison.Ordinal));
+        Assert.Equal([AnnouncementCategory.Result], statusCategories);
+    }
+
+    [Fact]
+    public async Task GoToStartupFolder_AccountRemoved_GoesToAllMail_NotStillLoading()
+    {
+        // Nothing is loading for an account that is not set up; waiting would never end.
+        var (vm, _, _) = MakeVm(c =>
+        {
+            c.StartupFolder        = "INBOX";
+            c.StartupFolderAccount = Guid.NewGuid().ToString();
+            c.StartupFolderLabel   = "Inbox";
+        });
+
+        Assert.True(await vm.GoToStartupFolderAsync());
+
+        Assert.Equal(MainViewModel.AllMailFolder.FullName, vm.SelectedFolder?.FullName);
+        Assert.Contains("no longer set up", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GoToStartupFolder_VirtualFolder_WorksBeforeTheTreeIsBuilt()
+    {
+        var (vm, _, _) = MakeVm(c =>
+        {
+            c.StartupFolder      = "AllInboxes";
+            c.StartupFolderLabel = "All Inboxes";
+        }, onlineMode: true);
+
+        Assert.True(await vm.GoToStartupFolderAsync());
+
+        Assert.Equal(MainViewModel.AllInboxesFolder.FullName, vm.SelectedFolder?.FullName);
+    }
+
+    [Fact]
+    public async Task GoToStartupFolder_OnlineModeBeforeConnect_SaysStillLoading()
+    {
+        var (vm, _, _) = MakeVm(c =>
+        {
+            c.StartupFolder        = "INBOX/Projects";
+            c.StartupFolderAccount = WorkId.ToString();
+            c.StartupFolderLabel   = "Projects";
+        }, onlineMode: true);
+        await vm.InitialLoadAsync();
+
+        Assert.False(await vm.GoToStartupFolderAsync());
+        Assert.Contains("still loading", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    private sealed class OneViewService(SavedView view) : IViewService
+    {
+        public List<SavedView> Load() => [view];
+        public void Save(List<SavedView> views) { }
+    }
+
+    [Fact]
+    public async Task GoToStartupFolder_LegacyStartupView_AppliesTheView()
+    {
+        var view = new SavedView
+        {
+            Name = "Projects view",
+            Folders = [new ViewFolder { AccountId = WorkId, FolderFullName = "INBOX/Projects" }],
+        };
+        var (vm, _, _) = MakeVm(c =>
+        {
+            c.StartupFolder      = $"view:{view.Id}";
+            c.StartupFolderLabel = view.Name;
+        }, new OneViewService(view));
+        await vm.InitialLoadAsync();
+        await vm.SelectFolderCommand.ExecuteAsync(TreeFolder(vm, WorkId, "Sent"));
+        Assert.Null(vm.ActiveView);
+
+        Assert.True(await vm.GoToStartupFolderAsync());
+
+        Assert.Equal(view.Id, vm.ActiveView?.Id);
+    }
+
+    [Fact]
+    public async Task GoToStartupFolder_TabMode_BringsTheMessageListTabToTheFront()
+    {
+        var (vm, _, _) = MakeVm(c => c.Windowing.MessageOpenMode = MessageOpenMode.Tab);
+        await vm.InitialLoadAsync();
+        vm.OpenMessageTab(vm.Messages[0]);
+        Assert.IsType<MessageTabViewModel>(vm.ActiveTab);
+
+        Assert.True(await vm.GoToStartupFolderAsync());
+
+        Assert.IsType<MessageListTabViewModel>(vm.ActiveTab);
+    }
 }

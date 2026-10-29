@@ -2479,11 +2479,15 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void GoToStartupFolder()
-    {
-        if (await _vm.GoToStartupFolderAsync())
-            FocusActiveMessagePanel();
-    }
+    // Deferred like every other command that can arrive from the reading pane: there the key is
+    // delivered inside WebView2's AcceleratorKeyPressed callback, and leaving the message calls
+    // back into that WebView2 (NavigateToString) — the re-entrant pattern behind #181.
+    private void GoToStartupFolder() =>
+        Dispatcher.InvokeAsync(async () =>
+        {
+            if (await _vm.GoToStartupFolderAsync())
+                FocusActiveMessagePanel();
+        }, DispatcherPriority.Input);
 
     // When keyboard focus enters a list, ensure an item is selected and — for the
     // Tab while inside the toolbar exits to the adjacent tab stop instead of cycling
