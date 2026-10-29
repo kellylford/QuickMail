@@ -9,6 +9,27 @@ to go straight back to the folder QuickMail opens in. It works like Go to Inbox 
 programs, where your inbox is whatever you chose as your startup folder: one account's Inbox,
 All Inboxes, or All Mail if you have not chosen one. Focus moves to the message list.
 
+## Changed
+
+### Create Rule from Message fills in the sender's address and their name
+
+**Create Rule from Message** (`Ctrl+Shift+T`) now puts the sender's email address in **From any of
+these addresses**, checked, so the rule matches everything from that address and nothing from
+anyone else using the same name. Their name goes in **Sender contains**, unchecked; check it as
+well if you want a rule that needs both the address and the name. If QuickMail doesn't have the
+sender's address yet, it fills in the name alone, as before.
+
+### The rule editor's address conditions
+
+**From addresses** has moved out of **Advanced conditions & actions** to sit straight after
+**Sender contains**, so the sender's name and address are together. It is now called **From any
+of these addresses**, and **Sent to addresses** is now **Sent to any of these addresses**, since
+a message matches when it has any one of the addresses listed.
+
+In the Rules Manager's list, a client-side rule now reads "If from" and the address, the same way
+a Microsoft 365 server-side rule already did, rather than "from contains": a full address has to
+match the sender's address as a whole.
+
 ## Fixed
 
 - **Focus no longer jumps back to the message list after you have moved on.** Going to All Mail,
@@ -20,6 +41,10 @@ All Inboxes, or All Mail if you have not chosen one. Focus moves to the message 
 - **Enter on the folder that is already open in the folder tree** moves you into its message list
   straight away. For All Mail and the other combined folders it used to wait for every account's
   server first.
+- **A rule's switched-off addresses are kept.** If you switched **From any of these addresses**
+  off and **Sender contains** on, then saved, the addresses were thrown away, so switching back
+  found an empty box. They are now kept, switched off, like the text of every other condition you
+  turn off.
 
 ## Reporting Issues
 

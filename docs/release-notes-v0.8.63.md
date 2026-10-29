@@ -28,25 +28,6 @@ screen. Your screen reader's settings decide whether the key is read out. (#849)
 - The message list's context menu now shows the keys for Reply, Reply All, Forward and Delete,
   and the folder menu shows Delete for Delete Folder.
 
-### Create Rule from Message fills in the sender's address and their name
-
-**Create Rule from Message** (`Ctrl+Shift+T`) now puts the sender's email address in **From any of
-these addresses**, checked, so the rule matches everything from that address and nothing from
-anyone else using the same name. Their name goes in **Sender contains**, unchecked; check it as
-well if you want a rule that needs both the address and the name. If QuickMail doesn't have the
-sender's address yet, it fills in the name alone, as before.
-
-### The rule editor's address conditions
-
-**From addresses** has moved out of **Advanced conditions & actions** to sit straight after
-**Sender contains**, so the sender's name and address are together. It is now called **From any
-of these addresses**, and **Sent to addresses** is now **Sent to any of these addresses**, since
-a message matches when it has any one of the addresses listed.
-
-In the Rules Manager's list, a client-side rule now reads "If from" and the address, or "sent
-to", the same way a Microsoft 365 server-side rule already did, rather than "from contains" or
-"to contains".
-
 ## Fixed
 
 - **First-letter navigation in Settings → Keyboard Shortcuts.** Typing a letter in the list of
@@ -54,12 +35,6 @@ to", the same way a Microsoft 365 server-side rule already did, rather than "fro
   Before, typing a letter did nothing. (#852)
 - **Ctrl+, opens Settings.** The File menu has long shown Ctrl+, for Settings, but the key did
   nothing. (#849)
-
-### A rule's switched-off addresses are kept
-
-If you switched **From any of these addresses** off and **Sender contains** on, then saved, the
-addresses were thrown away, so switching back found an empty box. They are now kept, switched
-off, like the text of every other condition you turn off.
 
 ## Reporting Issues
 
