@@ -9,6 +9,15 @@ to go straight back to the folder QuickMail opens in. It works like Go to Inbox 
 programs, where your inbox is whatever you chose as your startup folder: one account's Inbox,
 All Inboxes, or All Mail if you have not chosen one. Focus moves to the message list.
 
+## Fixed
+
+- **Focus no longer jumps back to the message list after you have moved on.** Going to a folder
+  with Enter in the folder tree, Go to Folder or Go to Startup Folder puts you in its message list
+  as soon as the messages already on this computer appear. QuickMail then goes on checking the
+  server, which for All Mail means every account, and when that finished it moved focus to the list
+  again, pulling you back if you had gone to another pane or opened a message in the meantime. It
+  now leaves you where you are.
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
