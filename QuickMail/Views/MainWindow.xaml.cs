@@ -1020,6 +1020,13 @@ public partial class MainWindow : Window
             id: "view.folderPicker", category: "View", title: "Go to Folder…",
             execute: OpenFolderPicker));
 
+        // Outlook's Go to Inbox key. The "inbox" is whatever the user chose to open in.
+        _registry.Register(new CommandDefinition(
+            id: "view.goToStartupFolder", category: "View", title: "Go to Startup Folder",
+            execute: GoToStartupFolder,
+            defaultKey: Key.I, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            description: "Return to your inbox: the folder QuickMail opens in"));
+
         _registry.Register(new CommandDefinition(
             id: "view.searchFolders", category: "View", title: "Search Folders…",
             execute: OpenFolderPicker,
@@ -2471,6 +2478,16 @@ public partial class MainWindow : Window
             FocusActiveMessagePanel();
         }
     }
+
+    // Deferred like every other command that can arrive from the reading pane: there the key is
+    // delivered inside WebView2's AcceleratorKeyPressed callback, and leaving the message calls
+    // back into that WebView2 (NavigateToString) — the re-entrant pattern behind #181.
+    private void GoToStartupFolder() =>
+        Dispatcher.InvokeAsync(async () =>
+        {
+            if (await _vm.GoToStartupFolderAsync())
+                FocusActiveMessagePanel();
+        }, DispatcherPriority.Input);
 
     // When keyboard focus enters a list, ensure an item is selected and — for the
     // Tab while inside the toolbar exits to the adjacent tab stop instead of cycling
@@ -7768,6 +7785,9 @@ public partial class MainWindow : Window
 
     private void MenuSearchFolders_Click(object sender, RoutedEventArgs e)
         => OpenFolderPicker();
+
+    private void MenuGoToStartupFolder_Click(object sender, RoutedEventArgs e)
+        => GoToStartupFolder();
 
     // The menu-bar items are the same action as the command; they delegate so the two entry points
     // cannot drift (they were duplicate copies of the body below).

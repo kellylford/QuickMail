@@ -164,6 +164,7 @@ public class ShortcutExposureTests
             ["_Plain Text View"] = "Ctrl+Shift+H",
             ["_Load Pictures"] = "Ctrl+Shift+U",
             ["_Search Folders…"] = "Ctrl+Shift+Y",
+            ["Go to Start_up Folder"] = "Ctrl+Shift+I",
             ["_Advanced Search…"] = "Ctrl+/",
             ["Address _Book…"] = "Ctrl+Shift+B",
             ["Manage Rules"] = "Ctrl+Shift+L",

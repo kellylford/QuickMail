@@ -790,6 +790,8 @@
                           Click="MenuManageThemes_Click"
                           AutomationProperties.Name="Manage Themes"/>
                 <Separator/>
+                <MenuItem sc:CommandShortcut.Id="view.goToStartupFolder" Header="Go to Start_up Folder"
+                          Click="MenuGoToStartupFolder_Click"/>
                 <MenuItem sc:CommandShortcut.Id="view.folderPicker" Header="Go to _Folder…"
                           Click="MenuFolderPicker_Click"/>
                 <MenuItem Header="_Search Folders…"
