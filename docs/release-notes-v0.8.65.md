@@ -11,12 +11,15 @@ All Inboxes, or All Mail if you have not chosen one. Focus moves to the message 
 
 ## Fixed
 
-- **Focus no longer jumps back to the message list after you have moved on.** Going to a folder
-  with Enter in the folder tree, Go to Folder or Go to Startup Folder puts you in its message list
-  as soon as the messages already on this computer appear. QuickMail then goes on checking the
-  server, which for All Mail means every account, and when that finished it moved focus to the list
-  again, pulling you back if you had gone to another pane or opened a message in the meantime. It
-  now leaves you where you are.
+- **Focus no longer jumps back to the message list after you have moved on.** Going to All Mail,
+  another combined folder such as All Inboxes, or a saved view with Enter in the folder tree or Go
+  to Folder puts you in its message list as soon as the messages already on this computer appear.
+  QuickMail then goes on checking every account's server, and when that finished it moved focus to
+  the list again, pulling you back if you had gone to another pane, opened a message or returned to
+  the folder tree in the meantime. It now leaves you where you are.
+- **Enter on the folder that is already open in the folder tree** moves you into its message list
+  straight away. For All Mail and the other combined folders it used to wait for every account's
+  server first.
 
 ## Reporting Issues
 

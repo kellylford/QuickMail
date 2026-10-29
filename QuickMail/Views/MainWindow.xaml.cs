@@ -281,6 +281,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = vm;
         CommandShortcut.SetRegistry(this, _registry);
+        PreviewGotKeyboardFocus += (_, _) => _focusChanges++;
         // The region's own Visibility, not IsVisible: IsVisible also changes when the window hides to the tray, and
         // does not change at all when the region empties while the window is hidden (review of #806).
         SenderAddressRegionVisibility.AddValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
@@ -487,7 +488,8 @@ public partial class MainWindow : Window
             var stayInSidePane = e.PropertyName is nameof(MainViewModel.Messages) or nameof(MainViewModel.Conversations)
                                      or nameof(MainViewModel.SenderGroups) or nameof(MainViewModel.ToGroups)
                                  && IsSameFolderAsLastRebuild()
-                                 && IsFocusInSidePane();
+                                 && IsFocusInSidePane()
+                                 && _keyboardNavigationsPending == 0;
 
             if (e.PropertyName == nameof(MainViewModel.Messages) && IsActive)
             {
@@ -2491,11 +2493,24 @@ public partial class MainWindow : Window
     /// <param name="navigate">Returns false when it went nowhere, and focus is left alone.</param>
     private async Task NavigateThenFocusAsync(Func<Task<bool>> navigate)
     {
-        var before = Keyboard.FocusedElement;
-        if (!await navigate() || !IsActive) return;
-        if (ReferenceEquals(Keyboard.FocusedElement, before) || IsMessageAreaFocused())
+        var focusChangesBefore = _focusChanges;
+        _keyboardNavigationsPending++;
+        bool navigated;
+        try { navigated = await navigate(); }
+        finally { _keyboardNavigationsPending--; }
+
+        if (NavigationFocusPolicy.ShouldFocusMessagePanel(
+                navigated, IsActive, _focusChanges != focusChangesBefore, IsMessageAreaFocused()))
             FocusActiveMessagePanel();
     }
+
+    /// <summary>Every keyboard focus change inside this window, for <see cref="NavigateThenFocusAsync"/>:
+    /// "did focus move while it ran" has to count a trip away and back to the same element.</summary>
+    private int _focusChanges;
+
+    /// <summary>Keyboard navigations in flight. While one is, a list rebuild for the open folder is
+    /// the user's own Enter, not background work, so focus follows it in (see stayInSidePane).</summary>
+    private int _keyboardNavigationsPending;
 
     // Deferred like every other command that can arrive from the reading pane: there the key is
     // delivered inside WebView2's AcceleratorKeyPressed callback, and leaving the message calls

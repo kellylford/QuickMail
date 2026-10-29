@@ -40,9 +40,9 @@ public sealed class ShutDownStaDispatcherAttribute : BeforeAfterTestAttribute
 {
     /// <summary>
     /// Makes the test's STA thread a background thread. Xunit.StaFact creates its threads as
-    /// foreground threads and does not wait for them to end; xunit 3.2.1 and later (the v4 adapter
-    /// this project moved to in #861) wait about ten seconds at the end of the run for foreground
-    /// threads, then force the process to exit and report <c>[FATAL ERROR] TestPipelineException</c>
+    /// foreground threads and does not wait for them to end; xunit (3.2.1 onward) waits about ten
+    /// seconds at the end of the run for foreground threads, then forces the process to exit and
+    /// reports <c>[FATAL ERROR] TestPipelineException</c>
     /// — "Foreground threads were left running, forcing process exit" in the trx — so a run in which
     /// every test passed exits 1. Any STA test whose thread is still blocked when the run ends (a
     /// COM wait, a modal loop) is enough, which is why it struck at random. xunit's own advice is to
