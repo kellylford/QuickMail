@@ -71,9 +71,16 @@ public class GraphChangeNotifierTests : IDisposable
     private GraphChangeNotifier MakeNotifier(StubHttpHandler handler) =>
         new(new GraphClient(new StubOAuthService(), new HttpClient(handler)), _store);
 
-    private static async Task WaitForAsync(Func<Task<bool>> condition, int timeoutMs = 5000)
+    // 20 s, not 5: the poll loop's first tick is queued with Task.Run, and on a loaded CI runner —
+    // hundreds of STA tests running alongside — the thread pool has started it later than 5 s, failing
+    // runs on main and on PRs with a TimeoutException and nothing else wrong. It stays under the loop's
+    // 30 s minimum retry interval on purpose: a first tick that throws must still fail the test, not
+    // pass on the retry. A condition that is met returns at once, so passing runs take no longer.
+    private static readonly TimeSpan FirstTickTimeout = TimeSpan.FromSeconds(20);
+
+    private static async Task WaitForAsync(Func<Task<bool>> condition)
     {
-        var deadline = Environment.TickCount64 + timeoutMs;
+        var deadline = Environment.TickCount64 + (long)FirstTickTimeout.TotalMilliseconds;
         while (Environment.TickCount64 < deadline)
         {
             if (await condition()) return;
@@ -118,7 +125,7 @@ public class GraphChangeNotifierTests : IDisposable
 
         notifier.StartWatchers(new[] { account }, TestContext.Current.CancellationToken);
 
-        var raisedId = await raised.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var raisedId = await raised.Task.WaitAsync(FirstTickTimeout, TestContext.Current.CancellationToken);
         Assert.Equal(account.Id, raisedId);
 
         // First request used the fresh delta enumeration URL (no stored cursor yet).
@@ -167,7 +174,7 @@ public class GraphChangeNotifierTests : IDisposable
         using var notifier = MakeNotifier(handler);
         notifier.StartWatchers(new[] { account }, TestContext.Current.CancellationToken);
 
-        var requested = await firstRequest.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var requested = await firstRequest.Task.WaitAsync(FirstTickTimeout, TestContext.Current.CancellationToken);
         Assert.Equal(storedCursor, requested); // requested verbatim, not the fresh delta URL
         notifier.StopWatchers();
     }
@@ -210,7 +217,7 @@ public class GraphChangeNotifierTests : IDisposable
 
         notifier.StartWatchers(new[] { account }, TestContext.Current.CancellationToken);
 
-        var (acctId, ids) = await removed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var (acctId, ids) = await removed.Task.WaitAsync(FirstTickTimeout, TestContext.Current.CancellationToken);
         Assert.Equal(account.Id, acctId);
         Assert.Equal(new[] { "gone1" }, ids);
         Assert.False(newMailFired, "an @removed-only page must not signal new mail");
@@ -233,8 +240,8 @@ public class GraphChangeNotifierTests : IDisposable
 
         notifier.StartWatchers(new[] { account }, TestContext.Current.CancellationToken);
 
-        Assert.Equal(account.Id, await newMail.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
-        Assert.Equal(new[] { "gone1" }, await removed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal(account.Id, await newMail.Task.WaitAsync(FirstTickTimeout, TestContext.Current.CancellationToken));
+        Assert.Equal(new[] { "gone1" }, await removed.Task.WaitAsync(FirstTickTimeout, TestContext.Current.CancellationToken));
         notifier.StopWatchers();
     }
 
