@@ -1551,6 +1551,10 @@ You can also do it from **File → Settings → Startup**, where the **Opens in*
 
 If the folder later disappears — you delete it, rename it, or remove the account — QuickMail opens in All Mail and tells you why. Nothing is lost and nothing needs repairing.
 
+### Go back to your startup folder
+
+Wherever you have moved to, press **Ctrl+Shift+I**, or choose **View → Go to Startup Folder**, to go straight back to your startup folder, with focus in its message list. If you have not chosen one, that is All Mail. It works like Go to Inbox in other mail programs, with your startup folder as the inbox.
+
 ### Choose how much is checked at startup
 
 Also under **File → Settings → Startup**, **Startup Sync** controls how much mail QuickMail checks while it is starting. This matters most if you have several accounts and a lot of folders.
@@ -2483,6 +2487,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+Shift+K` | Pick flag |
 | `Ctrl+Shift+S` | Search messages |
 | `Ctrl+Shift+Y` | Search folders |
+| `Ctrl+Shift+I` | Go to Startup Folder |
 | `Ctrl+Shift+V` | View menu |
 | `Ctrl+Shift+H` | Toggle Plain Text View |
 | `Ctrl+Shift+U` | Load Pictures (from the web, for the open message) |

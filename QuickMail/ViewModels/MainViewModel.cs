@@ -569,6 +569,69 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return $"Startup folder '{previous}' cleared. QuickMail will open in All Mail.";
     }
 
+    /// <summary>
+    /// Goes back to the startup folder — the "Go to Inbox" of a client whose inbox is whatever the
+    /// user chose to open in, All Mail by default. Reads the setting afresh, so a startup folder
+    /// changed mid-session is the one it goes to. A folder that no longer resolves lands in All
+    /// Mail and says why, as startup does. Returns false when nothing was selected (the account's
+    /// folder list has not loaded yet), so the View knows not to move focus.
+    /// </summary>
+    public async Task<bool> GoToStartupFolderAsync()
+    {
+        var cfg = _configService.Load();
+        var view = StartupView(cfg);
+        string? fallbackReason = null;
+        var folder = view == null ? ResolveStartupFolder(cfg, out fallbackReason) : null;
+
+        if (fallbackReason != null && string.IsNullOrWhiteSpace(cfg.StartupFolderAccount))
+        {
+            // A virtual aggregate needs no folder list: before the tree is built (or in --online
+            // mode before connect) the sentinel singleton is the folder.
+            var sentinel = "\x00" + cfg.StartupFolder;
+            if (AllVirtualFolders.FirstOrDefault(f =>
+                    string.Equals(f.FullName, sentinel, StringComparison.Ordinal)) is { } aggregate)
+            {
+                folder = aggregate;
+                fallbackReason = null;
+            }
+        }
+        else if (fallbackReason != null &&
+                 Guid.TryParse(cfg.StartupFolderAccount, out var accountId) &&
+                 Accounts.Any(a => a.Id == accountId) &&
+                 !_cachedFolders.ContainsKey(accountId))
+        {
+            // The account is there but its folders are not known yet; that is not the folder being gone.
+            SetStatus("Folders are still loading.", AnnouncementCategory.Result);
+            return false;
+        }
+
+        // In Tab mode a message tab may be in front; going home means the list tab.
+        ActivateMessageListTab();
+
+        if (view != null)
+        {
+            await ApplyViewAsync(view);
+            return true;
+        }
+
+        folder ??= AllMailFolder;
+        // The tree holds its own instances; select the one it shows so the tree follows.
+        var target = Folders.FirstOrDefault(f =>
+                         !f.IsHeader &&
+                         f.AccountId == folder.AccountId &&
+                         string.Equals(f.FullName, folder.FullName, StringComparison.Ordinal))
+                     ?? folder;
+        await SelectFolderAsync(target);
+
+        if (fallbackReason != null)
+        {
+            // After the fetch, which writes its own count to the status bar.
+            SetStatus(fallbackReason, AnnouncementCategory.Result);
+            LogService.Log($"GoToStartupFolder: {fallbackReason}");
+        }
+        return true;
+    }
+
     // ── Folder tree expansion (#590) ─────────────────────────────────────────
     // Expanding and collapsing was arrow-keys-only: there was no way to fold a whole account away,
     // and no way to reach either action from a menu, the context menu, or the Command Palette.

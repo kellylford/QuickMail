@@ -42,6 +42,16 @@ public class StaDispatcherShutdownTests
         _ = new System.Windows.Controls.TextBox();
     }
 
+    // A foreground STA thread still alive when the run ends makes xunit force-exit and fail a run in
+    // which every test passed ("Foreground threads were left running"). Before() marks it background.
+    [StaFact]
+    public void AnStaTestRunsOnABackgroundThread()
+    {
+        Assert.Equal(System.Threading.ApartmentState.STA,
+            System.Threading.Thread.CurrentThread.GetApartmentState());
+        Assert.True(System.Threading.Thread.CurrentThread.IsBackground);
+    }
+
     [Fact]
     public void NoDataAttributesIsOneRow()
         => Assert.Equal(1, ShutDownStaDispatcherAttribute.ExpectedRows([]));
