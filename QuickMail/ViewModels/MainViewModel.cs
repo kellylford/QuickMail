@@ -1898,7 +1898,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                                () => Accounts.ToList(),
                                                // Each account's calendars feed the save-target picker, so
                                                // every calendar the user can write to is its own target.
-                                               () => _calendarSources);
+                                               () => _calendarSources,
+                                               // Meeting invitations (#866): reported for the servers that
+                                               // send them, emailed from the account where none does.
+                                               _graphCalendarSync is null
+                                                   ? null
+                                                   : new CalendarInvitationService(_graphCalendarSync, _smtp, _credentials));
             _defaultCalendarSource = cfg.DefaultCalendarSource ?? string.Empty;
             CalendarVm.DefaultCalendar = DefaultCalendarFilter;
             RemindersEnabled = cfg.CalendarReminders;

@@ -3045,7 +3045,7 @@ public partial class MainWindow : Window
     /// <summary>Opens the modeless appointment editor and restores focus to the list on close.</summary>
     private void OpenEventEditor(EventEditorViewModel editorVm)
     {
-        var editor = new EventEditorWindow(editorVm) { Owner = this };
+        var editor = new EventEditorWindow(editorVm, _contactService) { Owner = this };
         editor.Closed += (_, _) =>
         {
             // Return focus to the calendar list (virtualised — re-focus the selected row).
@@ -3232,9 +3232,7 @@ public partial class MainWindow : Window
     /// <summary>Confirms deleting an appointment (View concern); invokes the callback on Yes.</summary>
     private void ConfirmDeleteAppointment(CalendarEvent evt, Action confirmed)
     {
-        var prompt = evt.IsRecurring
-            ? $"Delete the repeating appointment “{evt.Summary}” and all its occurrences?"
-            : $"Delete the appointment “{evt.Summary}”?";
+        var prompt = _vm.CalendarVm?.DeletePrompt(evt) ?? $"Delete the appointment “{evt.Summary}”?";
         var result = MessageBox.Show(this, prompt,
             "Delete appointment",
             MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);

@@ -59,4 +59,13 @@ public interface IGraphCalendarSyncService
     /// <summary>DELETEs a server event (Microsoft or Google, dispatched on the account) and
     /// removes the local row.</summary>
     Task DeleteEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether saving or deleting a meeting on this account's calendar is itself what emails its
+    /// attendees (issue #866). True for Microsoft (Exchange sends them) and Google (QuickMail asks
+    /// it to); for iCloud, whatever the server advertises (RFC 6638 <c>calendar-auto-schedule</c>).
+    /// When false, the caller emails the invitations itself. Never throws: a server that cannot be
+    /// asked reads as false, because an invitation sent twice is better than one never sent.
+    /// </summary>
+    Task<bool> ServerSendsInvitationsAsync(AccountModel account, CancellationToken ct = default);
 }

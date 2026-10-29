@@ -437,6 +437,7 @@ public class OutboxServiceTests
             await gate;
         }
         public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password, string organizerEmail, CancellationToken ct = default) => Task.CompletedTask;
+        public Task SendPreparedAsync(MimeKit.MimeMessage message, AccountModel account, string? password, CancellationToken ct = default) => Task.CompletedTask;
         public Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default) => Task.CompletedTask;
     }
 

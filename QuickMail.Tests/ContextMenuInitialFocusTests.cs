@@ -117,14 +117,19 @@ public class ContextMenuInitialFocusTests
     public void FromTheKeyboard_FocusMovesOnce_StraightToTheFirstItem()
     {
         using var fx = new MenuFixture(fromKeyboard: true);
+        // Open() leaves the default MousePoint placement, so the menu opens at the pointer with
+        // its corner, not an item, under it. Parking keeps that true wherever a test left it.
+        OsInput.ParkPointer();
         Keyboard.Focus(fx.Row);
         MenuFixture.DoEvents();
         Assert.Same(fx.Row, Keyboard.FocusedElement);   // setup: the window really has focus
 
         var gained = RecordFocus(fx.Open);
 
+        // The focus history first: when this fails, the order focus moved in is the diagnosis.
+        Assert.True(gained.Count == 1 && ReferenceEquals(gained[0], fx.Reply),
+            "Focus moved through: " + DescribeFocus(gained));
         Assert.Same(fx.Reply, Keyboard.FocusedElement);
-        Assert.Equal(new object?[] { fx.Reply }, gained);
     }
 
     /// <summary>
@@ -136,6 +141,9 @@ public class ContextMenuInitialFocusTests
     public void ClosingTheMenu_ReturnsFocusToWhereItWasOpened()
     {
         using var fx = new MenuFixture(fromKeyboard: true);
+        // Open() leaves the default MousePoint placement, so the menu opens at the pointer with
+        // its corner, not an item, under it. Parking keeps that true wherever a test left it.
+        OsInput.ParkPointer();
         Keyboard.Focus(fx.Row);
         MenuFixture.DoEvents();
         Assert.Same(fx.Row, Keyboard.FocusedElement);
@@ -158,6 +166,9 @@ public class ContextMenuInitialFocusTests
     public void RealShiftF10_OnARow_FocusMovesOnce_StraightToReply()
     {
         using var fx = new MenuFixture(fromKeyboard: null);
+        // Shift+F10 opens the menu at the row, at the screen centre where a pointer rests on a
+        // fresh runner, and an item under the pointer takes focus (#864).
+        OsInput.ParkPointer();
         Keyboard.Focus(fx.Row);
         MenuFixture.DoEvents();
         Assert.Same(fx.Row, Keyboard.FocusedElement);   // setup: the window really has focus
@@ -170,8 +181,10 @@ public class ContextMenuInitialFocusTests
             MenuFixture.DoEvents();
         });
 
+        // The focus history first: when this fails, the order focus moved in is the diagnosis.
+        Assert.True(gained.Count == 1 && ReferenceEquals(gained[0], fx.Reply),
+            "Focus moved through: " + DescribeFocus(gained));
         Assert.Same(fx.Reply, Keyboard.FocusedElement);
-        Assert.Equal(new object?[] { fx.Reply }, gained);
     }
 
     /// <summary>
@@ -195,6 +208,14 @@ public class ContextMenuInitialFocusTests
         Assert.IsNotType<MenuItem>(Keyboard.FocusedElement);
         Assert.DoesNotContain(fx.Menu.Items.OfType<MenuItem>(), m => m.IsHighlighted || m.IsKeyboardFocused);
     }
+
+    private static string DescribeFocus(IEnumerable<object?> gained) =>
+        string.Join(" -> ", gained.Select(g => g switch
+        {
+            MenuItem m   => $"MenuItem {m.Header}",
+            null         => "(nothing)",
+            _            => g.GetType().Name,
+        }));
 
     /// <summary>Every element that gains keyboard focus while <paramref name="act"/> runs, in order.</summary>
     internal static List<object?> RecordFocus(Action act)

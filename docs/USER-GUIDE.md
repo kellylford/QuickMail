@@ -1669,7 +1669,7 @@ Move through the list with the **Up and Down arrows**. The list has **Subject**,
 
 From any event you have two quick ways to see more:
 
-- Press **Tab** once to move into a **details box** below the list that shows the full appointment (title, when, whether it repeats, location, and for meeting invitations the organizer and your response status), read from the top so a screen reader can review it line by line.
+- Press **Tab** once to move into a **details box** below the list that shows the full appointment (title, when, whether it repeats, location, for meeting invitations the organizer and your response status, and who is invited with each person's answer), read from the top so a screen reader can review it line by line.
 - Press **Enter** to act on the appointment. On an invitation you **haven't answered yet**, Enter opens a short menu — **Accept**, **Tentative**, **Decline**, or **Open full appointment** — so you can respond right from the calendar (see below). On your own appointment, Enter opens the editor; on an invitation you've already answered, it opens the source email.
 
 If you prefer each row spoken with field labels ("Subject …, when …, location …") instead of the concise form, turn on **Show field labels in the calendar event list** in **Settings → General**. It takes effect immediately.
@@ -1693,11 +1693,23 @@ Press **N** (or the **New** toolbar button) to open the appointment editor. It i
 - **All day** — check this for an all-day event; the time fields then switch off. Turning it back off restores the times you had.
 - **Starts / Ends** — a date and a time for each. See **Entering dates and times** below.
 - **Location** — optional.
+- **Invite** — optional. The email addresses of people to invite, separated by semicolons. See [Inviting people to an appointment](#inviting-people-to-an-appointment).
 - **Repeat** — leave as "Does not repeat" for a one-off, or set up a repeating appointment (see below).
 - **Notes** — free text.
 - **Calendar** — when you have a Microsoft, Google, or iCloud account connected, a picker lets you choose where the new appointment is saved. It lists your **Local Calendar** first, then every calendar you can write to on each connected account, named account-first: **Work: Team**, **Apple: Family**. Microsoft and Google accounts also get an entry for the account itself — **Work (default calendar)** — meaning whichever calendar that account normally files things into, which is useful when you do not mind and would rather it follow whatever you set on the provider's own site. iCloud has no such entry: an iCloud appointment always names the calendar it goes on. Calendars you only subscribe to, such as a holidays feed or someone else's calendar shared with you read-only, are left out: they are there to be read, and an appointment saved to one would only be refused. A calendar with nothing in it yet is offered like any other, so you can file the first appointment into it. With no connected calendar this picker does not appear and everything is saved locally. The picker starts on your [default calendar](#choosing-a-default-calendar-for-new-appointments) if you have set one, and on **Local Calendar** if you have not.
 
 Press **Enter** (or the **Save** button) to save, or **Escape** to cancel. If something is wrong, QuickMail puts focus on the field at fault and shows the reason on an error line above the buttons; the message clears itself as soon as you fix it.
+
+### Inviting people to an appointment
+
+To make an appointment a meeting, type the people's email addresses in the editor's **Invite** field (**Alt+I** moves there), separated by semicolons. You can write a name with an address, as in `Ann Lee <ann@example.com>`. As you type, matching people and groups from your address book are suggested, just as in a message's **To** field: press **Down** to move into the suggestions and **Enter** to choose one, or press **Enter** straight away to take the first. A group adds all its members. Save the appointment to an iCloud, Google or Microsoft calendar, and each person gets a meeting invitation in their email that they can accept or decline in their own mail program.
+
+- **Who sends it.** Google and Microsoft send the invitations themselves. iCloud does too when its server offers to; if it does not, QuickMail emails them from your iCloud account. Either way, after you save QuickMail says how many people the invitation went to — or, if it could not be sent, why. The appointment is saved either way.
+- **Changing a meeting.** Edit it as you would any appointment. When you save, the people invited get an update. Anyone you add to **Invite** gets an invitation, and anyone you remove gets a cancellation.
+- **Deleting a meeting** you organized sends everyone a cancellation. The confirmation tells you who will get one before you answer.
+- **Seeing who is coming.** The details box under the calendar list shows who is invited and how each person has answered (accepted, tentative, declined, or no reply). Answers arrive the next time the calendar syncs.
+- **Someone else's meeting.** When you open a meeting you were invited to, the **Invite** field shows who is invited but cannot be changed: only the organizer changes the guest list.
+- **Local Calendar** cannot send invitations — there is no server to send them from — so the editor asks you to choose one of your accounts' calendars instead. Repeating appointments cannot be meetings yet, because repeating appointments are kept on the Local Calendar.
 
 ### Entering dates and times
 
@@ -1842,6 +1854,7 @@ To set expectations clearly:
 - Show four views (Agenda, Day, Week, Month) and jump to any date.
 - Remind you before appointments (when you turn reminders on).
 - Respond to meeting invitations and keep your reply in sync.
+- Invite people to appointments on Microsoft, Google, and iCloud calendars, and send them updates and cancellations.
 - Download events from Microsoft, Google, and iCloud calendars, and create, edit, and delete single (non-repeating) events on any of them.
 - Export any appointment as a `.ics` file.
 - Import `.ics` files into the Local Calendar.
@@ -1850,6 +1863,7 @@ To set expectations clearly:
 
 - Work in online mode — it needs the local cache.
 - Send **repeating** appointments to an online account (repeating appointments are saved to the Local Calendar).
+- Send invitations from the Local Calendar.
 - Edit or delete **repeating** events that came from an online calendar (repeating server events are read-only).
 - Edit or delete the events your provider manages for you — Google birthdays, out-of-office, working location, focus time, and events Gmail created from a message. Google restricts this for every outside program, not just QuickMail; when it refuses a change, QuickMail tells you why. See [Events your account will not let QuickMail change](#events-your-account-will-not-let-quickmail-change).
 - Connect calendars from generic CalDAV servers other than iCloud (Fastmail, Nextcloud, and the like).

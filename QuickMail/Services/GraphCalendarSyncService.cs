@@ -199,7 +199,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         var window =
               $"startDateTime={Uri.EscapeDataString(startUtc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture))}"
             + $"&endDateTime={Uri.EscapeDataString(endUtc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture))}"
-            + "&$select=id,subject,bodyPreview,location,organizer,start,end,isAllDay,isOrganizer,responseStatus"
+            + "&$select=id,subject,bodyPreview,location,organizer,start,end,isAllDay,isOrganizer,responseStatus,attendees"
             + "&$top=100";
 
         // silentOnly: background sync must never launch an interactive sign-in (same reasoning as
@@ -331,6 +331,20 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             SourceMessageId = string.Empty, // not an invite email
             SourceFolder    = string.Empty,
             RecurrenceRule  = null, // singleEvents=true already expanded any series server-side
+            // Google lists the organizer among the attendees; they are not one of the invitees.
+            Attendees       = (e.Attendees ?? [])
+                .Where(a => !a.Organizer && !string.IsNullOrWhiteSpace(a.Email))
+                .Select(a => new EventAttendee
+                {
+                    Email    = a.Email!.Trim(),
+                    Name     = a.DisplayName?.Trim() ?? string.Empty,
+                    Response = MapGoogleAttendeeResponse(a.ResponseStatus),
+                    Kind     = a.Resource ? AttendeeKind.Resource
+                             : a.Optional ? AttendeeKind.Optional
+                             : AttendeeKind.Required,
+                })
+                .ToList(),
+            UserIsOrganizer = e.Organizer?.Self,
         };
     }
 
@@ -412,8 +426,28 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             throw;
         }
 
+        await StampICloudOrganizersAsync(account, union, password, ct);
         await _store.ReplaceGraphCalendarEventsAsync(account.Id, union);
         return union.Count;
+    }
+
+    /// <summary>
+    /// Records, on each iCloud meeting, whether the user organizes it — by the addresses the server
+    /// knows them by, which can include aliases (@me.com beside @icloud.com) that the account's own
+    /// address does not match. Best-effort: when the server cannot be asked the rows say nothing,
+    /// and <see cref="CalendarEvent.IsOrganizedBy"/> falls back to comparing addresses.
+    /// </summary>
+    private async Task StampICloudOrganizersAsync(AccountModel account, List<CalendarEvent> events,
+                                                  string password, CancellationToken ct)
+    {
+        var meetings = events.Where(e => e.HasAttendees && !string.IsNullOrWhiteSpace(e.Organizer)).ToList();
+        if (meetings.Count == 0) return;
+        var addresses = (await ICloudSchedulingAsync(account, password, ct))?.UserAddresses;
+        if (addresses is null) return;
+        foreach (var e in meetings)
+            e.UserIsOrganizer = addresses.Any(a => string.Equals(a, e.Organizer.Trim(), StringComparison.OrdinalIgnoreCase))
+                                || string.Equals(e.Organizer.Trim(), account.Username, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(e.Organizer.Trim(), account.AuthUsername, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -478,6 +512,80 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         return password;
     }
 
+    // ── Invitations (issue #866) ─────────────────────────────────────────────────
+
+    // What each iCloud account's server does about invitations, asked once per account per run.
+    // A failed check is not cached, so a passing network fault does not decide the rest of the run.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CalDavScheduling> _schedulingByAccount = new();
+
+    /// <summary>
+    /// True when a write of <paramref name="evt"/> should reach its attendees: someone is or was
+    /// invited, and the user is the organizer. An attendee changing their own copy of someone
+    /// else's meeting notifies nobody — that is what a reply is for.
+    /// </summary>
+    internal static bool NotifiesAttendees(AccountModel account, CalendarEvent evt)
+        => (evt.HasAttendees || evt.PreviousAttendees.Count > 0)
+           && evt.IsOrganizedBy(account.Username, account.AuthUsername);
+
+    public async Task<bool> ServerSendsInvitationsAsync(AccountModel account, CancellationToken ct = default)
+    {
+        if (!IsICloudCalendarEligible(account))
+            return true; // Microsoft sends them itself; Google does because the write asks it to.
+        return (await ICloudSchedulingAsync(account, ICloudPasswordOrNull(account), ct))?.ServerSchedules ?? false;
+    }
+
+    /// <summary>
+    /// The iCloud server's scheduling support for the account, or null when it could not be asked.
+    /// The calendar whose DAV header is read is any of the account's: the capability is the
+    /// server's, not a calendar's.
+    /// </summary>
+    private async Task<CalDavScheduling?> ICloudSchedulingAsync(AccountModel account, string? password, CancellationToken ct)
+    {
+        if (_schedulingByAccount.TryGetValue(account.Id, out var known)) return known;
+        if (string.IsNullOrEmpty(password)) return null;
+        try
+        {
+            if (!_calDavCalendarsByAccount.TryGetValue(account.Id, out var calendars) || calendars.Count == 0)
+            {
+                calendars = await _calDav!.DiscoverCalendarsAsync(ICloudCalDavUrl, account.AuthUsername, password, ct);
+                _calDavCalendarsByAccount[account.Id] = calendars;
+            }
+            var scheduling = await _calDav!.GetSchedulingAsync(ICloudCalDavUrl, calendars[0].Url,
+                                                               account.AuthUsername, password, ct);
+            _schedulingByAccount[account.Id] = scheduling;
+            LogService.Log($"CalendarSync: {account.AccountLabel} server schedules invitations: {scheduling.ServerSchedules}.");
+            return scheduling;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogService.Log($"CalendarSync: could not ask {account.AccountLabel} how it handles invitations", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Names the user as the meeting's organizer, at the address the iCloud server knows them by:
+    /// the account's mail address or Apple ID when the server lists it, else the first address it
+    /// lists. A server that schedules refuses, or quietly does not schedule, a meeting whose
+    /// organizer is not one of the user's addresses there.
+    /// </summary>
+    private async Task StampICloudOrganizerAsync(AccountModel account, CalendarEvent evt, string password, CancellationToken ct)
+    {
+        var addresses = (await ICloudSchedulingAsync(account, password, ct))?.UserAddresses ?? [];
+        evt.Organizer = ChooseOrganizerAddress(account, addresses);
+        evt.OrganizerName = account.SenderDisplayName;
+    }
+
+    /// <summary>The address to organize as, out of the ones the server knows the user by (see above).</summary>
+    internal static string ChooseOrganizerAddress(AccountModel account, IReadOnlyList<string> serverAddresses)
+        => serverAddresses.FirstOrDefault(a => string.Equals(a, account.Username, StringComparison.OrdinalIgnoreCase))
+           ?? serverAddresses.FirstOrDefault(a => string.Equals(a, account.AuthUsername, StringComparison.OrdinalIgnoreCase))
+           ?? (serverAddresses.Count > 0 ? serverAddresses[0] : null)
+           ?? account.Username;
+
+    private string? ICloudPasswordOrNull(AccountModel account)
+        => _credentials?.GetPassword(account.Id) is { Length: > 0 } p ? p : null;
+
     // ── iCloud CalDAV write (create / edit / delete, single events) ───────────────
     // A locally-authored appointment is serialized to a VCALENDAR (IcsModel.ExportEvent) and PUT to
     // its calendar collection; the row is stored is_graph so it shows immediately and survives the
@@ -491,6 +599,11 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             throw new InvalidOperationException("No iCloud calendar was selected for the new appointment.");
         if (string.IsNullOrWhiteSpace(evt.Uid))
             evt.Uid = Guid.NewGuid().ToString("N") + "@quickmail";
+        if (evt.HasAttendees)
+        {
+            await StampICloudOrganizerAsync(account, evt, password, ct);
+            evt.UserIsOrganizer = true;
+        }
 
         var ics = IcsModel.ExportEvent(evt, includeMethod: false); // RFC 4791: no METHOD on a stored CalDAV resource
         // A new resource: QuickMail chooses its name (after the UID). Record the URL it PUT to so an
@@ -512,6 +625,16 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         var password = ICloudPassword(account);
         if (string.IsNullOrWhiteSpace(evt.CalendarId))
             throw new InvalidOperationException("This iCloud appointment has no calendar to update.");
+
+        // A meeting the user organizes: attendees must see this as a newer version than the one
+        // they have, or their calendars ignore the update (RFC 5546 §2.1.4). Someone else's meeting
+        // keeps its sequence — only the organizer may move it.
+        if (NotifiesAttendees(account, evt))
+        {
+            if (string.IsNullOrWhiteSpace(evt.Organizer))
+                await StampICloudOrganizerAsync(account, evt, password, ct);
+            evt.Sequence = IcsModel.NextSequence(evt.Sequence);
+        }
 
         var ics = IcsModel.ExportEvent(evt, includeMethod: false); // RFC 4791: no METHOD on a stored CalDAV resource
         // Edit the resource where it actually lives: the real href captured on read-sync when we have
@@ -631,7 +754,8 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         // Dispatch order mirrors the read path (SyncOneAccountAsync): Graph → Google → iCloud.
         if (IsGoogleEligible(account))
         {
-            await _google!.DeleteEventAsync(account.Username, evt.Uid, GoogleCalendarId(evt), ct);
+            await _google!.DeleteEventAsync(account.Username, evt.Uid, GoogleCalendarId(evt),
+                                           NotifiesAttendees(account, evt), ct);
             await _store.DeleteCalendarEventAsync(evt.Uid, account.Id);
             LogService.Log($"CalendarSync: deleted Google event on {account.AccountLabel} ({evt.Uid}).");
             return;
@@ -744,7 +868,8 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     private async Task<CalendarEvent> CreateGoogleEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct)
     {
         var calId = GoogleCalendarId(evt);
-        var created = await _google!.CreateEventAsync(account.Username, BuildGoogleWriteBody(evt), calId, ct);
+        var created = await _google!.CreateEventAsync(account.Username, BuildGoogleWriteBody(evt), calId,
+                                                   NotifiesAttendees(account, evt), ct);
         // "primary" is an alias, not an id: the read-down tags that same calendar's rows with its
         // real id, so a row left tagged "primary" does not match the per-calendar tree node and
         // stays invisible there until the next sync restamps it (#569). Resolve it. The write
@@ -761,7 +886,8 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     private async Task<CalendarEvent> UpdateGoogleEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct)
     {
         var calId = GoogleCalendarId(evt);
-        var updated = await _google!.UpdateEventAsync(account.Username, evt.Uid, BuildGoogleWriteBody(evt), calId, ct);
+        var updated = await _google!.UpdateEventAsync(account.Username, evt.Uid, BuildGoogleWriteBody(evt), calId,
+                                                   NotifiesAttendees(account, evt), ct);
         var mapped = MapGoogleEvent(updated, account.Id, calId, evt.CalendarName);
         await _store.UpsertCalendarEventAsync(mapped);
         LogService.Log($"CalendarSync: updated Google event on {account.AccountLabel} ({mapped.Uid}).");
@@ -801,6 +927,18 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             Location    = string.IsNullOrWhiteSpace(evt.Location) ? null : evt.Location,
             Start       = start,
             End         = end,
+            // Only when the user changed who is invited: a null list leaves the server's alone, so
+            // editing the time of someone else's meeting cannot rewrite its guest list.
+            Attendees   = evt.AttendeesChanged
+                ? evt.Attendees.Select(a => new GoogleAttendeeWrite
+                  {
+                      Email          = a.Email,
+                      DisplayName    = string.IsNullOrWhiteSpace(a.Name) ? null : a.Name,
+                      ResponseStatus = GoogleResponseOf(a.Response),
+                      Optional       = a.Kind == AttendeeKind.Optional ? true : null,
+                      Resource       = a.IsResource ? true : null,
+                  }).ToList()
+                : null,
         };
     }
 
@@ -841,6 +979,24 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
                         ? null
                         : new GraphLocation { DisplayName = evt.Location },
             IsAllDay = evt.IsAllDay,
+            // As for Google: only a changed list is sent. Exchange invites the people added and
+            // sends the people removed a cancellation, itself.
+            Attendees = evt.AttendeesChanged
+                ? evt.Attendees.Select(a => new GraphAttendee
+                  {
+                      EmailAddress = new GraphEmailAddress
+                      {
+                          Address = a.Email,
+                          Name    = string.IsNullOrWhiteSpace(a.Name) ? null : a.Name,
+                      },
+                      Type = a.Kind switch
+                      {
+                          AttendeeKind.Resource => "resource",
+                          AttendeeKind.Optional => "optional",
+                          _                     => "required",
+                      },
+                  }).ToList()
+                : null,
         };
     }
 
@@ -913,8 +1069,51 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             // calendarView already expanded the series server-side; leaving RecurrenceRule null
             // prevents the local RecurrenceExpander from expanding each occurrence again.
             RecurrenceRule  = null,
+            // Rooms are kept, marked as such, so a change to the guest list sends them back and
+            // Exchange does not release the booking.
+            Attendees       = (e.Attendees ?? [])
+                .Where(a => !string.IsNullOrWhiteSpace(a.EmailAddress?.Address))
+                .Select(a => new EventAttendee
+                {
+                    Email    = a.EmailAddress!.Address!.Trim(),
+                    Name     = a.EmailAddress.Name?.Trim() ?? string.Empty,
+                    Response = MapGraphAttendeeResponse(a.Status?.Response),
+                    Kind     = a.Type?.ToLowerInvariant() switch
+                    {
+                        "resource" => AttendeeKind.Resource,
+                        "optional" => AttendeeKind.Optional,
+                        _          => AttendeeKind.Required,
+                    },
+                })
+                .ToList(),
+            // Graph says outright whether the user organizes it, whatever address that is under.
+            UserIsOrganizer = e.IsOrganizer,
         };
     }
+
+    private static AttendeeResponse MapGraphAttendeeResponse(string? response) => response?.ToLowerInvariant() switch
+    {
+        "accepted"            => AttendeeResponse.Accepted,
+        "tentativelyaccepted" => AttendeeResponse.Tentative,
+        "declined"            => AttendeeResponse.Declined,
+        _                     => AttendeeResponse.NoReply,
+    };
+
+    private static AttendeeResponse MapGoogleAttendeeResponse(string? response) => response?.ToLowerInvariant() switch
+    {
+        "accepted"  => AttendeeResponse.Accepted,
+        "tentative" => AttendeeResponse.Tentative,
+        "declined"  => AttendeeResponse.Declined,
+        _           => AttendeeResponse.NoReply,
+    };
+
+    private static string GoogleResponseOf(AttendeeResponse response) => response switch
+    {
+        AttendeeResponse.Accepted  => "accepted",
+        AttendeeResponse.Tentative => "tentative",
+        AttendeeResponse.Declined  => "declined",
+        _                          => "needsAction",
+    };
 
     /// <summary>
     /// Maps Graph's <c>responseStatus.response</c> to the local status. The organizer of an event

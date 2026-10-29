@@ -146,8 +146,28 @@ public class SmtpService : ISendMailService
             return;
         }
 
-        var message = MimeMessageBuilder.BuildIcsReply(account, icsReplyContent, organizerEmail);
+        await SendBuiltAsync(MimeMessageBuilder.BuildIcsReply(account, icsReplyContent, organizerEmail),
+                             account, password, "ICS reply", ct);
+    }
 
+    public async Task SendPreparedAsync(MimeKit.MimeMessage message, AccountModel account, string? password,
+        CancellationToken ct = default)
+    {
+        if (account.BackendKind == BackendKind.MicrosoftGraph)
+        {
+            await _graphSmtp.SendPreparedAsync(message, account, password, ct);
+            return;
+        }
+        await SendBuiltAsync(message, account, password, "calendar message", ct);
+    }
+
+    /// <summary>
+    /// Connects, authenticates and sends one already-built message — the shared body of the two
+    /// calendar sends, which skip the Outbox and the Sent copy that <see cref="SendAsync"/> handles.
+    /// </summary>
+    private async Task SendBuiltAsync(MimeKit.MimeMessage message, AccountModel account, string? password,
+        string what, CancellationToken ct)
+    {
         using var client = new SmtpClient();
 
         if (account.SmtpAcceptInvalidCert)
@@ -161,7 +181,7 @@ public class SmtpService : ISendMailService
 
         try
         {
-            LogService.Log($"SmtpService: sending ICS reply to {account.SmtpHost}:{account.SmtpPort}");
+            LogService.Log($"SmtpService: sending {what} to {account.SmtpHost}:{account.SmtpPort}");
             await client.ConnectAsync(account.SmtpHost, account.SmtpPort, ssl, ct);
 
             if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
@@ -173,18 +193,18 @@ public class SmtpService : ISendMailService
             {
                 await client.AuthenticateAsync(account.AuthUsername, password!, ct);
             }
-            LogService.Log($"SmtpService: ICS reply authenticated, sending.");
+            LogService.Log($"SmtpService: {what} authenticated, sending.");
             await client.SendAsync(message, ct);
-            LogService.Log($"SmtpService: ICS reply sent.");
+            LogService.Log($"SmtpService: {what} sent.");
         }
         catch (Exception ex)
         {
-            LogService.Log($"SmtpService: ICS reply send failed ({ex.GetType().Name})", ex);
+            LogService.Log($"SmtpService: {what} send failed ({ex.GetType().Name})", ex);
             throw;
         }
 
-        // See SendAsync: the reply has been accepted, so a failing QUIT must not surface as a
-        // failure to respond to the invitation.
+        // See SendAsync: the message has been accepted, so a failing QUIT must not surface as a
+        // failure to send it.
         await DisconnectQuietlyAsync(client, ct);
     }
 }

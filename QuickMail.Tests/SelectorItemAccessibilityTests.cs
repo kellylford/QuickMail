@@ -129,6 +129,13 @@ public class SelectorItemAccessibilityTests
         var group = new GroupModel { Name = "Team" };
         Assert.Equal(group.Display, group.ToString());
 
+        // Address suggestions under To/Cc/Bcc and the editor's Invite (#869). The container
+        // carries Display too; ToString matches it for any list that does not.
+        var suggestion = new QuickMail.Views.AddressSuggestion(
+            new ContactModel { DisplayName = "Ann Lee", EmailAddress = "ann@example.com" });
+        Assert.Equal("Ann Lee ann@example.com", suggestion.ToString());
+        Assert.Equal(suggestion.Display, suggestion.ToString());
+
         // Contacts (issue #644). The address book stamps a richer AccessibleName onto the row
         // container, but every other contact list falls back to ToString() — which read
         // "QuickMail.Models.ContactModel" until this override existed.

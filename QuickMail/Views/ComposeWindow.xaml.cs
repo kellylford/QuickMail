@@ -21,39 +21,7 @@ using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
 
-/// <summary>
-/// A single item in the autocomplete suggestion list. Wraps either a
-/// <see cref="ContactModel"/> (one address) or a <see cref="GroupModel"/>
-/// (expands to all member addresses on accept).
-/// </summary>
-internal sealed class AddressSuggestion
-{
-    public ContactModel? Contact { get; }
-    public GroupModel?   Group   { get; }
-    public bool IsGroup => Group is not null;
-
-    /// <summary>Bold first line shown in the popup row.</summary>
-    public string PrimaryText => IsGroup
-        ? Group!.Name
-        : string.IsNullOrWhiteSpace(Contact!.DisplayName) ? Contact.EmailAddress : Contact.DisplayName;
-
-    /// <summary>Dimmed second line shown below the primary text.</summary>
-    public string SecondaryText => IsGroup
-        ? $"{Group!.ResolvedMemberCount} member{(Group!.ResolvedMemberCount == 1 ? "" : "s")} — group"
-        : Contact!.EmailAddress;
-
-    /// <summary>Full accessible name read by the screen reader for the list item.</summary>
-    public string Display => IsGroup
-        ? $"{Group!.Name}, group, {Group!.ResolvedMemberCount} member{(Group!.ResolvedMemberCount == 1 ? "" : "s")}"
-        : string.IsNullOrWhiteSpace(Contact!.DisplayName)
-            ? Contact.EmailAddress
-            : $"{Contact.DisplayName} {Contact.EmailAddress}";
-
-    public AddressSuggestion(ContactModel c) { Contact = c; }
-    public AddressSuggestion(GroupModel g)   { Group   = g; }
-}
-
-[SuppressMessage("Design", "CA1001", Justification = "_autocompleteCts is cancelled and disposed in OnClosed; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
+[SuppressMessage("Design", "CA1001", Justification = "_suggestions is disposed in OnClosed; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
 public partial class ComposeWindow : Window
 {
     private readonly ComposeViewModel   _vm;
@@ -63,8 +31,8 @@ public partial class ComposeWindow : Window
     private readonly ICustomDictionaryService? _customDictionary;
     private readonly IThemeService? _themeService;
     private readonly CommandRegistry    _registry = new();
-    private TokenizedAddressBox? _activeAddressControl;
-    private CancellationTokenSource? _autocompleteCts;
+    // Address book suggestions for To, Cc and Bcc — shared with the appointment editor (#869).
+    private AddressSuggestionController? _suggestions;
     // Suppresses the chip-list announcement on the next focus-arrived event.
     // Set before moving focus into the autocomplete popup so the return trip
     // doesn't re-announce addresses the user is actively editing.
@@ -177,10 +145,12 @@ public partial class ComposeWindow : Window
             return Task.FromResult<MessageTemplate?>(null);
         };
 
+        _suggestions = new AddressSuggestionController(this, _contactService, AutoCompletePopup, SuggestionList);
+        // The return trip from the list is not a fresh arrival in the field: don't read its chips again.
+        _suggestions.EnteringSuggestions += () => _suppressNextFocusAnnouncement = true;
         foreach (var box in new[] { ToBox, CcBox, BccBox })
         {
-            box.InputTextChanged             += AddressBox_InputTextChanged;
-            box.PreviewKeyDown               += AddressBox_PreviewKeyDown;
+            _suggestions.Attach(new TokenizedAddressEntry(box));
             box.IsKeyboardFocusWithinChanged += AddressBox_IsKeyboardFocusWithinChanged;
             box.AddToContactsRequested       =  AddChipToContacts;
         }
@@ -188,13 +158,6 @@ public partial class ComposeWindow : Window
         // Commit any typing left in address boxes before the VM's Send check runs.
         SendButton.Click += (_, _) => CommitAllAddressInputs();
 
-        // When the autocomplete popup closes for any reason, restore the suppress flag
-        // so the address box will commit normally on the next LostKeyboardFocus.
-        AutoCompletePopup.Closed += (_, _) =>
-        {
-            if (_activeAddressControl != null)
-                _activeAddressControl.SuppressLostFocusCommit = false;
-        };
 
         // Reply / Reply-All: To is already filled in, so land in the body at the top.
         // New compose / Forward: To is empty, so land in the To field.
@@ -281,49 +244,6 @@ public partial class ComposeWindow : Window
 
     // ── Autocomplete ─────────────────────────────────────────────────────────
 
-    private async void AddressBox_InputTextChanged(object? sender, TextChangedEventArgs e)
-    {
-        _activeAddressControl = (TokenizedAddressBox)sender!;
-        var searchToken = _activeAddressControl.CurrentInputText.Trim();
-        if (searchToken.Length < 1) { AutoCompletePopup.IsOpen = false; return; }
-
-        // Cancel and dispose the superseded CTS (its token was already captured by the
-        // in-flight search, which unwinds via OperationCanceledException).
-        var previous = _autocompleteCts;
-        _autocompleteCts = new CancellationTokenSource();
-        try { previous?.Cancel(); previous?.Dispose(); } catch { /* best effort */ }
-
-        try
-        {
-            var ct = _autocompleteCts.Token;
-            // Run both searches concurrently (both are cache-backed so fast).
-            var contactTask = _contactService.SearchContactsAsync(searchToken, ct);
-            var groupTask   = _contactService.SearchGroupsAsync(searchToken, ct);
-            await Task.WhenAll(contactTask, groupTask);
-
-            // Groups appear first: picking a group is more efficient than picking
-            // many individuals. Empty groups are already excluded by SearchGroupsAsync.
-            var combined = groupTask.Result.Select(g => new AddressSuggestion(g))
-                .Concat(contactTask.Result.Select(c => new AddressSuggestion(c)))
-                .ToList();
-
-            if (combined.Count == 0) { AutoCompletePopup.IsOpen = false; return; }
-
-            SuggestionList.ItemsSource        = combined;
-            AutoCompletePopup.PlacementTarget = _activeAddressControl;
-            AutoCompletePopup.Placement       = PlacementMode.Bottom;
-            AutoCompletePopup.IsOpen          = true;
-
-            AccessibilityHelper.Announce(this,
-                combined.Count == 1 ? "1 suggestion" : $"{combined.Count} suggestions",
-                category: AnnouncementCategory.Result);
-        }
-        catch (OperationCanceledException)
-        {
-            // Superseded by a newer keystroke
-        }
-    }
-
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -368,31 +288,6 @@ public partial class ComposeWindow : Window
         return IntPtr.Zero;
     }
 
-    private void AddressBox_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (!AutoCompletePopup.IsOpen) return;
-        if (e.Key == Key.Down)
-        {
-            // Suppress the LostKeyboardFocus commit before moving focus into the popup.
-            // The popup lives in a separate HwndSource so IsKeyboardFocusWithin on the
-            // address box becomes false the moment SuggestionList gets focus, which
-            // would otherwise cause CommitPendingInput to run on the partial input.
-            ((TokenizedAddressBox)sender).SuppressLostFocusCommit = true;
-            // Also suppress the chip-list announcement for the return trip — the user
-            // is actively editing this field and doesn't need it read back to them.
-            _suppressNextFocusAnnouncement = true;
-            SuggestionList.Focus();
-            SuggestionList.SelectedIndex = 0;
-            (SuggestionList.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem)?.Focus();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            AutoCompletePopup.IsOpen = false;
-            e.Handled = true;
-        }
-    }
-
     private void AddressBox_IsKeyboardFocusWithinChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if ((bool)e.NewValue)
@@ -413,15 +308,8 @@ public partial class ComposeWindow : Window
                 }
             }
             _suppressNextFocusAnnouncement = false;
-            return;
         }
-
-        // Focus left — close the autocomplete popup unless it's the popup that took focus.
-        Dispatcher.InvokeAsync(() =>
-        {
-            if (!SuggestionList.IsKeyboardFocusWithin)
-                AutoCompletePopup.IsOpen = false;
-        }, DispatcherPriority.Background);
+        // Focus leaving the field closes the suggestion list: AddressSuggestionController.
     }
 
     /// <summary>
@@ -464,90 +352,6 @@ public partial class ComposeWindow : Window
         _announcedSenderAccountId = account.Id;
         AccessibilityHelper.Announce(this,
             $"{account.AccountLabel} used as From address",
-            category: AnnouncementCategory.Result);
-    }
-
-    internal void SuggestionList_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter || e.Key == Key.Tab)
-        {
-            // Mark handled immediately so the Enter key does not reach the IsDefault
-            // Send button.  AcceptSuggestion is deferred so focus does not transition
-            // from the popup's HwndSource to the main window while the key event is
-            // still routing — that mid-event transition is what triggers the default
-            // button.
-            e.Handled = true;
-            if (SuggestionList.SelectedItem is AddressSuggestion s)
-                Dispatcher.InvokeAsync(() => AcceptSuggestion(s), DispatcherPriority.Input);
-        }
-        else if (e.Key == Key.Escape)
-        {
-            AutoCompletePopup.IsOpen = false;
-            _activeAddressControl?.FocusInput();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Up && SuggestionList.SelectedIndex <= 0)
-        {
-            AutoCompletePopup.IsOpen = false;
-            _activeAddressControl?.FocusInput();
-            e.Handled = true;
-        }
-    }
-
-    internal void SuggestionList_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        if (SuggestionList.SelectedItem is AddressSuggestion s) AcceptSuggestion(s);
-    }
-
-    private void AcceptSuggestion(AddressSuggestion suggestion)
-    {
-        if (_activeAddressControl == null) return;
-        if (suggestion.IsGroup)
-            AcceptGroupSuggestion(suggestion.Group!);
-        else
-            AcceptContactSuggestion(suggestion.Contact!);
-        AutoCompletePopup.IsOpen = false;
-    }
-
-    private void AcceptContactSuggestion(ContactModel contact)
-    {
-        _activeAddressControl!.AcceptSuggestion(contact.DisplayName ?? string.Empty, contact.EmailAddress);
-    }
-
-    /// <summary>
-    /// Expands a group suggestion into individual address chips — one per resolved
-    /// member. The input text is cleared on the first chip (via AcceptSuggestion on
-    /// TokenizedAddressBox) and subsequent members are added via AddAddress. Async
-    /// because loading the contact list is cache-backed but needs to be awaited.
-    /// </summary>
-    private async void AcceptGroupSuggestion(GroupModel group)
-    {
-        // Capture the target box before any await so it cannot change out from under us.
-        var targetBox = _activeAddressControl;
-        if (targetBox == null) return;
-
-        var allContacts = await _contactService.LoadAllContactsAsync();
-        var byId = allContacts.ToDictionary(c => c.Id);
-        var members = group.MemberContactIds
-            .Where(id => byId.ContainsKey(id))
-            .Select(id => byId[id])
-            .OrderByDescending(c => c.LastUsedTicks)
-            .ThenBy(c => c.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (members.Count == 0) return;
-
-        // First member clears the partial input text; remaining just add chips.
-        targetBox.AcceptSuggestion(members[0].DisplayName ?? string.Empty, members[0].EmailAddress);
-        for (int i = 1; i < members.Count; i++)
-            targetBox.AddAddress(members[i].DisplayName ?? string.Empty, members[i].EmailAddress);
-
-        _ = _contactService.TouchGroupAsync(group.Id);
-
-        AccessibilityHelper.Announce(this,
-            members.Count == 1
-                ? $"Inserted 1 address from group '{group.Name}'"
-                : $"Inserted {members.Count} addresses from group '{group.Name}'",
             category: AnnouncementCategory.Result);
     }
 
@@ -671,10 +475,8 @@ public partial class ComposeWindow : Window
         CloseSpellCheckDialogSilently();
         _pendingImages.Clear();
         _imageDialog?.Close();
-        // Cancel before Dispose so a still-running autocomplete search unwinds via
-        // OperationCanceledException rather than ObjectDisposedException.
-        try { _autocompleteCts?.Cancel(); _autocompleteCts?.Dispose(); } catch { /* best effort */ }
-        _autocompleteCts = null;
+        // Cancels a still-running address search, so it unwinds via OperationCanceledException.
+        _suggestions?.Dispose();
         _vm.Dispose();
         base.OnClosed(e);
     }
