@@ -150,6 +150,9 @@ jobs:
           # Child-process tests (ProcessTests: the uninstall data prompt's script, run through
           # powershell.exe) are opt-in for the same reason, and guarded below the same way.
           QUICKMAIL_RUN_PROCESS_TESTS: "1"
+          # If foreground threads outlive the run, xunit force-exits and fails it although every
+          # test passed. ForegroundThreadReport writes their stacks here; printed below and uploaded.
+          QUICKMAIL_FOREGROUND_THREAD_REPORT: ${{ github.workspace }}/QuickMail.Tests/TestResults/foreground-threads.txt
         # Both classes that were excluded here for driving the real clipboard now assert against an
         # injected IClipboardService instead, so nothing in the unit suite touches the OS clipboard
         # and the filter that skipped them is gone. It had been silently costing two whole classes of
@@ -168,6 +171,11 @@ jobs:
           dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release `
             --logger "trx;LogFileName=results.trx"
           $testExit = $LASTEXITCODE
+          if (Test-Path $env:QUICKMAIL_FOREGROUND_THREAD_REPORT) {
+            Write-Host "::group::Foreground threads alive at exit"
+            Get-Content $env:QUICKMAIL_FOREGROUND_THREAD_REPORT | Write-Host
+            Write-Host "::endgroup::"
+          }
           $trx = "QuickMail.Tests/TestResults/results.trx"
           if (-not (Test-Path $trx)) {
             Write-Error "No trx produced at $trx (dotnet test exit=$testExit); failing."
@@ -300,7 +308,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-results
-          path: QuickMail.Tests/TestResults/results.trx
+          path: |
+            QuickMail.Tests/TestResults/results.trx
+            QuickMail.Tests/TestResults/foreground-threads.txt
           retention-days: 7
 
       - name: Publish
