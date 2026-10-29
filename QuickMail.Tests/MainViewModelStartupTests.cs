@@ -269,4 +269,106 @@ public class MainViewModelStartupTests
         Assert.Equal(MainViewModel.AllMailFolder.FullName, vm.SelectedFolder?.FullName);
         Assert.DoesNotContain("not found", vm.StatusText, StringComparison.OrdinalIgnoreCase);
     }
+
+    // ── Go to Startup Folder: the "Go to Inbox" whose inbox is the startup folder ──────────
+
+    private static MailFolderModel TreeFolder(MainViewModel vm, Guid account, string full) =>
+        vm.Folders.First(f => !f.IsHeader && f.AccountId == account && f.FullName == full);
+
+    [Fact]
+    public async Task GoToStartupFolder_ReturnsToTheStartupFolder_FromAnotherOne()
+    {
+        var (vm, _, _) = MakeVm(c =>
+        {
+            c.StartupFolder        = "INBOX/Projects";
+            c.StartupFolderAccount = WorkId.ToString();
+            c.StartupFolderLabel   = "Projects";
+        });
+        await vm.InitialLoadAsync();
+        await vm.SelectFolderCommand.ExecuteAsync(TreeFolder(vm, WorkId, "Sent"));
+        Assert.Equal("Sent", vm.SelectedFolder?.FullName);
+
+        Assert.True(await vm.GoToStartupFolderAsync());
+
+        // The tree's own instance, so the folder tree follows the selection.
+        Assert.Same(TreeFolder(vm, WorkId, "INBOX/Projects"), vm.SelectedFolder);
+    }
+
+    [Fact]
+    public async Task GoToStartupFolder_WithNoneSet_GoesToAllMail()
+    {
+        var (vm, _, _) = MakeVm();
+        await vm.InitialLoadAsync();
+        await vm.SelectFolderCommand.ExecuteAsync(TreeFolder(vm, WorkId, "Sent"));
+
+        Assert.True(await vm.GoToStartupFolderAsync());
+
+        Assert.Equal(MainViewModel.AllMailFolder.FullName, vm.SelectedFolder?.FullName);
+    }
+
+    [Fact]
+    public async Task GoToStartupFolder_AllInboxes_GoesToTheAggregate()
+    {
+        var (vm, _, _) = MakeVm(c =>
+        {
+            c.StartupFolder      = "AllInboxes";
+            c.StartupFolderLabel = "All Inboxes";
+        });
+        await vm.InitialLoadAsync();
+        await vm.SelectFolderCommand.ExecuteAsync(TreeFolder(vm, WorkId, "Sent"));
+
+        Assert.True(await vm.GoToStartupFolderAsync());
+
+        Assert.Equal(MainViewModel.AllInboxesFolder.FullName, vm.SelectedFolder?.FullName);
+    }
+
+    [Fact]
+    public async Task GoToStartupFolder_FollowsAStartupFolderChangedMidSession()
+    {
+        var (vm, _, _) = MakeVm();
+        await vm.InitialLoadAsync();
+        var inbox = TreeFolder(vm, PersonalId, "INBOX");
+        vm.SetStartupFolder(new FolderTreeNode { Folder = inbox, Label = "Inbox" });
+        await vm.SelectFolderCommand.ExecuteAsync(TreeFolder(vm, WorkId, "Sent"));
+
+        Assert.True(await vm.GoToStartupFolderAsync());
+
+        Assert.Same(inbox, vm.SelectedFolder);
+    }
+
+    [Fact]
+    public async Task GoToStartupFolder_FolderGone_LandsInAllMail_AndSaysWhy()
+    {
+        var (vm, _, _) = MakeVm(c =>
+        {
+            c.StartupFolder        = "INBOX/GoneAway";
+            c.StartupFolderAccount = WorkId.ToString();
+            c.StartupFolderLabel   = "GoneAway";
+        });
+        await vm.InitialLoadAsync();
+        await vm.SelectFolderCommand.ExecuteAsync(TreeFolder(vm, WorkId, "Sent"));
+
+        Assert.True(await vm.GoToStartupFolderAsync());
+
+        Assert.Equal(MainViewModel.AllMailFolder.FullName, vm.SelectedFolder?.FullName);
+        Assert.Contains("GoneAway", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GoToStartupFolder_BeforeFoldersLoad_SaysSo_AndChangesNothing()
+    {
+        // No folder list yet is not the same as the folder being gone: no "not found", no move.
+        var (vm, _, _) = MakeVm(c =>
+        {
+            c.StartupFolder        = "INBOX/Projects";
+            c.StartupFolderAccount = WorkId.ToString();
+            c.StartupFolderLabel   = "Projects";
+        });
+        var before = vm.SelectedFolder;
+
+        Assert.False(await vm.GoToStartupFolderAsync());
+
+        Assert.Same(before, vm.SelectedFolder);
+        Assert.Contains("still loading", vm.StatusText, StringComparison.Ordinal);
+    }
 }

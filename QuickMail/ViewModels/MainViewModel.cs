@@ -569,6 +569,50 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return $"Startup folder '{previous}' cleared. QuickMail will open in All Mail.";
     }
 
+    /// <summary>
+    /// Goes back to the startup folder — the "Go to Inbox" of a client whose inbox is whatever the
+    /// user chose to open in, All Mail by default. Reads the setting afresh, so a startup folder
+    /// changed mid-session is the one it goes to. A folder that no longer resolves lands in All
+    /// Mail and says why, as startup does. Returns false when nothing was selected (the folder list
+    /// has not loaded yet), so the View knows not to move focus.
+    /// </summary>
+    public async Task<bool> GoToStartupFolderAsync()
+    {
+        var cfg = _configService.Load();
+        if (StartupView(cfg) is { } view)
+        {
+            await ApplyViewAsync(view);
+            return true;
+        }
+
+        var folder = ResolveStartupFolder(cfg, out var fallbackReason);
+        if (fallbackReason != null && _cachedFolders.Count == 0)
+        {
+            // Nothing to resolve against yet; that is not the same as the folder being gone.
+            StatusText = "Folders are still loading.";
+            Announce(StatusText, AnnouncementCategory.Result);
+            return false;
+        }
+
+        folder ??= AllMailFolder;
+        // The tree holds its own instances; select the one it shows so the tree follows.
+        var target = Folders.FirstOrDefault(f =>
+                         !f.IsHeader &&
+                         f.AccountId == folder.AccountId &&
+                         string.Equals(f.FullName, folder.FullName, StringComparison.Ordinal))
+                     ?? folder;
+        await SelectFolderAsync(target);
+
+        if (fallbackReason != null)
+        {
+            // After the fetch, which writes its own count to the status bar.
+            StatusText = fallbackReason;
+            Announce(fallbackReason, AnnouncementCategory.Result);
+            LogService.Log($"GoToStartupFolder: {fallbackReason}");
+        }
+        return true;
+    }
+
     // ── Folder tree expansion (#590) ─────────────────────────────────────────
     // Expanding and collapsing was arrow-keys-only: there was no way to fold a whole account away,
     // and no way to reach either action from a menu, the context menu, or the Command Palette.

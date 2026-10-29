@@ -1020,6 +1020,13 @@ public partial class MainWindow : Window
             id: "view.folderPicker", category: "View", title: "Go to Folder…",
             execute: OpenFolderPicker));
 
+        // Outlook's Go to Inbox key. The "inbox" is whatever the user chose to open in.
+        _registry.Register(new CommandDefinition(
+            id: "view.goToStartupFolder", category: "View", title: "Go to Startup Folder",
+            execute: GoToStartupFolder,
+            defaultKey: Key.I, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            description: "Return to your inbox: the folder QuickMail opens in"));
+
         _registry.Register(new CommandDefinition(
             id: "view.searchFolders", category: "View", title: "Search Folders…",
             execute: OpenFolderPicker,
@@ -2470,6 +2477,12 @@ public partial class MainWindow : Window
             await _vm.SelectFolderCommand.ExecuteAsync(target);
             FocusActiveMessagePanel();
         }
+    }
+
+    private async void GoToStartupFolder()
+    {
+        if (await _vm.GoToStartupFolderAsync())
+            FocusActiveMessagePanel();
     }
 
     // When keyboard focus enters a list, ensure an item is selected and — for the
@@ -7768,6 +7781,9 @@ public partial class MainWindow : Window
 
     private void MenuSearchFolders_Click(object sender, RoutedEventArgs e)
         => OpenFolderPicker();
+
+    private void MenuGoToStartupFolder_Click(object sender, RoutedEventArgs e)
+        => GoToStartupFolder();
 
     // The menu-bar items are the same action as the command; they delegate so the two entry points
     // cannot drift (they were duplicate copies of the body below).
