@@ -372,10 +372,11 @@ public class ConfigModel
     /// Makes the space bar in every text field reach screen readers as a typed character
     /// (issue #300). WPF inserts a space through an editing command and marks the key handled,
     /// so Windows never sends the WM_CHAR a screen reader watches to end a word, and word echo
-    /// is silent until the next punctuation mark. On by default; the setting exists so the fix
-    /// can be switched off if it turns out to cause trouble. Takes effect immediately.
+    /// is silent until the next punctuation mark. Off by default, so only someone who turns it on
+    /// gets the change: with it on, typed-character echo was reported to stop speaking "space".
+    /// Takes effect immediately.
     /// </summary>
-    public bool NvdaTypingFix { get; set; } = true;
+    public bool NvdaTypingFix { get; set; } = false;
 
     /// <summary>
     /// Whether File, Export Settings and File, Import Settings are offered (issue #507). Off by

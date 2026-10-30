@@ -481,7 +481,7 @@
                                 <CheckBox Content="_NVDA Typing Fix"
                                           IsChecked="{Binding NvdaTypingFix, Mode=TwoWay}"
                                           AutomationProperties.Name="NVDA Typing Fix"/>
-                                <TextBlock Text="Sends the space bar to screen readers as a typed character in every text field, so NVDA speaks each word as you type it rather than running the words together at the next punctuation mark. On by default. Turn it off if typing a space behaves oddly anywhere. Takes effect straight away."
+                                <TextBlock Text="Sends the space bar to screen readers as a typed character in every text field, so NVDA speaks each word as you type it rather than running the words together at the next punctuation mark. Off by default. With it on, typed-character echo may no longer speak the space bar. Takes effect straight away."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </GroupBox>
