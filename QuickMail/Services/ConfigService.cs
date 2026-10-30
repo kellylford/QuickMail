@@ -703,7 +703,7 @@ public class ConfigService : IConfigService
         sb.AppendLine($"NvdaTypingFix = {(config.NvdaTypingFix ? "on" : "off")}");
         sb.AppendLine("# Make the space bar in text fields reach screen readers as a typed character, so");
         sb.AppendLine("# typed-word echo speaks each word as you type (issue #300). Takes effect immediately.");
-        sb.AppendLine("# Default on. Values: on, off.");
+        sb.AppendLine("# Default off. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"TutorialCompleted = {(config.TutorialCompleted ? "on" : "off")}");

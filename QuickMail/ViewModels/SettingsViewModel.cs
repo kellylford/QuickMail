@@ -352,10 +352,10 @@ public partial class SettingsViewModel : ObservableObject
 
     /// <summary>
     /// Sends the space bar to screen readers as a typed character in every text field, so
-    /// typed-word echo works (issue #300). On by default; applied immediately on save.
+    /// typed-word echo works (issue #300). Off by default; applied immediately on save.
     /// </summary>
     [ObservableProperty]
-    private bool _nvdaTypingFix = true;
+    private bool _nvdaTypingFix;
 
     /// <summary>Offers Export Settings and Import Settings on the File menu (#507). Off by default.</summary>
     [ObservableProperty]

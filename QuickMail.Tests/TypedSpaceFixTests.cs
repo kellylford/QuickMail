@@ -22,9 +22,12 @@ namespace QuickMail.Tests;
 public class NvdaTypingFixSettingTests
 {
     [Fact]
-    public void DefaultsToOn()
+    public void DefaultsToOff()
     {
-        Assert.True(new ConfigModel().NvdaTypingFix);
+        // Off until someone opts in: with it on, typed-character echo stopped speaking "space".
+        Assert.False(new ConfigModel().NvdaTypingFix);
+        Assert.False(new SettingsViewModel(new StubConfigService(), new StubCommandRegistry(),
+            new StubThemeService(), ["Arial"]).NvdaTypingFix);
     }
 
     [Fact]
@@ -36,15 +39,15 @@ public class NvdaTypingFixSettingTests
         {
             var service = new ConfigService(new ProfileContext(dir));
             var cfg = service.Load();
-            Assert.True(cfg.NvdaTypingFix);   // default in a fresh profile
-
-            cfg.NvdaTypingFix = false;
-            service.Save(cfg);
-            Assert.False(new ConfigService(new ProfileContext(dir)).Load().NvdaTypingFix);
+            Assert.False(cfg.NvdaTypingFix);   // default in a fresh profile
 
             cfg.NvdaTypingFix = true;
             service.Save(cfg);
             Assert.True(new ConfigService(new ProfileContext(dir)).Load().NvdaTypingFix);
+
+            cfg.NvdaTypingFix = false;
+            service.Save(cfg);
+            Assert.False(new ConfigService(new ProfileContext(dir)).Load().NvdaTypingFix);
         }
         finally
         {
@@ -57,15 +60,15 @@ public class NvdaTypingFixSettingTests
     {
         var config = new StubConfigService();
         var cfg = config.Load();
-        cfg.NvdaTypingFix = false;
+        cfg.NvdaTypingFix = true;
         config.Save(cfg);
 
         var vm = new SettingsViewModel(config, new StubCommandRegistry(), new StubThemeService(), ["Arial"]);
-        Assert.False(vm.NvdaTypingFix);
+        Assert.True(vm.NvdaTypingFix);
 
-        vm.NvdaTypingFix = true;
+        vm.NvdaTypingFix = false;
         vm.SaveCommand.Execute(null);
-        Assert.True(config.Load().NvdaTypingFix);
+        Assert.False(config.Load().NvdaTypingFix);
     }
 }
 

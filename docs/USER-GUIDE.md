@@ -2187,7 +2187,7 @@ Accounts are not part of Settings — they have a window of their own. Open **Fi
 
 **Screen Reader Typing**
 
-- **NVDA Typing Fix** — on by default. With NVDA's typed-word echo on, NVDA speaks each word as you press the space bar in any text field: the message body, To, Cc, Bcc, Subject and the rest. Without it, the space bar never reached NVDA as a typed character, so NVDA said nothing and then spoke all the words run together at the next punctuation mark. Turn it off if typing a space behaves oddly anywhere, and please report what you saw. Takes effect as soon as you select **Save**, including in windows that are already open.
+- **NVDA Typing Fix** — off by default. Turn it on if you use NVDA's typed-word echo: NVDA then speaks each word as you press the space bar in any text field, such as the message body, To, Cc, Bcc and Subject. Without it, the space bar doesn't reach NVDA as a typed character, so NVDA says nothing and then speaks all the words run together at the next punctuation mark. With it on, typed-character echo may no longer speak the space bar. Takes effect as soon as you select **Save**, including in windows that are already open.
 
 **Account Sign-In**
 
