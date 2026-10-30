@@ -58,11 +58,16 @@ public static class TypedSpaceFix
     public static void SetEnabled(bool enabled)
     {
         Enabled = enabled;
+        // The app calls this on its UI thread, which owns Application.Windows. Anything else
+        // (a test host whose Application lives on another thread) only changes the setting.
         var app = Application.Current;
-        if (app is null) return;
+        if (app is null || !app.Dispatcher.CheckAccess()) return;
         foreach (Window window in app.Windows)
-            ApplyToTree(window, enabled);
+            ApplyToWindow(window);
     }
+
+    /// <summary>Applies the current setting to every editor in one window's visual tree.</summary>
+    public static void ApplyToWindow(Window window) => ApplyToTree(window, Enabled);
 
     /// <summary>
     /// Adds the bindings to one editor, or removes the ones this class added. Never touches a

@@ -127,7 +127,10 @@ public class TypedSpaceFixTests
         var window = NewWindow(panel);
         try
         {
+            // In the app SetEnabled walks Application.Windows; the test host's Application
+            // belongs to another thread, so apply to this window the same way.
             TypedSpaceFix.SetEnabled(true);
+            TypedSpaceFix.ApplyToWindow(window);
             Assert.True(TypedSpaceFix.IsApplied(first));
 
             var later = new TextBox();
@@ -137,6 +140,7 @@ public class TypedSpaceFixTests
             Assert.True(TypedSpaceFix.IsApplied(later));
 
             TypedSpaceFix.SetEnabled(false);
+            TypedSpaceFix.ApplyToWindow(window);
             Assert.False(TypedSpaceFix.IsApplied(first));
             Assert.False(TypedSpaceFix.IsApplied(later));
 
