@@ -1,7 +1,7 @@
 # winget manifest for `KellyLford.QuickMail`
 
 > [!IMPORTANT]
-> **Ready, not yet submitted.** The first submission to microsoft/winget-pkgs is a manual
+> **Submitted, not yet merged** (microsoft/winget-pkgs#447170). The first submission is a manual
 > step that waits for Kelly's go: it publishes to a public catalog, and the identifier is
 > permanent once merged. Nothing in this repository submits anything automatically.
 
@@ -80,7 +80,7 @@ Prerequisite: Kelly's go. Any release from 0.8.48 on qualifies; use the newest.
    into copies of these three files in a folder named after the version. Hashes:
    `Get-FileHash <file> -Algorithm SHA256`. If you use `wingetcreate new` instead, delete the
    `UpgradeCode` and installer-level `ProductCode` it adds (see above).
-2. `winget validate --manifest <folder>`. The template filled with 0.8.52's values passes.
+2. `winget validate --manifest <folder>`. The template filled with 0.8.65's values passes. winget-pkgs rejects manifests whose `ManifestVersion` it has deprecated (1.10.0 was, on 2026-10-30), so move the schema lines and `ManifestVersion` to the version it names.
 3. Install from the local manifest **in Windows Sandbox**, never on a working machine — an
    MSI upgrade over the copy you use is an uninstall and reinstall of it. winget-pkgs ships
    `Tools/SandboxTest.ps1` for this. Inside: `winget install --manifest <folder>`, launch,

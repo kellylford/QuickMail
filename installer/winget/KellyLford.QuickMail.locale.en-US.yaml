@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.28.0.schema.json
 # Default-locale manifest. See README.md in this folder.
 PackageIdentifier: KellyLford.QuickMail
 PackageVersion: <VERSION>
@@ -37,4 +37,4 @@ Documentations:
 - DocumentLabel: User Guide
   DocumentUrl: https://kellylford.github.io/QuickMail/
 ManifestType: defaultLocale
-ManifestVersion: 1.10.0
+ManifestVersion: 1.28.0
