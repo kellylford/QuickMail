@@ -8,6 +8,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Threading;
 using QuickMail.Helpers;
@@ -104,9 +105,9 @@ public class TypedSpaceFixTests
             TypedSpaceFix.SetEnabled(false);
             foreach (TextBoxBase box in new TextBoxBase[] { text, rich })
             {
-                Assert.True(PressSpace(box, ModifierKeys.None), $"{box.GetType().Name}: WPF no longer handles Space itself");
+                Assert.True(PressSpace(box), $"{box.GetType().Name}: WPF no longer handles Space itself");
                 TypedSpaceFix.Apply(box, true);
-                Assert.False(PressSpace(box, ModifierKeys.None), $"{box.GetType().Name}: Space still handled with the fix");
+                Assert.False(PressSpace(box), $"{box.GetType().Name}: Space still handled with the fix");
             }
         }
         finally
@@ -157,7 +158,72 @@ public class TypedSpaceFixTests
         }
     }
 
-    private static bool PressSpace(TextBoxBase box, ModifierKeys modifiers)
+    // The outcome, through real keyboard input: with the fix, Space and Shift+Space each put in
+    // exactly one space and each produce the WM_CHAR 0x20 a screen reader listens for. Guards
+    // against a WPF change that inserts on KeyDown again (double space) or drops the path (none).
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
+    public void RealSpaceKeys_InsertOneSpaceEach_AndProduceWmChar()
+    {
+        var wasEnabled = TypedSpaceFix.Enabled;
+        var text = new TextBox();
+        var rich = new RichTextBox();
+        var window = NewWindow(new StackPanel { Children = { text, rich } });
+        var spaceChars = 0;
+        void OnMsg(ref System.Windows.Interop.MSG m, ref bool handled)
+        {
+            if (m.message == 0x0102 && (int)m.wParam == 0x20) spaceChars++;   // WM_CHAR ' '
+        }
+        System.Windows.Interop.ComponentDispatcher.ThreadPreprocessMessage += OnMsg;
+        try
+        {
+            window.Activate();
+            Assert.True(PumpUntil(() => window.IsActive), "setup: the test window never became active");
+            foreach (TextBoxBase box in new TextBoxBase[] { text, rich })
+            {
+                TypedSpaceFix.Apply(box, true);
+                Keyboard.Focus(box);
+                Assert.True(PumpUntil(() => box.IsKeyboardFocusWithin), $"setup: {box.GetType().Name} never got focus");
+                spaceChars = 0;
+
+                OsInput.PressKey(0x41);                 // a
+                OsInput.PressKey(0x20);                 // Space
+                OsInput.PressKey(0x20, shift: true);    // Shift+Space
+                OsInput.PressKey(0x42);                 // b
+                var expected = "a  b";
+                Assert.True(PumpUntil(() => TextOf(box) == expected),
+                    $"{box.GetType().Name}: text is '{TextOf(box)}', expected '{expected}'");
+                Assert.Equal(2, spaceChars);
+            }
+        }
+        finally
+        {
+            System.Windows.Interop.ComponentDispatcher.ThreadPreprocessMessage -= OnMsg;
+            window.Close();
+            TypedSpaceFix.SetEnabled(wasEnabled);
+        }
+    }
+
+    private static string TextOf(TextBoxBase box) => box switch
+    {
+        TextBox t => t.Text,
+        RichTextBox r => new TextRange(r.Document.ContentStart, r.Document.ContentEnd).Text.TrimEnd('\r', '\n'),
+        _ => "",
+    };
+
+    private static bool PumpUntil(Func<bool> condition, int timeoutMs = 5000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) return false;
+            Drain();
+            System.Threading.Thread.Sleep(10);
+        }
+        return true;
+    }
+
+    private static bool PressSpace(TextBoxBase box)
     {
         box.Focus();
         var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(box)!, 0, Key.Space)
