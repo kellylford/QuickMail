@@ -350,6 +350,13 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _connectionDiagnostics;
 
+    /// <summary>
+    /// Sends the space bar to screen readers as a typed character in every text field, so
+    /// typed-word echo works (issue #300). On by default; applied immediately on save.
+    /// </summary>
+    [ObservableProperty]
+    private bool _nvdaTypingFix = true;
+
     /// <summary>Offers Export Settings and Import Settings on the File menu (#507). Off by default.</summary>
     [ObservableProperty]
     private bool _allowSettingsTransfer;
@@ -581,6 +588,7 @@ public partial class SettingsViewModel : ObservableObject
         StartupSyncScope                 = ConfigModel.ParseStartupSyncScope(cfg.StartupSyncScope);
         EnableLogging                    = cfg.EnableLogging;
         ConnectionDiagnostics            = cfg.ConnectionDiagnostics;
+        NvdaTypingFix                    = cfg.NvdaTypingFix;
         AllowSettingsTransfer            = cfg.AllowSettingsTransfer;
         MessageOpenMode = cfg.Windowing.MessageOpenMode switch
         {
@@ -696,6 +704,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.StartupSyncScope                 = StartupSyncScope;
         cfg.EnableLogging                    = EnableLogging;
         cfg.ConnectionDiagnostics            = ConnectionDiagnostics;
+        cfg.NvdaTypingFix                    = NvdaTypingFix;
         cfg.AllowSettingsTransfer            = AllowSettingsTransfer;
         cfg.Windowing.MessageOpenMode = MessageOpenMode switch
         {

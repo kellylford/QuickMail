@@ -44,6 +44,8 @@ public partial class SettingsDialog : Window
         // problem that is happening now, and making them restart would lose the very thing they
         // are trying to capture.
         ConnectionJournal.Enabled = _vm.ConnectionDiagnostics;
+        // Live too, so the fix can be switched off and on while testing without a restart (#300).
+        TypedSpaceFix.SetEnabled(_vm.NvdaTypingFix);
         DialogResult = true;
         Close();
     }

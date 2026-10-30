@@ -369,6 +369,15 @@ public class ConfigModel
     public bool ConnectionDiagnostics { get; set; } = false;
 
     /// <summary>
+    /// Makes the space bar in every text field reach screen readers as a typed character
+    /// (issue #300). WPF inserts a space through an editing command and marks the key handled,
+    /// so Windows never sends the WM_CHAR a screen reader watches to end a word, and word echo
+    /// is silent until the next punctuation mark. On by default; the setting exists so the fix
+    /// can be switched off if it turns out to cause trouble. Takes effect immediately.
+    /// </summary>
+    public bool NvdaTypingFix { get; set; } = true;
+
+    /// <summary>
     /// Whether File, Export Settings and File, Import Settings are offered (issue #507). Off by
     /// default: moving settings means writing account details and the address book to a file, or
     /// replacing this computer's settings, so it waits until the user asks for it. Stays on once

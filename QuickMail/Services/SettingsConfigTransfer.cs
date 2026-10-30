@@ -81,6 +81,7 @@ public static class SettingsConfigTransfer
         nameof(ConfigModel.AnnounceResults),
         nameof(ConfigModel.AnnounceMessageActions),
         nameof(ConfigModel.AnnounceSpellingWhileTyping),
+        nameof(ConfigModel.NvdaTypingFix),
         nameof(ConfigModel.AnnounceSpellingWhileNavigating),
         nameof(ConfigModel.AnnounceSpellingSuggestions),
         nameof(ConfigModel.SpellingSuggestionsVerbosity),
