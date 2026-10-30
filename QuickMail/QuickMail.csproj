@@ -15,7 +15,7 @@
          System.Windows(.Media) types this codebase uses unqualified (Point, Size, Color, Brush,
          Application, MessageBox, ...). -->
     <UseWindowsForms>true</UseWindowsForms>
-    <Version>0.8.65</Version>
+    <Version>0.8.66</Version>
     <AssemblyVersion>0.8.65</AssemblyVersion>
     <FileVersion>0.8.65</FileVersion>
     <!-- Velopack needs a hand-written Main that runs VelopackApp.Build().Run() before WPF
