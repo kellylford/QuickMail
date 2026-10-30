@@ -2185,6 +2185,10 @@ Accounts are not part of Settings — they have a window of their own. Open **Fi
 
 ### Advanced
 
+**Screen Reader Typing**
+
+- **NVDA Typing Fix** — on by default. With NVDA's typed-word echo on, NVDA speaks each word as you press the space bar in any text field: the message body, To, Cc, Bcc, Subject and the rest. Without it, the space bar never reached NVDA as a typed character, so NVDA said nothing and then spoke all the words run together at the next punctuation mark. Turn it off if typing a space behaves oddly anywhere, and please report what you saw. Takes effect as soon as you select **Save**, including in windows that are already open.
+
 **Account Sign-In**
 
 - **Sign in with Google for Gmail accounts** — off by default. Google no longer authorizes QuickMail for new accounts, so Gmail normally uses an app password. Turn this on only if your Google authorization predates that change; it adds a **Gmail (sign in with Google)** provider and a Google choice under **Authentication** in the account dialogs. Takes effect the next time QuickMail starts. Gmail accounts already using Google sign-in keep working whether this is on or off. See [Gmail (Google Account)](#gmail-google-account).

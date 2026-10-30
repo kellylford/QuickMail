@@ -567,6 +567,10 @@ public partial class App : Application
             var contactSyncService  = new ContactSyncService(accountService, contactService, graphContactSource, googleContactSource, iCloudContactSource);
 
             var startupCfg = configService.Load();
+            // #300: before any window with a text field exists, so every editor that loads from
+            // here on sends Space to screen readers as a typed character.
+            TypedSpaceFix.Register();
+            TypedSpaceFix.SetEnabled(startupCfg.NvdaTypingFix);
             // ui-probe (#180): theme/scale land in the loaded config BEFORE
             // ThemeService.Initialize so the first render is already correct;
             // ThemeService never persists, so config.ini is untouched.

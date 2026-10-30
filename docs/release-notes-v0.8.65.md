@@ -11,6 +11,12 @@ All Inboxes, or All Mail if you have not chosen one. Focus moves to the message 
 
 ## Fixed
 
+- **NVDA speaks each word as you type it.** With NVDA's typed-word echo on, typing in the message
+  body or any other QuickMail text field said nothing at each space, then spoke every word run
+  together at the next punctuation mark ("hellothisisatest"). The space bar now reaches NVDA as a
+  typed character, the way it does in other Windows programs. If typing a space misbehaves
+  anywhere, the fix can be turned off in **Settings → Advanced → NVDA Typing Fix**; please report
+  what you saw. (#300)
 - **Focus no longer jumps back to the message list after you have moved on.** Going to All Mail,
   another combined folder such as All Inboxes, or a saved view with Enter in the folder tree or Go
   to Folder puts you in its message list as soon as the messages already on this computer appear.

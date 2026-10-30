@@ -312,6 +312,7 @@ public class ConfigService : IConfigService
                         break;
                     case "enablelogging": config.EnableLogging = ParseBool(value); break;
                     case "connectiondiagnostics": config.ConnectionDiagnostics = ParseBool(value); break;
+                    case "nvdatypingfix":         config.NvdaTypingFix         = ParseBool(value); break;
                     case "allowsettingstransfer": config.AllowSettingsTransfer = ParseBool(value); break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
                     case "desktopshortcutprompted": config.DesktopShortcutPrompted = ParseBool(value); break;
@@ -697,6 +698,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# The journal records account labels (which may be email addresses), server host");
         sb.AppendLine("# names and IP addresses. It never records passwords, tokens or message content.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"NvdaTypingFix = {(config.NvdaTypingFix ? "on" : "off")}");
+        sb.AppendLine("# Make the space bar in text fields reach screen readers as a typed character, so");
+        sb.AppendLine("# typed-word echo speaks each word as you type (issue #300). Takes effect immediately.");
+        sb.AppendLine("# Default on. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"TutorialCompleted = {(config.TutorialCompleted ? "on" : "off")}");
