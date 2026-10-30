@@ -617,6 +617,26 @@ public class ClientRuleConditionsTests
     }
 
     [Fact]
+    public void ASwitchedOffSentToList_KeepsItsTextOnReopening()
+    {
+        // The same for Sent to (review of #858): saved switched off, the whole list is kept but tests nothing,
+        // and reopening the rule offers it back, unchecked.
+        var vm = Editor();
+        vm.SentToAddresses = "me@work.com, team@work.com";
+        vm.UseSentToAddresses = false;
+        vm.UseSubjectContains = true;
+        vm.SubjectContains = "Digest";
+
+        var rule = vm.ToClientRule(Guid.NewGuid());
+        Assert.False(rule.UseToCondition);
+        Assert.Empty(rule.ToValues());
+
+        var reopened = ServerRuleEditorViewModel.ForEditClient(rule);
+        Assert.Equal("me@work.com, team@work.com", reopened.SentToAddresses);
+        Assert.False(reopened.UseSentToAddresses);
+    }
+
+    [Fact]
     public void WithNeitherFromConditionLive_BothTextsComeBack()
     {
         // #665 again: two switched-off boxes, two texts to offer back. Neither owns the old field, so
