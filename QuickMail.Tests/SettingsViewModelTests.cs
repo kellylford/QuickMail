@@ -416,4 +416,26 @@ public class SettingsViewModelTests
         var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
         Assert.False(vmLoad.AnnounceSpellingSuggestions);
     }
+
+    // #883: "Check spelling as I type" is on unless the user turns it off.
+    [Fact]
+    public void CheckSpellingAsYouType_DefaultsToTrue()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        Assert.True(vm.CheckSpellingAsYouType);
+    }
+
+    [Fact]
+    public void CheckSpellingAsYouType_LoadAndSave_RoundTrips()
+    {
+        var configService = new StubConfigService();
+
+        var vmSave = new SettingsViewModel(configService, new StubCommandRegistry());
+        vmSave.CheckSpellingAsYouType = false;
+        vmSave.SaveCommand.Execute(null);
+
+        Assert.False(configService.Load().CheckSpellingAsYouType);
+        var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
+        Assert.False(vmLoad.CheckSpellingAsYouType);
+    }
 }

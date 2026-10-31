@@ -28,6 +28,25 @@ public class ConfigServiceSaveTests
         Assert.Equal(config.AnnounceHints, reloaded.AnnounceHints);
     }
 
+    // #883: the setting must survive a restart, and a config.ini written before it existed
+    // must still mean "on".
+    [Fact]
+    public void CheckSpellingAsYouType_DefaultsOn_AndRoundTripsOff()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        Assert.True(config.CheckSpellingAsYouType);
+
+        config.CheckSpellingAsYouType = false;
+        service.Save(config);
+
+        Assert.False(new ConfigService(profile).Load().CheckSpellingAsYouType);
+        Assert.Contains("CheckSpellingAsYouType = off",
+            File.ReadAllText(Path.Combine(profile.ProfileDir, "config.ini")));
+    }
+
     [Fact]
     public void SaveThenLoad_RoundTripsSort()
     {

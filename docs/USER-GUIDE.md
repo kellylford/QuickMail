@@ -1136,6 +1136,14 @@ Control announcement behavior in **File → Settings → General → Screen Read
 - **Announce spelling suggestions** — turn off to hear only the misspelled word without suggestions.
 - **Spelling Suggestions Verbosity** — choose **Numbers with suggestions** (default) to hear "1: the, 2: then" so `Alt+1/2/3` maps directly to what is spoken, or **Just suggestions** to hear "the, then, them" without numbers.
 
+#### Turning off spell checking as you type
+
+QuickMail checks spelling in the background as you write, using the spell checker built into Windows. After you paste a long text with many words the dictionary doesn't know (names, model numbers, web addresses), that check can hold the compose window for 10 to 15 seconds. Meanwhile the window responds slowly, and a screen reader may read a line twice, skip lines, or say nothing as you arrow through the text. This comes from WPF, the Windows technology QuickMail is built on, and is reported to Microsoft as [dotnet/wpf#6106](https://github.com/dotnet/wpf/issues/6106).
+
+If it gets in your way, turn off **File → Settings → General → Composing → Check spelling as I type**. Messages you open afterwards are not spell-checked while you write: no underlines, and no misspelling announcements as you move the cursor. When you want a check, press **F7** for the Check Spelling dialog, or **Ctrl+F7** / **Ctrl+Shift+F7** for the next or previous misspelling. The first of these you use in a message starts spell checking for that message, so expect a short wait the first time in a long message. After that, `Alt+1`, `Alt+2` and `Alt+3` work as usual. If you press **Alt+F7** to repeat the spelling announcement before any of those, QuickMail tells you spell checking is off for this message.
+
+You can also leave the setting on and simply wait 15 seconds or so after a long paste before reviewing what you pasted.
+
 ### Attachments
 
 Attach files with `Ctrl+Shift+A` in the compose window, by pasting files from the clipboard (`Ctrl+V`), or by dragging and dropping them onto the window. A screen reader announces how many files were attached.
@@ -2170,6 +2178,7 @@ Press **Ctrl+,** to open Settings.
 - **Reading Mode** — Reading Pane, Tab, or Window
 - **Mark messages read** — automatically on open, or manually only
 - **Default compose mode** — Plain Text, Markdown, or HTML
+- **Check spelling as I type** — on by default. Turn it off if a message stalls, or your screen reader misreads lines, after you paste a long text. See [Turning off spell checking as you type](#turning-off-spell-checking-as-you-type).
 - **Auto-save drafts** — on/off and interval
 - **Read messages as plain text** — when on, display all messages as plain text instead of HTML
 - **Show pictures included in messages** — on by default. Shows pictures that travel with a message; nothing is fetched from the sender.

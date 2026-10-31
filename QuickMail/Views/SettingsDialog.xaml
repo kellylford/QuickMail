@@ -336,6 +336,14 @@
                                     <TextBlock Text="Drafts and templates always reopen in plain text."
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0"/>
                                 </StackPanel>
+
+                                <CheckBox x:Name="CheckSpellingAsYouTypeCheckBox"
+                                          Content="Check spelling as I t_ype"
+                                          IsChecked="{Binding CheckSpellingAsYouType, Mode=TwoWay}"
+                                          Margin="0,10,0,0"
+                                          AutomationProperties.HelpText="Turn off if the message stalls or a screen reader misreads lines after you paste long text. Check Spelling (F7) and Next Misspelling (Ctrl+F7) still work. Applies to messages you open afterwards."/>
+                                <TextBlock Text="Turn off if the message stalls, or a screen reader misreads lines, after you paste long text. Underlines and spelling announcements then start only when you use Check Spelling (F7) or Next Misspelling (Ctrl+F7) in that message. Applies to messages you open afterwards."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </GroupBox>
 
