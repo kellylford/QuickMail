@@ -1129,7 +1129,7 @@ The message stays visible and editable behind the Spelling window, with the curr
 
 Inline navigation wraps around the message so it always finds misspellings wherever the cursor starts.
 
-When a screen reader is active, QuickMail announces each misspelling along with up to three suggestions. By default, each suggestion is numbered — for example: "Misspelling: teh. 1: the, 2: then, 3: them." Press `Alt+1`, `Alt+2`, or `Alt+3` to replace the misspelled word with that numbered suggestion without leaving the compose area.
+When a screen reader is active, QuickMail announces each misspelling along with up to three suggestions. By default, each suggestion is numbered — for example: "Misspelling: teh. 1: the, 2: then, 3: them." Press `Alt+1`, `Alt+2`, or `Alt+3` to replace the misspelled word with that numbered suggestion without leaving the compose area, and `Ctrl+Z` to undo the replacement. If you have typed since you heard the misspelling and the word has moved, QuickMail announces the misspelling at the cursor instead of replacing anything; press the key again to replace that one.
 
 Control announcement behavior in **File → Settings → General → Screen Reader Announcements**:
 
@@ -1155,7 +1155,7 @@ Press **Alt+A** to move focus to the list of files already attached — the same
 Save a message you write often — a standard reply, a form response — as a reusable template.
 
 - **Save as Template** (command palette) saves the current subject and body as a new template, titled from the subject line (or "Untitled" if the subject is empty).
-- **Insert Template…** (command palette) opens a search-and-select picker: type to filter by title, arrow to a template, and press **Insert** or Enter to add its subject (if the Subject field is empty) and body into the message you are composing.
+- **Insert Template…** (command palette) opens a search-and-select picker: type to filter by title, arrow to a template, and press **Insert** or Enter to add its subject (if the Subject field is empty) and body into the message you are composing. The body goes in where your cursor is, on lines of its own, and `Ctrl+Z` takes it out again.
 
 Templates can include `{sender}`, `{date}`, and `{time}` placeholders, which are replaced with your display name and today's date and time when the template is inserted. Templates are plain text; in HTML mode, only the text is inserted.
 

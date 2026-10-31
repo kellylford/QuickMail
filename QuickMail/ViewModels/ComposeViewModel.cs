@@ -1037,11 +1037,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
     // The Markdown of text with no formatting is that text, so when the two agree nothing is lost
     // going to plain text — a Plain → HTML → Plain round trip doesn't ask (#887). A picture is
-    // always lost, so it always asks.
+    // always lost, and so is underline, which has no Markdown form; either always asks.
     private bool HtmlHasFormattingWorthConfirming(RichBodySnapshot snap)
     {
         if (snap.IsEmpty) return false;
-        if (ReferencedInlineImages().Count > 0) return true;
+        if (PicturesReferencedBy(snap.Html).Count > 0) return true;
+        if (snap.Html.Contains("<u>", StringComparison.OrdinalIgnoreCase)) return true;
         static string Norm(string s) => s.Replace("\r\n", "\n").Trim();
         return Norm(snap.Markdown) != Norm(snap.PlainText);
     }

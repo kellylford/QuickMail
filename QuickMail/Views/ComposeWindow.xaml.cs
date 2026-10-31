@@ -829,7 +829,8 @@ public partial class ComposeWindow : Window
         _currentSpellingSuggestions = null;
     }
 
-    private void AnnounceSpellingAtCurrentPosition()
+    /// <param name="prefix">Said first, in the same announcement (plain text and Markdown only).</param>
+    private void AnnounceSpellingAtCurrentPosition(string? prefix = null)
     {
         // Caret moves and typing must not turn the speller on when the user has turned
         // "Check spelling as I type" off (#883): only F7 and Ctrl+F7 / Ctrl+Shift+F7 do.
@@ -877,7 +878,7 @@ public partial class ComposeWindow : Window
         _currentSpellingWord = word;
         _currentSpellingSuggestions = suggestions;
 
-        AccessibilityHelper.Announce(this, BuildSpellingAnnouncement(word, suggestions),
+        AccessibilityHelper.Announce(this, prefix + BuildSpellingAnnouncement(word, suggestions),
             category: AnnouncementCategory.Result);
     }
 
@@ -1036,7 +1037,9 @@ public partial class ComposeWindow : Window
         if (_vm.CurrentMode != ComposeMode.Html)
         {
             int caret = BodyBox.SelectionStart;
-            var (insert, caretAfter) = TextInsertion.LinesAt(BodyBox.Text, caret, text);
+            // Decide the line breaks from the text as it will be once the selection is replaced.
+            var remaining = BodyBox.Text.Remove(caret, BodyBox.SelectionLength);
+            var (insert, caretAfter) = TextInsertion.LinesAt(remaining, caret, text);
             BodyBox.SelectedText = insert;
             BodyBox.Select(caret + caretAfter, 0);
             BodyBox.Focus();
@@ -1048,21 +1051,41 @@ public partial class ComposeWindow : Window
         try
         {
             if (!RichBodyBox.Selection.IsEmpty) RichBodyBox.Selection.Text = string.Empty;
-            // Forward gravity keeps the pointer after each piece of text inserted at it.
-            static TextPointer Forward(TextPointer p) => p.GetPositionAtOffset(0, LogicalDirection.Forward) ?? p;
-            var pos = Forward(RichBodyBox.Selection.Start);
-            var para = pos.Paragraph;
-            if (para != null && pos.CompareTo(para.ContentStart) != 0)
-                pos = Forward(pos.InsertParagraphBreak());
-            for (int i = 0; i < lines.Length; i++)
+            var caret = RichBodyBox.Selection.Start;
+            var para = caret.Paragraph;
+            if (para == null)
             {
-                if (i > 0) pos = Forward(pos.InsertParagraphBreak());
-                pos.InsertTextInRun(lines[i]);
+                RichBodyBox.Selection.Text = text; // not in a paragraph: nowhere to put blocks
+                return;
             }
-            var end = pos.GetPositionAtOffset(0, LogicalDirection.Backward) ?? pos;
-            para = pos.Paragraph;
-            if (para != null && pos.CompareTo(para.ContentEnd) != 0)
-                pos.InsertParagraphBreak();
+
+            // The template goes in as new paragraphs of plain text beside the caret's paragraph,
+            // never into it: text added to a paragraph, or split off one, takes on its heading,
+            // code or bold formatting (as Enter does, see HandleRichEnter).
+            var newParas = lines.Select(l => new Paragraph(new Run(l))).ToList();
+            bool atStart = new TextRange(para.ContentStart, caret).Text.Length == 0;
+            bool atEnd = new TextRange(caret, para.ContentEnd).Text.Length == 0;
+            var siblings = para.SiblingBlocks!;
+            if (atStart && atEnd)
+            {
+                foreach (var p in newParas) siblings.InsertBefore(para, p);
+                siblings.Remove(para); // the template fills the empty line, as in plain text
+            }
+            else if (atStart)
+            {
+                foreach (var p in newParas) siblings.InsertBefore(para, p);
+            }
+            else if (atEnd)
+            {
+                Block after = para;
+                foreach (var p in newParas) { siblings.InsertAfter(after, p); after = p; }
+            }
+            else
+            {
+                var rest = caret.InsertParagraphBreak().Paragraph!;
+                foreach (var p in newParas) rest.SiblingBlocks!.InsertBefore(rest, p);
+            }
+            var end = newParas[^1].ContentEnd;
             RichBodyBox.Selection.Select(end, end);
         }
         finally
@@ -1077,7 +1100,8 @@ public partial class ComposeWindow : Window
     /// <paramref name="replacement"/>. The stored offsets are only trusted while the word is
     /// still there — typing since the announcement shifts the text under them, and replacing
     /// at stale offsets mangled the message (#885). When it has moved, the misspelling at the
-    /// caret is announced afresh instead, so the next Alt+1 acts on what the user just heard.
+    /// caret is announced afresh instead, after saying nothing was replaced, so the next Alt+1
+    /// acts on what the user just heard.
     /// The edit goes through the selection so it is one undo step (#886); assigning
     /// <c>Text</c> wiped the undo history.
     /// </summary>
@@ -1089,10 +1113,11 @@ public partial class ComposeWindow : Window
                           && text.AsSpan(start, end - start).SequenceEqual(_currentSpellingWord);
         if (!stillThere)
         {
+            const string nothingReplaced = "Nothing replaced, the text has changed. ";
             ClearSpellingContext();
-            AnnounceSpellingAtCurrentPosition();
+            AnnounceSpellingAtCurrentPosition(nothingReplaced);
             if (_currentSpellingWordStart < 0)
-                AccessibilityHelper.Announce(this, "No misspelling at the cursor.",
+                AccessibilityHelper.Announce(this, nothingReplaced + "No misspelling at the cursor.",
                     category: AnnouncementCategory.Result);
             return;
         }

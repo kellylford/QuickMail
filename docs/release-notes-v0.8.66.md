@@ -14,6 +14,29 @@ announcements while you write. **Check Spelling (F7)** and **Next/Previous Missp
 for that message. The setting applies to messages you open after changing it. The underlying
 problem is reported to Microsoft as dotnet/wpf#6106. (#883)
 
+## Fixed
+
+These came out of a bug bash of editing in the compose window, with screen readers and the
+keyboard alone.
+
+- **Alt+1, Alt+2 and Alt+3 no longer replace the wrong letters.** In Plain Text and Markdown, if
+  you typed after hearing a misspelling, the replacement used the word's old position and mangled
+  the text around it ("I xxrecieve mail" became "I receiveve mail"). Now, if the word has moved,
+  QuickMail tells you the misspelling at the cursor instead, and the next Alt+1 acts on that. (#885)
+- **Ctrl+Z undoes a spelling replacement.** Replacing a word with Alt+1 used to wipe the undo
+  history in Plain Text and Markdown. (#886)
+- **Switching to HTML and back no longer double-spaces your message.** Going from Plain Text to
+  HTML and back put a blank line between every line, and the plain-text part of HTML messages you
+  sent was double-spaced the same way. Switching back to Plain Text also no longer asks whether
+  to lose formatting when there isn't any. (#887)
+- **Insert Template puts the template where your cursor is**, on lines of its own, and Ctrl+Z
+  takes it out again. In Plain Text and Markdown it used to go at the end of the message, stuck to
+  the last line, and couldn't be undone. In HTML it went into the middle of the line you were on. (#888, #889)
+- **Bold and italic in Markdown leave a selected trailing space outside the markers.** Selecting a
+  word with Ctrl+Shift+Right and pressing Ctrl+B gave `**bold **please`, which isn't bold. (#890)
+- **Shift+Tab from the message body no longer goes to Send.** It now goes back to the field before
+  the body, rather than one Enter away from sending a half-written message. (#897)
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

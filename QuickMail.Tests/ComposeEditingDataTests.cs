@@ -73,6 +73,18 @@ public class ComposeEditingDataTests
         Assert.Equal("one\ntwo\nthree", HtmlStripper.ToPlainText("<p>one<br />\ntwo<br />\nthree</p>\n"));
     }
 
+    [Theory]
+    [InlineData("a\n\nb", "a\n\nb")]
+    [InlineData("<html><body>Hi,\n\nThanks for this.\n\nBob</body></html>", "Hi,\n\nThanks for this.\n\nBob")]
+    [InlineData("<p>one<br />\r\ntwo</p>", "one\ntwo")]
+    [InlineData("<p>one<br /></span>\ntwo</p>", "one\ntwo")]
+    public void HtmlStripper_KeepsLineBreaksWrittenInTheText(string html, string expected)
+    {
+        // HTML-only mail that is really plain text keeps its paragraphs; only the one line
+        // break straight after a tag's own break is layout.
+        Assert.Equal(expected, HtmlStripper.ToPlainText(html));
+    }
+
     [Fact]
     public void HtmlStripper_KeepsBlankLinesInsidePre()
     {
@@ -100,6 +112,23 @@ public class ComposeEditingDataTests
         Assert.True(vm.SetMode(ComposeMode.PlainText));
         Assert.False(asked);
         Assert.Equal("one\ntwo", vm.Body);
+    }
+
+    [StaTheory]
+    [InlineData("<p>one<br />two</p><p>three</p>", false)]
+    [InlineData("<p>one <u>underlined</u></p>", true)]
+    [InlineData("<p>one <strong>bold</strong></p>", true)]
+    public void HtmlToPlain_AsksOnlyWhenTheRealDocumentHasFormatting(string html, bool expectAsk)
+    {
+        var snapshot = RichTextDocumentConverter.Snapshot(RichTextDocumentConverter.FromHtml(html));
+        var vm = NewVm();
+        vm.SetMode(ComposeMode.Html);
+        vm.RichBodyProvider = () => snapshot;
+        bool asked = false;
+        vm.ConfirmationRequested = (_, _) => { asked = true; return true; };
+
+        Assert.True(vm.SetMode(ComposeMode.PlainText));
+        Assert.Equal(expectAsk, asked);
     }
 
     [Fact]
@@ -161,6 +190,59 @@ public class ComposeEditingDataTests
             Assert.True(rich.CanUndo);
             rich.Undo();
             Assert.Equal(before, Paragraphs(rich));
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void InsertTemplate_PlainText_OverASelection_AddsNoBlankLine()
+    {
+        var (window, _) = ComposeWindowSpellCheckTests.NewHeadlessComposeWindowWithVm();
+        var body = (TextBox)window.FindName("BodyBox");
+        window.Show();
+        try
+        {
+            body.Text = "Line one\nLine two";
+            body.Select(5, 3); // "one"
+            window.InsertTextAtCaret("Sign off");
+            Assert.Equal("Line \nSign off\nLine two", body.Text);
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void InsertTemplate_Html_AfterAHeadingOrInBold_IsPlainText()
+    {
+        var (window, vm) = ComposeWindowSpellCheckTests.NewHeadlessComposeWindowWithVm();
+        var rich = (RichTextBox)window.FindName("RichBodyBox");
+        window.Show();
+        try
+        {
+            vm.Body = "Title\n\nSome bold words";
+            vm.SetMode(ComposeMode.Html);
+            window.UpdateLayout();
+            var heading = (Paragraph)rich.Document.Blocks.FirstBlock;
+            RichTextBlockEditing.SetHeading(heading, 2);
+            var last = (Paragraph)rich.Document.Blocks.LastBlock;
+            new TextRange(AfterCharacters(last, 5), AfterCharacters(last, 9))
+                .ApplyPropertyValue(TextElement.FontWeightProperty, FontWeights.Bold);
+
+            rich.CaretPosition = heading.ContentEnd;
+            window.InsertTextAtCaret("Best,\nKelly");
+            rich.CaretPosition = AfterCharacters((Paragraph)rich.Document.Blocks.LastBlock, 7); // in "bold"
+            window.InsertTextAtCaret("Sign off");
+
+            var html = RichTextDocumentConverter.ToHtml(rich.Document);
+            Assert.Contains("<p>Best,</p>", html);
+            Assert.Contains("<p>Kelly</p>", html);
+            Assert.Contains("<p>Sign off</p>", html);
+            foreach (var p in rich.Document.Blocks.OfType<Paragraph>()
+                         .Where(p => new TextRange(p.ContentStart, p.ContentEnd).Text is "Best," or "Kelly" or "Sign off"))
+            {
+                Assert.Equal(0, RichTextBlockEditing.HeadingLevel(p));
+                Assert.Equal(FontWeights.Normal,
+                    new TextRange(p.ContentStart, p.ContentEnd).GetPropertyValue(TextElement.FontWeightProperty));
+            }
         }
         finally { window.Close(); }
     }

@@ -39,6 +39,8 @@ public static class HtmlStripper
         int linkTextStart = -1;
         string? linkHref = null;
         int preDepth = 0;
+        // True when the last thing written was a line break written by a tag (<br />, </p>).
+        bool tagBreakLast = false;
         int i = 0;
 
         while (i < html.Length)
@@ -46,10 +48,17 @@ public static class HtmlStripper
             var c = html[i];
             if (c != '<')
             {
-                // A source line break right after a break already written (<br />\n, </p>\n) is
+                // The one source line break straight after a tag's break (<br />\n, </p>\n) is
                 // markup layout, not content: outside <pre> HTML doesn't render it. Kept, every
-                // <br /> became a blank line (#887).
-                if (c is '\n' or '\r' && preDepth == 0 && sb.Length > 0 && sb[^1] == '\n') { i++; continue; }
+                // <br /> became a blank line (#887). Line breaks in the text itself still pass
+                // through: some HTML-only mail is plain text with blank lines between paragraphs.
+                if (tagBreakLast && preDepth == 0 && c is '\n' or '\r')
+                {
+                    i += c == '\r' && i + 1 < html.Length && html[i + 1] == '\n' ? 2 : 1;
+                    tagBreakLast = false;
+                    continue;
+                }
+                tagBreakLast = false;
                 sb.Append(c); i++; continue;
             }
 
@@ -58,6 +67,7 @@ public static class HtmlStripper
 
             var tag = html.Substring(i + 1, end - i - 1);
             i = end + 1;
+            int lengthBeforeTag = sb.Length;
 
             var isClosing = tag.StartsWith('/');
             var name = TagName(tag);
@@ -150,6 +160,10 @@ public static class HtmlStripper
                         sb.Append(labelImages ? "[Image: " : "[").Append(WebUtility.HtmlDecode(alt)).Append(']');
                     break;
             }
+
+            // A tag that writes nothing (</span>, </a>) leaves the flag as it was.
+            if (sb.Length != lengthBeforeTag)
+                tagBreakLast = sb[^1] == '\n';
         }
 
         var decoded = WebUtility.HtmlDecode(sb.ToString());

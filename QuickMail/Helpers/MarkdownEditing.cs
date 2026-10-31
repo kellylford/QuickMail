@@ -35,8 +35,11 @@ public static class MarkdownEditing
 
         // Whitespace at the ends stays outside the markers: "**bold **" isn't emphasis in
         // Markdown, and Ctrl+Shift+Right selects a word with its trailing space (#890).
-        while (selLen > 0 && char.IsWhiteSpace(text[selStart + selLen - 1])) selLen--;
-        while (selLen > 0 && char.IsWhiteSpace(text[selStart])) { selStart++; selLen--; }
+        // A selection of nothing but whitespace is left whole.
+        int trimmedStart = selStart, trimmedLen = selLen;
+        while (trimmedLen > 0 && char.IsWhiteSpace(text[trimmedStart + trimmedLen - 1])) trimmedLen--;
+        while (trimmedLen > 0 && char.IsWhiteSpace(text[trimmedStart])) { trimmedStart++; trimmedLen--; }
+        if (trimmedLen > 0) (selStart, selLen) = (trimmedStart, trimmedLen);
 
         if (selLen > 0)
         {
