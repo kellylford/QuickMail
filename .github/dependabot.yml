@@ -28,3 +28,19 @@ updates:
       - kellylford
     assignees:
       - kellylford
+
+  # relay/package.json, the bug-report Worker. It has no dependencies on
+  # purpose (wrangler cannot install on Windows ARM64, so CI runs it through
+  # npx), so today this finds nothing. It is here so that anything added
+  # later is watched from the day it lands, grouped into one PR.
+  - package-ecosystem: npm
+    directory: "/relay"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: deps
+    groups:
+      relay:
+        patterns:
+          - "*"
