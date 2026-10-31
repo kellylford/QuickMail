@@ -16,8 +16,8 @@
          Application, MessageBox, ...). -->
     <UseWindowsForms>true</UseWindowsForms>
     <Version>0.8.66</Version>
-    <AssemblyVersion>0.8.65</AssemblyVersion>
-    <FileVersion>0.8.65</FileVersion>
+    <AssemblyVersion>0.8.66</AssemblyVersion>
+    <FileVersion>0.8.66</FileVersion>
     <!-- Velopack needs a hand-written Main that runs VelopackApp.Build().Run() before WPF
          initializes (install/update/uninstall hooks run and may exit the process). App.xaml
          therefore compiles as Page (no generated Main) and the entry point is declared here. -->
