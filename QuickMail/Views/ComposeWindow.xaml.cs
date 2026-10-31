@@ -44,6 +44,7 @@ public partial class ComposeWindow : Window
     // Track the current spelling error so Alt+1/2/3 can replace it with a suggestion.
     private int _currentSpellingWordStart = -1;
     private int _currentSpellingWordEnd = -1;
+    private string? _currentSpellingWord;
     private List<string>? _currentSpellingSuggestions;
 
     // Suppress spelling announcements during programmatic text changes (e.g. Alt+1 replacement).
@@ -824,10 +825,12 @@ public partial class ComposeWindow : Window
         _richSpellingWordEnd = null;
         _currentSpellingWordStart = -1;
         _currentSpellingWordEnd = -1;
+        _currentSpellingWord = null;
         _currentSpellingSuggestions = null;
     }
 
-    private void AnnounceSpellingAtCurrentPosition()
+    /// <param name="prefix">Said first, in the same announcement (plain text and Markdown only).</param>
+    private void AnnounceSpellingAtCurrentPosition(string? prefix = null)
     {
         // Caret moves and typing must not turn the speller on when the user has turned
         // "Check spelling as I type" off (#883): only F7 and Ctrl+F7 / Ctrl+Shift+F7 do.
@@ -872,9 +875,10 @@ public partial class ComposeWindow : Window
 
         _currentSpellingWordStart = wordStart;
         _currentSpellingWordEnd = wordEnd;
+        _currentSpellingWord = word;
         _currentSpellingSuggestions = suggestions;
 
-        AccessibilityHelper.Announce(this, BuildSpellingAnnouncement(word, suggestions),
+        AccessibilityHelper.Announce(this, prefix + BuildSpellingAnnouncement(word, suggestions),
             category: AnnouncementCategory.Result);
     }
 
@@ -982,20 +986,7 @@ public partial class ComposeWindow : Window
             };
             if (suggestionIndex >= 0 && suggestionIndex < _currentSpellingSuggestions.Count)
             {
-                var replacement = _currentSpellingSuggestions[suggestionIndex];
-                var text = BodyBox.Text;
-                var before = text[.._currentSpellingWordStart];
-                var after = text[_currentSpellingWordEnd..];
-
-                _suppressSpellingAnnouncement = true;
-                BodyBox.Text = before + replacement + after;
-                BodyBox.CaretIndex = _currentSpellingWordStart + replacement.Length;
-                _suppressSpellingAnnouncement = false;
-
-                BodyBox.Focus();
-                AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
-                    category: AnnouncementCategory.Result);
-                ClearSpellingContext();
+                ReplaceCurrentPlainMisspelling(_currentSpellingSuggestions[suggestionIndex]);
                 e.Handled = true;
                 // Arm Alt-menu suppression so the Alt key release that follows this
                 // Alt+digit shortcut does not activate the menu bar (focus stealing).
@@ -1033,6 +1024,114 @@ public partial class ComposeWindow : Window
         // Spelling keys (F7 dialog, Ctrl+F7 / Ctrl+Shift+F7 inline) dispatch
         // through the command registry in Window_PreviewKeyDown — no hardcoded
         // branch here, so user rebinds always win.
+    }
+
+    /// <summary>
+    /// Inserts a block of text (a template) at the caret of the editor in use, on lines of its
+    /// own and as one undo step. It used to be appended to the end of a plain body, glued to the
+    /// last line (#888), and spliced into the middle of an HTML line (#889). The caret ends
+    /// after the inserted text.
+    /// </summary>
+    internal void InsertTextAtCaret(string text)
+    {
+        if (_vm.CurrentMode != ComposeMode.Html)
+        {
+            int caret = BodyBox.SelectionStart;
+            // Decide the line breaks from the text as it will be once the selection is replaced.
+            var remaining = BodyBox.Text.Remove(caret, BodyBox.SelectionLength);
+            var (insert, caretAfter) = TextInsertion.LinesAt(remaining, caret, text);
+            BodyBox.SelectedText = insert;
+            BodyBox.Select(caret + caretAfter, 0);
+            BodyBox.Focus();
+            return;
+        }
+
+        var lines = text.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+        RichBodyBox.BeginChange();
+        try
+        {
+            if (!RichBodyBox.Selection.IsEmpty) RichBodyBox.Selection.Text = string.Empty;
+            var caret = RichBodyBox.Selection.Start;
+            var para = caret.Paragraph;
+            if (para == null)
+            {
+                RichBodyBox.Selection.Text = text; // not in a paragraph: nowhere to put blocks
+                return;
+            }
+
+            // The template goes in as new paragraphs of plain text beside the caret's paragraph,
+            // never into it: text added to a paragraph, or split off one, takes on its heading,
+            // code or bold formatting (as Enter does, see HandleRichEnter).
+            var newParas = lines.Select(l => new Paragraph(new Run(l))).ToList();
+            bool atStart = new TextRange(para.ContentStart, caret).Text.Length == 0;
+            bool atEnd = new TextRange(caret, para.ContentEnd).Text.Length == 0;
+            var siblings = para.SiblingBlocks!;
+            if (atStart && atEnd)
+            {
+                foreach (var p in newParas) siblings.InsertBefore(para, p);
+                siblings.Remove(para); // the template fills the empty line, as in plain text
+            }
+            else if (atStart)
+            {
+                foreach (var p in newParas) siblings.InsertBefore(para, p);
+            }
+            else if (atEnd)
+            {
+                Block after = para;
+                foreach (var p in newParas) { siblings.InsertAfter(after, p); after = p; }
+            }
+            else
+            {
+                var rest = caret.InsertParagraphBreak().Paragraph!;
+                foreach (var p in newParas) rest.SiblingBlocks!.InsertBefore(rest, p);
+            }
+            var end = newParas[^1].ContentEnd;
+            RichBodyBox.Selection.Select(end, end);
+        }
+        finally
+        {
+            RichBodyBox.EndChange();
+        }
+        RichBodyBox.Focus();
+    }
+
+    /// <summary>
+    /// Alt+1/2/3 in plain text and Markdown: replaces the misspelling last announced with
+    /// <paramref name="replacement"/>. The stored offsets are only trusted while the word is
+    /// still there — typing since the announcement shifts the text under them, and replacing
+    /// at stale offsets mangled the message (#885). When it has moved, the misspelling at the
+    /// caret is announced afresh instead, after saying nothing was replaced, so the next Alt+1
+    /// acts on what the user just heard.
+    /// The edit goes through the selection so it is one undo step (#886); assigning
+    /// <c>Text</c> wiped the undo history.
+    /// </summary>
+    internal void ReplaceCurrentPlainMisspelling(string replacement)
+    {
+        var text = BodyBox.Text;
+        int start = _currentSpellingWordStart, end = _currentSpellingWordEnd;
+        bool stillThere = start >= 0 && end > start && end <= text.Length
+                          && text.AsSpan(start, end - start).SequenceEqual(_currentSpellingWord);
+        if (!stillThere)
+        {
+            const string nothingReplaced = "Nothing replaced, the text has changed. ";
+            ClearSpellingContext();
+            AnnounceSpellingAtCurrentPosition(nothingReplaced);
+            if (_currentSpellingWordStart < 0)
+                AccessibilityHelper.Announce(this, nothingReplaced + "No misspelling at the cursor.",
+                    category: AnnouncementCategory.Result);
+            return;
+        }
+
+        _suppressSpellingAnnouncement = true;
+        BodyBox.Select(start, end - start);
+        BodyBox.SelectedText = replacement;
+        BodyBox.Select(start + replacement.Length, 0);
+        _suppressSpellingAnnouncement = false;
+
+        BodyBox.Focus();
+        AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
+            category: AnnouncementCategory.Result);
+        ClearSpellingContext();
     }
 
     private void RichBodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -1509,6 +1608,7 @@ public partial class ComposeWindow : Window
 
             _currentSpellingWordStart = wordStart;
             _currentSpellingWordEnd = wordEnd;
+            _currentSpellingWord = word;
             _currentSpellingSuggestions = suggestions;
 
             AccessibilityHelper.Announce(this, BuildSpellingAnnouncement(word, suggestions),
@@ -1590,12 +1690,7 @@ public partial class ComposeWindow : Window
             }
         };
 
-        _vm.InsertTextIntoEditorRequested += text =>
-        {
-            RichBodyBox.Selection.Select(RichBodyBox.CaretPosition, RichBodyBox.CaretPosition);
-            RichBodyBox.Selection.Text = text;
-            RichBodyBox.Selection.Select(RichBodyBox.Selection.End, RichBodyBox.Selection.End);
-        };
+        _vm.InsertTextIntoEditorRequested += InsertTextAtCaret;
 
         // Compose is modeless and can stay open across a theme switch. The rich
         // editor reads theme brushes (blockquote foreground, table borders, code
