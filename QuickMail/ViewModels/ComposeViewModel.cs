@@ -955,8 +955,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public event Action<string>? LoadHtmlIntoEditorRequested;
 
     /// <summary>
-    /// Raised to insert plain text (e.g. a template) at the rich editor's caret
-    /// while in HTML mode.
+    /// Raised to insert plain text (e.g. a template) at the editor's caret, in
+    /// whichever editor the current mode uses.
     /// </summary>
     public event Action<string>? InsertTextIntoEditorRequested;
 
@@ -1031,9 +1031,20 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private bool HasFormattingWorthConfirming() => CurrentMode switch
     {
         ComposeMode.Markdown => !string.IsNullOrWhiteSpace(Body) && Body != _markdown.ToPlainText(Body),
-        ComposeMode.Html     => !(RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).IsEmpty,
+        ComposeMode.Html     => HtmlHasFormattingWorthConfirming(RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty),
         _                    => false,
     };
+
+    // The Markdown of text with no formatting is that text, so when the two agree nothing is lost
+    // going to plain text — a Plain → HTML → Plain round trip doesn't ask (#887). A picture is
+    // always lost, so it always asks.
+    private bool HtmlHasFormattingWorthConfirming(RichBodySnapshot snap)
+    {
+        if (snap.IsEmpty) return false;
+        if (ReferencedInlineImages().Count > 0) return true;
+        static string Norm(string s) => s.Replace("\r\n", "\n").Trim();
+        return Norm(snap.Markdown) != Norm(snap.PlainText);
+    }
 
     /// <summary>Renders the current Markdown body as a full HTML document for the preview pane.</summary>
     public string RenderPreviewHtml() => _markdown.WrapDocument(_markdown.ToHtml(Body), Subject);
@@ -1079,9 +1090,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 .Replace("{date}", now.ToString("d"), StringComparison.OrdinalIgnoreCase)
                 .Replace("{time}", now.ToString("t"), StringComparison.OrdinalIgnoreCase);
 
-        if (CurrentMode == ComposeMode.Html)
-            InsertTextIntoEditorRequested?.Invoke(body);
-        else
+        // The editor inserts at the caret, as one undo step, on lines of its own (#888, #889).
+        // Unwired (tests), plain text falls back to appending.
+        if (InsertTextIntoEditorRequested != null)
+            InsertTextIntoEditorRequested(body);
+        else if (CurrentMode != ComposeMode.Html)
             Body += body;
         SetStatusOutcome($"Template '{template.Title}' inserted.");
     }

@@ -19,7 +19,7 @@ public class ComposeWindowSpellCheckTests
     private static QuickMail.Views.ComposeWindow NewHeadlessComposeWindow(bool checkSpellingAsYouType = true)
         => NewHeadlessComposeWindowWithVm(checkSpellingAsYouType).Window;
 
-    private static (QuickMail.Views.ComposeWindow Window, QuickMail.ViewModels.ComposeViewModel Vm)
+    internal static (QuickMail.Views.ComposeWindow Window, QuickMail.ViewModels.ComposeViewModel Vm)
         NewHeadlessComposeWindowWithVm(bool checkSpellingAsYouType = true)
     {
         var config = new StubConfigService();
@@ -45,7 +45,7 @@ public class ComposeWindowSpellCheckTests
 
     // Skip, rather than fail, where Windows has no spelling engine for the test's language.
     // Probed on a separate box so this text box's own first scan is still the one under test.
-    private static void SkipWithoutSpellingEngine()
+    internal static void SkipWithoutSpellingEngine()
     {
         var probe = new TextBox { Text = "recieve" };
         SpellCheck.SetIsEnabled(probe, true);

@@ -225,7 +225,7 @@
                       MinWidth="110" Margin="0,2,6,0"
                       VerticalAlignment="Center"
                       AutomationProperties.Name="Compose mode"
-                      TabIndex="12"
+                      TabIndex="13"
                       SelectionChanged="ModeSelector_SelectionChanged">
                 <ComboBoxItem Content="Plain Text"/>
                 <ComboBoxItem Content="Markdown"/>
@@ -238,30 +238,30 @@
                         AutomationProperties.Name="Send message"
                         sc:CommandShortcut.Id="compose.send"
                         MinWidth="80" Margin="6,2,0,0"
-                        TabIndex="7"/>
+                        TabIndex="8"/>
                 <Button Content="Insert Template…"
                         Command="{Binding InsertTemplateCommand}"
                         AutomationProperties.Name="Insert a saved template"
                         MinWidth="120" Margin="6,2,0,0"
-                        TabIndex="8"/>
+                        TabIndex="9"/>
                 <Button Content="Save as Template"
                         Command="{Binding SaveAsTemplateCommand}"
                         AutomationProperties.Name="Save current message as template"
                         MinWidth="120" Margin="6,2,0,0"
-                        TabIndex="9"/>
+                        TabIndex="10"/>
                 <Button Content="Save Draft"
                         Command="{Binding SaveDraftCommand}"
                         AutomationProperties.Name="Save as draft"
                         sc:CommandShortcut.Id="compose.saveDraft"
                         MinWidth="100" Margin="6,2,0,0"
-                        TabIndex="10"/>
+                        TabIndex="11"/>
                 <Button Content="_Cancel"
                         Command="{Binding CancelCommand}"
                         sc:CommandShortcut.Id="compose.cancel"
                         AutomationProperties.Name="Cancel and close compose window"
                         IsCancel="True"
                         MinWidth="80" Margin="6,2,0,0"
-                        TabIndex="11"/>
+                        TabIndex="12"/>
             </WrapPanel>
             <!-- Deliberately NOT IsDefault. A default button makes Enter send the
                  message from any control that does not handle Enter itself — the

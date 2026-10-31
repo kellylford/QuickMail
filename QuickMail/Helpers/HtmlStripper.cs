@@ -38,12 +38,20 @@ public static class HtmlStripper
         var listStack = new Stack<int>();
         int linkTextStart = -1;
         string? linkHref = null;
+        int preDepth = 0;
         int i = 0;
 
         while (i < html.Length)
         {
             var c = html[i];
-            if (c != '<') { sb.Append(c); i++; continue; }
+            if (c != '<')
+            {
+                // A source line break right after a break already written (<br />\n, </p>\n) is
+                // markup layout, not content: outside <pre> HTML doesn't render it. Kept, every
+                // <br /> became a blank line (#887).
+                if (c is '\n' or '\r' && preDepth == 0 && sb.Length > 0 && sb[^1] == '\n') { i++; continue; }
+                sb.Append(c); i++; continue;
+            }
 
             int end = html.IndexOf('>', i + 1);
             if (end < 0) { sb.Append(html, i, html.Length - i); break; }
@@ -76,6 +84,7 @@ public static class HtmlStripper
                 case "p" or "div" or "h1" or "h2" or "h3" or "h4" or "h5" or "h6"
                      or "table" or "blockquote" or "pre":
                     AppendBlockBreak(sb);
+                    if (name == "pre") preDepth = isClosing ? Math.Max(0, preDepth - 1) : preDepth + 1;
                     break;
 
                 case "tr":
