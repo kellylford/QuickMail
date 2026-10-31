@@ -16,8 +16,9 @@ problem is reported to Microsoft as dotnet/wpf#6106. (#883)
 
 ## Fixed
 
-These came out of a bug bash of editing in the compose window, with screen readers and the
-keyboard alone.
+This build has the first batch of efforts on improving the editing experience in QuickMail. Please
+share feedback on other improvements you want, preferably through **Report a Bug** or the
+support@theideaplace.net email address. Be as specific as possible about the scenario.
 
 - **Alt+1, Alt+2 and Alt+3 no longer replace the wrong letters.** In Plain Text and Markdown, if
   you typed after hearing a misspelling, the replacement used the word's old position and mangled
