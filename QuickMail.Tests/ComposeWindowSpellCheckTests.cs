@@ -17,9 +17,14 @@ namespace QuickMail.Tests;
 public class ComposeWindowSpellCheckTests
 {
     private static QuickMail.Views.ComposeWindow NewHeadlessComposeWindow(bool checkSpellingAsYouType = true)
+        => NewHeadlessComposeWindowWithVm(checkSpellingAsYouType).Window;
+
+    private static (QuickMail.Views.ComposeWindow Window, QuickMail.ViewModels.ComposeViewModel Vm)
+        NewHeadlessComposeWindowWithVm(bool checkSpellingAsYouType = true)
     {
         var config = new StubConfigService();
         config.Load().CheckSpellingAsYouType = checkSpellingAsYouType;
+        config.Load().AnnounceSpellingWhileNavigating = true; // the caret-move path under test
 
         var vm = new QuickMail.ViewModels.ComposeViewModel(
             new StubSmtpService(),
@@ -28,14 +33,25 @@ public class ComposeWindowSpellCheckTests
             new StubImapMailService(),
             new StubTemplateService());
 
-        return new QuickMail.Views.ComposeWindow(
+        return (new QuickMail.Views.ComposeWindow(
             vm, new StubContactService(), new StubTemplateService(), config)
         {
             WindowStyle = WindowStyle.None,
             ShowInTaskbar = false,
             ShowActivated = false,
             ConfirmSaveOnClose = null, // headless — discard on close, no dialog
-        };
+        }, vm);
+    }
+
+    // Skip, rather than fail, where Windows has no spelling engine for the test's language.
+    // Probed on a separate box so this text box's own first scan is still the one under test.
+    private static void SkipWithoutSpellingEngine()
+    {
+        var probe = new TextBox { Text = "recieve" };
+        SpellCheck.SetIsEnabled(probe, true);
+        var hasEngine = probe.GetSpellingError(1) != null;
+        SpellCheck.SetIsEnabled(probe, false);
+        Assert.SkipUnless(hasEngine, "No Windows spelling engine for the current language on this machine.");
     }
 
     [StaFact]
@@ -109,10 +125,12 @@ public class ComposeWindowSpellCheckTests
     }
 
     // #883: Next Misspelling (Ctrl+F7) is how the user asks for a spell check with the setting
-    // off, so it turns the speller on for that window.
+    // off. It must turn the speller on AND find the first misspelling on that same press —
+    // not report "No misspellings" because the speller has only just been switched on.
     [StaFact]
-    public void NextMisspelling_TurnsSpellCheckOn_WhenCheckSpellingAsYouTypeIsOff()
+    public void NextMisspelling_FindsFirstMisspelling_OnFirstPress_WhenCheckSpellingAsYouTypeIsOff()
     {
+        SkipWithoutSpellingEngine();
         var window = NewHeadlessComposeWindow(checkSpellingAsYouType: false);
         var subject = window.FindName("SubjectBox") as TextBox;
         var body = window.FindName("BodyBox") as TextBox;
@@ -125,16 +143,48 @@ public class ComposeWindowSpellCheckTests
         try
         {
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
-            Assert.False(SpellCheck.GetIsEnabled(body!));
+            body!.Text = "I recieve the mail";
+            body.CaretIndex = 0;
+            body.Focus();
+            Assert.False(SpellCheck.GetIsEnabled(body));
 
-            var navigate = typeof(QuickMail.Views.ComposeWindow).GetMethod("NavigateSpellingError",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            Assert.NotNull(navigate);
-            navigate!.Invoke(window, [true]);
+            window.NavigateSpellingError(forward: true);
 
             Assert.True(SpellCheck.GetIsEnabled(subject!));
-            Assert.True(SpellCheck.GetIsEnabled(body!));
+            Assert.True(SpellCheck.GetIsEnabled(body));
             Assert.True(SpellCheck.GetIsEnabled(richBody!));
+            Assert.Equal("recieve", body.SelectedText);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [StaFact]
+    public void NextMisspelling_FindsFirstMisspelling_OnFirstPress_InHtmlMode_WhenCheckSpellingAsYouTypeIsOff()
+    {
+        SkipWithoutSpellingEngine();
+        var (window, vm) = NewHeadlessComposeWindowWithVm(checkSpellingAsYouType: false);
+        var richBody = window.FindName("RichBodyBox") as RichTextBox;
+        Assert.NotNull(richBody);
+
+        window.Show();
+        try
+        {
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+            vm.Body = "I recieve the mail";
+            vm.SetMode(QuickMail.Models.ComposeMode.Html);
+            window.UpdateLayout();
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+            richBody!.CaretPosition = richBody.Document.ContentStart;
+            richBody.Focus();
+            Assert.False(SpellCheck.GetIsEnabled(richBody));
+
+            window.NavigateSpellingError(forward: true);
+
+            Assert.True(SpellCheck.GetIsEnabled(richBody));
+            Assert.Equal("recieve", richBody.Selection.Text);
         }
         finally
         {
