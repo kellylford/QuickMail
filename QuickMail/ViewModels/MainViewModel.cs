@@ -8755,24 +8755,51 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // "Rule for <sender>" that also has to match one exact subject line matches, in practice, the
         // single thread it was made from. The editor shows it in a cleared checkbox, one keystroke
         // from being part of the rule, rather than silently ANDing it with the sender.
-        // The sender goes in as "Sender contains", the condition that means a substring match on the
-        // sender's name and address. It is the sender's ADDRESS where the row has one (#803): the display
-        // name alone matches every sender using that name, a phisher calling themselves "PayPal" included,
-        // and since #801 a Microsoft row's From is the name alone, so it would have got looser there too
-        // (review of #806). The name is the fallback, for a row cached before FromEmail existed and not yet
-        // backfilled, or a sender with no address; it is what this proposed before, so nothing is worse.
-        // It does not go in as a From address yet (a follow-up): the address fields read a comma as a
-        // separator, and a display name, "Last, First" in an Exchange address book, can hold one (#682).
-        // The rule's name keeps the display name, which is how the user knows the sender.
-        return new MailRule
+        //
+        // The sender goes in BOTH sender conditions, with one switched on:
+        // - From addresses gets the sender's address, switched ON, wherever the row has one (#803). The display
+        //   name alone matches every sender using that name, a phisher calling themselves "PayPal" included, and
+        //   since #801 a Microsoft row's From is the name alone. From addresses, not Sender contains, because it
+        //   is the condition for addresses: it maps to an Exchange server rule's sender addresses, and a From
+        //   header naming several mailboxes, rare as that is, lists them all there in plain sight rather than
+        //   choosing for the user.
+        // - Sender contains gets the display name (the address, for a sender with none), switched OFF: the name is
+        //   the sender's own text and changes with their mail program, so requiring it too would quietly stop the
+        //   rule matching their mail. Switching it on is one keystroke, for a rule that wants both.
+        // - With no address yet (a row cached before FromEmail and not yet backfilled), Sender contains holds the
+        //   name and is the condition switched on, as this proposed before.
+        // The rule is written in the shape the editor saves that combination in (see
+        // ServerRuleEditorViewModel.ToClientRule), so it reads back like any saved rule and means the same thing
+        // if it is ever run as it stands. The rule's name keeps the display name, which is how the user knows
+        // the sender, or the address for a sender with no name. With no sender at all it is left empty, as for
+        // New Rule, so the editor asks for a name rather than saving "Rule for " (review of #858).
+        var addresses = (source.FromEmail ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        var sender = string.IsNullOrWhiteSpace(source.From) ? addresses.FirstOrDefault() : source.From.Trim();
+
+        var rule = new MailRule
         {
-            Name = $"Rule for {source.From}",
-            SenderContains = string.IsNullOrWhiteSpace(source.FromEmail) ? source.From : source.FromEmail,
-            UseSenderCondition = true,
+            Name = sender is null ? string.Empty : $"Rule for {sender}",
+            SenderContains = sender,
+            UseSenderCondition = addresses.Count == 0 && sender is not null,
             SubjectContains = string.IsNullOrWhiteSpace(source.Subject) ? null : source.Subject,
             UseSubjectCondition = false,
             AccountId = source.AccountId,
         };
+        if (addresses.Count > 0)
+        {
+            rule.UseFromCondition = true;
+            rule.FromContains = addresses[0];
+            rule.FromAddresses = addresses;
+        }
+        else
+        {
+            // Sender contains is the live condition, so the old field mirrors it, as a saved rule's does.
+            rule.UseFromCondition = sender is not null;
+            rule.FromContains = sender;
+        }
+        return rule;
     }
 
     /// <summary>True when the currently selected folder is a Drafts folder.</summary>

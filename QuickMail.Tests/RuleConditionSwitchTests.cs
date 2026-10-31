@@ -31,7 +31,7 @@ public class RuleConditionSwitchTests
         SenderContains = from,
         UseSenderCondition = true,
         SubjectContains = subject,
-        UseSubjectCondition = false,   // what MainViewModel.CreateRuleFromMessage now builds
+        UseSubjectCondition = false,   // Create Rule from Message's shape for a row with no address yet
     };
 
     // ── Ctrl+Shift+T prefill ────────────────────────────────────────────────
@@ -328,8 +328,8 @@ public class RuleConditionSwitchTests
         vm.CreateRuleFromMessageCommand.Execute(null);
 
         Assert.NotNull(template);
-        // The sender is a substring match on From, not an address list: a display name can hold a
-        // comma, which an address field reads as a separator (#682).
+        // No separate address on this row yet, so the sender is a substring match on From, not an address
+        // list: a display name can hold a comma, which an address field reads as a separator (#682).
         Assert.True(template!.UseSenderCondition);
         Assert.Equal("boss@work.com", template.SenderContains);
         // Carried so it can be switched on in the editor, but not ANDed into the rule by default.
@@ -337,30 +337,246 @@ public class RuleConditionSwitchTests
         Assert.False(template.UseSubjectCondition);
     }
 
-    [Fact]
-    public void CreateRuleFromMessage_UsesTheSendersAddress_WhenTheRowHasOne()
-    {
-        // Review of #806: the display name alone would also catch anyone else using that name, and since #801
-        // a Microsoft row's From is the name alone. The rule's name keeps the name the user knows.
-        var template = MainViewModel.RuleTemplateFrom(new MailMessageSummary
-        {
-            MessageId = "1", FolderName = "INBOX", From = "PayPal", FromEmail = "service@paypal.example",
-            Subject = "Receipt",
-        });
+    private static MailRule TemplateFor(string from, string fromEmail) => MainViewModel.RuleTemplateFrom(
+        new MailMessageSummary { MessageId = "1", FolderName = "INBOX", From = from, FromEmail = fromEmail, Subject = "Receipt" });
 
-        Assert.Equal("service@paypal.example", template.SenderContains);
+    [Fact]
+    public void CreateRuleFromMessage_PutsTheAddressInFromAddresses_AndTheNameInSenderContains()
+    {
+        // The address is the condition switched on: the display name alone would also catch anyone else using it,
+        // and since #801 a Microsoft row's From is the name alone. The name is filled in beside it, switched off,
+        // one keystroke from a rule that wants both. The rule's name keeps the name the user knows.
+        var template = TemplateFor("PayPal", "service@paypal.example");
+
+        Assert.Equal(["service@paypal.example"], template.FromValues());
+        Assert.Equal("PayPal", template.SenderContains);
+        Assert.False(template.UseSenderCondition);
         Assert.Equal("Rule for PayPal", template.Name);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_ForASenderWithNoName_PutsTheAddressInBoth()
+    {
+        var template = TemplateFor("news@company.example", "news@company.example");
+
+        Assert.Equal(["news@company.example"], template.FromValues());
+        Assert.Equal("news@company.example", template.SenderContains);
+        Assert.False(template.UseSenderCondition);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_ListsEveryAddressOfAMessageFromSeveral()
+    {
+        // A From header naming two mailboxes is rare, but it is shown, not chosen for the user: the address list
+        // means any one of them, and the box says so.
+        var template = TemplateFor("Ann and Bob", "ann@x.example, bob@y.example");
+
+        Assert.Equal(["ann@x.example", "bob@y.example"], template.FromValues());
+        Assert.False(template.UseSenderCondition);
     }
 
     [Fact]
     public void CreateRuleFromMessage_FallsBackToTheName_WhenTheRowHasNoAddressYet()
     {
         // A row cached before FromEmail and not yet backfilled: exactly what this proposed before.
-        var template = MainViewModel.RuleTemplateFrom(new MailMessageSummary
-        {
-            MessageId = "1", FolderName = "INBOX", From = "PayPal", Subject = "Receipt",
-        });
+        var template = TemplateFor("PayPal", "");
 
         Assert.Equal("PayPal", template.SenderContains);
+        Assert.True(template.UseSenderCondition);
+        Assert.Null(template.FromAddresses);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_KeepsALastFirstNameOutOfTheAddressList()
+    {
+        // Review of #858: the comma in "Ford, Kelly" is a separator to an address list, so the name must only ever
+        // reach Sender contains, through the template, the editor and the save alike.
+        var template = TemplateFor("Ford, Kelly", "kelly@example.com");
+
+        Assert.Equal(["kelly@example.com"], template.FromValues());
+        Assert.Equal(["kelly@example.com"], template.FromAddresses);
+        Assert.Equal("Ford, Kelly", template.SenderContains);
+        Assert.False(template.UseSenderCondition);
+        Assert.Equal("Rule for Ford, Kelly", template.Name);
+
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(template);
+        Assert.Equal("kelly@example.com", vm.FromAddresses);
+        Assert.Equal("Ford, Kelly", vm.SenderContains);
+
+        vm.MarkAsRead = true;
+        var rule = vm.ToClientRule(Guid.NewGuid());
+        Assert.Equal(["kelly@example.com"], rule.FromValues());
+        Assert.Equal("Ford, Kelly", rule.SenderContains);
+        Assert.False(rule.UseSenderCondition);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_ForASenderWithOnlyAnAddress_NamesTheRuleAfterIt()
+    {
+        // A row with an address and no name at all: the rule is titled with what there is, not "Rule for ".
+        var template = TemplateFor("", "news@company.example");
+
+        Assert.Equal(["news@company.example"], template.FromValues());
+        Assert.Equal("news@company.example", template.SenderContains);
+        Assert.False(template.UseSenderCondition);
+        Assert.Equal("Rule for news@company.example", template.Name);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_ForAMessageWithNoSender_FillsInNoSenderCondition()
+    {
+        // Review of #858: nothing to fill in, so nothing is filled in or switched on, and the name is left empty as
+        // for New Rule, so the editor asks for one rather than saving a rule called "Rule for ".
+        var template = TemplateFor("", "");
+
+        Assert.Empty(template.FromValues());
+        Assert.Null(template.FromAddresses);
+        Assert.False(template.UseFromCondition);
+        Assert.Null(template.SenderContains);
+        Assert.False(template.UseSenderCondition);
+        Assert.Equal(string.Empty, template.Name);
+
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(template);
+        Assert.Equal(string.Empty, vm.FromAddresses);
+        Assert.False(vm.UseFromAddresses);
+        Assert.Equal(string.Empty, vm.SenderContains);
+        Assert.False(vm.UseSenderContains);
+        Assert.Equal(string.Empty, vm.Name);
+    }
+
+    [Fact]
+    public void TheEditor_OpensWithTheAddressOn_AndTheNameFilledInButOff()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("PayPal", "service@paypal.example"));
+
+        Assert.Equal("service@paypal.example", vm.FromAddresses);
+        Assert.True(vm.UseFromAddresses);
+        Assert.Equal("PayPal", vm.SenderContains);
+        Assert.False(vm.UseSenderContains);
+        Assert.False(vm.IsAdvancedExpanded);   // both sender conditions are in the main section
+    }
+
+    [Fact]
+    public void TheEditor_WithNoAddressYet_OpensWithTheNameOn()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("PayPal", ""));
+
+        Assert.Equal(string.Empty, vm.FromAddresses);
+        Assert.False(vm.UseFromAddresses);
+        Assert.Equal("PayPal", vm.SenderContains);
+        Assert.True(vm.UseSenderContains);
+    }
+
+    [Fact]
+    public void SavingIt_MatchesOnTheAddressAlone_AndKeepsTheNameForLater()
+    {
+        // What the editor saves is what the user saw: the address required, the name kept but not tested, so the
+        // same sender writing under another name is still caught.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("PayPal", "service@paypal.example"));
+        vm.MarkAsRead = true;
+
+        var rule = vm.ToClientRule(Guid.NewGuid());
+
+        Assert.Equal(["service@paypal.example"], rule.FromValues());
+        Assert.Equal("PayPal", rule.SenderContains);
+        Assert.False(rule.UseSenderCondition);
+        Assert.True(QuickMail.Services.RuleService.SenderMatches(
+            new MailMessageSummary { From = "PayPal Billing", FromEmail = "service@paypal.example" }, rule.FromValues()[0]));
+    }
+
+    [Fact]
+    public void SwitchingTheNameOnToo_RequiresBoth()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("PayPal", "service@paypal.example"));
+        vm.MarkAsRead = true;
+        vm.UseSenderContains = true;
+
+        var rule = vm.ToClientRule(Guid.NewGuid());
+
+        Assert.Equal(["service@paypal.example"], rule.FromValues());
+        Assert.True(rule.UseSenderCondition);
+        Assert.Equal("PayPal", rule.SenderContains);
+    }
+
+    // ── Switching between the two sender conditions keeps the text (review of #806) ──
+
+    private static ServerRuleEditorViewModel Reopen(ServerRuleEditorViewModel vm)
+        => ServerRuleEditorViewModel.ForEditClient(vm.ToClientRule(Guid.NewGuid()));
+
+    [Fact]
+    public void TurningTheAddressesOff_ForTheName_KeepsTheAddressesForLater()
+    {
+        // Manual testing found this: saved with only Sender contains on, the address list came back empty.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("Dana", "dana@x.example"));
+        vm.MarkAsRead = true;
+        vm.UseSenderContains = true;
+        vm.UseFromAddresses = false;
+
+        var reopened = Reopen(vm);
+
+        Assert.True(reopened.UseSenderContains);
+        Assert.Equal("Dana", reopened.SenderContains);
+        Assert.False(reopened.UseFromAddresses);
+        Assert.Equal("dana@x.example", reopened.FromAddresses);
+    }
+
+    [Fact]
+    public void SwitchingBackToTheAddresses_UsesThemAgain()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("Dana", "dana@x.example"));
+        vm.MarkAsRead = true;
+        vm.UseSenderContains = true;
+        vm.UseFromAddresses = false;
+        var reopened = Reopen(vm);
+
+        reopened.UseFromAddresses = true;
+        reopened.UseSenderContains = false;
+        var rule = reopened.ToClientRule(Guid.NewGuid());
+
+        Assert.Equal(["dana@x.example"], rule.FromValues());
+        Assert.False(rule.UseSenderCondition);
+        Assert.Null(rule.FromAddressesOff);
+    }
+
+    [Fact]
+    public void KeptAddresses_AreNotACondition()
+    {
+        // Only the editor reads them. The rule matches on the name alone, and an older QuickMail, which reads only
+        // the old From field, still tests the sender's name there.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(TemplateFor("Dana", "dana@x.example"));
+        vm.MarkAsRead = true;
+        vm.UseSenderContains = true;
+        vm.UseFromAddresses = false;
+
+        var rule = vm.ToClientRule(Guid.NewGuid());
+
+        Assert.Equal(["dana@x.example"], rule.FromAddressesOff);
+        Assert.Empty(rule.FromValues());
+        Assert.True(rule.UseSenderCondition);
+        Assert.Null(rule.FromAddresses);
+        Assert.Equal("Dana", rule.FromContains);
+        Assert.True(QuickMail.Services.RuleService.SenderMatches(
+            new MailMessageSummary { From = "Dana", FromEmail = "dana@another.example" }, rule.SenderContains!));
+    }
+
+    [Fact]
+    public void KeptAddresses_SurviveBeingWrittenToDisk()
+    {
+        var rule = new MailRule
+        {
+            Name = "Dana", UseFromCondition = true, FromContains = "Dana",
+            UseSenderCondition = true, SenderContains = "Dana", FromAddressesOff = ["dana@x.example"],
+            Action = RuleAction.MarkAsRead,
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(rule);
+        var back = System.Text.Json.JsonSerializer.Deserialize<MailRule>(json)!;
+
+        Assert.Equal(["dana@x.example"], back.FromAddressesOff);
+        Assert.Equal("dana@x.example", ServerRuleEditorViewModel.ForEditClient(back).FromAddresses);
+        // And a rule that never had any writes nothing new.
+        Assert.DoesNotContain("FromAddressesOff",
+            System.Text.Json.JsonSerializer.Serialize(new MailRule { Name = "Plain", FromContains = "a@x.example" }),
+            StringComparison.Ordinal);
     }
 }
