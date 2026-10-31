@@ -335,6 +335,15 @@ public class ConfigModel
     /// <summary>Editing mode new compose windows start in. Drafts reopen in the mode they were saved in; templates always reopen in plain text.</summary>
     public ComposeMode DefaultComposeMode { get; set; } = ComposeMode.PlainText;
 
+    /// <summary>
+    /// Spell-check compose text in the background as it is typed or pasted. Off, compose windows
+    /// don't turn WPF's spell checker on until Check Spelling (F7) or Next/Previous Misspelling
+    /// (Ctrl+F7 / Ctrl+Shift+F7) asks for it: WPF's background check of a long pasted text with
+    /// many unknown words blocks the window for seconds and screen readers misread lines meanwhile
+    /// (#883, dotnet/wpf#6106). On by default.
+    /// </summary>
+    public bool CheckSpellingAsYouType { get; set; } = true;
+
     /// <summary>Automatically save composes as drafts while editing.</summary>
     public bool AutoSaveDrafts { get; set; } = true;
 

@@ -96,6 +96,7 @@ public static class SettingsConfigTransfer
         nameof(ConfigModel.CalendarReminderMinutes),
         nameof(ConfigModel.DefaultFlagId),
         nameof(ConfigModel.DefaultComposeMode),
+        nameof(ConfigModel.CheckSpellingAsYouType),
         nameof(ConfigModel.AutoSaveDrafts),
         nameof(ConfigModel.AutoSaveIntervalSeconds),
         nameof(ConfigModel.ConfirmEmptyTrash),

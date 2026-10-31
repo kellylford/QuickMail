@@ -243,6 +243,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _defaultComposeMode = "plain";
 
+    /// <summary>Background spell checking in compose (#883). Bound to the Composing checkbox.</summary>
+    [ObservableProperty]
+    private bool _checkSpellingAsYouType = true;
+
     // ── Windowing ──────────────────────────────────────────────────────────────────
 
     [ObservableProperty]
@@ -575,6 +579,7 @@ public partial class SettingsViewModel : ObservableObject
         OfferPop3                        = ReadFeature(cfg, FeatureFlag.Pop3Backend, false);
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
+        CheckSpellingAsYouType           = cfg.CheckSpellingAsYouType;
         DefaultComposeMode = cfg.DefaultComposeMode switch
         {
             Models.ComposeMode.Markdown => "markdown",
@@ -691,6 +696,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         cfg.AutoSaveDrafts                   = AutoSaveDrafts;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
+        cfg.CheckSpellingAsYouType           = CheckSpellingAsYouType;
         cfg.DefaultComposeMode = DefaultComposeMode switch
         {
             "markdown" => Models.ComposeMode.Markdown,

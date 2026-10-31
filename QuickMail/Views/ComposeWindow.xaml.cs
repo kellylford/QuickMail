@@ -752,9 +752,15 @@ public partial class ComposeWindow : Window
     /// Background priority moves the activation off the construction path to a point
     /// where the dispatcher is already pumping normally, so it no longer blocks the
     /// window from opening.
+    ///
+    /// Skipped when "Check spelling as I type" is off (<see cref="ConfigModel.CheckSpellingAsYouType"/>,
+    /// #883): WPF's background check of a long pasted text with many unknown words blocks
+    /// the window for seconds (dotnet/wpf#6106). The spell checker is then turned on only by
+    /// the commands that ask for it, through <see cref="EnsureSpellCheckEnabled"/>.
     /// </summary>
     private void EnableSpellCheckDeferred()
     {
+        if (!_configService.Load().CheckSpellingAsYouType) return;
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
             // The window may have closed before this queued op ran; nothing to enable.
@@ -790,6 +796,9 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void RegisterCustomDictionary()
     {
+        // With the speller still off ("Check spelling as I type" off, #883) there is nothing to
+        // refresh; EnsureSpellCheckEnabled registers the dictionary when it turns the speller on.
+        if (!_spellCheckEnabled) return;
         if (_customDictionary == null) return;
         if (!System.IO.File.Exists(_customDictionary.DictionaryPath)) return;
 
@@ -814,6 +823,9 @@ public partial class ComposeWindow : Window
 
     private void AnnounceSpellingAtCurrentPosition()
     {
+        // Caret moves and typing must not turn the speller on when the user has turned
+        // "Check spelling as I type" off (#883): only F7 and Ctrl+F7 / Ctrl+Shift+F7 do.
+        if (!_spellCheckEnabled && !_configService.Load().CheckSpellingAsYouType) return;
         EnsureSpellCheckEnabled();
         if (_vm.CurrentMode == ComposeMode.Html)
         {

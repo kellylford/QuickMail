@@ -328,6 +328,9 @@ public class ConfigService : IConfigService
                             _          => Models.ComposeMode.PlainText,
                         };
                         break;
+                    case "checkspellingasyoutype":
+                        config.CheckSpellingAsYouType = ParseBool(value);
+                        break;
                     case "autosavedrafts":
                         config.AutoSaveDrafts = ParseBool(value);
                         break;
@@ -748,6 +751,13 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Editing mode new compose windows start in.");
         sb.AppendLine("# Drafts and templates always reopen in plain text.");
         sb.AppendLine("# Values: plain, markdown, html.");
+        sb.AppendLine();
+
+        sb.AppendLine($"CheckSpellingAsYouType = {(config.CheckSpellingAsYouType ? "on" : "off")}");
+        sb.AppendLine("# Spell-check compose text in the background as it is typed or pasted. Off, spell");
+        sb.AppendLine("# checking starts only when Check Spelling (F7) or Next/Previous Misspelling");
+        sb.AppendLine("# (Ctrl+F7/Ctrl+Shift+F7) is used in that message. Turn off if the compose window");
+        sb.AppendLine("# stalls after pasting long text. Values: on, off. Default on.");
         sb.AppendLine();
 
         sb.AppendLine($"AutoSaveDrafts = {(config.AutoSaveDrafts ? "on" : "off")}");
