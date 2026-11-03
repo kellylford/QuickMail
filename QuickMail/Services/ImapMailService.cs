@@ -946,12 +946,13 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
     {
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
-        var trash  = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash, SpecialFolder.Junk);
+        // Trash only. This expunges what it finds, so it must never fall back on another folder.
+        var trash  = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash);
 
         if (trash == null)
         {
             LogService.Log($"EmptyTrash: no Trash folder found for account {accountId}");
-            return 0;
+            throw new TrashFolderNotFoundException();
         }
 
         await trash.OpenAsync(FolderAccess.ReadWrite, ct);
@@ -2332,30 +2333,22 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
     public async Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default)
     {
-        if (!_pools.ContainsKey(accountId)) return 0;
+        // Throws rather than answering 0 when it can't look: the caller takes 0 as proof the trash is
+        // empty, and a dead connection is the usual reason it's asking.
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
+        var client = lease.Client;
+        var trashFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash)
+            ?? throw new TrashFolderNotFoundException();
+
+        await trashFolder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
         {
-            using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
-            var client = lease.Client;
-            var trashFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash, SpecialFolder.Junk);
-            if (trashFolder == null) return 0;
-
-            await trashFolder.OpenAsync(FolderAccess.ReadOnly, ct);
-            try
-            {
-                var uids = await trashFolder.SearchAsync(SearchQuery.All, ct);
-                return uids.Count;
-            }
-            finally
-            {
-                await trashFolder.CloseAsync(false, ct);
-            }
+            var uids = await trashFolder.SearchAsync(SearchQuery.All, ct);
+            return uids.Count;
         }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
+        finally
         {
-            LogService.Log($"CountTrashMessages failed for {accountId}: {ex.GetType().Name}");
-            return 0;
+            await trashFolder.CloseAsync(false, ct);
         }
     }
 

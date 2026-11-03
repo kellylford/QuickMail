@@ -19,6 +19,7 @@ public enum SoundEvent
     MessageDeleted,
     MessageArchived,
     MessageMoved,
+    TrashEmptied,
 }
 
 /// <summary>Why a sound is playing, which decides what can hold it back.</summary>
@@ -90,13 +91,14 @@ public static class SoundCatalog
         new(SoundEvent.SendFailed,         "SendFailed",         "Send failed",                "failed",       SoundOrigin.Direct),
         new(SoundEvent.NewMail,            "NewMail",            "New mail",                   "arrived",      SoundOrigin.Arrival),
         new(SoundEvent.WatchedMail,        "WatchedMail",        "Watched conversation mail",  "attention",    SoundOrigin.Arrival),
-        new(SoundEvent.ActionFailed,       "ActionFailed",       "Delete, move or archive failed", "error",    SoundOrigin.Direct),
+        new(SoundEvent.ActionFailed,       "ActionFailed",       "Delete, move, archive or empty trash failed", "error",    SoundOrigin.Direct),
         new(SoundEvent.ConnectionLost,     "ConnectionLost",     "Connection lost",            "disconnected", SoundOrigin.Background),
         new(SoundEvent.ConnectionRestored, "ConnectionRestored", "Connection restored",        "connected",    SoundOrigin.Background),
         new(SoundEvent.CalendarReminder,   "CalendarReminder",   "Calendar reminder",          "reminder",     SoundOrigin.Background),
         new(SoundEvent.MessageDeleted,     "MessageDeleted",     "Message deleted",            "removed",      SoundOrigin.Direct),
         new(SoundEvent.MessageArchived,    "MessageArchived",    "Message archived",           "filed",        SoundOrigin.Direct),
         new(SoundEvent.MessageMoved,       "MessageMoved",       "Message moved",              "moved",        SoundOrigin.Direct),
+        new(SoundEvent.TrashEmptied,       "TrashEmptied",       "Trash emptied",              "emptied",      SoundOrigin.Direct),
     ];
 
     /// <summary>Every built-in sound name: one per event, plus the rule default.</summary>

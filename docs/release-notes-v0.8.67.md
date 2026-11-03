@@ -14,7 +14,7 @@ QuickMail can now play sounds. They are **off until you turn them on**, in **Set
 
 **Report a Bug** on the Help menu or email to support@theideaplace.net both reach us.
 
-- **Sounds for mail events:** message sent, message queued to send later, send failed, new mail, mail in a conversation you are watching, a delete, move or archive that failed, connection lost and restored, calendar reminders, and a message deleted, archived or moved. If you delete or file a lot of mail in a row, you may prefer to set those last three to **None**.
+- **Sounds for mail events:** message sent, message queued to send later, send failed, new mail, mail in a conversation you are watching, a delete, move, archive or empty trash that failed, connection lost and restored, calendar reminders, a message deleted, archived or moved, and trash emptied. If you delete or file a lot of mail in a row, you may prefer to set those three message sounds to **None**.
 - **Three styles:** Glass, Soft bell and Wood. Each has the same sounds with the same melodies, and the tone changes, though Wood is also a little quieter. Preview plays the style showing, so you can compare them before saving.
 - **Your own sounds:** use a WAV or MP3 file of up to 5 MB and 30 seconds for any event. QuickMail keeps its own copy, and your sounds travel with your settings when you [move them to another computer](https://kellylford.github.io/QuickMail/moving-your-settings-to-another-computer.html).
 - **A sound for a rule:** a client-side rule can now **Play a sound**, so you can tell mail from a particular sender by ear, or hear when something has been filed. Use a **From addresses** or **Sender contains** condition with your own sound file to give someone their own sound. A rule's sound plays even with event sounds off, as adding it to a rule already asks for it. (#129)
@@ -28,6 +28,11 @@ Good to know:
 - The new-mail sound is for the Inbox, and the calendar reminder sound needs calendar reminders turned on.
 
 See [Sounds in the User Guide](https://kellylford.github.io/QuickMail/sounds.html).
+
+## Fixed
+
+- **Empty Trash reports what really happened.** With the network down it could say the trash was emptied while the mail was still on the server. Each account is now tried and reported on its own, so one that can't be reached doesn't stop the others, and you're told which worked and which didn't.
+- **Empty Trash no longer touches Junk.** On a server with no Trash folder but a Junk or Spam folder, Empty Trash permanently deleted everything in the Junk folder. It now says no trash folder was found.
 
 ## Reporting Issues
 

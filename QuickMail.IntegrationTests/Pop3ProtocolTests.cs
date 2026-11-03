@@ -408,6 +408,42 @@ public sealed class Pop3ProtocolTests : IDisposable
     }
 
     [Fact]
+    public async Task EmptyTrash_WithTheServerUnreachable_FailsAndCanBeRetried()
+    {
+        // Removing the local copy first left a retry nothing to act on: it reported an empty trash,
+        // and the mail stayed on the server for good.
+        _greenMail.RequirePop3();
+        var ct      = TestContext.Current.CancellationToken;
+        var account = _greenMail.CreatePop3Account("pop-empty-retry", leaveOnServer: true);
+        await SeedAsync(account.Username, "Delete me", "Body.", ct);
+
+        var store = NewStore();
+        using var pop = new Pop3MailService(store);
+        await pop.ConnectAsync(account, "pw", ct);
+        var downloaded = await WaitForDownloadAsync(pop, account.Id, expected: 1, ct);
+        var uidl = downloaded.Single().MessageId;
+        await pop.MoveToTrashAsync(account.Id, "Inbox", uidl, ct);
+
+        account.Pop3LeaveMailOnServer = false;
+        await pop.ConnectAsync(account, "pw", ct);
+
+        var closed = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        closed.Start();
+        var realPort = account.Pop3Port;
+        account.Pop3Port = ((System.Net.IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+
+        await Assert.ThrowsAnyAsync<Exception>(() => pop.EmptyTrashAsync(account.Id, ct));
+        Assert.Equal(1, await pop.CountTrashMessagesAsync(account.Id, ct));
+        Assert.Equal(1, await ServerMessageCountAsync(account, ct));
+
+        account.Pop3Port = realPort;
+        Assert.Equal(1, await pop.EmptyTrashAsync(account.Id, ct));
+        Assert.Equal(0, await pop.CountTrashMessagesAsync(account.Id, ct));
+        Assert.Equal(0, await ServerMessageCountAsync(account, ct));
+    }
+
+    [Fact]
     public async Task PermanentDelete_OfAMessageTheServerNoLongerHas_TouchesNothing()
     {
         // The UIDL safety check. Another client collected the message with delete-on-collect, so the

@@ -81,8 +81,8 @@ class StubImapMailServiceBase : IMailService
     public virtual Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.MoveToTrashBatchAsync(accountId, folderName, messageIds, ct);
     public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.PermanentlyDeleteBatchAsync(accountId, folderName, messageIds, ct);
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => _inner.NoOpAsync(accountId, ct);
-    public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => _inner.CountTrashMessagesAsync(accountId, ct);
-    public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => _inner.EmptyTrashAsync(accountId, ct);
+    public virtual Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => _inner.CountTrashMessagesAsync(accountId, ct);
+    public virtual Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => _inner.EmptyTrashAsync(accountId, ct);
     public Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default) => _inner.GetFolderMessageIdsAsync(accountId, folderName, ct);
     public virtual Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(Guid accountId, string folderName, CancellationToken ct = default) => _inner.GetFolderMessageIdDatesAsync(accountId, folderName, ct);
     public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default) => _inner.FetchPreviewsAsync(accountId, folderName, messageIds, maxLines, ct);

@@ -68,6 +68,7 @@ Each hooks where the outcome is already known, so existing de-duplication carrie
 | Action failed | Yes | Failure branches at `MainViewModel.cs:7989`, `8216`, `9739` |
 | Connection lost / restored | Yes | `Connectivity.cs` `AnnounceOfflineOnce:138` and `OnOnlineChanged:323` |
 | Calendar reminder | Yes | `CheckReminders:10913` |
+| Trash emptied | Yes | `EmptyTrashAsync`, once when anything was emptied, including when a dropped connection hid a success. Each account is judged on its own, so any failure, or a timeout, plays Action failed instead |
 | Message deleted / archived / moved | Yes | Success branches of `DeleteMessagesAsync`, `ArchiveMessagesAsync`, `MoveSelectedMessagesToFolderAsync`; not when cancelled |
 
 `ComposeViewModel` gains an optional `ISoundService?`, passed at its two construction sites (`MainWindow.xaml.cs:6185`, `7464`).
@@ -100,7 +101,7 @@ All the places a new action must change (from the code survey):
 `ConfigModel` / `ConfigService` / `SettingsConfigTransfer` (Portable):
 - `PlayEventSounds` (default off)
 - `MuteSounds` (default off), which silences everything
-- `SoundVolume` (default 100)
+- `SoundVolume` (default 80)
 - `SoundPack`
 - `SoundEvents`, a new `[sounds]` section following `[features]`, listing only what the person changed. The other settings are in `[global]`, so they stay above `[windowing]` as the existing comment requires
 

@@ -2072,12 +2072,13 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 
 - Message sent, message queued to send later, and send failed
 - New mail, and mail in a conversation you are watching
-- A delete, move or archive that failed
+- A delete, move, archive or empty trash that failed
 - Connection lost and connection restored
 - Calendar reminder, if you have turned on calendar reminders
 - Message deleted, archived and moved
+- Trash emptied
 
-If you delete or file a lot of mail in a row, you may prefer to set those three to **None**. Repeats of the same sound within a second are dropped.
+If you delete or file a lot of mail in a row, you may prefer to set those three message sounds to **None**. Repeats of the same sound within a second are dropped.
 
 ### Choosing a Sound
 
@@ -2086,7 +2087,7 @@ If you delete or file a lot of mail in a row, you may prefer to set those three 
 3. Choose **Preview** to hear it, at the volume showing. Preview plays even if sounds are muted, and stops when you close Settings or preview **None**.
 4. To use a sound of your own, choose **Choose File…** and pick a WAV or MP3 file of up to 5 MB and 30 seconds. QuickMail keeps its own copy, so you can move or delete the original.
 
-Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to.
+Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to. It starts at 80%.
 
 ### Choosing a Style
 
