@@ -61,6 +61,7 @@ public partial class App : Application
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
     private WindowsToastNotificationService? _notificationService;
+    private SoundService? _soundService;
     private AutoDiscoverService? _autoDiscoverService;
     private ConnectionTruthProbe? _truthProbe;
 
@@ -630,6 +631,8 @@ public partial class App : Application
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
+            _soundService = probeMode ? null : new SoundService(
+                configService, System.IO.Path.Combine(profile.ProfileDir, SoundCatalog.CustomFolderName), new NAudioSoundOutput(), isQuiet: WindowsQuietState.IsQuiet);
             // Answers the question the app cannot answer about itself: when an account shows as
             // disconnected, is it actually unreachable? Probes on a connection that shares nothing
             // with the pools or watchers. Label resolution reads the live account list.
@@ -727,6 +730,7 @@ public partial class App : Application
         _bugReportService?.Dispose();
         _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
         _notificationService?.Dispose(); // unhooks the toast-activation static event
+        _soundService?.Dispose();   // ends the sound worker; after everything that could ask for a sound
         _autoDiscoverService?.Dispose(); // releases the autoconfig HttpClient
         _truthProbe?.Dispose();     // cancels in-flight probes before releasing their token source
         ScreenshotCapture?.Dispose(); // flushes any in-flight PNG save (best effort, bounded)

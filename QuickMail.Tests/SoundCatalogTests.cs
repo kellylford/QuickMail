@@ -102,6 +102,64 @@ public class SoundCatalogTests
         Assert.Equal(SoundRef.BuiltIn("arrived"), SoundCatalog.Resolve(SoundEvent.NewMail, stored));
     }
 
+    // ── Built-in sounds ────────────────────────────────────────────────────────
+
+    public static TheoryData<string> BuiltInSounds => [.. SoundCatalog.BuiltInSounds.Distinct()];
+
+    private static Stream OpenBuiltIn(string name) =>
+        typeof(SoundService).Assembly.GetManifestResourceStream($"QuickMail.Sounds.BuiltIn.{SoundCatalog.DefaultPack}.{name}.wav")
+        ?? throw new FileNotFoundException($"No embedded sound '{name}'.");
+
+    [Theory]
+    [MemberData(nameof(BuiltInSounds))]
+    public void EveryBuiltInSoundShipsAndDecodes(string name)
+    {
+        using var reader = NAudioSoundOutput.Open(new SoundClip(name, null, () => OpenBuiltIn(name)));
+        Assert.InRange(reader.TotalTime, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(1));
+        Assert.Equal(44100, reader.WaveFormat.SampleRate);
+        Assert.Equal(1, reader.WaveFormat.Channels);
+    }
+
+    [Fact]
+    public void NoEmbeddedSoundIsLeftOverFromAnOldName()
+    {
+        var prefix = $"QuickMail.Sounds.BuiltIn.{SoundCatalog.DefaultPack}.";
+        var embedded = typeof(SoundService).Assembly.GetManifestResourceNames()
+            .Where(n => n.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(n => n[prefix.Length..^".wav".Length]);
+        Assert.Equal(SoundCatalog.BuiltInSounds.Distinct().Order(StringComparer.Ordinal), embedded.Order(StringComparer.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(".wav")]
+    [InlineData(".mp3")]
+    public void AFileThatIsNotAudioIsRefusedWhenOpened(string extension)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"QM-SND-{Guid.NewGuid():N}{extension}");
+        File.WriteAllBytes(path, [.. Enumerable.Range(0, 4096).Select(i => (byte)(i * 37))]);
+        try
+        {
+            var ex = Record.Exception(() => NAudioSoundOutput.Open(new SoundClip("junk", path, null)).Dispose());
+            Assert.NotNull(ex);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData(1, false)]   // Not present: locked or asleep. Nothing is being interrupted.
+    [InlineData(2, true)]    // A full-screen app.
+    [InlineData(3, true)]    // A full-screen game.
+    [InlineData(4, true)]    // Presentation mode.
+    [InlineData(5, false)]   // Accepts notifications.
+    [InlineData(6, true)]    // Quiet time.
+    [InlineData(7, true)]    // A full-screen Store app.
+    [InlineData(0, false)]   // Not a value Windows defines.
+    public void WindowsStatesThatHoldBackBackgroundSounds(int state, bool quiet) =>
+        Assert.Equal(quiet, WindowsQuietState.IsQuietState(state));
+
     // ── Config ─────────────────────────────────────────────────────────────────
 
     private static ProfileContext MakeTempProfile() =>

@@ -820,6 +820,12 @@
                           Click="MenuWatchedConversations_Click"
                           AutomationProperties.Name="Watched Conversations"/>
                 <Separator/>
+                <MenuItem Header="_Mute All Sounds"
+                          IsCheckable="True"
+                          IsChecked="{Binding MuteSounds, Mode=OneWay}"
+                          Click="MenuMuteSounds_Click"
+                          sc:CommandShortcut.Id="settings.toggleMuteSounds"/>
+                <Separator/>
                 <MenuItem Header="Command _Palette…"
                           Click="MenuCommandPalette_Click"
                           InputGestureText="Ctrl+Shift+P" AutomationProperties.AcceleratorKey="Ctrl+Shift+P"/>

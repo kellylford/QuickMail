@@ -55,6 +55,12 @@ public static class SoundCatalog
     /// <summary>The one built-in pack in this release.</summary>
     public const string DefaultPack = "quickmail";
 
+    /// <summary>The folder under the profile that holds custom sounds.</summary>
+    public const string CustomFolderName = "sounds";
+
+    /// <summary>The largest custom sound accepted, whether chosen in Settings or arriving in a settings file.</summary>
+    public const long MaxCustomFileBytes = 5L * 1024 * 1024;
+
     public static readonly IReadOnlyList<SoundEventInfo> Events =
     [
         new(SoundEvent.MessageSent,        "MessageSent",        "Message sent",               "sent",         true,  SoundOrigin.Direct),

@@ -36,7 +36,23 @@ bool IsAudible(SoundEvent e);       // whether the event's toast should be silen
   - Sounds play one at a time, with at most 3 waiting; further ones are dropped.
   - The same sound within 1 second is dropped.
   - A new-mail sound within 3 seconds of a rule sound is dropped, so a filed message doesn't sound twice.
-- **Quiet state:** `SHQueryUserNotificationState` silences background sounds (new mail, watched, rule, connection, reminder). Sounds that answer something the person just did (sent, failed, delete) still play. Step 1 checks whether this reports Windows Do Not Disturb.
+- **Quiet state:** `SHQueryUserNotificationState` silences background sounds (new mail, watched, rule, connection, reminder) during presentations and full-screen use. Sounds that answer something the person just did (sent, failed, delete) still play. It does not report Do Not Disturb; see below.
+
+### What the spike measured (2026-11-03)
+
+Run in a test VM on x64 and Arm64 self-contained single-file builds, published with warnings as errors, against a virtual sound card, with the output measured by loopback capture.
+
+- **NAudio 3.3.0 works, but not as first planned.** `WasapiOut` is obsolete; use `WasapiPlayerBuilder`. Its default-device stream routing can't be used with `Build()`, and isn't needed because a player is opened per sound.
+- **Every sound needs 200 ms of trailing silence.** Playback reports it has stopped while audio is still buffered, so disposing at that point lost about 50 ms of a 600 ms tone. With the lead-out, all of it plays.
+- **No audio device** gives one `CoreAudioException` (0x80070490) when the player is built, and the service logs it once.
+- **Any sample rate plays correctly:** 8, 22.05, 44.1, 48 and 96 kHz, mono and stereo, at the right length and level. Volume is accurate.
+- **MP3 decoding and clear refusals:** MP3 decodes, and junk files throw `FormatException` (WAV) or `MediaFoundationException` (MP3).
+- **Toasts do play a sound:** level 0.32 with a normal toast, against 0 for a toast marked silent and 0 with no toast. So the `silent` flag is needed and works.
+- **`SHQueryUserNotificationState` reports presentation mode, but not Do Not Disturb.** During Do Not Disturb it still says it accepts notifications, while Windows silences the toast sound itself. Microsoft documents no API for that state; `FocusSessionManager` covers focus sessions, which it says are not the same thing.
+
+**So background sounds play during Do Not Disturb.** The user guide says so, and Mute All Sounds is the way to silence them. This needs Kelly's review at handoff.
+
+Not measured: Media Foundation being absent (Windows N editions), and real hardware such as Bluetooth headsets.
 
 ### Events
 

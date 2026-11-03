@@ -516,6 +516,8 @@ public static class SettingsImporter
             }
         }
 
+        AddSounds(bundle, profileDir);
+
         // Folder names for the heal that runs when each account's folders first load (spec R5).
         var folders = bundle.GetText(SettingsBundle.FoldersName);
         if (folders is not null)
@@ -562,6 +564,20 @@ public static class SettingsImporter
         Directory.CreateDirectory(dir);
         foreach (var (name, bytes) in themes)
             File.WriteAllBytes(Path.Combine(dir, name[SettingsBundle.ThemesPrefix.Length..]), bytes);
+    }
+
+    // Added, not mirrored as themes are: a sound can be in use by a category this import isn't replacing,
+    // such as a rule here when only the preferences were imported.
+    private static void AddSounds(SettingsBundle bundle, string profileDir)
+    {
+        var sounds = bundle.SoundEntries.ToList();
+        if (sounds.Count == 0) return;
+        var dir = Directory.CreateDirectory(Path.Combine(profileDir, SoundCatalog.CustomFolderName)).FullName;
+        foreach (var (name, bytes) in sounds)
+        {
+            if (bytes.Length > SoundCatalog.MaxCustomFileBytes) continue;
+            File.WriteAllBytes(Path.Combine(dir, name[SettingsBundle.SoundsPrefix.Length..]), bytes);
+        }
     }
 
     // A rule naming an account that is not here would act on nothing; turned off and named, never deleted.
@@ -767,6 +783,13 @@ public static class SettingsImporter
                 foreach (var file in Directory.GetFiles(themes, "*.json"))
                     File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
             }
+            var sounds = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
+            if (Directory.Exists(sounds))
+            {
+                var target = Directory.CreateDirectory(Path.Combine(dir, SoundCatalog.CustomFolderName)).FullName;
+                foreach (var file in Directory.GetFiles(sounds))
+                    File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
+            }
             return dir;
         }
         catch
@@ -825,6 +848,25 @@ public static class SettingsImporter
         {
             LogService.Log("Settings import: could not restore the themes", ex);
             failed.Add("themes");
+        }
+
+        var sounds = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
+        var savedSounds = Path.Combine(backupDir, SoundCatalog.CustomFolderName);
+        try
+        {
+            if (Directory.Exists(sounds))
+                foreach (var file in Directory.GetFiles(sounds)) File.Delete(file);
+            if (Directory.Exists(savedSounds))
+            {
+                Directory.CreateDirectory(sounds);
+                foreach (var file in Directory.GetFiles(savedSounds))
+                    File.Copy(file, Path.Combine(sounds, Path.GetFileName(file)), overwrite: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Settings import: could not restore the sounds", ex);
+            failed.Add(SoundCatalog.CustomFolderName);
         }
         return failed;
     }

@@ -1546,6 +1546,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _readAsPlainText;
 
+    /// <summary>
+    /// Bound one-way to the Tools-menu check state (#912). Kept in sync with
+    /// <see cref="ConfigModel.MuteSounds"/> by the toggle command and <see cref="ApplySettings"/>.
+    /// </summary>
+    [ObservableProperty]
+    private bool _muteSounds;
+
     // Running version for the Help "running version" entry, e.g. "0.7.9" (or "0.7.9.1" for a
     // hotfix). Shared with the About dialog and update check via AppVersion; deliberately not the
     // informational/product version, which the SDK can suffix with a git commit hash.
@@ -1926,6 +1933,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var cfg = _configService.Load();
         _readAsPlainText = cfg.ReadAsPlainText;
+        _muteSounds = cfg.MuteSounds;
         _previewLines = cfg.PreviewLines;
         _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
@@ -2783,6 +2791,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ListDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
 
         ReadAsPlainText   = cfg.ReadAsPlainText;
+        MuteSounds        = cfg.MuteSounds;
         _announceFlagStatus = cfg.AnnounceFlagStatus;
         OnPropertyChanged(nameof(AnnounceFlagStatus));
 
