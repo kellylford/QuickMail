@@ -8983,97 +8983,137 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         StatusText = "Emptying trash…";
         IsBusy = true;
-        bool trashEmptied = false;
+        var failures = new List<(AccountModel Account, Exception Error)>();
+        var totalDeleted = 0;
+        var confirmedByCheck = false;
+        var timedOut = false;
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            int totalDeleted = 0;
-            foreach (var account in accountsToEmpty)
-                totalDeleted += await _imap.EmptyTrashAsync(account.Id, cts.Token);
 
-            var msg = totalDeleted == 1 ? "1 message deleted from trash." : $"{totalDeleted} messages deleted from trash.";
-            StatusText = msg;
-            Announce(msg);
-            trashEmptied = true;
-            LogService.Log($"EmptyTrash: deleted {totalDeleted} messages");
+            // Every account gets its turn and is judged on its own, so one that can't be reached doesn't
+            // stop the others, and one that worked can't stand in for one that didn't.
+            foreach (var account in accountsToEmpty)
+            {
+                try
+                {
+                    totalDeleted += await _imap.EmptyTrashAsync(account.Id, cts.Token);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    LogService.Log($"EmptyTrash failed for {account.Id}", ex);
+                    if (await TrashConfirmedEmptyAsync(account))
+                        confirmedByCheck = true;   // The connection dropped on the reply: it did work.
+                    else
+                        failures.Add((account, ex));
+                }
+            }
+            LogService.Log($"EmptyTrash: deleted {totalDeleted} messages, {failures.Count} accounts failed");
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Empty trash timed out.";
-            _sounds?.Play(SoundEvent.ActionFailed);
-        }
-        catch (Exception ex)
-        {
-            // Post-failure verification: check if trash is actually empty on the server.
-            // If it is, the operation succeeded despite the exception (TCP drop on ACK).
-            LogService.Log("EmptyTrash", ex);
-            try
-            {
-                using var verifyCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                foreach (var account in accountsToEmpty)
-                {
-                    int remaining = await _imap.CountTrashMessagesAsync(account.Id, verifyCts.Token);
-                    if (remaining == 0)
-                    {
-                        // Server succeeded — report success
-                        trashEmptied = true;
-                        LogService.Log("EmptyTrash: verification passed — trash is empty on server");
-                        break;
-                    }
-                }
-            }
-            catch (Exception verifyEx)
-            {
-                LogService.Log("EmptyTrash: verification failed", verifyEx);
-            }
-
-            // If not verified as empty, report the error
-            if (!trashEmptied)
-            {
-                StatusText = $"Empty trash failed: {ex.Message}";
-                Announce($"Empty trash failed: {ex.Message}", AnnouncementCategory.Result);
-                _sounds?.Play(SoundEvent.ActionFailed);
-            }
+            timedOut = true;
         }
         finally
         {
             IsBusy = false;
         }
 
-        if (trashEmptied)
+        if (timedOut)
         {
-            _sounds?.Play(SoundEvent.TrashEmptied);
+            // Some of it may have happened, so nothing here can be taken as gone. The next sync says what's left.
+            StatusText = "Empty trash timed out.";
+            Announce(StatusText, AnnouncementCategory.Result);
+            _sounds?.Play(SoundEvent.ActionFailed);
+            return;
+        }
 
-            // Zero out the cached trash MessageCount for each account so that if the user
-            // runs Empty Trash again in this session, the confirmation dialog shows 0 rather
-            // than the stale count recorded at connection time.
-            foreach (var account in accountsToEmpty)
+        var emptied = accountsToEmpty.Where(a => failures.All(f => f.Account.Id != a.Id)).ToList();
+
+        if (failures.Count > 0)
+        {
+            var who = accountsToEmpty.Count > 1
+                ? $" for {string.Join(", ", failures.Select(f => f.Account.AccountLabel))}"
+                : string.Empty;
+            StatusText = $"Empty trash failed{who}: {failures[0].Error.Message}";
+            _sounds?.Play(SoundEvent.ActionFailed);
+        }
+        else
+        {
+            // A dropped reply leaves the count unknown, so that case can't say how many.
+            StatusText = confirmedByCheck ? "Trash emptied."
+                : totalDeleted == 1 ? "1 message deleted from trash."
+                : $"{totalDeleted} messages deleted from trash.";
+            // Nothing to empty, or no trash folder, isn't an emptying: the words above say so.
+            if (totalDeleted > 0 || confirmedByCheck) _sounds?.Play(SoundEvent.TrashEmptied);
+        }
+        Announce(StatusText, AnnouncementCategory.Result);
+
+        // Zero out the cached trash MessageCount for each emptied account so that if the user runs Empty
+        // Trash again in this session, the confirmation dialog shows 0 rather than the stale count
+        // recorded at connection time.
+        foreach (var account in emptied)
+        {
+            if (_cachedFolders.TryGetValue(account.Id, out var folders))
             {
-                if (_cachedFolders.TryGetValue(account.Id, out var folders))
-                {
-                    foreach (var f in folders.Where(f => f.Kind == SpecialFolderKind.Trash))
-                        f.MessageCount = 0;
-                }
+                foreach (var f in folders.Where(f => f.Kind == SpecialFolderKind.Trash))
+                    f.MessageCount = 0;
             }
         }
 
         // Only update the message list if the user is currently looking at the trash.
         // If they're in their inbox, All Mail, etc., those messages are completely
         // unaffected — leave the view and focus exactly as they are.
-        if (trashEmptied && viewingTrash)
+        if (viewingTrash && emptied.Count > 0)
         {
             // Clear _rawMessages alongside Messages so ApplyFiltersAndSearch cannot
             // restore the just-deleted messages if the user changes sort/filter/search
             // while still in the trash view.  (In online mode the background sync skips
             // trash folders, so _rawMessages is never cleaned up automatically.)
-            _rawMessages.Clear();
-            Messages.Clear();
-            SelectedMessage = null;
-            MessageDetail   = null;
-            IsMessageOpen   = false;
+            if (failures.Count == 0)
+            {
+                _rawMessages.Clear();
+                Messages.Clear();
+                SelectedMessage = null;
+                MessageDetail   = null;
+                IsMessageOpen   = false;
+            }
+            else
+            {
+                // All Trash with one account failed: its messages are still there, so they stay.
+                var gone = emptied.Select(a => a.Id).ToHashSet();
+                _rawMessages.RemoveAll(m => gone.Contains(m.AccountId));
+                foreach (var m in Messages.Where(m => gone.Contains(m.AccountId)).ToList())
+                    Messages.Remove(m);
+                if (SelectedMessage is { } selected && gone.Contains(selected.AccountId))
+                {
+                    SelectedMessage = Messages.FirstOrDefault();
+                    MessageDetail   = null;
+                    IsMessageOpen   = false;
+                }
+            }
             MessageListFocusRequested?.Invoke();
         }
+    }
 
+    /// <summary>
+    /// After an Empty Trash that reported failure, whether this account's trash is known to be empty,
+    /// as it is when the connection dropped on the server's reply. False whenever that can't be
+    /// established: being unable to check says nothing about the mail.
+    /// </summary>
+    private async Task<bool> TrashConfirmedEmptyAsync(AccountModel account)
+    {
+        try
+        {
+            using var verifyCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            return await _imap.CountTrashMessagesAsync(account.Id, verifyCts.Token) == 0;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"EmptyTrash: could not check {account.Id}", ex);
+            return false;
+        }
     }
 
     [RelayCommand]

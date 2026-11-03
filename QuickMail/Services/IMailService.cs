@@ -66,6 +66,7 @@ public interface IMailService : IDisposable
     /// Counts messages in the Trash folder (if it exists) without opening other folders.
     /// Returns 0 if Trash does not exist or is empty.
     /// </summary>
+    /// <summary>How many messages are in the trash. Throws if that can't be found out: 0 means known to be empty.</summary>
     Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default);
 
     Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default);

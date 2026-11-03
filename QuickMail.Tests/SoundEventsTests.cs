@@ -504,22 +504,159 @@ public class SoundEventsTests
 
     private sealed class TrashMail : StubImapMailServiceBase
     {
-        public Exception? EmptyFailure { get; set; }
-        public int Remaining { get; set; }
+        /// <summary>Accounts whose empty fails, and how. Any other account deletes <see cref="Deleted"/>.</summary>
+        public Dictionary<Guid, Exception> Failures { get; } = [];
+
+        /// <summary>What the check afterward finds, per account. Absent means the check itself can't run.</summary>
+        public Dictionary<Guid, int> Remaining { get; } = [];
+
+        public int Deleted { get; set; } = 3;
+        public List<Guid> Attempted { get; } = [];
 
         public override Task<int> EmptyTrashAsync(Guid accountId, System.Threading.CancellationToken ct = default)
-            => EmptyFailure is null ? Task.FromResult(3) : Task.FromException<int>(EmptyFailure);
+        {
+            Attempted.Add(accountId);
+            return Failures.TryGetValue(accountId, out var failure) ? Task.FromException<int>(failure) : Task.FromResult(Deleted);
+        }
 
         public override Task<int> CountTrashMessagesAsync(Guid accountId, System.Threading.CancellationToken ct = default)
-            => Task.FromResult(Remaining);
+            => Remaining.TryGetValue(accountId, out var left)
+                ? Task.FromResult(left)
+                : Task.FromException<int>(new InvalidOperationException("can't connect"));
     }
+
+    private static readonly InvalidOperationException ServerSaidNo = new("server said no");
 
     [Fact]
     public async Task EmptyingTrashPlaysOnceAcrossAccounts()
     {
-        var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail());
+        var mail = new TrashMail();
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
         await vm.EmptyTrashCommand.ExecuteAsync(null);
         Assert.Equal([SoundEvent.TrashEmptied], sounds.Played);
+        Assert.Equal([Work, Home], mail.Attempted);
+        Assert.Equal("6 messages deleted from trash.", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task EmptyingATrashWithNothingInItPlaysNothing()
+    {
+        var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail { Deleted = 0 });
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+        Assert.Empty(sounds.Played);
+        Assert.Equal("0 messages deleted from trash.", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task WhenTheCheckCannotRunAFailureStaysAFailure()
+    {
+        // The network is down: the empty fails, and so does the check. Nothing was deleted.
+        var mail = new TrashMail();
+        mail.Failures[Work] = ServerSaidNo;
+        mail.Failures[Home] = ServerSaidNo;
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+        Assert.StartsWith("Empty trash failed for Work, Home", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ASecondAccountFailingIsNotHiddenByTheFirstBeingEmpty()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Home] = ServerSaidNo;
+        mail.Remaining[Work] = 0;
+        mail.Remaining[Home] = 2;
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+        Assert.StartsWith("Empty trash failed for Home:", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AFirstAccountFailingDoesNotStopTheSecond()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Work] = ServerSaidNo;
+        mail.Remaining[Work] = 2;
+        mail.Remaining[Home] = 0;
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Equal([Work, Home], mail.Attempted);
+        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+        Assert.StartsWith("Empty trash failed for Work:", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InAllTrashOnlyTheEmptiedAccountsMessagesGo()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Home] = ServerSaidNo;
+        mail.Remaining[Home] = 2;
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllTrashFolder);
+        vm.Messages.Clear();
+        vm.Messages.Add(new MailMessageSummary { MessageId = "1", AccountId = Work, FolderName = "Trash", Subject = "Gone" });
+        vm.Messages.Add(new MailMessageSummary { MessageId = "2", AccountId = Home, FolderName = "Trash", Subject = "Still there" });
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Equal("Still there", Assert.Single(vm.Messages).Subject);
+    }
+
+    [Fact]
+    public async Task WhenEveryAccountFailsTheTrashListStays()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Work] = ServerSaidNo;
+        mail.Failures[Home] = ServerSaidNo;
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllTrashFolder);
+        vm.Messages.Clear();
+        vm.Messages.Add(new MailMessageSummary { MessageId = "1", AccountId = Work, FolderName = "Trash", Subject = "Still there" });
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Single(vm.Messages);
+    }
+
+    [Fact]
+    public async Task AnImapAccountWithNoConnectionDoesNotReportAnEmptyTrash()
+    {
+        using var service = new ImapMailService(new StubOAuthService());
+        await Assert.ThrowsAsync<AccountNotConnectedException>(
+            () => service.CountTrashMessagesAsync(Guid.NewGuid(), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AnImapServerThatCannotBeReachedDoesNotReportAnEmptyTrash()
+    {
+        // The pool outlives a refused connection, so this is the path a network failure really takes.
+        var ct = TestContext.Current.CancellationToken;
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        var account = new AccountModel
+        {
+            Id = Guid.NewGuid(),
+            Username = "someone@example.com",
+            AuthType = AuthType.Password,
+            ImapHost = "127.0.0.1",
+            ImapPort = port,
+            ImapUseSsl = false,
+        };
+        using var service = new ImapMailService(new StubOAuthService());
+        await Assert.ThrowsAnyAsync<Exception>(() => service.ConnectAsync(account, "pw", ct));
+        Assert.True(service.IsConnected(account.Id));
+
+        await Assert.ThrowsAnyAsync<Exception>(() => service.CountTrashMessagesAsync(account.Id, ct));
     }
 
     [Fact]
@@ -534,7 +671,10 @@ public class SoundEventsTests
     [Fact]
     public async Task AFailedEmptyTrashPlaysActionFailed()
     {
-        var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail { EmptyFailure = new InvalidOperationException("server said no"), Remaining = 2 });
+        var mail = new TrashMail();
+        mail.Failures[Work] = ServerSaidNo;
+        mail.Remaining[Work] = 2;
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
         await vm.EmptyTrashCommand.ExecuteAsync(null);
         Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
     }
@@ -542,18 +682,25 @@ public class SoundEventsTests
     [Fact]
     public async Task ATimedOutEmptyTrashPlaysActionFailed()
     {
-        var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail { EmptyFailure = new OperationCanceledException() });
+        var mail = new TrashMail();
+        mail.Failures[Work] = new OperationCanceledException();
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
         await vm.EmptyTrashCommand.ExecuteAsync(null);
         Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+        Assert.Equal("Empty trash timed out.", vm.StatusText);
     }
 
     [Fact]
     public async Task AnEmptyTrashThatFailedButReallyWorkedPlaysEmptied()
     {
         // The connection dropped on the server's reply: the check afterward finds the trash empty.
-        var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail { EmptyFailure = new InvalidOperationException("connection dropped"), Remaining = 0 });
+        var mail = new TrashMail { Deleted = 0 };
+        mail.Failures[Work] = new InvalidOperationException("connection dropped");
+        mail.Remaining[Work] = 0;
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
         await vm.EmptyTrashCommand.ExecuteAsync(null);
         Assert.Equal([SoundEvent.TrashEmptied], sounds.Played);
+        Assert.Equal("Trash emptied.", vm.StatusText);
     }
 
     [Fact]

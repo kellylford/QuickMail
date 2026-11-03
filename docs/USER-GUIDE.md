@@ -2078,7 +2078,7 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 - Message deleted, archived and moved
 - Trash emptied
 
-If you delete or file a lot of mail in a row, you may prefer to set those three to **None**. Repeats of the same sound within a second are dropped.
+If you delete or file a lot of mail in a row, you may prefer to set those three message sounds to **None**. Repeats of the same sound within a second are dropped.
 
 ### Choosing a Sound
 
