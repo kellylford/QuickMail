@@ -4903,7 +4903,7 @@ public partial class MainWindow : Window
         _configService.Save(cfg);
         _vm.MuteSounds = cfg.MuteSounds;
         var msg = cfg.MuteSounds ? "Sounds muted." : "Sounds on.";
-        AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result, force: true);
+        AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result);
     }
 
     /// <summary>

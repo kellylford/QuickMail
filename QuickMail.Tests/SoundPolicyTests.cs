@@ -77,6 +77,15 @@ public class SoundPolicyTests
     }
 
     [Fact]
+    public void AClockSetBackDoesNotSilenceASound()
+    {
+        var policy = NewPolicy();
+        Assert.True(Ask(policy));
+        _now -= TimeSpan.FromHours(1);
+        Assert.True(Ask(policy));
+    }
+
+    [Fact]
     public void ARuleSoundHoldsBackTheNewMailSoundBehindIt()
     {
         var policy = NewPolicy();

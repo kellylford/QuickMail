@@ -1015,10 +1015,93 @@ public sealed class SettingsTransferTests : IDisposable
         var laptop = SeedLaptop();
         AddSound(laptop, "Laptop only.wav", [2]);
 
-        Import(Export(desktop), laptop);
+        var result = Import(Export(desktop), laptop);
 
         Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Laptop only.wav")));
         Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Chime.wav")));
+        Assert.Contains("Custom sounds: 1 sound added.", result.Lines);
+    }
+
+    [Fact]
+    public void Sounds_WithTheSameNameKeepTheOneHere()
+    {
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Chime.wav", [9, 9]);
+        var laptop = SeedLaptop();
+        AddSound(laptop, "Chime.wav", [1]);
+
+        var result = Import(Export(desktop), laptop);
+
+        Assert.Equal([(byte)1], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Chime.wav")));
+        Assert.Contains("Custom sounds: 0 sounds added, 1 already here kept.", result.Lines);
+    }
+
+    /// <summary>A real export, with extra entries added the way someone crafting a file could.</summary>
+    private string ExportWithExtraSounds(string profile, IReadOnlyCollection<SettingsCategory> categories, int count)
+    {
+        var path = Export(profile, categories);
+        using var zip = ZipFile.Open(path, ZipArchiveMode.Update);
+        for (var i = 0; i < count; i++)
+            zip.CreateEntry($"sounds/Extra {i}.wav");
+        return path;
+    }
+
+    [Fact]
+    public void Sounds_InAFileWhoseCategoriesCannotNameOneAreIgnored()
+    {
+        var laptop = SeedLaptop();
+
+        Import(ExportWithExtraSounds(SeedDesktop(), [SettingsCategory.Templates], 1), laptop);
+
+        Assert.False(Directory.Exists(Path.Combine(laptop, "sounds")));
+    }
+
+    [Fact]
+    public void Sounds_FromOneFileAreCapped()
+    {
+        var laptop = SeedLaptop();
+
+        Import(ExportWithExtraSounds(SeedDesktop(), [SettingsCategory.Preferences], SoundCatalog.MaxCustomFilesInImport + 5), laptop);
+
+        Assert.Equal(SoundCatalog.MaxCustomFilesInImport, Directory.GetFiles(Path.Combine(laptop, "sounds")).Length);
+    }
+
+    [Fact]
+    public void SoundChoices_AreReplacedByTheFilesEvenWhereItKeepsTheDefault()
+    {
+        // [sounds] lists only what was changed, so this desktop saying nothing about NewMail means the default.
+        var desktop = SeedDesktop();
+        var desktopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(desktop, "config.ini")));
+        desktopCfg.SoundEvents["MessageSent"] = "none";
+        File.WriteAllText(Path.Combine(desktop, "config.ini"), ConfigService.BuildFileText(desktopCfg));
+
+        var laptop = SeedLaptop();
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.SoundEvents["NewMail"] = "custom:Laptop.wav";
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        var imported = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        Assert.Equal("none", imported.SoundEvents["MessageSent"]);
+        Assert.False(imported.SoundEvents.ContainsKey("NewMail"));
+    }
+
+    [Fact]
+    public void SoundChoices_SurviveAFileFromBeforeSoundsExisted()
+    {
+        var desktop = SeedDesktop();
+        var path = Path.Combine(desktop, "config.ini");
+        File.WriteAllLines(path, File.ReadAllLines(path).Where(l => !l.Contains("Sound", StringComparison.OrdinalIgnoreCase)));
+
+        var laptop = SeedLaptop();
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.SoundEvents["NewMail"] = "none";
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        Assert.Equal("none", ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini"))).SoundEvents["NewMail"]);
     }
 
     [Fact]
@@ -1049,16 +1132,19 @@ public sealed class SettingsTransferTests : IDisposable
     {
         var desktop = SeedDesktop();
         AddSound(desktop, "Chime.wav", [9, 9]);
+        AddSound(desktop, "Desktop only.wav", [3]);
         var bundle = Export(desktop);
         var laptop = SeedLaptop();
-        File.WriteAllBytes(Path.Combine(laptop, "custom.lex"), [1, 2]);
         AddSound(laptop, "Chime.wav", [1]);
         AddSound(laptop, "Laptop only.wav", [2]);
 
-        // As in the rollback test above: custom.lex is written late, so the import fails after other changes.
-        using (new FileStream(Path.Combine(laptop, "custom.lex"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        // The folder-name file is written after the sounds, so a lock on it fails the import once they're in.
+        var heal = Path.Combine(laptop, ImportFolderHeal.FileName);
+        File.WriteAllText(heal, "{}");
+        using (new FileStream(heal, FileMode.Open, FileAccess.Read, FileShare.Read))
             Assert.Throws<SettingsImportFailedException>(() => Import(bundle, laptop));
 
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "Desktop only.wav")));
         Assert.Equal([(byte)1], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Chime.wav")));
         Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Laptop only.wav")));
     }

@@ -101,13 +101,15 @@ All the places a new action must change (from the code survey):
 - `MuteSounds` (default off), which silences everything
 - `SoundVolume` (default 100)
 - `SoundPack`
-- `SoundEvents`, a new `[sounds]` dictionary following `Features`; written before `[windowing]` as the existing comment requires
+- `SoundEvents`, a new `[sounds]` section following `[features]`, listing only what the person changed. The other settings are in `[global]`, so they stay above `[windowing]` as the existing comment requires
 
 A sound reference is a string: `builtin:<name>`, `custom:<file>` or `none`. Only a filename is stored, never a full path, and resolving it keeps the path inside the folder (as `ThemeStore.PathForId` does).
 
 **Custom files** are copied into `{profile}\sounds\`, which gives #129 its backup copy and survives the original being moved.
-- They are validated on import by actually decoding them: WAV or MP3, at most 5 MB and 30 seconds, with a plain-language error otherwise.
-- `SettingsBundle` currently accepts only `.json` under `themes/`, so extend it to carry `sounds/`. Its 64 MB total cap needs a defined behavior for overflow.
+- Choose File checks them by actually decoding them: WAV or MP3, at most 5 MB and 30 seconds, with a plain-language error otherwise. The 30-second limit is also enforced when any sound is opened to play, because a settings file or a file copied in by hand never passes through Choose File.
+- Settings files carry `sounds/` when the export includes Rules and Views or Preferences. An export takes at most 32 MB of sounds, well under the file's 64 MB cap, because going over the cap would make the whole file unreadable. A sound left out falls back to the built-in sound.
+- An import adds sounds and never replaces them, because a sound here may be in use by something the import isn't replacing. A same-named sound keeps the one here. It adds at most 100 files, and the preview and result both say what it did.
+- Importing Preferences replaces the sound choices, including back to defaults, unless the file is from before sounds existed.
 - The `EveryProfileFileAServiceWritesIsClassified` test will require the classification.
 
 **Settings → new Sounds tab:**
@@ -162,7 +164,7 @@ What a screen reader says for standard controls is for Kelly to confirm, not ass
 3. Pick a sound, optionally Preview it, and save.
 4. The rule list row says "Play sound: \<name\>". A matching message plays it once per rule pass.
 
-**Mute:** Ctrl+Shift+P, "Mute All Sounds", Enter. Announces "Sounds muted." (Result, `force: true`, like the announcements toggle). Running it again announces "Sounds on."
+**Mute:** Ctrl+Shift+P, "Mute All Sounds", Enter. Announces "Sounds muted." (Result) and cuts off anything playing. Running it again announces "Sounds on."
 
 **Send:** Ctrl+Enter, then the sent sound plays as the existing "Message sent." status is reported and the window closes. Focus behaves as it does today.
 
@@ -172,7 +174,7 @@ What a screen reader says for standard controls is for Kelly to confirm, not ass
 - **CommandRegistry:** `settings.toggleMuteSounds`, category Settings, no default key.
 - **AutomationProperties.Name:** "Sounds" tab; "Volume"; "Sound events" list; row names from the row's `AccessibleName` on the container, via `ItemContainerStyle`. The rule's "Play a sound" checkbox has no explicit Name, so its client-only qualifier is spoken, as with the other client-only checkboxes.
 - **Selector items:** `SoundChoice` and `SoundEventRow` override `ToString()`, are added to `SelectorItemAccessibilityTests`, and are registered in `TypeAheadWiringTests` `Sites`.
-- **Announcements:** mute toggle (Result, forced); refused sound file (Result). No announcement accompanies a sound.
+- **Announcements:** mute toggle (Result); refused sound file (Result). No announcement accompanies a sound.
 - **VM state:** `MainViewModel` gets the sound service and a mute menu check state, resynced in `ApplySettings:2769`.
 - **Themes:** if `Slider` isn't already styled, `ThemedControlCoverageTests` requires an implicit style for Volume.
 - **Dependencies:** NAudio packages; a new profile folder `sounds\`.

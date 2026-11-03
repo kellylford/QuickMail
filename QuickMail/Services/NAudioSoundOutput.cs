@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
+using QuickMail.Models;
 
 namespace QuickMail.Services;
 
@@ -22,11 +23,13 @@ public sealed class NAudioSoundOutput : ISoundOutput
 
     private const int LatencyMilliseconds = 100;
 
-    /// <summary>Longer than any sound can be (import caps a custom file at 30 seconds), so a stuck driver can't hold the queue forever.</summary>
-    private static readonly TimeSpan MaxWait = TimeSpan.FromSeconds(40);
+    /// <summary>Longer than <see cref="Open"/> lets any sound be, so a driver that never reports the end can't hold the queue forever.</summary>
+    private static readonly TimeSpan MaxWait = SoundCatalog.MaxCustomSoundLength + TimeSpan.FromSeconds(10);
 
     public void Play(SoundClip clip, float volume, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var stopped = new ManualResetEventSlim();   // Before the player: it outlives anything the player can still raise.
         using var reader = Open(clip);
         // Scaled here, not on the player: the player's volume is the session's, which shows in the
         // Windows volume mixer and would be remembered for this app there.
@@ -36,7 +39,6 @@ public sealed class NAudioSoundOutput : ISoundOutput
         using var player = new WasapiPlayerBuilder().WithLatency(LatencyMilliseconds).Build();
         player.Init(withLeadOut.ToWaveProvider());
 
-        using var stopped = new ManualResetEventSlim();
         Exception? failure = null;
         player.PlaybackStopped += (_, e) =>
         {
@@ -59,8 +61,21 @@ public sealed class NAudioSoundOutput : ISoundOutput
         if (failure is not null) throw new IOException($"Playback of {clip.Key} failed.", failure);
     }
 
-    /// <summary>Opens and decodes the clip. Throws on anything that isn't playable audio.</summary>
+    /// <summary>
+    /// Opens and decodes the clip. Throws on anything that isn't playable audio, or that runs longer
+    /// than a sound may. Checked here because this is the one path every sound takes: a settings file
+    /// or a file copied into the folder by hand never passes through Choose File, and a small file
+    /// at a low bit rate can run for many minutes.
+    /// </summary>
     internal static WaveStream Open(SoundClip clip)
+    {
+        var reader = OpenReader(clip);
+        if (reader.TotalTime <= SoundCatalog.MaxCustomSoundLength) return reader;
+        reader.Dispose();
+        throw new InvalidDataException($"Sound {clip.Key} is longer than {SoundCatalog.MaxCustomSoundLength.TotalSeconds:0} seconds.");
+    }
+
+    private static WaveStream OpenReader(SoundClip clip)
     {
         if (clip.FilePath is { } path)
         {

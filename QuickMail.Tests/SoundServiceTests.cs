@@ -18,13 +18,26 @@ public sealed class SoundServiceTests : IDisposable
         public ConcurrentQueue<(SoundClip Clip, float Volume)> Played { get; } = new();
         public ManualResetEventSlim? Hold { get; set; }
         public ManualResetEventSlim Entered { get; } = new();
+        public ManualResetEventSlim Cancelled { get; } = new();
         public Exception? Failure { get; set; }
+
+        /// <summary>Behaves like a stuck audio driver: takes no notice of cancellation.</summary>
+        public bool IgnoresCancellation { get; set; }
 
         public void Play(SoundClip clip, float volume, CancellationToken cancellationToken)
         {
             Played.Enqueue((clip, volume));
             Entered.Set();
-            Hold?.Wait(cancellationToken);
+            try
+            {
+                if (IgnoresCancellation) Hold?.Wait(CancellationToken.None);
+                else Hold?.Wait(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                Cancelled.Set();
+                throw;
+            }
             if (Failure is not null) throw Failure;
         }
     }
@@ -56,7 +69,7 @@ public sealed class SoundServiceTests : IDisposable
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (_output.Played.Count < keys.Length && DateTime.UtcNow < deadline)
             Thread.Sleep(5);
-        Thread.Sleep(50);
+        Thread.Sleep(250);   // Long enough for a sound wrongly queued to have reached the worker.
         Assert.Equal(keys, _output.Played.Select(p => p.Clip.Key));
     }
 
@@ -245,7 +258,7 @@ public sealed class SoundServiceTests : IDisposable
     }
 
     [Fact]
-    public void DisposeIsSafeTwiceAndEndsTheWorkerMidSound()
+    public void DisposeIsSafeTwiceAndCutsOffTheSoundPlaying()
     {
         Settings().PlayEventSounds = true;
         _output.Hold = new ManualResetEventSlim();
@@ -255,6 +268,73 @@ public sealed class SoundServiceTests : IDisposable
 
         service.Dispose();
         service.Dispose();
+
+        Assert.True(_output.Cancelled.IsSet);
+    }
+
+    [Fact]
+    public void AStuckAudioDriverCannotHoldUpExit()
+    {
+        Settings().PlayEventSounds = true;
+        _output.Hold = new ManualResetEventSlim();
+        _output.IgnoresCancellation = true;
+        var service = Service();
+        service.Play(SoundEvent.MessageSent);
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5)));
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        service.Dispose();
+
+        Assert.InRange(clock.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(3));
+    }
+
+    [Fact]
+    public void MutingCutsOffTheSoundPlaying()
+    {
+        Settings().PlayEventSounds = true;
+        _output.Hold = new ManualResetEventSlim();
+        Service().Play(SoundEvent.MessageSent);
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5)));
+
+        Settings().MuteSounds = true;
+
+        Assert.True(_output.Cancelled.Wait(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public void MuteDoesNotCutOffAPreview()
+    {
+        Settings().MuteSounds = true;
+        _output.Hold = new ManualResetEventSlim();
+        Service().Preview("builtin:arrived");
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5)));
+
+        Assert.False(_output.Cancelled.Wait(TimeSpan.FromMilliseconds(400)));
+    }
+
+    [Fact]
+    public void EveryBuiltInSoundOpensThroughTheServicesOwnLookup()
+    {
+        foreach (var name in SoundCatalog.BuiltInSounds.Distinct())
+        {
+            using var stream = SoundService.OpenBuiltInResource(SoundCatalog.DefaultPack, name);
+            Assert.NotNull(stream);
+            Assert.True(stream.Length > 0);
+        }
+    }
+
+    [Fact]
+    public void AnUnknownPackFallsBackToTheDefaultPack()
+    {
+        Settings().PlayEventSounds = true;
+        Settings().SoundPack = "no such pack";
+        using var service = new SoundService(_config, _folder, _output);
+        service.Play(SoundEvent.MessageSent);
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5)));
+
+        _output.Played.TryPeek(out var played);
+        using var stream = played.Clip.OpenStream!();
+        Assert.True(stream.Length > 0);
     }
 
     [Theory]

@@ -119,7 +119,16 @@ public sealed class SettingsBundle
                 if (total > MaxTotalBytes) throw new SettingsBundleException(notASettingsFile);
                 using var es = entry.Open();
                 using var ms = new MemoryStream();
-                es.CopyTo(ms);
+                // Counted as it is read as well: the length above is only what the archive claims.
+                var buffer = new byte[81920];
+                long copied = 0;
+                var allowed = MaxTotalBytes - (total - entry.Length);
+                for (int read; (read = es.Read(buffer, 0, buffer.Length)) > 0;)
+                {
+                    copied += read;
+                    if (copied > allowed) throw new SettingsBundleException(notASettingsFile);
+                    ms.Write(buffer, 0, read);
+                }
                 entries[name] = ms.ToArray();
             }
         }

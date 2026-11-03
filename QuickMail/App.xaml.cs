@@ -632,7 +632,7 @@ public partial class App : Application
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
             _soundService = probeMode ? null : new SoundService(
-                configService, System.IO.Path.Combine(profile.ProfileDir, SoundCatalog.CustomFolderName), new NAudioSoundOutput(), isQuiet: WindowsQuietState.IsQuiet);
+                configService, System.IO.Path.Combine(profile.ProfileDir, "sounds"), new NAudioSoundOutput(), isQuiet: WindowsQuietState.IsQuiet);
             // Answers the question the app cannot answer about itself: when an account shows as
             // disconnected, is it actually unreachable? Probes on a connection that shares nothing
             // with the pools or watchers. Label resolution reads the live account list.

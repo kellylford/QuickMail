@@ -64,13 +64,27 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name)
         return false;
     }
 
-    /// <summary>A bare WAV or MP3 file name, with nothing that could lead out of the sounds folder.</summary>
+    // Leaves room for the profile path, so a long name can't fail mid-import and roll the whole thing back.
+    private const int MaxFileNameLength = 100;
+
+    // On older Windows, COM1.wav still means the serial port, whatever folder it is in.
+    private static bool IsReservedDeviceName(string stem)
+    {
+        var name = stem.TrimEnd(' ', '.').ToUpperInvariant();
+        if (name is "CON" or "PRN" or "AUX" or "NUL" or "CONIN$" or "CONOUT$") return true;
+        return name.Length == 4 && (name.StartsWith("COM", StringComparison.Ordinal) || name.StartsWith("LPT", StringComparison.Ordinal))
+            && (char.IsDigit(name[3]) || name[3] is '¹' or '²' or '³');
+    }
+
+    /// <summary>A bare WAV or MP3 file name, with nothing that could lead out of the sounds folder or reach a device.</summary>
     public static bool IsSafeCustomFileName(string? file)
     {
         if (string.IsNullOrWhiteSpace(file)) return false;
         if (file != file.Trim() || file.EndsWith('.')) return false;   // Windows drops these, changing which file is meant.
         if (file.IndexOfAny(['/', '\\', ':']) >= 0) return false;
         if (file.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;
+        if (file.Length > MaxFileNameLength) return false;
+        if (IsReservedDeviceName(Path.GetFileNameWithoutExtension(file))) return false;
         var extension = Path.GetExtension(file);
         return extension.Equals(".wav", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase);

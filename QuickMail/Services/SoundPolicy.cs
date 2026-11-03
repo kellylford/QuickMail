@@ -43,12 +43,19 @@ public sealed class SoundPolicy(Func<DateTime> utcNow)
             // this mail, so the arrival sound behind it is still about the same mail.
             if (origin == SoundOrigin.Rule) _lastRuleSound = now;
 
-            if (origin == SoundOrigin.Arrival && now - _lastRuleSound < RuleHoldsArrivalFor) return false;
+            if (origin == SoundOrigin.Arrival && IsWithin(now, _lastRuleSound, RuleHoldsArrivalFor)) return false;
             if (waiting >= MaxWaiting) return false;
-            if (_lastPlayed.TryGetValue(soundKey, out var last) && now - last < SameSoundGap) return false;
+            if (_lastPlayed.TryGetValue(soundKey, out var last) && IsWithin(now, last, SameSoundGap)) return false;
 
             _lastPlayed[soundKey] = now;
             return true;
         }
+    }
+
+    // A clock set back gives a negative age. That counts as long ago, or the sound stays silent until the clock catches up.
+    private static bool IsWithin(DateTime now, DateTime then, TimeSpan window)
+    {
+        var age = now - then;
+        return age >= TimeSpan.Zero && age < window;
     }
 }

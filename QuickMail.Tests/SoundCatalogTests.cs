@@ -45,6 +45,12 @@ public class SoundCatalogTests
     [InlineData("custom:C:x.wav")]
     [InlineData("custom:file.wav:stream.wav")]
     [InlineData("custom:ends-with-dot.wav.")]
+    [InlineData("custom:NUL.wav")]
+    [InlineData("custom:con.mp3")]
+    [InlineData("custom:AUX.wav")]
+    [InlineData("custom:COM1.wav")]
+    [InlineData("custom:lpt9.mp3")]
+    [InlineData("custom:COM¹.wav")]
     public void UnsafeOrUnknownValuesAreRefused(string? text)
     {
         Assert.False(SoundRef.TryParse(text, out var sound));
@@ -131,16 +137,37 @@ public class SoundCatalogTests
     }
 
     [Theory]
-    [InlineData(".wav")]
-    [InlineData(".mp3")]
-    public void AFileThatIsNotAudioIsRefusedWhenOpened(string extension)
+    [InlineData(".wav", typeof(FormatException))]
+    [InlineData(".mp3", typeof(NAudio.MediaFoundation.MediaFoundationException))]
+    public void AFileThatIsNotAudioIsRefusedWhenOpened(string extension, Type expected)
     {
         var path = Path.Combine(Path.GetTempPath(), $"QM-SND-{Guid.NewGuid():N}{extension}");
         File.WriteAllBytes(path, [.. Enumerable.Range(0, 4096).Select(i => (byte)(i * 37))]);
         try
         {
             var ex = Record.Exception(() => NAudioSoundOutput.Open(new SoundClip("junk", path, null)).Dispose());
-            Assert.NotNull(ex);
+            Assert.IsType(expected, ex);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData(29, false)]
+    [InlineData(31, true)]
+    public void ASoundLongerThanTheLimitIsRefusedHoweverSmallTheFile(int seconds, bool refused)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"QM-SND-{Guid.NewGuid():N}.wav");
+        var format = new NAudio.Wave.WaveFormat(8000, 8, 1);
+        using (var writer = new NAudio.Wave.WaveFileWriter(path, format))
+            writer.Write(new byte[8000 * seconds], 0, 8000 * seconds);
+        try
+        {
+            var ex = Record.Exception(() => NAudioSoundOutput.Open(new SoundClip("long", path, null)).Dispose());
+            if (refused) Assert.IsType<InvalidDataException>(ex);
+            else Assert.Null(ex);
         }
         finally
         {

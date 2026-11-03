@@ -13,6 +13,8 @@ public sealed class SoundService : ISoundService
 {
     private sealed record Request(SoundClip Clip, bool IsPreview);
 
+    private static readonly TimeSpan MuteCheckEvery = TimeSpan.FromMilliseconds(100);
+
     private readonly IConfigService _config;
     private readonly string _soundsFolder;
     private readonly ISoundOutput _output;
@@ -139,8 +141,9 @@ public sealed class SoundService : ISoundService
     {
         if (sound.Kind == SoundRefKind.Custom)
         {
-            var path = Path.Combine(_soundsFolder, sound.Name);
-            if (File.Exists(path)) return new SoundClip(sound.ToStored(), path, null);
+            var path = Path.GetFullPath(Path.Combine(_soundsFolder, sound.Name));
+            var inFolder = string.Equals(Path.GetDirectoryName(path), Path.GetFullPath(_soundsFolder).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
+            if (inFolder && File.Exists(path)) return new SoundClip(sound.ToStored(), path, null);
             LogOnce($"missing:{sound.Name}", $"Custom sound '{sound.Name}' is missing; using the built-in sound.");
             sound = SoundRef.BuiltIn(fallback);
         }
@@ -173,6 +176,10 @@ public sealed class SoundService : ISoundService
         {
             var config = _config.Load();
             if (config.MuteSounds && !request.IsPreview) return;   // Muted while it waited.
+
+            // Muting cuts off what is playing too: a long custom sound shouldn't carry on over speech
+            // for half a minute after "Sounds muted." A preview was asked for, so it plays regardless.
+            using var muteWatch = request.IsPreview ? null : new Timer(_ => CancelIfMuted(cts), null, MuteCheckEvery, MuteCheckEvery);
             _output.Play(request.Clip, Math.Clamp(config.SoundVolume, 0, 100) / 100f, cts.Token);
         }
         catch (OperationCanceledException)
@@ -192,6 +199,18 @@ public sealed class SoundService : ISoundService
         }
     }
 
+    private void CancelIfMuted(CancellationTokenSource playing)
+    {
+        try
+        {
+            if (_config.Load().MuteSounds) playing.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The sound ended just as this fired: nothing left to cancel.
+        }
+    }
+
     private void LogOnce(string key, string message)
     {
         lock (_loggedFailures)
@@ -201,7 +220,7 @@ public sealed class SoundService : ISoundService
         LogService.Log(message);
     }
 
-    private static Stream? OpenBuiltInResource(string pack, string name) =>
+    internal static Stream? OpenBuiltInResource(string pack, string name) =>
         Assembly.GetExecutingAssembly().GetManifestResourceStream($"QuickMail.Sounds.BuiltIn.{pack}.{name}.wav");
 
     public void Dispose()

@@ -61,6 +61,12 @@ public static class SoundCatalog
     /// <summary>The largest custom sound accepted, whether chosen in Settings or arriving in a settings file.</summary>
     public const long MaxCustomFileBytes = 5L * 1024 * 1024;
 
+    /// <summary>The most custom sound files a settings file can bring in. Each is a file on disk, so it needs its own limit.</summary>
+    public const int MaxCustomFilesInImport = 100;
+
+    /// <summary>The longest any sound may play.</summary>
+    public static readonly System.TimeSpan MaxCustomSoundLength = System.TimeSpan.FromSeconds(30);
+
     public static readonly IReadOnlyList<SoundEventInfo> Events =
     [
         new(SoundEvent.MessageSent,        "MessageSent",        "Message sent",               "sent",         true,  SoundOrigin.Direct),
