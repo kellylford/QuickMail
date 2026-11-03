@@ -166,7 +166,7 @@ public class SoundCatalogTests
         try
         {
             var ex = Record.Exception(() => NAudioSoundOutput.Open(new SoundClip("long", path, null)).Dispose());
-            if (refused) Assert.IsType<InvalidDataException>(ex);
+            if (refused) Assert.IsType<SoundTooLongException>(ex);
             else Assert.Null(ex);
         }
         finally

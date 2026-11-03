@@ -605,13 +605,13 @@ public class WatchedConversationsPhase2Tests
         public event Action<NotificationActivation>? Activated;
 #pragma warning restore CS0067
 
-        public void ShowNewMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages)
+        public void ShowNewMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages, bool silent = false)
             => Toasts.Add(("new", newMessages.Select(m => m.Subject).ToList()));
 
-        public void ShowWatchedMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages)
+        public void ShowWatchedMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages, bool silent = false)
             => Toasts.Add(("watched", newMessages.Select(m => m.Subject).ToList()));
 
-        public void ShowInfo(string title, string message) { }
+        public void ShowInfo(string title, string message, bool silent = false) { }
     }
 
     private static (MainViewModel Vm, StubWatchService Watch, RecordingNotificationService Toasts, AccountModel Account)

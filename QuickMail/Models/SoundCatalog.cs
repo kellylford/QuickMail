@@ -91,6 +91,10 @@ public static class SoundCatalog
 
     public static SoundEventInfo Info(SoundEvent e) => ByEvent[e];
 
+    /// <summary>What Settings calls a built-in sound: "arrived" is "Arrived".</summary>
+    public static string BuiltInLabel(string name) =>
+        name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
+
     /// <summary>
     /// What an event plays under these settings: the person's choice if a valid one is stored, else
     /// its built-in sound if it is on by default, else nothing. An unreadable stored value falls back

@@ -61,6 +61,8 @@ public sealed class NAudioSoundOutput : ISoundOutput
         if (failure is not null) throw new IOException($"Playback of {clip.Key} failed.", failure);
     }
 
+    public void Check(string filePath) => Open(new SoundClip(filePath, filePath, null)).Dispose();
+
     /// <summary>
     /// Opens and decodes the clip. Throws on anything that isn't playable audio, or that runs longer
     /// than a sound may. Checked here because this is the one path every sound takes: a settings file
@@ -72,7 +74,7 @@ public sealed class NAudioSoundOutput : ISoundOutput
         var reader = OpenReader(clip);
         if (reader.TotalTime <= SoundCatalog.MaxCustomSoundLength) return reader;
         reader.Dispose();
-        throw new InvalidDataException($"Sound {clip.Key} is longer than {SoundCatalog.MaxCustomSoundLength.TotalSeconds:0} seconds.");
+        throw new SoundTooLongException($"Sound {clip.Key} is longer than {SoundCatalog.MaxCustomSoundLength.TotalSeconds:0} seconds.");
     }
 
     private static WaveStream OpenReader(SoundClip clip)

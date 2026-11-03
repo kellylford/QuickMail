@@ -70,7 +70,7 @@ public sealed class WindowsToastNotificationService : INotificationService, IDis
 
     public bool IsSupported => _osSupported;
 
-    public void ShowNewMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages)
+    public void ShowNewMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages, bool silent = false)
     {
         if (!_osSupported || newMessages is null || newMessages.Count == 0) return;
 
@@ -101,6 +101,8 @@ public sealed class WindowsToastNotificationService : INotificationService, IDis
                        .AddText(accountLabel);
             }
 
+            if (silent) builder.AddAudio(new ToastAudio { Silent = true });
+
             // Tag/group per account so repeated arrivals for one account collapse rather than
             // stack endlessly in the notification center.
             builder.Show(toast =>
@@ -115,7 +117,7 @@ public sealed class WindowsToastNotificationService : INotificationService, IDis
         }
     }
 
-    public void ShowWatchedMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages)
+    public void ShowWatchedMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages, bool silent = false)
     {
         if (!_osSupported || newMessages is null || newMessages.Count == 0) return;
 
@@ -149,6 +151,8 @@ public sealed class WindowsToastNotificationService : INotificationService, IDis
                        .AddText(accountLabel);
             }
 
+            if (silent) builder.AddAudio(new ToastAudio { Silent = true });
+
             // Its own group, so watched replies collapse among themselves rather than displacing
             // ordinary new-mail toasts in the notification centre.
             builder.Show(toast =>
@@ -163,16 +167,17 @@ public sealed class WindowsToastNotificationService : INotificationService, IDis
         }
     }
 
-    public void ShowInfo(string title, string message)
+    public void ShowInfo(string title, string message, bool silent = false)
     {
         if (!_osSupported) return;
         try
         {
-            new ToastContentBuilder()
+            var builder = new ToastContentBuilder()
                 .AddArgument("action", "info")
                 .AddText(title)
-                .AddText(message)
-                .Show();
+                .AddText(message);
+            if (silent) builder.AddAudio(new ToastAudio { Silent = true });
+            builder.Show();
         }
         catch (Exception ex)
         {

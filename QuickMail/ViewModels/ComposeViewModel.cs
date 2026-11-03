@@ -201,9 +201,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public IAccountService AccountService => _accountService;
 
+    private readonly ISoundService? _sounds;
+
     public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null,
-        IOutboxService? outbox = null, IConnectivityService? connectivity = null, Func<Guid, bool>? isAccountConnected = null)
+        IOutboxService? outbox = null, IConnectivityService? connectivity = null, Func<Guid, bool>? isAccountConnected = null,
+        ISoundService? sounds = null)
     {
+        _sounds = sounds;
         _isAccountConnected = isAccountConnected;
         _smtp = smtp;
         _accountService = accountService;
@@ -425,6 +429,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         _isSent = true;
         _isDirty = false;
         SetStatusOutcome(queuedMessage ?? "Message queued. It will be sent when you're online.");
+        _sounds?.Play(SoundEvent.MessageQueued);
         CloseRequested?.Invoke();
         return true;
     }
@@ -865,6 +870,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 // attachment on a thin uplink. Queuing it would say "when you're online" to someone
                 // who is, and could send twice if the server had already taken the data.
                 SetStatusOutcome("Send timed out after 30 seconds. Try again.");
+                _sounds?.Play(SoundEvent.SendFailed);
                 return;
             }
             catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, CancellationToken.None))
@@ -883,6 +889,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 throw;
             }
             SetStatusOutcome("Message sent.");
+            _sounds?.Play(SoundEvent.MessageSent);
             _isSent = true;
             await ForgetLocalCopyAsync();
 
@@ -922,6 +929,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             SetStatusOutcome($"Send failed: {ex.Message}");
+            _sounds?.Play(SoundEvent.SendFailed);
         }
         finally
         {

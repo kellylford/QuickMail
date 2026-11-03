@@ -6196,7 +6196,7 @@ public partial class MainWindow : Window
         // Compose windows are modeless, so the one-turn delay is imperceptible.
         Dispatcher.InvokeAsync(() =>
         {
-            var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity, isAccountConnected: _vm.IsAccountReady);
+            var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity, isAccountConnected: _vm.IsAccountReady, sounds: _vm.Sounds);
             composeVm.Seed(composeModel);
             var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
             composeVm.CloseRequested += window.Close;
@@ -7475,7 +7475,7 @@ public partial class MainWindow : Window
         ComposeWindow GetOrOpenCompose()
         {
             if (pending?.IsLoaded == true) return pending;
-            var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity, isAccountConnected: _vm.IsAccountReady);
+            var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity, isAccountConnected: _vm.IsAccountReady, sounds: _vm.Sounds);
             // Seed with an empty new-message model so the sender-account list is populated and the
             // default account + signature are applied — same as the normal "New message" path. Without
             // this the From picker is empty and the user can't choose who to send from (a pre-existing
@@ -7719,8 +7719,21 @@ public partial class MainWindow : Window
             .ToList();
         var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
             (Application.Current as App)?.ScreenshotCapture,
-            (Application.Current as App)?.LaunchAtSignIn);
+            (Application.Current as App)?.LaunchAtSignIn,
+            _vm.Sounds);
         var dialog = new SettingsDialog(vm) { Owner = this };
+
+        // A sound file for an event (#912). The Windows file dialog, over the Settings dialog, which
+        // hosts no WebView2.
+        vm.PickSoundFileRequested = () =>
+        {
+            var fileDialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Choose Sound File",
+                Filter = "Sound files (*.wav;*.mp3)|*.wav;*.mp3",
+            };
+            return fileDialog.ShowDialog(dialog) == true ? fileDialog.FileName : null;
+        };
 
         // Picking a startup folder needs a window, which is the View's job — the VM asks and gets a
         // plain record back (#516). Wired here rather than in SettingsDialog because this is where

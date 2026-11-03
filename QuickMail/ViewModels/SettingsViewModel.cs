@@ -503,12 +503,14 @@ public partial class SettingsViewModel : ObservableObject
         IThemeService? themeService = null,
         System.Collections.Generic.IEnumerable<string>? fontFamilies = null,
         IScreenshotCaptureService? screenshotCapture = null,
-        ILaunchAtSignInService? launchAtSignIn = null)
+        ILaunchAtSignInService? launchAtSignIn = null,
+        ISoundService? sounds = null)
     {
         _configService = configService;
         _screenshotCapture = screenshotCapture;
         _launchAtSignInService = launchAtSignIn;
         var cfg = configService.Load();
+        LoadSoundSettings(cfg, sounds);
 
         // Appearance: themes from the service; installed fonts from the View
         // (font enumeration is a presentation concern the caller supplies).
@@ -697,6 +699,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AutoSaveDrafts                   = AutoSaveDrafts;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
         cfg.CheckSpellingAsYouType           = CheckSpellingAsYouType;
+        SaveSoundSettings(cfg);
         cfg.DefaultComposeMode = DefaultComposeMode switch
         {
             "markdown" => Models.ComposeMode.Markdown,

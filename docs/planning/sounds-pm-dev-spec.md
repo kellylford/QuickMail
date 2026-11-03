@@ -74,7 +74,7 @@ Each hooks where the outcome is already known, so existing de-duplication carrie
 
 **New mail must not disturb toasts.** `NewMailFilter.SelectNew` consumes what it sees, and the watched-before-inbox order is a tested contract, while `MaybeNotifyNewMail:4302` returns early when toasts are off. Sharing that path would lose toasts in some settings combinations. So add a separate `MaybePlayMailSounds` with **its own key set**, called next to the toast calls at `MainViewModel.cs:4256` and `3894`. It uses the same launch threshold, shared-mailbox opt-in and backlog limit (`MaxNotifyBatchSize`). Toast logic stays as it is.
 
-**No double sound.** Toasts set no audio today, so I expect Windows plays its default sound with them; step 1 confirms this. `ShowNewMail`, `ShowWatchedMail` and `ShowInfo` gain a `silent` flag, set to `IsAudible(event)`. With sounds off, toasts behave exactly as they do now.
+**No double sound.** Toasts set no audio today, so I expect Windows plays its default sound with them; step 1 confirms this. `ShowNewMail`, `ShowWatchedMail` and `ShowInfo` gain a `silent` flag, set whenever event sounds are on or everything is muted, whatever each event is set to, so Mute and None really are silent. With both off, toasts behave exactly as they do now.
 
 ### Rule action
 
@@ -114,8 +114,8 @@ A sound reference is a string: `builtin:<name>`, `custom:<file>` or `none`. Only
 
 **Settings → new Sounds tab:**
 - Checkboxes "Play sounds for mail events" and "Mute all sounds"
-- Volume
-- Pack combo (one entry now)
+- Volume, a combo box from 10% to 100% (no window uses a Slider, so this needs no new themed control)
+- No pack choice yet: with one pack it would be a list of one, so it arrives with a second pack
 - An event list, with rows like "New mail: Chime"
 - For the selected event: a Sound combo, Preview, and Choose File
 
