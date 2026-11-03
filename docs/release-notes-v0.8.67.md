@@ -12,7 +12,7 @@ QuickMail can now play sounds. They are **off until you turn them on**, in **Set
 - What do you think of the sounds? Which style do you prefer, and are any two sounds too alike, harsh, or easy to confuse with your screen reader's own sounds?
 - How do the sounds work alongside your screen reader's speech?
 
-**Report a Bug** on the Help menu or email to support@theideaplace.net both reach us.
+Reply on [the sounds feedback issue](https://github.com/kellylford/QuickMail/issues/920), or if you would rather not use GitHub, **Report a Bug** on the Help menu or email to support@theideaplace.net both reach us.
 
 Development of the sounds QuickMail uses will continue, and the current audio is just a first attempt. Contributions of audio files are welcome if you are interested in creating sounds for QuickMail. Please reach out to support@theideaplace.net or submit a pull request on [GitHub](https://github.com/kellylford/QuickMail).
 
