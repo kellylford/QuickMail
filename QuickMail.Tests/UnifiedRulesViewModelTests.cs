@@ -1660,7 +1660,7 @@ public class UnifiedRulesViewModelTests
         Assert.StartsWith("Security (enabled)", detail);
         Assert.Contains("Applies when:", detail);           // same section headers as a server rule
         Assert.Contains("Does:", detail);
-        Assert.Contains("from contains 'security@x.com';", detail);   // items are ";"-separated, one per line
+        Assert.Contains("from 'security@x.com';", detail);   // items are ";"-separated, one per line
         Assert.DoesNotContain("alert';", detail);                     // …with no trailing ";" on the last item
         Assert.Contains("move to Deleted Items", detail);    // resolved, not the raw id
         Assert.DoesNotContain(folderId, detail);

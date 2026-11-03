@@ -53,30 +53,31 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     public static ServerRuleEditorViewModel ForNew() => new() { IsNew = true, Name = string.Empty };
 
     /// <summary>A new rule prefilled from a message (create-rule-from-message, Ctrl+Shift+T): carries
-    /// the message's From and Subject as conditions. It's still a new rule — the user picks the
-    /// action, and it's classified server/client on save like any other New rule.
+    /// the message's sender (address and name) and Subject as conditions. It's still a new rule — the
+    /// user picks the action, and it's classified server/client on save like any other New rule.
     ///
-    /// Both fields carry their text whatever the template's flags say; the flags drive the matching
+    /// Every field carries its text whatever the template's flags say; the flags drive the matching
     /// condition checkbox instead (#665). Subject arrives switched OFF, because a rule that matches
     /// one sender AND one exact subject line matches, in practice, the single thread it was made
     /// from — which is not what "Rule for &lt;sender&gt;" means. The text is still sitting in the box,
     /// so turning the subject back on is one keystroke rather than retyping it.</summary>
     public static ServerRuleEditorViewModel ForNewFromTemplate(MailRule template)
     {
+        // A template made from a message carries its sender in both sender conditions: the address in From
+        // addresses, switched on, and the display name in Sender contains, switched off; or, with no address yet,
+        // the name in Sender contains, switched on (see MainViewModel.RuleTemplateFrom). It is written in the shape
+        // a saved rule holding that combination has, so it is read the same way an existing rule is.
+        var from = ReadFromCondition(template);
         var vm = new ServerRuleEditorViewModel
         {
             IsNew = true,
             Name = template.Name ?? string.Empty,
-            // A template made from a message carries its sender as Sender contains: the sender's address
-            // where the row has one (#803), else the display name, which can hold a comma that the address
-            // fields would read as two addresses (#682).
             // A condition arrives switched on only where the template actually has something for it to
             // match: a flag over an empty box would tick a condition that tests nothing.
-            SenderContains = template.SenderContains ?? string.Empty,
-            UseSenderContains = template.UseSenderCondition && !string.IsNullOrWhiteSpace(template.SenderContains),
-            FromAddresses = template.SenderContains is null ? template.FromContains ?? string.Empty : string.Empty,
-            UseFromAddresses = template.SenderContains is null && template.UseFromCondition
-                               && !string.IsNullOrWhiteSpace(template.FromContains),
+            FromAddresses = from.Addresses,
+            UseFromAddresses = from.UseAddresses && !string.IsNullOrWhiteSpace(from.Addresses),
+            SenderContains = from.Sender,
+            UseSenderContains = from.UseSender && !string.IsNullOrWhiteSpace(from.Sender),
             SubjectContains = template.SubjectContains ?? string.Empty,
             UseSubjectContains = template.UseSubjectCondition && !string.IsNullOrWhiteSpace(template.SubjectContains),
         };
@@ -202,7 +203,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <list type="bullet">
     /// <item>A rule carrying a sender and no address list keeps that sender in the old field too, for an
     /// older build (<see cref="MailRule.FromContainsMirrorsSender"/>). It belongs in the Sender box
-    /// only, or the editor would show it twice.</item>
+    /// only, or the editor would show it twice. Any addresses the user switched off beside it come back
+    /// from <see cref="MailRule.FromAddressesOff"/>, switched off.</item>
     /// <item>A rule with an address list shows the list, with any sender beside it.</item>
     /// <item>A rule from before #682 holds its whole From condition in one field, where a comma was
     /// never a separator: <b>Ctrl+Shift+T wrote the sender's DISPLAY NAME there</b>, and an Exchange
@@ -215,7 +217,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     private static (string Addresses, bool UseAddresses, string Sender, bool UseSender) ReadFromCondition(MailRule rule)
     {
         if (rule.FromContainsMirrorsSender)
-            return (string.Empty, false, rule.SenderContains ?? string.Empty, rule.UseSenderCondition);
+            return (AddressText(rule.FromAddressesOff, null), false, rule.SenderContains ?? string.Empty,
+                    rule.UseSenderCondition);
 
         if (rule.FromAddresses is { Count: > 0 })
             return (AddressText(rule.FromAddresses, rule.FromContains), rule.UseFromCondition,
@@ -632,10 +635,13 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         else if (senderOn)
         {
             // Sender contains is the live condition, so the old field mirrors it (FromValues reads
-            // SenderContains instead). The switched-off address text has nowhere left to sit and is
-            // dropped: the alternative is leaving the old field holding addresses the rule does not use.
+            // SenderContains instead). The switched-off address text can't sit in the old field, which an
+            // older build reads as the condition, nor in FromAddresses, which this build would; it is kept in
+            // FromAddressesOff, which nothing but the editor reads (review of #806). It used to be dropped, so
+            // switching back to the addresses found an empty box.
             rule.UseFromCondition = true;
             rule.FromContains = sender;
+            if (fromAddrs.Count > 0) rule.FromAddressesOff = fromAddrs;
         }
         else
         {
@@ -731,8 +737,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         // count: a switched-off condition never reaches the saved rule (#665).
         var addressProblems = new[]
             {
-                ("From addresses", UseFromAddresses ? FromAddresses : null),
-                ("Sent to addresses", UseSentToAddresses ? SentToAddresses : null),
+                ("From any of these addresses", UseFromAddresses ? FromAddresses : null),
+                ("Sent to any of these addresses", UseSentToAddresses ? SentToAddresses : null),
                 ("Forward to", ForwardTo),
             }
             .Select(f => RuleRecipient.FindProblem(f.Item2) is { } problem ? $"{f.Item1} {problem}." : null)
@@ -971,8 +977,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// that is switched off but populated is still something they need to be shown.
     /// </summary>
     private bool HasAdvancedContent()
-        => !string.IsNullOrWhiteSpace(FromAddresses)
-           || !string.IsNullOrWhiteSpace(SentToAddresses)
+        => !string.IsNullOrWhiteSpace(SentToAddresses)
            || !string.IsNullOrWhiteSpace(BodyOrSubjectContains)
            || !string.IsNullOrWhiteSpace(BodyContains)
            || SentToMe || SentOnlyToMe || HasAttachments

@@ -121,7 +121,10 @@ public sealed class UnifiedRuleRow
         var conditions = new List<string>();
         // A rule may list several addresses, any one of which matches (#682); read through the model's own
         // accessor so the summary can't describe the condition differently from the engine that runs it.
-        if (r.FromValues() is { Count: > 0 } from) conditions.Add($"from contains {Quoted(from)}");
+        // "from …" as a server rule's row words it (ServerRuleModel.DescribeConditions): since the review of
+        // #806 an address is matched as a whole address, not as text the From header contains. Sent to is
+        // still matched as text the To line contains (RuleService), so it keeps "to contains" (review of #858).
+        if (r.FromValues() is { Count: > 0 } from) conditions.Add($"from {Quoted(from)}");
         if (r.UseSenderCondition && !string.IsNullOrWhiteSpace(r.SenderContains))
             conditions.Add($"sender contains '{r.SenderContains}'");
         if (r.ToValues() is { Count: > 0 } to) conditions.Add($"to contains {Quoted(to)}");

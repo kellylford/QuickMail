@@ -413,18 +413,20 @@ internal sealed class UiProbeDriver
     }
 
     /// <summary>The rule the editor capture is prefilled from. Fixed text, so two runs are comparable.</summary>
-    private static MailRule ProbeRuleTemplate() => new()
+    // Built by the command itself, so the capture shows what Create Rule from Message really fills in: the
+    // address in From any of these addresses (switched on), the name in Sender contains (switched off), and the
+    // subject (switched off), all in the main section. No account: the probe message has none, and a template
+    // naming an account the Rules Manager doesn't list is refused, so the editor opens on the window's own.
+    private static MailRule ProbeRuleTemplate()
     {
-        Name = "Rule for newsletter@example.com",
-        // What MainViewModel.CreateRuleFromMessage builds: the sender as a substring match, because a
-        // display name can hold a comma and the address fields read one as a separator (#682). Carrying
-        // it in FromContains instead put it in the Advanced section, so the capture showed an empty form
-        // above a prefilled field nobody could see.
-        SenderContains = "newsletter@example.com",
-        UseSenderCondition = true,
-        SubjectContains = "Weekly digest",
-        UseSubjectCondition = false,
-    };
+        var template = MainViewModel.RuleTemplateFrom(new MailMessageSummary
+        {
+            MessageId = "probe", FolderName = "INBOX",
+            From = "Example Newsletter", FromEmail = "newsletter@example.com", Subject = "Weekly digest",
+        });
+        template.AccountId = null;
+        return template;
+    }
 
     /// <summary>Selects the TabItem whose header contains the fragment (e.g. Appearance).</summary>
     private static void SelectTabByHeader(Window window, string headerFragment)
