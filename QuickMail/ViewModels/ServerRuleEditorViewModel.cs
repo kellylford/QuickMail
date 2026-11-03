@@ -183,8 +183,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
                     vm.MoveToFolderName = rule.TargetFolder;   // display name resolved by the owner if available
                     break;
                 case RuleAction.Delete: vm.Delete = true; break;
+                case RuleAction.PlaySound: vm.PlaySound = true; break;
             }
         }
+        vm.ShowRuleSound(rule.Sound);
 
         vm.SyncConditionSwitchesToContent();
         vm.IsAdvancedExpanded = vm.HasAdvancedContent();
@@ -387,7 +389,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     {
         base.OnPropertyChanged(e);
         if (e.PropertyName is nameof(MarkAsUnread) or nameof(MoveToFolder) or nameof(CopyToFolder) or nameof(Delete)
-            or nameof(StopProcessingRules) or nameof(SelectedMarkImportance) or nameof(ForwardTo))
+            or nameof(PlaySound) or nameof(StopProcessingRules) or nameof(SelectedMarkImportance) or nameof(ForwardTo))
         {
             base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(ServerMarkAsReadNotice)));
         }
@@ -395,7 +397,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     /// <summary>True when Mark as read is the rule's only action, so clearing it would leave nothing to save.</summary>
     private bool MarksReadAndNothingElse
-        => MarkAsRead && !MarkAsUnread && !MoveToFolder && !CopyToFolder && !Delete && !StopProcessingRules
+        => MarkAsRead && !MarkAsUnread && !MoveToFolder && !CopyToFolder && !Delete && !PlaySound && !StopProcessingRules
            && string.IsNullOrWhiteSpace(SelectedMarkImportance?.Value) && SplitAddresses(ForwardTo).Count == 0;
 
     /// <summary>
@@ -611,6 +613,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             Actions = actions.Count > 1 ? actions : null,
             TargetFolder = MoveToFolder ? MoveToFolderId : null,
             CopyTargetFolder = CopyToFolder ? CopyToFolderId : null,
+            Sound = PlaySound ? SelectedRuleSound?.Stored : null,
         };
 
         // From. The addresses and Sender contains are two conditions now (#682), but only one field in
@@ -690,7 +693,9 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     {
         var copies = actions.Contains(RuleAction.CopyToFolder);
         var understood = actions
-            .Where(a => a != RuleAction.CopyToFolder && !(copies && a == RuleAction.Delete))
+            // Nor a sound, which such a build doesn't have either. A rule that only plays one stays that,
+            // and an older build does nothing with it, rather than marking read as the fallback below would.
+            .Where(a => a != RuleAction.CopyToFolder && a != RuleAction.PlaySound && !(copies && a == RuleAction.Delete))
             .ToList();
         if (understood.Count > 0) return understood[^1];
         return copies ? RuleAction.CopyToFolder
@@ -707,6 +712,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         if (CopyToFolder) actions.Add(RuleAction.CopyToFolder);
         if (MoveToFolder) actions.Add(RuleAction.MoveToFolder);
         if (Delete) actions.Add(RuleAction.Delete);
+        if (PlaySound) actions.Add(RuleAction.PlaySound);
         return actions;
     }
 
@@ -926,13 +932,14 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     }
 
     /// <summary>Client-only capabilities in use — the server has no equivalent, or none Outlook can live with (spec §20.2, #810). Extend
-    /// as more client-only options are added (play sound, notify, …).</summary>
+    /// as more client-only options are added.</summary>
     private List<string> ClientOnlyFeaturesUsed()
     {
         var f = new List<string>();
         // Mark as read joined it with #810: Outlook Classic itself makes "mark it as read" client-only.
         if (MarkAsRead) f.Add("Mark as read");
         if (MarkAsUnread) f.Add("Mark as unread");
+        if (PlaySound) f.Add("Play a sound");
         return f;
     }
 
@@ -1010,6 +1017,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
            || MarkAsRead
            || MarkAsUnread
            || Delete
+           || PlaySound
            || StopProcessingRules
            || !string.IsNullOrWhiteSpace(SelectedMarkImportance?.Value)
            || SplitAddresses(ForwardTo).Count > 0;

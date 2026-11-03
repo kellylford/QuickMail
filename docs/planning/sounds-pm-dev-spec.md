@@ -160,7 +160,7 @@ What a screen reader says for standard controls is for Kelly to confirm, not ass
 
 **Sound for one sender (#129)**
 1. Open a new rule and enter a From condition.
-2. Tab to "Play a sound" and press Space. The Sound combo, Preview and Choose File become available, with the first built-in sound selected.
+2. Tab to "Play a sound" and press Space. The Sound combo, Preview Sound and Choose Sound File become available, with the default rule sound selected.
 3. Pick a sound, optionally Preview it, and save.
 4. The rule list row says "Play sound: \<name\>". A matching message plays it once per rule pass.
 

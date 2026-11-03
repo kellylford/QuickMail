@@ -64,6 +64,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     // Microsoft 365 account's rules come from the server), so an action on a listed rule uses this rather
     // than the selection: a rule acted on in that moment belongs to the account it is listed under.
     private Guid? _rulesAccountId;
+    private readonly ISoundService? _sounds;
 
     public UnifiedRulesViewModel(
         IRuleService clientRules,
@@ -72,8 +73,10 @@ public partial class UnifiedRulesViewModel : ObservableObject
         IReadOnlyDictionary<Guid, List<MailFolderModel>>? foldersByAccount = null,
         Guid? preferredAccountId = null,
         IEnumerable<MailMessageSummary>? selectedMessagesForTest = null,
-        IConfigService? configService = null)
+        IConfigService? configService = null,
+        ISoundService? sounds = null)
     {
+        _sounds = sounds;
         _clientRules = clientRules;
         _serverRules = serverRules;
         _selectedMessagesForTest = selectedMessagesForTest?.ToList();
@@ -216,6 +219,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         // path came to gate on the wrong account in the first place (#682, #683).
         var supportsServerRules = SupportsServerRulesForAccount(accountId);
         editor.AccountId = accountId;
+        editor.AttachSounds(_sounds);
         editor.AccountSupportsServerRules = supportsServerRules;
         editor.Saved += _ => SaveNewAsync(accountId, supportsServerRules, editor);
         // The editor's messages (a validation error, a refused save) are announced by the editor window, the one
@@ -283,6 +287,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             editor.CopyToFolderName = FolderButtonName(accountId, editor.CopyToFolderId);
         }
         editor.AccountId = accountId;
+        editor.AttachSounds(_sounds);
         // The rule's OWN account, not whichever one the picker is showing (#683). The editor is modeless
         // and the Account list stays usable behind it, so a row can still be edited a moment after the
         // list moved on — and asking the picker would open a work account's server rule with its Forward

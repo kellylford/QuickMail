@@ -181,6 +181,10 @@ public class MailRule
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? CopyTargetFolder { get; set; }
 
+    /// <summary>The sound for PlaySound, as a stored <see cref="SoundRef"/>. Null plays the default rule sound.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Sound { get; set; }
+
     /// <summary>
     /// What the rule does, in the order it does it: marking read or unread first, then copying, then moving
     /// or deleting. Once a message is moved or deleted it is no longer in the folder the others act on.
@@ -194,6 +198,8 @@ public class MailRule
     {
         RuleAction.MarkAsRead or RuleAction.MarkAsUnread => 0,
         RuleAction.CopyToFolder => 1,
+        // Last, so it can tell whether a move or delete worked: a rule that failed shouldn't sound as if it hadn't.
+        RuleAction.PlaySound => 3,
         _ => 2,
     };
 }
@@ -215,4 +221,7 @@ public enum RuleAction
 
     /// <summary>Copy the message to CopyTargetFolder, leaving it where it is.</summary>
     CopyToFolder,
+
+    /// <summary>Play <see cref="MailRule.Sound"/>, once for each time the rule runs however many messages it matched.</summary>
+    PlaySound,
 }

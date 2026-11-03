@@ -29,6 +29,14 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name)
 
     public static SoundRef Custom(string fileName) => new(SoundRefKind.Custom, fileName);
 
+    /// <summary>What to call the sound on screen and in speech.</summary>
+    public string DisplayName => Kind switch
+    {
+        SoundRefKind.BuiltIn => SoundCatalog.BuiltInLabel(Name),
+        SoundRefKind.Custom => Name,
+        _ => "None",
+    };
+
     /// <summary>The form stored in config.ini and rules.json.</summary>
     public string ToStored() => Kind switch
     {

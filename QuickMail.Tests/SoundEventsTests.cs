@@ -37,7 +37,8 @@ internal sealed class RecordingSoundService : ISoundService
     }
 
     public void StopAll() => Stops++;
-    public void PlayRule(string? storedSound) { }
+    public List<string?> RuleSounds { get; } = [];
+    public void PlayRule(string? storedSound) => RuleSounds.Add(storedSound);
     public void Preview(string storedSound, int? volumePercent = null)
     {
         Previewed.Add(storedSound);

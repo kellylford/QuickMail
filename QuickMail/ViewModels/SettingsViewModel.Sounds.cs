@@ -15,6 +15,19 @@ public sealed record SoundChoice(string Stored, string Label)
     public override string ToString() => Label;
 }
 
+/// <summary>Builds the lists of sounds to choose from, for Settings and the rule editor alike.</summary>
+public static class SoundChoiceList
+{
+    public static SoundChoice[] BuiltIn() =>
+    [
+        .. SoundCatalog.BuiltInSounds.Distinct().Order(StringComparer.Ordinal)
+            .Select(name => new SoundChoice(SoundRef.BuiltIn(name).ToStored(), SoundCatalog.BuiltInLabel(name))),
+    ];
+
+    /// <summary>The entry for a sound not in the list because its file has gone. Stays listed, so it isn't silently changed.</summary>
+    public static SoundChoice Missing(SoundRef sound) => new(sound.ToStored(), sound.Name + " (missing)");
+}
+
 /// <summary>A volume setting in the list. A screen reader reads the item from <see cref="ToString"/>.</summary>
 public sealed record SoundVolumeOption(int Percent)
 {
@@ -80,8 +93,8 @@ public partial class SettingsViewModel
         SelectedSoundVolume = SoundVolumeOptions.First(o => o.Percent == cfg.SoundVolume);
 
         SoundChoices.Add(new SoundChoice(SoundRef.None.ToStored(), "None"));
-        foreach (var name in SoundCatalog.BuiltInSounds.Distinct().Order(StringComparer.Ordinal))
-            SoundChoices.Add(new SoundChoice(SoundRef.BuiltIn(name).ToStored(), SoundCatalog.BuiltInLabel(name)));
+        foreach (var choice in SoundChoiceList.BuiltIn())
+            SoundChoices.Add(choice);
         foreach (var file in sounds?.CustomSoundFiles() ?? [])
             SoundChoices.Add(new SoundChoice(SoundRef.Custom(file).ToStored(), file));
 
@@ -102,7 +115,7 @@ public partial class SettingsViewModel
         var stored = sound.ToStored();
         var found = SoundChoices.FirstOrDefault(c => c.Stored == stored);
         if (found is not null) return found;
-        var missing = new SoundChoice(stored, sound.Name + " (missing)");
+        var missing = SoundChoiceList.Missing(sound);
         SoundChoices.Add(missing);
         return missing;
     }
