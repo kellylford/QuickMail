@@ -26,9 +26,14 @@ public sealed class SettingsBundle
     public const string GroupMembersName = "group-members.json";
     public const string CalendarName = "calendar.ics";
     public const string ThemesPrefix = "themes/";
+    public const string SoundsPrefix = SoundCatalog.CustomFolderName + "/";
 
-    // A real file is about 20 KB. The cap only stops a hostile archive from filling memory.
+    // A real file is about 20 KB, plus any custom sounds. The cap only stops a hostile archive from filling memory.
     private const long MaxTotalBytes = 64L * 1024 * 1024;
+
+    // Well under MaxTotalBytes, because going over it makes the whole file unreadable on import. A
+    // sound that doesn't fit stays behind, and anything using it falls back to the built-in sound.
+    internal const long MaxExportedSoundBytes = 32L * 1024 * 1024;
 
     /// <summary>The profile files each category carries, by their name in the profile directory.</summary>
     public static readonly IReadOnlyDictionary<SettingsCategory, string[]> CategoryFiles =
@@ -78,6 +83,9 @@ public sealed class SettingsBundle
     public IEnumerable<KeyValuePair<string, byte[]>> ThemeEntries =>
         Entries.Where(e => e.Key.StartsWith(ThemesPrefix, StringComparison.OrdinalIgnoreCase));
 
+    public IEnumerable<KeyValuePair<string, byte[]>> SoundEntries =>
+        Entries.Where(e => e.Key.StartsWith(SoundsPrefix, StringComparison.OrdinalIgnoreCase));
+
     // ── Reading ──────────────────────────────────────────────────────────────────
 
     public static SettingsBundle Open(string path)
@@ -111,7 +119,16 @@ public sealed class SettingsBundle
                 if (total > MaxTotalBytes) throw new SettingsBundleException(notASettingsFile);
                 using var es = entry.Open();
                 using var ms = new MemoryStream();
-                es.CopyTo(ms);
+                // Counted as it is read as well: the length above is only what the archive claims.
+                var buffer = new byte[81920];
+                long copied = 0;
+                var allowed = MaxTotalBytes - (total - entry.Length);
+                for (int read; (read = es.Read(buffer, 0, buffer.Length)) > 0;)
+                {
+                    copied += read;
+                    if (copied > allowed) throw new SettingsBundleException(notASettingsFile);
+                    ms.Write(buffer, 0, read);
+                }
                 entries[name] = ms.ToArray();
             }
         }
@@ -142,10 +159,12 @@ public sealed class SettingsBundle
         return new SettingsBundle(manifest, entries);
     }
 
-    /// <summary>A known profile file, or a theme file with a plain name directly under themes/.</summary>
+    /// <summary>A known profile file, or a theme or sound file with a plain name directly under its folder.</summary>
     internal static bool IsAcceptedName(string name)
     {
         if (KnownFiles.Contains(name)) return true;
+        if (name.StartsWith(SoundsPrefix, StringComparison.OrdinalIgnoreCase))
+            return SoundRef.IsSafeCustomFileName(name[SoundsPrefix.Length..]);
         if (!name.StartsWith(ThemesPrefix, StringComparison.OrdinalIgnoreCase)) return false;
         var file = name[ThemesPrefix.Length..];
         return file.Length > 0
@@ -233,6 +252,31 @@ public sealed class SettingsBundle
                         CopyIfExists(zip, dir, name);
                     break;
             }
+        }
+
+        // Custom sounds travel with what can name one: rules, and event sounds in the preferences.
+        if (manifest.Categories.Any(c => c is SettingsCategory.RulesAndViews or SettingsCategory.Preferences))
+            WriteSounds(zip, dir);
+    }
+
+    private static void WriteSounds(ZipArchive zip, string profileDir)
+    {
+        var folder = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
+        if (!Directory.Exists(folder)) return;
+
+        long total = 0;
+        foreach (var file in Directory.GetFiles(folder).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            var name = Path.GetFileName(file);
+            var length = new FileInfo(file).Length;
+            if (!SoundRef.IsSafeCustomFileName(name) || length > SoundCatalog.MaxCustomFileBytes) continue;
+            if (total + length > MaxExportedSoundBytes)
+            {
+                LogService.Log($"Settings export: left out the sound {name}, as the sounds already fill the file.");
+                continue;
+            }
+            total += length;
+            AddBytes(zip, SoundsPrefix + name, File.ReadAllBytes(file));
         }
     }
 

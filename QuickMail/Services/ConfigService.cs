@@ -171,6 +171,11 @@ public class ConfigService : IConfigService
                     section  = "features";
                     acctGuid = Guid.Empty;
                 }
+                else if (header == "sounds")
+                {
+                    section  = "sounds";
+                    acctGuid = Guid.Empty;
+                }
                 else if (header == "google")
                 {
                     section  = "google";
@@ -304,6 +309,15 @@ public class ConfigService : IConfigService
                     case "lastsaveasfolder":     config.LastSaveAsFolder     = value; break;
                     case "notifyonnewmail":      config.NotifyOnNewMail      = ParseBool(value); break;
                 case "notifyonwatchedconversation": config.NotifyOnWatchedConversation = ParseBool(value); break;
+                    case "playeventsounds":      config.PlayEventSounds      = ParseBool(value); break;
+                    case "mutesounds":           config.MuteSounds           = ParseBool(value); break;
+                    case "soundvolume":
+                        if (int.TryParse(value, out var soundVolume) && soundVolume >= 0 && soundVolume <= 100)
+                            config.SoundVolume = soundVolume;
+                        break;
+                    case "soundpack":
+                        if (!string.IsNullOrWhiteSpace(value)) config.SoundPack = value;
+                        break;
                     case "closetotray":          config.CloseToTray          = ParseBool(value); break;
                     case "trayhintshown":        config.TrayHintShown        = ParseBool(value); break;
                     case "startminimizedatsignin": config.StartMinimizedAtSignIn = ParseBool(value); break;
@@ -393,6 +407,11 @@ public class ConfigService : IConfigService
             {
                 // Preserve the original key case so IFeatureGate matches FeatureFlag.ToString().
                 config.Features[rawKey] = value;
+            }
+            else if (section == "sounds")
+            {
+                // Kept as written; SoundCatalog.Resolve validates a value when it is used.
+                config.SoundEvents[rawKey] = value;
             }
             else if (section == "google")
             {
@@ -658,6 +677,23 @@ public class ConfigService : IConfigService
         sb.AppendLine("# not just the inbox. Values: on, off.");
         sb.AppendLine();
 
+        sb.AppendLine($"PlayEventSounds = {(config.PlayEventSounds ? "on" : "off")}");
+        sb.AppendLine("# Play sounds for mail events such as a message being sent. A rule's own sound");
+        sb.AppendLine("# does not depend on this. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"MuteSounds = {(config.MuteSounds ? "on" : "off")}");
+        sb.AppendLine("# Silence every sound, including rule sounds. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"SoundVolume = {config.SoundVolume}");
+        sb.AppendLine("# How loud QuickMail's sounds play, within what Windows is set to (0-100).");
+        sb.AppendLine();
+
+        sb.AppendLine($"SoundPack = {config.SoundPack}");
+        sb.AppendLine("# The built-in sound pack.");
+        sb.AppendLine();
+
         sb.AppendLine($"CloseToTray = {(config.CloseToTray ? "on" : "off")}");
         sb.AppendLine("# When you close the main window, keep QuickMail running in the notification");
         sb.AppendLine("# area (system tray) instead of exiting, so new-mail notifications keep arriving.");
@@ -901,6 +937,18 @@ public class ConfigService : IConfigService
                 sb.AppendLine($"GoogleClientId = {config.GoogleClientId}");
             if (!string.IsNullOrEmpty(config.GoogleClientSecret))
                 sb.AppendLine($"GoogleClientSecret = {config.GoogleClientSecret}");
+            sb.AppendLine();
+        }
+
+        // ── [sounds] ───────────────────────────────────────────────────────────────
+        // Only what the person changed; an event not listed uses its default (SoundCatalog.Resolve).
+        if (config.SoundEvents.Count > 0)
+        {
+            sb.AppendLine("[sounds]");
+            sb.AppendLine("# The sound for each event. Values: none, builtin:<name>, custom:<file in the sounds folder>.");
+            sb.AppendLine();
+            foreach (var (name, value) in config.SoundEvents)
+                sb.AppendLine($"{name} = {value}");
             sb.AppendLine();
         }
 

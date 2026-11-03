@@ -430,6 +430,28 @@ public class ConfigModel
     /// </summary>
     public bool NotifyOnWatchedConversation { get; set; } = false;
 
+    // ── Sounds (#912) ─────────────────────────────────────────────────────────────
+
+    /// <summary>Play sounds for mail events such as a message being sent. Default off. A rule's own
+    /// sound does not depend on this: adding one to a rule is already asking for it.</summary>
+    public bool PlayEventSounds { get; set; } = false;
+
+    /// <summary>Silences every sound, including rule sounds. Only an explicit preview still plays.</summary>
+    public bool MuteSounds { get; set; } = false;
+
+    /// <summary>How loud QuickMail's sounds play, 0-100, within whatever Windows is set to.</summary>
+    public int SoundVolume { get; set; } = 100;
+
+    /// <summary>The built-in sound pack in use.</summary>
+    public string SoundPack { get; set; } = SoundCatalog.DefaultPack;
+
+    /// <summary>
+    /// The [sounds] section of config.ini: an event's <see cref="SoundEventInfo.ConfigKey"/> to the
+    /// <see cref="SoundRef"/> chosen for it. An event not listed uses what
+    /// <see cref="SoundCatalog.Resolve"/> gives it, so the file records only what the person changed.
+    /// </summary>
+    public Dictionary<string, string> SoundEvents { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// When closing the main window, hide QuickMail to the notification area (system tray) instead
     /// of exiting, so new-mail watchers keep running and notifications keep arriving. Default off

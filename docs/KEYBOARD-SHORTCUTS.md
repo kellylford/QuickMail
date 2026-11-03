@@ -52,6 +52,7 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | Ctrl+Shift+B | `contacts.openAddressBook` | Address Book |
 | F1 | `help.userGuide` | Open User Guide |
 | *(unassigned)* | `settings.toggleCustomAnnouncements` | Toggle Custom Announcements |
+| *(unassigned)* | `settings.toggleMuteSounds` | Mute All Sounds |
 | Ctrl+A | `mail.selectAll` | Select All Messages (message list focus only) |
 | K | `mail.toggleFlag` | Toggle Flag |
 | Ctrl+Shift+K | `mail.pickFlag` | Pick Flag… |

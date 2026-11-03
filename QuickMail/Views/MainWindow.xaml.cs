@@ -1139,6 +1139,10 @@ public partial class MainWindow : Window
             execute: ToggleCustomAnnouncements));
 
         _registry.Register(new CommandDefinition(
+            id: "settings.toggleMuteSounds", category: "Settings", title: "Mute All Sounds",
+            execute: ToggleMuteSounds));
+
+        _registry.Register(new CommandDefinition(
             id: "view.togglePlainText", category: "View", title: "Toggle Plain Text View",
             execute: TogglePlainTextView,
             defaultKey: Key.H, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
@@ -4892,6 +4896,16 @@ public partial class MainWindow : Window
         AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result, force: true);
     }
 
+    private void ToggleMuteSounds()
+    {
+        var cfg = _configService.Load();
+        cfg.MuteSounds = !cfg.MuteSounds;
+        _configService.Save(cfg);
+        _vm.MuteSounds = cfg.MuteSounds;
+        var msg = cfg.MuteSounds ? "Sounds muted." : "Sounds on.";
+        AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result);
+    }
+
     /// <summary>
     /// Flips the sticky "read as plain text" preference (issue #34): persists it, updates the VM
     /// (for the View-menu check state), re-renders the open message in place without moving focus,
@@ -7688,6 +7702,8 @@ public partial class MainWindow : Window
     }
 
     private void MenuPlainText_Click(object sender, RoutedEventArgs e) => TogglePlainTextView();
+
+    private void MenuMuteSounds_Click(object sender, RoutedEventArgs e) => ToggleMuteSounds();
 
     private void MenuLoadPictures_Click(object sender, RoutedEventArgs e) => LoadWebPictures();
 

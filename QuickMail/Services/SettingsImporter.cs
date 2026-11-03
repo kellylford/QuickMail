@@ -133,6 +133,9 @@ public static class SettingsImporter
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
+    // In the rollback copy: the names of the custom sounds that were here before the import.
+    private const string SoundsBeforeFileName = "sounds-before.txt";
+
     /// <summary>The profile files an import can change, which is what the rollback copy holds.</summary>
     internal static readonly string[] ProfileFiles =
         SettingsBundle.CategoryFiles.Values.SelectMany(f => f)
@@ -275,6 +278,9 @@ public static class SettingsImporter
             };
             lines.Add($"{name}: {detail}");
         }
+        var sounds = SoundsToAdd(bundle).Count;
+        if (sounds > 0)
+            lines.Add($"Custom sounds: {SettingsImportPlan.Plural(sounds, "sound")}, added; any with the same name as one here keeps the one here");
         return lines;
     }
 
@@ -516,6 +522,8 @@ public static class SettingsImporter
             }
         }
 
+        AddSounds(bundle, profileDir, result);
+
         // Folder names for the heal that runs when each account's folders first load (spec R5).
         var folders = bundle.GetText(SettingsBundle.FoldersName);
         if (folders is not null)
@@ -564,6 +572,37 @@ public static class SettingsImporter
             File.WriteAllBytes(Path.Combine(dir, name[SettingsBundle.ThemesPrefix.Length..]), bytes);
     }
 
+    /// <summary>The custom sounds this file would add: only with a category that can name one, whatever else the archive holds.</summary>
+    private static List<KeyValuePair<string, byte[]>> SoundsToAdd(SettingsBundle bundle)
+    {
+        if (!bundle.Manifest.Categories.Any(c => c is SettingsCategory.RulesAndViews or SettingsCategory.Preferences)) return [];
+        return bundle.SoundEntries
+            .Where(e => e.Value.Length <= SoundCatalog.MaxCustomFileBytes)
+            .Take(SoundCatalog.MaxCustomFilesInImport)
+            .ToList();
+    }
+
+    // Added, never mirrored or overwritten as themes are: a sound can be in use by a category this
+    // import isn't replacing, such as a rule here when only the preferences were imported. So a name
+    // already here keeps the file that's here, even if the one in the settings file differs.
+    private static void AddSounds(SettingsBundle bundle, string profileDir, SettingsImportResult result)
+    {
+        var sounds = SoundsToAdd(bundle);
+        if (sounds.Count == 0) return;
+        var dir = Directory.CreateDirectory(Path.Combine(profileDir, SoundCatalog.CustomFolderName)).FullName;
+        var added = 0;
+        foreach (var (name, bytes) in sounds)
+        {
+            var target = Path.Combine(dir, name[SettingsBundle.SoundsPrefix.Length..]);
+            if (File.Exists(target)) continue;
+            File.WriteAllBytes(target, bytes);
+            added++;
+        }
+        var kept = sounds.Count - added;
+        result.Lines.Add($"Custom sounds: {SettingsImportPlan.Plural(added, "sound")} added"
+                         + (kept > 0 ? $", {kept} already here kept." : "."));
+    }
+
     // A rule naming an account that is not here would act on nothing; turned off and named, never deleted.
     private static void DisableOrphanedRules(string profileDir, HashSet<Guid> accountIds, SettingsImportResult result)
     {
@@ -600,6 +639,10 @@ public static class SettingsImporter
         // default. Per-account sections start empty: those are the file's alone.
         var baseline = File.Exists(path) ? ConfigService.ParseFile(File.ReadAllLines(path)) : new ConfigModel();
         baseline.Accounts = [];
+        // [sounds] lists only what was changed, so an event missing from it means "the default", not
+        // "keep this computer's". A file from before sounds existed says nothing about them either way.
+        if (text.Contains("PlayEventSounds", StringComparison.OrdinalIgnoreCase))
+            baseline.SoundEvents = new(StringComparer.OrdinalIgnoreCase);
         var incoming = ConfigService.ParseFile(SplitLines(rewrite(text)), into: baseline);
         SettingsConfigTransfer.Apply(incoming, local, carriedIds);
 
@@ -767,6 +810,11 @@ public static class SettingsImporter
                 foreach (var file in Directory.GetFiles(themes, "*.json"))
                     File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
             }
+            // Only the names, not megabytes of audio in every backup: an import never changes a sound
+            // that's here, so undoing one only means removing what it added.
+            var sounds = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
+            File.WriteAllLines(Path.Combine(dir, SoundsBeforeFileName),
+                Directory.Exists(sounds) ? Directory.GetFiles(sounds).Select(f => Path.GetFileName(f)!) : []);
             return dir;
         }
         catch
@@ -825,6 +873,23 @@ public static class SettingsImporter
         {
             LogService.Log("Settings import: could not restore the themes", ex);
             failed.Add("themes");
+        }
+
+        var sounds = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
+        var soundsBefore = Path.Combine(backupDir, SoundsBeforeFileName);
+        try
+        {
+            if (Directory.Exists(sounds) && File.Exists(soundsBefore))
+            {
+                var keep = File.ReadAllLines(soundsBefore).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var file in Directory.GetFiles(sounds))
+                    if (!keep.Contains(Path.GetFileName(file))) File.Delete(file);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Settings import: could not restore the sounds", ex);
+            failed.Add(SoundCatalog.CustomFolderName);
         }
         return failed;
     }
