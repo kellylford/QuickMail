@@ -4366,7 +4366,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         LogService.Log(diag);
-        _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh, silent: _sounds?.SilencesToasts == true);
+        _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh, silent: ToastIsSilent(fresh));
     }
 
     /// <summary>
@@ -4407,8 +4407,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         LogService.Log($"Watched notify [{account.AccountLabel}]: {fresh.Count} fresh in watched conversations.");
-        _notifications.ShowWatchedMail(account.AccountLabel, account.Id, fresh, silent: _sounds?.SilencesToasts == true);
+        _notifications.ShowWatchedMail(account.AccountLabel, account.Id, fresh, silent: ToastIsSilent(fresh));
     }
+
+    /// <summary>
+    /// Whether a toast for this mail should leave out the Windows sound: because sounds are on or muted,
+    /// or because a rule has already played one for it, which would otherwise make two.
+    /// </summary>
+    private bool ToastIsSilent(IReadOnlyList<MailMessageSummary> mail) =>
+        _sounds is not null && (_sounds.SilencesToasts
+            || mail.Any(m => _sounds.WasSoundedByRule(SoundCatalog.MessageKey(m.AccountId, m.MessageId))));
 
     /// <summary>
     /// Plays the sound for mail that has just arrived (#912). Separate from the toast path on purpose:

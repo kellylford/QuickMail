@@ -605,6 +605,36 @@ public class SoundEventsTests
     }
 
     [Fact]
+    public void SavingOnAnotherTabKeepsAStyleThisBuildDoesNotHave()
+    {
+        var config = new StubConfigService();
+        config.Load().SoundPack = "from-the-future";
+        MakeSettings(config).SaveCommand.Execute(null);
+        Assert.Equal("from-the-future", config.Load().SoundPack);
+    }
+
+    [Fact]
+    public void AToastForMailARuleSoundedForLeavesOutTheWindowsSound()
+    {
+        // Event sounds off, a rule plays a sound, toasts on: one sound, not the rule's and Windows' too.
+        var m = new Mail();
+        m.Config.Load().NotifyOnNewMail = true;
+        m.Sounds.RuleSoundedKeys.Add(SoundCatalog.MessageKey(Work, "1"));
+        m.Vm.MaybeNotifyNewMail(Account(), [Msg("1")]);
+        Assert.True(Assert.Single(m.Toasts.Shown).Silent);
+    }
+
+    [Fact]
+    public void AToastForOtherMailKeepsTheWindowsSoundWithEventSoundsOff()
+    {
+        var m = new Mail();
+        m.Config.Load().NotifyOnNewMail = true;
+        m.Sounds.RuleSoundedKeys.Add(SoundCatalog.MessageKey(Work, "1"));
+        m.Vm.MaybeNotifyNewMail(Account(), [Msg("2")]);
+        Assert.False(Assert.Single(m.Toasts.Shown).Silent);
+    }
+
+    [Fact]
     public void AStyleThisBuildDoesNotHaveShowsAsTheDefault()
     {
         var config = new StubConfigService();

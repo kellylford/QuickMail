@@ -142,6 +142,18 @@ public class SoundCatalogTests
         Assert.Equal(SoundCatalog.BuiltInSounds.Distinct().Order(StringComparer.Ordinal), embedded.Order(StringComparer.Ordinal));
     }
 
+    [Theory]
+    [MemberData(nameof(BuiltInSounds))]
+    public void ASoundRunsTheSameLengthInEveryStyle(string name)
+    {
+        var lengths = SoundCatalog.Packs.Select(pack =>
+        {
+            using var reader = NAudioSoundOutput.Open(new SoundClip(name, null, () => OpenBuiltIn(pack.Id, name)));
+            return reader.Length;
+        });
+        Assert.Single(lengths.Distinct());
+    }
+
     [Fact]
     public void EveryEmbeddedSoundBelongsToAStyle()
     {
@@ -228,6 +240,7 @@ public class SoundCatalogTests
         config.PlayEventSounds = true;
         config.MuteSounds = true;
         config.SoundVolume = 40;
+        config.SoundPack = "wood";
         config.SoundEvents["NewMail"] = "custom:My Chime.wav";
         config.SoundEvents["MessageSent"] = "none";
         service.Save(config);
@@ -236,6 +249,7 @@ public class SoundCatalogTests
         Assert.True(reloaded.PlayEventSounds);
         Assert.True(reloaded.MuteSounds);
         Assert.Equal(40, reloaded.SoundVolume);
+        Assert.Equal("wood", reloaded.SoundPack);
         Assert.Equal("custom:My Chime.wav", reloaded.SoundEvents["NewMail"]);
         Assert.Equal("none", reloaded.SoundEvents["MessageSent"]);
     }

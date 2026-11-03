@@ -58,6 +58,7 @@ public partial class SettingsViewModel
 {
     private ISoundService? _sounds;
     private bool _previewedSound;
+    private SoundPack? _loadedSoundPack;
 
     [ObservableProperty] private bool _playEventSounds;
     [ObservableProperty] private bool _muteSounds;
@@ -99,6 +100,7 @@ public partial class SettingsViewModel
         // A style this build doesn't have, from a newer one or a hand edit, plays and shows as the default.
         SelectedSoundPack = SoundCatalog.Packs.FirstOrDefault(p => p.Id == cfg.SoundPack)
             ?? SoundCatalog.Packs.First(p => p.Id == SoundCatalog.DefaultPack);
+        _loadedSoundPack = SelectedSoundPack;
 
         SoundChoices.Add(new SoundChoice(SoundRef.None.ToStored(), "None"));
         foreach (var choice in SoundChoiceList.BuiltIn())
@@ -133,7 +135,9 @@ public partial class SettingsViewModel
         cfg.PlayEventSounds = PlayEventSounds;
         cfg.MuteSounds = MuteSounds;
         if (SelectedSoundVolume is not null) cfg.SoundVolume = SelectedSoundVolume.Percent;
-        if (SelectedSoundPack is not null) cfg.SoundPack = SelectedSoundPack.Id;
+        // Only if changed: a style this build doesn't have shows as the default, and saving on another
+        // tab shouldn't erase it, any more than an unknown [sounds] entry below.
+        if (SelectedSoundPack is not null && SelectedSoundPack != _loadedSoundPack) cfg.SoundPack = SelectedSoundPack.Id;
 
         // A new dictionary rather than changing the one in use: the sound worker reads it from another
         // thread. Only what differs from the default is kept, as [sounds] records only what was changed.

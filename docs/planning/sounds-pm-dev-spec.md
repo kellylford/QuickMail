@@ -4,7 +4,7 @@
 
 QuickMail plays no sound of its own today: there is no audio code or sound asset in the repo. The roadmap lists audio feedback (F14 in `docs/planning/competitive-analysis-roadmap.md`), a code comment already anticipates a "play sound" rule action (`ServerRuleEditorViewModel.cs:928`), and open issue #129 asks for a custom sound file, chosen per address, kept in settings backups.
 
-The result: a playback service, sounds for mail events, a "Play a sound" rule action, one generated sound pack, and a person's own WAV or MP3 for any event or rule. #129 is met by a rule with a From condition and a custom sound.
+The result: a playback service, sounds for mail events, a "Play a sound" rule action, three generated styles of sound, and a person's own WAV or MP3 for any event or rule. #129 is met by a rule with a From condition and a custom sound.
 
 **Decisions made with Kelly:** we generate our own sounds, event sounds are off until turned on, and all three candidate styles ship so people can choose. This is a start: the first release asks users whether these are the right events and what they think of the sounds.
 
@@ -117,7 +117,7 @@ A sound reference is a string: `builtin:<name>`, `custom:<file>` or `none`. Only
 - Checkboxes "Play sounds for mail events" and "Mute all sounds"
 - Volume, a combo box from 10% to 100% (no window uses a Slider, so this needs no new themed control)
 - Style: Glass (the default), Soft bell or Wood, with Preview playing the one showing
-- An event list, with rows like "New mail: Chime"
+- An event list, with rows like "New mail: Arrived"
 - For the selected event: a Sound combo, Preview, and Choose File
 
 The VM raises a request and code-behind shows the file dialog (MVVM rule). One list with a single detail area, rather than a combo per event, avoids about 13 extra Tab stops.
@@ -126,7 +126,7 @@ The VM raises a request and code-behind shows the file dialog (MVVM rule). One l
 
 ### The sounds
 
-A small generator in `app-kit/sounds/` writes deterministic 44.1 kHz mono WAVs under about 1 second. QuickMail's copies are committed to `QuickMail/Sounds/BuiltIn/<pack>/` as `EmbeddedResource`, about 1 MB in all. Reading the embedded stream works in single-file publish and needs no temporary files.
+A small generator in `app-kit/sounds/` writes deterministic 44.1 kHz mono WAVs under about 1 second. QuickMail's copies are committed to `QuickMail/Sounds/BuiltIn/<pack>/` as `EmbeddedResource`, about 1.8 MB in all. Reading the embedded stream works in single-file publish and needs no temporary files.
 
 Sounds should be told apart by pitch and shape, not only by being pleasant: rising for sent, falling for failed, and so on. All three styles ship. Each has the same melodies with a different tone, so a sound means the same thing in every style.
 
@@ -153,7 +153,7 @@ What a screen reader says for standard controls is for Kelly to confirm, not ass
 **Turn on sounds and change one**
 1. Open Settings and move to the Sounds tab.
 2. Tab to "Play sounds for mail events" and press Space. It reports as checked.
-3. Tab to the event list and arrow to "New mail: Chime".
+3. Tab to the event list and arrow to "New mail: Arrived".
 4. Tab to Preview and press Enter. The sound plays; there is no announcement.
 5. Tab to the Sound combo and arrow to another sound. The list row changes to match.
 6. Tab to Choose File and press Enter. In the file dialog, pick a WAV. The combo now shows that file. A bad file shows and announces (Result) why it was refused, and focus returns to Choose File.
@@ -202,7 +202,7 @@ One tracking issue linking #129, with the spec committed as `docs/planning/sound
    - behavior with no audio device
    - whether toasts really play default audio, and what `SHQueryUserNotificationState` reports under Do Not Disturb
 2. **PR 1, infrastructure.** Service, policy, output seam, config, profile folder and bundle, mute command, stubs, a test WAV; no events yet.
-3. **Sounds and audition.** SoundGen, candidates to OneDrive. **Stop for Kelly's picks** (push notification). Everything else continues with placeholders.
+3. **Sounds.** Candidates went to OneDrive; Kelly chose to ship all three as a Style choice and gather feedback.
 4. **PR 2, events and Settings tab.** Hooks, `MaybePlayMailSounds`, silent toasts, the Sounds tab, custom file import.
 5. **PR 3, rule action.** Every location listed above.
 6. **PR 4, final sounds and docs.** Chosen sounds; `USER-GUIDE.md` (Sounds section and Contents, Rules, Notifications, Settings, moving settings), `ARCHITECTURE.md` service paragraph, `KEYBOARD-SHORTCUTS.md` row, release notes.

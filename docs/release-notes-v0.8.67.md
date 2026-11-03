@@ -15,16 +15,17 @@ QuickMail can now play sounds. They are **off until you turn them on**, in **Set
 **Report a Bug** on the Help menu or email to support@theideaplace.net both reach us.
 
 - **Sounds for mail events:** message sent, message queued to send later, send failed, new mail, mail in a conversation you are watching, a delete, move or archive that failed, connection lost and restored, and calendar reminders. Message deleted, archived and moved have no sound until you choose one, because you may do those many times in a row.
-- **Three styles:** Glass, Soft bell and Wood. Each has the same sounds with the same melodies, and only the tone changes. Preview plays the style showing, so you can compare them before saving.
+- **Three styles:** Glass, Soft bell and Wood. Each has the same sounds with the same melodies, and the tone changes, though Wood is also a little quieter. Preview plays the style showing, so you can compare them before saving.
 - **Your own sounds:** use a WAV or MP3 file of up to 5 MB and 30 seconds for any event. QuickMail keeps its own copy, and your sounds travel with your settings when you [move them to another computer](https://kellylford.github.io/QuickMail/moving-your-settings-to-another-computer.html).
 - **A sound for a rule:** a client-side rule can now **Play a sound**, so you can tell mail from a particular sender by ear, or hear when something has been filed. Use a **From addresses** or **Sender contains** condition with your own sound file to give someone their own sound. A rule's sound plays even with event sounds off, as adding it to a rule already asks for it. (#129)
-- **Mute All Sounds:** on the Tools menu and in the Command Palette, with no keyboard shortcut until you give it one. It silences everything, including whatever is playing.
+- **Mute All Sounds:** on the Tools menu and in the Command Palette, with no keyboard shortcut until you give it one. It silences everything, including whatever is playing, except Preview, which you have asked to hear.
 
 Good to know:
 
-- While sounds are on, notifications leave out the Windows notification sound, so you hear QuickMail's sound and not both.
+- While **Play sounds for mail events** or **Mute all sounds** is on, notifications leave out the Windows notification sound, so you hear QuickMail's sound and not both. A notification for mail a rule has just played a sound for leaves it out as well.
 - **Windows Do Not Disturb does not silence QuickMail's sounds**, because Windows gives apps no way to tell when it is on. Use **Mute All Sounds** for that. Sounds for things that happen on their own do stay quiet during a presentation or while an app is running full screen.
-- New mail and rule sounds stay silent for mail that came in while QuickMail was closed, and when more than five messages arrive at once, such as when your computer wakes up.
+- New mail and rule sounds stay silent for mail that came in while QuickMail was closed. New mail also stays silent when more than five messages arrive at once, such as when your computer wakes up, and a rule when more than five messages match it at once.
+- The new-mail sound is for the Inbox, and the calendar reminder sound needs calendar reminders turned on.
 
 See [Sounds in the User Guide](https://kellylford.github.io/QuickMail/sounds.html).
 
