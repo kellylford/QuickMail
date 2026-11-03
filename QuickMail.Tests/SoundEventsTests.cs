@@ -502,6 +502,60 @@ public class SoundEventsTests
             => Task.FromException(new InvalidOperationException("server said no"));
     }
 
+    private sealed class TrashMail : StubImapMailServiceBase
+    {
+        public Exception? EmptyFailure { get; set; }
+        public int Remaining { get; set; }
+
+        public override Task<int> EmptyTrashAsync(Guid accountId, System.Threading.CancellationToken ct = default)
+            => EmptyFailure is null ? Task.FromResult(3) : Task.FromException<int>(EmptyFailure);
+
+        public override Task<int> CountTrashMessagesAsync(Guid accountId, System.Threading.CancellationToken ct = default)
+            => Task.FromResult(Remaining);
+    }
+
+    [Fact]
+    public async Task EmptyingTrashPlaysOnceAcrossAccounts()
+    {
+        var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail());
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+        Assert.Equal([SoundEvent.TrashEmptied], sounds.Played);
+    }
+
+    [Fact]
+    public async Task DecliningToEmptyTrashPlaysNothing()
+    {
+        var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail());
+        vm.ConfirmationRequested = (_, _) => false;
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+        Assert.Empty(sounds.Played);
+    }
+
+    [Fact]
+    public async Task AFailedEmptyTrashPlaysActionFailed()
+    {
+        var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail { EmptyFailure = new InvalidOperationException("server said no"), Remaining = 2 });
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+    }
+
+    [Fact]
+    public async Task ATimedOutEmptyTrashPlaysActionFailed()
+    {
+        var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail { EmptyFailure = new OperationCanceledException() });
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+    }
+
+    [Fact]
+    public async Task AnEmptyTrashThatFailedButReallyWorkedPlaysEmptied()
+    {
+        // The connection dropped on the server's reply: the check afterward finds the trash empty.
+        var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail { EmptyFailure = new InvalidOperationException("connection dropped"), Remaining = 0 });
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+        Assert.Equal([SoundEvent.TrashEmptied], sounds.Played);
+    }
+
     [Fact]
     public async Task ABulkDeleteAcrossAccountsPlaysOnce()
     {

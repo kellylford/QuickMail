@@ -68,6 +68,7 @@ Each hooks where the outcome is already known, so existing de-duplication carrie
 | Action failed | Yes | Failure branches at `MainViewModel.cs:7989`, `8216`, `9739` |
 | Connection lost / restored | Yes | `Connectivity.cs` `AnnounceOfflineOnce:138` and `OnOnlineChanged:323` |
 | Calendar reminder | Yes | `CheckReminders:10913` |
+| Trash emptied | Yes | `EmptyTrashAsync`, including when a dropped connection hid a success; a failure or timeout plays Action failed |
 | Message deleted / archived / moved | Yes | Success branches of `DeleteMessagesAsync`, `ArchiveMessagesAsync`, `MoveSelectedMessagesToFolderAsync`; not when cancelled |
 
 `ComposeViewModel` gains an optional `ISoundService?`, passed at its two construction sites (`MainWindow.xaml.cs:6185`, `7464`).

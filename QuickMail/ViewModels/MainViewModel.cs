@@ -9000,6 +9000,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException)
         {
             StatusText = "Empty trash timed out.";
+            _sounds?.Play(SoundEvent.ActionFailed);
         }
         catch (Exception ex)
         {
@@ -9031,6 +9032,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 StatusText = $"Empty trash failed: {ex.Message}";
                 Announce($"Empty trash failed: {ex.Message}", AnnouncementCategory.Result);
+                _sounds?.Play(SoundEvent.ActionFailed);
             }
         }
         finally
@@ -9040,6 +9042,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (trashEmptied)
         {
+            _sounds?.Play(SoundEvent.TrashEmptied);
+
             // Zero out the cached trash MessageCount for each account so that if the user
             // runs Empty Trash again in this session, the confirmation dialog shows 0 rather
             // than the stale count recorded at connection time.

@@ -2072,10 +2072,11 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 
 - Message sent, message queued to send later, and send failed
 - New mail, and mail in a conversation you are watching
-- A delete, move or archive that failed
+- A delete, move, archive or empty trash that failed
 - Connection lost and connection restored
 - Calendar reminder, if you have turned on calendar reminders
 - Message deleted, archived and moved
+- Trash emptied
 
 If you delete or file a lot of mail in a row, you may prefer to set those three to **None**. Repeats of the same sound within a second are dropped.
 
