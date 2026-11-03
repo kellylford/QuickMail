@@ -12,7 +12,7 @@ The result: a playback service, sounds for mail events, a "Play a sound" rule ac
 - Playback uses NAudio.
 - Sounds play one at a time from a short queue.
 - Background sounds stay quiet during presentations and full-screen use.
-- Delete, archive and move sounds stay off even after event sounds are turned on, because those actions repeat quickly.
+- Every event plays its sound once event sounds are on. Delete, archive and move first defaulted to None because they repeat quickly; Kelly asked for every event to have a sound. The same-sound gap limits the repetition, and each can be set to None.
 - Adding a sound to a rule is enough for it to play, unless all sounds are muted. Kelly's default decision covered event sounds, and it would be confusing to add a rule sound and hear nothing.
 
 ## Design
@@ -58,7 +58,7 @@ Not measured: Media Foundation being absent (Windows N editions), and real hardw
 
 Each hooks where the outcome is already known, so existing de-duplication carries over. Sounds never replace an announcement or status text.
 
-| Event | On when event sounds are on? | Hook |
+| Event | Plays when event sounds are on? | Hook |
 |---|---|---|
 | Message sent | Yes | `ComposeViewModel.SendAsync:885`; once per drain from `OnOutboxFlushCompleted` if `Sent > 0` |
 | Message queued | Yes | `ComposeViewModel.QueueSendAsync:427` |
@@ -68,7 +68,7 @@ Each hooks where the outcome is already known, so existing de-duplication carrie
 | Action failed | Yes | Failure branches at `MainViewModel.cs:7989`, `8216`, `9739` |
 | Connection lost / restored | Yes | `Connectivity.cs` `AnnounceOfflineOnce:138` and `OnOnlineChanged:323` |
 | Calendar reminder | Yes | `CheckReminders:10913` |
-| Message deleted / archived / moved | No | Success branches of `DeleteMessagesAsync`, `ArchiveMessagesAsync`, `MoveSelectedMessagesToFolderAsync`; not when cancelled |
+| Message deleted / archived / moved | Yes | Success branches of `DeleteMessagesAsync`, `ArchiveMessagesAsync`, `MoveSelectedMessagesToFolderAsync`; not when cancelled |
 
 `ComposeViewModel` gains an optional `ISoundService?`, passed at its two construction sites (`MainWindow.xaml.cs:6185`, `7464`).
 

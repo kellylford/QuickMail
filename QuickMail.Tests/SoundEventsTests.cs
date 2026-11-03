@@ -450,6 +450,90 @@ public class SoundEventsTests
         new StubOAuthService(), new StubSyncService(), new StubConfigService(), new StubCommandRegistry(),
         new StubViewService(), new StubRuleService(), new StubSmtpService(), soundService: sounds);
 
+    private static readonly Guid Home = Guid.Parse("dddddddd-2222-2222-2222-222222222222");
+
+    private sealed class TwoAccounts : IAccountService
+    {
+        public List<AccountModel> LoadAccounts() =>
+        [
+            new AccountModel { Id = Work, AccountName = "Work" },
+            new AccountModel { Id = Home, AccountName = "Home" },
+        ];
+        public void SaveAccounts(List<AccountModel> accounts) { }
+        public void SetDefaultAccount(Guid accountId) { }
+    }
+
+    /// <summary>A VM with two accounts whose folders are loaded, each with an Archive, and two messages per account.</summary>
+    private static async Task<(MainViewModel Vm, RecordingSoundService Sounds, List<MailMessageSummary> Mail)> MakeWithFoldersAsync(IMailService mail)
+    {
+        var store = new StubLocalStoreService();
+        foreach (var id in new[] { Work, Home })
+        {
+            store.SeededFolders[id] =
+            [
+                new MailFolderModel { AccountId = id, FullName = "INBOX", DisplayName = "Inbox", Kind = SpecialFolderKind.Inbox },
+                new MailFolderModel { AccountId = id, FullName = "Archive", DisplayName = "Archive", Kind = SpecialFolderKind.Archive },
+            ];
+        }
+        var sounds = new RecordingSoundService();
+        var vm = new MainViewModel(
+            mail, new TwoAccounts(), new StubCredentialService(), store, new StubOAuthService(),
+            new StubSyncService(), new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), new StubSmtpService(), soundService: sounds);
+        vm.LoadAccountList();
+        await vm.InitialLoadAsync();
+
+        vm.Messages.Clear();
+        List<MailMessageSummary> messages =
+        [
+            new() { MessageId = "1", AccountId = Work, FolderName = "INBOX", Subject = "One" },
+            new() { MessageId = "2", AccountId = Work, FolderName = "INBOX", Subject = "Two" },
+            new() { MessageId = "3", AccountId = Home, FolderName = "INBOX", Subject = "Three" },
+            new() { MessageId = "4", AccountId = Home, FolderName = "INBOX", Subject = "Four" },
+        ];
+        foreach (var m in messages) vm.Messages.Add(m);
+        return (vm, sounds, messages);
+    }
+
+    private sealed class FailingFilingMail : StubImapMailServiceBase
+    {
+        public override Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds,
+                                               string destinationFolder, System.Threading.CancellationToken ct = default)
+            => Task.FromException(new InvalidOperationException("server said no"));
+    }
+
+    [Fact]
+    public async Task ABulkDeleteAcrossAccountsPlaysOnce()
+    {
+        var (vm, sounds, mail) = await MakeWithFoldersAsync(new StubImapMailService());
+        await vm.DeleteMessagesAsync(mail);
+        Assert.Equal([SoundEvent.MessageDeleted], sounds.Played);
+    }
+
+    [Fact]
+    public async Task ABulkArchiveAcrossAccountsPlaysOnce()
+    {
+        var (vm, sounds, mail) = await MakeWithFoldersAsync(new StubImapMailService());
+        await vm.ArchiveMessagesAsync(mail);
+        Assert.Equal([SoundEvent.MessageArchived], sounds.Played);
+    }
+
+    [Fact]
+    public async Task AFailedArchivePlaysActionFailedAndNotArchived()
+    {
+        var (vm, sounds, mail) = await MakeWithFoldersAsync(new FailingFilingMail());
+        await vm.ArchiveMessagesAsync(mail);
+        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+    }
+
+    [Fact]
+    public async Task ABulkMovePlaysOnce()
+    {
+        var (vm, sounds, mail) = await MakeWithFoldersAsync(new StubImapMailService());
+        await vm.MoveSelectedMessagesToFolderAsync(mail.Take(2).ToList(), Archive());
+        Assert.Equal([SoundEvent.MessageMoved], sounds.Played);
+    }
+
     [Fact]
     public async Task ADeletedMessagePlaysDeleted()
     {
@@ -502,7 +586,7 @@ public class SoundEventsTests
         Assert.Equal(SoundCatalog.Events.Count, vm.SoundEventRows.Count);
         Assert.Equal(vm.SoundEventRows[0], vm.SelectedSoundEvent);
         Assert.Equal("Message sent: Sent", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.MessageSent).AccessibleName);
-        Assert.Equal("Message deleted: None", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.MessageDeleted).AccessibleName);
+        Assert.Equal("Message deleted: Removed", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.MessageDeleted).AccessibleName);
     }
 
     [Fact]

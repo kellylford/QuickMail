@@ -2075,8 +2075,9 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 - A delete, move or archive that failed
 - Connection lost and connection restored
 - Calendar reminder, if you have turned on calendar reminders
+- Message deleted, archived and moved
 
-**Message deleted**, **message archived** and **message moved** have no sound until you choose one, because you may do those many times in a row.
+If you delete or file a lot of mail in a row, you may prefer to set those three to **None**. Repeats of the same sound within a second are dropped.
 
 ### Choosing a Sound
 
