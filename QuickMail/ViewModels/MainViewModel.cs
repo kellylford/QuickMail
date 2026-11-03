@@ -60,6 +60,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // the key set de-dupes across repeated IDLE fires within the session.
     private readonly DateTimeOffset _notifyThresholdUtc = DateTimeOffset.UtcNow;
     private readonly HashSet<string> _notifiedMessageKeys = new();
+    private readonly HashSet<string> _soundedMessageKeys = new();   // See MaybePlayMailSounds.
+    private readonly ISoundService? _sounds;
+
+    /// <summary>For the windows that play or preview sounds; null where sound isn't available.</summary>
+    internal ISoundService? Sounds => _sounds;
     // A single evaluation yielding more genuinely-new messages than this is a catch-up backlog
     // (mail that piled up while the machine slept or the connection was down), not real-time
     // arrivals — so it does not raise a toast. See MaybeNotifyNewMail.
@@ -1892,8 +1897,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IWatchService? watchService = null,
         IFolderViewStateService? folderViewState = null,
         IOutboxService? outboxService = null,
-        IConnectivityService? connectivity = null)
+        IConnectivityService? connectivity = null,
+        ISoundService? soundService = null)
     {
+        _sounds = soundService;
         _folderViewState = folderViewState;
         _outbox = outboxService;
         _connectivity = connectivity;
@@ -3900,6 +3907,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                 // Ordering is load-bearing: both paths share _notifiedMessageKeys, so
                                 // running this first means a watched inbox message gets the watched
                                 // toast (which says more) rather than the generic one, and gets it once.
+                                MaybePlayMailSounds(account, incoming, isInbox);
                                 MaybeNotifyWatchedMail(account, incoming);
                                 // Toast only for the Inbox (as before) — filtered mail in custom folders
                                 // shouldn't pop notifications — but refresh counts for any folder change.
@@ -4262,6 +4270,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (incoming.Count > 0)
                     _ui.Post(() =>
                     {
+                        MaybePlayMailSounds(account, incoming, isInbox: true);
                         MaybeNotifyWatchedMail(account, incoming);
                         MaybeNotifyNewMail(account, incoming);
                     });
@@ -4357,7 +4366,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         LogService.Log(diag);
-        _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
+        _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh, silent: _sounds?.IsAudible(SoundEvent.NewMail) == true);
     }
 
     /// <summary>
@@ -4398,7 +4407,32 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         LogService.Log($"Watched notify [{account.AccountLabel}]: {fresh.Count} fresh in watched conversations.");
-        _notifications.ShowWatchedMail(account.AccountLabel, account.Id, fresh);
+        _notifications.ShowWatchedMail(account.AccountLabel, account.Id, fresh, silent: _sounds?.IsAudible(SoundEvent.WatchedMail) == true);
+    }
+
+    /// <summary>
+    /// Plays the sound for mail that has just arrived (#912). Separate from the toast path on purpose:
+    /// that one stops early when toasts are off, its key set is consumed in a tested order, and sharing
+    /// it would lose toasts under some combinations of settings. So this has its own set, and the same
+    /// rules for what counts: new since launch, the shared-mailbox opt-in, and no sound for a catch-up
+    /// backlog. As with toasts, the Inbox gets the new-mail sound and other folders only speak up for a
+    /// watched conversation. Keys are consumed even with sounds off, so turning them on doesn't set off
+    /// a sound for mail that came in earlier.
+    /// </summary>
+    internal void MaybePlayMailSounds(AccountModel account, IReadOnlyList<MailMessageSummary> incoming, bool isInbox)
+    {
+        if (_sounds is null) return;
+        if (account.IsShared && !account.NotifyOnNewMail) return;
+        if (_soundedMessageKeys.Count > 10_000) _soundedMessageKeys.Clear();
+
+        IReadOnlyList<MailMessageSummary> candidates = isInbox || _watchService is null
+            ? (isInbox ? incoming : [])
+            : incoming.Where(IsWatchedMessage).ToList();
+        var fresh = Helpers.NewMailFilter.SelectNew(candidates, _notifyThresholdUtc, _soundedMessageKeys);
+        if (fresh.Count == 0 || fresh.Count > MaxNotifyBatchSize) return;
+
+        var inWatchedConversation = _watchService is not null && fresh.Any(IsWatchedMessage);
+        _sounds.Play(inWatchedConversation ? SoundEvent.WatchedMail : SoundEvent.NewMail);
     }
 
     // CA1859: the parameter type is fixed by the MessagesRemoved event delegate
@@ -7973,6 +8007,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 foreach (var acctId in toDelete.Select(m => m.AccountId).Distinct())
                     ScheduleFolderCountRefresh(acctId);
 
+            _sounds?.Play(SoundEvent.MessageDeleted);
             var count = toDelete.Count;
             if (Messages.Count == 0)
                 // The list is empty, so there is no next row being read and nothing to interrupt —
@@ -7996,6 +8031,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Honest uncertainty message — the delete may have partially or fully succeeded. Kept as a
             // Result (not MessageAction) so the failure is still heard even if delete/archive chatter is off.
             SetStatus("Delete may not have completed — refreshing.", AnnouncementCategory.Result);
+            _sounds?.Play(SoundEvent.ActionFailed);
             LogService.Log("DeleteMessages", ex);
 
             // Schedule targeted sync of affected folders to reconcile the UI with server state.
@@ -8206,6 +8242,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 foreach (var acctId in actionable.Select(m => m.AccountId).Distinct())
                     ScheduleFolderCountRefresh(acctId);
 
+            _sounds?.Play(SoundEvent.MessageArchived);
             var count = actionable.Count;
             if (count == 1 && Messages.Count > 0)
                 // Self-evident, same as a single delete (issue #667): the row has gone and the next
@@ -8223,6 +8260,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // Kept as a Result (not MessageAction) so the failure is heard even if archive chatter is off.
             SetStatus("Archive may not have completed — refreshing.", AnnouncementCategory.Result);
+            _sounds?.Play(SoundEvent.ActionFailed);
             LogService.Log("ArchiveMessages", ex);
 
             // Reconcile the affected source folders with server state after a short delay.
@@ -9712,6 +9750,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             RememberMessageDestination(destination, copy: false);
 
+            _sounds?.Play(SoundEvent.MessageMoved);
             var moved = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} moved to {destination.DisplayName}.";
             if (Messages.Count == 0)
                 // As delete says it: no next row is being read, so there is nothing to interrupt, and "empty"
@@ -9746,6 +9785,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // A Result, not MessageAction, as a failed delete is, so the failure is heard even with message-
             // action announcements turned off.
             SetStatus($"Failed to move: {ex.Message}", AnnouncementCategory.Result);
+            _sounds?.Play(SoundEvent.ActionFailed);
             LogService.Log("MoveMessages", ex);
         }
         finally { IsBusy = false; }
@@ -10919,7 +10959,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var title = string.IsNullOrWhiteSpace(e.Summary) ? "Appointment" : e.Summary;
                 var body = $"In {minutes} minute{(minutes == 1 ? "" : "s")}, at {start:t}"
                            + (string.IsNullOrWhiteSpace(e.Location) ? "" : $". {e.Location}");
-                _notifications?.ShowInfo(title, body);
+                _notifications?.ShowInfo(title, body, silent: _sounds?.IsAudible(SoundEvent.CalendarReminder) == true);
+                _sounds?.Play(SoundEvent.CalendarReminder);
                 Announce($"Reminder. {title} in {minutes} minute{(minutes == 1 ? "" : "s")}, at {start:t}.",
                          AnnouncementCategory.Result);
             }

@@ -40,6 +40,13 @@ public sealed class SoundServiceTests : IDisposable
             }
             if (Failure is not null) throw Failure;
         }
+
+        public Exception? CheckFailure { get; set; }
+
+        public void Check(string filePath)
+        {
+            if (CheckFailure is not null) throw CheckFailure;
+        }
     }
 
     private readonly string _folder = Path.Combine(Path.GetTempPath(), $"QM-SNDS-{Guid.NewGuid():N}");
@@ -56,6 +63,7 @@ public sealed class SoundServiceTests : IDisposable
         _output.Hold?.Set();
         _service?.Dispose();
         Directory.Delete(_folder, recursive: true);
+        foreach (var folder in _sourceFolders) Directory.Delete(folder, recursive: true);
     }
 
     private SoundService Service() => _service ??= new SoundService(_config, _folder, _output,
@@ -233,6 +241,103 @@ public sealed class SoundServiceTests : IDisposable
         Settings().SoundEvents["NewMail"] = "custom:gone.wav";
         Service().Play(SoundEvent.NewMail);
         AssertPlayed("builtin:arrived");
+    }
+
+    // ── Adding a chosen file ───────────────────────────────────────────────────
+
+    private string SourceFile(string name, byte[] bytes)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"QM-SRC-{Guid.NewGuid():N}")).FullName;
+        _sourceFolders.Add(folder);
+        var path = Path.Combine(folder, name);
+        File.WriteAllBytes(path, bytes);
+        return path;
+    }
+
+    private readonly List<string> _sourceFolders = [];
+
+    [Fact]
+    public void AChosenFileIsCopiedInAndTheOriginalLeftAlone()
+    {
+        var source = SourceFile("My Chime.wav", [1, 2, 3]);
+
+        Assert.True(Service().TryAddCustomSound(source, out var name, out _));
+
+        Assert.Equal("My Chime.wav", name);
+        Assert.Equal([(byte)1, 2, 3], File.ReadAllBytes(Path.Combine(_folder, name)));
+        Assert.True(File.Exists(source));
+        Assert.Equal(["My Chime.wav"], Service().CustomSoundFiles());
+    }
+
+    [Fact]
+    public void ChoosingTheSameFileAgainUsesTheCopyAlreadyThere()
+    {
+        Service().TryAddCustomSound(SourceFile("Chime.wav", [1]), out _, out _);
+        Assert.True(Service().TryAddCustomSound(SourceFile("Chime.wav", [1]), out var name, out _));
+        Assert.Equal("Chime.wav", name);
+        Assert.Single(Directory.GetFiles(_folder));
+    }
+
+    [Fact]
+    public void ADifferentFileWithTheSameNameDoesNotReplaceTheOneInUse()
+    {
+        Service().TryAddCustomSound(SourceFile("Chime.wav", [1]), out _, out _);
+        Assert.True(Service().TryAddCustomSound(SourceFile("Chime.wav", [2]), out var name, out _));
+        Assert.Equal("Chime 2.wav", name);
+        Assert.Equal([(byte)1], File.ReadAllBytes(Path.Combine(_folder, "Chime.wav")));
+    }
+
+    [Fact]
+    public void AFileNamedLikeADeviceGetsAPlainName()
+    {
+        Assert.True(Service().TryAddCustomSound(SourceFile("COM1x.wav", [1]), out var ordinary, out _));
+        Assert.Equal("COM1x.wav", ordinary);
+
+        // Not creatable under its real name on this file system, so the rule itself is covered by SoundRef's tests.
+        Assert.False(SoundRef.IsSafeCustomFileName("COM1.wav"));
+    }
+
+    [Fact]
+    public void AnotherKindOfFileIsRefused()
+    {
+        var source = SourceFile("notes.txt", [1]);
+        Assert.False(Service().TryAddCustomSound(source, out _, out var refusal));
+        Assert.Contains("WAV and MP3", refusal, StringComparison.Ordinal);
+        Assert.Empty(Directory.GetFiles(_folder));
+    }
+
+    [Fact]
+    public void AFileOverTheSizeLimitIsRefusedWithoutDecodingIt()
+    {
+        _output.CheckFailure = new InvalidOperationException("should not have been decoded");
+        var source = SourceFile("big.wav", new byte[SoundCatalog.MaxCustomFileBytes + 1]);
+        Assert.False(Service().TryAddCustomSound(source, out _, out var refusal));
+        Assert.Contains("larger than 5 MB", refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AFileThatWillNotDecodeIsRefused()
+    {
+        _output.CheckFailure = new FormatException("Not a WAVE file");
+        Assert.False(Service().TryAddCustomSound(SourceFile("junk.wav", [1]), out var name, out var refusal));
+        Assert.Empty(name);
+        Assert.Contains("could not be played", refusal, StringComparison.Ordinal);
+        Assert.Empty(Directory.GetFiles(_folder));
+    }
+
+    [Fact]
+    public void ASoundThatRunsTooLongIsRefusedSayingSo()
+    {
+        _output.CheckFailure = new InvalidDataException("too long");
+        Assert.False(Service().TryAddCustomSound(SourceFile("song.wav", [1]), out _, out var refusal));
+        Assert.Contains("longer than 30 seconds", refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AFileThatCannotBeReadIsRefusedRatherThanThrown()
+    {
+        Assert.False(Service().TryAddCustomSound(Path.Combine(_folder, "not there.wav"), out _, out var refusal));
+        Assert.False(string.IsNullOrEmpty(refusal));
     }
 
     [Fact]

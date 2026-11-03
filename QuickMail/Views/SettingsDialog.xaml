@@ -823,6 +823,61 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+            <!-- Sounds Tab (#912) -->
+            <TabItem Header="_Sounds" AutomationProperties.Name="Sounds">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <CheckBox x:Name="PlayEventSoundsCheck"
+                                  Content="_Play sounds for mail events"
+                                  IsChecked="{Binding PlayEventSounds, Mode=TwoWay}"/>
+                        <TextBlock Text="A rule's own sound plays whether or not this is on."
+                                   TextWrapping="Wrap" Margin="20,2,0,8"
+                                   Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+
+                        <CheckBox Content="_Mute all sounds"
+                                  IsChecked="{Binding MuteSounds, Mode=TwoWay}"/>
+                        <TextBlock Text="Silences everything, including rule sounds. Sounds keep playing during Windows Do Not Disturb unless you mute them here."
+                                   TextWrapping="Wrap" Margin="20,2,0,8"
+                                   Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+
+                        <Label Content="_Volume:" Target="{Binding ElementName=SoundVolumeCombo}" Padding="0,0,0,2"/>
+                        <ComboBox x:Name="SoundVolumeCombo" Width="100" HorizontalAlignment="Left" Margin="0,0,0,12"
+                                  ItemsSource="{Binding SoundVolumeOptions}"
+                                  SelectedItem="{Binding SelectedSoundVolume, Mode=TwoWay}"
+                                  DisplayMemberPath="Label"/>
+
+                        <Label Content="Sound _events:" Target="{Binding ElementName=SoundEventList}" Padding="0,0,0,2"/>
+                        <ListBox x:Name="SoundEventList" Height="170" Margin="0,0,0,12"
+                                 ItemsSource="{Binding SoundEventRows}"
+                                 SelectedItem="{Binding SelectedSoundEvent, Mode=TwoWay}"
+                                 DisplayMemberPath="AccessibleName"
+                                 IsTextSearchEnabled="True"
+                                 TextSearch.TextPath="Label">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+
+                        <Label Content="Soun_d for this event:" Target="{Binding ElementName=SoundChoiceCombo}" Padding="0,0,0,2"/>
+                        <ComboBox x:Name="SoundChoiceCombo" Margin="0,0,0,8"
+                                  ItemsSource="{Binding SoundChoices}"
+                                  SelectedItem="{Binding SelectedSoundChoice, Mode=TwoWay}"
+                                  DisplayMemberPath="Label"/>
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="PreviewSoundButton" Content="P_review" MinWidth="90" Margin="0,0,8,0"
+                                    Command="{Binding PreviewSoundCommand}"/>
+                            <Button x:Name="ChooseSoundFileButton" Content="Choose _File…" MinWidth="110"
+                                    Click="ChooseSoundFileButton_Click"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding SoundFileMessage}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Visibility="{Binding HasSoundFileMessage, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- Appearance Tab -->
             <TabItem Header="A_ppearance" AutomationProperties.Name="Appearance">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">

@@ -139,6 +139,7 @@ public partial class MainViewModel
     {
         if (_announcedOffline) return;
         _announcedOffline = true;
+        _sounds?.Play(SoundEvent.ConnectionLost);
         Announce(OnlineMode ? "Offline." : "Offline. Showing cached messages.", AnnouncementCategory.Status);
     }
 
@@ -320,6 +321,7 @@ public partial class MainViewModel
             if (_announcedOffline)
             {
                 _announcedOffline = false;
+                _sounds?.Play(SoundEvent.ConnectionRestored);
                 Announce("Back online.", AnnouncementCategory.Status);
             }
         }

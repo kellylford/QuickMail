@@ -289,6 +289,10 @@ public partial class MainViewModel
         // Read on the raising thread: the manual command's own await is what clears it, and that
         // continuation cannot run before this handler returns.
         var category = _manualOutboxDrain ? AnnouncementCategory.Result : AnnouncementCategory.Status;
+        // One sound per drain, as the sentence is, however many messages went. A failure is said last,
+        // so it's what is left in the ear.
+        if (result.Sent > 0) _sounds?.Play(SoundEvent.MessageSent);
+        if (result.Failed > 0) _sounds?.Play(SoundEvent.SendFailed);
         _ui.Post(() =>
         {
             SetStatus(SummariseFlush(result), category);

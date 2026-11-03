@@ -20,7 +20,22 @@ public partial class SettingsDialog : Window
         InitializeComponent();
         DataContext = vm;
         vm.DiagnosticsAnnouncementRequested += OnDiagnosticsAnnouncement;
-        Closed += (_, _) => vm.DiagnosticsAnnouncementRequested -= OnDiagnosticsAnnouncement;
+        vm.SoundFileRefused += OnSoundFileRefused;
+        Closed += (_, _) =>
+        {
+            vm.DiagnosticsAnnouncementRequested -= OnDiagnosticsAnnouncement;
+            vm.SoundFileRefused -= OnSoundFileRefused;
+        };
+    }
+
+    private void OnSoundFileRefused(string reason) =>
+        AccessibilityHelper.Announce(this, reason, interrupt: true, AnnouncementCategory.Result);
+
+    private void ChooseSoundFileButton_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.ChooseSoundFileCommand.Execute(null);
+        // The file dialog gives focus back on its own only some of the time.
+        ChooseSoundFileButton.Focus();
     }
 
     // Meta-announcement about screenshot capture (#175): force bypasses the

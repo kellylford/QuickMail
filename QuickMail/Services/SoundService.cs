@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using QuickMail.Models;
@@ -113,6 +114,95 @@ public sealed class SoundService : ISoundService
             return false;
         }
     }
+
+    public IReadOnlyList<string> CustomSoundFiles()
+    {
+        try
+        {
+            if (!Directory.Exists(_soundsFolder)) return [];
+            return [.. Directory.GetFiles(_soundsFolder)
+                .Select(f => Path.GetFileName(f)!)
+                .Where(SoundRef.IsSafeCustomFileName)
+                .Order(StringComparer.CurrentCultureIgnoreCase)];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Listing custom sounds failed", ex);
+            return [];
+        }
+    }
+
+    public bool TryAddCustomSound(string sourcePath, out string fileName, out string refusal)
+    {
+        fileName = string.Empty;
+        refusal = string.Empty;
+        var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+        if (extension is not (".wav" or ".mp3"))
+        {
+            refusal = "QuickMail can play WAV and MP3 files. Choose one of those.";
+            return false;
+        }
+
+        try
+        {
+            if (new FileInfo(sourcePath).Length > SoundCatalog.MaxCustomFileBytes)
+            {
+                refusal = $"That file is larger than {SoundCatalog.MaxCustomFileBytes / (1024 * 1024)} MB. Choose a shorter sound.";
+                return false;
+            }
+
+            try
+            {
+                _output.Check(sourcePath);
+            }
+            catch (InvalidDataException ex)
+            {
+                LogService.Log("A chosen sound was too long", ex);
+                refusal = $"That sound is longer than {SoundCatalog.MaxCustomSoundLength.TotalSeconds:0} seconds. Choose a shorter one.";
+                return false;
+            }
+            catch (Exception ex) when (ex is not (IOException or UnauthorizedAccessException))
+            {
+                LogService.Log("A chosen sound could not be decoded", ex);
+                refusal = "That file could not be played. It may be damaged, or not really a sound file.";
+                return false;
+            }
+
+            Directory.CreateDirectory(_soundsFolder);
+            fileName = NameInFolder(sourcePath, extension);
+            var target = Path.Combine(_soundsFolder, fileName);
+            if (!File.Exists(target)) File.Copy(sourcePath, target);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Adding a custom sound failed", ex);
+            fileName = string.Empty;
+            refusal = "That file could not be copied into QuickMail's sounds folder. " + ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The name to file a chosen sound under: its own, or that name numbered when a different sound
+    /// already has it. Choosing the same file again finds the copy already there.
+    /// </summary>
+    private string NameInFolder(string sourcePath, string extension)
+    {
+        var original = Path.GetFileName(sourcePath);
+        // A name that isn't safe here, such as COM1.wav, gets a plain one rather than refusing a good sound.
+        var stem = SoundRef.IsSafeCustomFileName(original) ? Path.GetFileNameWithoutExtension(original) : "Custom sound";
+        var candidate = stem + extension;
+        for (var n = 2; ; n++)
+        {
+            var target = Path.Combine(_soundsFolder, candidate);
+            if (!File.Exists(target) || SameBytes(target, sourcePath)) return candidate;
+            candidate = $"{stem} {n}{extension}";
+        }
+    }
+
+    private static bool SameBytes(string a, string b) =>
+        new FileInfo(a).Length == new FileInfo(b).Length && File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
 
     private void Enqueue(SoundRef sound, string fallback, SoundOrigin origin, ConfigModel config)
     {

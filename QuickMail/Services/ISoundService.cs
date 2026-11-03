@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using QuickMail.Models;
@@ -30,6 +31,18 @@ public interface ISoundService : IDisposable
     /// rather than sounding twice.
     /// </summary>
     bool IsAudible(SoundEvent soundEvent);
+
+    /// <summary>The file names in the profile's folder of custom sounds.</summary>
+    IReadOnlyList<string> CustomSoundFiles();
+
+    /// <summary>
+    /// Checks a file the person chose and copies it into the folder of custom sounds, so it survives
+    /// the original moving and travels in settings files.
+    /// </summary>
+    /// <param name="sourcePath">The chosen file.</param>
+    /// <param name="fileName">Its name in the folder, which can differ from the original's.</param>
+    /// <param name="refusal">Why it was refused, in words for the person.</param>
+    bool TryAddCustomSound(string sourcePath, out string fileName, out string refusal);
 }
 
 /// <summary>A sound ready to play: a file on disk, or a stream from the app's own resources.</summary>
@@ -43,4 +56,7 @@ public interface ISoundOutput
 {
     /// <summary>Plays the clip on the default device and returns when it ends. Throws on any failure.</summary>
     void Play(SoundClip clip, float volume, CancellationToken cancellationToken);
+
+    /// <summary>Throws unless the file decodes as a sound short enough to play.</summary>
+    void Check(string filePath);
 }
