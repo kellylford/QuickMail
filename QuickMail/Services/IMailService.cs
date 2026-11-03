@@ -63,12 +63,15 @@ public interface IMailService : IDisposable
     Task NoOpAsync(Guid accountId, CancellationToken ct = default);
 
     /// <summary>
-    /// Counts messages in the Trash folder (if it exists) without opening other folders.
-    /// Returns 0 if Trash does not exist or is empty.
+    /// Counts messages in the Trash folder without opening other folders. 0 means known to be empty:
+    /// this throws if that can't be found out, <see cref="TrashFolderNotFoundException"/> if there is no such folder.
     /// </summary>
-    /// <summary>How many messages are in the trash. Throws if that can't be found out: 0 means known to be empty.</summary>
     Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Permanently deletes everything in the Trash folder, and returns how many messages that was.
+    /// Throws <see cref="TrashFolderNotFoundException"/> if the account has no such folder.
+    /// </summary>
     Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default);
 
     /// <summary>

@@ -29,6 +29,11 @@ Good to know:
 
 See [Sounds in the User Guide](https://kellylford.github.io/QuickMail/sounds.html).
 
+## Fixed
+
+- **Empty Trash reports what really happened.** With the network down it could say the trash was emptied while the mail was still on the server. Each account is now tried and reported on its own, so one that can't be reached doesn't stop the others, and you're told which worked and which didn't.
+- **Empty Trash no longer touches Junk.** On a server with no Trash folder but a Junk or Spam folder, Empty Trash permanently deleted the Junk folder. It now says no trash folder was found.
+
 ## Reporting Issues
 
 Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:

@@ -454,17 +454,21 @@ public class SoundEventsTests
 
     private sealed class TwoAccounts : IAccountService
     {
-        public List<AccountModel> LoadAccounts() =>
-        [
-            new AccountModel { Id = Work, AccountName = "Work" },
-            new AccountModel { Id = Home, AccountName = "Home" },
-        ];
+        public BackendKind? HomeBackend { get; init; }
+
+        public List<AccountModel> LoadAccounts()
+        {
+            var home = new AccountModel { Id = Home, AccountName = "Home" };
+            if (HomeBackend is { } kind) home.BackendKind = kind;
+            return [new AccountModel { Id = Work, AccountName = "Work" }, home];
+        }
+
         public void SaveAccounts(List<AccountModel> accounts) { }
         public void SetDefaultAccount(Guid accountId) { }
     }
 
     /// <summary>A VM with two accounts whose folders are loaded, each with an Archive, and two messages per account.</summary>
-    private static async Task<(MainViewModel Vm, RecordingSoundService Sounds, List<MailMessageSummary> Mail)> MakeWithFoldersAsync(IMailService mail)
+    private static async Task<(MainViewModel Vm, RecordingSoundService Sounds, List<MailMessageSummary> Mail)> MakeWithFoldersAsync(IMailService mail, BackendKind? homeBackend = null)
     {
         var store = new StubLocalStoreService();
         foreach (var id in new[] { Work, Home })
@@ -473,11 +477,12 @@ public class SoundEventsTests
             [
                 new MailFolderModel { AccountId = id, FullName = "INBOX", DisplayName = "Inbox", Kind = SpecialFolderKind.Inbox },
                 new MailFolderModel { AccountId = id, FullName = "Archive", DisplayName = "Archive", Kind = SpecialFolderKind.Archive },
+                new MailFolderModel { AccountId = id, FullName = "Trash", DisplayName = "Trash", Kind = SpecialFolderKind.Trash, MessageCount = 5 },
             ];
         }
         var sounds = new RecordingSoundService();
         var vm = new MainViewModel(
-            mail, new TwoAccounts(), new StubCredentialService(), store, new StubOAuthService(),
+            mail, new TwoAccounts { HomeBackend = homeBackend }, new StubCredentialService(), store, new StubOAuthService(),
             new StubSyncService(), new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
             new StubRuleService(), new StubSmtpService(), soundService: sounds);
         vm.LoadAccountList();
@@ -513,10 +518,14 @@ public class SoundEventsTests
         public int Deleted { get; set; } = 3;
         public List<Guid> Attempted { get; } = [];
 
-        public override Task<int> EmptyTrashAsync(Guid accountId, System.Threading.CancellationToken ct = default)
+        /// <summary>When set, the empty waits for this, so a test can do something while it runs.</summary>
+        public Task? Hold { get; set; }
+
+        public override async Task<int> EmptyTrashAsync(Guid accountId, System.Threading.CancellationToken ct = default)
         {
             Attempted.Add(accountId);
-            return Failures.TryGetValue(accountId, out var failure) ? Task.FromException<int>(failure) : Task.FromResult(Deleted);
+            if (Hold is not null) await Hold;
+            return Failures.TryGetValue(accountId, out var failure) ? throw failure : Deleted;
         }
 
         public override Task<int> CountTrashMessagesAsync(Guid accountId, System.Threading.CancellationToken ct = default)
@@ -526,6 +535,25 @@ public class SoundEventsTests
     }
 
     private static readonly InvalidOperationException ServerSaidNo = new("server said no");
+
+    /// <summary>Puts a VM in All Trash, with one trash message per account, in the flat list and behind it.</summary>
+    private static async Task<(MailMessageSummary Work, MailMessageSummary Home)> ShowAllTrashAsync(MainViewModel vm)
+    {
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllTrashFolder);
+        var work = new MailMessageSummary { MessageId = "1", AccountId = Work, FolderName = "Trash", Subject = "Work's" };
+        var home = new MailMessageSummary { MessageId = "2", AccountId = Home, FolderName = "Trash", Subject = "Home's" };
+        ShowInList(vm, work, home);
+        return (work, home);
+    }
+
+    private static void ShowInList(MainViewModel vm, params MailMessageSummary[] rows)
+    {
+        vm.Messages.Clear();
+        foreach (var m in rows) vm.Messages.Add(m);
+        typeof(MainViewModel)
+            .GetField("_rawMessages", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .SetValue(vm, rows.ToList());
+    }
 
     [Fact]
     public async Task EmptyingTrashPlaysOnceAcrossAccounts()
@@ -544,7 +572,7 @@ public class SoundEventsTests
         var (vm, sounds, _) = await MakeWithFoldersAsync(new TrashMail { Deleted = 0 });
         await vm.EmptyTrashCommand.ExecuteAsync(null);
         Assert.Empty(sounds.Played);
-        Assert.Equal("0 messages deleted from trash.", vm.StatusText);
+        Assert.Equal("Trash was already empty.", vm.StatusText);
     }
 
     [Fact]
@@ -559,7 +587,7 @@ public class SoundEventsTests
         await vm.EmptyTrashCommand.ExecuteAsync(null);
 
         Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
-        Assert.StartsWith("Empty trash failed for Work, Home", vm.StatusText, StringComparison.Ordinal);
+        Assert.Equal("Could not empty Work: server said no. Could not empty Home: server said no.", vm.StatusText);
     }
 
     [Fact]
@@ -574,7 +602,7 @@ public class SoundEventsTests
         await vm.EmptyTrashCommand.ExecuteAsync(null);
 
         Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
-        Assert.StartsWith("Empty trash failed for Home:", vm.StatusText, StringComparison.Ordinal);
+        Assert.Equal("Emptied trash for Work. Could not empty Home: server said no.", vm.StatusText);
     }
 
     [Fact]
@@ -590,7 +618,7 @@ public class SoundEventsTests
 
         Assert.Equal([Work, Home], mail.Attempted);
         Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
-        Assert.StartsWith("Empty trash failed for Work:", vm.StatusText, StringComparison.Ordinal);
+        Assert.Equal("Emptied trash for Home. Could not empty Work: server said no.", vm.StatusText);
     }
 
     [Fact]
@@ -600,14 +628,204 @@ public class SoundEventsTests
         mail.Failures[Home] = ServerSaidNo;
         mail.Remaining[Home] = 2;
         var (vm, _, _) = await MakeWithFoldersAsync(mail);
-        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllTrashFolder);
-        vm.Messages.Clear();
-        vm.Messages.Add(new MailMessageSummary { MessageId = "1", AccountId = Work, FolderName = "Trash", Subject = "Gone" });
-        vm.Messages.Add(new MailMessageSummary { MessageId = "2", AccountId = Home, FolderName = "Trash", Subject = "Still there" });
+        var (_, home) = await ShowAllTrashAsync(vm);
 
         await vm.EmptyTrashCommand.ExecuteAsync(null);
 
-        Assert.Equal("Still there", Assert.Single(vm.Messages).Subject);
+        Assert.Same(home, Assert.Single(vm.Messages));
+        Assert.Same(home, Assert.Single(vm.LoadedMessages));
+    }
+
+    [Fact]
+    public async Task ATimeoutOnOneAccountIsThatAccountsFailureAlone()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Work] = new OperationCanceledException();
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
+        var (_, home) = await ShowAllTrashAsync(vm);
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Equal([Work, Home], mail.Attempted);
+        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+        Assert.Equal("Emptied trash for Home. Could not empty Work: it timed out.", vm.StatusText);
+        Assert.Equal(Work, Assert.Single(vm.Messages).AccountId);
+    }
+
+    [Fact]
+    public async Task APop3FailureIsNotConfirmedByItsLocalCount()
+    {
+        // POP3 clears the local store before it tries the server, so its count reads 0 regardless.
+        var mail = new TrashMail();
+        mail.Failures[Home] = new System.IO.IOException("network down");
+        mail.Remaining[Home] = 0;
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail, homeBackend: BackendKind.Pop3Smtp);
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+        Assert.Equal("Emptied trash for Work. Could not empty Home: could not reach the server.", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task AFailureIsReadOutInPlainWords()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Work] = new AccountNotConnectedException(Work);
+        mail.Failures[Home] = new AccountNotConnectedException(Home);
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        var announced = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (_, a) => announced.Add(a);
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        const string Expected = "Could not empty Work: could not reach the server. Could not empty Home: could not reach the server.";
+        Assert.Equal(Expected, vm.StatusText);
+        Assert.Contains((Expected, AnnouncementCategory.Result), announced);
+    }
+
+    [Fact]
+    public async Task EveryOutcomeIsAnnounced()
+    {
+        var (vm, _, _) = await MakeWithFoldersAsync(new TrashMail());
+        var announced = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (_, a) => announced.Add(a);
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Contains(("6 messages deleted from trash.", AnnouncementCategory.Result), announced);
+    }
+
+    [Fact]
+    public async Task AnOpenMessageFromAnEmptiedAccountCloses()
+    {
+        // Open and selected can differ: arrowing to another row doesn't change what's open.
+        var mail = new TrashMail();
+        mail.Failures[Home] = ServerSaidNo;
+        mail.Remaining[Home] = 2;
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        var (_, home) = await ShowAllTrashAsync(vm);
+        vm.SelectedMessage = home;
+        vm.MessageDetail = new MailMessageDetail { MessageId = "1", AccountId = Work, FolderName = "Trash" };
+        vm.IsMessageOpen = true;
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Null(vm.MessageDetail);
+        Assert.False(vm.IsMessageOpen);
+        Assert.Same(home, vm.SelectedMessage);
+    }
+
+    [Fact]
+    public async Task AnOpenMessageFromAFailedAccountStaysOpen()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Home] = ServerSaidNo;
+        mail.Remaining[Home] = 2;
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        var (_, home) = await ShowAllTrashAsync(vm);
+        vm.SelectedMessage = home;
+        vm.MessageDetail = new MailMessageDetail { MessageId = "2", AccountId = Home, FolderName = "Trash" };
+        vm.IsMessageOpen = true;
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.NotNull(vm.MessageDetail);
+        Assert.True(vm.IsMessageOpen);
+    }
+
+    [Fact]
+    public async Task FocusLandsOnASurvivorBeforeTheFocusedRowGoes()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Home] = ServerSaidNo;
+        mail.Remaining[Home] = 2;
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        var (work, home) = await ShowAllTrashAsync(vm);
+        vm.SelectedMessage = work;
+        var rowsWhenLanding = -1;
+        MailMessageSummary? selectedWhenLanding = null;
+        vm.MessageListFocusNowRequested += () =>
+        {
+            rowsWhenLanding = vm.Messages.Count;
+            selectedWhenLanding = vm.SelectedMessage;
+            return true;
+        };
+        var queued = false;
+        vm.MessageListFocusRequested += () => queued = true;
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, rowsWhenLanding);
+        Assert.Same(home, selectedWhenLanding);
+        Assert.False(queued);
+    }
+
+    [Fact]
+    public async Task MovingAwayWhileItRunsLeavesTheNewViewAlone()
+    {
+        var hold = new TaskCompletionSource();
+        var mail = new TrashMail { Hold = hold.Task };
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        await ShowAllTrashAsync(vm);
+
+        var running = vm.EmptyTrashCommand.ExecuteAsync(null);
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllInboxesFolder);
+        var inbox = new MailMessageSummary { MessageId = "9", AccountId = Work, FolderName = "INBOX", Subject = "Not trash" };
+        ShowInList(vm, inbox);
+        hold.SetResult();
+        await running;
+
+        Assert.Same(inbox, Assert.Single(vm.Messages));
+        Assert.Same(inbox, Assert.Single(vm.LoadedMessages));
+    }
+
+    [Fact]
+    public async Task AnAccountWithNoTrashFolderKeepsWhatIsListed()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Home] = new TrashFolderNotFoundException();
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
+        var (_, home) = await ShowAllTrashAsync(vm);
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Same(home, Assert.Single(vm.Messages));
+        Assert.Equal([SoundEvent.TrashEmptied], sounds.Played);
+        Assert.Equal("3 messages deleted from trash.", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task NoTrashFolderAnywhereSaysSoAndPlaysNothing()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Work] = new TrashFolderNotFoundException();
+        mail.Failures[Home] = new TrashFolderNotFoundException();
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
+        await ShowAllTrashAsync(vm);
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Empty(sounds.Played);
+        Assert.Equal("No trash folder found.", vm.StatusText);
+        Assert.Equal(2, vm.Messages.Count);
+    }
+
+    [Fact]
+    public async Task OnlyEmptiedAccountsLoseTheirRememberedTrashCount()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Home] = ServerSaidNo;
+        mail.Remaining[Home] = 2;
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        var prompts = new List<string>();
+        vm.ConfirmationRequested = (prompt, _) => { prompts.Add(prompt); return true; };
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Contains("10 messages", prompts[0], StringComparison.Ordinal);
+        Assert.Contains("5 messages", prompts[1], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -617,13 +835,12 @@ public class SoundEventsTests
         mail.Failures[Work] = ServerSaidNo;
         mail.Failures[Home] = ServerSaidNo;
         var (vm, _, _) = await MakeWithFoldersAsync(mail);
-        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllTrashFolder);
-        vm.Messages.Clear();
-        vm.Messages.Add(new MailMessageSummary { MessageId = "1", AccountId = Work, FolderName = "Trash", Subject = "Still there" });
+        await ShowAllTrashAsync(vm);
 
         await vm.EmptyTrashCommand.ExecuteAsync(null);
 
-        Assert.Single(vm.Messages);
+        Assert.Equal(2, vm.Messages.Count);
+        Assert.Equal(2, vm.LoadedMessages.Count);
     }
 
     [Fact]
@@ -656,7 +873,8 @@ public class SoundEventsTests
         await Assert.ThrowsAnyAsync<Exception>(() => service.ConnectAsync(account, "pw", ct));
         Assert.True(service.IsConnected(account.Id));
 
-        await Assert.ThrowsAnyAsync<Exception>(() => service.CountTrashMessagesAsync(account.Id, ct));
+        var thrown = await Assert.ThrowsAnyAsync<Exception>(() => service.CountTrashMessagesAsync(account.Id, ct));
+        Assert.True(ConnectionFailure.IsConnectionFailure(thrown), thrown.ToString());
     }
 
     [Fact]
@@ -687,7 +905,7 @@ public class SoundEventsTests
         var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
         await vm.EmptyTrashCommand.ExecuteAsync(null);
         Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
-        Assert.Equal("Empty trash timed out.", vm.StatusText);
+        Assert.Equal("Emptied trash for Home. Could not empty Work: it timed out.", vm.StatusText);
     }
 
     [Fact]

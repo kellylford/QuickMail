@@ -383,7 +383,7 @@ public class GraphMailService : IMailService, IConnectionProbe
     {
         var f = await _client.GetAsync<GraphMailFolder>(
             Account(accountId), $"/me/mailFolders/{DeletedItemsFolderId}?$select=totalItemCount", ct);
-        return f?.TotalItemCount ?? 0;
+        return f?.TotalItemCount ?? throw new InvalidOperationException("Deleted Items gave no count.");
     }
     public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(
         Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default)
