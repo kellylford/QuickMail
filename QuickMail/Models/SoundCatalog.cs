@@ -42,10 +42,9 @@ public enum SoundOrigin
 /// <param name="ConfigKey">Its key in the [sounds] section of config.ini.</param>
 /// <param name="Label">What Settings calls it.</param>
 /// <param name="BuiltInSound">The built-in sound it uses unless the person chooses another.</param>
-/// <param name="OnByDefault">Whether it plays once event sounds are turned on. Off for actions that repeat quickly.</param>
 /// <param name="Origin">Why it plays.</param>
 public sealed record SoundEventInfo(
-    SoundEvent Event, string ConfigKey, string Label, string BuiltInSound, bool OnByDefault, SoundOrigin Origin);
+    SoundEvent Event, string ConfigKey, string Label, string BuiltInSound, SoundOrigin Origin);
 
 /// <summary>A style of built-in sound. A screen reader reads the item from <see cref="ToString"/>.</summary>
 /// <param name="Id">Its folder under Sounds/BuiltIn, and its value in config.ini.</param>
@@ -86,18 +85,18 @@ public static class SoundCatalog
 
     public static readonly IReadOnlyList<SoundEventInfo> Events =
     [
-        new(SoundEvent.MessageSent,        "MessageSent",        "Message sent",               "sent",         true,  SoundOrigin.Direct),
-        new(SoundEvent.MessageQueued,      "MessageQueued",      "Message queued",             "queued",       true,  SoundOrigin.Direct),
-        new(SoundEvent.SendFailed,         "SendFailed",         "Send failed",                "failed",       true,  SoundOrigin.Direct),
-        new(SoundEvent.NewMail,            "NewMail",            "New mail",                   "arrived",      true,  SoundOrigin.Arrival),
-        new(SoundEvent.WatchedMail,        "WatchedMail",        "Watched conversation mail",  "attention",    true,  SoundOrigin.Arrival),
-        new(SoundEvent.ActionFailed,       "ActionFailed",       "Delete, move or archive failed", "error",    true,  SoundOrigin.Direct),
-        new(SoundEvent.ConnectionLost,     "ConnectionLost",     "Connection lost",            "disconnected", true,  SoundOrigin.Background),
-        new(SoundEvent.ConnectionRestored, "ConnectionRestored", "Connection restored",        "connected",    true,  SoundOrigin.Background),
-        new(SoundEvent.CalendarReminder,   "CalendarReminder",   "Calendar reminder",          "reminder",     true,  SoundOrigin.Background),
-        new(SoundEvent.MessageDeleted,     "MessageDeleted",     "Message deleted",            "removed",      false, SoundOrigin.Direct),
-        new(SoundEvent.MessageArchived,    "MessageArchived",    "Message archived",           "filed",        false, SoundOrigin.Direct),
-        new(SoundEvent.MessageMoved,       "MessageMoved",       "Message moved",              "moved",        false, SoundOrigin.Direct),
+        new(SoundEvent.MessageSent,        "MessageSent",        "Message sent",               "sent",         SoundOrigin.Direct),
+        new(SoundEvent.MessageQueued,      "MessageQueued",      "Message queued",             "queued",       SoundOrigin.Direct),
+        new(SoundEvent.SendFailed,         "SendFailed",         "Send failed",                "failed",       SoundOrigin.Direct),
+        new(SoundEvent.NewMail,            "NewMail",            "New mail",                   "arrived",      SoundOrigin.Arrival),
+        new(SoundEvent.WatchedMail,        "WatchedMail",        "Watched conversation mail",  "attention",    SoundOrigin.Arrival),
+        new(SoundEvent.ActionFailed,       "ActionFailed",       "Delete, move or archive failed", "error",    SoundOrigin.Direct),
+        new(SoundEvent.ConnectionLost,     "ConnectionLost",     "Connection lost",            "disconnected", SoundOrigin.Background),
+        new(SoundEvent.ConnectionRestored, "ConnectionRestored", "Connection restored",        "connected",    SoundOrigin.Background),
+        new(SoundEvent.CalendarReminder,   "CalendarReminder",   "Calendar reminder",          "reminder",     SoundOrigin.Background),
+        new(SoundEvent.MessageDeleted,     "MessageDeleted",     "Message deleted",            "removed",      SoundOrigin.Direct),
+        new(SoundEvent.MessageArchived,    "MessageArchived",    "Message archived",           "filed",        SoundOrigin.Direct),
+        new(SoundEvent.MessageMoved,       "MessageMoved",       "Message moved",              "moved",        SoundOrigin.Direct),
     ];
 
     /// <summary>Every built-in sound name: one per event, plus the rule default.</summary>
@@ -117,7 +116,7 @@ public static class SoundCatalog
 
     /// <summary>
     /// What an event plays under these settings: the person's choice if a valid one is stored, else
-    /// its built-in sound if it is on by default, else nothing. An unreadable stored value falls back
+    /// its built-in sound. An unreadable stored value falls back
     /// the same way rather than silencing the event.
     /// </summary>
     public static SoundRef Resolve(SoundEvent e, IReadOnlyDictionary<string, string> stored)
@@ -125,6 +124,6 @@ public static class SoundCatalog
         var info = Info(e);
         if (stored.TryGetValue(info.ConfigKey, out var value) && SoundRef.TryParse(value, out var chosen))
             return chosen;
-        return info.OnByDefault ? SoundRef.BuiltIn(info.BuiltInSound) : SoundRef.None;
+        return SoundRef.BuiltIn(info.BuiltInSound);
     }
 }

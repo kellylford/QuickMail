@@ -78,16 +78,14 @@ public class SoundCatalogTests
         Assert.Equal(listed.Count, SoundCatalog.Events.Select(e => e.ConfigKey).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
-    [Theory]
-    [InlineData(SoundEvent.MessageDeleted)]
-    [InlineData(SoundEvent.MessageArchived)]
-    [InlineData(SoundEvent.MessageMoved)]
-    public void ActionsThatRepeatQuicklyAreOffUntilChosen(SoundEvent e)
+    [Fact]
+    public void EveryEventHasItsOwnSoundByDefault()
     {
-        Assert.Equal(SoundRef.None, SoundCatalog.Resolve(e, new Dictionary<string, string>()));
+        var none = new Dictionary<string, string>();
+        var sounds = Enum.GetValues<SoundEvent>().Select(e => SoundCatalog.Resolve(e, none)).ToList();
 
-        var chosen = new Dictionary<string, string> { [SoundCatalog.Info(e).ConfigKey] = "builtin:removed" };
-        Assert.Equal(SoundRef.BuiltIn("removed"), SoundCatalog.Resolve(e, chosen));
+        Assert.All(sounds, s => Assert.Equal(SoundRefKind.BuiltIn, s.Kind));
+        Assert.Equal(sounds.Count, sounds.Distinct().Count());
     }
 
     [Fact]

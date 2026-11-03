@@ -502,7 +502,7 @@ public class SoundEventsTests
         Assert.Equal(SoundCatalog.Events.Count, vm.SoundEventRows.Count);
         Assert.Equal(vm.SoundEventRows[0], vm.SelectedSoundEvent);
         Assert.Equal("Message sent: Sent", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.MessageSent).AccessibleName);
-        Assert.Equal("Message deleted: None", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.MessageDeleted).AccessibleName);
+        Assert.Equal("Message deleted: Removed", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.MessageDeleted).AccessibleName);
     }
 
     [Fact]
