@@ -85,6 +85,46 @@ public class SelectorItemAccessibilityTests
         finally { window.Close(); }
     }
 
+    // The Sounds tab's three lists, read the way a screen reader reads them (#912).
+    [StaFact]
+    public void SoundsTab_ItemPeerNames_AreCleanDisplayNames()
+    {
+        EnsureThemedApplication();
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        var window = new SettingsDialog(vm) { ShowActivated = false, ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            var list = window.FindName("SoundEventList") as ListBox;
+            Assert.NotNull(list);
+            DependencyObject? parent = list;
+            while (parent is not null and not TabItem) parent = LogicalTreeHelper.GetParent(parent);
+            var tab = parent as TabItem;
+            Assert.NotNull(tab);
+            tab.IsSelected = true;
+            window.UpdateLayout();
+            DrainDispatcher();
+
+            List<string> Names(ItemsControl control) =>
+                (UIElementAutomationPeer.CreatePeerForElement(control).GetChildren() ?? new List<AutomationPeer>())
+                    .OfType<ListBoxItemAutomationPeer>().Select(p => p.GetName()).ToList();
+
+            Assert.Contains("Message sent: Sent", Names(list));
+
+            foreach (var (name, expected) in new[] { ("SoundVolumeCombo", "40%"), ("SoundChoiceCombo", "Arrived") })
+            {
+                var combo = window.FindName(name) as ComboBox;
+                Assert.NotNull(combo);
+                combo.IsDropDownOpen = true;
+                combo.UpdateLayout();
+                DrainDispatcher();
+                Assert.Contains(expected, Names(combo));
+                combo.IsDropDownOpen = false;
+            }
+        }
+        finally { window.Close(); }
+    }
+
     // Pumps the STA dispatcher until all queued work down to SystemIdle priority (layout,
     // container generation, peer realization) has run.
     private static void DrainDispatcher()
@@ -106,6 +146,10 @@ public class SelectorItemAccessibilityTests
         Assert.Equal("Greeting", new MessageTemplate { Title = "Greeting" }.ToString());
         Assert.Equal("Spam rule", new MailRule { Name = "Spam rule" }.ToString());
         Assert.Equal("Work", new AccountModel { AccountName = "Work" }.ToString());
+        // Sounds tab in Settings (#912).
+        Assert.Equal("Arrived", new SoundChoice("builtin:arrived", "Arrived").ToString());
+        Assert.Equal("40%", new SoundVolumeOption(40).ToString());
+        Assert.Equal("New mail: None", new SoundEventRow(SoundCatalog.Info(SoundEvent.NewMail), new SoundChoice("none", "None")).ToString());
         // Save format combo in Settings (#728).
         Assert.Equal("Web page (.html)", new MessageSaveFormatOption(MessageSaveFormat.Html, "Web page (.html)").ToString());
 

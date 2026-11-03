@@ -25,6 +25,7 @@ public partial class SettingsDialog : Window
         {
             vm.DiagnosticsAnnouncementRequested -= OnDiagnosticsAnnouncement;
             vm.SoundFileRefused -= OnSoundFileRefused;
+            vm.StopSounds();
         };
     }
 
@@ -139,6 +140,36 @@ public partial class SettingsDialog : Window
         HotkeyListView.ScrollIntoView(row);
         HotkeyListView.UpdateLayout();
         (HotkeyListView.ItemContainerGenerator.ContainerFromItem(row) as UIElement)?.Focus();
+        return true;
+    }
+
+    // The same type-ahead for the sound events, for the same reason: WPF's TextSearch lets unmatched
+    // text through, and in this dialog that would fire an access key without Alt (#418).
+    internal TypeAheadPrefixTracker SoundEventTypeAhead { get; set; } = new();
+
+    private void SoundEventList_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Text) || e.Text.Any(char.IsControl)) return;
+        e.Handled = true;
+        TrySoundEventTypeAhead(e.Text);
+    }
+
+    /// <summary>Moves the sound events list to the next event matching the typed text; false if none does.</summary>
+    internal bool TrySoundEventTypeAhead(string text)
+    {
+        if (!SoundEventTypeAhead.TryAppend(text, SoundEventList, out var prefix)) return false;
+
+        var rows = _vm.SoundEventRows;
+        var current = _vm.SelectedSoundEvent is { } selected ? rows.IndexOf(selected) : -1;
+        var start = prefix.Length > 1 && current >= 0 ? current - 1 : current;
+        var index = TypeAheadMatcher.FindNext(rows, r => r.Label, start, prefix);
+        if (index < 0) return false;
+
+        var row = rows[index];
+        _vm.SelectedSoundEvent = row;
+        SoundEventList.ScrollIntoView(row);
+        SoundEventList.UpdateLayout();
+        (SoundEventList.ItemContainerGenerator.ContainerFromItem(row) as UIElement)?.Focus();
         return true;
     }
 

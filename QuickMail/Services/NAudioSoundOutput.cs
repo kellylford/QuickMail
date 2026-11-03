@@ -74,7 +74,7 @@ public sealed class NAudioSoundOutput : ISoundOutput
         var reader = OpenReader(clip);
         if (reader.TotalTime <= SoundCatalog.MaxCustomSoundLength) return reader;
         reader.Dispose();
-        throw new InvalidDataException($"Sound {clip.Key} is longer than {SoundCatalog.MaxCustomSoundLength.TotalSeconds:0} seconds.");
+        throw new SoundTooLongException($"Sound {clip.Key} is longer than {SoundCatalog.MaxCustomSoundLength.TotalSeconds:0} seconds.");
     }
 
     private static WaveStream OpenReader(SoundClip clip)

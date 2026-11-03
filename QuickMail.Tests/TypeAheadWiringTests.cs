@@ -66,7 +66,6 @@ public class TypeAheadWiringTests
         new("Views/MainWindow.xaml",           "AccountList",      "AccountLabel",            typeof(AccountModel)),
         new("Views/FolderPickerWindow.xaml",   "FolderListBox",    "FolderPath",              typeof(FolderPickerWindow.FolderPickerItem)),
         new("Views/WatchedConversationsWindow.xaml", "WatchList",  "Label",                   typeof(WatchRow)),
-        new("Views/SettingsDialog.xaml",       "SoundEventList",   "Label",                   typeof(SoundEventRow)),
     ];
 
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";

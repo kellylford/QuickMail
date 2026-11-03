@@ -852,8 +852,8 @@
                                  ItemsSource="{Binding SoundEventRows}"
                                  SelectedItem="{Binding SelectedSoundEvent, Mode=TwoWay}"
                                  DisplayMemberPath="AccessibleName"
-                                 IsTextSearchEnabled="True"
-                                 TextSearch.TextPath="Label">
+                                 IsTextSearchEnabled="False"
+                                 PreviewTextInput="SoundEventList_PreviewTextInput">
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                                     <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>

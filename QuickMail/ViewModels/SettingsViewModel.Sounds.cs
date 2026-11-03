@@ -117,6 +117,14 @@ public partial class SettingsViewModel
         // thread. Only what differs from the default is kept, as [sounds] records only what was changed.
         var none = new System.Collections.Generic.Dictionary<string, string>();
         var changed = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        // An entry no row owns came from a newer QuickMail; saving on any tab shouldn't erase it.
+        foreach (var (key, value) in cfg.SoundEvents)
+        {
+            if (SoundEventRows.All(r => !r.Info.ConfigKey.Equals(key, StringComparison.OrdinalIgnoreCase)))
+                changed[key] = value;
+        }
+
         foreach (var row in SoundEventRows)
         {
             if (row.Choice.Stored != SoundCatalog.Resolve(row.Info.Event, none).ToStored())
@@ -140,8 +148,12 @@ public partial class SettingsViewModel
     [RelayCommand]
     private void PreviewSound()
     {
-        if (SelectedSoundChoice is not null) _sounds?.Preview(SelectedSoundChoice.Stored);
+        // At the volume showing, which may not be saved yet: that's how someone tries a volume out.
+        if (SelectedSoundChoice is not null) _sounds?.Preview(SelectedSoundChoice.Stored, SelectedSoundVolume?.Percent);
     }
+
+    /// <summary>Ends a preview when Settings closes, so it doesn't play on over speech afterward.</summary>
+    public void StopSounds() => _sounds?.StopAll();
 
     [RelayCommand]
     private void ChooseSoundFile()
@@ -158,11 +170,22 @@ public partial class SettingsViewModel
         SoundFileMessage = string.Empty;
         var sound = SoundRef.Custom(fileName);
         var stored = sound.ToStored();
-        var choice = SoundChoices.FirstOrDefault(c => c.Stored == stored);
-        if (choice is null)
+        var choice = new SoundChoice(stored, fileName);
+        var existing = SoundChoices.FirstOrDefault(c => c.Stored == stored);
+        if (existing is null)
         {
-            choice = new SoundChoice(stored, fileName);
             SoundChoices.Add(choice);
+        }
+        else if (existing == choice)
+        {
+            choice = existing;
+        }
+        else
+        {
+            // It was listed as missing, and choosing the file again has just repaired it.
+            SoundChoices[SoundChoices.IndexOf(existing)] = choice;
+            foreach (var row in SoundEventRows.Where(r => r.Choice == existing))
+                row.Choice = choice;
         }
         SelectedSoundChoice = choice;
     }

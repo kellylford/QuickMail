@@ -12,7 +12,11 @@ namespace QuickMail.Services;
 /// <inheritdoc cref="ISoundService"/>
 public sealed class SoundService : ISoundService
 {
-    private sealed record Request(SoundClip Clip, bool IsPreview);
+    /// <param name="Clip">What to play.</param>
+    /// <param name="IsPreview">Asked for by name, so mute doesn't apply.</param>
+    /// <param name="Fallback">What to play instead if a custom file turns out not to play.</param>
+    /// <param name="VolumePercent">A volume to use in place of the saved one.</param>
+    private sealed record Request(SoundClip Clip, bool IsPreview, SoundClip? Fallback = null, int? VolumePercent = null);
 
     private static readonly TimeSpan MuteCheckEvery = TimeSpan.FromMilliseconds(100);
 
@@ -53,14 +57,15 @@ public sealed class SoundService : ISoundService
         _worker.Start();
     }
 
-    public void Play(SoundEvent soundEvent)
+    public void Play(SoundEvent soundEvent, bool background = false)
     {
         try
         {
             var config = _config.Load();
             if (!config.PlayEventSounds) return;
             var info = SoundCatalog.Info(soundEvent);
-            Enqueue(SoundCatalog.Resolve(soundEvent, config.SoundEvents), info.BuiltInSound, info.Origin, config);
+            var origin = background && info.Origin == SoundOrigin.Direct ? SoundOrigin.Background : info.Origin;
+            Enqueue(SoundCatalog.Resolve(soundEvent, config.SoundEvents), info.BuiltInSound, origin, config);
         }
         catch (Exception ex)
         {
@@ -81,22 +86,50 @@ public sealed class SoundService : ISoundService
         }
     }
 
-    public void Preview(string storedSound)
+    public void Preview(string storedSound, int? volumePercent = null)
     {
         try
         {
             if (Volatile.Read(ref _disposed) != 0) return;
+            StopAll();   // Previewing "None" is how someone stops the last preview.
             if (!SoundRef.TryParse(storedSound, out var sound) || sound.Kind == SoundRefKind.None) return;
             var clip = ToClip(sound, SoundCatalog.DefaultRuleSound, _config.Load());
-            if (clip is null) return;
-
-            while (_queue.TryTake(out _)) { }
-            lock (_currentGate) _current?.Cancel();
-            TryAdd(new Request(clip, IsPreview: true));
+            if (clip is not null) TryAdd(new Request(clip, IsPreview: true, VolumePercent: volumePercent));
         }
         catch (Exception ex)
         {
             LogService.Log("Sound preview failed", ex);
+        }
+    }
+
+    public void StopAll()
+    {
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return;
+            while (_queue.TryTake(out _)) { }
+            lock (_currentGate) _current?.Cancel();
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Stopping sounds failed", ex);
+        }
+    }
+
+    public bool SilencesToasts
+    {
+        get
+        {
+            try
+            {
+                var config = _config.Load();
+                return config.PlayEventSounds || config.MuteSounds;
+            }
+            catch (Exception ex)
+            {
+                LogService.Log("Checking a sound setting failed", ex);
+                return false;
+            }
         }
     }
 
@@ -155,14 +188,15 @@ public sealed class SoundService : ISoundService
             {
                 _output.Check(sourcePath);
             }
-            catch (InvalidDataException ex)
+            catch (SoundTooLongException ex)
             {
                 LogService.Log("A chosen sound was too long", ex);
                 refusal = $"That sound is longer than {SoundCatalog.MaxCustomSoundLength.TotalSeconds:0} seconds. Choose a shorter one.";
                 return false;
             }
-            catch (Exception ex) when (ex is not (IOException or UnauthorizedAccessException))
+            catch (Exception ex) when (ex is not (UnauthorizedAccessException or FileNotFoundException or DirectoryNotFoundException))
             {
+                // Includes EndOfStreamException, an IOException, from a file too short to have a header.
                 LogService.Log("A chosen sound could not be decoded", ex);
                 refusal = "That file could not be played. It may be damaged, or not really a sound file.";
                 return false;
@@ -178,7 +212,7 @@ public sealed class SoundService : ISoundService
         {
             LogService.Log("Adding a custom sound failed", ex);
             fileName = string.Empty;
-            refusal = "That file could not be copied into QuickMail's sounds folder. " + ex.Message;
+            refusal = "That file could not be copied into QuickMail's sounds folder. Check that it can be opened, and try again.";
             return false;
         }
     }
@@ -197,7 +231,9 @@ public sealed class SoundService : ISoundService
         {
             var target = Path.Combine(_soundsFolder, candidate);
             if (!File.Exists(target) || SameBytes(target, sourcePath)) return candidate;
-            candidate = $"{stem} {n}{extension}";
+            // Shortened if need be: past the length limit, the name would be refused when next read.
+            var shortened = stem.Length > 90 ? stem[..90] : stem;
+            candidate = $"{shortened} {n}{extension}";
         }
     }
 
@@ -210,7 +246,9 @@ public sealed class SoundService : ISoundService
         if (sound.Kind == SoundRefKind.None || config.SoundVolume <= 0) return;
         if (!_policy.ShouldPlay(sound.ToStored(), origin, config.MuteSounds, _isQuiet(), _queue.Count)) return;
         var clip = ToClip(sound, fallback, config);
-        if (clip is not null) TryAdd(new Request(clip, IsPreview: false));
+        if (clip is null) return;
+        var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(fallback), config);
+        TryAdd(new Request(clip, IsPreview: false, Fallback: backup));
     }
 
     private void TryAdd(Request request)
@@ -238,6 +276,11 @@ public sealed class SoundService : ISoundService
             sound = SoundRef.BuiltIn(fallback);
         }
 
+        return BuiltInClip(sound, config);
+    }
+
+    private SoundClip BuiltInClip(SoundRef sound, ConfigModel config)
+    {
         var name = sound.Name;
         var pack = config.SoundPack;
         return new SoundClip(sound.ToStored(), null, () => _openBuiltIn(pack, name)
@@ -270,7 +313,18 @@ public sealed class SoundService : ISoundService
             // Muting cuts off what is playing too: a long custom sound shouldn't carry on over speech
             // for half a minute after "Sounds muted." A preview was asked for, so it plays regardless.
             using var muteWatch = request.IsPreview ? null : new Timer(_ => CancelIfMuted(cts), null, MuteCheckEvery, MuteCheckEvery);
-            _output.Play(request.Clip, Math.Clamp(config.SoundVolume, 0, 100) / 100f, cts.Token);
+            var volume = Math.Clamp(request.VolumePercent ?? config.SoundVolume, 0, 100) / 100f;
+            try
+            {
+                _output.Play(request.Clip, volume, cts.Token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException && request.Fallback is not null)
+            {
+                // A custom sound that's damaged or too long, which a settings file or a copy by hand
+                // can bring in. The toast has been silenced for this sound, so something must play.
+                LogPlayFailure(request.Clip, ex);
+                _output.Play(request.Fallback, volume, cts.Token);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -278,15 +332,20 @@ public sealed class SoundService : ISoundService
         }
         catch (Exception ex)
         {
-            // No device, or a file that won't decode. Once per sound: this could otherwise repeat for every message.
-            bool first;
-            lock (_loggedFailures) first = _loggedFailures.Add(request.Clip.Key);
-            if (first) LogService.Log($"Could not play sound {request.Clip.Key}", ex);
+            LogPlayFailure(request.Fallback ?? request.Clip, ex);
         }
         finally
         {
             lock (_currentGate) _current = null;
         }
+    }
+
+    // No device, or a file that won't decode. Once per sound: this could otherwise repeat for every message.
+    private void LogPlayFailure(SoundClip clip, Exception ex)
+    {
+        bool first;
+        lock (_loggedFailures) first = _loggedFailures.Add(clip.Key);
+        if (first) LogService.Log($"Could not play sound {clip.Key}", ex);
     }
 
     private void CancelIfMuted(CancellationTokenSource playing)

@@ -2078,7 +2078,7 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 
 1. In **Settings → Sounds**, arrow through **Sound events**. Each entry says the event and its sound, such as "New mail: Arrived".
 2. Choose a sound in **Sound for this event**, or choose **None** to silence that event.
-3. Choose **Preview** to hear it. Preview plays even if sounds are muted.
+3. Choose **Preview** to hear it, at the volume showing. Preview plays even if sounds are muted, and stops when you close Settings or preview **None**.
 4. To use a sound of your own, choose **Choose File…** and pick a WAV or MP3 file of up to 5 MB and 30 seconds. QuickMail keeps its own copy, so you can move or delete the original.
 
 Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to.
@@ -2091,11 +2091,11 @@ The new-mail sound works whether or not new-mail notifications are on. It follow
 - It does not play when a lot of mail arrives at once, such as when your computer wakes up.
 - A shared mailbox stays silent unless you turn on **Notify me of new mail in this shared mailbox** for it in Account Manager.
 
-If both are on, you hear QuickMail's sound in place of the Windows notification sound, not both.
+While sounds are on, notifications leave out the Windows notification sound, so you hear QuickMail's sound and not both. That applies even to an event set to **None**, and while sounds are muted.
 
 ### When Sounds Stay Quiet
 
-Sounds for things that happen on their own, such as new mail, connection changes and reminders, stay quiet during a presentation or while an app is running full screen. Sounds that answer something you just did, such as a message being sent, still play.
+Sounds for things that happen on their own, such as new mail, connection changes and reminders, stay quiet during a presentation or while an app is running full screen. Sounds that answer something you just did, such as a message being sent, still play. A message going out from the Outbox on its own counts as something that happened on its own.
 
 **Windows Do Not Disturb does not silence QuickMail's sounds**, because Windows gives apps no way to tell when it is on. To silence them, use **Mute All Sounds**.
 

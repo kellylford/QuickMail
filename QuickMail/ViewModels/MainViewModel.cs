@@ -3334,7 +3334,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 // No store to fall back on: say so at once rather than "connecting…" (#637).
                 StatusText = "Online mode — offline. Nothing to show until the connection returns.";
-                AnnounceOfflineOnce();
+                AnnounceOfflineOnce(atStartup: true);
                 SetConnectionPhase(ConnectionPhase.Idle);
                 return;
             }
@@ -3412,7 +3412,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ? $"{cached.Count} messages (cached — offline)"
                     : $"{cached.Count} messages in {where} (cached — offline)"
                 : "Offline — no cached messages.";
-            AnnounceOfflineOnce();
+            AnnounceOfflineOnce(atStartup: true);
         }
         else
         {
@@ -4366,7 +4366,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         LogService.Log(diag);
-        _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh, silent: _sounds?.IsAudible(SoundEvent.NewMail) == true);
+        _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh, silent: _sounds?.SilencesToasts == true);
     }
 
     /// <summary>
@@ -4407,7 +4407,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         LogService.Log($"Watched notify [{account.AccountLabel}]: {fresh.Count} fresh in watched conversations.");
-        _notifications.ShowWatchedMail(account.AccountLabel, account.Id, fresh, silent: _sounds?.IsAudible(SoundEvent.WatchedMail) == true);
+        _notifications.ShowWatchedMail(account.AccountLabel, account.Id, fresh, silent: _sounds?.SilencesToasts == true);
     }
 
     /// <summary>
@@ -4429,10 +4429,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ? (isInbox ? incoming : [])
             : incoming.Where(IsWatchedMessage).ToList();
         var fresh = Helpers.NewMailFilter.SelectNew(candidates, _notifyThresholdUtc, _soundedMessageKeys);
-        if (fresh.Count == 0 || fresh.Count > MaxNotifyBatchSize) return;
+        if (fresh.Count == 0) return;
 
-        var inWatchedConversation = _watchService is not null && fresh.Any(IsWatchedMessage);
-        _sounds.Play(inWatchedConversation ? SoundEvent.WatchedMail : SoundEvent.NewMail);
+        // One sound for the batch, the more specific when it can be heard. The backlog limit is applied
+        // to each set on its own, as the two toast paths apply it, so a wake-up's worth of ordinary mail
+        // doesn't swallow the reply someone is watching for.
+        var watched = _watchService is null ? 0 : fresh.Count(IsWatchedMessage);
+        if (watched is > 0 and <= MaxNotifyBatchSize && _sounds.IsAudible(SoundEvent.WatchedMail))
+        {
+            _sounds.Play(SoundEvent.WatchedMail);
+            return;
+        }
+
+        // A watched message whose own sound is off is still new mail, as long as it's in the Inbox.
+        if (isInbox && fresh.Count <= MaxNotifyBatchSize)
+            _sounds.Play(SoundEvent.NewMail);
     }
 
     // CA1859: the parameter type is fixed by the MessagesRemoved event delegate
@@ -10959,7 +10970,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var title = string.IsNullOrWhiteSpace(e.Summary) ? "Appointment" : e.Summary;
                 var body = $"In {minutes} minute{(minutes == 1 ? "" : "s")}, at {start:t}"
                            + (string.IsNullOrWhiteSpace(e.Location) ? "" : $". {e.Location}");
-                _notifications?.ShowInfo(title, body, silent: _sounds?.IsAudible(SoundEvent.CalendarReminder) == true);
+                _notifications?.ShowInfo(title, body, silent: _sounds?.SilencesToasts == true);
                 _sounds?.Play(SoundEvent.CalendarReminder);
                 Announce($"Reminder. {title} in {minutes} minute{(minutes == 1 ? "" : "s")}, at {start:t}.",
                          AnnouncementCategory.Result);

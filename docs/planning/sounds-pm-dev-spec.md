@@ -74,7 +74,7 @@ Each hooks where the outcome is already known, so existing de-duplication carrie
 
 **New mail must not disturb toasts.** `NewMailFilter.SelectNew` consumes what it sees, and the watched-before-inbox order is a tested contract, while `MaybeNotifyNewMail:4302` returns early when toasts are off. Sharing that path would lose toasts in some settings combinations. So add a separate `MaybePlayMailSounds` with **its own key set**, called next to the toast calls at `MainViewModel.cs:4256` and `3894`. It uses the same launch threshold, shared-mailbox opt-in and backlog limit (`MaxNotifyBatchSize`). Toast logic stays as it is.
 
-**No double sound.** Toasts set no audio today, so I expect Windows plays its default sound with them; step 1 confirms this. `ShowNewMail`, `ShowWatchedMail` and `ShowInfo` gain a `silent` flag, set to `IsAudible(event)`. With sounds off, toasts behave exactly as they do now.
+**No double sound.** Toasts set no audio today, so I expect Windows plays its default sound with them; step 1 confirms this. `ShowNewMail`, `ShowWatchedMail` and `ShowInfo` gain a `silent` flag, set whenever event sounds are on or everything is muted, whatever each event is set to, so Mute and None really are silent. With both off, toasts behave exactly as they do now.
 
 ### Rule action
 

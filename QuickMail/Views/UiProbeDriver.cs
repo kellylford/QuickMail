@@ -204,6 +204,12 @@ internal sealed class UiProbeDriver
                     w => w is SettingsDialog, path,
                     prepare: w => SelectTabByHeader((SettingsDialog)w, "tart"));
 
+            // #912. The only Settings pane with a list and its detail controls side by side.
+            case "settings-sounds":
+                return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
+                    w => w is SettingsDialog, path,
+                    prepare: w => SelectTabByHeader((SettingsDialog)w, "Sounds"));
+
             // #728. The General tab scrolled to Saving Messages: a combo box, a read-only field and a
             // button row that sit below the fold of the tab, so no other capture shows them.
             case "settings-saving":
@@ -229,7 +235,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, reading-pane-attachment-selected, compose-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, reading-pane-attachment-selected, compose-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-sounds, settings-saving, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }

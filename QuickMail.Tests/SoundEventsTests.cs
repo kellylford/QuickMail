@@ -25,9 +25,24 @@ internal sealed class RecordingSoundService : ISoundService
     public List<string> CustomFiles { get; } = [];
     public string? RefuseWith { get; set; }
 
-    public void Play(SoundEvent soundEvent) => Played.Add(soundEvent);
+    public List<bool> Background { get; } = [];
+    public bool SilencesToasts { get; set; }
+    public int Stops { get; private set; }
+    public int? PreviewVolume { get; private set; }
+
+    public void Play(SoundEvent soundEvent, bool background = false)
+    {
+        Played.Add(soundEvent);
+        Background.Add(background);
+    }
+
+    public void StopAll() => Stops++;
     public void PlayRule(string? storedSound) { }
-    public void Preview(string storedSound) => Previewed.Add(storedSound);
+    public void Preview(string storedSound, int? volumePercent = null)
+    {
+        Previewed.Add(storedSound);
+        PreviewVolume = volumePercent;
+    }
     public bool IsAudible(SoundEvent soundEvent) => Audible.Contains(soundEvent);
     public IReadOnlyList<string> CustomSoundFiles() => CustomFiles;
 
@@ -156,8 +171,7 @@ public class SoundEventsTests
     [Fact]
     public void AWatchedReplyPlaysTheWatchedSoundInAnyFolder()
     {
-        var m = new Mail();
-        m.Watch.Watch("Budget Review");
+        var m = MailWithAudible(SoundEvent.WatchedMail);
         m.Vm.MaybePlayMailSounds(Account(), [Msg("1", "Re: Budget Review")], isInbox: false);
         Assert.Equal([SoundEvent.WatchedMail], m.Sounds.Played);
     }
@@ -241,15 +255,69 @@ public class SoundEventsTests
     }
 
     [Theory]
-    [InlineData(true, true)]
-    [InlineData(false, false)]
-    public void AToastIsSilentOnlyWhenItsSoundIsAudible(bool audible, bool silent)
+    [InlineData(true)]
+    [InlineData(false)]
+    public void EveryToastFollowsTheSilentSetting(bool silent)
     {
         var m = new Mail();
         m.Config.Load().NotifyOnNewMail = true;
-        if (audible) m.Sounds.Audible.Add(SoundEvent.NewMail);
-        m.Vm.MaybeNotifyNewMail(Account(), [Msg("1")]);
-        Assert.Equal(silent, Assert.Single(m.Toasts.Shown).Silent);
+        m.Config.Load().NotifyOnWatchedConversation = true;
+        m.Sounds.SilencesToasts = silent;
+        m.Watch.Watch("Budget Review");
+
+        var watched = new[] { Msg("1", "Re: Budget Review") };
+        m.Vm.MaybeNotifyWatchedMail(Account(), watched);
+        m.Vm.MaybeNotifyNewMail(Account(), [Msg("2")]);
+
+        Assert.Equal([("watched", silent), ("new", silent)], m.Toasts.Shown);
+    }
+
+    /// <summary>The sound and both toasts on one batch, with what's audible as the settings would make it.</summary>
+    private static Mail MailWithAudible(params SoundEvent[] audible)
+    {
+        var m = new Mail();
+        foreach (var e in audible) m.Sounds.Audible.Add(e);
+        m.Watch.Watch("Budget Review");
+        return m;
+    }
+
+    private static MailMessageSummary[] Batch(int watched, int others) =>
+    [
+        .. Enumerable.Range(1, watched).Select(i => Msg($"w{i}", "Re: Budget Review")),
+        .. Enumerable.Range(1, others).Select(i => Msg($"o{i}")),
+    ];
+
+    [Fact]
+    public void AWatchedReplyIsHeardEvenInABacklogOfOrdinaryMail()
+    {
+        // 2 watched and 5 others: the toast paths see 2 and 5 and show both, so a sound has to play.
+        var m = MailWithAudible(SoundEvent.WatchedMail, SoundEvent.NewMail);
+        m.Vm.MaybePlayMailSounds(Account(), Batch(2, 5), isInbox: true);
+        Assert.Equal([SoundEvent.WatchedMail], m.Sounds.Played);
+    }
+
+    [Fact]
+    public void WithTheWatchedSoundOffABatchStillSoundsAsNewMail()
+    {
+        var m = MailWithAudible(SoundEvent.NewMail);
+        m.Vm.MaybePlayMailSounds(Account(), Batch(1, 1), isInbox: true);
+        Assert.Equal([SoundEvent.NewMail], m.Sounds.Played);
+    }
+
+    [Fact]
+    public void AWatchedBacklogOverTheLimitIsSilent()
+    {
+        var m = MailWithAudible(SoundEvent.WatchedMail, SoundEvent.NewMail);
+        m.Vm.MaybePlayMailSounds(Account(), Batch(6, 0), isInbox: true);
+        Assert.Empty(m.Sounds.Played);
+    }
+
+    [Fact]
+    public void WithTheWatchedSoundOffAWatchedReplyElsewhereStaysSilent()
+    {
+        var m = MailWithAudible(SoundEvent.NewMail);
+        m.Vm.MaybePlayMailSounds(Account(), Batch(1, 0), isInbox: false);
+        Assert.Empty(m.Sounds.Played);
     }
 
     [Fact]
@@ -268,11 +336,20 @@ public class SoundEventsTests
     [InlineData(0, 1, new[] { SoundEvent.SendFailed })]
     [InlineData(1, 1, new[] { SoundEvent.MessageSent, SoundEvent.SendFailed })]
     [InlineData(0, 0, new SoundEvent[0])]
-    public void AnOutboxDrainPlaysOnceWhateverItCarried(int sent, int failed, SoundEvent[] expected)
+    public void AnOutboxDrainPlaysEachOutcomeOnceHoweverManyItCarried(int sent, int failed, SoundEvent[] expected)
     {
         var m = new Mail();
-        m.Outbox.RaiseFlushCompleted(new OutboxFlushResult(sent, 1, failed, 0));
+        m.Outbox.RaiseFlushCompleted(new OutboxFlushResult(sent, 1, failed, 0, FailedSends: failed));
         Assert.Equal(expected, m.Sounds.Played);
+        Assert.All(m.Sounds.Background, Assert.True);   // Nobody just did anything: it went out on its own.
+    }
+
+    [Fact]
+    public void ADraftThatFailedToUploadIsNotASendFailure()
+    {
+        var m = new Mail();
+        m.Outbox.RaiseFlushCompleted(new OutboxFlushResult(0, 0, 1, 0, FailedSends: 0));
+        Assert.Empty(m.Sounds.Played);
     }
 
     [Fact]
@@ -317,6 +394,39 @@ public class SoundEventsTests
     }
 
     private static MailFolderModel Archive() => new() { AccountId = Work, FullName = "Archive", DisplayName = "Archive" };
+
+    private sealed class FailableTrashMail : StubImapMailServiceBase
+    {
+        public override Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, System.Threading.CancellationToken ct = default)
+            => Task.FromException(new InvalidOperationException("server said no"));
+    }
+
+    private static MainViewModel MakeForDelete(IMailService mail, RecordingSoundService sounds) => new(
+        mail, new StubAccountService(), new StubCredentialService(), new StubLocalStoreService(),
+        new StubOAuthService(), new StubSyncService(), new StubConfigService(), new StubCommandRegistry(),
+        new StubViewService(), new StubRuleService(), new StubSmtpService(), soundService: sounds);
+
+    [Fact]
+    public async Task ADeletedMessagePlaysDeleted()
+    {
+        var sounds = new RecordingSoundService();
+        var vm = MakeForDelete(new StubImapMailService(), sounds);
+        var message = Msg("1");
+        vm.Messages.Add(message);
+        await vm.DeleteMessagesAsync([message]);
+        Assert.Equal([SoundEvent.MessageDeleted], sounds.Played);
+    }
+
+    [Fact]
+    public async Task AFailedDeletePlaysActionFailedAndNotDeleted()
+    {
+        var sounds = new RecordingSoundService();
+        var vm = MakeForDelete(new FailableTrashMail(), sounds);
+        var message = Msg("1");
+        vm.Messages.Add(message);
+        await vm.DeleteMessagesAsync([message]);
+        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+    }
 
     [Fact]
     public async Task AMovedMessagePlaysMoved()
@@ -423,13 +533,40 @@ public class SoundEventsTests
     }
 
     [Fact]
-    public void PreviewPlaysTheChosenSound()
+    public void PreviewPlaysTheChosenSoundAtTheVolumeShowing()
     {
         var sounds = new RecordingSoundService();
         var vm = MakeSettings(new StubConfigService(), sounds);
         vm.SelectedSoundChoice = vm.SoundChoices.Single(c => c.Label == "Reminder");
+        vm.SelectedSoundVolume = vm.SoundVolumeOptions.Single(o => o.Percent == 20);
         vm.PreviewSoundCommand.Execute(null);
         Assert.Equal(["builtin:reminder"], sounds.Previewed);
+        Assert.Equal(20, sounds.PreviewVolume);
+    }
+
+    [Fact]
+    public void ChoosingAMissingFileAgainRepairsTheEntryForEveryEventUsingIt()
+    {
+        var config = new StubConfigService();
+        config.Load().SoundEvents["NewMail"] = "custom:Gone.wav";
+        config.Load().SoundEvents["MessageSent"] = "custom:Gone.wav";
+        var vm = MakeSettings(config, new RecordingSoundService());
+        vm.PickSoundFileRequested = () => @"C:\Music\Gone.wav";
+
+        vm.ChooseSoundFileCommand.Execute(null);
+
+        Assert.Equal("New mail: Gone.wav", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.NewMail).AccessibleName);
+        Assert.Equal("Message sent: Gone.wav", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.MessageSent).AccessibleName);
+        Assert.DoesNotContain(vm.SoundChoices, c => c.Label.Contains("missing", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SavingKeepsAnEntryFromANewerQuickMail()
+    {
+        var config = new StubConfigService();
+        config.Load().SoundEvents["SomethingNew"] = "builtin:future";
+        MakeSettings(config).SaveCommand.Execute(null);
+        Assert.Equal("builtin:future", config.Load().SoundEvents["SomethingNew"]);
     }
 
     [Fact]
@@ -475,26 +612,57 @@ public class SoundEventsTests
         Assert.Equal(vm.SoundFileMessage, announced);
     }
 
-    [Theory]
-    [InlineData(typeof(SoundChoice))]
-    [InlineData(typeof(SoundVolumeOption))]
-    [InlineData(typeof(SoundEventRow))]
-    public void SelectorItemTypesOverrideToString(Type type) =>
-        Assert.Equal(type, type.GetMethod(nameof(ToString), Type.EmptyTypes)!.DeclaringType);
-
-    [Fact]
-    public void SelectorItemsSayTheirDisplayText()
-    {
-        Assert.Equal("Arrived", new SoundChoice("builtin:arrived", "Arrived").ToString());
-        Assert.Equal("40%", new SoundVolumeOption(40).ToString());
-        var row = new SoundEventRow(SoundCatalog.Info(SoundEvent.NewMail), new SoundChoice("none", "None"));
-        Assert.Equal("New mail: None", row.ToString());
-    }
 }
 
 [Collection("WpfTests")]
 public class SoundsTabAccessibilityTests
 {
+    private static (SettingsDialog Dialog, SettingsViewModel Vm) MakeDialog()
+    {
+        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        return (new SettingsDialog(vm), vm);
+    }
+
+    [StaFact]
+    public void TypingMovesToAMatchingEvent()
+    {
+        var (dialog, vm) = MakeDialog();
+        try
+        {
+            Assert.True(dialog.TrySoundEventTypeAhead("n"));
+            Assert.Equal(SoundEvent.NewMail, vm.SelectedSoundEvent!.Info.Event);
+        }
+        finally { dialog.Close(); }
+    }
+
+    // Regression guard for #418's bug in this list: text that isn't taken here reaches the window and
+    // fires an access key without Alt, so a stray "s" would run Save and close Settings.
+    [StaFact]
+    public void AnUnmatchedLetterIsTakenByTheListAndFiresNothing()
+    {
+        var (dialog, vm) = MakeDialog();
+        try
+        {
+            var list = dialog.FindName("SoundEventList") as ListBox;
+            Assert.NotNull(list);
+            Assert.False(list.IsTextSearchEnabled);
+            var before = vm.SelectedSoundEvent;
+
+            var args = new System.Windows.Input.TextCompositionEventArgs(
+                System.Windows.Input.Keyboard.PrimaryDevice,
+                new System.Windows.Input.TextComposition(System.Windows.Input.InputManager.Current, list, "z"))
+            {
+                RoutedEvent = UIElement.PreviewTextInputEvent,
+            };
+            list.RaiseEvent(args);
+
+            Assert.True(args.Handled);
+            Assert.Equal(before, vm.SelectedSoundEvent);
+        }
+        finally { dialog.Close(); }
+    }
+
     [StaFact]
     public void TheEventRowsNameIsOnTheContainerAndTheListsHaveLabels()
     {

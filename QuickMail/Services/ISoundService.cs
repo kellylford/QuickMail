@@ -14,7 +14,10 @@ namespace QuickMail.Services;
 public interface ISoundService : IDisposable
 {
     /// <summary>Plays an event's sound, if event sounds are on and the event has one.</summary>
-    void Play(SoundEvent soundEvent);
+    /// <param name="soundEvent">What happened.</param>
+    /// <param name="background">It happened on its own this time, so it stays quiet in a presentation
+    /// even for an event that usually answers something the person just did.</param>
+    void Play(SoundEvent soundEvent, bool background = false);
 
     /// <summary>
     /// Plays a rule's sound, given as stored in <see cref="MailRule"/>. Does not depend on event sounds
@@ -23,13 +26,25 @@ public interface ISoundService : IDisposable
     /// </summary>
     void PlayRule(string? storedSound);
 
-    /// <summary>Plays a sound because the person asked to hear it, so even when muted. Replaces anything playing.</summary>
-    void Preview(string storedSound);
+    /// <summary>
+    /// Plays a sound because the person asked to hear it, so even when muted. Replaces anything
+    /// playing, and previewing no sound just stops it.
+    /// </summary>
+    /// <param name="storedSound">The sound, as stored.</param>
+    /// <param name="volumePercent">A volume to hear it at, for one not saved yet.</param>
+    void Preview(string storedSound, int? volumePercent = null);
+
+    /// <summary>Stops what is playing and whatever is waiting.</summary>
+    void StopAll();
 
     /// <summary>
-    /// Whether this event would make a sound under the current settings, so its toast can be silent
-    /// rather than sounding twice.
+    /// Whether toasts should leave out the Windows notification sound. True whenever event sounds are
+    /// on or everything is muted, whatever each event is set to: someone who has muted sounds or set
+    /// an event to None should not then hear Windows play one. With neither on, toasts are untouched.
     /// </summary>
+    bool SilencesToasts { get; }
+
+    /// <summary>Whether this event would make a sound under the current settings.</summary>
     bool IsAudible(SoundEvent soundEvent);
 
     /// <summary>The file names in the profile's folder of custom sounds.</summary>
@@ -50,6 +65,9 @@ public interface ISoundService : IDisposable
 /// <param name="FilePath">The file, for a custom sound.</param>
 /// <param name="OpenStream">Opens a built-in WAV.</param>
 public sealed record SoundClip(string Key, string? FilePath, Func<Stream>? OpenStream);
+
+/// <summary>A sound that runs longer than a sound may.</summary>
+public sealed class SoundTooLongException(string message) : Exception(message);
 
 /// <summary>The audio engine, kept behind this so tests use a fake and the engine can be swapped.</summary>
 public interface ISoundOutput
