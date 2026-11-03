@@ -237,6 +237,7 @@ public partial class MainViewModel
         }
 
         await RefreshOutboxCountAsync();
+        _sounds?.Play(SoundEvent.MessageDeleted);
         SetStatus(n == 1 ? "1 Outbox item removed." : $"{n} Outbox items removed.", AnnouncementCategory.MessageAction);
     }
 
