@@ -653,21 +653,6 @@ public class SoundEventsTests
     }
 
     [Fact]
-    public async Task APop3FailureIsNotConfirmedByItsLocalCount()
-    {
-        // POP3 clears the local store before it tries the server, so its count reads 0 regardless.
-        var mail = new TrashMail();
-        mail.Failures[Home] = new System.IO.IOException("network down");
-        mail.Remaining[Home] = 0;
-        var (vm, sounds, _) = await MakeWithFoldersAsync(mail, homeBackend: BackendKind.Pop3Smtp);
-
-        await vm.EmptyTrashCommand.ExecuteAsync(null);
-
-        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
-        Assert.Equal("Emptied trash for Work. Could not empty Home: could not reach the server.", vm.StatusText);
-    }
-
-    [Fact]
     public async Task AFailureIsReadOutInPlainWords()
     {
         var mail = new TrashMail();
@@ -762,6 +747,103 @@ public class SoundEventsTests
     }
 
     [Fact]
+    public async Task ASelectionThatIsNotLeavingKeepsItsPlace()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Home] = ServerSaidNo;
+        mail.Remaining[Home] = 2;
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        var (work, home) = await ShowAllTrashAsync(vm);
+        var other = new MailMessageSummary { MessageId = "3", AccountId = Home, FolderName = "Trash", Subject = "Home's other" };
+        ShowInList(vm, work, home, other);
+        vm.SelectedMessage = other;
+        var focusMoved = false;
+        vm.MessageListFocusNowRequested += () => { focusMoved = true; return true; };
+        vm.MessageListFocusRequested += () => focusMoved = true;
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Same(other, vm.SelectedMessage);
+        Assert.False(focusMoved);
+        Assert.Equal(2, vm.Messages.Count);
+    }
+
+    [Fact]
+    public async Task WhenEveryRowIsLeavingFocusMovesToTheListFirst()
+    {
+        var (vm, _, _) = await MakeWithFoldersAsync(new TrashMail());
+        var (work, _) = await ShowAllTrashAsync(vm);
+        vm.SelectedMessage = work;
+        var rowsWhenParking = -1;
+        MailMessageSummary? selectedWhenParking = work;
+        vm.MessageListFocusNowRequested += () =>
+        {
+            rowsWhenParking = vm.Messages.Count;
+            selectedWhenParking = vm.SelectedMessage;
+            return true;
+        };
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, rowsWhenParking);
+        Assert.Null(selectedWhenParking);
+        Assert.Empty(vm.Messages);
+        Assert.Empty(vm.LoadedMessages);
+    }
+
+    [Fact]
+    public async Task AnOpenMessageFromAFailedAccountStaysOpenWhenTheSelectionIsLeaving()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Home] = ServerSaidNo;
+        mail.Remaining[Home] = 2;
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        var (work, _) = await ShowAllTrashAsync(vm);
+        vm.SelectedMessage = work;
+        vm.MessageDetail = new MailMessageDetail { MessageId = "2", AccountId = Home, FolderName = "Trash" };
+        vm.IsMessageOpen = true;
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.NotNull(vm.MessageDetail);
+        Assert.True(vm.IsMessageOpen);
+    }
+
+    [Fact]
+    public async Task InAGroupViewALeavingSelectionIsClearedNotReplaced()
+    {
+        var mail = new TrashMail();
+        mail.Failures[Home] = ServerSaidNo;
+        mail.Remaining[Home] = 2;
+        var (vm, _, _) = await MakeWithFoldersAsync(mail);
+        var (work, _) = await ShowAllTrashAsync(vm);
+        vm.ViewMode = ViewMode.From;
+        vm.SelectedMessage = work;
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Null(vm.SelectedMessage);
+    }
+
+    [Theory]
+    [InlineData(false, "Empty trash failed: server said no.")]
+    [InlineData(true, "Empty trash timed out.")]
+    public async Task OneAccountsFailureIsWordedWithoutNamingIt(bool timeout, string expected)
+    {
+        var mail = new TrashMail();
+        mail.Failures[Work] = timeout ? new OperationCanceledException() : ServerSaidNo;
+        var (vm, sounds, _) = await MakeWithFoldersAsync(mail);
+        vm.SelectedAccount = vm.Accounts.Single(a => a.Id == Work);
+        vm.SelectedFolder = new MailFolderModel { AccountId = Work, FullName = "Archive", DisplayName = "Archive", Kind = SpecialFolderKind.Archive };
+
+        await vm.EmptyTrashCommand.ExecuteAsync(null);
+
+        Assert.Equal([Work], mail.Attempted);
+        Assert.Equal([SoundEvent.ActionFailed], sounds.Played);
+        Assert.Equal(expected, vm.StatusText);
+    }
+
+    [Fact]
     public async Task MovingAwayWhileItRunsLeavesTheNewViewAlone()
     {
         var hold = new TaskCompletionSource();
@@ -792,7 +874,7 @@ public class SoundEventsTests
 
         Assert.Same(home, Assert.Single(vm.Messages));
         Assert.Equal([SoundEvent.TrashEmptied], sounds.Played);
-        Assert.Equal("3 messages deleted from trash.", vm.StatusText);
+        Assert.Equal("3 messages deleted from trash. No trash folder found for Home.", vm.StatusText);
     }
 
     [Fact]

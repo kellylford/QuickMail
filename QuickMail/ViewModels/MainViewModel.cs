@@ -9051,10 +9051,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (viewingTrash && emptied.Count > 0
             && SelectedFolder?.FullName == startedIn?.FullName && SelectedFolder?.AccountId == startedIn?.AccountId)
         {
-            RemoveEmptiedTrashFromList(emptied, everyAccount: emptied.Count == accountsToEmpty.Count);
+            RemoveEmptiedTrashFromList(emptied);
         }
 
-        StatusText = DescribeEmptyTrash(accountsToEmpty.Count, failures, noTrashFolder.Count, removedMail, totalDeleted, confirmedByCheck);
+        StatusText = DescribeEmptyTrash(accountsToEmpty.Count, failures, noTrashFolder, removedMail, totalDeleted, confirmedByCheck);
         Announce(StatusText, AnnouncementCategory.Result);
         if (failures.Count > 0)
             _sounds?.Play(SoundEvent.ActionFailed);
@@ -9063,43 +9063,52 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Takes the emptied accounts' messages out of the list on show, which is a trash view.</summary>
-    private void RemoveEmptiedTrashFromList(List<AccountModel> emptied, bool everyAccount)
+    private void RemoveEmptiedTrashFromList(List<AccountModel> emptied)
     {
-        // Clear _rawMessages alongside Messages so ApplyFiltersAndSearch cannot
-        // restore the just-deleted messages if the user changes sort/filter/search
-        // while still in the trash view.  (In online mode the background sync skips
-        // trash folders, so _rawMessages is never cleaned up automatically.)
-        if (everyAccount)
-        {
-            _rawMessages.Clear();
-            Messages.Clear();
-            SelectedMessage = null;
-            MessageDetail   = null;
-            IsMessageOpen   = false;
-            RebuildActiveGroupView();
-            MessageListFocusRequested?.Invoke();
-            return;
-        }
-
-        // All Trash with an account that wasn't emptied: its messages are still there, so they stay.
         var gone = emptied.Select(a => a.Id).ToHashSet();
-        if ((MessageDetail is { } open && gone.Contains(open.AccountId))
-            || (SelectedMessage is { } selected && gone.Contains(selected.AccountId)))
+        bool IsGone(MailMessageSummary? m) => m is not null && gone.Contains(m.AccountId);
+
+        // What's open and what's selected can differ, since arrowing doesn't change what's open, so
+        // what's open decides. An account that wasn't emptied still has its messages.
+        if (MessageDetail is { } open ? gone.Contains(open.AccountId) : IsGone(SelectedMessage))
         {
             MessageDetail = null;
             IsMessageOpen = false;
         }
 
-        // Land first, and remove one at a time, as delete does: see LandFocusBeforeRemoval (issue #667).
-        var leaving = Messages.Where(m => gone.Contains(m.AccountId)).ToList();
-        var landed = LandFocusBeforeRemoval(leaving);
-        foreach (var m in leaving)
-            Messages.Remove(m);
-        _rawMessages.RemoveAll(m => gone.Contains(m.AccountId));
-        if (SelectedMessage is { } stale && gone.Contains(stale.AccountId))
-            SelectedMessage = Messages.FirstOrDefault();
+        // Land first, as delete and move do: see LandFocusBeforeRemoval (#667, #670). Only when the
+        // selection is among the rows leaving, or there is none: otherwise the user's place stays where it is.
+        var leaving = Messages.Where(IsGone).ToList();
+        var selectionLeaving = leaving.Count > 0 && (SelectedMessage is null || IsGone(SelectedMessage));
+        var landed = selectionLeaving ? LandFocusBeforeRemoval(leaving, parkOnEmptyList: true) : null;
+
+        if (leaving.Count == Messages.Count)
+        {
+            Messages.Clear();
+        }
+        else
+        {
+            // One at a time, as delete does, since a batch raises a Reset, which regenerates the
+            // focused row's container.
+            foreach (var m in leaving)
+                Messages.Remove(m);
+        }
+
+        // Clear _rawMessages alongside Messages so ApplyFiltersAndSearch cannot
+        // restore the just-deleted messages if the user changes sort/filter/search
+        // while still in the trash view.  (In online mode the background sync skips
+        // trash folders, so _rawMessages is never cleaned up automatically.)
+        _rawMessages.RemoveAll(IsGone);
+
+        if (IsGone(SelectedMessage))
+        {
+            // In the group views, clearing it keeps the per-message hotkeys off a row nobody chose. See delete.
+            SelectedMessage = ViewMode == ViewMode.Messages ? Messages.FirstOrDefault() : null;
+        }
+
         RebuildActiveGroupView();
-        if (landed == null)
+
+        if (ViewMode == ViewMode.Messages && selectionLeaving && landed == null && Messages.Count > 0)
             MessageListFocusRequested?.Invoke();
     }
 
@@ -9110,10 +9119,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private async Task<bool> TrashConfirmedEmptyAsync(AccountModel account)
     {
-        // POP3's count reads the local store, which the failed empty has already cleared before trying
-        // the server. It would read 0 with the mail still on the server.
-        if (account.BackendKind == BackendKind.Pop3Smtp) return false;
-
         try
         {
             using var verifyCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -9136,9 +9141,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     private static string DescribeEmptyTrash(
-        int accounts, List<(AccountModel Account, string Reason)> failures, int noTrashFolder,
+        int accounts, List<(AccountModel Account, string Reason)> failures, List<AccountModel> noTrashFolder,
         List<AccountModel> removedMail, int totalDeleted, bool confirmedByCheck)
     {
+        if (noTrashFolder.Count == accounts) return "No trash folder found.";
+
+        // Its messages stay listed, so it needs saying whatever happened to the other accounts.
+        var noFolder = noTrashFolder.Count > 0
+            ? $" No trash folder found for {string.Join(", ", noTrashFolder.Select(a => a.AccountLabel))}."
+            : string.Empty;
+
         if (failures.Count > 0)
         {
             if (accounts == 1)
@@ -9152,13 +9164,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var worked = removedMail.Count > 0
                 ? $"Emptied trash for {string.Join(", ", removedMail.Select(a => a.AccountLabel))}. "
                 : string.Empty;
-            return worked + string.Join(" ", failures.Select(f => $"Could not empty {f.Account.AccountLabel}: {f.Reason}."));
+            return worked + string.Join(" ", failures.Select(f => $"Could not empty {f.Account.AccountLabel}: {f.Reason}.")) + noFolder;
         }
 
         // A dropped reply leaves the count unknown, so that case can't say how many.
-        if (confirmedByCheck) return "Trash emptied.";
-        if (totalDeleted > 0) return totalDeleted == 1 ? "1 message deleted from trash." : $"{totalDeleted} messages deleted from trash.";
-        return noTrashFolder == accounts ? "No trash folder found." : "Trash was already empty.";
+        if (confirmedByCheck) return "Trash emptied." + noFolder;
+        if (totalDeleted > 0) return (totalDeleted == 1 ? "1 message deleted from trash." : $"{totalDeleted} messages deleted from trash.") + noFolder;
+        return "Trash was already empty." + noFolder;
     }
 
     [RelayCommand]

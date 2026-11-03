@@ -319,7 +319,9 @@ public class Pop3MailService : IMailService
 
     /// <summary>
     /// Removes messages from the local store, and — only when the account is set to remove collected
-    /// mail from the server — issues the matching DELEs.
+    /// mail from the server — issues the matching DELEs first. If the server can't be reached this
+    /// throws with the local copies still there, so the delete can be tried again; removing them
+    /// first left nothing for a retry to act on, and the mail stayed on the server for good.
     /// <para>The DELE is addressed by index, and indexes are only meaningful within one session, so
     /// every id is re-resolved against a fresh UIDL listing first. An id no longer listed (another
     /// client collected it) is skipped rather than deleted by position: deleting the wrong message
@@ -330,8 +332,6 @@ public class Pop3MailService : IMailService
     {
         if (_onlineMode) return;   // nothing was ever collected; see LoadFromStoreAsync
 
-        await _store.DeleteSummariesAsync(accountId, folderName, messageIds);
-
         // Locally-authored mail (sent, drafts) was never on the server; nothing to delete there.
         var serverIds = messageIds.Where(id => !id.StartsWith(LocalIdPrefix, StringComparison.Ordinal)).ToList();
 
@@ -340,10 +340,11 @@ public class Pop3MailService : IMailService
         // and the same mail re-downloading into the Inbox on the very next sweep.
         await _store.AddPop3CollectedUidlsAsync(accountId, serverIds);
 
-        if (!_accounts.TryGetValue(accountId, out var account) || account.Pop3LeaveMailOnServer)
+        if (!_accounts.TryGetValue(accountId, out var account) || account.Pop3LeaveMailOnServer || serverIds.Count == 0)
+        {
+            await _store.DeleteSummariesAsync(accountId, folderName, messageIds);
             return;
-
-        if (serverIds.Count == 0) return;
+        }
 
         var wanted = new HashSet<string>(serverIds, StringComparer.Ordinal);
         var anyDeleted = await RunMaildropSessionAsync(accountId, async client =>
@@ -360,6 +361,8 @@ public class Pop3MailService : IMailService
 
             return (Result: deleted, Quit: deleted);
         }, ct);
+
+        await _store.DeleteSummariesAsync(accountId, folderName, messageIds);
 
         LogService.Log($"POP3 [{account.AccountLabel}]: permanently deleted {serverIds.Count} message(s) locally, {(anyDeleted ? "and on the server" : "none still on the server")}.");
     }
