@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -61,6 +62,7 @@ public partial class SettingsViewModel
     [ObservableProperty] private bool _playEventSounds;
     [ObservableProperty] private bool _muteSounds;
     [ObservableProperty] private SoundVolumeOption? _selectedSoundVolume;
+    [ObservableProperty] private SoundPack? _selectedSoundPack;
     [ObservableProperty] private SoundEventRow? _selectedSoundEvent;
     [ObservableProperty] private SoundChoice? _selectedSoundChoice;
 
@@ -72,6 +74,7 @@ public partial class SettingsViewModel
     public bool HasSoundFileMessage => SoundFileMessage.Length > 0;
 
     public ObservableCollection<SoundVolumeOption> SoundVolumeOptions { get; } = [];
+    public IReadOnlyList<SoundPack> SoundPacks { get; } = SoundCatalog.Packs;
     public ObservableCollection<SoundEventRow> SoundEventRows { get; } = [];
     public ObservableCollection<SoundChoice> SoundChoices { get; } = [];
 
@@ -92,6 +95,10 @@ public partial class SettingsViewModel
         if (SoundVolumeOptions.All(o => o.Percent != cfg.SoundVolume))
             InsertVolumeInOrder(cfg.SoundVolume);   // A value set by hand in config.ini, so saving doesn't change it.
         SelectedSoundVolume = SoundVolumeOptions.First(o => o.Percent == cfg.SoundVolume);
+
+        // A style this build doesn't have, from a newer one or a hand edit, plays and shows as the default.
+        SelectedSoundPack = SoundCatalog.Packs.FirstOrDefault(p => p.Id == cfg.SoundPack)
+            ?? SoundCatalog.Packs.First(p => p.Id == SoundCatalog.DefaultPack);
 
         SoundChoices.Add(new SoundChoice(SoundRef.None.ToStored(), "None"));
         foreach (var choice in SoundChoiceList.BuiltIn())
@@ -126,6 +133,7 @@ public partial class SettingsViewModel
         cfg.PlayEventSounds = PlayEventSounds;
         cfg.MuteSounds = MuteSounds;
         if (SelectedSoundVolume is not null) cfg.SoundVolume = SelectedSoundVolume.Percent;
+        if (SelectedSoundPack is not null) cfg.SoundPack = SelectedSoundPack.Id;
 
         // A new dictionary rather than changing the one in use: the sound worker reads it from another
         // thread. Only what differs from the default is kept, as [sounds] records only what was changed.
@@ -162,10 +170,10 @@ public partial class SettingsViewModel
     [RelayCommand]
     private void PreviewSound()
     {
-        // At the volume showing, which may not be saved yet: that's how someone tries a volume out.
+        // At the volume and in the style showing, which may not be saved yet: that's how someone tries them out.
         if (SelectedSoundChoice is null) return;
         _previewedSound = true;
-        _sounds?.Preview(SelectedSoundChoice.Stored, SelectedSoundVolume?.Percent);
+        _sounds?.Preview(SelectedSoundChoice.Stored, SelectedSoundVolume?.Percent, SelectedSoundPack?.Id);
     }
 
     /// <summary>Ends a preview when Settings closes, so it doesn't play on over speech afterward.</summary>

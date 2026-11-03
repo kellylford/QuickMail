@@ -47,10 +47,13 @@ internal sealed class RecordingSoundService : ISoundService
     }
 
     public bool WasSoundedByRule(string messageKey) => RuleSoundedKeys.Contains(messageKey);
-    public void Preview(string storedSound, int? volumePercent = null)
+    public string? PreviewPack { get; private set; }
+
+    public void Preview(string storedSound, int? volumePercent = null, string? pack = null)
     {
         Previewed.Add(storedSound);
         PreviewVolume = volumePercent;
+        PreviewPack = pack;
     }
     public bool IsAudible(SoundEvent soundEvent) => Audible.Contains(soundEvent);
     public IReadOnlyList<string> CustomSoundFiles() => CustomFiles;
@@ -580,9 +583,33 @@ public class SoundEventsTests
         var vm = MakeSettings(new StubConfigService(), sounds);
         vm.SelectedSoundChoice = vm.SoundChoices.Single(c => c.Label == "Reminder");
         vm.SelectedSoundVolume = vm.SoundVolumeOptions.Single(o => o.Percent == 20);
+        vm.SelectedSoundPack = vm.SoundPacks.Single(p => p.Label == "Wood");
         vm.PreviewSoundCommand.Execute(null);
         Assert.Equal(["builtin:reminder"], sounds.Previewed);
         Assert.Equal(20, sounds.PreviewVolume);
+        Assert.Equal("wood", sounds.PreviewPack);
+    }
+
+    [Fact]
+    public void TheStyleStartsOnTheDefaultAndIsSaved()
+    {
+        var config = new StubConfigService();
+        var vm = MakeSettings(config);
+        Assert.Equal(SoundCatalog.DefaultPack, vm.SelectedSoundPack!.Id);
+
+        vm.SelectedSoundPack = vm.SoundPacks.Single(p => p.Label == "Soft bell");
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal("softbell", config.Load().SoundPack);
+        Assert.Equal("Soft bell", MakeSettings(config).SelectedSoundPack!.Label);
+    }
+
+    [Fact]
+    public void AStyleThisBuildDoesNotHaveShowsAsTheDefault()
+    {
+        var config = new StubConfigService();
+        config.Load().SoundPack = "from-the-future";
+        Assert.Equal(SoundCatalog.DefaultPack, MakeSettings(config).SelectedSoundPack!.Id);
     }
 
     [Fact]
@@ -727,7 +754,7 @@ public class SoundsTabAccessibilityTests
             Assert.NotNull(row);
             Assert.Equal(vm.SoundEventRows[0].AccessibleName, AutomationProperties.GetName(row));
 
-            foreach (var name in new[] { "SoundEventList", "SoundVolumeCombo", "SoundChoiceCombo" })
+            foreach (var name in new[] { "SoundEventList", "SoundVolumeCombo", "SoundStyleCombo", "SoundChoiceCombo" })
             {
                 var control = window.FindName(name) as FrameworkElement;
                 Assert.NotNull(control);

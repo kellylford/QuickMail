@@ -2064,7 +2064,7 @@ The first time you hide the window to the tray, a notification explains that Qui
 
 ## Sounds
 
-QuickMail can play a short sound when something happens, such as a message being sent or new mail arriving. Sounds for events are **off by default**, and you can also have a [rule](#mail-rules) play a sound. They add to QuickMail's announcements and status text rather than replacing them, so you still get those whether or not you use sounds.
+QuickMail can play a short sound when something happens, such as a message being sent or new mail arriving. Sounds for events are **off by default**, and you can also have a [rule](#mail-rules) play a sound. This is a first version, and we would like to hear what you think; see [Tell us what you think](#tell-us-what-you-think). They add to QuickMail's announcements and status text rather than replacing them, so you still get those whether or not you use sounds.
 
 ### Turning Sounds On
 
@@ -2087,6 +2087,10 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 
 Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to.
 
+### Choosing a Style
+
+**Style** sets how the built-in sounds sound: **Glass**, **Soft bell** or **Wood**. Each style has the same sounds with the same melodies, and only the tone changes, so a sound means the same thing whichever you choose. Change the style and choose **Preview** to compare them before saving. Sounds you added yourself don't change with the style.
+
 ### New Mail Sounds and Notifications
 
 The new-mail sound works whether or not new-mail notifications are on. It follows the same rules:
@@ -2106,6 +2110,16 @@ Sounds for things that happen on their own, such as new mail, connection changes
 ### Mute All Sounds
 
 Choose **Tools → Mute All Sounds**, or run it from the Command Palette, to silence every sound, including anything playing. Do the same again to turn sounds back on. You can give it a keyboard shortcut in **Settings → Keyboard Shortcuts**.
+
+### Tell Us What You Think
+
+Sounds are new, and your experience decides where they go next. We would especially like to know:
+
+- Are these the right events? Which are missing, and which would you never use?
+- What do you think of the sounds? Which style do you prefer, and are any two sounds too alike, harsh, or easy to confuse with your screen reader's own sounds?
+- How do the sounds work alongside your screen reader's speech?
+
+Use **Help → Report a Bug**, or email [support@theideaplace.net](mailto:support@theideaplace.net).
 
 ---
 

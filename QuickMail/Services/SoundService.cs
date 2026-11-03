@@ -99,14 +99,14 @@ public sealed class SoundService : ISoundService
 
     public bool WasSoundedByRule(string messageKey) => _ruleSoundedKeys.ContainsKey(messageKey);
 
-    public void Preview(string storedSound, int? volumePercent = null)
+    public void Preview(string storedSound, int? volumePercent = null, string? pack = null)
     {
         try
         {
             if (Volatile.Read(ref _disposed) != 0) return;
             StopAll();   // Previewing "None" is how someone stops the last preview.
             if (!SoundRef.TryParse(storedSound, out var sound) || sound.Kind == SoundRefKind.None) return;
-            var clip = ToClip(sound, SoundCatalog.DefaultRuleSound, _config.Load());
+            var clip = ToClip(sound, SoundCatalog.DefaultRuleSound, _config.Load(), pack);
             if (clip is not null) TryAdd(new Request(clip, IsPreview: true, VolumePercent: volumePercent));
         }
         catch (Exception ex)
@@ -278,7 +278,7 @@ public sealed class SoundService : ISoundService
     }
 
     /// <summary>The clip for a sound. A custom file that has gone falls back to the built-in sound.</summary>
-    private SoundClip? ToClip(SoundRef sound, string fallback, ConfigModel config)
+    private SoundClip? ToClip(SoundRef sound, string fallback, ConfigModel config, string? pack = null)
     {
         if (sound.Kind == SoundRefKind.Custom)
         {
@@ -289,13 +289,13 @@ public sealed class SoundService : ISoundService
             sound = SoundRef.BuiltIn(fallback);
         }
 
-        return BuiltInClip(sound, config);
+        return BuiltInClip(sound, config, pack);
     }
 
-    private SoundClip BuiltInClip(SoundRef sound, ConfigModel config)
+    private SoundClip BuiltInClip(SoundRef sound, ConfigModel config, string? packOverride = null)
     {
         var name = sound.Name;
-        var pack = config.SoundPack;
+        var pack = packOverride ?? config.SoundPack;
         return new SoundClip(sound.ToStored(), null, () => _openBuiltIn(pack, name)
             ?? _openBuiltIn(SoundCatalog.DefaultPack, name)
             ?? throw new FileNotFoundException($"No built-in sound '{name}'."));

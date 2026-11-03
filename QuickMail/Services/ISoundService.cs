@@ -38,7 +38,8 @@ public interface ISoundService : IDisposable
     /// </summary>
     /// <param name="storedSound">The sound, as stored.</param>
     /// <param name="volumePercent">A volume to hear it at, for one not saved yet.</param>
-    void Preview(string storedSound, int? volumePercent = null);
+    /// <param name="pack">A style to hear it in, for one not saved yet.</param>
+    void Preview(string storedSound, int? volumePercent = null, string? pack = null);
 
     /// <summary>Stops what is playing and whatever is waiting.</summary>
     void StopAll();

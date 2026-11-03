@@ -6,7 +6,7 @@ QuickMail plays no sound of its own today: there is no audio code or sound asset
 
 The result: a playback service, sounds for mail events, a "Play a sound" rule action, one generated sound pack, and a person's own WAV or MP3 for any event or rule. #129 is met by a rule with a From condition and a custom sound.
 
-**Decisions made with Kelly:** we generate our own sounds, event sounds are off until turned on, and the first release has one built-in pack.
+**Decisions made with Kelly:** we generate our own sounds, event sounds are off until turned on, and all three candidate styles ship so people can choose. This is a start: the first release asks users whether these are the right events and what they think of the sounds.
 
 **Choices I made, open to correction:**
 - Playback uses NAudio.
@@ -116,7 +116,7 @@ A sound reference is a string: `builtin:<name>`, `custom:<file>` or `none`. Only
 **Settings → new Sounds tab:**
 - Checkboxes "Play sounds for mail events" and "Mute all sounds"
 - Volume, a combo box from 10% to 100% (no window uses a Slider, so this needs no new themed control)
-- No pack choice yet: with one pack it would be a list of one, so it arrives with a second pack
+- Style: Glass (the default), Soft bell or Wood, with Preview playing the one showing
 - An event list, with rows like "New mail: Chime"
 - For the selected event: a Sound combo, Preview, and Choose File
 
@@ -128,7 +128,7 @@ The VM raises a request and code-behind shows the file dialog (MVVM rule). One l
 
 A small generator in `app-kit/sounds/` writes deterministic 44.1 kHz mono WAVs under about 1 second. QuickMail's copies are committed to `QuickMail/Sounds/BuiltIn/<pack>/` as `EmbeddedResource`, about 1 MB in all. Reading the embedded stream works in single-file publish and needs no temporary files.
 
-Sounds should be told apart by pitch and shape, not only by being pleasant: rising for sent, falling for failed, and so on. **Kelly chooses by ear:** candidates go to `OneDrive\testing\quickmail\sounds`, and only his picks ship.
+Sounds should be told apart by pitch and shape, not only by being pleasant: rising for sent, falling for failed, and so on. All three styles ship. Each has the same melodies with a different tone, so a sound means the same thing in every style.
 
 ### What goes in app-kit
 

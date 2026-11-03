@@ -691,7 +691,7 @@ public class ConfigService : IConfigService
         sb.AppendLine();
 
         sb.AppendLine($"SoundPack = {config.SoundPack}");
-        sb.AppendLine("# The built-in sound pack.");
+        sb.AppendLine("# The style of the built-in sounds. Values: glass, softbell, wood.");
         sb.AppendLine();
 
         sb.AppendLine($"CloseToTray = {(config.CloseToTray ? "on" : "off")}");
