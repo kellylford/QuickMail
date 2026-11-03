@@ -101,7 +101,7 @@ All the places a new action must change (from the code survey):
 `ConfigModel` / `ConfigService` / `SettingsConfigTransfer` (Portable):
 - `PlayEventSounds` (default off)
 - `MuteSounds` (default off), which silences everything
-- `SoundVolume` (default 100)
+- `SoundVolume` (default 80)
 - `SoundPack`
 - `SoundEvents`, a new `[sounds]` section following `[features]`, listing only what the person changed. The other settings are in `[global]`, so they stay above `[windowing]` as the existing comment requires
 

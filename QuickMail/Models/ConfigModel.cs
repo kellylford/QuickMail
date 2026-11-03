@@ -440,7 +440,7 @@ public class ConfigModel
     public bool MuteSounds { get; set; } = false;
 
     /// <summary>How loud QuickMail's sounds play, 0-100, within whatever Windows is set to.</summary>
-    public int SoundVolume { get; set; } = 100;
+    public int SoundVolume { get; set; } = 80;
 
     /// <summary>The built-in sound pack in use.</summary>
     public string SoundPack { get; set; } = SoundCatalog.DefaultPack;

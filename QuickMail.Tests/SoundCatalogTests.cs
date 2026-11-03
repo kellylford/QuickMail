@@ -224,7 +224,7 @@ public class SoundCatalogTests
         var config = new ConfigService(MakeTempProfile()).Load();
         Assert.False(config.PlayEventSounds);
         Assert.False(config.MuteSounds);
-        Assert.Equal(100, config.SoundVolume);
+        Assert.Equal(80, config.SoundVolume);
         Assert.Equal(SoundCatalog.DefaultPack, config.SoundPack);
         Assert.Empty(config.SoundEvents);
     }
@@ -281,9 +281,9 @@ public class SoundCatalogTests
         var service = new ConfigService(profile);
         service.Save(service.Load());
         var path = Path.Combine(profile.ProfileDir, "config.ini");
-        File.WriteAllText(path, File.ReadAllText(path).Replace("SoundVolume = 100", $"SoundVolume = {value}", StringComparison.Ordinal));
+        File.WriteAllText(path, File.ReadAllText(path).Replace("SoundVolume = 80", $"SoundVolume = {value}", StringComparison.Ordinal));
 
-        Assert.Equal(100, new ConfigService(profile).Load().SoundVolume);
+        Assert.Equal(80, new ConfigService(profile).Load().SoundVolume);
     }
 
     [Fact]

@@ -2087,7 +2087,7 @@ If you delete or file a lot of mail in a row, you may prefer to set those three 
 3. Choose **Preview** to hear it, at the volume showing. Preview plays even if sounds are muted, and stops when you close Settings or preview **None**.
 4. To use a sound of your own, choose **Choose File…** and pick a WAV or MP3 file of up to 5 MB and 30 seconds. QuickMail keeps its own copy, so you can move or delete the original.
 
-Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to.
+Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to. It starts at 80%.
 
 ### Choosing a Style
 
