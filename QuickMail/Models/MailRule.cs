@@ -159,7 +159,7 @@ public class MailRule
 
     /// <summary>
     /// The rule's main action, and its only one unless <see cref="Actions"/> lists more. With several, it is
-    /// the one that runs last (see <see cref="AllActions"/>) — moving or deleting, where the rule does
+    /// the last that changes the message (see <see cref="AllActions"/>) — moving or deleting, where the rule does
     /// either — so a QuickMail from before #682, which reads only this field, still does what matters most.
     /// </summary>
     public RuleAction Action { get; set; } = RuleAction.MarkAsRead;
@@ -187,7 +187,7 @@ public class MailRule
 
     /// <summary>
     /// What the rule does, in the order it does it: marking read or unread first, then copying, then moving
-    /// or deleting. Once a message is moved or deleted it is no longer in the folder the others act on.
+    /// or deleting, since after that the message is no longer in the folder the others act on, and last any sound.
     /// </summary>
     public IReadOnlyList<RuleAction> AllActions()
         => (Actions is { Count: > 0 } ? Actions : [Action]).Distinct().OrderBy(RunOrder).ToList();

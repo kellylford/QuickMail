@@ -30,6 +30,7 @@ public sealed class SoundService : ISoundService
     private readonly BlockingCollection<Request> _queue = [];
     private readonly CancellationTokenSource _shutdown = new();
     private readonly HashSet<string> _loggedFailures = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _ruleSoundedKeys = new(StringComparer.Ordinal);
     private readonly Thread _worker;
     private readonly object _currentGate = new();
     private CancellationTokenSource? _current;
@@ -73,11 +74,21 @@ public sealed class SoundService : ISoundService
         }
     }
 
-    public void PlayRule(string? storedSound)
+    public void PlayRule(string? storedSound, IEnumerable<string>? messageKeys = null)
     {
         try
         {
-            var sound = SoundRef.TryParse(storedSound, out var parsed) ? parsed : SoundRef.BuiltIn(SoundCatalog.DefaultRuleSound);
+            foreach (var key in messageKeys ?? [])
+            {
+                // Bounded, as the new-mail key set is. Clearing risks at most one message sounding twice.
+                if (_ruleSoundedKeys.Count > 10_000) _ruleSoundedKeys.Clear();
+                _ruleSoundedKeys[key] = 0;
+            }
+
+            // The editor has no "None" for a rule: a rule told to play a sound plays one.
+            var sound = SoundRef.TryParse(storedSound, out var parsed) && parsed.Kind != SoundRefKind.None
+                ? parsed
+                : SoundRef.BuiltIn(SoundCatalog.DefaultRuleSound);
             Enqueue(sound, SoundCatalog.DefaultRuleSound, SoundOrigin.Rule, _config.Load());
         }
         catch (Exception ex)
@@ -85,6 +96,8 @@ public sealed class SoundService : ISoundService
             LogService.Log("Rule sound failed", ex);
         }
     }
+
+    public bool WasSoundedByRule(string messageKey) => _ruleSoundedKeys.ContainsKey(messageKey);
 
     public void Preview(string storedSound, int? volumePercent = null)
     {

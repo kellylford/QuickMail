@@ -81,9 +81,10 @@ Each hooks where the outcome is already known, so existing de-duplication carrie
 Append `RuleAction.PlaySound` to the enum (stored by number) and add `MailRule.Sound` (string, `WhenWritingNull`). The action is client-only, and the existing classifier forces that once it's listed.
 
 - **Run order:** gets its own last bucket in `RunOrder`, so the switch can see what happened. A rule that moves or deletes sounds only if `taken.Count > 0`; a failed move stays quiet.
-- **Once per rule pass:** `ExecuteActionsAsync` already runs once per rule per batch, so 50 matches give one sound.
+- **Once per rule pass, and only for mail just arriving:** `ExecuteActionsAsync` already runs once per rule per batch. Like the new-mail sound, a rule sound needs at least one match newer than launch and stays silent for more than five at once, so mail that came in while QuickMail was closed doesn't set off a run of sounds at startup.
+- **Not twice for one message:** the rule tells the sound service which messages it sounded for, and the new-mail sound skips them, however long sync takes to reach it. The 3-second hold in `SoundPolicy` remains for unrelated mail in the same pass.
 - **Run on Existing Mail stays silent:** `ApplyRulesToExistingAsync:599` shares this method, so add a `playSounds: false` parameter. Otherwise it would sound for every rule across the old mail.
-- **Older builds:** `MainAction` must exclude `PlaySound`, or a pre-#682 build would run the wrong thing. A sound-only rule writes `PlaySound`, which those builds ignore. Newer older builds ignore the unknown number but show it raw, and re-saving there drops the action. That's acceptable, and a test pins it.
+- **Older builds:** `MainAction` must exclude `PlaySound`, or a pre-#682 build would run the wrong thing. A sound-only rule writes `PlaySound`, which those builds ignore. Builds from #682 on ignore the unknown number but show it raw, and re-saving that rule there drops the action. Those builds also have no `Sound` field, so saving rules.json there for any reason loses the choice, and the rule plays the default sound on returning to this build. That's acceptable, and a test pins that an unknown action is ignored when run.
 - **No condition needed:** a sound-only rule can match all mail, since it can't lose anything. `NoConditionError` stays as it is.
 
 All the places a new action must change (from the code survey):
@@ -162,7 +163,7 @@ What a screen reader says for standard controls is for Kelly to confirm, not ass
 1. Open a new rule and enter a From condition.
 2. Tab to "Play a sound" and press Space. The Sound combo, Preview Sound and Choose Sound File become available, with the default rule sound selected.
 3. Pick a sound, optionally Preview it, and save.
-4. The rule list row says "Play sound: \<name\>". A matching message plays it once per rule pass.
+4. The rule list row says "play sound \<name\>". A matching message that has just arrived plays it once per rule pass.
 
 **Mute:** Ctrl+Shift+P, "Mute All Sounds", Enter. Announces "Sounds muted." (Result) and cuts off anything playing. Running it again announces "Sounds on."
 
@@ -220,7 +221,7 @@ All tests and app runs happen in the VM (`vmtest` skill), never on Kelly's PC. B
 
 **Rule tests** (extending `ClientRuleActionsTests`, `RuleEditorValidationTests`, `RuleServiceTests`, `RuleMigrationTests`, `UnifiedRuleRowTests`, `ServerOnlyOptionsDisabledTests`):
 - Failed move stays silent
-- 50 matches give one sound
+- Five new matches give one sound; six, or old mail, give none
 - Run on Existing Mail stays silent
 - `CloneForAccount` keeps `Sound`
 - `MainAction` never returns `PlaySound` beside another action

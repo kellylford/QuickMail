@@ -680,8 +680,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The rule's main action: what a QuickMail from before #682 does, since it reads that field alone. The last to
-    /// run, so the move where there is one — but never Copy, which such a build doesn't have and would perform as
+    /// The rule's main action: what a QuickMail from before #682 does, since it reads that field alone. The last of
+    /// what such a build can do, so the move where there is one — but never Copy, which it doesn't have and would perform as
     /// nothing at all, dropping the marking or filing it could have done instead.
     /// <para>
     /// Nor Delete, when the rule also copies. Binning the message while never making the copy keeps the destructive

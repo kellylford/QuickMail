@@ -56,6 +56,7 @@ public sealed partial class SoundEventRow(SoundEventInfo info, SoundChoice choic
 public partial class SettingsViewModel
 {
     private ISoundService? _sounds;
+    private bool _previewedSound;
 
     [ObservableProperty] private bool _playEventSounds;
     [ObservableProperty] private bool _muteSounds;
@@ -162,11 +163,17 @@ public partial class SettingsViewModel
     private void PreviewSound()
     {
         // At the volume showing, which may not be saved yet: that's how someone tries a volume out.
-        if (SelectedSoundChoice is not null) _sounds?.Preview(SelectedSoundChoice.Stored, SelectedSoundVolume?.Percent);
+        if (SelectedSoundChoice is null) return;
+        _previewedSound = true;
+        _sounds?.Preview(SelectedSoundChoice.Stored, SelectedSoundVolume?.Percent);
     }
 
     /// <summary>Ends a preview when Settings closes, so it doesn't play on over speech afterward.</summary>
-    public void StopSounds() => _sounds?.StopAll();
+    public void StopSounds()
+    {
+        // Without a preview, a sound for new mail just starting isn't this dialog's to stop.
+        if (_previewedSound) _sounds?.StopAll();
+    }
 
     [RelayCommand]
     private void ChooseSoundFile()

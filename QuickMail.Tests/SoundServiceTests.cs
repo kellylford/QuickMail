@@ -127,6 +127,22 @@ public sealed class SoundServiceTests : IDisposable
     }
 
     [Fact]
+    public void ARuleToldToPlayNoSoundPlaysTheDefaultAsTheEditorHasNoNone()
+    {
+        Service().PlayRule("none");
+        AssertPlayed("builtin:" + SoundCatalog.DefaultRuleSound);
+    }
+
+    [Fact]
+    public void ARuleRecordsWhichMessagesItSoundedFor()
+    {
+        var key = SoundCatalog.MessageKey(Guid.NewGuid(), "7");
+        Assert.False(Service().WasSoundedByRule(key));
+        Service().PlayRule("builtin:matched", [key]);
+        Assert.True(Service().WasSoundedByRule(key));
+    }
+
+    [Fact]
     public void MuteSilencesEventsAndRules()
     {
         Settings().PlayEventSounds = true;

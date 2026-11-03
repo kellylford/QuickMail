@@ -38,7 +38,15 @@ internal sealed class RecordingSoundService : ISoundService
 
     public void StopAll() => Stops++;
     public List<string?> RuleSounds { get; } = [];
-    public void PlayRule(string? storedSound) => RuleSounds.Add(storedSound);
+    public HashSet<string> RuleSoundedKeys { get; } = [];
+
+    public void PlayRule(string? storedSound, IEnumerable<string>? messageKeys = null)
+    {
+        RuleSounds.Add(storedSound);
+        RuleSoundedKeys.UnionWith(messageKeys ?? []);
+    }
+
+    public bool WasSoundedByRule(string messageKey) => RuleSoundedKeys.Contains(messageKey);
     public void Preview(string storedSound, int? volumePercent = null)
     {
         Previewed.Add(storedSound);
@@ -232,6 +240,38 @@ public class SoundEventsTests
         var m = new Mail();
         m.Vm.MaybePlayMailSounds(Account(shared: true, optIn: true), [Msg("1")], isInbox: true);
         Assert.Equal([SoundEvent.NewMail], m.Sounds.Played);
+    }
+
+    [Fact]
+    public void MailARuleSoundedForDoesNotAlsoPlayNewMail()
+    {
+        var m = new Mail();
+        m.Sounds.RuleSoundedKeys.Add(SoundCatalog.MessageKey(Work, "1"));
+        m.Vm.MaybePlayMailSounds(Account(), [Msg("1")], isInbox: true);
+        Assert.Empty(m.Sounds.Played);
+    }
+
+    [Fact]
+    public void OtherMailInTheSameBatchStillPlaysNewMail()
+    {
+        var m = new Mail();
+        m.Sounds.RuleSoundedKeys.Add(SoundCatalog.MessageKey(Work, "1"));
+        m.Vm.MaybePlayMailSounds(Account(), [Msg("1"), Msg("2")], isInbox: true);
+        Assert.Equal([SoundEvent.NewMail], m.Sounds.Played);
+    }
+
+    [Fact]
+    public void ClosingSettingsWithoutAPreviewLeavesOtherSoundsAlone()
+    {
+        var sounds = new RecordingSoundService();
+        var vm = MakeSettings(new StubConfigService(), sounds);
+
+        vm.StopSounds();
+        Assert.Equal(0, sounds.Stops);
+
+        vm.PreviewSoundCommand.Execute(null);
+        vm.StopSounds();
+        Assert.Equal(1, sounds.Stops);
     }
 
     [Fact]

@@ -12,6 +12,7 @@ namespace QuickMail.ViewModels;
 public partial class ServerRuleEditorViewModel
 {
     private ISoundService? _sounds;
+    private bool _previewedSound;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsPlaySoundSelected))]
@@ -62,6 +63,10 @@ public partial class ServerRuleEditorViewModel
         }
     }
 
+    partial void OnPlaySoundChanged(bool value) => RuleSoundMessage = string.Empty;
+
+    partial void OnSelectedRuleSoundChanged(SoundChoice? value) => RuleSoundMessage = string.Empty;
+
     /// <summary>Selects a rule's stored sound. One that can't be read shows as the default, which is what it would play.</summary>
     private void ShowRuleSound(string? stored)
     {
@@ -76,13 +81,18 @@ public partial class ServerRuleEditorViewModel
         SelectedRuleSound = choice;
     }
 
-    /// <summary>Ends a preview when the editor closes.</summary>
-    public void StopSounds() => _sounds?.StopAll();
+    /// <summary>Ends this editor's preview when it closes. Without one, a sound for new mail just starting isn't its to stop.</summary>
+    public void StopSounds()
+    {
+        if (_previewedSound) _sounds?.StopAll();
+    }
 
     [RelayCommand]
     private void PreviewRuleSound()
     {
-        if (SelectedRuleSound is not null) _sounds?.Preview(SelectedRuleSound.Stored);
+        if (SelectedRuleSound is null) return;
+        _previewedSound = true;
+        _sounds?.Preview(SelectedRuleSound.Stored);
     }
 
     [RelayCommand]
@@ -97,7 +107,6 @@ public partial class ServerRuleEditorViewModel
             return;
         }
 
-        RuleSoundMessage = string.Empty;
         var stored = SoundRef.Custom(fileName).ToStored();
         var choice = new SoundChoice(stored, fileName);
         var existing = RuleSoundChoices.FirstOrDefault(c => c.Stored == stored);

@@ -22,6 +22,15 @@ public class RuleService : IRuleService
     /// <summary>Plays a rule's sound (#912). A property because this service is built before the sound service can be.</summary>
     internal ISoundService? Sounds { get; set; }
 
+    /// <summary>
+    /// A rule sound follows the new-mail sound's rules: only mail newer than this, and nothing for more
+    /// than <see cref="MaxSoundBatch"/> messages at once. Mail that came in while QuickMail was closed
+    /// or the computer asleep is a backlog, and sounds for it would pile up over startup speech.
+    /// </summary>
+    private readonly DateTimeOffset _startedUtc = DateTimeOffset.UtcNow;
+
+    private const int MaxSoundBatch = 5;
+
     private string? _loggedLoadError;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
@@ -415,7 +424,12 @@ public class RuleService : IRuleService
                     // Runs last. A move or delete swallows its failures, and a rule that couldn't file the
                     // mail shouldn't sound as if it had. A copy that failed has already skipped this by throwing.
                     var filesMail = rule.Does(RuleAction.MoveToFolder) || rule.Does(RuleAction.Delete);
-                    if (playSound && (!filesMail || taken.Count > 0)) Sounds?.PlayRule(rule.Sound);
+                    if (playSound && (!filesMail || taken.Count > 0))
+                    {
+                        var arriving = matched.Where(m => m.Date >= _startedUtc).ToList();
+                        if (arriving.Count is > 0 and <= MaxSoundBatch)
+                            Sounds?.PlayRule(rule.Sound, arriving.Select(m => SoundCatalog.MessageKey(m.AccountId, m.MessageId)));
+                    }
                     break;
             }
         }

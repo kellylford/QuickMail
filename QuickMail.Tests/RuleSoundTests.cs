@@ -208,7 +208,6 @@ public class RuleSoundTests
 
     private sealed class Mail : StubImapMailServiceBase
     {
-        public List<string> Calls { get; } = [];
         public Exception? ThrowOnCopy { get; set; }
         public Exception? ThrowOnMove { get; set; }
         public Exception? ThrowOnDelete { get; set; }
@@ -232,7 +231,7 @@ public class RuleSoundTests
         }
     }
 
-    private static async Task<RecordingSoundService> Run(MailRule rule, Mail? mail = null, int messages = 1)
+    private static async Task<RecordingSoundService> Run(MailRule rule, Mail? mail = null, int messages = 1, int ageHours = -1)
     {
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         try
@@ -245,6 +244,7 @@ public class RuleSoundTests
             var incoming = Enumerable.Range(1, messages).Select(i => new MailMessageSummary
             {
                 MessageId = i.ToString(), AccountId = account, FolderName = "INBOX", Subject = "Weekly digest",
+                Date = DateTimeOffset.UtcNow.AddHours(-ageHours),   // -1 is a little ahead of the rule service starting.
             }).ToList();
 
             await rules.ApplyRulesAsync(incoming, account, TestContext.Current.CancellationToken);
@@ -275,11 +275,66 @@ public class RuleSoundTests
         Assert.Empty(sounds.RuleSounds);
     }
 
-    [Fact]
-    public async Task FiftyMatchesPlayOnce()
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(5, 1)]
+    [InlineData(6, 0)]    // A catch-up backlog, as for the new-mail sound.
+    [InlineData(50, 0)]
+    public async Task ABatchPlaysOnceUnlessItIsABacklog(int messages, int sounds)
     {
-        var sounds = await Run(Rule(), messages: 50);
-        Assert.Single(sounds.RuleSounds);
+        var played = await Run(Rule(), messages: messages);
+        Assert.Equal(sounds, played.RuleSounds.Count);
+    }
+
+    [Fact]
+    public async Task MailFromBeforeQuickMailStartedPlaysNothing()
+    {
+        var played = await Run(Rule(), ageHours: 3);
+        Assert.Empty(played.RuleSounds);
+    }
+
+    [Fact]
+    public async Task ARuleSaysWhichMessagesItSoundedFor()
+    {
+        var played = await Run(Rule(), messages: 2);
+        Assert.Equal(2, played.RuleSoundedKeys.Count);
+    }
+
+    [Fact]
+    public async Task AnActionFromANewerQuickMailIsIgnoredWhenRun()
+    {
+        // What an older build does with PlaySound, pinned for the next action added after it.
+        var rule = new MailRule
+        {
+            Name = "Future", SubjectContains = "digest", UseSubjectCondition = true,
+            Action = (RuleAction)99, Actions = [(RuleAction)99, RuleAction.PlaySound],
+        };
+        var played = await Run(rule);
+        Assert.Single(played.RuleSounds);
+    }
+
+    [Fact]
+    public void TheWiringInTheAppIsThere()
+    {
+        // These lines make the feature work and nothing else would notice them gone.
+        var source = RepoDir("QuickMail");
+        Assert.Contains("ruleService.Sounds = _soundService", File.ReadAllText(Path.Combine(source, "App.xaml.cs")), StringComparison.Ordinal);
+        Assert.Contains("sounds: _vm.Sounds);", File.ReadAllText(Path.Combine(source, "Views", "MainWindow.xaml.cs")), StringComparison.Ordinal);
+        var rulesVm = File.ReadAllText(Path.Combine(source, "ViewModels", "UnifiedRulesViewModel.cs"));
+        Assert.Equal(2, rulesVm.Split("editor.AttachSounds(_sounds)").Length - 1);   // The new-rule path and the edit path.
+
+        var xaml = File.ReadAllText(Path.Combine(source, "Views", "ServerRuleEditorWindow.xaml"));
+        Assert.Contains("IsEnabled=\"{Binding CanPlaySound}\"", xaml, StringComparison.Ordinal);
+        Assert.Equal(4, xaml.Split("IsEnabled=\"{Binding IsPlaySoundSelected}\"").Length - 1);   // Label, list and two buttons.
+    }
+
+    private static string RepoDir(string name)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, name, "Services")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        return Path.Combine(dir.FullName, name);
     }
 
     [Fact]
@@ -334,17 +389,22 @@ public class RuleSoundTests
             var store = new StubLocalStoreService();
             store.SeededSummaries[(account, "INBOX")] =
             [
-                new MailMessageSummary { MessageId = "7", AccountId = account, FolderName = "INBOX", Subject = "Weekly digest" },
+                new MailMessageSummary
+                {
+                    MessageId = "7", AccountId = account, FolderName = "INBOX", Subject = "Weekly digest",
+                    Date = DateTimeOffset.UtcNow.AddHours(1),   // New enough that only the pass itself keeps it quiet.
+                },
             ];
             var sounds = new RecordingSoundService();
             var rules = new RuleService(new Mail(), store, dir) { Sounds = sounds };
-            var rule = Rule();
+            var rule = Rule(actions: RuleAction.MoveToFolder);
             rule.AccountId = account;
             rules.SaveRules([rule]);
 
-            await rules.ApplyRulesToExistingAsync(
+            var removed = await rules.ApplyRulesToExistingAsync(
                 store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
 
+            Assert.Single(removed);   // The rule did run.
             Assert.Empty(sounds.RuleSounds);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
@@ -389,9 +449,8 @@ public class RuleSoundTests
         Assert.DoesNotContain("\"Sound\"", JsonSerializer.Serialize(new MailRule { Name = "Plain" }), StringComparison.Ordinal);
 
     [Fact]
-    public void AnActionFromANewerQuickMailLoadsAndIsIgnoredWhenRun()
+    public void AnActionFromANewerQuickMailLoads()
     {
-        // What an older build does with PlaySound, pinned for the next action added after it.
         var rule = JsonSerializer.Deserialize<MailRule>("""{"Name":"Future","Action":99,"Actions":[0,99]}""");
         Assert.NotNull(rule);
         Assert.Contains((RuleAction)99, rule.AllActions());
@@ -411,6 +470,7 @@ public class RuleSoundTests
     [InlineData("custom:Pat.wav", "play sound Pat.wav")]
     [InlineData(null, "play sound Matched")]
     [InlineData("rubbish", "play sound Matched")]
+    [InlineData("none", "play sound Matched")]
     public void TheRuleListSaysWhichSound(string? sound, string expected)
     {
         var row = UnifiedRuleRow.ForClient(new MailRule
@@ -424,29 +484,111 @@ public class RuleSoundTests
 
     private sealed class CountingOutput : ISoundOutput
     {
-        public List<string> Played { get; } = [];
+        private readonly List<string> _played = [];
 
         public void Play(SoundClip clip, float volume, CancellationToken cancellationToken)
         {
-            lock (Played) Played.Add(clip.Key);
+            lock (_played) _played.Add(clip.Key);
+        }
+
+        public List<string> Snapshot()
+        {
+            lock (_played) return [.. _played];
+        }
+
+        /// <summary>Waits for a first sound to arrive, then long enough for a wrongly queued second one to follow it.</summary>
+        public async Task WaitUntilQuietAsync()
+        {
+            for (var i = 0; i < 500 && Snapshot().Count == 0; i++)
+                await Task.Delay(10, TestContext.Current.CancellationToken);
+            await Task.Delay(250, TestContext.Current.CancellationToken);
         }
 
         public void Check(string filePath) { }
     }
 
     [Fact]
-    public async Task AMessageARuleSoundedForDoesNotAlsoSoundAsNewMail()
+    public async Task AMessageARuleSoundedForDoesNotAlsoSoundAsNewMailHoweverLongSyncTakes()
     {
-        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-        var config = new StubConfigService();
-        config.Load().PlayEventSounds = true;
-        var output = new CountingOutput();
-        using var service = new SoundService(config, folder, output, openBuiltIn: (_, _) => new MemoryStream());
+        // The real rule engine, sound service and new-mail check, with the clock well past the 3-second
+        // hold: the case of a sound-only rule leaving the message in the batch, and a slow reconcile.
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            var config = new StubConfigService();
+            config.Load().PlayEventSounds = true;
+            var now = DateTime.UtcNow;
+            var output = new CountingOutput();
+            using var service = new SoundService(config, dir, output, openBuiltIn: (_, _) => new MemoryStream(), utcNow: () => now);
+            var vm = new MainViewModel(
+                new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+                new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(), config,
+                new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService(),
+                soundService: service);
+            var rules = new RuleService(new Mail(), new StubLocalStoreService(), dir) { Sounds = service };
+            var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work", Username = "work@example.com" };
+            var rule = Rule();
+            rule.AccountId = account.Id;
+            rules.SaveRules([rule]);
+            List<MailMessageSummary> incoming =
+            [
+                new() { MessageId = "7", AccountId = account.Id, FolderName = "INBOX", Subject = "Weekly digest", Date = DateTimeOffset.UtcNow.AddHours(1) },
+            ];
 
-        service.PlayRule("builtin:reminder");
-        service.Play(SoundEvent.NewMail);
+            await rules.ApplyRulesAsync(incoming, account.Id, TestContext.Current.CancellationToken);
+            Assert.Single(incoming);   // A sound-only rule leaves the message where it is.
 
-        await Task.Delay(300, TestContext.Current.CancellationToken);
-        lock (output.Played) Assert.Equal(["builtin:reminder"], output.Played);
+            now += TimeSpan.FromMinutes(1);
+            vm.MaybePlayMailSounds(account, incoming, isInbox: true);
+
+            await output.WaitUntilQuietAsync();
+            Assert.Equal(["builtin:reminder"], output.Snapshot());
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void ANewRuleInTheRulesWindowCanSeeCustomSounds()
+    {
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work", Username = "work@example.com" };
+        var sounds = new RecordingSoundService { CustomFiles = { "Pat.wav" } };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), serverRules: null, [account],
+            preferredAccountId: account.Id, sounds: sounds);
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+
+        vm.NewRuleCommand.Execute(null);
+
+        Assert.NotNull(editor);
+        Assert.Contains(editor.RuleSoundChoices, c => c.Label == "Pat.wav");
+    }
+
+    [Fact]
+    public void ClosingTheEditorStopsOnlyItsOwnPreview()
+    {
+        var sounds = new RecordingSoundService();
+        var vm = Named();
+        vm.AttachSounds(sounds);
+
+        vm.StopSounds();
+        Assert.Equal(0, sounds.Stops);
+
+        vm.PreviewRuleSoundCommand.Execute(null);
+        vm.StopSounds();
+        Assert.Equal(1, sounds.Stops);
+    }
+
+    [Fact]
+    public void ARefusalIsClearedOnceTheSoundOrTheBoxChanges()
+    {
+        var vm = Named();
+        vm.AttachSounds(new RecordingSoundService { RefuseWith = "No." });
+        vm.PickSoundFileRequested = () => @"C:\Music\junk.wav";
+        vm.ChooseRuleSoundFileCommand.Execute(null);
+        Assert.True(vm.HasRuleSoundMessage);
+
+        vm.SelectedRuleSound = vm.RuleSoundChoices.Single(c => c.Label == "Reminder");
+
+        Assert.False(vm.HasRuleSoundMessage);
     }
 }

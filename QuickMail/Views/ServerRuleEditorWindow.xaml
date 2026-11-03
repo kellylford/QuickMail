@@ -174,7 +174,10 @@
                 <CheckBox Content="Play a sound (client-side only)" IsChecked="{Binding PlaySound}"
                           IsEnabled="{Binding CanPlaySound}"
                           Style="{StaticResource EditorCheckBox}"/>
+                <Label Content="Sound:" Target="{Binding ElementName=RuleSoundCombo}" Padding="0,0,0,2" Margin="20,0,0,0"
+                       IsEnabled="{Binding IsPlaySoundSelected}"/>
                 <ComboBox x:Name="RuleSoundCombo" AutomationProperties.Name="Sound"
+                          Style="{StaticResource EditorComboBox}"
                           ItemsSource="{Binding RuleSoundChoices}"
                           SelectedItem="{Binding SelectedRuleSound, Mode=TwoWay}"
                           DisplayMemberPath="Label"

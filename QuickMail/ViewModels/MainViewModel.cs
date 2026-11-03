@@ -4429,6 +4429,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ? (isInbox ? incoming : [])
             : incoming.Where(IsWatchedMessage).ToList();
         var fresh = Helpers.NewMailFilter.SelectNew(candidates, _notifyThresholdUtc, _soundedMessageKeys);
+
+        // Mail a rule has sounded for has had its sound, however long the sync took to get here.
+        fresh = fresh.Where(m => !_sounds.WasSoundedByRule(SoundCatalog.MessageKey(m.AccountId, m.MessageId))).ToList();
         if (fresh.Count == 0) return;
 
         // One sound for the batch, the more specific when it can be heard. The backlog limit is applied

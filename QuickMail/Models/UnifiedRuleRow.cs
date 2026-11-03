@@ -160,7 +160,7 @@ public sealed class UnifiedRuleRow
             _ => action.ToString(),
         }).ToList();
 
-        static string SoundName(string? stored) => SoundRef.TryParse(stored, out var sound)
+        static string SoundName(string? stored) => SoundRef.TryParse(stored, out var sound) && sound.Kind != SoundRefKind.None
             ? sound.DisplayName
             : SoundCatalog.BuiltInLabel(SoundCatalog.DefaultRuleSound);
 
