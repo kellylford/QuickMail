@@ -824,11 +824,12 @@
                 </ScrollViewer>
             </TabItem>
             <!-- Sounds Tab (#912) -->
-            <TabItem Header="_Sounds" AutomationProperties.Name="Sounds">
+            <!-- No access key: every letter of "Sounds" is already used (S Save, U Startup, O/N/D on the Startup tab). -->
+            <TabItem Header="Sounds" AutomationProperties.Name="Sounds">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10">
                         <CheckBox x:Name="PlayEventSoundsCheck"
-                                  Content="_Play sounds for mail events"
+                                  Content="P_lay sounds for mail events"
                                   IsChecked="{Binding PlayEventSounds, Mode=TwoWay}"/>
                         <TextBlock Text="A rule's own sound plays whether or not this is on."
                                    TextWrapping="Wrap" Margin="20,2,0,8"
@@ -841,13 +842,13 @@
                                    Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"/>
 
                         <Label Content="_Volume:" Target="{Binding ElementName=SoundVolumeCombo}" Padding="0,0,0,2"/>
-                        <ComboBox x:Name="SoundVolumeCombo" Width="100" HorizontalAlignment="Left" Margin="0,0,0,12"
+                        <ComboBox x:Name="SoundVolumeCombo" AutomationProperties.Name="Volume" Width="100" HorizontalAlignment="Left" Margin="0,0,0,12"
                                   ItemsSource="{Binding SoundVolumeOptions}"
                                   SelectedItem="{Binding SelectedSoundVolume, Mode=TwoWay}"
                                   DisplayMemberPath="Label"/>
 
                         <Label Content="Sound _events:" Target="{Binding ElementName=SoundEventList}" Padding="0,0,0,2"/>
-                        <ListBox x:Name="SoundEventList" Height="170" Margin="0,0,0,12"
+                        <ListBox x:Name="SoundEventList" AutomationProperties.Name="Sound events" Height="170" Margin="0,0,0,12"
                                  ItemsSource="{Binding SoundEventRows}"
                                  SelectedItem="{Binding SelectedSoundEvent, Mode=TwoWay}"
                                  DisplayMemberPath="AccessibleName"
@@ -861,7 +862,7 @@
                         </ListBox>
 
                         <Label Content="Soun_d for this event:" Target="{Binding ElementName=SoundChoiceCombo}" Padding="0,0,0,2"/>
-                        <ComboBox x:Name="SoundChoiceCombo" Margin="0,0,0,8"
+                        <ComboBox x:Name="SoundChoiceCombo" AutomationProperties.Name="Sound for this event" Margin="0,0,0,8"
                                   ItemsSource="{Binding SoundChoices}"
                                   SelectedItem="{Binding SelectedSoundChoice, Mode=TwoWay}"
                                   DisplayMemberPath="Label"/>

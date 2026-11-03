@@ -25,6 +25,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 - [Working Offline](#working-offline)
 - [Moving Your Settings to Another Computer](#moving-your-settings-to-another-computer)
 - [Notifications](#notifications)
+- [Sounds](#sounds)
 - [Tools Menu](#tools-menu)
 - [Connection Diagnostics](#connection-diagnostics)
 - [Reporting Issues](#reporting-issues)
@@ -1980,6 +1981,8 @@ Exporting and importing settings are off until you turn them on, on each compute
 3. Press **Tab** to read a summary of what the file will hold. It contains email addresses, server names, signatures and, if you leave them checked, your address book and Local Calendar. **It never contains a password or a sign-in.**
 4. Choose **Export…** and save the file. Its name ends in `.qmsettings`. QuickMail says how many categories it saved and how large the file is, and returns you to where you were.
 
+Your own sound files go into the file along with rules or preferences, up to 32 MB of them. On the other computer they are added to the sounds already there. If a sound with the same name is already there, it stays as it is.
+
 Keep the file somewhere private: although it has no passwords in it, it does have your contacts and account details. Copy it to the other computer however you like, on a USB stick or through a folder you already sync.
 
 Your mail is not in the file. It comes back from your mail servers on the other computer. Three things in QuickMail exist only on this computer and are not carried: mail in a POP3 account that is set not to leave mail on the server, the folders you made on a POP3 account (mail that comes back from the server arrives in the Inbox, and a rule that filed into one of those folders leaves the mail in the Inbox until you point it somewhere else), and unsent mail waiting in the Outbox.
@@ -2052,6 +2055,53 @@ To quit when this setting is on:
 - From the tray icon, press the **Menu** key and arrow to **Exit QuickMail**.
 
 The first time you hide the window to the tray, a notification explains that QuickMail is still running — this message appears once only.
+
+---
+
+## Sounds
+
+QuickMail can play a short sound when something happens, such as a message being sent or new mail arriving. Sounds are **off by default**. They add to QuickMail's announcements and status text rather than replacing them, so you still get those whether or not you use sounds.
+
+### Turning Sounds On
+
+Go to **Settings → Sounds** and check **Play sounds for mail events**. These events then have a sound:
+
+- Message sent, message queued to send later, and send failed
+- New mail, and mail in a conversation you are watching
+- A delete, move or archive that failed
+- Connection lost and connection restored
+- Calendar reminder
+
+**Message deleted**, **message archived** and **message moved** have no sound until you choose one, because you may do those many times in a row.
+
+### Choosing a Sound
+
+1. In **Settings → Sounds**, arrow through **Sound events**. Each entry says the event and its sound, such as "New mail: Arrived".
+2. Choose a sound in **Sound for this event**, or choose **None** to silence that event.
+3. Choose **Preview** to hear it. Preview plays even if sounds are muted.
+4. To use a sound of your own, choose **Choose File…** and pick a WAV or MP3 file of up to 5 MB and 30 seconds. QuickMail keeps its own copy, so you can move or delete the original.
+
+Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to.
+
+### New Mail Sounds and Notifications
+
+The new-mail sound works whether or not new-mail notifications are on. It follows the same rules:
+
+- It only plays for unread mail that arrives while QuickMail is running.
+- It does not play when a lot of mail arrives at once, such as when your computer wakes up.
+- A shared mailbox stays silent unless you turn on **Notify me of new mail in this shared mailbox** for it in Account Manager.
+
+If both are on, you hear QuickMail's sound in place of the Windows notification sound, not both.
+
+### When Sounds Stay Quiet
+
+Sounds for things that happen on their own, such as new mail, connection changes and reminders, stay quiet during a presentation or while an app is running full screen. Sounds that answer something you just did, such as a message being sent, still play.
+
+**Windows Do Not Disturb does not silence QuickMail's sounds**, because Windows gives apps no way to tell when it is on. To silence them, use **Mute All Sounds**.
+
+### Mute All Sounds
+
+Choose **Tools → Mute All Sounds**, or run it from the Command Palette, to silence every sound, including anything playing. Do the same again to turn sounds back on. You can give it a keyboard shortcut in **Settings → Keyboard Shortcuts**.
 
 ---
 

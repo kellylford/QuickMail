@@ -114,8 +114,8 @@ A sound reference is a string: `builtin:<name>`, `custom:<file>` or `none`. Only
 
 **Settings → new Sounds tab:**
 - Checkboxes "Play sounds for mail events" and "Mute all sounds"
-- Volume
-- Pack combo (one entry now)
+- Volume, a combo box from 10% to 100% (no window uses a Slider, so this needs no new themed control)
+- No pack choice yet: with one pack it would be a list of one, so it arrives with a second pack
 - An event list, with rows like "New mail: Chime"
 - For the selected event: a Sound combo, Preview, and Choose File
 
