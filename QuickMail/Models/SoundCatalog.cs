@@ -47,14 +47,30 @@ public enum SoundOrigin
 public sealed record SoundEventInfo(
     SoundEvent Event, string ConfigKey, string Label, string BuiltInSound, bool OnByDefault, SoundOrigin Origin);
 
+/// <summary>A style of built-in sound. A screen reader reads the item from <see cref="ToString"/>.</summary>
+/// <param name="Id">Its folder under Sounds/BuiltIn, and its value in config.ini.</param>
+/// <param name="Label">What Settings calls it.</param>
+public sealed record SoundPack(string Id, string Label)
+{
+    public override string ToString() => Label;
+}
+
 /// <summary>Every sound event and every built-in sound.</summary>
 public static class SoundCatalog
 {
     /// <summary>The sound a new rule starts with.</summary>
     public const string DefaultRuleSound = "matched";
 
-    /// <summary>The one built-in pack in this release.</summary>
-    public const string DefaultPack = "quickmail";
+    /// <summary>The style used until someone chooses another, or if config.ini names one this build doesn't have.</summary>
+    public const string DefaultPack = "glass";
+
+    /// <summary>Every style has every sound, with the same melody; only the tone differs.</summary>
+    public static readonly IReadOnlyList<SoundPack> Packs =
+    [
+        new("glass", "Glass"),
+        new("softbell", "Soft bell"),
+        new("wood", "Wood"),
+    ];
 
     /// <summary>The folder under the profile that holds custom sounds.</summary>
     public const string CustomFolderName = "sounds";

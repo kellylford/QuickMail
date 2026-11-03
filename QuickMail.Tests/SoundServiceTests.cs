@@ -574,6 +574,71 @@ public sealed class SoundServiceTests : IDisposable
     }
 
     [Fact]
+    public void EveryStyleHasEverySoundAndTheyDiffer()
+    {
+        foreach (var name in SoundCatalog.BuiltInSounds.Distinct())
+        {
+            var contents = new HashSet<string>();
+            foreach (var pack in SoundCatalog.Packs)
+            {
+                using var stream = SoundService.OpenBuiltInResource(pack.Id, name);
+                Assert.True(stream is not null, $"{pack.Id} has no sound '{name}'.");
+                using var copy = new MemoryStream();
+                stream.CopyTo(copy);
+                contents.Add(Convert.ToHexString(copy.ToArray()));
+            }
+            Assert.Equal(SoundCatalog.Packs.Count, contents.Count);
+        }
+    }
+
+    [Fact]
+    public void TheChosenStyleIsWhatPlays()
+    {
+        var asked = new List<string>();
+        Settings().PlayEventSounds = true;
+        Settings().SoundPack = "wood";
+        using var service = new SoundService(_config, _folder, new OpeningOutput(_output), openBuiltIn: (pack, _) =>
+        {
+            lock (asked) asked.Add(pack);
+            return new MemoryStream();
+        });
+
+        service.Play(SoundEvent.MessageSent);
+
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5)));
+        lock (asked) Assert.Equal(["wood"], asked);
+    }
+
+    [Fact]
+    public void APreviewPlaysInTheStyleAskedFor()
+    {
+        var asked = new List<string>();
+        Settings().SoundPack = "wood";
+        using var service = new SoundService(_config, _folder, new OpeningOutput(_output), openBuiltIn: (pack, _) =>
+        {
+            lock (asked) asked.Add(pack);
+            return new MemoryStream();
+        });
+
+        service.Preview("builtin:arrived", null, "softbell");
+
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5)));
+        lock (asked) Assert.Equal(["softbell"], asked);
+    }
+
+    /// <summary>Opens each clip, as the real output does, then hands over to the fake.</summary>
+    private sealed class OpeningOutput(FakeOutput inner) : ISoundOutput
+    {
+        public void Play(SoundClip clip, float volume, CancellationToken cancellationToken)
+        {
+            using var stream = clip.OpenStream?.Invoke();
+            inner.Play(clip, volume, cancellationToken);
+        }
+
+        public void Check(string filePath) => inner.Check(filePath);
+    }
+
+    [Fact]
     public void AnUnknownPackFallsBackToTheDefaultPack()
     {
         Settings().PlayEventSounds = true;

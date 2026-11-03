@@ -847,6 +847,12 @@
                                   SelectedItem="{Binding SelectedSoundVolume, Mode=TwoWay}"
                                   DisplayMemberPath="Label"/>
 
+                        <Label Content="St_yle:" Target="{Binding ElementName=SoundStyleCombo}" Padding="0,0,0,2"/>
+                        <ComboBox x:Name="SoundStyleCombo" AutomationProperties.Name="Style" Width="150" HorizontalAlignment="Left" Margin="0,0,0,12"
+                                  ItemsSource="{Binding SoundPacks}"
+                                  SelectedItem="{Binding SelectedSoundPack, Mode=TwoWay}"
+                                  DisplayMemberPath="Label"/>
+
                         <Label Content="Sound _events:" Target="{Binding ElementName=SoundEventList}" Padding="0,0,0,2"/>
                         <ListBox x:Name="SoundEventList" AutomationProperties.Name="Sound events" Height="170" Margin="0,0,0,12"
                                  ItemsSource="{Binding SoundEventRows}"

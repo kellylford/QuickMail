@@ -1446,7 +1446,7 @@ The editor has the same parts whichever kind of rule you are writing.
 
 **Save** stores the rule and closes the editor; **Cancel** closes it without saving. A **Move to folder**, **Copy to folder** or **Delete** rule needs at least one condition — with none it would act on every message — so QuickMail will not save it until you add one. **Mark as read**, **Mark as unread** and **Play a sound** rules can have none.
 
-**Play a sound** plays a sound when a rule runs, so you can tell mail from one sender by ear, or hear when something has been filed. Check it, then choose a sound, or choose **Choose Sound File…** to use your own WAV or MP3. It plays once each time the rule runs, however many messages it matched. It works even with **Play sounds for mail events** turned off, since adding it to a rule already asks for it. **Mute All Sounds** silences it, as does a volume of nothing, and it stays quiet during a presentation or while an app is running full screen. If the rule also moves or deletes the message, the sound only plays if that worked.
+**Play a sound** plays a sound when a rule runs, so you can tell mail from one sender by ear, or hear when something has been filed. Check it, then choose a sound, or choose **Choose Sound File…** to use your own WAV or MP3. It plays once each time the rule runs, however many messages it matched. It works even with **Play sounds for mail events** turned off, since adding it to a rule already asks for it. **Mute All Sounds** silences it, and it stays quiet during a presentation or while an app is running full screen. If the rule also moves or deletes the message, the sound only plays if that worked.
 
 A rule's sound is for mail arriving while QuickMail is running. Like the new-mail sound, it stays silent for mail that came in while QuickMail was closed, and when more than five matching messages arrive at once, such as when your computer wakes up. **Run on Existing Mail** stays silent too. A message a rule has played a sound for doesn't also play the new-mail sound. Rules run in order, and one that moves or deletes a message takes it away from the rules after it, so put a rule that plays a sound first if another rule files the same mail.
 
@@ -2033,7 +2033,7 @@ Each account reads as "needs sign-in" or "signed in". You can close the window a
 
 ## Notifications
 
-New-mail notifications and the option to keep QuickMail running in the notification area when you close the window are both **off by default**. To turn them on, go to **Settings → General → Notifications**.
+New-mail notifications and the option to keep QuickMail running in the notification area when you close the window are both **off by default**. To turn them on, go to **Settings → General → Notifications**. For QuickMail's own sounds, see [Sounds](sounds.html).
 
 ### Show a Notification When New Mail Arrives
 
@@ -2064,7 +2064,7 @@ The first time you hide the window to the tray, a notification explains that Qui
 
 ## Sounds
 
-QuickMail can play a short sound when something happens, such as a message being sent or new mail arriving. Sounds for events are **off by default**, and you can also have a [rule](#mail-rules) play a sound. They add to QuickMail's announcements and status text rather than replacing them, so you still get those whether or not you use sounds.
+QuickMail can play a short sound when something happens, such as a message being sent or new mail arriving. Sounds for events are **off by default**, and you can also have a [rule](mail-rules.html) play a sound. This is a first version, and we would like to hear what you think; see [Tell us what you think](#tell-us-what-you-think). They add to QuickMail's announcements and status text rather than replacing them, so you still get those whether or not you use sounds.
 
 ### Turning Sounds On
 
@@ -2074,7 +2074,7 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 - New mail, and mail in a conversation you are watching
 - A delete, move or archive that failed
 - Connection lost and connection restored
-- Calendar reminder
+- Calendar reminder, if you have turned on calendar reminders
 
 **Message deleted**, **message archived** and **message moved** have no sound until you choose one, because you may do those many times in a row.
 
@@ -2087,25 +2087,39 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 
 Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to.
 
+### Choosing a Style
+
+**Style** sets how the built-in sounds sound: **Glass**, **Soft bell** or **Wood**. Each style has the same sounds with the same melodies, so a sound means the same thing whichever you choose. The tone changes, and **Wood** is also a little quieter. To compare them, select an event with a built-in sound, change the style and choose **Preview**, all before saving. An event set to **None** has nothing to preview, and sounds you added yourself don't change with the style.
+
 ### New Mail Sounds and Notifications
 
 The new-mail sound works whether or not new-mail notifications are on. It follows the same rules:
 
-- It only plays for unread mail that arrives while QuickMail is running.
+- It only plays for unread mail that arrives in an Inbox while QuickMail is running.
 - It does not play when a lot of mail arrives at once, such as when your computer wakes up.
 - A shared mailbox stays silent unless you turn on **Notify me of new mail in this shared mailbox** for it in Account Manager.
 
-While sounds are on, notifications leave out the Windows notification sound, so you hear QuickMail's sound and not both. That applies even to an event set to **None**, and while sounds are muted.
+While **Play sounds for mail events** or **Mute all sounds** is on, notifications leave out the Windows notification sound, so you hear QuickMail's sound and not both. That applies even to an event set to **None**. A notification for mail a rule has just played a sound for leaves it out as well.
 
 ### When Sounds Stay Quiet
 
-Sounds for things that happen on their own, such as new mail, connection changes and reminders, stay quiet during a presentation or while an app is running full screen. Sounds that answer something you just did, such as a message being sent, still play. A message going out from the Outbox on its own counts as something that happened on its own.
+Sounds for things that happen on their own, such as new mail, connection changes and reminders, stay quiet during a presentation, while an app is running full screen, and during the quiet time Windows sets after a new account's first sign-in. Sounds that answer something you just did, such as a message being sent, still play. A message going out from the Outbox on its own counts as something that happened on its own.
 
 **Windows Do Not Disturb does not silence QuickMail's sounds**, because Windows gives apps no way to tell when it is on. To silence them, use **Mute All Sounds**.
 
 ### Mute All Sounds
 
 Choose **Tools → Mute All Sounds**, or run it from the Command Palette, to silence every sound, including anything playing. Do the same again to turn sounds back on. You can give it a keyboard shortcut in **Settings → Keyboard Shortcuts**.
+
+### Tell Us What You Think
+
+Sounds are new, and your experience decides where they go next. We would especially like to know:
+
+- Are these the right events? Which are missing, and which would you never use?
+- What do you think of the sounds? Which style do you prefer, and are any two sounds too alike, harsh, or easy to confuse with your screen reader's own sounds?
+- How do the sounds work alongside your screen reader's speech?
+
+Use **Help → Report a Bug**, or email [support@theideaplace.net](mailto:support@theideaplace.net).
 
 ---
 
@@ -2115,6 +2129,7 @@ The **Tools** menu is always available from the main window menu bar and groups 
 
 - **Address Book…** (`Ctrl+Shift+B`)
 - **Rules…** (`Ctrl+Shift+L`) — opens the [Rules Manager](#mail-rules).
+- **Mute All Sounds** — silences every [sound](sounds.html), and shows a check mark while it's on.
 - **Command Palette…** (`Ctrl+Shift+P`)
 
 **Choosing how QuickMail looks and reads is on the View menu**, not here — **Manage Themes…** opens the [Theme Manager](#themes), **Density** sets [message list density](#message-list-density), and **Message List Fields…** opens the [field chooser](#message-list-fields). **Next Theme** and **Previous Theme** have no menu items; run them from the Command Palette, or give them a key of your own in **File → Settings → Keyboard Shortcuts**.
@@ -2225,7 +2240,7 @@ Alongside what you type, an in-app report (options 1 and 2) adds a short **Envir
 
 ## Settings
 
-Press **Ctrl+,** to open Settings.
+Press **Ctrl+,** to open Settings. The **Sounds** tab has no access key, so reach it with **Ctrl+Tab** or the arrow keys; see [Sounds](sounds.html).
 
 ### General
 

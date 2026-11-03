@@ -112,28 +112,56 @@ public class SoundCatalogTests
 
     public static TheoryData<string> BuiltInSounds => [.. SoundCatalog.BuiltInSounds.Distinct()];
 
-    private static Stream OpenBuiltIn(string name) =>
-        typeof(SoundService).Assembly.GetManifestResourceStream($"QuickMail.Sounds.BuiltIn.{SoundCatalog.DefaultPack}.{name}.wav")
-        ?? throw new FileNotFoundException($"No embedded sound '{name}'.");
+    public static TheoryData<string> Packs => [.. SoundCatalog.Packs.Select(p => p.Id)];
+
+    private static Stream OpenBuiltIn(string pack, string name) =>
+        typeof(SoundService).Assembly.GetManifestResourceStream($"QuickMail.Sounds.BuiltIn.{pack}.{name}.wav")
+        ?? throw new FileNotFoundException($"No embedded sound '{name}' in '{pack}'.");
 
     [Theory]
     [MemberData(nameof(BuiltInSounds))]
-    public void EveryBuiltInSoundShipsAndDecodes(string name)
+    public void EveryBuiltInSoundShipsAndDecodesInEveryStyle(string name)
     {
-        using var reader = NAudioSoundOutput.Open(new SoundClip(name, null, () => OpenBuiltIn(name)));
-        Assert.InRange(reader.TotalTime, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(1));
-        Assert.Equal(44100, reader.WaveFormat.SampleRate);
-        Assert.Equal(1, reader.WaveFormat.Channels);
+        foreach (var pack in SoundCatalog.Packs)
+        {
+            using var reader = NAudioSoundOutput.Open(new SoundClip(name, null, () => OpenBuiltIn(pack.Id, name)));
+            Assert.InRange(reader.TotalTime, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(1));
+            Assert.Equal(44100, reader.WaveFormat.SampleRate);
+            Assert.Equal(1, reader.WaveFormat.Channels);
+        }
     }
 
-    [Fact]
-    public void NoEmbeddedSoundIsLeftOverFromAnOldName()
+    [Theory]
+    [MemberData(nameof(Packs))]
+    public void NoEmbeddedSoundIsLeftOverFromAnOldName(string pack)
     {
-        var prefix = $"QuickMail.Sounds.BuiltIn.{SoundCatalog.DefaultPack}.";
+        var prefix = $"QuickMail.Sounds.BuiltIn.{pack}.";
         var embedded = typeof(SoundService).Assembly.GetManifestResourceNames()
             .Where(n => n.StartsWith(prefix, StringComparison.Ordinal))
             .Select(n => n[prefix.Length..^".wav".Length]);
         Assert.Equal(SoundCatalog.BuiltInSounds.Distinct().Order(StringComparer.Ordinal), embedded.Order(StringComparer.Ordinal));
+    }
+
+    [Theory]
+    [MemberData(nameof(BuiltInSounds))]
+    public void ASoundRunsTheSameLengthInEveryStyle(string name)
+    {
+        var lengths = SoundCatalog.Packs.Select(pack =>
+        {
+            using var reader = NAudioSoundOutput.Open(new SoundClip(name, null, () => OpenBuiltIn(pack.Id, name)));
+            return reader.Length;
+        });
+        Assert.Single(lengths.Distinct());
+    }
+
+    [Fact]
+    public void EveryEmbeddedSoundBelongsToAStyle()
+    {
+        const string prefix = "QuickMail.Sounds.BuiltIn.";
+        var packs = typeof(SoundService).Assembly.GetManifestResourceNames()
+            .Where(n => n.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(n => n[prefix.Length..].Split('.')[0]).Distinct();
+        Assert.Equal(SoundCatalog.Packs.Select(p => p.Id).Order(StringComparer.Ordinal), packs.Order(StringComparer.Ordinal));
     }
 
     [Theory]
@@ -212,6 +240,7 @@ public class SoundCatalogTests
         config.PlayEventSounds = true;
         config.MuteSounds = true;
         config.SoundVolume = 40;
+        config.SoundPack = "wood";
         config.SoundEvents["NewMail"] = "custom:My Chime.wav";
         config.SoundEvents["MessageSent"] = "none";
         service.Save(config);
@@ -220,6 +249,7 @@ public class SoundCatalogTests
         Assert.True(reloaded.PlayEventSounds);
         Assert.True(reloaded.MuteSounds);
         Assert.Equal(40, reloaded.SoundVolume);
+        Assert.Equal("wood", reloaded.SoundPack);
         Assert.Equal("custom:My Chime.wav", reloaded.SoundEvents["NewMail"]);
         Assert.Equal("none", reloaded.SoundEvents["MessageSent"]);
     }

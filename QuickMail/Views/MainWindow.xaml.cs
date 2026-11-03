@@ -756,7 +756,8 @@ public partial class MainWindow : Window
             _notificationService?.ShowInfo(
                 "QuickMail is still running",
                 "QuickMail is in the notification area. Open it from the tray icon or a new-mail " +
-                "notification, or right-click the tray icon and choose Exit to quit.");
+                "notification, or right-click the tray icon and choose Exit to quit.",
+                silent: _vm.Sounds?.SilencesToasts == true);
             cfg.TrayHintShown = true;
             _configService.Save(cfg);
         }
