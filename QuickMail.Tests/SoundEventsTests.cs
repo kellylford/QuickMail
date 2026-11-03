@@ -397,7 +397,7 @@ public class SoundEventsTests
 
     private sealed class FailableTrashMail : StubImapMailServiceBase
     {
-        public override Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, System.Threading.CancellationToken ct = default)
+        public override Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, System.Threading.CancellationToken ct = default)
             => Task.FromException(new InvalidOperationException("server said no"));
     }
 

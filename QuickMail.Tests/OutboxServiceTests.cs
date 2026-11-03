@@ -281,7 +281,7 @@ public class OutboxServiceTests
 
         var result = await svc.FlushAsync();
 
-        Assert.Equal(new OutboxFlushResult(0, 0, 1, 0), result);
+        Assert.Equal(new OutboxFlushResult(0, 0, 1, 0, FailedSends: 1), result);
         Assert.Equal(result, Assert.Single(f.Completed));
         var row = await svc.GetAsync(id);
         Assert.NotNull(row);
@@ -309,6 +309,7 @@ public class OutboxServiceTests
         var result = await svc.FlushAsync();
 
         Assert.Equal(1, result.Failed);
+        Assert.Equal(0, result.FailedSends);   // A draft that failed isn't a send that failed (#912).
         var row = await svc.GetAsync(id);
         Assert.NotNull(row);
         Assert.Equal(OutboxState.Failed, row.State);
