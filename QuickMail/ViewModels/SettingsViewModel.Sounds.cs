@@ -15,6 +15,19 @@ public sealed record SoundChoice(string Stored, string Label)
     public override string ToString() => Label;
 }
 
+/// <summary>Builds the lists of sounds to choose from, for Settings and the rule editor alike.</summary>
+public static class SoundChoiceList
+{
+    public static SoundChoice[] BuiltIn() =>
+    [
+        .. SoundCatalog.BuiltInSounds.Distinct().Order(StringComparer.Ordinal)
+            .Select(name => new SoundChoice(SoundRef.BuiltIn(name).ToStored(), SoundCatalog.BuiltInLabel(name))),
+    ];
+
+    /// <summary>The entry for a sound not in the list because its file has gone. Stays listed, so it isn't silently changed.</summary>
+    public static SoundChoice Missing(SoundRef sound) => new(sound.ToStored(), sound.Name + " (missing)");
+}
+
 /// <summary>A volume setting in the list. A screen reader reads the item from <see cref="ToString"/>.</summary>
 public sealed record SoundVolumeOption(int Percent)
 {
@@ -43,6 +56,7 @@ public sealed partial class SoundEventRow(SoundEventInfo info, SoundChoice choic
 public partial class SettingsViewModel
 {
     private ISoundService? _sounds;
+    private bool _previewedSound;
 
     [ObservableProperty] private bool _playEventSounds;
     [ObservableProperty] private bool _muteSounds;
@@ -80,8 +94,8 @@ public partial class SettingsViewModel
         SelectedSoundVolume = SoundVolumeOptions.First(o => o.Percent == cfg.SoundVolume);
 
         SoundChoices.Add(new SoundChoice(SoundRef.None.ToStored(), "None"));
-        foreach (var name in SoundCatalog.BuiltInSounds.Distinct().Order(StringComparer.Ordinal))
-            SoundChoices.Add(new SoundChoice(SoundRef.BuiltIn(name).ToStored(), SoundCatalog.BuiltInLabel(name)));
+        foreach (var choice in SoundChoiceList.BuiltIn())
+            SoundChoices.Add(choice);
         foreach (var file in sounds?.CustomSoundFiles() ?? [])
             SoundChoices.Add(new SoundChoice(SoundRef.Custom(file).ToStored(), file));
 
@@ -102,7 +116,7 @@ public partial class SettingsViewModel
         var stored = sound.ToStored();
         var found = SoundChoices.FirstOrDefault(c => c.Stored == stored);
         if (found is not null) return found;
-        var missing = new SoundChoice(stored, sound.Name + " (missing)");
+        var missing = SoundChoiceList.Missing(sound);
         SoundChoices.Add(missing);
         return missing;
     }
@@ -149,11 +163,17 @@ public partial class SettingsViewModel
     private void PreviewSound()
     {
         // At the volume showing, which may not be saved yet: that's how someone tries a volume out.
-        if (SelectedSoundChoice is not null) _sounds?.Preview(SelectedSoundChoice.Stored, SelectedSoundVolume?.Percent);
+        if (SelectedSoundChoice is null) return;
+        _previewedSound = true;
+        _sounds?.Preview(SelectedSoundChoice.Stored, SelectedSoundVolume?.Percent);
     }
 
     /// <summary>Ends a preview when Settings closes, so it doesn't play on over speech afterward.</summary>
-    public void StopSounds() => _sounds?.StopAll();
+    public void StopSounds()
+    {
+        // Without a preview, a sound for new mail just starting isn't this dialog's to stop.
+        if (_previewedSound) _sounds?.StopAll();
+    }
 
     [RelayCommand]
     private void ChooseSoundFile()

@@ -24,7 +24,13 @@ public interface ISoundService : IDisposable
     /// being on, since adding a sound to a rule already asks for it, but mute still silences it. A
     /// missing or unreadable value plays the default rule sound rather than nothing.
     /// </summary>
-    void PlayRule(string? storedSound);
+    /// <param name="storedSound">The sound, as stored.</param>
+    /// <param name="messageKeys">The messages this sound is for (<see cref="SoundCatalog.MessageKey"/>), so
+    /// that they don't also sound as new mail, however much later the sync gets round to that.</param>
+    void PlayRule(string? storedSound, IEnumerable<string>? messageKeys = null);
+
+    /// <summary>Whether a rule has already played a sound for this message.</summary>
+    bool WasSoundedByRule(string messageKey);
 
     /// <summary>
     /// Plays a sound because the person asked to hear it, so even when muted. Replaces anything

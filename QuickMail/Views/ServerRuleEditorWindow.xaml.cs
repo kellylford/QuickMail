@@ -55,12 +55,30 @@ public partial class ServerRuleEditorWindow : Window
         vm.PickFolderRequested += OnPickFolderRequested;
         vm.CloseRequested += OnCloseRequested;
         vm.AnnouncementRequested += OnAnnouncementRequested;
+        vm.PickSoundFileRequested = PickSoundFile;
 
         Loaded += (_, _) =>
         {
             NameBox.Focus();
             Keyboard.Focus(NameBox);
         };
+    }
+
+    private string? PickSoundFile()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose Sound File",
+            Filter = "Sound files (*.wav;*.mp3)|*.wav;*.mp3",
+        };
+        return dialog.ShowDialog(this) == true ? dialog.FileName : null;
+    }
+
+    private void ChooseRuleSoundButton_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.ChooseRuleSoundFileCommand.Execute(null);
+        // The file dialog gives focus back on its own only some of the time.
+        ChooseRuleSoundButton.Focus();
     }
 
     private (string Id, string Name)? OnPickFolderRequested(string? currentFolderId)
@@ -105,6 +123,8 @@ public partial class ServerRuleEditorWindow : Window
         _vm.PickFolderRequested -= OnPickFolderRequested;
         _vm.CloseRequested -= OnCloseRequested;
         _vm.AnnouncementRequested -= OnAnnouncementRequested;
+        _vm.PickSoundFileRequested = null;
+        _vm.StopSounds();   // A preview shouldn't play on over speech once the editor has gone.
 
         // Hand foreground back to the Rules Manager (our owner), not the main window. This window is
         // the active foreground window as it closes, so it may pass foreground to its owner — a

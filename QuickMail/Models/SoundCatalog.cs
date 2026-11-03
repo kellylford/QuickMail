@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -65,7 +66,7 @@ public static class SoundCatalog
     public const int MaxCustomFilesInImport = 100;
 
     /// <summary>The longest any sound may play.</summary>
-    public static readonly System.TimeSpan MaxCustomSoundLength = System.TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan MaxCustomSoundLength = TimeSpan.FromSeconds(30);
 
     public static readonly IReadOnlyList<SoundEventInfo> Events =
     [
@@ -90,6 +91,9 @@ public static class SoundCatalog
     private static readonly Dictionary<SoundEvent, SoundEventInfo> ByEvent = Events.ToDictionary(e => e.Event);
 
     public static SoundEventInfo Info(SoundEvent e) => ByEvent[e];
+
+    /// <summary>Identifies a message between the rule that sounded for it and the new-mail sound.</summary>
+    public static string MessageKey(Guid accountId, string messageId) => $"{accountId:N}|{messageId}";
 
     /// <summary>What Settings calls a built-in sound: "arrived" is "Arrived".</summary>
     public static string BuiltInLabel(string name) =>

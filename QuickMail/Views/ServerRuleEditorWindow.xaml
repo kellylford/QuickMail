@@ -16,6 +16,7 @@
 
     <Window.Resources>
         <local:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
 
         <Style TargetType="TextBox" x:Key="EditorTextBox" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="Margin" Value="0,2,0,8"/>
@@ -168,6 +169,30 @@
                      deliberately (#550); don't "fix" either to match the other. -->
                 <CheckBox Content="Delete (move to Deleted Items)" IsChecked="{Binding Delete}"
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Delete"/>
+
+                <!-- Client-only, with no AutomationProperties.Name for the same reason as Mark as read above. -->
+                <CheckBox Content="Play a sound (client-side only)" IsChecked="{Binding PlaySound}"
+                          IsEnabled="{Binding CanPlaySound}"
+                          Style="{StaticResource EditorCheckBox}"/>
+                <Label Content="Sound:" Target="{Binding ElementName=RuleSoundCombo}" Padding="0,0,0,2" Margin="20,0,0,0"
+                       IsEnabled="{Binding IsPlaySoundSelected}"/>
+                <ComboBox x:Name="RuleSoundCombo" AutomationProperties.Name="Sound"
+                          Style="{StaticResource EditorComboBox}"
+                          ItemsSource="{Binding RuleSoundChoices}"
+                          SelectedItem="{Binding SelectedRuleSound, Mode=TwoWay}"
+                          DisplayMemberPath="Label"
+                          IsEnabled="{Binding IsPlaySoundSelected}"
+                          HorizontalAlignment="Left" MinWidth="200" Margin="20,0,0,6"/>
+                <StackPanel Orientation="Horizontal" Margin="20,0,0,8">
+                    <Button Content="Preview Sound" Padding="8,3" Margin="0,0,8,0"
+                            Command="{Binding PreviewRuleSoundCommand}"
+                            IsEnabled="{Binding IsPlaySoundSelected}"/>
+                    <Button x:Name="ChooseRuleSoundButton" Content="Choose Sound File…" Padding="8,3"
+                            Click="ChooseRuleSoundButton_Click"
+                            IsEnabled="{Binding IsPlaySoundSelected}"/>
+                </StackPanel>
+                <TextBlock Text="{Binding RuleSoundMessage}" TextWrapping="Wrap" Margin="20,0,0,8"
+                           Visibility="{Binding HasRuleSoundMessage, Converter={StaticResource BoolToVisibility}}"/>
 
                 <CheckBox Content="Stop processing more rules" IsChecked="{Binding StopProcessingRules}"
                           IsEnabled="{Binding CanUseServerOnlyOptions}"

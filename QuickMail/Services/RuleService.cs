@@ -18,6 +18,19 @@ public class RuleService : IRuleService
     private readonly IAccountService? _accountService;
     private List<MailRule> _cache = [];
     private bool _loaded;
+
+    /// <summary>Plays a rule's sound (#912). A property because this service is built before the sound service can be.</summary>
+    internal ISoundService? Sounds { get; set; }
+
+    /// <summary>
+    /// A rule sound follows the new-mail sound's rules: only mail newer than this, and nothing for more
+    /// than <see cref="MaxSoundBatch"/> messages at once. Mail that came in while QuickMail was closed
+    /// or the computer asleep is a backlog, and sounds for it would pile up over startup speech.
+    /// </summary>
+    private readonly DateTimeOffset _startedUtc = DateTimeOffset.UtcNow;
+
+    private const int MaxSoundBatch = 5;
+
     private string? _loggedLoadError;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
@@ -186,6 +199,7 @@ public class RuleService : IRuleService
         TargetFolder = source.TargetFolder,
         Actions = source.Actions is null ? null : [.. source.Actions],
         CopyTargetFolder = source.CopyTargetFolder,
+        Sound = source.Sound,
     };
 
     public void SaveRules(List<MailRule> rules)
@@ -251,7 +265,7 @@ public class RuleService : IRuleService
 
             try
             {
-                var taken = await ExecuteActionsAsync(rule, matched, accountId, ct);
+                var taken = await ExecuteActionsAsync(rule, matched, accountId, playSound: true, ct);
 
                 // Remove messages from incoming that were moved or deleted so the
                 // UI doesn't show them in the original folder after FolderSynced fires.
@@ -376,6 +390,7 @@ public class RuleService : IRuleService
         MailRule rule,
         List<MailMessageSummary> matched,
         Guid accountId,
+        bool playSound,
         CancellationToken ct)
     {
         var taken = new List<MailMessageSummary>();
@@ -403,6 +418,18 @@ public class RuleService : IRuleService
 
                 case RuleAction.Delete:
                     taken.AddRange(await DeleteAsync(matched, ct));
+                    break;
+
+                case RuleAction.PlaySound:
+                    // Runs last. A move or delete swallows its failures, and a rule that couldn't file the
+                    // mail shouldn't sound as if it had. A copy that failed has already skipped this by throwing.
+                    var filesMail = rule.Does(RuleAction.MoveToFolder) || rule.Does(RuleAction.Delete);
+                    if (playSound && (!filesMail || taken.Count > 0))
+                    {
+                        var arriving = matched.Where(m => m.Date >= _startedUtc).ToList();
+                        if (arriving.Count is > 0 and <= MaxSoundBatch)
+                            Sounds?.PlayRule(rule.Sound, arriving.Select(m => SoundCatalog.MessageKey(m.AccountId, m.MessageId)));
+                    }
                     break;
             }
         }
@@ -596,7 +623,8 @@ public class RuleService : IRuleService
             {
                 // Only what a move or delete really took: a message whose move failed is still in the
                 // Inbox, and deleting its row below would, on a POP3 account, destroy the only copy (#794).
-                var taken = await ExecuteActionsAsync(rule, matched, matched[0].AccountId, ct);
+                // Silent: this is old mail being tidied up, not something arriving, and it could be every rule at once.
+                var taken = await ExecuteActionsAsync(rule, matched, matched[0].AccountId, playSound: false, ct);
 
                 if (taken.Count > 0)
                 {
