@@ -12,7 +12,9 @@ QuickMail can now play sounds. They are **off until you turn them on**, in **Set
 - What do you think of the sounds? Which style do you prefer, and are any two sounds too alike, harsh, or easy to confuse with your screen reader's own sounds?
 - How do the sounds work alongside your screen reader's speech?
 
-**Report a Bug** on the Help menu or email to support@theideaplace.net both reach us.
+Reply on [the sounds feedback issue](https://github.com/kellylford/QuickMail/issues/920), or if you would rather not use GitHub, **Report a Bug** on the Help menu or email to support@theideaplace.net both reach us.
+
+Development of the sounds QuickMail uses will continue, and the current audio is just a first attempt. Contributions of audio files are welcome if you are interested in creating sounds for QuickMail. Please reach out to support@theideaplace.net or submit a pull request on [GitHub](https://github.com/kellylford/QuickMail).
 
 - **Sounds for mail events:** message sent, message queued to send later, send failed, new mail, mail in a conversation you are watching, a delete, move, archive or empty trash that failed, connection lost and restored, calendar reminders, a message deleted, archived or moved, and trash emptied. If you delete or file a lot of mail in a row, you may prefer to set those three message sounds to **None**.
 - **Three styles:** Glass, Soft bell and Wood. Each has the same sounds with the same melodies, and the tone changes, though Wood is also a little quieter. Preview plays the style showing, so you can compare them before saving.
@@ -31,7 +33,7 @@ See [Sounds in the User Guide](https://kellylford.github.io/QuickMail/sounds.htm
 
 ## Fixed
 
-- **Empty Trash reports what really happened.** With the network down it could say the trash was emptied while the mail was still on the server. Each account is now tried and reported on its own, so one that can't be reached doesn't stop the others, and you're told which worked and which didn't.
+- **Empty Trash reports what really happened.** With the network down it could say the trash was emptied while the mail was still on the server. Each account is now tried and reported on its own, so one that can't be reached doesn't stop the others, and you're told which worked and which didn't. On a POP3 account set to remove mail from the server, messages now stay in Trash if the server can't be reached, so you can empty it again later.
 - **Empty Trash no longer touches Junk.** On a server with no Trash folder but a Junk or Spam folder, Empty Trash permanently deleted everything in the Junk folder. It now says no trash folder was found.
 
 ## Reporting Issues
