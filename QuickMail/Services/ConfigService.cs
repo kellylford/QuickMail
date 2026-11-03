@@ -171,6 +171,11 @@ public class ConfigService : IConfigService
                     section  = "features";
                     acctGuid = Guid.Empty;
                 }
+                else if (header == "sounds")
+                {
+                    section  = "sounds";
+                    acctGuid = Guid.Empty;
+                }
                 else if (header == "google")
                 {
                     section  = "google";
