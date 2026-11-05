@@ -92,6 +92,7 @@ public class ReloadKeepsPlaceTests
         public int Replacements { get; private set; }
         public List<List<MailMessageSummary>> FocusNowCalls { get; } = new();
         public bool ListHasFocus { get; set; }
+        public bool ReadingPaneHasFocus { get; set; }
         public MailMessageSummary? KeptDuringReplacement { get; private set; }
 
         public MailMessageSummary Row(string id) => Vm.Messages.First(m => m.MessageId == id);
@@ -117,6 +118,7 @@ public class ReloadKeepsPlaceTests
             vm.PropertyChanged += f.OnPropertyChanged;
             vm.MessageListFocusNowRequested += () => { f.FocusNowCalls.Add(vm.Messages.ToList()); return true; };
             vm.MessageListHasFocusQuery += () => f.ListHasFocus;
+            vm.ReadingPaneHasFocusQuery += () => f.ReadingPaneHasFocus;
             return f;
         }
 
@@ -274,6 +276,40 @@ public class ReloadKeepsPlaceTests
     }
 
     [Fact]
+    public async Task Reload_ManyChangesWhenTheOpenMessageIsGone_SelectsNothing()
+    {
+        // The replacement path, past ten edits: the same rule as the in-place one above.
+        var f = await Fixture.CreateAsync();
+        f.Vm.SelectedMessage = f.Row("d");
+        f.Vm.IsMessageOpen = true;
+        f.Server.RemoveAll(m => m.MessageId == "d");
+        for (var i = 1; i <= 15; i++) f.Server.Insert(0, Msg($"new{i}", -i));
+
+        await f.ReloadAsync();
+
+        Assert.Equal(1, f.Replacements);
+        Assert.Null(f.Vm.SelectedMessage);
+        Assert.Null(f.KeptDuringReplacement);
+    }
+
+    [Fact]
+    public async Task Reload_OpenMessageGone_WithFocusOnItsRowInTheList_StillMovesFocusOffIt()
+    {
+        // F6 back to the list with the message open, and the focused row is the one leaving.
+        var f = await Fixture.CreateAsync();
+        var doomed = f.Row("d");
+        f.Vm.SelectedMessage = doomed;
+        f.Vm.IsMessageOpen = true;
+        f.ListHasFocus = true;
+        f.Server.RemoveAll(m => m.MessageId == "d");
+
+        await f.ReloadAsync();
+
+        Assert.Null(f.Vm.SelectedMessage);
+        Assert.Contains(doomed, Assert.Single(f.FocusNowCalls));
+    }
+
+    [Fact]
     public async Task Sync_WhenTheOpenMessageLeavesTheFilter_SelectsNothing()
     {
         var f = await Fixture.CreateAsync();
@@ -313,7 +349,7 @@ public class ReloadKeepsPlaceTests
         f.Vm.SelectedMessage = doomed;
         f.Vm.IsMessageOpen = true;
         bool? openWhenAsked = null;
-        f.Vm.MessageListHasFocusQuery += () => { openWhenAsked ??= f.Vm.IsMessageOpen; return true; };
+        f.Vm.ReadingPaneHasFocusQuery += () => { openWhenAsked ??= f.Vm.IsMessageOpen; return true; };
 
         f.Sync.RaiseRemoved(doomed);
 
@@ -530,6 +566,104 @@ public class ReloadKeepsPlaceTests
         await SettleAsync(f.Vm, () => f.Vm.Conversations.Count == 7);
 
         Assert.Equal(1, replacements);
+    }
+
+    // Where a place is found again. A selected group is what Delete acts on, so the open-message cases
+    // are as much about what must not be chosen.
+    private static ConversationGroup Conv(string key, params MailMessageSummary[] messages) =>
+        new() { NormalizedSubject = key, Messages = messages };
+
+    private static readonly Func<MailMessageSummary, string?> ConversationKey = m => m.Subject;
+
+    [Fact]
+    public void GroupedPlace_FindsAMessageWhereverItsGroupHasGone()
+    {
+        var m = Msg("m", 0);
+        var home = Conv("home", m);
+        var (group, message) = GroupedPlace.Find([Conv("other"), home], m, 0, messageOpen: false, ConversationKey);
+
+        Assert.Same(home, group);
+        Assert.Same(m, message);
+    }
+
+    [Fact]
+    public void GroupedPlace_FindsAGroupByKey_NotPosition()
+    {
+        var was = Conv("same", Msg("a", 0));
+        var now = Conv("SAME", Msg("a", 0));
+
+        Assert.Same(now, GroupedPlace.Find([Conv("new"), now], was, 0, messageOpen: false, ConversationKey).Group);
+    }
+
+    [Fact]
+    public void GroupedPlace_AMessageThatHasGone_FallsToItsConversation_ThenToItsPosition()
+    {
+        var gone = Msg("gone", 0);
+        gone.Subject = "thread";
+        var thread = Conv("thread", Msg("a", 0));
+        var other = Conv("other", Msg("b", 1));
+
+        var (group, message) = GroupedPlace.Find([other, thread], gone, 0, messageOpen: false, ConversationKey);
+        Assert.Same(thread, group);
+        Assert.Null(message);
+
+        Assert.Same(other, GroupedPlace.Find([Conv("x"), other], gone, 1, messageOpen: false, ConversationKey).Group);
+    }
+
+    [Fact]
+    public void GroupedPlace_WithAMessageOpen_NeverFallsBackToAnotherGroup()
+    {
+        var gone = Msg("gone", 0);
+        gone.Subject = "thread";
+        var (group, message) = GroupedPlace.Find([Conv("x"), Conv("y")], gone, 1, messageOpen: true, ConversationKey);
+
+        Assert.Null(group);
+        Assert.Null(message);
+        Assert.Null(GroupedPlace.Find([Conv("x")], Conv("was"), 0, messageOpen: true, ConversationKey).Group);
+    }
+
+    [Fact]
+    public void GroupedPlace_WithAMessageOpen_AMessageThatHasGone_DoesNotSelectItsConversation()
+    {
+        // A selected conversation is what Delete would remove, all of it, with one message showing.
+        var gone = Msg("gone", 0);
+        gone.Subject = "thread";
+
+        var (group, _) = GroupedPlace.Find([Conv("thread", Msg("a", 0))], gone, 0, messageOpen: true, ConversationKey);
+
+        Assert.Null(group);
+    }
+
+    [Fact]
+    public void GroupedPlace_NoPlaceKnown_IsTheTop_UnlessAMessageIsOpen()
+    {
+        var first = Conv("first");
+        Assert.Same(first, GroupedPlace.Find([first, Conv("second")], null, 0, messageOpen: false, ConversationKey).Group);
+        Assert.Null(GroupedPlace.Find([first, Conv("second")], null, 0, messageOpen: true, ConversationKey).Group);
+    }
+
+    [Fact]
+    public void GroupedPlace_IndexOfAMessage_IsItsGroups()
+    {
+        var m = Msg("m", 0);
+        var groups = new object[] { Conv("a"), Conv("b"), Conv("c", m) };
+
+        Assert.Equal(2, GroupedPlace.IndexOf(groups, m));
+        Assert.Equal(1, GroupedPlace.IndexOf(groups, groups[1]));
+        Assert.Equal(-1, GroupedPlace.IndexOf(groups, Msg("gone", 0)));
+    }
+
+    [Fact]
+    public void AGroupHearsItsNewestMessagesSubject()
+    {
+        var row = Msg("a", 0);
+        var group = new ConversationGroup { NormalizedSubject = "s", Messages = [row] };
+        var raised = new List<string?>();
+        group.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        row.Subject = "Failed: s";
+
+        Assert.Contains(nameof(ConversationGroup.Subject), raised);
     }
 
     [Fact]

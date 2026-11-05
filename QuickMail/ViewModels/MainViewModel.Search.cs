@@ -54,8 +54,11 @@ public partial class MainViewModel
     {
         if (_suppressFilterRebuild || string.IsNullOrWhiteSpace(SearchText)) return;
         // A new matcher for the same text, so the old answer is not applied to the new messages.
+        var previous = _searchMatcher;
         _searchMatcher = null;
-        if (StartSearchIndexQuery() && isReload) _matcherKeepingPlace = _searchMatcher;
+        if (!StartSearchIndexQuery() || !isReload) return;
+        _matcherKeepingPlace = _searchMatcher;
+        if (previous != null) _searchMatcher?.BorrowIndexHits(previous);
     }
 
     /// <summary>The matcher whose answer belongs to a reload, and so must not move the user when it comes.</summary>

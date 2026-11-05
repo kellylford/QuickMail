@@ -4145,7 +4145,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Only when rows changed: a group row hears about read and flag changes by itself, and a sync with
         // nothing new is the common case. Each rebuild costs a set of groups over every row.
-        if (rowsChanged) RebuildActiveGroupView();
+        if (rowsChanged || ActiveSort == MessageSort.FlaggedFirst) RebuildActiveGroupView();
     }
 
     // ── Read/unread reconcile (#462) ──────────────────────────────────────────────
@@ -4582,10 +4582,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// the same folder, with nobody having asked to go there, keeps the user's place.</summary>
     private (Guid AccountId, string FullName)? _messagesShownFor;
 
-    /// <summary>Whether focus, in the active window, is on the message list or in the open message. A
-    /// background removal may only move focus when it is: otherwise the user is somewhere else and stays
-    /// there.</summary>
+    /// <summary>Whether focus, in the active window, is on the message list. A background removal may
+    /// only move focus when it is, or in the message being closed: otherwise the user is somewhere else
+    /// and stays there.</summary>
     public event Func<bool>? MessageListHasFocusQuery;
+
+    /// <summary>Whether focus, in the active window, is in the reading pane.</summary>
+    public event Func<bool>? ReadingPaneHasFocusQuery;
 
     /// <summary>An empty list has no place to keep, and the rows arriving in it have to replace it:
     /// the replacement is what moves focus into a folder that had nothing cached.</summary>
@@ -4612,9 +4615,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : MessageDeduplicator.PerFolderKeyFor;
 
         var existing = new Dictionary<string, MailMessageSummary>(_rawMessages.Count);
-        foreach (var row in _rawMessages) existing.TryAdd(keyOf(row), row);
-        // All Mail's and the saved views' server pass adds new rows to the list alone.
+        // The list first: All Mail's and the saved views' server pass adds new rows to it alone, and a
+        // row on screen beats a hidden twin.
         foreach (var row in Messages) existing.TryAdd(keyOf(row), row);
+        foreach (var row in _rawMessages) existing.TryAdd(keyOf(row), row);
 
         var adopted = new List<MailMessageSummary>(fresh.Count);
         foreach (var msg in fresh)
@@ -4622,6 +4626,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Removed once used: two fresh rows with one key must not become one row shown twice.
             if (existing.Remove(keyOf(msg), out var row))
             {
+                // Trimmed first, or every kept row would announce a long preview and then the short one.
+                msg.Preview = _showPreview ? TruncatePreview(msg.Preview, _previewLines) : string.Empty;
                 row.CopyLoadedStateFrom(msg);
                 adopted.Add(row);
             }
@@ -4640,8 +4646,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             var staying = new HashSet<MailMessageSummary>(target);
             LandBeforeBackgroundRemoval(Messages.Where(m => !staying.Contains(m)).ToList());
-            if (ListMerge.ApplyInPlace(Messages, target))
-                RebuildActiveGroupView();
+            ListMerge.ApplyInPlace(Messages, target);
+            // Regardless of whether a row moved: a kept row's new subject can regroup it, and the rebuild
+            // changes nothing on screen if the groups come out the same.
+            RebuildActiveGroupView();
         }
         else
         {
@@ -4685,8 +4693,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var previous = SelectedMessage;
         var previousIndex = previous == null ? -1 : Messages.IndexOf(previous);
+        // With a message open, its neighbour is never the answer: see LandBeforeBackgroundRemoval.
         var keep = previous == null || next.Count == 0 ? null
             : next.Contains(previous) ? previous
+            : IsMessageOpen ? null
             : next[Math.Clamp(previousIndex, 0, next.Count - 1)];
 
         RowKeptByReplacement = keep;
@@ -4711,15 +4721,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // The reading pane is still showing this message. Selecting its neighbour would point Delete and
         // Archive at a message the user cannot see, so nothing is selected until the pane closes.
+        // Asked first: closing the pane is what takes focus out of the message, and leaves it on an
+        // empty page if nothing moves it.
+        var focusOnList = MessageListHasFocusQuery?.Invoke() == true;
         if (IsMessageOpen && !closeOpenMessage)
         {
             SelectedMessage = null;
+            // F6 back to the list with the message still open: the focused row is the one going. With
+            // nothing selected the view puts focus on the list itself (#670).
+            if (focusOnList && ViewMode == ViewMode.Messages) MessageListFocusNowRequested?.Invoke();
             return;
         }
 
-        // Asked first: closing the pane is what takes focus out of the message, and leaves it on an
-        // empty page if nothing moves it.
-        var focusIsHere = MessageListHasFocusQuery?.Invoke() == true;
+        var focusIsHere = focusOnList || (IsMessageOpen && ReadingPaneHasFocusQuery?.Invoke() == true);
         if (closeOpenMessage && IsMessageOpen)
         {
             MessageDetail = null;
@@ -5748,9 +5762,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // The stale collections are always cleared; only the rebuilds are suppressed. Leaving
         // the previous folder's groups in place while navigating is what would be read out.
+        var oldConversations = Conversations;
+        var oldSenderGroups = SenderGroups;
+        var oldToGroups = ToGroups;
         Conversations = value == ViewMode.Conversations ? Conversations : [];
         SenderGroups  = value == ViewMode.From          ? SenderGroups  : [];
         ToGroups      = value == ViewMode.To            ? ToGroups      : [];
+        if (!ReferenceEquals(oldConversations, Conversations)) foreach (var g in oldConversations) g.ReleaseMessages();
+        if (!ReferenceEquals(oldSenderGroups, SenderGroups)) foreach (var g in oldSenderGroups) g.ReleaseMessages();
+        if (!ReferenceEquals(oldToGroups, ToGroups)) foreach (var g in oldToGroups) g.ReleaseMessages();
 
         if (!_suppressFilterRebuild)
         {
@@ -6908,6 +6928,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             var view = SavedViews.FirstOrDefault(v => v.Id == viewId);
             if (view != null) return FetchViewFoldersAsync(view);
+            return SelectFolderAsync(AllMailFolder);   // the view was deleted while it was open
         }
         return Task.CompletedTask;
     }

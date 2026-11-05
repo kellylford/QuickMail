@@ -54,6 +54,13 @@ public sealed class SenderGroup : INotifyPropertyChanged
         // The row speaks HasUnread and the unread counts (#800), so reading a message in the group
         // has to refresh the node's name — otherwise it keeps saying "Has unread" or "2 unread"
         // after that stops being true.
+        else if (e.PropertyName is nameof(MailMessageSummary.Subject)
+                 or nameof(MailMessageSummary.From)
+                 or nameof(MailMessageSummary.Date))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NewestSubject)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DateDisplay)));
+        }
         else if (e.PropertyName is nameof(MailMessageSummary.Preview))
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Preview)));
