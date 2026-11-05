@@ -7,7 +7,7 @@
 Focus in the message list could move with no key pressed. It should only move when you do something, or when a dialog comes up. These no longer move it:
 
 - **New mail arriving.** Focus and selection could jump to a different message when new mail came in, and Delete or Archive would then act on that message. Focus now stays on the message you were on, however much mail arrives.
-- **Coming back online, or finishing the startup sync.** QuickMail reloads the open folder at these moments, and sending a message can reload a Sent view too. A reload used to put you at the top of the list, even if QuickMail was in the background at the time. It now keeps your place, and it no longer closes an open message or clears the search box when a saved view is open.
+- **Coming back online, or finishing the startup sync.** QuickMail reloads the open folder at these moments. A reload used to put you at the top of the list, even if QuickMail was in the background at the time. It now keeps your place, and it no longer closes an open message or clears the search box when a saved view is open.
 - **Refresh (F5).** Refreshing now keeps you on the same message even when new mail changes the position of the rows. It used to keep the position rather than the message.
 - **Conversations, From and To views.** A sync with nothing new no longer rebuilds the tree. When mail does change it, you stay on the same group, or on the same message inside an expanded group, instead of going back to the top. Returning to QuickMail in To view now puts focus back in the list, too.
 
