@@ -1336,6 +1336,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public RowSpeechSettings RowSpeech { get; private set; } = RowSpeechSettings.Default;
 
+    // Captured here, on the UI thread: the source is per thread, and it's the one the rows bind to.
+    private readonly RowSpeechSource _rowSpeechSource = RowSpeechSource.Current;
+
     /// <summary>
     /// Re-reads the layouts, the labels preference and the field separator (#802), and re-speaks
     /// every realized row.
@@ -1353,6 +1356,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch { /* config unreadable — fall back to unlabelled, period-separated */ }
         RowSpeech = new RowSpeechSettings(_rowLayoutService.Load(), showLabels, separator);
+        _rowSpeechSource.Settings = RowSpeech;
         OnPropertyChanged(nameof(RowSpeech));
     }
     /// <summary>Named-flag sub-filter id, set by saved views. Null = show all flagged messages.</summary>

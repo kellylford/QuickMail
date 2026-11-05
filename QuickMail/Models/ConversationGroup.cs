@@ -10,6 +10,10 @@ namespace QuickMail.Models;
 /// </summary>
 public sealed class ConversationGroup : INotifyPropertyChanged
 {
+    // A backstop for a row whose RowSpeech name is empty (#928); see MailMessageSummary.ToString.
+    public override string ToString() =>
+        string.IsNullOrWhiteSpace(Subject) ? "Conversation" : Subject;
+
     /// <summary>The normalised subject used as the grouping key.</summary>
     public string NormalizedSubject { get; init; } = string.Empty;
 
