@@ -334,7 +334,7 @@ public partial class MainViewModel
     {
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         var expectedFolder = SelectedFolder;
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = "Searching…";
         IsBusy = true;
 
@@ -531,18 +531,7 @@ public partial class MainViewModel
                 m.Preview = _showPreview ? TruncatePreview(m.Preview, _previewLines) : string.Empty;
             _rawMessages.AddRange(added);
 
-            var previouslySelected = SelectedMessage;
-            using (Messages.BeginBatchScope())
-            {
-                foreach (var m in added)
-                {
-                    if (!MatchesFilter(m) || !MatchesDayLimit(m)) continue;
-                    if (!string.IsNullOrWhiteSpace(SearchText) && !MatchesSearch(m)) continue;
-                    InsertMessageSorted(m);
-                }
-            }
-            if (previouslySelected != null && SelectedMessage == null && Messages.Contains(previouslySelected))
-                SelectedMessage = previouslySelected;
+            ApplyArrivalsAndStateChanges(added.Where(ShouldShowInList).ToList(), []);
             RebuildActiveGroupView();
         }
         var n = Messages.Count;

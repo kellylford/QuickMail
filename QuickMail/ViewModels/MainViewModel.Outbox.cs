@@ -87,7 +87,7 @@ public partial class MainViewModel
     {
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         var expectedFolder = SelectedFolder;
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = "Loading Outbox…";
         IsBusy = true;
 

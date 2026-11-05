@@ -150,6 +150,41 @@ public partial class MailMessageSummary : ObservableObject
     [ObservableProperty]
     private bool _isWatched;
 
+    /// <summary>
+    /// Brings this row up to date from a reload of the same message, keeping the instance: the
+    /// selection, the row's container and any open tab all hold on to it. The identity fields are
+    /// copied too, since an aggregate view can move a row onto another folder's copy of the message.
+    /// Not <see cref="IsWatched"/> or <see cref="FolderDisplayName"/>: a loaded message has had neither
+    /// stamped yet, and the load stamps the row afterwards.
+    /// </summary>
+    public void CopyLoadedStateFrom(MailMessageSummary fresh)
+    {
+        MessageId         = fresh.MessageId;
+        AccountId         = fresh.AccountId;
+        FolderName        = fresh.FolderName;
+        InternetMessageId = fresh.InternetMessageId;
+        From              = fresh.From;
+        FromEmail         = fresh.FromEmail;
+        To                = fresh.To;
+        Subject           = fresh.Subject;
+        Date              = fresh.Date;
+        IsRead            = fresh.IsRead;
+        IsReplied         = fresh.IsReplied;
+        IsForwarded       = fresh.IsForwarded;
+        HasAttachments    = fresh.HasAttachments;
+        IsMailingList     = fresh.IsMailingList;
+        IsServerFlagged   = fresh.IsServerFlagged;
+
+        // A list from the server carries no preview for some rows and no flag names for any.
+        if (!string.IsNullOrEmpty(fresh.Preview)) Preview = fresh.Preview;
+        if (fresh.FlagName != null || fresh.FlagId != FlagId)
+        {
+            FlagName     = fresh.FlagName;
+            FlagColorHex = fresh.FlagColorHex;
+        }
+        FlagId = fresh.FlagId;
+    }
+
     // ── Computed display ──────────────────────────────────────────────────────
 
     /// <summary>

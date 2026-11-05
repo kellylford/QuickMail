@@ -2536,6 +2536,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task ApplyViewByIdAsync(Guid viewId, bool allFolders)
     {
+        _messagesShownFor = null;   // choosing a view is going somewhere; see SelectFolderAsync
         var view = SavedViews.FirstOrDefault(v => v.Id == viewId);
         if (view == null) return;
         await ApplyViewAsync(view, allFolders);
@@ -2644,7 +2645,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var expectedFolder = SelectedFolder;
         var loadVersion    = Interlocked.Increment(ref _folderLoadVersion);
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = $"Loading {view.Name}…";
         IsBusy = true;
 
@@ -4124,41 +4125,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // here — in every folder, for the same reason SetMessages does.
         StampWatchedFlags(toInsert);
 
-        // Batch all inserts into a single CollectionChanged(Reset) notification.
-        // Without batching, each InsertMessageSorted fires CollectionChanged(Add) which
-        // causes the ListView to emit a UIA StructureChanged(ChildAdded) event per insert.
-        // When new messages arrive sorted before the focused item, each event shifts the
-        // focused item's UIA position, causing screen readers to re-announce it every time.
-        // A single Reset notification lets WPF re-bind once and screen readers see only
-        // one structural change for the whole batch.
-        //
-        // Side-effect: WPF's ListView TwoWay-bound SelectedItem may clear SelectedMessage
-        // transiently when the Reset fires (the Selector deselects before re-validating).
-        // Save the reference so it can be restored if that happens.
-        var prevSelected = SelectedMessage;
-        using (Messages.BeginBatchScope())
-        {
-            foreach (var msg in toInsert)
-                InsertMessageSorted(msg);
-
-            // #269: reconcile the visible list for messages whose read-state changed externally. A
-            // now-read message must leave the Unread view; a now-unread one must (re)appear if it
-            // matches. Done inside the batch so it costs one Reset, not one event per change.
-            foreach (var m in readReconciled)
-            {
-                var shouldShow = MatchesFilter(m) && MatchesDayLimit(m)
-                    && (string.IsNullOrWhiteSpace(SearchText) || MatchesSearch(m));
-                var isShown = Messages.Contains(m);
-                if (shouldShow && !isShown)
-                    InsertMessageSorted(m);
-                else if (!shouldShow && isShown)
-                    Messages.Remove(m);
-            }
-        }
-        // If WPF cleared SelectedMessage during the Reset but the message is still in
-        // the list, restore it so the reading pane header and command guards stay correct.
-        if (prevSelected != null && SelectedMessage == null && Messages.Contains(prevSelected))
-            SelectedMessage = prevSelected;
+        // One row at a time for the usual handful: Reset regenerates every row's container, including
+        // the focused one, and WPF then moved focus and selection to a different message.
+        ApplyArrivalsAndStateChanges(toInsert, readReconciled);
 
         if (toInsert.Count > 0)
         {
@@ -4209,19 +4178,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             if (affected.Count > 0)
             {
-                // A now-read message must leave the Unread view; a now-unread one must (re)appear if it
-                // matches. Batched so it costs one Reset, not one event per change (screen-reader-friendly).
-                using (Messages.BeginBatchScope())
-                {
-                    foreach (var m in affected)
-                    {
-                        var shouldShow = MatchesFilter(m) && MatchesDayLimit(m)
-                            && (string.IsNullOrWhiteSpace(SearchText) || MatchesSearch(m));
-                        var isShown = Messages.Contains(m);
-                        if (shouldShow && !isShown) InsertMessageSorted(m);
-                        else if (!shouldShow && isShown) Messages.Remove(m);
-                    }
-                }
+                ApplyArrivalsAndStateChanges([], affected);
                 RebuildActiveGroupView();
             }
         }
@@ -4491,22 +4448,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Update account inbox counts for the messages we actually removed from _rawMessages.
         UpdateAccountCountsAfterRemoval(actuallyRemovedFromRaw);
 
-        bool removedOpen = false;
+        var leaving = new List<MailMessageSummary>(removed.Count);
         foreach (var msg in removed)
         {
             var key = (msg.MessageId, msg.AccountId, msg.FolderName);
-            if (!byKey.TryGetValue(key, out var existing)) continue;
-
-            if (SelectedMessage == existing) removedOpen = true;
-            Messages.Remove(existing);
-            byKey.Remove(key);
+            if (byKey.Remove(key, out var existing)) leaving.Add(existing);
         }
+
+        var removedOpen = SelectedMessage is { } open && leaving.Contains(open);
+        LandBeforeBackgroundRemoval(leaving);
+        foreach (var row in leaving) Messages.Remove(row);
 
         if (removedOpen)
         {
-            SelectedMessage = Messages.Count > 0 ? Messages[0] : null;
-            MessageDetail   = null;
-            IsMessageOpen   = false;
+            MessageDetail = null;
+            IsMessageOpen = false;
         }
 
         if (removed.Count > 0)
@@ -4583,10 +4539,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // folder list (first run, fresh --profileDir, rebuilt mail.db) it is still empty, ranking is
         // neutral (date/name tie-break), and the representative settles on the first fetch — collapse
         // is correct either way.
+        var isReload = IsReloadOfShownFolder();
         string? stampedFor = null;
-        if (IsVirtualFolder(SelectedFolder))
-        {
+        var isVirtual = IsVirtualFolder(SelectedFolder);
+        if (isVirtual)
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
+        if (isReload)
+            list = AdoptShownRows(list, isVirtual);
+        if (isVirtual)
+        {
             ApplyFolderDisplayNames(list);
             stampedFor = SelectedFolder!.FullName;
         }
@@ -4603,8 +4564,168 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // The index's last answer was about the messages that were here before; drop it so it is not applied
         // to these, and ask again once the list shows them (#717).
         if (!string.IsNullOrWhiteSpace(SearchText)) _searchMatcher = null;
-        ApplyFiltersAndSearch();
+        if (isReload) ApplyReloadedMessages();
+        else ApplyFiltersAndSearch();
+        _messagesShownFor = SelectedFolder is { } shown ? (shown.AccountId, shown.FullName) : null;
         RefreshSearchIndexForNewMessages();
+    }
+
+    // ── Keeping the user's place across a reload ─────────────────────────────────
+    //
+    // A reload of the open folder is not the user going anywhere. Reconnecting, the end of the startup
+    // sync, a rule run and F5 all land here, and they used to replace every row with a new object:
+    // the selection had nothing left to point at, and focus went to the top of the list.
+
+    /// <summary>The most rows a change may touch and still be made one row at a time. Past this, one
+    /// replacement reads better than a structure-changed event per row.</summary>
+    private const int MaxInPlaceListEdits = 10;
+
+    /// <summary>The folder whose messages the list holds. Navigation clears it, so only a reload of
+    /// the same folder, with nobody having asked to go there, keeps the user's place.</summary>
+    private (Guid AccountId, string FullName)? _messagesShownFor;
+
+    /// <summary>Whether focus is on the message list in the active window. A background removal may
+    /// only move focus when it is: otherwise the user is somewhere else and stays there.</summary>
+    public event Func<bool>? MessageListHasFocusQuery;
+
+    /// <summary>An empty list has no place to keep, and the rows arriving in it have to replace it:
+    /// the replacement is what moves focus into a folder that had nothing cached.</summary>
+    private bool IsReloadOfShownFolder() =>
+        Messages.Count > 0
+        && SelectedFolder is { } folder
+        && _messagesShownFor is { } shown
+        && shown.AccountId == folder.AccountId
+        && string.Equals(shown.FullName, folder.FullName, StringComparison.Ordinal);
+
+    private void ClearMessagesUnlessReloading()
+    {
+        if (!IsReloadOfShownFolder()) Messages.Clear();
+    }
+
+    /// <summary>
+    /// Swaps each freshly loaded message for the row already showing it, brought up to date. The row
+    /// instance is what the selection, the row's container and any open tab are holding on to.
+    /// </summary>
+    private List<MailMessageSummary> AdoptShownRows(List<MailMessageSummary> fresh, bool isVirtual)
+    {
+        Func<MailMessageSummary, string> keyOf = isVirtual
+            ? MessageDeduplicator.CollapseKeyFor
+            : MessageDeduplicator.PerFolderKeyFor;
+
+        var existing = new Dictionary<string, MailMessageSummary>(_rawMessages.Count);
+        foreach (var row in _rawMessages) existing.TryAdd(keyOf(row), row);
+
+        var adopted = new List<MailMessageSummary>(fresh.Count);
+        foreach (var msg in fresh)
+        {
+            // Removed once used: two fresh rows with one key must not become one row shown twice.
+            if (existing.Remove(keyOf(msg), out var row))
+            {
+                row.CopyLoadedStateFrom(msg);
+                adopted.Add(row);
+            }
+            else
+            {
+                adopted.Add(msg);
+            }
+        }
+        return adopted;
+    }
+
+    private void ApplyReloadedMessages()
+    {
+        var target = ComputeVisibleMessages();
+        if (ListMerge.CanApplyInPlace(Messages, target, MaxInPlaceListEdits))
+        {
+            var staying = new HashSet<MailMessageSummary>(target);
+            LandBeforeBackgroundRemoval(Messages.Where(m => !staying.Contains(m)).ToList());
+            if (ListMerge.ApplyInPlace(Messages, target))
+                RebuildActiveGroupView();
+        }
+        else
+        {
+            ReplaceMessagesKeepingPosition(new BatchObservableCollection<MailMessageSummary>(target));
+        }
+        ReportVisibleCount();
+    }
+
+    /// <summary>
+    /// Makes a change to the visible rows without moving the user: one row at a time when it is small,
+    /// so the focused row's container survives, and one replacement when it is not.
+    /// </summary>
+    /// <param name="leaving">The shown rows the change removes.</param>
+    /// <param name="edits">How many rows it inserts or removes.</param>
+    /// <param name="edit">The change, written against whichever list it is given.</param>
+    private void EditMessageList(
+        IReadOnlyList<MailMessageSummary> leaving, int edits, Action<IList<MailMessageSummary>> edit)
+    {
+        if (edits == 0) return;
+        LandBeforeBackgroundRemoval(leaving);
+        if (edits <= MaxInPlaceListEdits)
+        {
+            edit(Messages);
+            return;
+        }
+        var next = new BatchObservableCollection<MailMessageSummary>(Messages);
+        edit(next);
+        ReplaceMessagesKeepingPosition(next);
+    }
+
+    /// <summary>The row a replacement of <see cref="Messages"/> is keeping the user on, readable while
+    /// that replacement is being announced. The View needs it because WPF, once the new rows are laid
+    /// out, selects whichever row sits at the old focused index, overriding the selection made here.</summary>
+    internal MailMessageSummary? RowKeptByReplacement { get; private set; }
+
+    private void ReplaceMessagesKeepingPosition(BatchObservableCollection<MailMessageSummary> next)
+    {
+        var previous = SelectedMessage;
+        var previousIndex = previous == null ? -1 : Messages.IndexOf(previous);
+        var keep = previous == null || next.Count == 0 ? null
+            : next.Contains(previous) ? previous
+            : next[Math.Clamp(previousIndex, 0, next.Count - 1)];
+
+        RowKeptByReplacement = keep;
+        Messages = next;   // the ListView's two-way SelectedItem binding clears SelectedMessage here
+        RowKeptByReplacement = null;
+
+        if (keep != null) SelectedMessage = keep;
+    }
+
+    /// <summary>
+    /// A row the user did not touch is about to leave, and it may be the selected one. Selection moves
+    /// to its neighbour first, and focus goes with it if focus was on the list (#667 explains why the
+    /// focus move has to come before the removal). Focus anywhere else stays where it is.
+    /// </summary>
+    private void LandBeforeBackgroundRemoval(IReadOnlyList<MailMessageSummary> leaving)
+    {
+        if (leaving.Count == 0 || SelectedMessage is not { } selected || !leaving.Contains(selected)) return;
+
+        SelectedMessage = FindSurvivorOf(leaving);
+        if (SelectedMessage != null && ViewMode == ViewMode.Messages && MessageListHasFocusQuery?.Invoke() == true)
+            MessageListFocusNowRequested?.Invoke();
+    }
+
+    private bool ShouldShowInList(MailMessageSummary m) =>
+        MatchesFilter(m) && MatchesDayLimit(m)
+        && (string.IsNullOrWhiteSpace(SearchText) || MatchesSearch(m));
+
+    /// <summary>
+    /// Inserts <paramref name="arrivals"/>, and brings the list into line for <paramref name="changed"/>,
+    /// messages whose read state changed: a now-read message leaves the Unread view and a now-unread
+    /// one comes back to it.
+    /// </summary>
+    private void ApplyArrivalsAndStateChanges(
+        List<MailMessageSummary> arrivals, List<MailMessageSummary> changed)
+    {
+        var comingBack = changed.Where(m => ShouldShowInList(m) && !Messages.Contains(m)).ToList();
+        var leaving    = changed.Where(m => !ShouldShowInList(m) && Messages.Contains(m)).ToList();
+
+        EditMessageList(leaving, arrivals.Count + comingBack.Count + leaving.Count, list =>
+        {
+            foreach (var m in leaving) list.Remove(m);
+            foreach (var m in arrivals) InsertMessageSorted(m, list);
+            foreach (var m in comingBack) InsertMessageSorted(m, list);
+        });
     }
 
     /// <summary>
@@ -4763,6 +4884,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // automatically triggers group rebuilds when Messages is replaced.
     private void ApplyFiltersAndSearch()
     {
+        Messages = new BatchObservableCollection<MailMessageSummary>(ComputeVisibleMessages());
+        ReportVisibleCount();
+    }
+
+    private List<MailMessageSummary> ComputeVisibleMessages()
+    {
         IEnumerable<MailMessageSummary> result = _rawMessages;
         if (ActiveFilter != MessageFilter.All)
             result = result.Where(MatchesFilter);
@@ -4780,8 +4907,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             MessageSort.FlaggedFirst    => result.OrderBy(m => m.IsFlagged ? 0 : 1).ThenByDescending(m => m.Date),
             _                           => result.OrderByDescending(m => m.Date),
         };
-        Messages = new BatchObservableCollection<MailMessageSummary>(result);
+        return result.ToList();
+    }
 
+    private void ReportVisibleCount()
+    {
         // Keep the status bar count in sync with whatever is currently visible.
         // Folder-load methods set a more descriptive status text immediately after
         // calling SetMessages, so this value is overwritten during loads and only
@@ -4837,18 +4967,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     // Binary-insert into the descending-by-date Messages collection.
-    private void InsertMessageSorted(MailMessageSummary msg)
+    private void InsertMessageSorted(MailMessageSummary msg) => InsertMessageSorted(msg, Messages);
+
+    private void InsertMessageSorted(MailMessageSummary msg, IList<MailMessageSummary> list)
     {
         if (!_showPreview) msg.Preview = string.Empty;
         else msg.Preview = TruncatePreview(msg.Preview, _previewLines);
-        int lo = 0, hi = Messages.Count;
+        int lo = 0, hi = list.Count;
         while (lo < hi)
         {
             int mid = (lo + hi) / 2;
-            if (Messages[mid].Date >= msg.Date) lo = mid + 1;
+            if (list[mid].Date >= msg.Date) lo = mid + 1;
             else hi = mid;
         }
-        Messages.Insert(lo, msg);
+        list.Insert(lo, msg);
     }
 
     // Copies server-fresh mutable state onto an existing message already in the list.
@@ -4904,6 +5036,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _rawMessages.RemoveAll(m => vanishedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
 
         bool removedOpen = vanished.Any(m => m == SelectedMessage);
+        LandBeforeBackgroundRemoval(vanished);
         foreach (var m in vanished)
             Messages.Remove(m);
 
@@ -4911,9 +5044,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (removedOpen)
         {
-            SelectedMessage = Messages.Count > 0 ? Messages[0] : null;
-            MessageDetail   = null;
-            IsMessageOpen   = false;
+            MessageDetail = null;
+            IsMessageOpen = false;
         }
     }
 
@@ -5664,7 +5796,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _conversationRebuildVersion)
+                if (version == _conversationRebuildVersion
+                    && !ListMerge.SameGroups(Conversations, groups, g => g.NormalizedSubject, g => g.Messages))
                 {
                     var expanded = Conversations
                         .Where(g => g.IsExpanded).Select(g => g.NormalizedSubject)
@@ -5698,7 +5831,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _senderGroupRebuildVersion)
+                if (version == _senderGroupRebuildVersion
+                    && !ListMerge.SameGroups(SenderGroups, groups, g => g.SenderKey, g => g.Messages))
                 {
                     var expanded = SenderGroups
                         .Where(g => g.IsExpanded).Select(g => g.SenderKey)
@@ -5732,7 +5866,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _toGroupRebuildVersion)
+                if (version == _toGroupRebuildVersion
+                    && !ListMerge.SameGroups(ToGroups, groups, g => g.SenderKey, g => g.Messages))
                 {
                     var expanded = ToGroups
                         .Where(g => g.IsExpanded).Select(g => g.SenderKey)
@@ -5796,6 +5931,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task SelectFolderAsync(MailFolderModel? folder)
     {
         if (folder == null || folder.IsHeader) return;
+
+        // Going to a folder, even the one already open, starts at its top. Only a reload keeps a place.
+        _messagesShownFor = null;
 
         // Intercept view sentinels BEFORE resetting filter/search — views set their own state.
         if (TryGetViewIdFromSentinel(folder.FullName, out var viewId))
@@ -5929,7 +6067,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             ReplaceCts(ref _folderCts, out var ct);
 
-            if (!OnlineMode)
+            // The cache's job is to show something while the server is asked. On a reload the rows are
+            // already showing, and the cache can be behind them: mail just fetched may not be written
+            // yet, and taking those rows away for a moment would lose the user's place on one of them.
+            if (!OnlineMode && (IsKnownOffline || !IsReloadOfShownFolder()))
             {
                 var cached = await _localStore.LoadFolderSummariesAsync(accountId, folder.FullName);
                 if (!IsCurrentFolderLoad(loadVersion, folder))
@@ -6486,7 +6627,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task FetchAllMailAsync()
     {
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = "Loading All Mail…";
         IsBusy = true;
 
@@ -6762,7 +6903,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         var expectedFolder = SelectedFolder;
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = "Loading watched conversations…";
         IsBusy = true;
 
@@ -6836,7 +6977,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         var expectedFolder = SelectedFolder;
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = "Loading flagged messages…";
         IsBusy = true;
 
@@ -6948,7 +7089,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var loadVersion    = Interlocked.Increment(ref _folderLoadVersion);
         var expectedFolder = SelectedFolder;
         var kind           = direction == ContactMailDirection.From ? "from" : "to";
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = $"Searching for mail {kind} {address}…";
         IsBusy = true;
 
@@ -7501,7 +7642,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var expectedFolder = SelectedFolder;
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = $"Loading {account.AccountLabel}…";
         IsBusy = true;
 
@@ -7708,7 +7849,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var displayName = FolderScopedAggregateDisplayName(fullName);
         var expectedFolder = SelectedFolder;
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = $"Loading {displayName}…";
         IsBusy = true;
 
@@ -7851,12 +7992,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     /// <param name="parkOnEmptyList">When every row is leaving, clear the selection and ask for focus on the list
     /// itself, before the rows go (#670, move and unwatch). Delete leaves it false.</param>
-    private MailMessageSummary? LandFocusBeforeRemoval(IReadOnlyList<MailMessageSummary> leaving, bool parkOnEmptyList = false)
+    private MailMessageSummary? FindSurvivorOf(IReadOnlyList<MailMessageSummary> leaving)
     {
-        // The group trees own their own focus after RebuildActiveGroupView replaces their items;
-        // this is the flat list's business only.
-        if (ViewMode != ViewMode.Messages) return null;
-
         var doomed = new HashSet<MailMessageSummary>(leaving);
 
         var first = int.MaxValue;
@@ -7865,14 +8002,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var i = Messages.IndexOf(m);
             if (i >= 0 && i < first) first = i;
         }
-        if (first == int.MaxValue) return null;   // none of them are in the flat list
+        if (first == int.MaxValue) return null;
 
-        MailMessageSummary? landing = null;
-        for (var i = first + 1; i < Messages.Count && landing == null; i++)
-            if (!doomed.Contains(Messages[i])) landing = Messages[i];
-        for (var i = first - 1; i >= 0 && landing == null; i--)
-            if (!doomed.Contains(Messages[i])) landing = Messages[i];
+        for (var i = first + 1; i < Messages.Count; i++)
+            if (!doomed.Contains(Messages[i])) return Messages[i];
+        for (var i = first - 1; i >= 0; i--)
+            if (!doomed.Contains(Messages[i])) return Messages[i];
+        return null;
+    }
 
+    private MailMessageSummary? LandFocusBeforeRemoval(IReadOnlyList<MailMessageSummary> leaving, bool parkOnEmptyList = false)
+    {
+        // The group trees own their own focus after RebuildActiveGroupView replaces their items;
+        // this is the flat list's business only.
+        if (ViewMode != ViewMode.Messages) return null;
+
+        if (!leaving.Any(Messages.Contains)) return null;   // none of them are in the flat list
+
+        var landing = FindSurvivorOf(leaving);
         if (landing == null)
         {
             // The whole list is leaving, so there is no survivor to land on. Move and unwatch put focus on the list

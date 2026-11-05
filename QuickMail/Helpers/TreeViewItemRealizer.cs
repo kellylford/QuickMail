@@ -41,8 +41,10 @@ public static class TreeViewItemRealizer
     /// </summary>
     /// <param name="groupIndex">The group's index in the tree's own <c>ItemsSource</c>.</param>
     /// <param name="messageIndex">The message's index within the group.</param>
+    /// <param name="takeFocus">False puts the selection there and leaves keyboard focus where it is,
+    /// for a rebuild the user did not ask for while they are somewhere else.</param>
     public static GroupedMessageFocus FocusMessage(
-        TreeView tree, int groupIndex, object group, object message, int messageIndex)
+        TreeView tree, int groupIndex, object group, object message, int messageIndex, bool takeFocus = true)
     {
         if (groupIndex < 0 || groupIndex >= tree.Items.Count || messageIndex < 0)
             return GroupedMessageFocus.None;
@@ -71,7 +73,7 @@ public static class TreeViewItemRealizer
         if (groupTvi.ItemContainerGenerator.ContainerFromItem(message) is TreeViewItem msgTvi)
         {
             msgTvi.IsSelected = true;
-            msgTvi.Focus();
+            if (takeFocus) msgTvi.Focus();
             msgTvi.BringIntoView();
             return GroupedMessageFocus.Message;
         }
@@ -79,8 +81,25 @@ public static class TreeViewItemRealizer
         // Somewhere inside the tree, next to what was asked for, beats leaving focus where it was
         // with nothing to show for the keystroke.
         groupTvi.IsSelected = true;
-        groupTvi.Focus();
+        if (takeFocus) groupTvi.Focus();
         return GroupedMessageFocus.Group;
+    }
+
+    /// <summary>
+    /// Selects a group row, and focuses it unless <paramref name="takeFocus"/> is false, creating its
+    /// container if it is outside the viewport. Returns false if no container could be made.
+    /// </summary>
+    public static bool SelectGroup(TreeView tree, int groupIndex, object group, bool takeFocus)
+    {
+        if (groupIndex < 0 || groupIndex >= tree.Items.Count) return false;
+        if (FindItemsHost(tree) is not { } rootPanel) return false;
+        rootPanel.BringIndexIntoViewPublic(groupIndex);
+        tree.UpdateLayout();
+
+        if (tree.ItemContainerGenerator.ContainerFromItem(group) is not TreeViewItem groupTvi) return false;
+        groupTvi.IsSelected = true;
+        if (takeFocus) groupTvi.Focus();
+        return true;
     }
 
     /// <summary>
