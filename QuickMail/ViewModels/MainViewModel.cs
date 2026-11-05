@@ -4705,7 +4705,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IsReplacingInBackground = false;
         RowKeptByReplacement = null;
 
-        if (keep != null) SelectedMessage = keep;
+        if (previous != null) SelectedMessage = keep;
     }
 
     /// <summary>
