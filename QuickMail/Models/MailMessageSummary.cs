@@ -1,10 +1,22 @@
 using System;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace QuickMail.Models;
 
 public partial class MailMessageSummary : ObservableObject
 {
+    // A backstop for a row whose RowSpeech name is empty (#928), which also happens if the user's
+    // layout has nothing to say for this message. Without it a screen reader reads the type name.
+    // It doesn't follow the user's field layout, which is acceptable for something that should
+    // rarely be heard: better a sender and subject than nothing.
+    public override string ToString()
+    {
+        var text = string.Join(". ", new[] { IsUnread ? "unread" : null, From, Subject }
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
+        return text.Length > 0 ? text : "Message";
+    }
+
     public string MessageId { get; set; } = string.Empty;
     public Guid AccountId { get; set; }
     public string FolderName { get; set; } = string.Empty;

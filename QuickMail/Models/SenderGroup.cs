@@ -10,6 +10,11 @@ namespace QuickMail.Models;
 /// </summary>
 public sealed class SenderGroup : INotifyPropertyChanged
 {
+    // A backstop for a row whose RowSpeech name is empty (#928); see MailMessageSummary.ToString.
+    // "Group", not "Sender": the To view uses this type for recipients.
+    public override string ToString() =>
+        string.IsNullOrWhiteSpace(SenderName) ? "Group" : SenderName;
+
     /// <summary>The trimmed From string used as the grouping key (case-insensitive).</summary>
     public string SenderKey { get; init; } = string.Empty;
 

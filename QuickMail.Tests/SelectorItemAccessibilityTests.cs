@@ -146,6 +146,20 @@ public class SelectorItemAccessibilityTests
         Assert.Equal("Greeting", new MessageTemplate { Title = "Greeting" }.ToString());
         Assert.Equal("Spam rule", new MailRule { Name = "Spam rule" }.ToString());
         Assert.Equal("Work", new AccountModel { AccountName = "Work" }.ToString());
+        // Message list rows: what's read before RowSpeech's binding has produced a name (#928).
+        Assert.Equal("unread. Priya Shah. Budget review",
+            new MailMessageSummary { From = "Priya Shah", Subject = "Budget review", IsRead = false }.ToString());
+        Assert.Equal("Priya Shah. Budget review",
+            new MailMessageSummary { From = "Priya Shah", Subject = "Budget review", IsRead = true }.ToString());
+        Assert.Equal("Message", new MailMessageSummary { IsRead = true }.ToString());
+        Assert.Equal("Priya Shah", new MailMessageSummary { From = "Priya Shah", Subject = " ", IsRead = true }.ToString());
+        Assert.Equal("Budget review", new MailMessageSummary { Subject = "Budget review", IsRead = true }.ToString());
+        var rowMessage = new MailMessageSummary { From = "Priya Shah", Subject = "Budget review" };
+        Assert.Equal("Budget review", new ConversationGroup { NormalizedSubject = "budget review", Messages = [rowMessage] }.ToString());
+        Assert.Equal("budget review", new ConversationGroup { NormalizedSubject = "budget review" }.ToString());
+        Assert.Equal("Conversation", new ConversationGroup().ToString());
+        Assert.Equal("Priya Shah", new SenderGroup { SenderKey = "Priya Shah", Messages = [rowMessage] }.ToString());
+        Assert.Equal("Group", new SenderGroup().ToString());
         // Sounds tab in Settings (#912).
         Assert.Equal("Arrived", new SoundChoice("builtin:arrived", "Arrived").ToString());
         Assert.Equal("40%", new SoundVolumeOption(40).ToString());
@@ -348,13 +362,11 @@ public class SelectorItemAccessibilityTests
 
         var list = new ListView { ItemsSource = new[] { msg }, ItemContainerStyle = style };
 
-        // RowSpeech binds the layout via RelativeSource=Window, so the list needs a Window ancestor
-        // whose DataContext exposes RowSpeech — exactly as MainWindow's does.
+        // A window so the row is realized and laid out, as MainWindow's are.
         var window = new Window
         {
             WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
             Width = 600, Height = 200, Content = list,
-            DataContext = new RowSpeechHost(),
         };
         window.Show();
         try
@@ -384,11 +396,6 @@ public class SelectorItemAccessibilityTests
         finally { window.Close(); }
     }
 
-    /// <summary>Stands in for MainViewModel as the window DataContext RowSpeech binds through.</summary>
-    private sealed class RowSpeechHost
-    {
-        public RowSpeechSettings RowSpeech { get; } = RowSpeechSettings.Default;
-    }
 
     // Every message-list row style in MainWindow must carry the RowSpeech.Kind setter, with the
     // right kind. Constructing MainWindow (never showing it) is the same safe pattern XamlParseTests
@@ -451,11 +458,154 @@ public class SelectorItemAccessibilityTests
             .FirstOrDefault();
     }
 
+    // What the bug was (#928): a screen reader asks for a row that has no container yet, such as mail
+    // that has just arrived. No window is shown, or needed: such a row isn't in one anyway. The
+    // separator proves the name came from the user's layout on the first ask, which also rules out both
+    // the type name and the ToString backstop.
+    [StaFact]
+    public void RowWithNoContainer_IsNamedFromTheUsersLayout_OnTheFirstAsk()
+    {
+        var source = RowSpeechSource.Current;
+        var saved = source.Settings;
+        source.Settings = new RowSpeechSettings(RowFieldCatalog.DefaultLayouts(), false, RowFieldSeparator.Comma);
+        try
+        {
+            var msg = new MailMessageSummary { From = "Chris Lee", Subject = "Budget review", IsRead = false };
+            var style = new Style(typeof(ListViewItem));
+            style.Setters.Add(new Setter(RowSpeech.KindProperty, RowKind.Message));
+            var next = new MailMessageSummary { From = "Ava Chen", Subject = "Lunch", IsRead = false };
+            var list = new ListView { ItemsSource = new[] { msg, next }, ItemContainerStyle = style };
+
+            Assert.Null(list.ItemContainerGenerator.ContainerFromItem(msg));
+
+            var listPeer = (ItemsControlAutomationPeer)UIElementAutomationPeer.CreatePeerForElement(list);
+            var find = typeof(ItemsControlAutomationPeer).GetMethod("FindOrCreateItemAutomationPeer",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            Assert.NotNull(find);
+            var rowPeer = (AutomationPeer?)find.Invoke(listPeer, [msg]);
+            Assert.NotNull(rowPeer);
+
+            var name = rowPeer.GetName();
+
+            Assert.DoesNotContain("QuickMail.", name, StringComparison.Ordinal);
+            Assert.Contains("unread, Chris Lee, Budget review", name, StringComparison.Ordinal);
+
+            // A screen reader walking unrealized rows goes through one reused stand-in, so the next
+            // row has to get its own name from it, with no dispatcher turn in between.
+            var nextPeer = (AutomationPeer?)find.Invoke(listPeer, [next]);
+            Assert.NotNull(nextPeer);
+            Assert.Contains("unread, Ava Chen, Lunch", nextPeer.GetName(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            source.Settings = saved;
+        }
+    }
+
+    // The same, for a root row of the conversation tree, whose rows name themselves the same way.
+    [StaFact]
+    public void TreeRowWithNoContainer_IsNamedFromTheUsersLayout_OnTheFirstAsk()
+    {
+        var source = RowSpeechSource.Current;
+        var saved = source.Settings;
+        source.Settings = new RowSpeechSettings(RowFieldCatalog.DefaultLayouts(), false, RowFieldSeparator.Comma);
+        try
+        {
+            var group = new ConversationGroup
+            {
+                NormalizedSubject = "budget review",
+                Messages = [new MailMessageSummary { From = "Chris Lee", Subject = "Budget review" }],
+            };
+            var style = new Style(typeof(TreeViewItem));
+            style.Setters.Add(new Setter(RowSpeech.KindProperty, RowKind.Conversation));
+            var tree = new TreeView { ItemsSource = new[] { group }, ItemContainerStyle = style };
+
+            var treePeer = (ItemsControlAutomationPeer)UIElementAutomationPeer.CreatePeerForElement(tree);
+            var find = typeof(ItemsControlAutomationPeer).GetMethod("FindOrCreateItemAutomationPeer",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            Assert.NotNull(find);
+            var rowPeer = (AutomationPeer?)find.Invoke(treePeer, [group]);
+            Assert.NotNull(rowPeer);
+
+            var name = rowPeer.GetName();
+
+            Assert.DoesNotContain("QuickMail.", name, StringComparison.Ordinal);
+            // Comma-separated proves it came from the user's layout: the backstop is the subject alone.
+            Assert.Contains("Budget review, ", name, StringComparison.Ordinal);
+        }
+        finally
+        {
+            source.Settings = saved;
+        }
+    }
+
+    // Changing Message List Fields has to re-speak rows already on screen, with no list reload.
+    [StaFact]
+    public void RealizedRow_ReSpeaks_WhenTheSettingsChange()
+    {
+        var source = RowSpeechSource.Current;
+        var saved = source.Settings;
+        try
+        {
+            var msg = new MailMessageSummary { From = "Chris Lee", Subject = "Budget review", IsRead = false };
+            var style = new Style(typeof(ListViewItem));
+            style.Setters.Add(new Setter(RowSpeech.KindProperty, RowKind.Message));
+            var list = new ListView { ItemsSource = new[] { msg }, ItemContainerStyle = style };
+            var window = new Window
+            {
+                WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+                Width = 600, Height = 200, Content = list,
+            };
+            window.Show();
+            try
+            {
+                list.UpdateLayout();
+                DrainDispatcher();
+                var container = list.ItemContainerGenerator.ContainerFromItem(msg) as ListViewItem;
+                Assert.NotNull(container);
+                Assert.Contains("unread. Chris Lee. Budget review",
+                    System.Windows.Automation.AutomationProperties.GetName(container), StringComparison.Ordinal);
+
+                source.Settings = new RowSpeechSettings(RowFieldCatalog.DefaultLayouts(), false, RowFieldSeparator.Comma);
+                DrainDispatcher();
+
+                Assert.Contains("unread, Chris Lee, Budget review",
+                    System.Windows.Automation.AutomationProperties.GetName(container), StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            source.Settings = saved;
+        }
+    }
+
+    // WPF's own type-ahead matches on ToString() unless it's turned off, and MailMessageSummary has a real
+    // one now (#928). Left on, a key the app's type-ahead didn't take would jump the selection.
+    [Fact]
+    public void MessageList_LeavesTypeAheadToTheApp()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !System.IO.File.Exists(System.IO.Path.Combine(dir, "QuickMail", "Views", "MainWindow.xaml")))
+            dir = System.IO.Path.GetDirectoryName(dir);
+        Assert.NotNull(dir);
+        var xaml = System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(dir, "QuickMail", "Views", "MainWindow.xaml"));
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var list = xaml.Descendants().Single(e => (string?)e.Attribute(x + "Name") == "MessageList");
+        Assert.Equal("False", (string?)list.Attribute("IsTextSearchEnabled"));
+    }
+
     [Fact]
     public void BoundItemTypes_ToString_NeverLooksLikeTypeNameOrRecordDump()
     {
         var strings = new[]
         {
+            new MailMessageSummary { From = "Alpha" }.ToString(),
+            new ConversationGroup { NormalizedSubject = "Alpha" }.ToString(),
+            new SenderGroup { SenderKey = "Alpha" }.ToString(),
             new SettingsViewModel.ThemeOption("a", "Alpha").ToString(),
             new SavedView { Name = "Alpha" }.ToString(),
             new MessageTemplate { Title = "Alpha" }.ToString(),

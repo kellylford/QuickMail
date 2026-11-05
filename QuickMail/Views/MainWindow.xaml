@@ -1707,8 +1707,11 @@
                                  Margin="4"/>
                     </Grid>
 
+                    <!-- IsTextSearchEnabled off: type-ahead here is MainWindow's own, on the sender. WPF's would
+                         match what's left over against the row's ToString() and jump the selection (#928). -->
                     <ListView x:Name="MessageList"
                               AutomationProperties.Name="Messages"
+                              IsTextSearchEnabled="False"
                               ContextMenu="{StaticResource MessageContextMenu}"
                               ItemsSource="{Binding Messages}"
                               SelectedItem="{Binding SelectedMessage, Mode=TwoWay}"
