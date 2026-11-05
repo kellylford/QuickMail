@@ -612,6 +612,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // In Tab mode a message tab may be in front; going home means the list tab.
         ActivateMessageListTab();
+        _messagesShownFor = null;   // going somewhere; see SelectFolderAsync
 
         if (view != null)
         {
@@ -4127,7 +4128,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // One row at a time for the usual handful: Reset regenerates every row's container, including
         // the focused one, and WPF then moved focus and selection to a different message.
-        ApplyArrivalsAndStateChanges(toInsert, readReconciled);
+        var rowsChanged = ApplyArrivalsAndStateChanges(toInsert, readReconciled);
 
         if (toInsert.Count > 0)
         {
@@ -4142,7 +4143,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // so we don't harvest on every folder during a multi-folder sync.
         ScheduleCalendarHarvest();
 
-        RebuildActiveGroupView();
+        // Only when rows changed: a group row hears about read and flag changes by itself, and a sync with
+        // nothing new is the common case. Each rebuild costs a set of groups over every row.
+        if (rowsChanged) RebuildActiveGroupView();
     }
 
     // ── Read/unread reconcile (#462) ──────────────────────────────────────────────
@@ -4455,15 +4458,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (byKey.Remove(key, out var existing)) leaving.Add(existing);
         }
 
-        var removedOpen = SelectedMessage is { } open && leaving.Contains(open);
-        LandBeforeBackgroundRemoval(leaving);
-        foreach (var row in leaving) Messages.Remove(row);
-
-        if (removedOpen)
+        // The pane closes first, because this removal does close it, so landing on the neighbour is safe.
+        if (SelectedMessage is { } open && leaving.Contains(open))
         {
             MessageDetail = null;
             IsMessageOpen = false;
         }
+        LandBeforeBackgroundRemoval(leaving);
+        foreach (var row in leaving) Messages.Remove(row);
 
         if (removed.Count > 0)
             StatusText = $"{Messages.Count} messages";
@@ -4563,11 +4565,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var m in _rawMessages) m.Preview = TruncatePreview(m.Preview, _previewLines);
         // The index's last answer was about the messages that were here before; drop it so it is not applied
         // to these, and ask again once the list shows them (#717).
-        if (!string.IsNullOrWhiteSpace(SearchText)) _searchMatcher = null;
+        // A reload keeps it until the new one arrives: the rows are largely the same, and without it every
+        // row matched only on its body would count as leaving and take the user's place with it.
+        if (!isReload && !string.IsNullOrWhiteSpace(SearchText)) _searchMatcher = null;
         if (isReload) ApplyReloadedMessages();
         else ApplyFiltersAndSearch();
         _messagesShownFor = SelectedFolder is { } shown ? (shown.AccountId, shown.FullName) : null;
-        RefreshSearchIndexForNewMessages();
+        RefreshSearchIndexForNewMessages(isReload);
     }
 
     // ── Keeping the user's place across a reload ─────────────────────────────────
@@ -4614,6 +4618,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var existing = new Dictionary<string, MailMessageSummary>(_rawMessages.Count);
         foreach (var row in _rawMessages) existing.TryAdd(keyOf(row), row);
+        // All Mail's and the saved views' server pass adds new rows to the list alone.
+        foreach (var row in Messages) existing.TryAdd(keyOf(row), row);
 
         var adopted = new List<MailMessageSummary>(fresh.Count);
         foreach (var msg in fresh)
@@ -4676,6 +4682,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// out, selects whichever row sits at the old focused index, overriding the selection made here.</summary>
     internal MailMessageSummary? RowKeptByReplacement { get; private set; }
 
+    /// <summary>True while <see cref="Messages"/> is being replaced with nobody having asked to go
+    /// anywhere. Unlike a navigation, that does not bring focus into the list from somewhere else.</summary>
+    internal bool IsReplacingInBackground { get; private set; }
+
     private void ReplaceMessagesKeepingPosition(BatchObservableCollection<MailMessageSummary> next)
     {
         var previous = SelectedMessage;
@@ -4685,7 +4695,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : next[Math.Clamp(previousIndex, 0, next.Count - 1)];
 
         RowKeptByReplacement = keep;
+        IsReplacingInBackground = true;
         Messages = next;   // the ListView's two-way SelectedItem binding clears SelectedMessage here
+        IsReplacingInBackground = false;
         RowKeptByReplacement = null;
 
         if (keep != null) SelectedMessage = keep;
@@ -4700,8 +4712,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (leaving.Count == 0 || SelectedMessage is not { } selected || !leaving.Contains(selected)) return;
 
+        // The reading pane is still showing this message. Selecting its neighbour would point Delete and
+        // Archive at a message the user cannot see, so nothing is selected until the pane closes.
+        if (IsMessageOpen)
+        {
+            SelectedMessage = null;
+            return;
+        }
+
         SelectedMessage = FindSurvivorOf(leaving);
-        if (SelectedMessage != null && ViewMode == ViewMode.Messages && MessageListHasFocusQuery?.Invoke() == true)
+        // With no survivor this still asks: the row holding focus is about to go, and the view then
+        // puts focus on the list itself (#670).
+        if (ViewMode == ViewMode.Messages && MessageListHasFocusQuery?.Invoke() == true)
             MessageListFocusNowRequested?.Invoke();
     }
 
@@ -4714,7 +4736,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// messages whose read state changed: a now-read message leaves the Unread view and a now-unread
     /// one comes back to it.
     /// </summary>
-    private void ApplyArrivalsAndStateChanges(
+    /// <returns>Whether any row joined or left the list.</returns>
+    private bool ApplyArrivalsAndStateChanges(
         List<MailMessageSummary> arrivals, List<MailMessageSummary> changed)
     {
         var comingBack = changed.Where(m => ShouldShowInList(m) && !Messages.Contains(m)).ToList();
@@ -4726,6 +4749,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var m in arrivals) InsertMessageSorted(m, list);
             foreach (var m in comingBack) InsertMessageSorted(m, list);
         });
+        return arrivals.Count + comingBack.Count + leaving.Count > 0;
     }
 
     /// <summary>
@@ -5035,18 +5059,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             vanished.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
         _rawMessages.RemoveAll(m => vanishedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
 
-        bool removedOpen = vanished.Any(m => m == SelectedMessage);
+        // The pane closes first, because this removal does close it, so landing on the neighbour is safe.
+        if (vanished.Any(m => m == SelectedMessage))
+        {
+            MessageDetail = null;
+            IsMessageOpen = false;
+        }
         LandBeforeBackgroundRemoval(vanished);
         foreach (var m in vanished)
             Messages.Remove(m);
 
         UpdateAccountCountsAfterRemoval(vanished);
-
-        if (removedOpen)
-        {
-            MessageDetail = null;
-            IsMessageOpen = false;
-        }
     }
 
     // ── Account / folder selection ───────────────────────────────────────────────
@@ -5796,8 +5819,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _conversationRebuildVersion
-                    && !ListMerge.SameGroups(Conversations, groups, g => g.NormalizedSubject, g => g.Messages))
+                if (version != _conversationRebuildVersion
+                    || ListMerge.SameGroups(Conversations, groups, g => g.NormalizedSubject, g => g.Messages))
+                {
+                    foreach (var g in groups) g.ReleaseMessages();
+                }
+                else
                 {
                     var expanded = Conversations
                         .Where(g => g.IsExpanded).Select(g => g.NormalizedSubject)
@@ -5805,7 +5832,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     foreach (var g in groups)
                         if (expanded.Contains(g.NormalizedSubject))
                             g.IsExpanded = true;
+                    var replaced = Conversations;
                     Conversations = new ObservableCollection<ConversationGroup>(groups);
+                    foreach (var g in replaced) g.ReleaseMessages();
                 }
             });
         }).LogFaults("conversation rebuild");
@@ -5831,8 +5860,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _senderGroupRebuildVersion
-                    && !ListMerge.SameGroups(SenderGroups, groups, g => g.SenderKey, g => g.Messages))
+                if (version != _senderGroupRebuildVersion
+                    || ListMerge.SameGroups(SenderGroups, groups, g => g.SenderKey, g => g.Messages))
+                {
+                    foreach (var g in groups) g.ReleaseMessages();
+                }
+                else
                 {
                     var expanded = SenderGroups
                         .Where(g => g.IsExpanded).Select(g => g.SenderKey)
@@ -5840,7 +5873,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     foreach (var g in groups)
                         if (expanded.Contains(g.SenderKey))
                             g.IsExpanded = true;
+                    var replaced = SenderGroups;
                     SenderGroups = new ObservableCollection<SenderGroup>(groups);
+                    foreach (var g in replaced) g.ReleaseMessages();
                 }
             });
         }).LogFaults("sender group rebuild");
@@ -5866,8 +5901,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _toGroupRebuildVersion
-                    && !ListMerge.SameGroups(ToGroups, groups, g => g.SenderKey, g => g.Messages))
+                if (version != _toGroupRebuildVersion
+                    || ListMerge.SameGroups(ToGroups, groups, g => g.SenderKey, g => g.Messages))
+                {
+                    foreach (var g in groups) g.ReleaseMessages();
+                }
+                else
                 {
                     var expanded = ToGroups
                         .Where(g => g.IsExpanded).Select(g => g.SenderKey)
@@ -5875,7 +5914,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     foreach (var g in groups)
                         if (expanded.Contains(g.SenderKey))
                             g.IsExpanded = true;
+                    var replaced = ToGroups;
                     ToGroups = new ObservableCollection<SenderGroup>(groups);
+                    foreach (var g in replaced) g.ReleaseMessages();
                 }
             });
         }).LogFaults("to-recipient group rebuild");
@@ -6504,15 +6545,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // tree when the folder set actually changed, so an ordinary refresh doesn't disturb focus.
         await RefreshAllFolderListsAsync();
 
-        if (ActiveView != null)
-        {
-            await ApplyViewAsync(ActiveView);
-            return;
-        }
+        // A refresh of a saved view fetches and stops there. Applying the view again would close the open
+        // message and clear the search box, and a reconnect arrives here with nobody having asked for that.
         if (IsVirtualFolder(SelectedFolder))
             await FetchVirtualAsync(SelectedFolder!);
         else if (SelectedFolder != null && SelectedFolder.AccountId != Guid.Empty)
             await FetchFolderAsync();
+        else if (ActiveView != null)
+            await ApplyViewAsync(ActiveView);
     }
 
     /// <summary>

@@ -36,7 +36,9 @@ public partial class MailMessageSummary : ObservableObject
     /// otherwise the bare address. Never carries the address alongside a name — that is
     /// <see cref="FromEmail"/>'s job.
     /// </summary>
-    public string From { get; set; } = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FromWithAddress))]
+    private string _from = string.Empty;
 
     /// <summary>
     /// The sender's bare email address(es), comma-separated in the rare case a From header names
@@ -64,9 +66,17 @@ public partial class MailMessageSummary : ObservableObject
             ? From
             : string.IsNullOrEmpty(From) ? FromEmail : $"{From} <{FromEmail}>";
 
-    public string To { get; set; } = string.Empty;
-    public string Subject { get; set; } = string.Empty;
-    public DateTimeOffset Date { get; set; }
+    // Observable because a reload keeps the row and updates it (see CopyLoadedStateFrom): the Outbox's
+    // subject carries the item's state, so "Queued: Hello" has to become "Failed: Hello" on screen.
+    [ObservableProperty]
+    private string _to = string.Empty;
+
+    [ObservableProperty]
+    private string _subject = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DateDisplay))]
+    private DateTimeOffset _date;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
@@ -177,7 +187,7 @@ public partial class MailMessageSummary : ObservableObject
 
         // A list from the server carries no preview for some rows and no flag names for any.
         if (!string.IsNullOrEmpty(fresh.Preview)) Preview = fresh.Preview;
-        if (fresh.FlagName != null || fresh.FlagId != FlagId)
+        if (fresh.FlagName != null || fresh.FlagColorHex != null || fresh.FlagId != FlagId)
         {
             FlagName     = fresh.FlagName;
             FlagColorHex = fresh.FlagColorHex;

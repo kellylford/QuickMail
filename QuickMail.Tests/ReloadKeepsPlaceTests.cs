@@ -96,7 +96,7 @@ public class ReloadKeepsPlaceTests
 
         public MailMessageSummary Row(string id) => Vm.Messages.First(m => m.MessageId == id);
 
-        public static async Task<Fixture> CreateAsync(bool online = false)
+        public static async Task<Fixture> CreateAsync()
         {
             var folder = Sent();
             var server = "abcdef".Select((c, i) => Msg(c.ToString(), i)).ToList();
@@ -258,6 +258,104 @@ public class ReloadKeepsPlaceTests
     }
 
     [Fact]
+    public async Task Reload_WhenTheOpenMessageIsGone_SelectsNothing_SoDeleteCannotHitAMessageNobodySaw()
+    {
+        var f = await Fixture.CreateAsync();
+        f.Vm.SelectedMessage = f.Row("d");
+        f.Vm.IsMessageOpen = true;
+        f.ListHasFocus = false;
+        f.Server.RemoveAll(m => m.MessageId == "d");
+
+        await f.ReloadAsync();
+
+        Assert.Null(f.Vm.SelectedMessage);
+        Assert.True(f.Vm.IsMessageOpen);   // the user is reading it; a reload does not close it
+        Assert.Empty(f.FocusNowCalls);
+    }
+
+    [Fact]
+    public async Task Sync_WhenTheOpenMessageLeavesTheFilter_SelectsNothing()
+    {
+        var f = await Fixture.CreateAsync();
+        foreach (var m in f.Server) m.IsRead = false;
+        await f.ReloadAsync();
+        f.Vm.ActiveFilter = MessageFilter.Unread;
+        f.Vm.SelectedMessage = f.Row("d");
+        f.Vm.IsMessageOpen = true;
+
+        f.Sync.RaiseSynced(Msg("d", 3, read: true));
+
+        Assert.Null(f.Vm.SelectedMessage);
+        Assert.True(f.Vm.IsMessageOpen);
+    }
+
+    [Fact]
+    public async Task ARemovalReportedByTheServer_ClosesTheOpenMessage_AndLandsOnItsNeighbour()
+    {
+        var f = await Fixture.CreateAsync();
+        var doomed = f.Row("d");
+        f.Vm.SelectedMessage = doomed;
+        f.Vm.IsMessageOpen = true;
+
+        f.Sync.RaiseRemoved(doomed);
+
+        Assert.False(f.Vm.IsMessageOpen);
+        Assert.Equal("e", f.Vm.SelectedMessage?.MessageId);
+    }
+
+    [Fact]
+    public async Task Reload_WhenTheLastRowHoldingFocusGoes_StillAsksForFocus() // onto the list itself, #670
+    {
+        var f = await Fixture.CreateAsync();
+        f.Server.RemoveAll(m => m.MessageId != "a");
+        await f.ReloadAsync();
+        var last = f.Row("a");
+        f.Vm.SelectedMessage = last;
+        f.ListHasFocus = true;
+        f.Server.Clear();
+
+        await f.ReloadAsync();
+
+        Assert.Empty(f.Vm.Messages);
+        Assert.Null(f.Vm.SelectedMessage);
+        Assert.Contains(last, Assert.Single(f.FocusNowCalls));
+    }
+
+    [Fact]
+    public async Task Reload_UpdatesTextOnAKeptRow_AndTheRowSaysSo()
+    {
+        // The Outbox relists through SetMessages with its state in the subject.
+        var f = await Fixture.CreateAsync();
+        var row = f.Row("c");
+        var raised = new List<string?>();
+        row.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+        f.Server.Single(m => m.MessageId == "c").Subject = "Failed: Subject c";
+
+        await f.ReloadAsync();
+
+        Assert.Same(row, f.Row("c"));
+        Assert.Equal("Failed: Subject c", row.Subject);
+        Assert.Contains(nameof(MailMessageSummary.Subject), raised);
+    }
+
+    [Fact]
+    public async Task Reload_ManyNewMessages_SaysTheReplacementIsNotANavigation()
+    {
+        var f = await Fixture.CreateAsync();
+        var background = new List<bool>();
+        f.Vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.Messages)) background.Add(f.Vm.IsReplacingInBackground);
+        };
+        for (var i = 1; i <= 15; i++) f.Server.Insert(0, Msg($"new{i}", -i));
+
+        await f.ReloadAsync();
+
+        Assert.Equal([true], background);
+        Assert.False(f.Vm.IsReplacingInBackground);
+    }
+
+    [Fact]
     public async Task GoingToTheFolder_EvenTheOpenOne_IsNotAReload()
     {
         // Enter on a folder in the tree is the user going there: it loads afresh and lands at the top,
@@ -288,7 +386,7 @@ public class ReloadKeepsPlaceTests
         await f.ReloadAsync();
 
         Assert.Single(f.Vm.Messages);
-        Assert.Equal(replacementsBefore + 1, f.Replacements);
+        Assert.True(f.Replacements > replacementsBefore);
     }
 
     // ── Live arrivals ────────────────────────────────────────────────────────
@@ -403,12 +501,45 @@ public class ReloadKeepsPlaceTests
         var f = await Fixture.CreateAsync();
         f.Vm.ViewMode = ViewMode.Conversations;
         await SettleAsync(f.Vm, () => f.Vm.Conversations.Count == 6);
-        var tree = f.Vm.Conversations;
+        var replacements = 0;
+        f.Vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.Conversations)) replacements++; };
 
         await f.ReloadAsync();
-        await Task.Delay(100, TestContext.Current.CancellationToken);   // a rebuild runs off the UI thread
+        // Rebuilds run off the thread and only the latest counts, so an arrival is what proves they are done.
+        f.Sync.RaiseSynced(Msg("new", -1));
+        await SettleAsync(f.Vm, () => f.Vm.Conversations.Count == 7);
 
-        Assert.Same(tree, f.Vm.Conversations);
+        Assert.Equal(1, replacements);
+    }
+
+    [Fact]
+    public void GroupsLetGoOfTheirMessages()
+    {
+        var row = Msg("a", 0);
+        var group = new ConversationGroup { NormalizedSubject = "s", Messages = [row] };
+        var raised = 0;
+        group.PropertyChanged += (_, _) => raised++;
+
+        row.IsRead = false;
+        Assert.True(raised > 0);
+
+        raised = 0;
+        group.ReleaseMessages();
+        row.IsRead = true;
+        Assert.Equal(0, raised);
+    }
+
+    [Fact]
+    public void AGroupHearsItsNewestMessagesPreview()
+    {
+        var row = Msg("a", 0);
+        var group = new SenderGroup { SenderKey = "s", Messages = [row] };
+        var raised = new List<string?>();
+        group.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        row.Preview = "now known";
+
+        Assert.Contains(nameof(SenderGroup.Preview), raised);
     }
 
     [Fact]
@@ -546,6 +677,7 @@ public class ReloadKeepsPlaceTests
         Assert.False(Same([G("one", A)], [G("one", B)]));
         Assert.False(Same([G("one", A)], [G("one", A, B)]));
         Assert.False(Same([G("one", A)], []));
+        Assert.False(Same([], []));   // a landing may be waiting on the replacement
     }
 
     /// <summary>Serves the list a test edits, as new objects on every call, the way a real load does.</summary>

@@ -75,7 +75,9 @@ public static class ListMerge
         Func<TGroup, IReadOnlyList<TRow>> rows)
         where TRow : class
     {
-        if (current.Count != rebuilt.Count) return false;
+        // Empty is never "the same": something may be waiting on the tree's items being replaced after
+        // a folder change, and with nothing to compare, an unraised change would leave it waiting.
+        if (rebuilt.Count == 0 || current.Count != rebuilt.Count) return false;
         for (var i = 0; i < current.Count; i++)
         {
             if (!string.Equals(key(current[i]), key(rebuilt[i]), StringComparison.OrdinalIgnoreCase)) return false;

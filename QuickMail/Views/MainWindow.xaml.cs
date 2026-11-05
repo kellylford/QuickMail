@@ -512,13 +512,17 @@ public partial class MainWindow : Window
             // queued here would run (measured), so this runs at Background, after every focus move
             // queued below, and has the last word.
             if (e.PropertyName == nameof(MainViewModel.Messages) && vm.RowKeptByReplacement is { } kept)
+            {
+                var keysBefore = _messageListKeyPresses;
                 Dispatcher.InvokeAsync(() =>
                 {
+                    if (keysBefore != _messageListKeyPresses) return;   // the user has moved on themselves
                     if (ReferenceEquals(MessageList.SelectedItem, kept) || !MessageList.Items.Contains(kept)) return;
                     LogService.Debug("[FOCUS] Replacement moved the selection; putting it back on the kept row");
                     MessageList.SelectedItem = kept;
                     if (IsActive && MessageList.IsKeyboardFocusWithin) FocusSelectedMessageRowNow();
                 }, DispatcherPriority.Background);
+            }
 
             if (e.PropertyName == nameof(MainViewModel.Messages) && IsActive)
             {
@@ -526,6 +530,11 @@ public partial class MainWindow : Window
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS]   → skipped (menu/toolbar has focus)");
+                }
+                else if (vm.IsReplacingInBackground && vm.IsMessagesView && !MessageList.IsKeyboardFocusWithin)
+                {
+                    // Mail arrived in bulk, or a server search answered, while the user is elsewhere.
+                    LogService.Debug("[FOCUS]   → skipped (background replacement, focus not in the list)");
                 }
                 else if (_vm.IsMessageOpen || _vm.IsMessageOpenInWindow)
                 {
@@ -572,12 +581,14 @@ public partial class MainWindow : Window
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS] PropChanged:Conversations skipped (menu/toolbar has focus)");
+                    RestoreGroupedPlace(ConversationTree, takeFocus: false);
                 }
                 else if (_vm.IsMessageOpen)
                 {
                     // Reading pane is open — a background sync rebuilt the Conversations
                     // collection but focus must stay in the reading pane.
                     LogService.Debug("[FOCUS] PropChanged:Conversations skipped (reading pane open)");
+                    RestoreGroupedPlace(ConversationTree, takeFocus: false);
                 }
                 else
                 {
@@ -593,12 +604,14 @@ public partial class MainWindow : Window
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS] PropChanged:SenderGroups skipped (menu/toolbar has focus)");
+                    RestoreGroupedPlace(SenderGroupTree, takeFocus: false);
                 }
                 else if (_vm.IsMessageOpen)
                 {
                     // Reading pane is open — a background sync rebuilt the SenderGroups
                     // collection but focus must stay in the reading pane.
                     LogService.Debug("[FOCUS] PropChanged:SenderGroups skipped (reading pane open)");
+                    RestoreGroupedPlace(SenderGroupTree, takeFocus: false);
                 }
                 else
                 {
@@ -614,12 +627,14 @@ public partial class MainWindow : Window
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS] PropChanged:ToGroups skipped (menu/toolbar has focus)");
+                    RestoreGroupedPlace(ToGroupTree, takeFocus: false);
                 }
                 else if (_vm.IsMessageOpen)
                 {
                     // Reading pane is open — a background sync rebuilt the ToGroups
                     // collection but focus must stay in the reading pane.
                     LogService.Debug("[FOCUS] PropChanged:ToGroups skipped (reading pane open)");
+                    RestoreGroupedPlace(ToGroupTree, takeFocus: false);
                 }
                 else
                 {
@@ -1010,6 +1025,9 @@ public partial class MainWindow : Window
 
     private (object? Item, int Index) _placeBeforeRebuild = (null, -1);
 
+    // How many LandOn…AfterRebuild listeners are waiting for a grouped tree to be replaced.
+    private int _landingsPending;
+
     private static IReadOnlyList<MailMessageSummary>? MessagesOfGroup(object? item) => item switch
     {
         ConversationGroup c => c.Messages,
@@ -1031,6 +1049,10 @@ public partial class MainWindow : Window
     /// </summary>
     private void RestoreGroupedPlace(TreeView tree, bool takeFocus)
     {
+        // A folder change or a delete has said where the user lands; putting them back first would be a
+        // second focus move, on a row in a list they have left.
+        if (_landingsPending > 0) return;
+
         var (item, index) = _placeBeforeRebuild;
         Dispatcher.InvokeAsync(() =>
         {
@@ -1064,7 +1086,7 @@ public partial class MainWindow : Window
     private string? GroupKeyFor(TreeView tree, MailMessageSummary message)
     {
         if (tree == ConversationTree) return ConversationBuilder.NormalizeSubject(message.Subject);
-        return tree == ToGroupTree ? message.To.Trim() : message.From.Trim();
+        return tree == ToGroupTree ? SenderGroupBuilder.ToKey(message) : SenderGroupBuilder.FromKey(message);
     }
 
     // The open folder when a message collection was last rebuilt, and when the folder tree last
@@ -3530,8 +3552,11 @@ public partial class MainWindow : Window
 
     // Enter on a message: load body; Delete: delete all selected messages;
     // Shift+Up/Down: extend consecutive selection without opening the reading pane.
+    private int _messageListKeyPresses;
+
     private async void MessageList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        _messageListKeyPresses++;
         LogService.Debug($"MessageList_PreviewKeyDown key={e.Key} mod={Keyboard.Modifiers} focused={Keyboard.FocusedElement?.GetType().Name}");
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
@@ -5450,6 +5475,7 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName != nameof(_vm.Conversations)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
             LogService.Debug($"[FOCUS] LandOnConv: listener fired count={_vm.Conversations.Count} targetIdx={targetIdx} {FocusInfo()}");
             Dispatcher.InvokeAsync(() =>
             {
@@ -5486,6 +5512,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5506,6 +5533,7 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName != nameof(_vm.SenderGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
             LogService.Debug($"[FOCUS] LandOnSender: listener fired count={_vm.SenderGroups.Count} targetIdx={targetGroupIdx} {FocusInfo()}");
             Dispatcher.InvokeAsync(() =>
             {
@@ -5542,6 +5570,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5554,6 +5583,7 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName != nameof(_vm.ToGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
             LogService.Debug($"[FOCUS] LandOnToGroup: listener fired count={_vm.ToGroups.Count} targetIdx={targetGroupIdx} {FocusInfo()}");
             Dispatcher.InvokeAsync(() =>
             {
@@ -5589,6 +5619,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5818,6 +5849,7 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName != nameof(_vm.SenderGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
             Dispatcher.InvokeAsync(() =>
             {
                 var group = _vm.SenderGroups.FirstOrDefault(g =>
@@ -5842,6 +5874,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5851,6 +5884,7 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName != nameof(_vm.ToGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
             Dispatcher.InvokeAsync(() =>
             {
                 var group = _vm.ToGroups.FirstOrDefault(g =>
@@ -5875,6 +5909,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5884,6 +5919,7 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName != nameof(_vm.Conversations)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
             Dispatcher.InvokeAsync(() =>
             {
                 var group = _vm.Conversations.FirstOrDefault(g =>
@@ -5908,6 +5944,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
