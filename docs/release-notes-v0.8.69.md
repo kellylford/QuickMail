@@ -2,7 +2,7 @@
 
 ## Fixed
 
-- **Screen readers could read an internal name instead of a message.** You could hear "QuickMail.Models.MailMessageSummary" in the message list, at times that were hard to predict. If a screen reader asks about a row before it is on screen, it now gets the message, in the fields and order you chose in Message List Fields. (#928)
+- **Screen readers could read an internal name instead of a message.** You could hear "QuickMail.Models.MailMessageSummary" in the message list, at times that were hard to predict. QuickMail now gives a screen reader the message for a row that isn't on screen yet, normally in the fields and order you chose in Message List Fields, which should stop this. (#928)
 
 ---
 

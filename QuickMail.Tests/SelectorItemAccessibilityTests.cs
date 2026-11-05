@@ -473,7 +473,8 @@ public class SelectorItemAccessibilityTests
             var msg = new MailMessageSummary { From = "Chris Lee", Subject = "Budget review", IsRead = false };
             var style = new Style(typeof(ListViewItem));
             style.Setters.Add(new Setter(RowSpeech.KindProperty, RowKind.Message));
-            var list = new ListView { ItemsSource = new[] { msg }, ItemContainerStyle = style };
+            var next = new MailMessageSummary { From = "Ava Chen", Subject = "Lunch", IsRead = false };
+            var list = new ListView { ItemsSource = new[] { msg, next }, ItemContainerStyle = style };
 
             Assert.Null(list.ItemContainerGenerator.ContainerFromItem(msg));
 
@@ -488,6 +489,93 @@ public class SelectorItemAccessibilityTests
 
             Assert.DoesNotContain("QuickMail.", name, StringComparison.Ordinal);
             Assert.Contains("unread, Chris Lee, Budget review", name, StringComparison.Ordinal);
+
+            // A screen reader walking unrealized rows goes through one reused stand-in, so the next
+            // row has to get its own name from it, with no dispatcher turn in between.
+            var nextPeer = (AutomationPeer?)find.Invoke(listPeer, [next]);
+            Assert.NotNull(nextPeer);
+            Assert.Contains("unread, Ava Chen, Lunch", nextPeer.GetName(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            source.Settings = saved;
+        }
+    }
+
+    // The same, for a root row of the conversation tree, whose rows name themselves the same way.
+    [StaFact]
+    public void TreeRowWithNoContainer_IsNamedFromTheUsersLayout_OnTheFirstAsk()
+    {
+        var source = RowSpeechSource.Current;
+        var saved = source.Settings;
+        source.Settings = new RowSpeechSettings(RowFieldCatalog.DefaultLayouts(), false, RowFieldSeparator.Comma);
+        try
+        {
+            var group = new ConversationGroup
+            {
+                NormalizedSubject = "budget review",
+                Messages = [new MailMessageSummary { From = "Chris Lee", Subject = "Budget review" }],
+            };
+            var style = new Style(typeof(TreeViewItem));
+            style.Setters.Add(new Setter(RowSpeech.KindProperty, RowKind.Conversation));
+            var tree = new TreeView { ItemsSource = new[] { group }, ItemContainerStyle = style };
+
+            var treePeer = (ItemsControlAutomationPeer)UIElementAutomationPeer.CreatePeerForElement(tree);
+            var find = typeof(ItemsControlAutomationPeer).GetMethod("FindOrCreateItemAutomationPeer",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            Assert.NotNull(find);
+            var rowPeer = (AutomationPeer?)find.Invoke(treePeer, [group]);
+            Assert.NotNull(rowPeer);
+
+            var name = rowPeer.GetName();
+
+            Assert.DoesNotContain("QuickMail.", name, StringComparison.Ordinal);
+            // Comma-separated proves it came from the user's layout: the backstop is the subject alone.
+            Assert.Contains("Budget review, ", name, StringComparison.Ordinal);
+        }
+        finally
+        {
+            source.Settings = saved;
+        }
+    }
+
+    // Changing Message List Fields has to re-speak rows already on screen, with no list reload.
+    [StaFact]
+    public void RealizedRow_ReSpeaks_WhenTheSettingsChange()
+    {
+        var source = RowSpeechSource.Current;
+        var saved = source.Settings;
+        try
+        {
+            var msg = new MailMessageSummary { From = "Chris Lee", Subject = "Budget review", IsRead = false };
+            var style = new Style(typeof(ListViewItem));
+            style.Setters.Add(new Setter(RowSpeech.KindProperty, RowKind.Message));
+            var list = new ListView { ItemsSource = new[] { msg }, ItemContainerStyle = style };
+            var window = new Window
+            {
+                WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+                Width = 600, Height = 200, Content = list,
+            };
+            window.Show();
+            try
+            {
+                list.UpdateLayout();
+                DrainDispatcher();
+                var container = list.ItemContainerGenerator.ContainerFromItem(msg) as ListViewItem;
+                Assert.NotNull(container);
+                Assert.Contains("unread. Chris Lee. Budget review",
+                    System.Windows.Automation.AutomationProperties.GetName(container), StringComparison.Ordinal);
+
+                source.Settings = new RowSpeechSettings(RowFieldCatalog.DefaultLayouts(), false, RowFieldSeparator.Comma);
+                DrainDispatcher();
+
+                Assert.Contains("unread, Chris Lee, Budget review",
+                    System.Windows.Automation.AutomationProperties.GetName(container), StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+            }
         }
         finally
         {

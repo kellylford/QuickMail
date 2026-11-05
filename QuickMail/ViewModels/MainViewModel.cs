@@ -1330,9 +1330,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool AnnounceFlagStatus      => _announceFlagStatus;
 
     /// <summary>
-    /// The spoken field layout every list row binds to (see <c>Views.RowSpeech</c>). Assigning a
-    /// new instance and raising PropertyChanged is what pushes a layout change out to rows that
-    /// are already on screen — no reload, no re-fetch, virtualized containers included.
+    /// The spoken field layout, as last loaded. List rows don't bind to this: they read
+    /// <see cref="RowSpeechSource"/>, which <see cref="ReloadRowSpeech"/> also updates, and that is what
+    /// pushes a layout change out to rows already on screen (#928).
     /// </summary>
     public RowSpeechSettings RowSpeech { get; private set; } = RowSpeechSettings.Default;
 
@@ -1357,7 +1357,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch { /* config unreadable — fall back to unlabelled, period-separated */ }
         RowSpeech = new RowSpeechSettings(_rowLayoutService.Load(), showLabels, separator);
         _rowSpeechSource.Settings = RowSpeech;
-        OnPropertyChanged(nameof(RowSpeech));
     }
     /// <summary>Named-flag sub-filter id, set by saved views. Null = show all flagged messages.</summary>
     public string? ActiveFlagFilterId   => _activeFlagFilterId;
