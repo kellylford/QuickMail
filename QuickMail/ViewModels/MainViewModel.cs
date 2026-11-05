@@ -4458,13 +4458,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (byKey.Remove(key, out var existing)) leaving.Add(existing);
         }
 
-        // The pane closes first, because this removal does close it, so landing on the neighbour is safe.
-        if (SelectedMessage is { } open && leaving.Contains(open))
-        {
-            MessageDetail = null;
-            IsMessageOpen = false;
-        }
-        LandBeforeBackgroundRemoval(leaving);
+        LandBeforeBackgroundRemoval(leaving, closeOpenMessage: true);
         foreach (var row in leaving) Messages.Remove(row);
 
         if (removed.Count > 0)
@@ -4588,8 +4582,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// the same folder, with nobody having asked to go there, keeps the user's place.</summary>
     private (Guid AccountId, string FullName)? _messagesShownFor;
 
-    /// <summary>Whether focus is on the message list in the active window. A background removal may
-    /// only move focus when it is: otherwise the user is somewhere else and stays there.</summary>
+    /// <summary>Whether focus, in the active window, is on the message list or in the open message. A
+    /// background removal may only move focus when it is: otherwise the user is somewhere else and stays
+    /// there.</summary>
     public event Func<bool>? MessageListHasFocusQuery;
 
     /// <summary>An empty list has no place to keep, and the rows arriving in it have to replace it:
@@ -4708,22 +4703,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// to its neighbour first, and focus goes with it if focus was on the list (#667 explains why the
     /// focus move has to come before the removal). Focus anywhere else stays where it is.
     /// </summary>
-    private void LandBeforeBackgroundRemoval(IReadOnlyList<MailMessageSummary> leaving)
+    /// <param name="closeOpenMessage">The message is gone from the server, so an open copy closes.
+    /// False when it has only left this view, say by being read in the Unread filter.</param>
+    private void LandBeforeBackgroundRemoval(IReadOnlyList<MailMessageSummary> leaving, bool closeOpenMessage = false)
     {
         if (leaving.Count == 0 || SelectedMessage is not { } selected || !leaving.Contains(selected)) return;
 
         // The reading pane is still showing this message. Selecting its neighbour would point Delete and
         // Archive at a message the user cannot see, so nothing is selected until the pane closes.
-        if (IsMessageOpen)
+        if (IsMessageOpen && !closeOpenMessage)
         {
             SelectedMessage = null;
             return;
         }
 
+        // Asked first: closing the pane is what takes focus out of the message, and leaves it on an
+        // empty page if nothing moves it.
+        var focusIsHere = MessageListHasFocusQuery?.Invoke() == true;
+        if (closeOpenMessage && IsMessageOpen)
+        {
+            MessageDetail = null;
+            IsMessageOpen = false;
+        }
+
         SelectedMessage = FindSurvivorOf(leaving);
         // With no survivor this still asks: the row holding focus is about to go, and the view then
         // puts focus on the list itself (#670).
-        if (ViewMode == ViewMode.Messages && MessageListHasFocusQuery?.Invoke() == true)
+        if (focusIsHere && ViewMode == ViewMode.Messages)
             MessageListFocusNowRequested?.Invoke();
     }
 
@@ -5059,13 +5065,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             vanished.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
         _rawMessages.RemoveAll(m => vanishedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
 
-        // The pane closes first, because this removal does close it, so landing on the neighbour is safe.
-        if (vanished.Any(m => m == SelectedMessage))
-        {
-            MessageDetail = null;
-            IsMessageOpen = false;
-        }
-        LandBeforeBackgroundRemoval(vanished);
+        LandBeforeBackgroundRemoval(vanished, closeOpenMessage: true);
         foreach (var m in vanished)
             Messages.Remove(m);
 

@@ -304,6 +304,26 @@ public class ReloadKeepsPlaceTests
     }
 
     [Fact]
+    public async Task ARemovalReportedByTheServer_WithFocusInTheOpenMessage_BringsFocusToTheNeighbour()
+    {
+        // The pane closing strands focus on an empty page otherwise. The question has to be asked before
+        // the pane closes, since closing is what takes focus away.
+        var f = await Fixture.CreateAsync();
+        var doomed = f.Row("d");
+        f.Vm.SelectedMessage = doomed;
+        f.Vm.IsMessageOpen = true;
+        bool? openWhenAsked = null;
+        f.Vm.MessageListHasFocusQuery += () => { openWhenAsked ??= f.Vm.IsMessageOpen; return true; };
+
+        f.Sync.RaiseRemoved(doomed);
+
+        Assert.True(openWhenAsked);
+        Assert.False(f.Vm.IsMessageOpen);
+        Assert.Equal("e", f.Vm.SelectedMessage?.MessageId);
+        Assert.Contains(doomed, Assert.Single(f.FocusNowCalls));   // before the row left, as #667 requires
+    }
+
+    [Fact]
     public async Task Reload_WhenTheLastRowHoldingFocusGoes_StillAsksForFocus() // onto the list itself, #670
     {
         var f = await Fixture.CreateAsync();

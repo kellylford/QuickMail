@@ -328,7 +328,7 @@ public partial class MainWindow : Window
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
         vm.MessageListFocusNowRequested += FocusSelectedMessageRowNow;
-        vm.MessageListHasFocusQuery += () => IsActive && MessageList.IsKeyboardFocusWithin;
+        vm.MessageListHasFocusQuery += () => IsActive && (MessageList.IsKeyboardFocusWithin || IsMessageBodyFocused);
         // Normally the main window is where a VM announcement belongs. _announceTarget redirects it
         // for the duration of a call made on behalf of another window — a UIA notification raised on
         // a background window's peer is not what the user is looking at.
@@ -483,7 +483,9 @@ public partial class MainWindow : Window
                 nameof(MainViewModel.ToGroups)      => ToGroupTree,
                 _ => null,
             };
-            if (tree != null)
+            // No selection means the previous rebuild's restore has not run yet (mail arriving quickly):
+            // the place it is restoring is still the user's place, so keep it.
+            if (tree?.SelectedItem != null)
                 _placeBeforeRebuild = (tree.SelectedItem, tree.Items.IndexOf(tree.SelectedItem));
         };
 
