@@ -50,13 +50,19 @@ public partial class MainViewModel
     /// box. The index's answer was for the messages that were there before (and if the search was typed before
     /// the folder had loaded, there was nothing to ask about), so it is asked again for these.
     /// </summary>
-    private void RefreshSearchIndexForNewMessages()
+    private void RefreshSearchIndexForNewMessages(bool isReload)
     {
         if (_suppressFilterRebuild || string.IsNullOrWhiteSpace(SearchText)) return;
         // A new matcher for the same text, so the old answer is not applied to the new messages.
+        var previous = _searchMatcher;
         _searchMatcher = null;
-        StartSearchIndexQuery();
+        if (!StartSearchIndexQuery() || !isReload) return;
+        _matcherKeepingPlace = _searchMatcher;
+        if (previous != null) _searchMatcher?.BorrowIndexHits(previous);
     }
+
+    /// <summary>The matcher whose answer belongs to a reload, and so must not move the user when it comes.</summary>
+    private MessageSearchMatcher? _matcherKeepingPlace;
 
     private string SearchFolderNameFor(MailMessageSummary msg)
     {
@@ -160,7 +166,8 @@ public partial class MainViewModel
         }
 
         if (!ReferenceEquals(matcher, _searchMatcher) || ct.IsCancellationRequested) return;
-        ApplyFiltersAndSearch();
+        if (ReferenceEquals(matcher, _matcherKeepingPlace)) ApplyReloadedMessages();
+        else ApplyFiltersAndSearch();
     }
 
     // ── Search Results folder (#717, phase 2) ────────────────────────────────────
@@ -334,7 +341,7 @@ public partial class MainViewModel
     {
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         var expectedFolder = SelectedFolder;
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = "Searching…";
         IsBusy = true;
 
@@ -531,18 +538,7 @@ public partial class MainViewModel
                 m.Preview = _showPreview ? TruncatePreview(m.Preview, _previewLines) : string.Empty;
             _rawMessages.AddRange(added);
 
-            var previouslySelected = SelectedMessage;
-            using (Messages.BeginBatchScope())
-            {
-                foreach (var m in added)
-                {
-                    if (!MatchesFilter(m) || !MatchesDayLimit(m)) continue;
-                    if (!string.IsNullOrWhiteSpace(SearchText) && !MatchesSearch(m)) continue;
-                    InsertMessageSorted(m);
-                }
-            }
-            if (previouslySelected != null && SelectedMessage == null && Messages.Contains(previouslySelected))
-                SelectedMessage = previouslySelected;
+            ApplyArrivalsAndStateChanges(added.Where(ShouldShowInList).ToList(), []);
             RebuildActiveGroupView();
         }
         var n = Messages.Count;

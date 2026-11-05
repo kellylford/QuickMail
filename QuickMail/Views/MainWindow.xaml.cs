@@ -328,6 +328,9 @@ public partial class MainWindow : Window
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
         vm.MessageListFocusNowRequested += FocusSelectedMessageRowNow;
+        vm.MessageListHasFocusQuery += () => IsActive && MessageList.IsKeyboardFocusWithin;
+        vm.ReadingPaneHasFocusQuery += () => IsActive && (IsMessageBodyFocused
+            || (DateField.Parent as UIElement)?.IsKeyboardFocusWithin == true || ReadingPaneAttachmentList.IsKeyboardFocusWithin);
         // Normally the main window is where a VM announcement belongs. _announceTarget redirects it
         // for the duration of a call made on behalf of another window — a UIA notification raised on
         // a background window's peer is not what the user is looking at.
@@ -471,6 +474,24 @@ public partial class MainWindow : Window
                 _ = InitReadingPaneWebViewAsync();
         };
 
+        // Where the user is in a grouped tree, read while the tree still holds the old groups. By the
+        // time PropertyChanged runs the binding has already replaced them, so the old index was -1.
+        vm.PropertyChanging += (_, e) =>
+        {
+            var tree = e.PropertyName switch
+            {
+                nameof(MainViewModel.Conversations) => ConversationTree,
+                nameof(MainViewModel.SenderGroups)  => SenderGroupTree,
+                nameof(MainViewModel.ToGroups)      => ToGroupTree,
+                _ => null,
+            };
+            // No selection means the previous rebuild's restore has not run yet (mail arriving quickly):
+            // the place it is restoring is still the user's place, so keep it.
+            if (tree?.SelectedItem != null)
+                _placeBeforeRebuild = new GroupedTreePlace(tree, _vm.SelectedFolder, tree.SelectedItem,
+                    GroupedPlace.IndexOf(tree.Items.Cast<object>().ToList(), tree.SelectedItem));
+        };
+
         // Re-focus the active message panel whenever the message collections are replaced
         // (happens after Refresh, Load More, folder changes, and view-mode switches).
         //
@@ -485,11 +506,28 @@ public partial class MainWindow : Window
             // server reported, F5 — and keeps focus where the user is. A different folder means the
             // user went somewhere (Enter or a click on a folder, a saved-view hotkey), and focus
             // follows it into the list as it always has.
-            var stayInSidePane = e.PropertyName is nameof(MainViewModel.Messages) or nameof(MainViewModel.Conversations)
-                                     or nameof(MainViewModel.SenderGroups) or nameof(MainViewModel.ToGroups)
-                                 && IsSameFolderAsLastRebuild()
-                                 && IsFocusInSidePane()
-                                 && _keyboardNavigationsPending == 0;
+            var sameFolderRebuild = e.PropertyName is nameof(MainViewModel.Messages) or nameof(MainViewModel.Conversations)
+                                 or nameof(MainViewModel.SenderGroups) or nameof(MainViewModel.ToGroups)
+                             && IsSameFolderAsLastRebuild();
+            var stayInSidePane = sameFolderRebuild && IsFocusInSidePane() && _keyboardNavigationsPending == 0;
+
+            // A replacement that is keeping the user's row. Once the new rows are laid out, WPF focuses
+            // whichever row sits at the old focused index, and focusing a row selects it, so the row the
+            // view model kept loses to its neighbour. That happens after an Input-priority operation
+            // queued here would run (measured), so this runs at Background, after every focus move
+            // queued below, and has the last word.
+            if (e.PropertyName == nameof(MainViewModel.Messages) && vm.RowKeptByReplacement is { } kept)
+            {
+                var keysBefore = _messageListKeyPresses;
+                Dispatcher.InvokeAsync(() =>
+                {
+                    if (keysBefore != _messageListKeyPresses) return;   // the user has moved on themselves
+                    if (ReferenceEquals(MessageList.SelectedItem, kept) || !MessageList.Items.Contains(kept)) return;
+                    LogService.Debug("[FOCUS] Replacement moved the selection; putting it back on the kept row");
+                    MessageList.SelectedItem = kept;
+                    if (IsActive && MessageList.IsKeyboardFocusWithin) FocusSelectedMessageRowNow();
+                }, DispatcherPriority.Background);
+            }
 
             if (e.PropertyName == nameof(MainViewModel.Messages) && IsActive)
             {
@@ -497,6 +535,11 @@ public partial class MainWindow : Window
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS]   → skipped (menu/toolbar has focus)");
+                }
+                else if (vm.IsReplacingInBackground && vm.IsMessagesView && !MessageList.IsKeyboardFocusWithin)
+                {
+                    // Mail arrived in bulk, or a server search answered, while the user is elsewhere.
+                    LogService.Debug("[FOCUS]   → skipped (background replacement, focus not in the list)");
                 }
                 else if (_vm.IsMessageOpen || _vm.IsMessageOpenInWindow)
                 {
@@ -506,12 +549,13 @@ public partial class MainWindow : Window
                 }
                 else if (stayInSidePane)
                 {
-                    // A grouped view still lands its selection on the top row, as it would have,
-                    // so the list opens there when the user comes to it — but focus stays put.
-                    LogService.Debug("[FOCUS]   → background rebuild, focus in a side pane; selection only");
-                    if (vm.IsConversationsView)  LandOnConversationAfterRebuild(0, takeFocus: false);
-                    else if (vm.IsFromView)      LandOnSenderGroupAfterRebuild(0, takeFocus: false);
-                    else if (vm.IsToView)        LandOnToGroupAfterRebuild(0, takeFocus: false);
+                    LogService.Debug("[FOCUS]   → background rebuild, focus in a side pane; stays there");
+                }
+                else if (sameFolderRebuild && !vm.IsMessagesView)
+                {
+                    // The grouped tree is about to be rebuilt too, and its own branch below puts the
+                    // user back on the group they were on rather than the top one.
+                    LogService.Debug("[FOCUS]   → reload of a grouped view; its rebuild keeps the place");
                 }
                 else if (vm.IsConversationsView)
                 {
@@ -537,81 +581,79 @@ public partial class MainWindow : Window
                     Dispatcher.InvokeAsync(FocusActiveMessagePanel, DispatcherPriority.Input);
                 }
             }
-            else if (e.PropertyName == nameof(MainViewModel.Conversations) && IsActive && vm.IsConversationsView)
+            else if (e.PropertyName == nameof(MainViewModel.Conversations) && vm.IsConversationsView)
             {
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS] PropChanged:Conversations skipped (menu/toolbar has focus)");
+                    RestoreGroupedPlace(ConversationTree, takeFocus: false);
                 }
                 else if (_vm.IsMessageOpen)
                 {
                     // Reading pane is open — a background sync rebuilt the Conversations
                     // collection but focus must stay in the reading pane.
                     LogService.Debug("[FOCUS] PropChanged:Conversations skipped (reading pane open)");
+                    RestoreGroupedPlace(ConversationTree, takeFocus: false);
                 }
                 else
                 {
-                    // Capture selected index now (before DataBind replaces items) so we can
-                    // restore position after a background sync that rebuilds Conversations.
-                    var oldIdx = ConversationTree.Items.IndexOf(ConversationTree.SelectedItem);
-                    // A background rebuild with focus in another pane (#719) keeps the list's
-                    // position but leaves focus with the user.
-                    var takeFocus = !stayInSidePane;
-                    LogService.Debug($"[FOCUS] PropChanged:Conversations convCount={vm.Conversations.Count} oldIdx={oldIdx} takeFocus={takeFocus} {FocusInfo()}");
-                    FocusTreeSelectedOrFirst(ConversationTree, oldIdx, takeFocus);
+                    // With focus in another pane (#719) or another window, the tree keeps its place
+                    // but focus stays with the user.
+                    var takeFocus = IsActive && !stayInSidePane;
+                    LogService.Debug($"[FOCUS] PropChanged:Conversations convCount={vm.Conversations.Count} takeFocus={takeFocus} {FocusInfo()}");
+                    RestoreGroupedPlace(ConversationTree, takeFocus);
                 }
             }
-            else if (e.PropertyName == nameof(MainViewModel.SenderGroups) && IsActive && vm.IsFromView)
+            else if (e.PropertyName == nameof(MainViewModel.SenderGroups) && vm.IsFromView)
             {
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS] PropChanged:SenderGroups skipped (menu/toolbar has focus)");
+                    RestoreGroupedPlace(SenderGroupTree, takeFocus: false);
                 }
                 else if (_vm.IsMessageOpen)
                 {
                     // Reading pane is open — a background sync rebuilt the SenderGroups
                     // collection but focus must stay in the reading pane.
                     LogService.Debug("[FOCUS] PropChanged:SenderGroups skipped (reading pane open)");
+                    RestoreGroupedPlace(SenderGroupTree, takeFocus: false);
                 }
                 else
                 {
-                    // Capture selected index now (before DataBind replaces items) so we can
-                    // restore position after a background sync that rebuilds SenderGroups.
-                    var oldIdx = SenderGroupTree.Items.IndexOf(SenderGroupTree.SelectedItem);
-                    // A background rebuild with focus in another pane (#719) keeps the list's
-                    // position but leaves focus with the user.
-                    var takeFocus = !stayInSidePane;
-                    LogService.Debug($"[FOCUS] PropChanged:SenderGroups grpCount={vm.SenderGroups.Count} oldIdx={oldIdx} takeFocus={takeFocus} {FocusInfo()}");
-                    FocusTreeSelectedOrFirst(SenderGroupTree, oldIdx, takeFocus);
+                    // With focus in another pane (#719) or another window, the tree keeps its place
+                    // but focus stays with the user.
+                    var takeFocus = IsActive && !stayInSidePane;
+                    LogService.Debug($"[FOCUS] PropChanged:SenderGroups grpCount={vm.SenderGroups.Count} takeFocus={takeFocus} {FocusInfo()}");
+                    RestoreGroupedPlace(SenderGroupTree, takeFocus);
                 }
             }
-            else if (e.PropertyName == nameof(MainViewModel.ToGroups) && IsActive && vm.IsToView)
+            else if (e.PropertyName == nameof(MainViewModel.ToGroups) && vm.IsToView)
             {
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS] PropChanged:ToGroups skipped (menu/toolbar has focus)");
+                    RestoreGroupedPlace(ToGroupTree, takeFocus: false);
                 }
                 else if (_vm.IsMessageOpen)
                 {
                     // Reading pane is open — a background sync rebuilt the ToGroups
                     // collection but focus must stay in the reading pane.
                     LogService.Debug("[FOCUS] PropChanged:ToGroups skipped (reading pane open)");
+                    RestoreGroupedPlace(ToGroupTree, takeFocus: false);
                 }
                 else
                 {
-                    // Capture selected index now (before DataBind replaces items) so we can
-                    // restore position after a background sync that rebuilds ToGroups.
-                    var oldIdx = ToGroupTree.Items.IndexOf(ToGroupTree.SelectedItem);
-                    // A background rebuild with focus in another pane (#719) keeps the list's
-                    // position but leaves focus with the user.
-                    var takeFocus = !stayInSidePane;
-                    LogService.Debug($"[FOCUS] PropChanged:ToGroups grpCount={vm.ToGroups.Count} oldIdx={oldIdx} takeFocus={takeFocus} {FocusInfo()}");
-                    FocusTreeSelectedOrFirst(ToGroupTree, oldIdx, takeFocus);
+                    // With focus in another pane (#719) or another window, the tree keeps its place
+                    // but focus stays with the user.
+                    var takeFocus = IsActive && !stayInSidePane;
+                    LogService.Debug($"[FOCUS] PropChanged:ToGroups grpCount={vm.ToGroups.Count} takeFocus={takeFocus} {FocusInfo()}");
+                    RestoreGroupedPlace(ToGroupTree, takeFocus);
                 }
             }
             else if (e.PropertyName == nameof(MainViewModel.ViewMode))
             {
                 LogService.Debug($"[FOCUS] ViewMode → {vm.ViewMode} {FocusInfo()}");
+                _placeBeforeRebuild = null;   // a different view of the mail starts at its top
                 if (!IsMenuOrToolbarFocused() && ShouldRestoreMessagePanelFocusAfterViewModeChange())
                 {
                     LogService.Debug("[FOCUS]   → FocusActiveMessagePanel (view mode change)");
@@ -984,7 +1026,69 @@ public partial class MainWindow : Window
     // of the message list — a background sync, a removal the server reported — must not pull focus
     // out of one of these: the user did nothing to the list.
     private bool IsFocusInSidePane() =>
-        FolderList.IsKeyboardFocusWithin || AccountList.IsKeyboardFocusWithin || MainStatusBar.IsKeyboardFocusWithin;
+        FolderList.IsKeyboardFocusWithin || AccountList.IsKeyboardFocusWithin || MainStatusBar.IsKeyboardFocusWithin
+        || TabStrip.IsKeyboardFocusWithin;
+
+    private sealed record GroupedTreePlace(TreeView Tree, MailFolderModel? Folder, object Item, int Index);
+
+    // Where the user was in a grouped tree. Only good for that tree, in that folder.
+    private GroupedTreePlace? _placeBeforeRebuild;
+
+    // How many LandOn…AfterRebuild listeners are waiting for a grouped tree to be replaced.
+    private int _landingsPending;
+
+    /// <summary>
+    /// Puts a rebuilt grouped tree back where the user was: on the same message if they were inside
+    /// a group, otherwise on the same group, and failing that on whatever now sits at that position.
+    /// Deferred so the binding has finished replacing the items.
+    /// </summary>
+    private void RestoreGroupedPlace(TreeView tree, bool takeFocus)
+    {
+        // A folder change or a delete has said where the user lands; putting them back first would be a
+        // second focus move, on a row in a list they have left.
+        if (_landingsPending > 0) return;
+
+        var place = _placeBeforeRebuild;
+        if (place != null && (place.Tree != tree || !IsSameFolder(place.Folder, _vm.SelectedFolder)))
+            place = null;
+        var item = place?.Item;
+        var index = place?.Index ?? 0;
+        var messageOpen = _vm.IsMessageOpen;
+
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (tree.Items.Count == 0)
+            {
+                if (takeFocus) tree.Focus();
+                return;
+            }
+
+            var groups = tree.Items.Cast<object>().ToList();
+            var (group, message) = GroupedPlace.Find(groups, item, index, messageOpen, m => GroupKeyFor(tree, m));
+            if (group == null) return;
+
+            if (message != null)
+            {
+                var where = TreeViewItemRealizer.FocusMessage(tree, tree.Items.IndexOf(group), group, message,
+                    GroupedPlace.MessagesOf(group)!.ToList().IndexOf(message), takeFocus);
+                if (where != GroupedMessageFocus.None) return;
+            }
+
+            if (!TreeViewItemRealizer.SelectGroup(tree, tree.Items.IndexOf(group), group, takeFocus) && takeFocus)
+                tree.Focus();
+        }, DispatcherPriority.Input);
+    }
+
+    private string? GroupKeyFor(TreeView tree, MailMessageSummary message)
+    {
+        if (tree == ConversationTree) return ConversationBuilder.NormalizeSubject(message.Subject);
+        return tree == ToGroupTree ? SenderGroupBuilder.ToKey(message) : SenderGroupBuilder.FromKey(message);
+    }
+
+    // Registered after a server call, a landing can outlive the rebuild it was waiting for, and the next
+    // rebuild, perhaps long after, would take focus from wherever the user has gone since.
+    private static bool IsStaleLanding(long registeredAtTicks) =>
+        Environment.TickCount64 - registeredAtTicks > 60_000;
 
     // The open folder when a message collection was last rebuilt, and when the folder tree last
     // followed it (#719). Compared by identity: a folder refresh re-resolves SelectedFolder to a new
@@ -3449,8 +3553,11 @@ public partial class MainWindow : Window
 
     // Enter on a message: load body; Delete: delete all selected messages;
     // Shift+Up/Down: extend consecutive selection without opening the reading pane.
+    private int _messageListKeyPresses;
+
     private async void MessageList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        _messageListKeyPresses++;
         LogService.Debug($"MessageList_PreviewKeyDown key={e.Key} mod={Keyboard.Modifiers} focused={Keyboard.FocusedElement?.GetType().Name}");
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
@@ -4665,6 +4772,11 @@ public partial class MainWindow : Window
             FocusTreeSelectedOrFirst(SenderGroupTree);
             return;
         }
+        if (_vm.IsToView)
+        {
+            FocusTreeSelectedOrFirst(ToGroupTree);
+            return;
+        }
         if (MessageList.Items.Count == 0)
         {
             LogService.Debug("[FOCUS]   → MessageList.Focus() (empty list)");
@@ -5360,10 +5472,13 @@ public partial class MainWindow : Window
     private void LandOnConversationAfterRebuild(int targetIdx, bool takeFocus = true)
     {
         LogService.Debug($"[FOCUS] LandOnConv: registered listener targetIdx={targetIdx} {FocusInfo()}");
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.Conversations)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             LogService.Debug($"[FOCUS] LandOnConv: listener fired count={_vm.Conversations.Count} targetIdx={targetIdx} {FocusInfo()}");
             Dispatcher.InvokeAsync(() =>
             {
@@ -5400,6 +5515,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5416,10 +5532,13 @@ public partial class MainWindow : Window
     private void LandOnSenderGroupAfterRebuild(int targetGroupIdx, bool takeFocus = true)
     {
         LogService.Debug($"[FOCUS] LandOnSender: registered listener targetIdx={targetGroupIdx} {FocusInfo()}");
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.SenderGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             LogService.Debug($"[FOCUS] LandOnSender: listener fired count={_vm.SenderGroups.Count} targetIdx={targetGroupIdx} {FocusInfo()}");
             Dispatcher.InvokeAsync(() =>
             {
@@ -5456,6 +5575,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5464,10 +5584,13 @@ public partial class MainWindow : Window
     private void LandOnToGroupAfterRebuild(int targetGroupIdx, bool takeFocus = true)
     {
         LogService.Debug($"[FOCUS] LandOnToGroup: registered listener targetIdx={targetGroupIdx} {FocusInfo()}");
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.ToGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             LogService.Debug($"[FOCUS] LandOnToGroup: listener fired count={_vm.ToGroups.Count} targetIdx={targetGroupIdx} {FocusInfo()}");
             Dispatcher.InvokeAsync(() =>
             {
@@ -5503,6 +5626,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5728,10 +5852,13 @@ public partial class MainWindow : Window
 
     private void LandOnSenderMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
     {
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.SenderGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             Dispatcher.InvokeAsync(() =>
             {
                 var group = _vm.SenderGroups.FirstOrDefault(g =>
@@ -5756,15 +5883,19 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
     private void LandOnToMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
     {
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.ToGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             Dispatcher.InvokeAsync(() =>
             {
                 var group = _vm.ToGroups.FirstOrDefault(g =>
@@ -5789,15 +5920,19 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
     private void LandOnConversationMessageAfterRebuild(string normalizedSubject, int msgIdx, int fallbackGroupIdx)
     {
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.Conversations)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             Dispatcher.InvokeAsync(() =>
             {
                 var group = _vm.Conversations.FirstOrDefault(g =>
@@ -5822,6 +5957,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
