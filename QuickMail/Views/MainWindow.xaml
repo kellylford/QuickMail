@@ -76,6 +76,9 @@
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Messages As…"
                       AutomationProperties.Name="Save Messages from Sender As"
                       Click="MenuSaveAs_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.saveAttachments" Header="Save All Attachme_nts…"
+                      AutomationProperties.Name="Save All Attachments"
+                      Click="MenuSaveAttachments_Click"/>
             <Separator/>
             <MenuItem Header="_Delete All from Sender"
                       AutomationProperties.Name="Delete All from Sender"
@@ -132,6 +135,9 @@
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Messages As…"
                       AutomationProperties.Name="Save Messages to Recipient As"
                       Click="MenuSaveAs_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.saveAttachments" Header="Save All Attachme_nts…"
+                      AutomationProperties.Name="Save All Attachments"
+                      Click="MenuSaveAttachments_Click"/>
             <Separator/>
             <MenuItem Header="_Delete All to Recipient"
                       AutomationProperties.Name="Delete All to Recipient"
@@ -189,6 +195,9 @@
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Conversation As…"
                       AutomationProperties.Name="Save Conversation As"
                       Click="MenuSaveAs_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.saveAttachments" Header="Save All Attachme_nts…"
+                      AutomationProperties.Name="Save All Attachments"
+                      Click="MenuSaveAttachments_Click"/>
             <Separator/>
             <MenuItem Header="_Delete Conversation"
                       AutomationProperties.Name="Delete Conversation"
@@ -247,6 +256,9 @@
                       sc:CommandShortcut.Id="mail.saveAs"
                       AutomationProperties.Name="Save As"
                       Click="MenuSaveAs_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.saveAttachments" Header="Save All Attachme_nts…"
+                      AutomationProperties.Name="Save All Attachments"
+                      Click="MenuSaveAttachments_Click"/>
             <MenuItem Header="_Print…"
                       sc:CommandShortcut.Id="mail.print"
                       AutomationProperties.Name="Print"

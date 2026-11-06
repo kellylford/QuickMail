@@ -1,5 +1,13 @@
 # QuickMail v0.8.69 Release Notes
 
+## New
+
+- **Save a message's attachments without opening it.** Open the context menu on a message in the message list (Shift+F10 or the Applications key) and choose **Save All Attachments…**. QuickMail asks for a folder and saves every attachment there. It works on several selected messages at once, and on a whole conversation or sender group when its heading is selected. If there is nothing to save, QuickMail says the message has no attachments instead of asking for a folder. It is in the command palette too, and you can give it a key in keyboard customizations. (#931)
+
+## Changed
+
+- **Saving attachments no longer replaces files with the same name.** When two attachments share a name, or the folder already has a file by that name, the new copy is saved as, for example, "image001 (2).png". This applies to **Save All…** in the attachment list as well. (#931)
+
 ## Fixed
 
 - **Screen readers could read an internal name instead of a message.** You could hear "QuickMail.Models.MailMessageSummary" in the message list, at times that were hard to predict. QuickMail now gives a screen reader the message for a row that isn't on screen yet, normally in the fields and order you chose in Message List Fields, which should stop this. (#928)

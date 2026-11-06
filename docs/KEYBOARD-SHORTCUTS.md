@@ -31,6 +31,7 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | Ctrl+Q | `mail.markRead` | Mark as Read |
 | Ctrl+S | `mail.save` | Save — the selection (or a group header's messages) in the default format, into the save folder, without asking (#728). The message window registers `message.save` on the same key |
 | F12 | `mail.saveAs` | Save As… — the Save dialog, with a type list; several messages ask for a folder and format for all (#728). Message window: `message.saveAs` |
+| *(unassigned)* | `mail.saveAttachments` | Save All Attachments… — every attachment of the selection (or a group header's messages) into one folder the user picks, without opening the messages (#931). On the message, conversation, sender and recipient context menus |
 | Ctrl+P | `mail.print` | Print… — one message, through the Windows Print dialog (#728). Message window: `message.print`. Ctrl+S, Ctrl+P and F12 are relayed out of both message bodies, since focus is there while reading |
 | Ctrl+Shift+T | `mail.createRuleFromMessage` | Create Rule from Message. Registered before `view.focusTabs`, and always available on a selection so the key stays here (#678). Message window: `message.createRule`, on the window's own message |
 | Ctrl+Shift+L | `mail.rules` | Manage Rules. Message window: `window.manageRules`; the Rules Manager opens on the message's account and returns focus to that window |

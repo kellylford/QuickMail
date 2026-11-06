@@ -10613,37 +10613,194 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var folder = SaveFolderPathRequested?.Invoke("Choose folder to save attachments");
         if (folder == null) return;
 
+        await WriteAttachmentsAsync([MessageDetail], folder);
+    }
+
+    /// <summary>
+    /// Save All Attachments from the message list (#931): every attachment of the given messages,
+    /// into one folder the user picks, without opening any of them. The window resolves what is
+    /// selected — a multi-selection, a group header's messages — as it does for Save As.
+    /// Each message is read from the cache, else fetched without marking it read: saving a
+    /// message's attachments is not reading it. The folder is asked for only once there is
+    /// something to save, so a message with none says so rather than opening a dialog for nothing.
+    /// </summary>
+    public async Task SaveAttachmentsOfMessagesAsync(IReadOnlyList<MailMessageSummary> messages)
+    {
+        var targets = messages.Where(m => !IsOutboxRow(m)).ToList();
+        if (targets.Count == 0)
+        {
+            if (messages.Count > 0)
+                SetStatusEvenIfUnchanged("Messages waiting in the Outbox have no attachments to save until they are sent.",
+                    AnnouncementCategory.Result);
+            return;
+        }
+
+        // Each message on its own: one that cannot be read (another account offline, a POP3 message
+        // no longer stored) must not stop the others, and its own account is the one noted.
+        var withAttachments = new List<MailMessageDetail>();
+        var unreadable = 0;
+        Exception? firstFailure = null;
         IsBusy = true;
-        StatusText = "Saving attachments…";
+        if (targets.Count > 1)
+            SetStatus($"Checking {targets.Count} messages for attachments…", AnnouncementCategory.Status);
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-            foreach (var att in MessageDetail.Attachments)
+            foreach (var message in targets)
             {
-                if (!att.IsLoaded && att.PartSpecifier != null)
-                    att.Content = await _imap.DownloadAttachmentAsync(
-                        MessageDetail.AccountId, MessageDetail.FolderName,
-                        MessageDetail.MessageId, att.PartSpecifier, cts.Token);
-
-                if (att.Content != null)
+                try
                 {
-                    // Sanitized so a crafted server-supplied filename can't write
-                    // outside the chosen save folder.
-                    var safeFileName = AttachmentSafety.SanitizeFileName(att.FileName);
-                    await File.WriteAllBytesAsync(Path.Combine(folder, safeFileName), att.Content);
+                    var detail = await LoadDetailForAttachmentsAsync(message, _messageActionShutdownCts.Token);
+                    if (detail.Attachments.Count > 0) withAttachments.Add(detail);
+                }
+                catch (OperationCanceledException) when (_messageActionShutdownCts.IsCancellationRequested) { return; }
+                catch (Exception ex)
+                {
+                    unreadable++;
+                    firstFailure ??= ex;
+                    _connectivity?.NoteOperationOutcome(message.AccountId, ex, "attachment-download-failed");
+                    LogService.Log($"SaveAttachmentsOfMessages: could not read a message ({ex.GetType().Name})", ex);
                 }
             }
-            StatusText = "All attachments saved.";
-        }
-        catch (Exception ex)
-        {
-            _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
-            StatusText = OfflineOrErrorStatus(ex,
-                () => "Attachments are not available offline.",
-                () => $"Save all failed: {ex.Message}", CancellationToken.None);
-            LogService.Log("SaveAllAttachments", ex);
         }
         finally { IsBusy = false; }
+
+        if (withAttachments.Count == 0)
+        {
+            string text;
+            if (unreadable == 0)
+                text = targets.Count == 1 ? "This message has no attachments."
+                                          : "None of the selected messages have attachments.";
+            else if (unreadable == targets.Count)
+                text = OfflineOrErrorStatus(firstFailure!,
+                    () => "Attachments are not available offline.",
+                    () => targets.Count == 1 ? "Could not read the message from the server."
+                                             : "Could not read the messages from the server.",
+                    CancellationToken.None);
+            else
+                text = $"None of the messages that could be read have attachments. {Unreadable(unreadable)}";
+            SetStatusEvenIfUnchanged(text, AnnouncementCategory.Result);
+            return;
+        }
+
+        var folder = SaveFolderPathRequested?.Invoke("Choose folder to save attachments");
+        if (folder == null) return;
+
+        await WriteAttachmentsAsync(withAttachments, folder, unreadable);
+    }
+
+    private static string Unreadable(int count) =>
+        count == 1 ? "1 message could not be read." : $"{count} messages could not be read.";
+
+    /// <summary>
+    /// The message with its attachment list: the open message when it is this one (its attachments
+    /// may already be downloaded), else the cached copy, else the server's — fetched on the prefetch
+    /// path, which does not mark it read. The store and the server are separate scopes, so a store
+    /// failure (--online mode) still reaches the server (#637).
+    /// </summary>
+    private async Task<MailMessageDetail> LoadDetailForAttachmentsAsync(MailMessageSummary message, CancellationToken ct)
+    {
+        if (message is MailMessageDetail given) return given;
+        if (IsOpenMessage(message)) return MessageDetail!;
+
+        MailMessageDetail? detail = null;
+        try { detail = await _localStore.LoadDetailAsync(message.AccountId, message.FolderName, message.MessageId); }
+        catch (Exception ex) { LogService.Log("SaveAttachmentsOfMessages: local store unavailable — asking the server", ex); }
+        if (detail != null) return detail;
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(60));
+        return await _imap.PrefetchMessageDetailAsync(message.AccountId, message.FolderName, message.MessageId, cts.Token);
+    }
+
+    private bool IsOpenMessage(MailMessageSummary message) =>
+        MessageDetail is { } open
+        && open.MessageId == message.MessageId
+        && open.AccountId == message.AccountId
+        && open.FolderName == message.FolderName;
+
+    /// <summary>
+    /// Downloads what is not yet loaded and writes every attachment of <paramref name="details"/>
+    /// into <paramref name="folder"/>. Names are sanitized (a crafted server-supplied name must not
+    /// write outside the folder) and made unique, so two attachments called "image001.png", or a
+    /// file already in the folder, are not overwritten. A download that fails is the server's
+    /// problem and is noted against that message's account; a write that fails is the disk's, and
+    /// is not. Either way the rest are still saved, and the outcome says what was and was not.
+    /// </summary>
+    private async Task WriteAttachmentsAsync(List<MailMessageDetail> details, string folder, int unreadable = 0)
+    {
+        IsBusy = true;
+        SetStatus("Saving attachments…", AnnouncementCategory.Status);
+        var saved = 0;
+        var notDownloaded = 0;
+        var notWritten = 0;
+        Exception? downloadFailure = null;
+        string? writeFailure = null;
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var detail in details)
+            {
+                // The open message keeps what it downloaded (its attachment list uses it); any other
+                // message's bytes are dropped once written, so a large selection is not all held at once.
+                var keep = ReferenceEquals(detail, MessageDetail);
+                foreach (var att in detail.Attachments)
+                {
+                    if (!att.IsLoaded)
+                    {
+                        if (att.PartSpecifier == null) { notDownloaded++; continue; }
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+                        cts.CancelAfter(TimeSpan.FromSeconds(120));
+                        try
+                        {
+                            att.Content = await _imap.DownloadAttachmentAsync(
+                                detail.AccountId, detail.FolderName, detail.MessageId, att.PartSpecifier, cts.Token);
+                        }
+                        catch (OperationCanceledException) when (_messageActionShutdownCts.IsCancellationRequested) { return; }
+                        catch (Exception ex)
+                        {
+                            notDownloaded++;
+                            downloadFailure ??= ex;
+                            _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
+                            LogService.Log("SaveAllAttachments: download", ex);
+                            continue;
+                        }
+                    }
+
+                    try
+                    {
+                        await File.WriteAllBytesAsync(AttachmentSafety.UniquePath(folder, att.FileName, taken), att.Content!);
+                        saved++;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+                    {
+                        notWritten++;
+                        writeFailure ??= ex.Message;
+                        LogService.Log("SaveAllAttachments: write", ex);
+                    }
+                    finally
+                    {
+                        if (!keep) att.Content = null;
+                    }
+                }
+            }
+        }
+        finally { IsBusy = false; }
+
+        if (saved == 0 && notWritten == 0 && notDownloaded > 0 && downloadFailure is not null
+            && ConnectionFailure.IsConnectionFailure(downloadFailure, CancellationToken.None))
+        {
+            SetStatusEvenIfUnchanged("Attachments are not available offline.", AnnouncementCategory.Result);
+            return;
+        }
+
+        var parts = new List<string> { saved == 1 ? "Saved 1 attachment." : $"Saved {saved} attachments." };
+        if (notDownloaded > 0)
+            parts.Add(notDownloaded == 1 ? "1 could not be downloaded from the server."
+                                         : $"{notDownloaded} could not be downloaded from the server.");
+        if (notWritten > 0)
+            parts.Add(notWritten == 1 ? $"1 could not be saved: {writeFailure}" : $"{notWritten} could not be saved: {writeFailure}");
+        if (unreadable > 0) parts.Add(Unreadable(unreadable));
+        SetStatusEvenIfUnchanged(string.Join(" ", parts), AnnouncementCategory.Result);
     }
 
     [RelayCommand]

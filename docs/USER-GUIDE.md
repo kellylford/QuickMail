@@ -927,6 +927,12 @@ Once focus is on the list, arrow between attachments and use:
 | `Alt+Enter` | Show the attachment's properties |
 | `Shift+F10` (or the Menu key) | Open the context menu: **Save…**, **Save All…**, **Open** |
 
+#### Saving attachments without opening the message
+
+You can save a message's attachments straight from the message list. Open the context menu on the message (Shift+F10 or the Applications key) and choose **Save All Attachments…**, then choose a folder. Every attachment is saved there. With several messages selected, or a conversation or sender group's heading, the attachments of all those messages go into the one folder. Saving attachments does not mark a message as read.
+
+If none of the messages have attachments, QuickMail says so and does not ask for a folder. A file is never replaced: if the folder already has a file with the same name, or two attachments share a name, the later one is saved with a number added, such as "image001 (2).png". **Save All Attachments** is also in the command palette, and has no key until you give it one in keyboard customizations.
+
 ### Saving and Printing Messages
 
 You can save a message to a file, or print it. **Save** and **Save As…** act on everything selected: one message, several selected messages, or a whole conversation or sender group when its heading is selected. **Print** acts on one message.

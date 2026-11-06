@@ -1586,6 +1586,14 @@ public partial class MainWindow : Window
             defaultKey: Key.F12, defaultModifiers: ModifierKeys.None,
             isAvailable: _vm.CanActOnSelection));
 
+        // Save All Attachments from the message list, without opening the message (#931). Acts on
+        // what Save As acts on. No default key: it is on the message context menus and in the palette.
+        _registry.Register(new CommandDefinition(
+            id: "mail.saveAttachments", category: "Mail", title: "Save All Attachments…",
+            description: "Save every attachment of the selected messages into a folder you choose",
+            execute: async () => await SaveSelectedAttachmentsAsync(),
+            isAvailable: _vm.CanActOnSelection));
+
         _registry.Register(new CommandDefinition(
             id: "mail.print", category: "Mail", title: "Print…",
             execute: async () => await PrintSelectedMessageAsync(),
@@ -8119,6 +8127,16 @@ public partial class MainWindow : Window
     private async void MenuSave_Click(object sender, RoutedEventArgs e) => await SaveSelectedMessagesAsync(chooseLocation: false);
     private async void MenuSaveAs_Click(object sender, RoutedEventArgs e) => await SaveSelectedMessagesAsync(chooseLocation: true);
     private async void MenuPrint_Click(object sender, RoutedEventArgs e) => await PrintSelectedMessageAsync();
+    private async void MenuSaveAttachments_Click(object sender, RoutedEventArgs e) => await SaveSelectedAttachmentsAsync();
+
+    // Deferred a dispatcher turn before the folder dialog opens, for the reason SaveSelectedMessagesAsync is.
+    private Task SaveSelectedAttachmentsAsync() =>
+        Dispatcher.InvokeAsync(async () =>
+        {
+            var messages = SaveTargets();
+            if (messages.Count == 0) return;
+            await _vm.SaveAttachmentsOfMessagesAsync(messages);
+        }, DispatcherPriority.Input).Task.Unwrap();
 
     private void FileMenu_SubmenuOpened(object sender, RoutedEventArgs e) => _vm.RefreshMessageTarget();
 
