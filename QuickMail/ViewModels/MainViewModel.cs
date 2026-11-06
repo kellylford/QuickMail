@@ -1920,8 +1920,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IConnectivityService? connectivity = null,
         ISoundService? soundService = null,
         IClipboardService? clipboard = null,
-        ClipboardStaging? clipboardStaging = null)
+        ClipboardStaging? clipboardStaging = null,
+        OpenedMessageService? openedMessages = null)
     {
+        _openedMessages = openedMessages;
         _sounds = soundService;
         _clipboard = clipboard;
         _clipboardStaging = clipboardStaging;
@@ -8762,7 +8764,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RetargetToGroupNewest();
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
-        ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, detail.AccountId));
+        ReplyToMessage(detail, all: false);
+    }
+
+    /// <summary>
+    /// Replies to <paramref name="detail"/>, or to everyone on it. Called directly for a message that is
+    /// not in the list, such as an opened .eml file (#939).
+    /// </summary>
+    public void ReplyToMessage(MailMessageDetail detail, bool all)
+    {
+        var accountId = SendingAccountFor(detail);
+        if (!all)
+        {
+            ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, accountId));
+            return;
+        }
+        var ownAddress = Accounts.FirstOrDefault(a => a.Id == accountId)?.Username ?? string.Empty;
+        ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, accountId, ownAddress));
+    }
+
+    /// <summary>
+    /// The account a reply or forward is sent from: the message's own, or for a message not in any
+    /// account (an opened .eml file, #939) the default account, as a new message would use.
+    /// </summary>
+    private Guid SendingAccountFor(MailMessageSummary message)
+    {
+        if (!OpenedMessageService.IsOpenedMessage(message)) return message.AccountId;
+        var account = Accounts.FirstOrDefault(a => a.IsDefault) ?? SelectedAccount ?? Accounts.FirstOrDefault();
+        return account?.Id ?? message.AccountId;
     }
 
     [RelayCommand]
@@ -8771,8 +8800,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RetargetToGroupNewest();
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
-        var ownAddress = Accounts.FirstOrDefault(a => a.Id == detail.AccountId)?.Username ?? string.Empty;
-        ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, detail.AccountId, ownAddress));
+        ReplyToMessage(detail, all: true);
     }
 
     [RelayCommand]
@@ -8782,8 +8810,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RetargetToGroupNewest();
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
+        await ForwardMessageAsync(detail);
+    }
 
-        var model = ComposeViewModel.CreateForward(detail, detail.AccountId);
+    /// <summary>
+    /// Forwards <paramref name="detail"/>, asking which attachments to include. Called directly for a
+    /// message that is not in the list, such as an opened .eml file (#939), whose window must not
+    /// change the list's selection to reach it.
+    /// </summary>
+    public async Task ForwardMessageAsync(MailMessageDetail detail)
+    {
+        var model = ComposeViewModel.CreateForward(detail, SendingAccountFor(detail));
 
         if (detail.Attachments.Count > 0)
         {
@@ -10390,6 +10427,66 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>The messages waiting to be pasted. See <see cref="ViewModels.MessageClipboard"/>.</summary>
     public MessageClipboard MessageClipboard { get; } = new();
 
+    // ── Opening .eml files and attached emails (#939) ─────────────────────────
+
+    // Holds messages that are in no mailbox. Null where nothing can be opened (tests that do not
+    // exercise it); the router sends its account id to it in the app.
+    private readonly OpenedMessageService? _openedMessages;
+
+    /// <summary>Raised with a message to show in its own window: an opened .eml file or attached email.</summary>
+    public event Action<MailMessageDetail>? OpenedMessageRequested;
+
+    /// <summary>The service holding opened messages, for the window to let go of one when it closes.</summary>
+    public OpenedMessageService? OpenedMessages => _openedMessages;
+
+    /// <summary>
+    /// Opens a .eml file from disk (#939): what QuickMail does when started with one, from Explorer's
+    /// Open with. A file that is missing or not an email is said so, rather than ignored.
+    /// </summary>
+    public async Task OpenEmailFileAsync(string path)
+    {
+        var name = Path.GetFileName(path);
+        byte[] bytes;
+        try { bytes = await File.ReadAllBytesAsync(path); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            LogService.Log("OpenEmailFile", ex);
+            SetStatus($"Could not open {name}: {ex.Message}", AnnouncementCategory.Result);
+            return;
+        }
+        OpenEmail(bytes, name);
+    }
+
+    /// <summary>
+    /// Shows an email held only as bytes, an attached email or a file's contents, in its own window.
+    /// Returns false, having said why, when the bytes are not an email.
+    /// </summary>
+    public bool OpenEmail(byte[] original, string name, bool reportFailure = true)
+    {
+        if (_openedMessages == null) return false;
+        MailMessageDetail detail;
+        try { detail = _openedMessages.Open(original); }
+        catch (FormatException ex)
+        {
+            // Not said for an attachment merely labelled as an email: the caller hands it to its Windows
+            // program instead, and a failure sound for something that then opens would say the opposite.
+            if (!reportFailure) return false;
+            SetStatus($"Could not open {name}: {ex.Message}", AnnouncementCategory.Result);
+            _sounds?.Play(SoundEvent.ActionFailed);
+            return false;
+        }
+        OpenedMessageRequested?.Invoke(detail);
+        return true;
+    }
+
+    /// <summary>
+    /// An attachment that is an email in its own right: a forwarded message, or a .eml file someone sent.
+    /// Opened inside QuickMail rather than handed to Windows, which may have nothing else to open it with.
+    /// </summary>
+    internal static bool IsAttachedEmail(AttachmentModel attachment) =>
+        string.Equals(attachment.ContentType, "message/rfc822", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Path.GetExtension(attachment.FileName), ".eml", StringComparison.OrdinalIgnoreCase);
+
     // The Windows clipboard and the folder its files are written to. Null in tests that do not
     // exercise them: copy and paste then work inside QuickMail alone, never touching the machine's
     // real clipboard (see IClipboardService for why that matters).
@@ -11122,9 +11219,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // ── Attachment commands ─────────────────────────────────────────────────────
 
     [RelayCommand]
-    private async Task SaveAttachmentAsync(AttachmentModel? attachment)
+    private Task SaveAttachmentAsync(AttachmentModel? attachment) =>
+        attachment == null || MessageDetail == null ? Task.CompletedTask : SaveAttachmentOfAsync(MessageDetail, attachment);
+
+    /// <summary>Saves one attachment of <paramref name="detail"/>. Called directly by a window showing a message that is not the reading pane's, such as an opened .eml file (#939).</summary>
+    public async Task SaveAttachmentOfAsync(MailMessageDetail detail, AttachmentModel attachment)
     {
-        if (attachment == null || MessageDetail == null) return;
         var att = attachment;
         if (!att.IsLoaded)
         {
@@ -11135,12 +11235,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                 att.Content = await _imap.DownloadAttachmentAsync(
-                    MessageDetail.AccountId, MessageDetail.FolderName,
-                    MessageDetail.MessageId, att.PartSpecifier, cts.Token);
+                    detail.AccountId, detail.FolderName,
+                    detail.MessageId, att.PartSpecifier, cts.Token);
             }
             catch (Exception ex)
             {
-                _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
+                _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
                 StatusText = OfflineOrErrorStatus(ex,
                     () => "Attachments are not available offline.",
                     () => $"Download failed: {ex.Message}", CancellationToken.None);
@@ -11159,14 +11259,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task SaveAllAttachmentsAsync()
+    private Task SaveAllAttachmentsAsync() =>
+        MessageDetail == null ? Task.CompletedTask : SaveAllAttachmentsOfAsync(MessageDetail);
+
+    /// <summary>Saves every attachment of <paramref name="detail"/> into one folder the user picks.</summary>
+    public async Task SaveAllAttachmentsOfAsync(MailMessageDetail detail)
     {
-        if (MessageDetail == null || MessageDetail.Attachments.Count == 0) return;
+        if (detail.Attachments.Count == 0) return;
 
         var folder = SaveFolderPathRequested?.Invoke("Choose folder to save attachments");
         if (folder == null) return;
 
-        await WriteAttachmentsAsync([MessageDetail], folder);
+        await WriteAttachmentsAsync([detail], folder);
     }
 
     /// <summary>
@@ -11357,9 +11461,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task OpenAttachmentAsync(AttachmentModel? attachment)
+    private Task OpenAttachmentAsync(AttachmentModel? attachment) =>
+        attachment == null || MessageDetail == null ? Task.CompletedTask : OpenAttachmentOfAsync(MessageDetail, attachment);
+
+    /// <summary>Opens one attachment of <paramref name="detail"/>: an attached email in QuickMail's own window (#939), anything else with its Windows program. Called directly by a window showing another message.</summary>
+    public async Task OpenAttachmentOfAsync(MailMessageDetail detail, AttachmentModel attachment)
     {
-        if (attachment == null || MessageDetail == null) return;
         var att = attachment;
         if (!att.IsLoaded)
         {
@@ -11370,12 +11477,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                 att.Content = await _imap.DownloadAttachmentAsync(
-                    MessageDetail.AccountId, MessageDetail.FolderName,
-                    MessageDetail.MessageId, att.PartSpecifier, cts.Token);
+                    detail.AccountId, detail.FolderName,
+                    detail.MessageId, att.PartSpecifier, cts.Token);
             }
             catch (Exception ex)
             {
-                _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
+                _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
                 StatusText = OfflineOrErrorStatus(ex,
                     () => "Attachments are not available offline.",
                     () => $"Download failed: {ex.Message}", CancellationToken.None);
@@ -11384,6 +11491,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             IsBusy = false;
         }
+
+        // An attached email opens in QuickMail's own window (#939). Falls through to Windows only when
+        // the bytes turn out not to be an email after all, where the file's own program is the best bet.
+        if (IsAttachedEmail(att) && _openedMessages != null && att.Content is { Length: > 0 } && OpenEmail(att.Content, att.FileName, reportFailure: false))
+            return;
 
         // Sanitized so a crafted server-supplied name (e.g. "../../Startup/evil.exe")
         // can't escape the temp folder.
@@ -11608,7 +11720,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var account = Accounts.FirstOrDefault(a => a.Id == detail!.AccountId);
+        // An invite opened from a .eml file (#939) is answered from the default account, as a reply is.
+        var accountId = SendingAccountFor(detail!);
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
         if (account == null)
         {
             // Through the card as well: focus is inside the WebView2 at this point, which is the very

@@ -429,6 +429,16 @@ public class Pop3MailService : IMailService
         using var ms = new MemoryStream(mimeBytes);
         var message  = await MimeMessage.LoadAsync(ms, ct);
 
+        return await ExtractPartAsync(message, messageId, partSpecifier, ct);
+    }
+
+    /// <summary>
+    /// One part of a parsed message, as DownloadAttachmentAsync returns it: an inline picture by its
+    /// Content-ID, or an attachment by its index in <see cref="MimeMessage.Attachments"/>. Shared with
+    /// <see cref="OpenedMessageService"/>, which holds .eml files the same way this holds collected mail.
+    /// </summary>
+    internal static async Task<byte[]> ExtractPartAsync(MimeMessage message, string messageId, string partSpecifier, CancellationToken ct)
+    {
         // A picture sent inside the message is addressed by its Content-ID (#729; see InlineImagesOf).
         if (partSpecifier.StartsWith(InlinePartPrefix, StringComparison.Ordinal))
         {

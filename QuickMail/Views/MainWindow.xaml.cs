@@ -327,6 +327,8 @@ public partial class MainWindow : Window
         vm.ManageAccountsRequested += () => { if (_vm.Accounts.Count == 0) OpenFirstAccountSetup(); else OpenAccountManager(); };
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
+        // An opened .eml file or attached email (#939) gets its own message window.
+        vm.OpenedMessageRequested += detail => OpenMessageInNewWindow(detail, detail);
         vm.MessageListFocusNowRequested += FocusSelectedMessageRowNow;
         vm.MessageListHasFocusQuery += () => IsActive && MessageList.IsKeyboardFocusWithin;
         vm.ReadingPaneHasFocusQuery += () => IsActive && (IsMessageBodyFocused
@@ -6670,30 +6672,51 @@ public partial class MainWindow : Window
             _ = OnActiveTabChangedAsync();
     }
 
-    private void OpenMessageInNewWindow(MailMessageSummary summary)
+    /// <param name="opened">
+    /// A message in no mailbox (an opened .eml file or attached email, #939), shown as it is: it is not in
+    /// the list, so there is nothing to step through, the reading pane is left alone, and Reply, Reply All
+    /// and Forward go to it directly instead of through the list's selection.
+    /// </param>
+    private void OpenMessageInNewWindow(MailMessageSummary summary, MailMessageDetail? opened = null)
     {
         var winVm = new MessageWindowViewModel
         {
-            OriginalSummary = summary,
+            OriginalSummary = opened == null ? summary : null,
             SelectedMessage = summary,
+            IsInMailbox     = opened == null,
         };
 
-        // Populate the surrounding message list so Prev/Next navigation works (issue 41).
-        foreach (var msg in _vm.Messages)
-            winVm.MessageList.Add(msg);
+        // Where an opened message came from (often another message window, for an attached email),
+        // so closing it goes back there rather than to the message list.
+        var cameFrom = opened == null ? null : Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+        // Within this window, the element itself (the reading pane's attachment list), so closing an
+        // attached email opened from the reading pane returns to that attachment, not the message list.
+        var cameFromElement = opened != null && ReferenceEquals(cameFrom, this) ? Keyboard.FocusedElement as UIElement : null;
 
-        // Pre-populate detail if already loaded in the reading pane (issue 48).
-        if (_vm.SelectedMessage?.MessageId == summary.MessageId && _vm.MessageDetail != null)
-            winVm.MessageDetail = _vm.MessageDetail;
+        if (opened != null)
+        {
+            winVm.MessageList.Add(opened);
+            winVm.MessageDetail = opened;
+        }
+        else
+        {
+            // Populate the surrounding message list so Prev/Next navigation works (issue 41).
+            foreach (var msg in _vm.Messages)
+                winVm.MessageList.Add(msg);
 
-        // The reading pane must not show while the message is in a separate window.
-        _vm.IsMessageOpen = false;
+            // Pre-populate detail if already loaded in the reading pane (issue 48).
+            if (_vm.SelectedMessage?.MessageId == summary.MessageId && _vm.MessageDetail != null)
+                winVm.MessageDetail = _vm.MessageDetail;
+
+            // The reading pane must not show while the message is in a separate window.
+            _vm.IsMessageOpen = false;
+        }
 
         // Track that a message window is open so sync guards and commands work (issue 43).
         _vm.IsMessageOpenInWindow = true;
 
         // Capture the originating message list item for focus restoration on close (issue 46).
-        var originatingIndex = _vm.Messages.IndexOf(summary);
+        var originatingIndex = opened == null ? _vm.Messages.IndexOf(summary) : -1;
 
         // Do NOT set Owner = this. Owned windows share the main window's HWND context,
         // which causes screen readers to keep browse mode active for the message window's
@@ -6735,19 +6758,25 @@ public partial class MainWindow : Window
         // Each delegate syncs MainViewModel selection to the window's current message
         // before invoking the command, so navigation (Prev/Next) in the window doesn't
         // cause actions to operate on the wrong message.
-        winVm.ReplyAction = () =>
+        if (opened != null)
+        {
+            winVm.ReplyAction    = () => _vm.ReplyToMessage(winVm.MessageDetail ?? opened, all: false);
+            winVm.ReplyAllAction = () => _vm.ReplyToMessage(winVm.MessageDetail ?? opened, all: true);
+            winVm.ForwardAction  = () => _vm.ForwardMessageAsync(winVm.MessageDetail ?? opened);
+        }
+        else winVm.ReplyAction = () =>
         {
             _vm.SelectedMessage = winVm.SelectedMessage;
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             _vm.ReplyCommand.Execute(null);
         };
-        winVm.ReplyAllAction = () =>
+        if (opened == null) winVm.ReplyAllAction = () =>
         {
             _vm.SelectedMessage = winVm.SelectedMessage;
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             _vm.ReplyAllCommand.Execute(null);
         };
-        winVm.ForwardAction = async () =>
+        if (opened == null) winVm.ForwardAction = async () =>
         {
             _vm.SelectedMessage = winVm.SelectedMessage;
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
@@ -6802,6 +6831,18 @@ public partial class MainWindow : Window
             if (addresses.Count == 0) return;
             new GrabAddressesDialog(addresses, _contactService) { Owner = win }.Show();
         };
+        if (opened != null)
+        {
+            // Straight to the opened message (#939): writing it into the main view model's MessageDetail,
+            // as the actions below do for mail in an account, would show it in the reading pane.
+            winVm.OpenAttachmentAction = attachment => attachment == null ? Task.CompletedTask
+                : _vm.OpenAttachmentOfAsync(winVm.MessageDetail ?? opened, attachment);
+            winVm.SaveAttachmentAction = attachment => attachment == null ? Task.CompletedTask
+                : _vm.SaveAttachmentOfAsync(winVm.MessageDetail ?? opened, attachment);
+            winVm.SaveAllAttachmentsAction = () => _vm.SaveAllAttachmentsOfAsync(winVm.MessageDetail ?? opened);
+        }
+        else
+        {
         winVm.OpenAttachmentAction = async (attachment) =>
         {
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
@@ -6817,6 +6858,7 @@ public partial class MainWindow : Window
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             await _vm.SaveAllAttachmentsCommand.ExecuteAsync(null);
         };
+        }
         // Copy attachments (#929): this window's message, passed rather than written into the main
         // VM's MessageDetail, and the outcome spoken in this window.
         void CopyReport(string text) =>
@@ -6855,6 +6897,22 @@ public partial class MainWindow : Window
             _openMessageWindows.Remove(win);
             _vm.IsMessageOpenInWindow = _openMessageWindows.Count > 0;
 
+            if (opened != null)
+            {
+                _vm.OpenedMessages?.Close(opened.MessageId);
+                // Back to the window it was opened from, if that is still open; an opened file from
+                // Explorer came from nowhere in QuickMail and lands on the message list as usual.
+                if (cameFrom is { IsLoaded: true } && !ReferenceEquals(cameFrom, this))
+                {
+                    Dispatcher.InvokeAsync(() => cameFrom.Activate(), System.Windows.Threading.DispatcherPriority.Input);
+                    return;
+                }
+                if (cameFromElement is { IsVisible: true, Focusable: true })
+                {
+                    Dispatcher.InvokeAsync(() => { Activate(); cameFromElement.Focus(); }, System.Windows.Threading.DispatcherPriority.Input);
+                    return;
+                }
+            }
             // Restore focus to the originating message list item (issue 46).
             Dispatcher.InvokeAsync(() =>
             {

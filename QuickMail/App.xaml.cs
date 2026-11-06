@@ -67,6 +67,8 @@ public partial class App : Application
     private SoundService? _soundService;
     // Files QuickMail has put on the Windows clipboard (#929): tidied at start, deleted at exit.
     private ClipboardStaging? _clipboardStaging;
+    // Messages in no mailbox: opened .eml files and attached emails (#939).
+    private OpenedMessageService? _openedMessages;
     private AutoDiscoverService? _autoDiscoverService;
     private ConnectionTruthProbe? _truthProbe;
 
@@ -84,11 +86,18 @@ public partial class App : Application
             .OnBeforeUninstallFastCallback(_ =>
             {
                 RemoveStartupEntries();
+                RunHookStep("email file removal", () => EmailFileAssociation.Unregister());
                 LaunchUninstallDataPrompt();
             })
             // A Windows Installer upgrade runs the OLD copy's uninstall hook before installing
             // this one (#245), which took the startup entries away; put them back (#770).
-            .OnAfterInstallFastCallback(_ => RestoreStartupEntries())
+            .OnAfterInstallFastCallback(_ =>
+            {
+                RestoreStartupEntries();
+                RegisterEmailFiles();
+            })
+            // An update registers too, so copies installed before .eml opening (#939) get it.
+            .OnAfterUpdateFastCallback(_ => RegisterEmailFiles())
             .Run();
 
         // One instance per profile (issue #240): with close-to-tray the process can be running
@@ -163,6 +172,17 @@ public partial class App : Application
         }
     }
 
+    // Install and update hook: offers QuickMail in Open with for .eml files (#939). Never fails the install.
+    private static void RegisterEmailFiles() => RunHookStep("email file registration", () =>
+    {
+        if (Environment.ProcessPath is { } exe) EmailFileAssociation.Register(exe);
+    });
+
+    private static void RunHookStep(string what, Action step)
+    {
+        try { step(); }
+        catch (Exception ex) { WriteHookDiagnostic($"{what} failed: {ex}"); }
+    }
     // The install/uninstall hooks run before OnStartup, so LogService is not configured; they
     // write here instead (%TEMP%\quickmail-uninstall.log, which the data prompt also uses).
     private static void WriteHookDiagnostic(string text)
@@ -234,7 +254,9 @@ public partial class App : Application
         if (IsHelpRequest(e.Args))
         {
             MessageBox.Show(
-                "Usage: QuickMail.exe [options]\n\n" +
+                "Usage: QuickMail.exe [options] [file.eml]\n\n" +
+                "  file.eml              Open this email file in its own window. If QuickMail\n" +
+                "                        is already running, it opens there.\n\n" +
                 "Options:\n" +
                 "  --profileDir <path>   Store all data in <path> instead of the default\n" +
                 "                        %AppData%\\QuickMail directory. The directory is\n" +
@@ -407,6 +429,11 @@ public partial class App : Application
             // the throwaway probe account Test Connection builds, for instance — is routed by its
             // BackendKind rather than defaulting to IMAP.
             var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend, pop3Backend }, BackendFor);
+            // Opened .eml files and attached emails live under one reserved account id (#939), so every
+            // path that reads a message through the router (pictures, attachments, Save, Print, Forward)
+            // works on them unchanged.
+            _openedMessages = new OpenedMessageService();
+            mailRouter.RegisterAccount(OpenedMessageService.AccountId, _openedMessages);
 
             // ui-probe (#180 Decision D): network hard-off at the DI root. EVERY
             // consumer of the mail/send/oauth services gets the offline no-op —
@@ -684,7 +711,8 @@ public partial class App : Application
                 connectivity: _connectivity,
                 soundService: _soundService,
                 clipboard: probeMode ? null : ClipboardService.Default,
-                clipboardStaging: _clipboardStaging);
+                clipboardStaging: _clipboardStaging,
+                openedMessages: probeMode ? null : _openedMessages);
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
             // #31: a credential-less shared mailbox borrows its parent account's token. The resolver runs
             // on background sweep threads, so it goes through ResolveAccountById — a thread-safe snapshot
@@ -725,7 +753,26 @@ public partial class App : Application
             // another process; restore the window (and drop the tray icon) exactly as the
             // tray icon's Open action would. The signal arrives on a thread-pool thread.
             _singleInstance?.ListenForActivation(() =>
-                mainWindow.Dispatcher.BeginInvoke(() => mainWindow.RestoreFromTray()));
+                mainWindow.Dispatcher.BeginInvoke(() =>
+                {
+                    mainWindow.RestoreFromTray();
+                    OpenRequestedEmailFiles(mainVm, _singleInstance?.TakeOpenRequests() ?? []);
+                }));
+
+            // Started to open a .eml file (#939), from Explorer's Open with: shown once the main window
+            // has drawn, so the message window opens over it rather than behind it. Anything another
+            // launch left while this one was starting is taken up too.
+            if (!probeMode)
+            {
+                var atStart = SingleInstanceService.EmailFileFrom(e.Args) is { } first ? new List<string> { first } : [];
+                void OnRendered(object? s, EventArgs a)
+                {
+                    mainWindow.ContentRendered -= OnRendered;
+                    atStart.AddRange(_singleInstance?.TakeOpenRequests() ?? []);
+                    OpenRequestedEmailFiles(mainVm, atStart);
+                }
+                mainWindow.ContentRendered += OnRendered;
+            }
         }
         catch (Exception ex)
         {
@@ -737,11 +784,22 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Opens each .eml file asked for, in its own message window (#939).</summary>
+    private static async void OpenRequestedEmailFiles(MainViewModel vm, IReadOnlyList<string> paths)
+    {
+        // async void: an event-style reaction on the UI thread; OpenEmailFileAsync reports its own failures.
+        foreach (var path in paths)
+        {
+            try { await vm.OpenEmailFileAsync(path); }
+            catch (Exception ex) { LogService.Log("OpenRequestedEmailFiles", ex); }
+        }
+    }
     protected override void OnExit(ExitEventArgs e)
     {
         // Copied messages and attachments. Kept while the clipboard still offers them: Windows holds the
         // paths after QuickMail has gone, and pasting into Explorer afterwards would find nothing. The next
         // start tidies them (DeleteAbandoned). Otherwise nothing can paste them, so they go now.
+        _openedMessages?.Dispose();
         if (_clipboardStaging != null && ClipboardService.Default.GetMarker() == null)
             _clipboardStaging.DeleteMine();
         _changeNotifier?.Dispose(); // stops all watchers (IDLE + Graph poll) + severs the event chain
@@ -908,7 +966,11 @@ public partial class App : Application
             {
                 try
                 {
-                    if (System.IO.Directory.GetLastWriteTimeUtc(dir) < cutoff)
+                    // Folders that tidy themselves, by their own rules (#929, #939): the files QuickMail has
+                    // on the clipboard, and .eml files waiting to be opened. A folder's own timestamp does
+                    // not change when files deeper inside it do, so age would delete them from under use.
+                    var name = System.IO.Path.GetFileName(dir);
+                    if (name is "Clipboard" or "Open") continue;                    if (System.IO.Directory.GetLastWriteTimeUtc(dir) < cutoff)
                         System.IO.Directory.Delete(dir, recursive: true);
                 }
                 catch (Exception ex)
