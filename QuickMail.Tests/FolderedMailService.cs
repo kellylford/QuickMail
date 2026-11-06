@@ -62,7 +62,18 @@ internal sealed class FolderedMailService : IMailService
     public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult<string?>(null);
     public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default) => Task.FromResult("0");
     public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => Task.CompletedTask;
-    public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte>());
+    /// <summary>When set, attachment downloads fail as an unreachable server would.</summary>
+    public bool FailDownloads { get; set; }
+
+    /// <summary>Part specifiers downloaded, in order.</summary>
+    public List<string> Downloads { get; } = new();
+
+    public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default)
+    {
+        if (FailDownloads) return Task.FromException<byte[]>(new InvalidOperationException("server said no"));
+        Downloads.Add(partSpecifier);
+        return Task.FromResult(System.Text.Encoding.UTF8.GetBytes($"content of {partSpecifier}"));
+    }
     /// <summary>Every move and copy asked for, in order, for tests that check what reached the server.</summary>
     public List<(string Op, Guid AccountId, string From, IReadOnlyList<string> Ids, string To)> Transfers { get; } = new();
 

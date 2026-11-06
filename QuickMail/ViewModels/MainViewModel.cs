@@ -10244,9 +10244,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Spoken: nothing on screen changes, so this is the only sign the copy happened.
         var done = (messages.Count == 1 ? "Message " : $"{messages.Count} messages ") + (cut ? "cut." : "copied.");
 
-        _messageStagingCts?.Cancel();
-        _messageStagingCts?.Dispose();
-        _messageStagingCts = null;
+        CancelMessageStaging();
 
         if (_clipboard == null)
         {
@@ -10299,6 +10297,83 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    // ── Copy attachments (#929) ──────────────────────────────────────────────
+
+    [RelayCommand]
+    private Task CopyAttachment(AttachmentModel? attachment) =>
+        attachment == null ? Task.CompletedTask : CopyAttachmentsToClipboardAsync(MessageDetail, [attachment]);
+
+    [RelayCommand]
+    private Task CopyAllAttachments() =>
+        CopyAttachmentsToClipboardAsync(MessageDetail, MessageDetail?.Attachments.ToList() ?? []);
+
+    /// <summary>
+    /// Puts attachments on the Windows clipboard as files, downloading any not yet fetched, so they
+    /// paste into Explorer, the desktop, or a message being written. <paramref name="report"/> speaks
+    /// the outcome somewhere other than the main window (a message window): a notification raised on
+    /// the main window is not heard while the user is in another one.
+    /// </summary>
+    public async Task CopyAttachmentsToClipboardAsync(
+        MailMessageDetail? detail, IReadOnlyList<AttachmentModel> attachments, Action<string>? report = null)
+    {
+        void Say(string text)
+        {
+            if (report == null) { SetStatus(text, AnnouncementCategory.Result); return; }
+            SetStatusSilently(text);
+            report(text);
+        }
+
+        if (detail == null) return;
+        if (attachments.Count == 0) { Say("This message has no attachments."); return; }
+        if (_clipboard == null || _clipboardStaging == null) return;
+
+        var label = attachments.Count == 1 ? attachments[0].FileName : $"{attachments.Count} attachments";
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+        cts.CancelAfter(TimeSpan.FromMinutes(2));
+        try
+        {
+            if (attachments.Any(a => !a.IsLoaded))
+                SetStatus($"Downloading {label}…", AnnouncementCategory.Status);
+            foreach (var att in attachments.Where(a => !a.IsLoaded))
+            {
+                if (att.PartSpecifier == null)
+                    throw new InvalidOperationException($"{att.FileName} cannot be downloaded.");
+                att.Content = await _imap.DownloadAttachmentAsync(
+                    detail.AccountId, detail.FolderName, detail.MessageId, att.PartSpecifier, cts.Token);
+            }
+
+            var paths = await _clipboardStaging.StageFilesAsync(
+                attachments.Select(a => (a.FileName, a.Content!)).ToList(), cts.Token);
+
+            // The clipboard now holds attachments, not messages: a copy of messages made earlier is
+            // replaced, as anything copied in another program replaces it.
+            CancelMessageStaging();
+            MessageClipboard.Clear();
+            _messageClipboardToken = null;
+            if (!_clipboard.SetFiles(paths, Guid.NewGuid().ToString("N")))
+            {
+                Say($"Could not copy {label}: the clipboard is in use by another program.");
+                return;
+            }
+            Say($"{label} copied.");
+        }
+        catch (OperationCanceledException) when (_messageActionShutdownCts.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
+            LogService.Log("CopyAttachments", ex);
+            Say(OfflineOrErrorStatus(ex,
+                () => "Attachments are not available offline.",
+                () => $"Could not copy {label}: {ex.Message}", CancellationToken.None));
+        }
+    }
+
+    private void CancelMessageStaging()
+    {
+        _messageStagingCts?.Cancel();
+        _messageStagingCts?.Dispose();
+        _messageStagingCts = null;
+    }
     /// <summary>
     /// Forgets the copied messages if the Windows clipboard no longer holds them: the user has copied
     /// something else since, and pasting then must not resurrect messages they moved on from.

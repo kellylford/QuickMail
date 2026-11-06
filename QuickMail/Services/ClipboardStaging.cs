@@ -113,6 +113,34 @@ public sealed class ClipboardStaging
         }
     }
 
+    /// <summary>
+    /// Writes files (copied attachments) into a new set and returns their paths, in order. Names
+    /// come from the sender, so each is sanitized the way Save sanitizes it: a crafted name with path
+    /// separators must not write outside the set. Two attachments with one name are kept apart as
+    /// "name (2).ext". All or nothing, as for messages.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> StageFilesAsync(
+        IReadOnlyList<(string FileName, byte[] Content)> files, CancellationToken ct)
+    {
+        var set   = NewSet();
+        var paths = new List<string>(files.Count);
+        try
+        {
+            foreach (var (fileName, content) in files)
+            {
+                ct.ThrowIfCancellationRequested();
+                var path = MessageExport.UniquePath(set, AttachmentSafety.SanitizeFileName(fileName), File.Exists);
+                await File.WriteAllBytesAsync(path, content, ct);
+                paths.Add(path);
+            }
+            return paths;
+        }
+        catch
+        {
+            DeleteQuietly(set);
+            throw;
+        }
+    }
     private static bool IsQuickMailRunning(int pid)
     {
         try
@@ -138,3 +166,4 @@ public sealed class ClipboardStaging
         }
     }
 }
+

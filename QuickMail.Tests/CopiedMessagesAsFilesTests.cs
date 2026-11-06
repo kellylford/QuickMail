@@ -269,4 +269,116 @@ public sealed class CopiedMessagesAsFilesTests : IDisposable
         Assert.Equal("application/pdf", part.ContentType.MimeType);
         Assert.Equal(ContentEncoding.Base64, part.ContentTransferEncoding);
     }
+
+    // ── Copy attachments ─────────────────────────────────────────────────────────
+
+    private static MailMessageDetail DetailWith(params AttachmentModel[] attachments) => new()
+    {
+        AccountId = Work, FolderName = "INBOX", MessageId = "a0", Subject = "Subject a0",
+        Attachments = [.. attachments],
+    };
+
+    [Fact]
+    public async Task CopyAttachment_DownloadsItAndPutsItOnTheClipboardAsAFile()
+    {
+        var f = await CreateAsync();
+        var att = new AttachmentModel { FileName = "report.pdf", ContentType = "application/pdf", PartSpecifier = "2" };
+
+        await f.Vm.CopyAttachmentsToClipboardAsync(DetailWith(att), [att]);
+
+        var path = Assert.Single(f.Clipboard.Files);
+        Assert.Equal("report.pdf", Path.GetFileName(path));
+        Assert.Equal("content of 2", File.ReadAllText(path));
+        Assert.Equal(["2"], f.Mail.Downloads);
+        Assert.Equal(("report.pdf copied.", AnnouncementCategory.Result), f.Announced.Last);
+    }
+
+    [Fact]
+    public async Task AnAttachmentAlreadyDownloaded_IsNotFetchedAgain()
+    {
+        var f = await CreateAsync();
+        var att = new AttachmentModel { FileName = "a.txt", PartSpecifier = "2", Content = [65] };
+
+        await f.Vm.CopyAttachmentsToClipboardAsync(DetailWith(att), [att]);
+
+        Assert.Empty(f.Mail.Downloads);
+        Assert.Single(f.Clipboard.Files);
+    }
+
+    [Fact]
+    public async Task CopyAll_KeepsTwoAttachmentsWithOneName_Apart()
+    {
+        // "image001.png" in every signature: overwriting would put one file on the clipboard twice.
+        var f = await CreateAsync();
+        AttachmentModel[] atts =
+        [
+            new() { FileName = "image001.png", PartSpecifier = "2" },
+            new() { FileName = "image001.png", PartSpecifier = "3" },
+        ];
+
+        await f.Vm.CopyAttachmentsToClipboardAsync(DetailWith(atts), atts);
+
+        Assert.Equal(["image001.png", "image001 (2).png"], f.Clipboard.Files.Select(Path.GetFileName));
+        Assert.Equal(("2 attachments copied.", AnnouncementCategory.Result), f.Announced.Last);
+    }
+
+    [Fact]
+    public async Task ACraftedAttachmentName_CannotWriteOutsideTheStagingFolder()
+    {
+        var f = await CreateAsync();
+        var att = new AttachmentModel { FileName = @"..\..\evil.exe", PartSpecifier = "2" };
+
+        await f.Vm.CopyAttachmentsToClipboardAsync(DetailWith(att), [att]);
+
+        var path = Assert.Single(f.Clipboard.Files);
+        Assert.StartsWith(f.Staging.Folder, Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("evil.exe", Path.GetFileName(path));
+    }
+
+    [Fact]
+    public async Task AFailedDownload_SaysWhy_AndLeavesTheClipboardAlone()
+    {
+        var f = await CreateAsync();
+        await f.Vm.CopyMessagesToClipboardAsync([f.Row("a0")]);
+        var before = f.Clipboard.Marker;
+        f.Mail.FailDownloads = true;
+        var att = new AttachmentModel { FileName = "report.pdf", PartSpecifier = "2" };
+
+        await f.Vm.CopyAttachmentsToClipboardAsync(DetailWith(att), [att]);
+
+        Assert.Equal(before, f.Clipboard.Marker);
+        Assert.False(f.Vm.MessageClipboard.IsEmpty);   // the earlier copy still stands
+        Assert.Equal(AnnouncementCategory.Result, f.Announced.Last.Category);
+        Assert.StartsWith("Could not copy report.pdf", f.Announced.Last.Text);
+    }
+
+    [Fact]
+    public async Task CopyingAnAttachment_ReplacesACopyOfMessages()
+    {
+        // The clipboard holds the attachment now; Ctrl+V in a folder has no messages to paste.
+        var f = await CreateAsync();
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("a0")]);
+        var att = new AttachmentModel { FileName = "a.txt", Content = [65] };
+
+        await f.Vm.CopyAttachmentsToClipboardAsync(DetailWith(att), [att]);
+        await f.Vm.PasteMessagesAsync(f.Archive);
+
+        Assert.Empty(f.Mail.Transfers);
+        Assert.StartsWith("Nothing to paste", f.Announced.Last.Text);
+    }
+
+    [Fact]
+    public async Task FromAMessageWindow_TheOutcomeIsSpokenThere_NotInTheMainWindow()
+    {
+        var f = await CreateAsync();
+        var heard = new List<string>();
+        var att = new AttachmentModel { FileName = "a.txt", Content = [65] };
+        var spokenBefore = f.Announced.Announced.Count;
+
+        await f.Vm.CopyAttachmentsToClipboardAsync(DetailWith(att), [att], heard.Add);
+
+        Assert.Equal(["a.txt copied."], heard);
+        Assert.Equal(spokenBefore, f.Announced.Announced.Count); // nothing said through the main window
+        Assert.Equal("a.txt copied.", f.Vm.StatusText);           // still shown in its status bar
+    }
 }

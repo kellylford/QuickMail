@@ -54,6 +54,10 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     public Func<AttachmentModel?, Task>? SaveAttachmentAction   { get; set; }
     public Func<Task>? SaveAllAttachmentsAction { get; set; }
 
+    /// <summary>Copy one attachment, or all of them, to the Windows clipboard as files (#929).</summary>
+    public Func<AttachmentModel?, Task>? CopyAttachmentAction { get; set; }
+    public Func<Task>? CopyAllAttachmentsAction { get; set; }
+
     /// <summary>Save, Save As and Print of this window's message (#728), routed to MainViewModel.</summary>
     public Func<Task>? SaveAction   { get; set; }
     public Func<Task>? SaveAsAction { get; set; }
@@ -126,6 +130,14 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     [RelayCommand]
     private Task SaveAllAttachments() =>
         SaveAllAttachmentsAction?.Invoke() ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task CopyAttachment(AttachmentModel? attachment) =>
+        CopyAttachmentAction?.Invoke(attachment) ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task CopyAllAttachments() =>
+        CopyAllAttachmentsAction?.Invoke() ?? Task.CompletedTask;
 
     [RelayCommand]
     private Task SaveMessage() => SaveAction?.Invoke() ?? Task.CompletedTask;

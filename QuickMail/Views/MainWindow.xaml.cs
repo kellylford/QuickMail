@@ -1593,6 +1593,26 @@ public partial class MainWindow : Window
             defaultKey: Key.V, defaultModifiers: ModifierKeys.Control,
             isAvailable: () => (FolderList.IsKeyboardFocusWithin || IsMessageAreaFocused()) && !IsTextEntryFocused()));
 
+        // Copy attachments to the Windows clipboard as files (#929). Ctrl+C shares its default with
+        // mail.copyMessages; the scopes never overlap (the attachment list is not the message area).
+        _registry.Register(new CommandDefinition(
+            id: "mail.copyAttachment", category: "Mail", title: "Copy Attachment",
+            description: "Copy the selected attachment, to paste into Explorer or a message",
+            execute: async () =>
+            {
+                if (ReadingPaneAttachmentList.SelectedItem is AttachmentModel att)
+                    await _vm.CopyAttachmentCommand.ExecuteAsync(att);
+            },
+            defaultKey: Key.C, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => ReadingPaneAttachmentList.IsKeyboardFocusWithin
+                               && ReadingPaneAttachmentList.SelectedItem is AttachmentModel));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.copyAllAttachments", category: "Mail", title: "Copy All Attachments",
+            description: "Copy every attachment of the open message, to paste into Explorer or a message",
+            execute: async () => await _vm.CopyAllAttachmentsCommand.ExecuteAsync(null),
+            isAvailable: () => _vm.MessageDetail?.Attachments.Count > 0));
+
         // Save, Save As and Print (#728). Registered here rather than in the VM because what they act
         // on — a multi-selection, a group header's messages — is the window's to resolve, as for
         // Move/Copy above. Save writes the default format into the save folder without asking; Save
@@ -6797,6 +6817,15 @@ public partial class MainWindow : Window
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             await _vm.SaveAllAttachmentsCommand.ExecuteAsync(null);
         };
+        // Copy attachments (#929): this window's message, passed rather than written into the main
+        // VM's MessageDetail, and the outcome spoken in this window.
+        void CopyReport(string text) =>
+            AccessibilityHelper.Announce(win, text, interrupt: true, category: AnnouncementCategory.Result);
+        winVm.CopyAttachmentAction = attachment => attachment == null
+            ? Task.CompletedTask
+            : _vm.CopyAttachmentsToClipboardAsync(winVm.MessageDetail, [attachment], CopyReport);
+        winVm.CopyAllAttachmentsAction = () =>
+            _vm.CopyAttachmentsToClipboardAsync(winVm.MessageDetail, winVm.MessageDetail?.Attachments.ToList() ?? [], CopyReport);
 
         // Save / Save As / Print (#728): this window's message, this window's dialogs, and the outcome
         // spoken in this window - a notification raised on the main window is not heard while the
