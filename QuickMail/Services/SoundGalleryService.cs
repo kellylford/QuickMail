@@ -68,7 +68,7 @@ public interface ISoundGalleryService
 public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposable
 {
     /// <summary>Where the gallery is published.</summary>
-    public const string DefaultLocation = "https://kellylford.github.io/quickmail-sounds/";
+    public const string DefaultLocation = "https://theideaplace.github.io/soundgallery/quickmail/";
 
     /// <summary>
     /// The public half of the gallery's signing key. The private half lives only in the gallery repo's
