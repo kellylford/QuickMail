@@ -1923,7 +1923,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ClipboardStaging? clipboardStaging = null,
         OpenedMessageService? openedMessages = null)
     {
-        _openedMessages = openedMessages;        _sounds = soundService;
+        _openedMessages = openedMessages;
+        _sounds = soundService;
         _clipboard = clipboard;
         _clipboardStaging = clipboardStaging;
         _folderViewState = folderViewState;
@@ -10460,13 +10461,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// Shows an email held only as bytes, an attached email or a file's contents, in its own window.
     /// Returns false, having said why, when the bytes are not an email.
     /// </summary>
-    public bool OpenEmail(byte[] original, string name)
+    public bool OpenEmail(byte[] original, string name, bool reportFailure = true)
     {
         if (_openedMessages == null) return false;
         MailMessageDetail detail;
         try { detail = _openedMessages.Open(original); }
         catch (FormatException ex)
         {
+            // Not said for an attachment merely labelled as an email: the caller hands it to its Windows
+            // program instead, and a failure sound for something that then opens would say the opposite.
+            if (!reportFailure) return false;
             SetStatus($"Could not open {name}: {ex.Message}", AnnouncementCategory.Result);
             _sounds?.Play(SoundEvent.ActionFailed);
             return false;
@@ -11215,9 +11219,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // ── Attachment commands ─────────────────────────────────────────────────────
 
     [RelayCommand]
-    private async Task SaveAttachmentAsync(AttachmentModel? attachment)
+    private Task SaveAttachmentAsync(AttachmentModel? attachment) =>
+        attachment == null || MessageDetail == null ? Task.CompletedTask : SaveAttachmentOfAsync(MessageDetail, attachment);
+
+    /// <summary>Saves one attachment of <paramref name="detail"/>. Called directly by a window showing a message that is not the reading pane's, such as an opened .eml file (#939).</summary>
+    public async Task SaveAttachmentOfAsync(MailMessageDetail detail, AttachmentModel attachment)
     {
-        if (attachment == null || MessageDetail == null) return;
         var att = attachment;
         if (!att.IsLoaded)
         {
@@ -11228,12 +11235,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                 att.Content = await _imap.DownloadAttachmentAsync(
-                    MessageDetail.AccountId, MessageDetail.FolderName,
-                    MessageDetail.MessageId, att.PartSpecifier, cts.Token);
+                    detail.AccountId, detail.FolderName,
+                    detail.MessageId, att.PartSpecifier, cts.Token);
             }
             catch (Exception ex)
             {
-                _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
+                _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
                 StatusText = OfflineOrErrorStatus(ex,
                     () => "Attachments are not available offline.",
                     () => $"Download failed: {ex.Message}", CancellationToken.None);
@@ -11252,14 +11259,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task SaveAllAttachmentsAsync()
+    private Task SaveAllAttachmentsAsync() =>
+        MessageDetail == null ? Task.CompletedTask : SaveAllAttachmentsOfAsync(MessageDetail);
+
+    /// <summary>Saves every attachment of <paramref name="detail"/> into one folder the user picks.</summary>
+    public async Task SaveAllAttachmentsOfAsync(MailMessageDetail detail)
     {
-        if (MessageDetail == null || MessageDetail.Attachments.Count == 0) return;
+        if (detail.Attachments.Count == 0) return;
 
         var folder = SaveFolderPathRequested?.Invoke("Choose folder to save attachments");
         if (folder == null) return;
 
-        await WriteAttachmentsAsync([MessageDetail], folder);
+        await WriteAttachmentsAsync([detail], folder);
     }
 
     /// <summary>
@@ -11450,9 +11461,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task OpenAttachmentAsync(AttachmentModel? attachment)
+    private Task OpenAttachmentAsync(AttachmentModel? attachment) =>
+        attachment == null || MessageDetail == null ? Task.CompletedTask : OpenAttachmentOfAsync(MessageDetail, attachment);
+
+    /// <summary>Opens one attachment of <paramref name="detail"/>: an attached email in QuickMail's own window (#939), anything else with its Windows program. Called directly by a window showing another message.</summary>
+    public async Task OpenAttachmentOfAsync(MailMessageDetail detail, AttachmentModel attachment)
     {
-        if (attachment == null || MessageDetail == null) return;
         var att = attachment;
         if (!att.IsLoaded)
         {
@@ -11463,12 +11477,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                 att.Content = await _imap.DownloadAttachmentAsync(
-                    MessageDetail.AccountId, MessageDetail.FolderName,
-                    MessageDetail.MessageId, att.PartSpecifier, cts.Token);
+                    detail.AccountId, detail.FolderName,
+                    detail.MessageId, att.PartSpecifier, cts.Token);
             }
             catch (Exception ex)
             {
-                _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
+                _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
                 StatusText = OfflineOrErrorStatus(ex,
                     () => "Attachments are not available offline.",
                     () => $"Download failed: {ex.Message}", CancellationToken.None);
@@ -11480,7 +11494,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // An attached email opens in QuickMail's own window (#939). Falls through to Windows only when
         // the bytes turn out not to be an email after all, where the file's own program is the best bet.
-        if (IsAttachedEmail(att) && _openedMessages != null && att.Content is { Length: > 0 } && OpenEmail(att.Content, att.FileName))
+        if (IsAttachedEmail(att) && _openedMessages != null && att.Content is { Length: > 0 } && OpenEmail(att.Content, att.FileName, reportFailure: false))
             return;
 
         // Sanitized so a crafted server-supplied name (e.g. "../../Startup/evil.exe")
@@ -11706,7 +11720,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var account = Accounts.FirstOrDefault(a => a.Id == detail!.AccountId);
+        // An invite opened from a .eml file (#939) is answered from the default account, as a reply is.
+        var accountId = SendingAccountFor(detail!);
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
         if (account == null)
         {
             // Through the card as well: focus is inside the WebView2 at this point, which is the very

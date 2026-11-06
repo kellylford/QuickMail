@@ -98,7 +98,7 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
             // a later launch instead of two appliers racing).
             _restartRequested = true;
             // Preserve /debug, --profileDir, --updateFeed across the update-triggered relaunch.
-            mgr.ApplyUpdatesAndRestart(update, Environment.GetCommandLineArgs()[1..]);
+            mgr.ApplyUpdatesAndRestart(update, SingleInstanceService.WithoutEmailFile(Environment.GetCommandLineArgs()[1..]));
             return true; // not reached — ApplyUpdatesAndRestart exits the process
         }
         catch (OperationCanceledException)

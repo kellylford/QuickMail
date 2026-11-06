@@ -966,7 +966,11 @@ public partial class App : Application
             {
                 try
                 {
-                    if (System.IO.Directory.GetLastWriteTimeUtc(dir) < cutoff)
+                    // Folders that tidy themselves, by their own rules (#929, #939): the files QuickMail has
+                    // on the clipboard, and .eml files waiting to be opened. A folder's own timestamp does
+                    // not change when files deeper inside it do, so age would delete them from under use.
+                    var name = System.IO.Path.GetFileName(dir);
+                    if (name is "Clipboard" or "Open") continue;                    if (System.IO.Directory.GetLastWriteTimeUtc(dir) < cutoff)
                         System.IO.Directory.Delete(dir, recursive: true);
                 }
                 catch (Exception ex)

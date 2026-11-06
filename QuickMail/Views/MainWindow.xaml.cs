@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -328,7 +328,8 @@ public partial class MainWindow : Window
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
         // An opened .eml file or attached email (#939) gets its own message window.
-        vm.OpenedMessageRequested += detail => OpenMessageInNewWindow(detail, detail);        vm.MessageListFocusNowRequested += FocusSelectedMessageRowNow;
+        vm.OpenedMessageRequested += detail => OpenMessageInNewWindow(detail, detail);
+        vm.MessageListFocusNowRequested += FocusSelectedMessageRowNow;
         vm.MessageListHasFocusQuery += () => IsActive && MessageList.IsKeyboardFocusWithin;
         vm.ReadingPaneHasFocusQuery += () => IsActive && (IsMessageBodyFocused
             || (DateField.Parent as UIElement)?.IsKeyboardFocusWithin == true || ReadingPaneAttachmentList.IsKeyboardFocusWithin);
@@ -6688,6 +6689,9 @@ public partial class MainWindow : Window
         // Where an opened message came from (often another message window, for an attached email),
         // so closing it goes back there rather than to the message list.
         var cameFrom = opened == null ? null : Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+        // Within this window, the element itself (the reading pane's attachment list), so closing an
+        // attached email opened from the reading pane returns to that attachment, not the message list.
+        var cameFromElement = opened != null && ReferenceEquals(cameFrom, this) ? Keyboard.FocusedElement as UIElement : null;
 
         if (opened != null)
         {
@@ -6827,6 +6831,18 @@ public partial class MainWindow : Window
             if (addresses.Count == 0) return;
             new GrabAddressesDialog(addresses, _contactService) { Owner = win }.Show();
         };
+        if (opened != null)
+        {
+            // Straight to the opened message (#939): writing it into the main view model's MessageDetail,
+            // as the actions below do for mail in an account, would show it in the reading pane.
+            winVm.OpenAttachmentAction = attachment => attachment == null ? Task.CompletedTask
+                : _vm.OpenAttachmentOfAsync(winVm.MessageDetail ?? opened, attachment);
+            winVm.SaveAttachmentAction = attachment => attachment == null ? Task.CompletedTask
+                : _vm.SaveAttachmentOfAsync(winVm.MessageDetail ?? opened, attachment);
+            winVm.SaveAllAttachmentsAction = () => _vm.SaveAllAttachmentsOfAsync(winVm.MessageDetail ?? opened);
+        }
+        else
+        {
         winVm.OpenAttachmentAction = async (attachment) =>
         {
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
@@ -6842,6 +6858,7 @@ public partial class MainWindow : Window
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             await _vm.SaveAllAttachmentsCommand.ExecuteAsync(null);
         };
+        }
         // Copy attachments (#929): this window's message, passed rather than written into the main
         // VM's MessageDetail, and the outcome spoken in this window.
         void CopyReport(string text) =>
@@ -6888,6 +6905,11 @@ public partial class MainWindow : Window
                 if (cameFrom is { IsLoaded: true } && !ReferenceEquals(cameFrom, this))
                 {
                     Dispatcher.InvokeAsync(() => cameFrom.Activate(), System.Windows.Threading.DispatcherPriority.Input);
+                    return;
+                }
+                if (cameFromElement is { IsVisible: true, Focusable: true })
+                {
+                    Dispatcher.InvokeAsync(() => { Activate(); cameFromElement.Focus(); }, System.Windows.Threading.DispatcherPriority.Input);
                     return;
                 }
             }

@@ -334,4 +334,67 @@ public sealed class OpenEmailTests : IDisposable
             Registry.CurrentUser.DeleteSubKeyTree(path, throwOnMissingSubKey: false);
         }
     }
+
+    // ── Found in review ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ARestart_DoesNotOpenTheFileAgain()
+    {
+        // An update or settings import restarts with the original command line.
+        string[] args = ["--profileDir", @"C:\p", @"C:\mail\invoice.eml", "/debug"];
+
+        Assert.Equal(["--profileDir", @"C:\p", "/debug"], SingleInstanceService.WithoutEmailFile(args));
+        string[] noFile = ["--profileDir", @"C:\p"];
+        Assert.Same(noFile, SingleInstanceService.WithoutEmailFile(noFile));
+    }
+
+    [Fact]
+    public void ARequestNobodyTook_IsNotOpenedAtSomeLaterStart()
+    {
+        // Left by a launch while QuickMail was closing: opening it later would be a surprise.
+        var key = "test-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            SingleInstanceService.LeaveOpenRequest(key, Path.Combine(_dir, "old.eml"));
+            foreach (var request in Directory.GetFiles(SingleInstanceService.OpenRequestFolder(key), "*.req"))
+                File.SetLastWriteTimeUtc(request, DateTime.UtcNow - SingleInstanceService.OpenRequestLifetime - TimeSpan.FromSeconds(1));
+            SingleInstanceService.LeaveOpenRequest(key, Path.Combine(_dir, "new.eml"));
+
+            Assert.Equal([Path.Combine(_dir, "new.eml")], SingleInstanceService.TakeOpenRequests(key));
+            Assert.Empty(Directory.GetFiles(SingleInstanceService.OpenRequestFolder(key), "*.req")); // the old one is gone too
+        }
+        finally
+        {
+            try { Directory.Delete(SingleInstanceService.OpenRequestFolder(key), recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public void AnAttachmentOnlyLabelledAsAnEmail_IsNotReportedAsAFailure()
+    {
+        // It goes on to its Windows program; "could not open" with a failure sound would say the opposite.
+        var f = CreateVm();
+        var before = f.Announced.Announced.Count;
+
+        Assert.False(f.Vm.OpenEmail([0, 1, 2], "mislabelled.eml", reportFailure: false));
+
+        Assert.Equal(before, f.Announced.Announced.Count);
+        Assert.Empty(f.Windows);
+    }
+
+    [Fact]
+    public async Task ReadingOneMessageFromManyThreadsAtOnce_GivesEveryoneTheSameBytes()
+    {
+        // Parsed once and shared: a part's content is a stream, so concurrent reads must take turns.
+        using var service = new OpenedMessageService();
+        var detail = service.Open(SampleEmail());
+        var picture = detail.InlineImages[0].PartSpecifier!;
+
+        var reads = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => Task.Run(() =>
+            service.DownloadAttachmentAsync(detail.AccountId, detail.FolderName, detail.MessageId, picture,
+                TestContext.Current.CancellationToken))));
+
+        Assert.All(reads, r => Assert.Equal(reads[0], r));
+        Assert.Equal(0x89, reads[0][0]);
+    }
 }

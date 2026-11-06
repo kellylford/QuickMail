@@ -141,7 +141,7 @@ public partial class MainWindow
     {
         // The profile in use, as a full path: a relative --profileDir would be resolved against
         // wherever the new process happens to start.
-        var args = Environment.GetCommandLineArgs().Skip(1).ToArray();
+        var args = SingleInstanceService.WithoutEmailFile(Environment.GetCommandLineArgs().Skip(1).ToArray());
         if (ProfileContext.ParseProfileDir(args) is not null && ProfileDir is { } dir)
             args = Helpers.AppRestart.WithProfileDir(args, dir);
         if (Helpers.AppRestart.StartReplacement(args))

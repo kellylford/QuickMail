@@ -29,7 +29,18 @@ public sealed class OpenedMessageService : IMailService
 
     private const string NotInAMailbox = "This message is not in a mailbox, so it cannot be changed.";
 
-    private readonly ConcurrentDictionary<string, byte[]> _originals = new();
+    /// <summary>
+    /// One opened message: its original bytes, and the message parsed from them once. A part's content is
+    /// a stream, so two reads of one message at once (pictures load on the thread pool) take turns.
+    /// </summary>
+    private sealed class Held(byte[] original, MimeMessage message)
+    {
+        public byte[] Original { get; } = original;
+        public MimeMessage Message { get; } = message;
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+    }
+
+    private readonly ConcurrentDictionary<string, Held> _originals = new();
 
     /// <summary>True for a message held here rather than in an account.</summary>
     public static bool IsOpenedMessage(MailMessageSummary? message) => message?.AccountId == AccountId;
@@ -42,7 +53,7 @@ public sealed class OpenedMessageService : IMailService
     {
         var message = Parse(original);
         var id = Guid.NewGuid().ToString("N");
-        _originals[id] = original;
+        _originals[id] = new Held(original, message);
         return Pop3MailService.BuildDetail(AccountId, id, message, FolderName, isRead: true);
     }
 
@@ -67,24 +78,32 @@ public sealed class OpenedMessageService : IMailService
         return message;
     }
 
-    private byte[] OriginalOf(string messageId) =>
-        _originals.TryGetValue(messageId, out var bytes)
-            ? bytes
+    private Held HeldFor(string messageId) =>
+        _originals.TryGetValue(messageId, out var held)
+            ? held
             : throw new MessageOriginalUnavailableException("The message is no longer open.");
+
+    private static async Task<T> WithMessageAsync<T>(Held held, Func<MimeMessage, Task<T>> read, CancellationToken ct)
+    {
+        await held.Gate.WaitAsync(ct);
+        try { return await read(held.Message); }
+        finally { held.Gate.Release(); }
+    }
 
     // ── Reading ──────────────────────────────────────────────────────────────
 
     public Task<MailMessageDetail> GetMessageDetailAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
-        => Task.FromResult(Pop3MailService.BuildDetail(AccountId, messageId, Parse(OriginalOf(messageId)), FolderName, isRead: true));
+        => WithMessageAsync(HeldFor(messageId),
+            m => Task.FromResult(Pop3MailService.BuildDetail(AccountId, messageId, m, FolderName, isRead: true)), ct);
 
     public Task<MailMessageDetail> PrefetchMessageDetailAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
         => GetMessageDetailAsync(accountId, folderName, messageId, ct);
 
     public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default)
-        => Pop3MailService.ExtractPartAsync(Parse(OriginalOf(messageId)), messageId, partSpecifier, ct);
+        => WithMessageAsync(HeldFor(messageId), m => Pop3MailService.ExtractPartAsync(m, messageId, partSpecifier, ct), ct);
 
     public async Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
-        => await destination.WriteAsync(OriginalOf(messageId), ct);
+        => await destination.WriteAsync(HeldFor(messageId).Original, ct);
 
     // ── Connection: always there, nothing to connect to ──────────────────────
 

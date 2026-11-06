@@ -115,6 +115,19 @@ public sealed class SingleInstanceService : IDisposable
         args.FirstOrDefault(a => !a.StartsWith('-') && !a.StartsWith('/')
                                  && string.Equals(Path.GetExtension(a), ".eml", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// The command line without the .eml file it was started to open, for a restart (an update, a
+    /// settings import): the restarted QuickMail must not open that file again, or fail to find it.
+    /// </summary>
+    public static string[] WithoutEmailFile(string[] args) =>
+        EmailFileFrom(args) is { } path ? args.Where(a => !ReferenceEquals(a, path)).ToArray() : args;
+
+    /// <summary>
+    /// A request older than this is not opened: it was left for a QuickMail that was closing and never
+    /// took it, and opening it at some later, unrelated start would be a surprise.
+    /// </summary>
+    internal static readonly TimeSpan OpenRequestLifetime = TimeSpan.FromMinutes(2);
+
     internal static string OpenRequestFolder(string key) =>
         Path.Combine(Path.GetTempPath(), "QuickMail", "Open", key);
 
@@ -154,8 +167,9 @@ public sealed class SingleInstanceService : IDisposable
                 try
                 {
                     var path = File.ReadAllText(request).Trim();
+                    var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(request);
                     File.Delete(request);
-                    if (path.Length > 0) paths.Add(path);
+                    if (path.Length > 0 && age < OpenRequestLifetime) paths.Add(path);
                 }
                 catch (IOException) { /* being written or taken by someone else: next signal */ }
             }

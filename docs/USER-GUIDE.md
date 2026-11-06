@@ -694,6 +694,7 @@ Copied and cut messages also go on the Windows clipboard as email files (.eml), 
 - **Paste into a message you are writing** to attach them as emails. Copy a message in the message list, open a new message, reply or forward, and press **Ctrl+V**: the message is attached, and the recipient can open it as an email.
 
 QuickMail downloads each message to do this, so with several messages selected you hear "Copying 3 messages…" and then "3 messages copied." when they are ready. More than 100 messages at once are copied for pasting into folders only, without the files, so that selecting a whole large folder does not download all of it. If a message's original cannot be downloaded (for instance while offline), the copy still pastes into folders, and QuickMail tells you it could not make the files.
+
 ### Opening Email Files
 
 QuickMail opens email files (.eml), such as messages you pasted into Explorer or saved with Save As, and emails attached to other messages.
@@ -704,6 +705,7 @@ QuickMail opens email files (.eml), such as messages you pasted into Explorer or
 The window works like any message window: read it, open, save and copy its attachments, **Save As**, **Print**, **Reply**, **Reply All** and **Forward**. Replies and forwards go from your default account, since the message is not in any of your accounts. Commands that need a mailbox (Delete, Mark as Read, Create Rule from Message and Move to Main Window) are not offered. Closing the window takes you back to where you opened it from.
 
 If a file is not an email, QuickMail says so instead of opening it.
+
 ### Message List Views
 
 Press `Ctrl+Shift+V` (or use the **View** menu) to switch how messages are grouped:
