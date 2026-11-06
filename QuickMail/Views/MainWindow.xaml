@@ -76,7 +76,7 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
                       AutomationProperties.Name="Copy Messages"
                       Click="MenuCopyMessages_Click"/>
-            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="Cut Messag_es"
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="C_ut Messages"
                       AutomationProperties.Name="Cut Messages"
                       Click="MenuCutMessages_Click"/>
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Messages As…"
@@ -141,7 +141,7 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
                       AutomationProperties.Name="Copy Messages"
                       Click="MenuCopyMessages_Click"/>
-            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="Cut Messag_es"
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="C_ut Messages"
                       AutomationProperties.Name="Cut Messages"
                       Click="MenuCutMessages_Click"/>
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Messages As…"
@@ -207,7 +207,7 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
                       AutomationProperties.Name="Copy Messages"
                       Click="MenuCopyMessages_Click"/>
-            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="Cut Messag_es"
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="C_ut Messages"
                       AutomationProperties.Name="Cut Messages"
                       Click="MenuCutMessages_Click"/>
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Conversation As…"
@@ -273,7 +273,7 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
                       AutomationProperties.Name="Copy Messages"
                       Click="MenuCopyMessages_Click"/>
-            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="Cut Messag_es"
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="C_ut Messages"
                       AutomationProperties.Name="Cut Messages"
                       Click="MenuCutMessages_Click"/>
             <MenuItem Header="Sa_ve As…"
