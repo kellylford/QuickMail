@@ -23,6 +23,7 @@
 
 ## Fixed
 
+- **Folders made in QuickMail now show in other mail programs.** A folder created, copied or renamed in QuickMail on an IMAP account was on the server, but programs such as Outlook didn't show it, because QuickMail didn't subscribe to it. It does now, and renaming or deleting a folder updates its subscription. A folder made before this release stays hidden in those programs until you subscribe to it there, for example with **IMAP Folders** in Outlook. (#943)
 - **A forwarded or attached email arrived as a file.** An email attached to a message you sent was encoded in a way the standard does not allow, so many mail programs showed it as a file rather than an email the recipient could open. It is now attached as an email. (#929)
 - **A failed Copy to Folder was not always spoken.** It now says so whatever your announcement settings for background progress. (#929)
 - **Screen readers could read an internal name instead of a message.** You could hear "QuickMail.Models.MailMessageSummary" in the message list, at times that were hard to predict. QuickMail now gives a screen reader the message for a row that isn't on screen yet, normally in the fields and order you chose in Message List Fields, which should stop this. (#928)

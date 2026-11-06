@@ -894,7 +894,44 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         IMailFolder parent = string.IsNullOrEmpty(parentFolderName)
             ? client.GetFolder(client.PersonalNamespaces[0])
             : await client.GetFolderAsync(parentFolderName, ct);
-        await parent.CreateAsync(name, true, ct);
+        var created = await parent.CreateAsync(name, true, ct);
+        await SubscribeAsync(created, ct);
+    }
+
+    // ── Subscriptions (#943) ─────────────────────────────────────────────────────
+    //
+    // Outlook, Thunderbird, phones and webmail show only the folders an account is SUBSCRIBEd to.
+    // QuickMail lists every folder itself, so a folder it made without subscribing looked fine here
+    // and was missing everywhere else. Each step is best effort: a server that does not do
+    // subscriptions still creates, renames and deletes, and a subscription that fails is logged rather
+    // than undoing the change the user asked for.
+
+    private static async Task SubscribeAsync(IMailFolder? folder, CancellationToken ct)
+    {
+        if (folder == null) return;
+        try { await folder.SubscribeAsync(ct); }
+        catch (Exception ex) when (ex is ImapCommandException or NotSupportedException)
+        {
+            LogService.Log($"IMAP: could not subscribe to {folder.FullName}: {ex.Message}");
+        }
+    }
+
+    private static async Task UnsubscribeAsync(IMailFolder folder, CancellationToken ct)
+    {
+        try { await folder.UnsubscribeAsync(ct); }
+        catch (Exception ex) when (ex is ImapCommandException or NotSupportedException)
+        {
+            LogService.Log($"IMAP: could not unsubscribe from {folder.FullName}: {ex.Message}");
+        }
+    }
+
+    /// <summary>A folder and every folder beneath it, parents first.</summary>
+    private static async Task<List<IMailFolder>> WithDescendantsAsync(IMailFolder folder, CancellationToken ct)
+    {
+        var all = new List<IMailFolder> { folder };
+        foreach (var sub in await folder.GetSubfoldersAsync(false, ct))
+            all.AddRange(await WithDescendantsAsync(sub, ct));
+        return all;
     }
 
     public async Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
@@ -917,6 +954,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         }
         finally { await folder.CloseAsync(false, ct); }
 
+        await UnsubscribeAsync(folder, ct);
         await folder.DeleteAsync(ct);
     }
 
@@ -928,7 +966,23 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         IMailFolder parent = string.IsNullOrEmpty(newParentFolderName)
             ? client.GetFolder(client.PersonalNamespaces[0])
             : await client.GetFolderAsync(newParentFolderName, ct);
-        await folder.RenameAsync(parent, newName, ct);
+        // A subscription is to a name, so it does not follow a rename: the new names are subscribed
+        // and the old ones dropped, for every folder beneath it too (#943).
+        // The old names are dropped before the rename, while they still exist to be named; a rename the
+        // server refuses puts them back, so a failed rename changes nothing.
+        var before = await WithDescendantsAsync(folder, ct);
+        foreach (var old in before) await UnsubscribeAsync(old, ct);
+        try
+        {
+            await folder.RenameAsync(parent, newName, ct);
+        }
+        catch
+        {
+            foreach (var old in before) await SubscribeAsync(old, CancellationToken.None);
+            throw;
+        }
+        foreach (var renamed in await WithDescendantsAsync(folder, ct))
+            await SubscribeAsync(renamed, ct);
     }
 
     public async Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
@@ -947,6 +1001,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
         var newFolder = await destParent.CreateAsync(srcFolder.Name, true, ct)
             ?? throw new InvalidOperationException($"Failed to create destination folder '{srcFolder.Name}'.");
+        await SubscribeAsync(newFolder, ct);
 
         await srcFolder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
