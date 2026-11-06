@@ -96,15 +96,19 @@ public partial class ServerRuleEditorViewModel
     }
 
     [RelayCommand]
-    private void ChooseRuleSoundFile()
+    private void ChooseRuleSoundFile() => TryChooseRuleSoundFile();
+
+    /// <summary>Asks for a sound file and makes it the rule's sound.</summary>
+    /// <returns>True if one was chosen and accepted, so the View can put focus where its name is read.</returns>
+    public bool TryChooseRuleSoundFile()
     {
-        if (_sounds is null || PickSoundFileRequested?.Invoke() is not { } path) return;
+        if (_sounds is null || PickSoundFileRequested?.Invoke() is not { } path) return false;
 
         if (!_sounds.TryAddCustomSound(path, out var fileName, out var refusal))
         {
             RuleSoundMessage = refusal;
             AnnouncementRequested?.Invoke(refusal, AnnouncementCategory.Result);
-            return;
+            return false;
         }
 
         var stored = SoundRef.Custom(fileName).ToStored();
@@ -114,5 +118,6 @@ public partial class ServerRuleEditorViewModel
         else if (existing != choice) RuleSoundChoices[RuleSoundChoices.IndexOf(existing)] = choice;
         else choice = existing;
         SelectedRuleSound = choice;
+        return true;
     }
 }
