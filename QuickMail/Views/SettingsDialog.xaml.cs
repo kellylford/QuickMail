@@ -22,7 +22,6 @@ public partial class SettingsDialog : Window
         vm.DiagnosticsAnnouncementRequested += OnDiagnosticsAnnouncement;
         vm.SoundResultAnnounced += OnSoundResult;
         vm.ConfirmRequested ??= Confirm;
-        if (vm.SoundGallery is null) BrowseSoundSchemesButton.Visibility = Visibility.Collapsed;
         Closing += (_, e) => _closing = !e.Cancel;
         Closed += (_, _) =>
         {

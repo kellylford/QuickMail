@@ -7920,6 +7920,8 @@ public partial class MainWindow : Window
             (Application.Current as App)?.ScreenshotCapture,
             (Application.Current as App)?.LaunchAtSignIn,
             _vm.Sounds);
+        // Before the dialog is built, so Browse schemes is there from the start (#937).
+        vm.SoundGallery = (Application.Current as App)?.SoundGallery;
         var dialog = new SettingsDialog(vm) { Owner = this };
 
         // A sound file for an event (#912). The Windows file dialog, over the Settings dialog, which
@@ -7953,7 +7955,6 @@ public partial class MainWindow : Window
         };
         // So Remove file can say which rules still use a sound.
         vm.RuleSoundsProvider = _vm.RuleSounds;
-        vm.SoundGallery = (Application.Current as App)?.SoundGallery;
 
         // Picking a startup folder needs a window, which is the View's job — the VM asks and gets a
         // plain record back (#516). Wired here rather than in SettingsDialog because this is where

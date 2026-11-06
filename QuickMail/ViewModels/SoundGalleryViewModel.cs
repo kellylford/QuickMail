@@ -14,7 +14,7 @@ public sealed partial class SoundGalleryViewModel(ISoundGalleryService gallery) 
     public ObservableCollection<SoundGalleryEntry> Entries { get; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanAdd), nameof(Details))]
+    [NotifyPropertyChangedFor(nameof(CanAdd), nameof(Details), nameof(HasDetails))]
     private SoundGalleryEntry? _selectedEntry;
 
     [ObservableProperty]
@@ -26,23 +26,33 @@ public sealed partial class SoundGalleryViewModel(ISoundGalleryService gallery) 
 
     public bool CanAdd => SelectedEntry is not null && !IsBusy;
 
+    public bool HasDetails => SelectedEntry is not null;
+
     /// <summary>The selected scheme's description and licence.</summary>
     public string Details => SelectedEntry is { } e
-        ? (e.Description.Length > 0 ? e.Description + " " : string.Empty) + $"Licence: {e.License}."
+        ? (e.Description.Length > 0 ? e.Description + " " : string.Empty) + $"By {e.Author}. Licence: {e.License}."
         : string.Empty;
 
     /// <summary>Something no control reports; the View announces it.</summary>
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
 
+    // Which load is current: Try again during a load supersedes it, and only the latest may fill the
+    // list or say the window is no longer busy.
+    private int _loadGeneration;
+
     /// <summary>Lists the gallery's schemes. A failure leaves the list empty and says why.</summary>
     public async Task LoadAsync(CancellationToken ct)
     {
+        var generation = ++_loadGeneration;
         IsBusy = true;
         Entries.Clear();
+        SelectedEntry = null;
         SetStatus("Loading the sound scheme gallery…", AnnouncementCategory.Status);
         try
         {
             var entries = await gallery.LoadAsync(ct);
+            if (generation != _loadGeneration) return;
+            ct.ThrowIfCancellationRequested();
             foreach (var entry in entries) Entries.Add(entry);
             SelectedEntry = Entries.Count > 0 ? Entries[0] : null;
             // The list reports its own rows; only an empty gallery needs saying.
@@ -51,11 +61,11 @@ public sealed partial class SoundGalleryViewModel(ISoundGalleryService gallery) 
         }
         catch (SoundGalleryException ex)
         {
-            SetStatus(ex.Message, AnnouncementCategory.Result);
+            if (generation == _loadGeneration) SetStatus(ex.Message, AnnouncementCategory.Result);
         }
         finally
         {
-            IsBusy = false;
+            if (generation == _loadGeneration) IsBusy = false;
         }
     }
 

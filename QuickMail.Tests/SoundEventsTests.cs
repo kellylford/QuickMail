@@ -1327,6 +1327,23 @@ public class SoundsTabAccessibilityTests
     }
 
     [StaFact]
+    public void BrowseSchemesIsShownWhenThereIsAGalleryEvenIfItIsSetAfterTheDialogIsBuilt()
+    {
+        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        var dialog = new SettingsDialog(vm);
+        try
+        {
+            var browse = dialog.FindName("BrowseSoundSchemesButton") as System.Windows.Controls.Button;
+            Assert.NotNull(browse);
+            Assert.Equal(System.Windows.Visibility.Collapsed, browse.Visibility);   // no gallery: not offered
+            vm.SoundGallery = new SoundGalleryService(System.IO.Path.GetTempPath());
+            Assert.Equal(System.Windows.Visibility.Visible, browse.Visibility);
+        }
+        finally { dialog.Close(); }
+    }
+
+    [StaFact]
     public void TypingMovesToAMatchingEvent()
     {
         var (dialog, vm) = MakeDialog();

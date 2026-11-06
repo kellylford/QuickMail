@@ -244,7 +244,7 @@ public partial class App : Application
                 "                        or written to the local SQLite cache.\n\n" +
                 "  --soundGallery <path> Browse sound schemes in <path> (a folder or https URL)\n" +
                 "                        instead of the published gallery. It must be signed\n" +
-                "                        with the gallery's key.\n" +
+                "                        with the gallery's key.\n\n" +
                 "  --updateFeed <path>   Check for updates in <path> (a folder or URL of\n" +
                 "                        Velopack packages) instead of GitHub Releases.\n" +
                 "                        For testing update delivery.\n\n" +

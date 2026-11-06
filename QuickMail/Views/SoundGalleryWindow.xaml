@@ -11,6 +11,10 @@
         FontFamily="{DynamicResource Theme.FontFamily}"
         FontSize="{DynamicResource Theme.FontSizeBase}">
 
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </Window.Resources>
+
     <!-- No editable text, so a modal dialog over Settings is safe (CLAUDE.md, Modal Dialog Rules). -->
     <DockPanel Margin="12">
 
@@ -27,8 +31,14 @@
 
         <TextBlock x:Name="StatusText" DockPanel.Dock="Top" Text="{Binding Status}" TextWrapping="Wrap" Margin="0,0,0,6"/>
 
-        <TextBlock x:Name="DetailsText" DockPanel.Dock="Bottom" Text="{Binding Details}" TextWrapping="Wrap" Margin="0,8,0,0"
-                   Foreground="{DynamicResource Theme.TextSecondary}"/>
+        <!-- A Tab stop, so the description, author and licence can be reached by keyboard. Not a
+             read-only TextBox: editable-text controls in a modal over WebView2 are the deadlock risk. -->
+        <Label x:Name="DetailsLabel" DockPanel.Dock="Bottom" Margin="0,8,0,0" Padding="0"
+               Focusable="True" IsTabStop="True"
+               AutomationProperties.Name="{Binding Details}"
+               Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="{Binding Details}" TextWrapping="Wrap" Foreground="{DynamicResource Theme.TextSecondary}"/>
+        </Label>
 
         <DockPanel>
             <Label DockPanel.Dock="Top" Content="_Sound schemes:" Target="{Binding ElementName=SchemeList}" Padding="0,0,0,2"/>
@@ -41,7 +51,7 @@
                     <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                         <!-- The row's name on the container (CLAUDE.md); the description as its help text. -->
                         <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
-                        <Setter Property="AutomationProperties.HelpText" Value="{Binding Description}"/>
+                        <Setter Property="AutomationProperties.HelpText" Value="{Binding HelpText}"/>
                     </Style>
                 </ListBox.ItemContainerStyle>
             </ListBox>

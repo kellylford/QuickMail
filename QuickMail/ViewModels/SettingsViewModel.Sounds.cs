@@ -164,7 +164,19 @@ public partial class SettingsViewModel
     public Func<string, string, bool>? ConfirmRequested { get; set; }
 
     /// <summary>Set by the owner: the sound scheme gallery (#937), or null where there is none, which hides Browse schemes.</summary>
-    public ISoundGalleryService? SoundGallery { get; set; }
+    public ISoundGalleryService? SoundGallery
+    {
+        get => _soundGallery;
+        set
+        {
+            if (SetProperty(ref _soundGallery, value)) OnPropertyChanged(nameof(HasSoundGallery));
+        }
+    }
+
+    private ISoundGalleryService? _soundGallery;
+
+    /// <summary>Whether Browse schemes is offered: only where there is a gallery.</summary>
+    public bool HasSoundGallery => _soundGallery is not null;
 
     /// <summary>Set by the owner: the stored sound of every rule that plays one, for Remove file's warning.</summary>
     public Func<IEnumerable<string?>>? RuleSoundsProvider { get; set; }
@@ -329,7 +341,7 @@ public partial class SettingsViewModel
                 if (!scheme.IsBuiltIn || value != SoundRef.BuiltIn(info.BuiltInSound).ToStored()) events[info.ConfigKey] = value;
             }
             if (scheme.IsBuiltIn && events.Count == 0) continue;
-            schemes[scheme.Id] = new SoundScheme(scheme.Id, scheme.Name, scheme.IsBuiltIn, scheme.Pack, events);
+            schemes[scheme.Id] = new SoundScheme(scheme.Id, scheme.Name, scheme.IsBuiltIn, scheme.Pack, events, scheme.Author, scheme.License);
         }
         cfg.SoundSchemes = schemes;
     }
@@ -377,7 +389,9 @@ public partial class SettingsViewModel
         if (SchemeNameProblem(name) is not null) return false;
         SoundScheme? source = null;
         if (copyFromId is not null && (source = SoundSchemes.FirstOrDefault(s => s.Id == copyFromId)) is null) return false;
-        var scheme = new SoundScheme(SoundCatalog.NewUserSchemeId(), name.Trim(), isBuiltIn: false);
+        // A copy of someone else's scheme keeps their credit.
+        var scheme = new SoundScheme(SoundCatalog.NewUserSchemeId(), name.Trim(), isBuiltIn: false,
+            author: source?.Author, license: source?.License);
         _schemeValues[scheme.Id] = source is not null
             ? SoundSchemeFile.Portable(source.With(events: SchemeValues(source)))
             : SoundCatalog.Events.ToDictionary(i => i.ConfigKey, _ => SoundRef.None.ToStored(), StringComparer.OrdinalIgnoreCase);
@@ -448,7 +462,8 @@ public partial class SettingsViewModel
         if (PickSchemeExportPathRequested?.Invoke(safeName + SoundSchemeFile.FileExtension) is not { } path) return;
         try
         {
-            SoundSchemeFile.Export(path, scheme.Name, SoundSchemeFile.Portable(scheme.With(events: SchemeValues(scheme))), _sounds);
+            SoundSchemeFile.Export(path, scheme.Name, SoundSchemeFile.Portable(scheme.With(events: SchemeValues(scheme))), _sounds,
+                scheme.Author, scheme.License);
             ReportScheme($"Saved the sound scheme {scheme.Name} to {Path.GetFileName(path)}.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -492,12 +507,13 @@ public partial class SettingsViewModel
         {
             var suffix = $" {n}";
             var stem = imported.Name.Length + suffix.Length > SoundCatalog.MaxSchemeNameLength
-                ? imported.Name[..(SoundCatalog.MaxSchemeNameLength - suffix.Length)].TrimEnd()
+                ? SoundSchemeFile.Cut(imported.Name, SoundCatalog.MaxSchemeNameLength - suffix.Length)
                 : imported.Name;
             name = stem + suffix;
         }
 
-        var scheme = new SoundScheme(SoundCatalog.NewUserSchemeId(), name, isBuiltIn: false);
+        var scheme = new SoundScheme(SoundCatalog.NewUserSchemeId(), name, isBuiltIn: false,
+            author: imported.Author, license: imported.License);
         _schemeValues[scheme.Id] = SoundCatalog.Events.ToDictionary(
             i => i.ConfigKey,
             i => imported.Events.TryGetValue(i.ConfigKey, out var v) ? v : SoundRef.None.ToStored(),

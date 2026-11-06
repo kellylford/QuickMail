@@ -21,6 +21,7 @@ public partial class SoundGalleryWindow : Window
     private readonly SoundGalleryViewModel _vm;
     private readonly CommandRegistry _localRegistry = new();
     private CancellationTokenSource? _cts;
+    private bool _closed;
 
     public SoundGalleryWindow(SoundGalleryViewModel vm)
     {
@@ -93,6 +94,12 @@ public partial class SoundGalleryWindow : Window
         {
             return;
         }
+        if (_closed)
+        {
+            // Closed while the download finished: nobody will import it, and DialogResult can't be set now.
+            if (path is not null) SoundGalleryService.DeleteDownload(path);
+            return;
+        }
         if (path is null)
         {
             FocusList();
@@ -125,9 +132,14 @@ public partial class SoundGalleryWindow : Window
         }
         else if (e.Key == Key.F6)
         {
-            // Two panes: the list, and the buttons.
-            if (SchemeList.IsKeyboardFocusWithin) (AddButton.IsEnabled ? AddButton : RetryButton).Focus();
-            else FocusList();
+            // Three panes: the list, the selected scheme's details, and the buttons.
+            var reverse = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+            var pane = SchemeList.IsKeyboardFocusWithin ? 0 : DetailsLabel.IsKeyboardFocused ? 1 : 2;
+            var next = (pane + (reverse ? 2 : 1)) % 3;
+            if (next == 1 && !DetailsLabel.IsVisible) next = reverse ? 0 : 2;
+            if (next == 0) FocusList();
+            else if (next == 1) DetailsLabel.Focus();
+            else (AddButton.IsEnabled ? AddButton : RetryButton).Focus();
             e.Handled = true;
         }
         else if (e.Key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
@@ -146,6 +158,7 @@ public partial class SoundGalleryWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _closed = true;
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;

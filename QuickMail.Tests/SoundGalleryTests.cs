@@ -57,6 +57,11 @@ public sealed class SoundGalleryTests : IDisposable
         return ms.ToArray();
     }
 
+    private static string Hash(byte[] file) => Convert.ToHexStringLower(SHA256.HashData(file));
+
+    /// <summary>A scheme's file name in the gallery: its id and the start of its hash.</summary>
+    private static string FileName(string id, byte[] file) => $"{id}-{Hash(file)[..16]}.qmsounds";
+
     private static object Entry(string id, byte[] file, string? name = null, string? fileName = null, string? sha = null, long? size = null) => new
     {
         id,
@@ -64,14 +69,19 @@ public sealed class SoundGalleryTests : IDisposable
         author = "Pat",
         description = "Soft.",
         license = "CC0-1.0",
-        file = fileName ?? id + ".qmsounds",
+        file = fileName ?? FileName(id, file),
         size = size ?? file.LongLength,
-        sha256 = sha ?? Convert.ToHexStringLower(SHA256.HashData(file)),
+        sha256 = sha ?? Hash(file),
         eventsWithSound = 2,
     };
 
     private string Sign(byte[] data, ECDsa? key = null) =>
         Convert.ToBase64String((key ?? _key).SignData(data, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence));
+
+    /// <summary>index.signed: the signature line, then the exact index bytes.</summary>
+    private byte[] Signed(byte[] index, ECDsa? key = null) => [.. Encoding.ASCII.GetBytes(Sign(index, key) + "\n"), .. index];
+
+    private static string SignedPath(string dir) => Path.Combine(dir, "index.signed");
 
     /// <summary>Writes a gallery folder holding these schemes, its index signed with <paramref name="key"/>.</summary>
     private string Gallery(IEnumerable<(string Id, byte[] File)> schemes, ECDsa? key = null, Func<string, string>? rewriteIndex = null)
@@ -80,14 +90,13 @@ public sealed class SoundGalleryTests : IDisposable
         var entries = new List<object>();
         foreach (var (id, file) in schemes)
         {
-            File.WriteAllBytes(Path.Combine(dir, id + ".qmsounds"), file);
+            File.WriteAllBytes(Path.Combine(dir, FileName(id, file)), file);
             entries.Add(Entry(id, file));
         }
         var json = JsonSerializer.Serialize(new { format = 1, schemes = entries });
         if (rewriteIndex is not null) json = rewriteIndex(json);
         var index = Encoding.UTF8.GetBytes(json);
-        File.WriteAllBytes(Path.Combine(dir, "index.json"), index);
-        File.WriteAllText(Path.Combine(dir, "index.json.sig"), Sign(index, key));
+        File.WriteAllBytes(SignedPath(dir), Signed(index, key));
         return dir;
     }
 
@@ -115,7 +124,7 @@ public sealed class SoundGalleryTests : IDisposable
     public async Task AnIndexChangedAfterSigningIsRefused()
     {
         var dir = Gallery([("rain", SchemeFile("Rain", TwoSounds))]);
-        var path = Path.Combine(dir, "index.json");
+        var path = SignedPath(dir);
         File.WriteAllText(path, File.ReadAllText(path).Replace("Soft.", "Loud!", StringComparison.Ordinal));
         await Assert.ThrowsAsync<SoundGalleryException>(() => Service(dir).LoadAsync(TestContext.Current.CancellationToken));
     }
@@ -124,7 +133,7 @@ public sealed class SoundGalleryTests : IDisposable
     public async Task AnIndexWithOneByteChangedIsRefused()
     {
         var dir = Gallery([("rain", SchemeFile("Rain", TwoSounds))]);
-        var path = Path.Combine(dir, "index.json");
+        var path = SignedPath(dir);
         var bytes = File.ReadAllBytes(path);
         bytes[^2] ^= 1;
         File.WriteAllBytes(path, bytes);
@@ -145,7 +154,10 @@ public sealed class SoundGalleryTests : IDisposable
     {
         var a = Gallery([("rain", SchemeFile("Rain", TwoSounds))]);
         var b = Gallery([("wind", SchemeFile("Wind", TwoSounds))]);
-        File.Copy(Path.Combine(a, "index.json.sig"), Path.Combine(b, "index.json.sig"), overwrite: true);
+        // a's signature line in front of b's index.
+        var aLine = File.ReadAllText(SignedPath(a)).Split('\n')[0];
+        var bIndex = File.ReadAllText(SignedPath(b)).Split('\n', 2)[1];
+        File.WriteAllText(SignedPath(b), aLine + "\n" + bIndex);
         await Assert.ThrowsAsync<SoundGalleryException>(() => Service(b).LoadAsync(TestContext.Current.CancellationToken));
     }
 
@@ -157,9 +169,10 @@ public sealed class SoundGalleryTests : IDisposable
     public async Task AMissingOrJunkSignatureIsRefused(string? signature)
     {
         var dir = Gallery([("rain", SchemeFile("Rain", TwoSounds))]);
-        var sig = Path.Combine(dir, "index.json.sig");
-        if (signature is null) File.Delete(sig);
-        else File.WriteAllText(sig, signature);
+        var path = SignedPath(dir);
+        var index = File.ReadAllText(path).Split('\n', 2)[1];
+        if (signature is null) File.WriteAllText(path, index);   // no signature line at all
+        else File.WriteAllText(path, signature + "\n" + index);
         await Assert.ThrowsAsync<SoundGalleryException>(() => Service(dir).LoadAsync(TestContext.Current.CancellationToken));
     }
 
@@ -181,6 +194,8 @@ public sealed class SoundGalleryTests : IDisposable
 
     public static TheoryData<string, string> BadNames => new()
     {
+        { "rain", "rain.qmsounds" },   // the name without its hash
+        { "rain", "rain-0000000000000001.qmsounds" },   // a hash that isn't this one's
         { "rain", "../rain.qmsounds" },
         { "rain", "C:/rain.qmsounds" },
         { "rain", "https://evil.example/rain.qmsounds" },
@@ -222,7 +237,7 @@ public sealed class SoundGalleryTests : IDisposable
         var entry = Assert.Single(ParseOne(new
         {
             id = "rain", name = "Rain\r\nInjected", author = new string('a', 100), description = "Line\u0007one" + new string('d', 400),
-            license = "CC0-1.0", file = "rain.qmsounds", size = 1, sha256 = new string('0', 64), eventsWithSound = 99,
+            license = "CC0-1.0", file = "rain-0000000000000000.qmsounds", size = 1, sha256 = new string('0', 64), eventsWithSound = 99,
         }));
         Assert.Equal("RainInjected", entry.Name);
         Assert.Equal(60, entry.Author.Length);
@@ -271,6 +286,39 @@ public sealed class SoundGalleryTests : IDisposable
         await Assert.ThrowsAsync<SoundGalleryException>(() => Service(dir).LoadAsync(TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public void AWronglyTypedNumberDropsTheEntryRatherThanFailing()
+    {
+        var file = new byte[] { 1 };
+        var sha = Hash(file);
+        object WithSize(object size) => new
+        {
+            id = "rain", name = "Rain", author = "Pat", description = "", license = "CC0-1.0",
+            file = FileName("rain", file), size, sha256 = sha, eventsWithSound = 2,
+        };
+        Assert.Empty(ParseOne(WithSize("1")));
+        Assert.Empty(ParseOne(WithSize(true)));
+        Assert.Empty(ParseOne(WithSize(1.5)));
+
+        var json = JsonSerializer.Serialize(new { format = 1, schemes = new[] { new
+        {
+            id = "rain", name = "Rain", author = "Pat", description = "", license = "CC0-1.0",
+            file = FileName("rain", file), size = 1, sha256 = sha, eventsWithSound = (int?)null,
+        } } });
+        Assert.Equal(0, Assert.Single(SoundGalleryService.Parse(Encoding.UTF8.GetBytes(json))).EventsWithSound);
+    }
+
+    [Fact]
+    public void ASignedFileWithNoIndexOrALongFirstLineIsRefused()
+    {
+        Assert.False(SoundGalleryService.TrySplitSigned("abc\n"u8.ToArray(), out _, out _));
+        Assert.False(SoundGalleryService.TrySplitSigned("\n{}"u8.ToArray(), out _, out _));
+        Assert.False(SoundGalleryService.TrySplitSigned(Encoding.ASCII.GetBytes(new string('A', 600) + "\n{}"), out _, out _));
+        Assert.True(SoundGalleryService.TrySplitSigned("sig\n{}"u8.ToArray(), out var sig, out var index));
+        Assert.Equal("sig"u8.ToArray(), sig);
+        Assert.Equal("{}"u8.ToArray(), index);
+    }
+
     // ── Downloading ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -305,9 +353,9 @@ public sealed class SoundGalleryTests : IDisposable
         var service = Service(dir);
         var entry = Assert.Single(await service.LoadAsync(TestContext.Current.CancellationToken));
         // Same length, different content: only the hash can tell.
-        var swapped = File.ReadAllBytes(Path.Combine(dir, "rain.qmsounds"));
+        var swapped = File.ReadAllBytes(Path.Combine(dir, entry.File));
         swapped[^1] ^= 0xFF;
-        File.WriteAllBytes(Path.Combine(dir, "rain.qmsounds"), swapped);
+        File.WriteAllBytes(Path.Combine(dir, entry.File), swapped);
 
         var ex = await Assert.ThrowsAsync<SoundGalleryException>(() => service.DownloadAsync(entry, TestContext.Current.CancellationToken));
         Assert.Contains("not the file the gallery lists", ex.Message, StringComparison.Ordinal);
@@ -321,7 +369,7 @@ public sealed class SoundGalleryTests : IDisposable
         var dir = Gallery([("rain", SchemeFile("Rain", TwoSounds))]);
         var service = Service(dir);
         var entry = Assert.Single(await service.LoadAsync(TestContext.Current.CancellationToken));
-        var path = Path.Combine(dir, "rain.qmsounds");
+        var path = Path.Combine(dir, entry.File);
         var bytes = File.ReadAllBytes(path);
         File.WriteAllBytes(path, delta > 0 ? [.. bytes, 0] : bytes[..^1]);
         await Assert.ThrowsAsync<SoundGalleryException>(() => service.DownloadAsync(entry, TestContext.Current.CancellationToken));
@@ -357,24 +405,21 @@ public sealed class SoundGalleryTests : IDisposable
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
     }
 
-    private (byte[] Index, string Sig, byte[] File) Published(string id = "rain")
+    private (byte[] Signed, string FileName, byte[] File) Published(string id = "rain")
     {
         var file = SchemeFile("Rain", TwoSounds);
         var index = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { format = 1, schemes = new[] { Entry(id, file) } }));
-        return (index, Sign(index), file);
+        return (Signed(index), FileName(id, file), file);
     }
 
     [Fact]
     public async Task OverHttpsItReadsTheIndexAndTheFileFromTheGalleryOnly()
     {
-        var (index, sig, file) = Published();
-        var server = new FakeServer(name => name switch
-        {
-            "index.json" => Ok(index),
-            "index.json.sig" => Ok(Encoding.ASCII.GetBytes(sig)),
-            "rain.qmsounds" => Ok(file),
-            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
-        });
+        var (signed, fileName, file) = Published();
+        var server = new FakeServer(name =>
+            name == "index.signed" ? Ok(signed)
+            : name == fileName ? Ok(file)
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
         using var service = new SoundGalleryService("https://gallery.example/sounds", _publicPem, server);
 
         var entry = Assert.Single(await service.LoadAsync(TestContext.Current.CancellationToken));
@@ -383,7 +428,7 @@ public sealed class SoundGalleryTests : IDisposable
 
         Assert.All(server.Asked, uri => Assert.Equal("gallery.example", uri.Host));
         Assert.Equal(
-            ["/sounds/index.json", "/sounds/index.json.sig", "/sounds/rain.qmsounds"],
+            ["/sounds/index.signed", "/sounds/" + fileName],
             server.Asked.Select(u => u.AbsolutePath));
     }
 
@@ -409,22 +454,59 @@ public sealed class SoundGalleryTests : IDisposable
     [Fact]
     public async Task AServerSendingMoreThanItClaimsIsCutOff()
     {
-        var (index, sig, file) = Published();
-        var server = new FakeServer(name => name switch
-        {
-            "index.json" => Ok(index),
-            "index.json.sig" => Ok(Encoding.ASCII.GetBytes(sig)),
-            _ => Ok([.. file, .. new byte[1000]], claimedLength: null),
-        });
+        var (signed, _, file) = Published();
+        var server = new FakeServer(name =>
+            name == "index.signed" ? Ok(signed) : Ok([.. file, .. new byte[1000]], claimedLength: null));
         using var service = new SoundGalleryService("https://gallery.example/", _publicPem, server);
         var entry = Assert.Single(await service.LoadAsync(TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<SoundGalleryException>(() => service.DownloadAsync(entry, TestContext.Current.CancellationToken));
     }
 
+    /// <summary>A body that sends nothing after the headers, like a stalled connection.</summary>
+    private sealed class StalledStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => 0; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+    }
+
+    [Fact]
+    public async Task AConnectionThatStallsAfterTheHeadersTimesOut()
+    {
+        var server = new FakeServer(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledStream()) });
+        using var service = new SoundGalleryService("https://gallery.example/", _publicPem, server, readTimeout: TimeSpan.FromMilliseconds(300));
+        var started = DateTime.UtcNow;
+        var ex = await Assert.ThrowsAsync<SoundGalleryException>(() => service.LoadAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("could not be reached", ex.Message, StringComparison.Ordinal);
+        Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task ClosingTheWindowCancelsRatherThanReportingAFailure()
+    {
+        var server = new FakeServer(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledStream()) });
+        using var service = new SoundGalleryService("https://gallery.example/", _publicPem, server);
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.LoadAsync(cts.Token));
+    }
+
     [Fact]
     public async Task AnIndexClaimingToBeHugeIsNotRead()
     {
-        var server = new FakeServer(_ => Ok([1, 2, 3], claimedLength: SoundGalleryService.MaxIndexBytes + 1));
+        var server = new FakeServer(_ => Ok([1, 2, 3], claimedLength: SoundGalleryService.MaxIndexBytes + 1024));
         using var service = new SoundGalleryService("https://gallery.example/", _publicPem, server);
         await Assert.ThrowsAsync<SoundGalleryException>(() => service.LoadAsync(TestContext.Current.CancellationToken));
     }
@@ -490,7 +572,9 @@ public sealed class SoundGalleryTests : IDisposable
         Assert.Equal(2, vm.Entries.Count);
         Assert.Equal("rain", vm.SelectedEntry!.Id);
         Assert.True(vm.CanAdd);
-        Assert.Equal("Soft drops. Licence: CC-BY-4.0.", vm.Details);
+        Assert.Equal("Soft drops. By Pat. Licence: CC-BY-4.0.", vm.Details);
+        Assert.Equal("Soft drops. Licence: CC-BY-4.0.", vm.SelectedEntry.HelpText);
+        Assert.True(vm.HasDetails);
         Assert.Equal([("Loading the sound scheme gallery…", AnnouncementCategory.Status)], said);
         Assert.Equal(string.Empty, vm.Status);
     }
@@ -509,6 +593,54 @@ public sealed class SoundGalleryTests : IDisposable
         Assert.Equal("The gallery could not be reached.", vm.Status);
         Assert.Equal(vm.Status, said);
         Assert.False(vm.IsBusy);
+    }
+
+    /// <summary>Loads that finish when the test says.</summary>
+    private sealed class SlowGallery : ISoundGalleryService
+    {
+        public Queue<TaskCompletionSource<IReadOnlyList<SoundGalleryEntry>>> Pending { get; } = new();
+
+        public Task<IReadOnlyList<SoundGalleryEntry>> LoadAsync(CancellationToken ct)
+        {
+            var tcs = new TaskCompletionSource<IReadOnlyList<SoundGalleryEntry>>();
+            Pending.Enqueue(tcs);
+            return tcs.Task;
+        }
+
+        public Task<string> DownloadAsync(SoundGalleryEntry entry, CancellationToken ct) => Task.FromResult(entry.File);
+    }
+
+    [Fact]
+    public async Task TryAgainDuringALoadShowsOnlyTheLatestList()
+    {
+        var gallery = new SlowGallery();
+        var vm = new SoundGalleryViewModel(gallery);
+        var first = vm.LoadAsync(TestContext.Current.CancellationToken);
+        var second = vm.LoadAsync(TestContext.Current.CancellationToken);
+        var firstLoad = gallery.Pending.Dequeue();
+        var secondLoad = gallery.Pending.Dequeue();
+
+        secondLoad.SetResult([Listed("wind")]);
+        await second;
+        firstLoad.SetResult([Listed("rain"), Listed("hail")]);   // finishes late
+        await first;
+
+        Assert.Equal(["wind"], vm.Entries.Select(e => e.Id));
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task AnEarlierLoadFinishingLateDoesNotEndTheBusyState()
+    {
+        var gallery = new SlowGallery();
+        var vm = new SoundGalleryViewModel(gallery);
+        var first = vm.LoadAsync(TestContext.Current.CancellationToken);
+        _ = vm.LoadAsync(TestContext.Current.CancellationToken);
+        gallery.Pending.Dequeue().SetResult([Listed("rain")]);
+        await first;
+        Assert.True(vm.IsBusy);    // the second load is still going
+        Assert.False(vm.CanAdd);
+        Assert.Empty(vm.Entries);
     }
 
     [Fact]
