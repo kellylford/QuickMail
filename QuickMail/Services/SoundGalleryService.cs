@@ -91,7 +91,7 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
     private const int MaxAuthorLength = 60;
     private const int MaxDescriptionLength = 300;
 
-    private const string Unreachable = "The gallery could not be reached. Check your connection and try again.";
+    private const string Unreachable = "The gallery could not be reached. Check your connection, then choose Reload.";
     private const string NotTrusted = "The gallery's list could not be checked, so it was not used. Try again later.";
 
     private readonly string _location;

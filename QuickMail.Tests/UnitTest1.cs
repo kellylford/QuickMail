@@ -250,6 +250,11 @@ public class XamlParseTests
         var window = new SoundGalleryWindow(new SoundGalleryViewModel(new SoundGalleryService(System.IO.Path.GetTempPath())));
         Assert.Equal("Sound Scheme Gallery", window.Title);
         Assert.NotNull(window.FindName("SchemeList") as System.Windows.Controls.ListBox);
+        // The details are read-only text a cursor reads through, never editable (CLAUDE.md, Modal Dialog Rules).
+        var details = window.FindName("DetailsBox") as System.Windows.Controls.TextBox;
+        Assert.NotNull(details);
+        Assert.True(details.IsReadOnly);
+        Assert.Equal("Details", System.Windows.Automation.AutomationProperties.GetName(details));
         window.Close();
     }
 

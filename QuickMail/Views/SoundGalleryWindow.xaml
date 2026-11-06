@@ -23,22 +23,24 @@
             <Button x:Name="AddButton" Content="_Add" MinWidth="85" Margin="0,0,6,0" TabIndex="2"
                     AutomationProperties.Name="Add"
                     IsEnabled="{Binding CanAdd}" Click="AddButton_Click"/>
-            <Button x:Name="RetryButton" Content="_Try again" MinWidth="85" Margin="0,0,6,0" TabIndex="3"
-                    AutomationProperties.Name="Try again" Click="RetryButton_Click"/>
+            <Button x:Name="ReloadButton" Content="_Reload" MinWidth="85" Margin="0,0,6,0" TabIndex="3"
+                    AutomationProperties.Name="Reload" Click="ReloadButton_Click"/>
             <Button x:Name="CloseButton" Content="Close" MinWidth="85" TabIndex="4"
                     AutomationProperties.Name="Close" Click="CloseButton_Click"/>
         </StackPanel>
 
         <TextBlock x:Name="StatusText" DockPanel.Dock="Top" Text="{Binding Status}" TextWrapping="Wrap" Margin="0,0,0,6"/>
 
-        <!-- A Tab stop, so the description, author and licence can be reached by keyboard. Not a
-             read-only TextBox: editable-text controls in a modal over WebView2 are the deadlock risk. -->
-        <Label x:Name="DetailsLabel" DockPanel.Dock="Bottom" Margin="0,8,0,0" Padding="0"
-               Focusable="True" IsTabStop="True" TabIndex="1"
-               AutomationProperties.Name="{Binding Details}"
-               Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibility}}">
-            <TextBlock Text="{Binding Details}" TextWrapping="Wrap" Foreground="{DynamicResource Theme.TextSecondary}"/>
-        </Label>
+        <!-- The selected scheme's description, author and licence, as a read-only text box a screen
+             reader's cursor can read through, like the app's other detail areas (the Properties window,
+             the import preview). Read-only, as those are: the deadlock in CLAUDE.md's Modal Dialog Rules
+             came from an editable box in a nested modal loop. -->
+        <TextBox x:Name="DetailsBox" DockPanel.Dock="Bottom" Margin="0,8,0,0" TabIndex="1"
+                 Text="{Binding Details, Mode=OneWay}"
+                 IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                 TextWrapping="Wrap" BorderThickness="0" Background="Transparent"
+                 AutomationProperties.Name="Details"
+                 Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibility}}"/>
 
         <DockPanel>
             <Label DockPanel.Dock="Top" Content="_Sound schemes:" Target="{Binding ElementName=SchemeList}" Padding="0,0,0,2"/>
