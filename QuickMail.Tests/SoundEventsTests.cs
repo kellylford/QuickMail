@@ -1327,8 +1327,10 @@ public class SoundsTabAccessibilityTests
     }
 
     [StaFact]
-    public void BrowseSchemesIsShownWhenThereIsAGalleryEvenIfItIsSetAfterTheDialogIsBuilt()
+    public void BrowseSchemesFollowsWhetherThereIsAGallery()
     {
+        // Bound, not set once in the constructor: MainWindow used to give the gallery after building
+        // the dialog, which left Browse hidden for good (#937 review).
         WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
         var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
         var dialog = new SettingsDialog(vm);
@@ -1336,14 +1338,16 @@ public class SoundsTabAccessibilityTests
         {
             var browse = dialog.FindName("BrowseSoundSchemesButton") as System.Windows.Controls.Button;
             Assert.NotNull(browse);
-            // A tab's content binds once the tab is shown.
-            System.Windows.DependencyObject? parent = browse;
-            while (parent is not null and not System.Windows.Controls.TabItem) parent = System.Windows.LogicalTreeHelper.GetParent(parent);
-            Assert.IsType<System.Windows.Controls.TabItem>(parent).IsSelected = true;
-            dialog.UpdateLayout();
-            Assert.Equal(System.Windows.Visibility.Collapsed, browse.Visibility);   // no gallery: not offered
+            var binding = System.Windows.Data.BindingOperations.GetBinding(browse, System.Windows.UIElement.VisibilityProperty);
+            Assert.NotNull(binding);
+            Assert.Equal(nameof(SettingsViewModel.HasSoundGallery), binding.Path.Path);
+
+            var changed = new List<string?>();
+            vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+            Assert.False(vm.HasSoundGallery);
             vm.SoundGallery = new SoundGalleryService(System.IO.Path.GetTempPath());
-            Assert.Equal(System.Windows.Visibility.Visible, browse.Visibility);
+            Assert.True(vm.HasSoundGallery);
+            Assert.Contains(nameof(SettingsViewModel.HasSoundGallery), changed);
         }
         finally { dialog.Close(); }
     }
