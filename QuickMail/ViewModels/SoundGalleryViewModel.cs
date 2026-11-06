@@ -36,7 +36,7 @@ public sealed partial class SoundGalleryViewModel(ISoundGalleryService gallery) 
     /// <summary>Something no control reports; the View announces it.</summary>
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
 
-    // Which load is current: Try again during a load supersedes it, and only the latest may fill the
+    // Which load is current: Reload during a load supersedes it, and only the latest may fill the
     // list or say the window is no longer busy.
     private int _loadGeneration;
 

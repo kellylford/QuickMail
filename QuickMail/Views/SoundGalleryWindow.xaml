@@ -23,8 +23,8 @@
             <Button x:Name="AddButton" Content="_Add" MinWidth="85" Margin="0,0,6,0" TabIndex="2"
                     AutomationProperties.Name="Add"
                     IsEnabled="{Binding CanAdd}" Click="AddButton_Click"/>
-            <Button x:Name="RetryButton" Content="_Try again" MinWidth="85" Margin="0,0,6,0" TabIndex="3"
-                    AutomationProperties.Name="Try again" Click="RetryButton_Click"/>
+            <Button x:Name="ReloadButton" Content="_Reload" MinWidth="85" Margin="0,0,6,0" TabIndex="3"
+                    AutomationProperties.Name="Reload" Click="ReloadButton_Click"/>
             <Button x:Name="CloseButton" Content="Close" MinWidth="85" TabIndex="4"
                     AutomationProperties.Name="Close" Click="CloseButton_Click"/>
         </StackPanel>

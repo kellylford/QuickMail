@@ -76,8 +76,8 @@ public partial class SoundGalleryWindow : Window
                 return;
             }
         }
-        // Empty after a failure: Try again is the way on.
-        if (_vm.Entries.Count == 0) RetryButton.Focus();
+        // Empty after a failure: Reload is the way on.
+        if (_vm.Entries.Count == 0) ReloadButton.Focus();
         else SchemeList.Focus();
     }
 
@@ -109,7 +109,7 @@ public partial class SoundGalleryWindow : Window
         DialogResult = true;
     }
 
-    private async void RetryButton_Click(object sender, RoutedEventArgs e) => await LoadAsync();
+    private async void ReloadButton_Click(object sender, RoutedEventArgs e) => await LoadAsync();
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
@@ -117,7 +117,7 @@ public partial class SoundGalleryWindow : Window
     {
         _localRegistry.Register(new CommandDefinition("gallery.add", "Settings", "Add Sound Scheme",
             () => _ = AddAsync(), isAvailable: () => _vm.CanAdd));
-        _localRegistry.Register(new CommandDefinition("gallery.retry", "Settings", "Try Loading the Gallery Again",
+        _localRegistry.Register(new CommandDefinition("gallery.reload", "Settings", "Reload the Gallery",
             () => _ = LoadAsync(), isAvailable: () => !_vm.IsBusy));
         _localRegistry.Register(new CommandDefinition("gallery.close", "Settings", "Close Gallery", Close));
     }
@@ -139,7 +139,7 @@ public partial class SoundGalleryWindow : Window
             if (next == 1 && !DetailsBox.IsVisible) next = reverse ? 0 : 2;
             if (next == 0) FocusList();
             else if (next == 1) FocusDetails();
-            else (AddButton.IsEnabled ? AddButton : RetryButton).Focus();
+            else (AddButton.IsEnabled ? AddButton : ReloadButton).Focus();
             e.Handled = true;
         }
         else if (e.Key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
