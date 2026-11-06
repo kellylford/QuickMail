@@ -220,6 +220,26 @@ public interface ILocalStoreService
     Task<int> UpdateSenderEmailsBatchAsync(
         Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail, string InternetMessageId)> updates);
 
+    // ── One-time attachment-flag pass (#931) ─────────────────────────────────────
+
+    /// <summary>
+    /// Ids of the account's rows whose attachment flag has never been checked, grouped by folder, newest first:
+    /// IMAP rows cached before IMAP summaries carried the flag. Every row a summary writes is checked.
+    /// </summary>
+    Task<Dictionary<string, List<string>>> GetMessageIdsWithUncheckedAttachmentsAsync(Guid accountId)
+        => Task.FromResult(new Dictionary<string, List<string>>());
+
+    /// <summary>
+    /// Records <paramref name="checkedIds"/> as checked, and sets the attachment flag on each row in
+    /// <paramref name="withAttachments"/> whose Message-ID is the one given or which has none to compare: after a server
+    /// renumbers a folder, a stored id can name another message (as in the sender-address pass). A flag already set is
+    /// never cleared. Returns the ids it flagged.
+    /// </summary>
+    Task<IReadOnlyList<string>> UpdateAttachmentFlagsBatchAsync(
+        Guid accountId, string folderName, IEnumerable<string> checkedIds,
+        IReadOnlyDictionary<string, string> withAttachments)
+        => Task.FromResult<IReadOnlyList<string>>([]);
+
     /// <summary>
     /// Counts all message summaries stored for the given account.
     /// Returns 0 if the account has no messages or does not exist.

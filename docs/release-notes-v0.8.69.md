@@ -15,6 +15,7 @@
 
 ## Changed
 
+- **The message list knows which IMAP messages have attachments.** Until now an IMAP message showed as having attachments only after you had opened it. QuickMail now learns it when the message arrives, as it already did for Microsoft 365 and POP3, so the Attachments field in the message list, the `has:attachment` search, and rules that look for attachments all work on IMAP mail you have not opened. After you update, QuickMail checks the mail it already has once, quietly in the background after the first sync; if an account is offline it carries on at the next start. Rules with a **Has attachments** condition on an IMAP account may now match mail they used to skip. (#931)
 - **Saving attachments no longer replaces files with the same name.** When two attachments share a name, or the folder already has a file by that name, the new copy is saved as, for example, "image001 (2).png". This applies to **Save All…** in the attachment list as well. (#931)
 - **After you choose a sound file, you hear which one.** Choosing a file in Settings or the rule editor now puts focus on the sound box, which reads the file's name, instead of back on the button. (#932)
 

@@ -119,6 +119,13 @@ public partial class MailMessageSummary : ObservableObject
     [ObservableProperty]
     private bool _hasAttachments;
 
+    /// <summary>
+    /// Whether <see cref="HasAttachments"/> was actually decided (#931). False only for an IMAP summary the server sent
+    /// without a usable BODYSTRUCTURE: its row is left unchecked for the one-time pass rather than recorded as having
+    /// none. Not stored; the store keeps its own att_checked.
+    /// </summary>
+    public bool AttachmentsKnown { get; set; } = true;
+
     public bool IsMailingList { get; set; }
 
     // ── Flag state ────────────────────────────────────────────────────────────

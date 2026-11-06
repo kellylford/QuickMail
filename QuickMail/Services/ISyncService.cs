@@ -121,6 +121,12 @@ public interface ISyncService
     event Action<int, int>? SenderEmailBackfillEnded;
 
     /// <summary>
+    /// Fired on the UI thread when the one-time attachment-flag pass (#931) finds that cached messages have
+    /// attachments: (account, folder, ids), so rows already on screen can say so. Default: never raised.
+    /// </summary>
+    event Action<Guid, string, IReadOnlyCollection<string>>? AttachmentFlagsFound { add { } remove { } }
+
+    /// <summary>
     /// The offline-bodies pass on its own (#637): downloads the bodies of recent Inbox messages
     /// inside <see cref="ConfigModel.EffectiveOfflineBodyDays"/> that have no cached body yet, for
     /// the given (connected) accounts. A no-op when the setting is off, and when a pass is already
