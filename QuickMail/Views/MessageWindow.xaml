@@ -254,6 +254,15 @@
                                                 RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                       CommandParameter="{Binding PlacementTarget.SelectedItem,
                                                 RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                            <!-- Copy to the Windows clipboard as files (#929). -->
+                            <MenuItem Header="_Copy" sc:CommandShortcut.Id="message.copyAttachment"
+                                      Command="{Binding PlacementTarget.DataContext.CopyAttachmentCommand,
+                                                RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                      CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                            <MenuItem Header="Copy A_ll" sc:CommandShortcut.Id="message.copyAllAttachments"
+                                      Command="{Binding PlacementTarget.DataContext.CopyAllAttachmentsCommand,
+                                                RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                         </ContextMenu>
                     </ListBox.ContextMenu>
                 </ListBox>

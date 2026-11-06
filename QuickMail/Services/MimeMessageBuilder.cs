@@ -153,7 +153,7 @@ public static partial class MimeMessageBuilder
             var multipart = new Multipart("mixed");
             multipart.Add(bodyEntity);
             foreach (var att in loadedAttachments)
-                multipart.Add(MimePartFor(att, ContentDisposition.Attachment));
+                multipart.Add(AttachmentEntityFor(att));
             message.Body = multipart;
         }
         else
@@ -162,6 +162,42 @@ public static partial class MimeMessageBuilder
         }
 
         return message;
+    }
+
+    /// <summary>
+    /// The MIME entity for one attachment. An attached email (message/rfc822: a pasted copied message, #929,
+    /// or a .eml file) is embedded as the message it is, not as base64: RFC 2046 allows a message/rfc822
+    /// part only 7bit, 8bit or binary encoding, and mail programs that meet a base64 one show an opaque
+    /// file instead of an email the recipient can open. Content that does not parse as a message is sent
+    /// as an ordinary file, which every program can at least save.
+    /// </summary>
+    internal static MimeEntity AttachmentEntityFor(AttachmentModel att)
+    {
+        if (string.Equals(att.ContentType, "message/rfc822", StringComparison.OrdinalIgnoreCase) && att.Content is { Length: > 0 })
+        {
+            try
+            {
+                using var stream = new MemoryStream(att.Content, writable: false);
+                var embedded = MimeMessage.Load(stream);
+                // The parser is lenient: bytes that are not an email at all come back as a message with no
+                // headers rather than an exception.
+                if (embedded.Headers.Count == 0) throw new FormatException("No message headers.");
+                return new MessagePart
+                {
+                    Message            = embedded,
+                    ContentDisposition = new ContentDisposition(ContentDisposition.Attachment) { FileName = att.FileName },
+                };
+            }
+            catch (FormatException ex)
+            {
+                LogService.Log($"Attachment {att.FileName} is not a readable email; sending it as a file", ex);
+                var part = MimePartFor(att, ContentDisposition.Attachment);
+                part.ContentType.MediaType    = "application";
+                part.ContentType.MediaSubtype = "octet-stream";
+                return part;
+            }
+        }
+        return MimePartFor(att, ContentDisposition.Attachment);
     }
 
     private static MimePart MimePartFor(AttachmentModel att, string disposition)

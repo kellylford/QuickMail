@@ -229,6 +229,11 @@ public class MailServiceRouter : IMailService, IConnectionProbe
     public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
         => For(accountId).CopyMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);
 
+    public bool CanAppendMessages(Guid accountId) => For(accountId).CanAppendMessages(accountId);
+
+    public Task AppendMessageAsync(Guid accountId, string folderName, System.IO.Stream original, bool isRead, bool isFlagged,
+                                   DateTimeOffset received, CancellationToken ct = default)
+        => For(accountId).AppendMessageAsync(accountId, folderName, original, isRead, isFlagged, received, ct);
     public Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
         => For(accountId).MoveMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);
 

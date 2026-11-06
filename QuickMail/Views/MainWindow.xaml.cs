@@ -1568,6 +1568,51 @@ public partial class MainWindow : Window
             execute: async () => await CopyMessageToFolderAsync(),
             isAvailable: _vm.CanActOnSelection));
 
+        // Copy, cut and paste messages (#929). Scoped by focus, as Alt+Up/Down are to the account list:
+        // Ctrl+C, Ctrl+X and Ctrl+V must keep their ordinary meaning in every text field and in the
+        // message body, so each is available only in the message area (and, for paste, the folder
+        // tree), and never while a text box inside either has focus (a folder being renamed in place).
+        _registry.Register(new CommandDefinition(
+            id: "mail.copyMessages", category: "Mail", title: "Copy Messages",
+            description: "Copy the selected messages, to paste into another folder",
+            execute: async () => await _vm.CopyMessagesToClipboardAsync(MessageClipboardTarget()),
+            defaultKey: Key.C, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => IsMessageAreaFocused() && !IsTextEntryFocused() && _vm.CanActOnSelection()));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.cutMessages", category: "Mail", title: "Cut Messages",
+            description: "Cut the selected messages; they move when you paste them into another folder",
+            execute: async () => await _vm.CutMessagesToClipboardAsync(MessageClipboardTarget()),
+            defaultKey: Key.X, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => IsMessageAreaFocused() && !IsTextEntryFocused() && _vm.CanActOnSelection()));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.pasteMessages", category: "Mail", title: "Paste Messages",
+            description: "Paste copied or cut messages into the selected folder",
+            execute: async () => await PasteMessagesAsync(),
+            defaultKey: Key.V, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => (FolderList.IsKeyboardFocusWithin || IsMessageAreaFocused()) && !IsTextEntryFocused()));
+
+        // Copy attachments to the Windows clipboard as files (#929). Ctrl+C shares its default with
+        // mail.copyMessages; the scopes never overlap (the attachment list is not the message area).
+        _registry.Register(new CommandDefinition(
+            id: "mail.copyAttachment", category: "Mail", title: "Copy Attachment",
+            description: "Copy the selected attachment, to paste into Explorer or a message",
+            execute: async () =>
+            {
+                if (ReadingPaneAttachmentList.SelectedItem is AttachmentModel att)
+                    await _vm.CopyAttachmentCommand.ExecuteAsync(att);
+            },
+            defaultKey: Key.C, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => ReadingPaneAttachmentList.IsKeyboardFocusWithin
+                               && ReadingPaneAttachmentList.SelectedItem is AttachmentModel));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.copyAllAttachments", category: "Mail", title: "Copy All Attachments",
+            description: "Copy every attachment of the open message, to paste into Explorer or a message",
+            execute: async () => await _vm.CopyAllAttachmentsCommand.ExecuteAsync(null),
+            isAvailable: () => _vm.MessageDetail?.Attachments.Count > 0));
+
         // Save, Save As and Print (#728). Registered here rather than in the VM because what they act
         // on — a multi-selection, a group header's messages — is the window's to resolve, as for
         // Move/Copy above. Save writes the default format into the save folder without asking; Save
@@ -6772,6 +6817,15 @@ public partial class MainWindow : Window
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             await _vm.SaveAllAttachmentsCommand.ExecuteAsync(null);
         };
+        // Copy attachments (#929): this window's message, passed rather than written into the main
+        // VM's MessageDetail, and the outcome spoken in this window.
+        void CopyReport(string text) =>
+            AccessibilityHelper.Announce(win, text, interrupt: true, category: AnnouncementCategory.Result);
+        winVm.CopyAttachmentAction = attachment => attachment == null
+            ? Task.CompletedTask
+            : _vm.CopyAttachmentsToClipboardAsync(winVm.MessageDetail, [attachment], CopyReport);
+        winVm.CopyAllAttachmentsAction = () =>
+            _vm.CopyAttachmentsToClipboardAsync(winVm.MessageDetail, winVm.MessageDetail?.Attachments.ToList() ?? [], CopyReport);
 
         // Save / Save As / Print (#728): this window's message, this window's dialogs, and the outcome
         // spoken in this window - a notification raised on the main window is not heard while the
@@ -8022,6 +8076,19 @@ public partial class MainWindow : Window
     private async void MenuCopyToFolder_Click(object sender, RoutedEventArgs e)
         => await CopyMessageToFolderAsync();
 
+    private async void MenuCopyMessages_Click(object sender, RoutedEventArgs e)
+        => await _vm.CopyMessagesToClipboardAsync(MessageClipboardTarget());
+
+    private async void MenuCutMessages_Click(object sender, RoutedEventArgs e)
+        => await _vm.CutMessagesToClipboardAsync(MessageClipboardTarget());
+
+    private async void MenuPasteMessages_Click(object sender, RoutedEventArgs e)
+        => await PasteMessagesAsync();
+
+    /// <summary>Pastes into the folder the context menu was opened on, and leaves focus in the tree.</summary>
+    private async void FolderContextMenu_PasteMessages_Click(object sender, RoutedEventArgs e)
+        => await _vm.PasteMessagesAsync(GetContextMenuFolderNode(sender)?.Folder, moveFocus: false);
+
     private async Task MoveMessageToFolderAsync()
     {
         // A selected group header wins over the selected message — see SelectedGroupTarget (#566).
@@ -8089,6 +8156,37 @@ public partial class MainWindow : Window
         if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
+    }
+
+    // ── Copy, cut and paste messages (#929) ──────────────────────────────────
+
+    /// <summary>
+    /// What Ctrl+C and Ctrl+X act on: a selected group header's messages, else the selected
+    /// messages. The same rule Move to Folder follows, for the reason <see cref="SelectedGroupTarget"/>
+    /// gives.
+    /// </summary>
+    private IReadOnlyList<MailMessageSummary> MessageClipboardTarget() =>
+        SelectedGroupTarget()?.Messages ?? GetSelectedMessages();
+
+    /// <summary>
+    /// True when a text box has focus, so Ctrl+C, Ctrl+X and Ctrl+V edit its text. The pane-level
+    /// scopes alone would not do: a folder being renamed in place has its text box inside the
+    /// folder tree.
+    /// </summary>
+    private static bool IsTextEntryFocused() => Keyboard.FocusedElement is TextBoxBase;
+
+    /// <summary>
+    /// Pastes into the folder selected in the folder tree when it has focus, or else into the folder
+    /// the message list is showing. From the tree focus stays put; the paste is about that folder.
+    /// </summary>
+    private async Task PasteMessagesAsync()
+    {
+        if (FolderList.IsKeyboardFocusWithin)
+        {
+            await _vm.PasteMessagesAsync((FolderList.SelectedItem as FolderTreeNode)?.Folder, moveFocus: false);
+            return;
+        }
+        await _vm.PasteMessagesAsync(_vm.SelectedFolder);
     }
 
     // ── Save / Save As / Print (#728) ────────────────────────────────────────
@@ -8464,11 +8562,12 @@ public partial class MainWindow : Window
     private void RulesStatusButton_Click(object sender, RoutedEventArgs e) => OpenRulesManager();
 
     /// <summary>
-    /// Creates a <see cref="FolderPickerWindow"/> scoped to only the accounts that own
-    /// the given messages.  This prevents the user from selecting a destination folder
-    /// from a different IMAP account — the server-side MOVE command is connection-scoped
-    /// and cannot reach folders on a different account, which would produce a
-    /// "folder not found" error from the IMAP server.
+    /// Creates a <see cref="FolderPickerWindow"/> offering the accounts that own the given messages,
+    /// and every other account that can take messages from elsewhere (#929). The server's MOVE and COPY
+    /// are connection-scoped and reach only the source account's folders, so a destination in another
+    /// account is filled by copying each original across (MainViewModel.TransferAsync), which routes by
+    /// the destination's AccountId and never by folder name alone. An account that cannot take messages
+    /// from elsewhere (Microsoft 365, for now) is offered only for its own messages.
     /// </summary>
     /// <param name="copy">
     /// Whether this is a copy rather than a move. Passed rather than inferred from the title
@@ -8480,9 +8579,10 @@ public partial class MainWindow : Window
     {
         var list     = messages.ToList();
         var ids      = list.Select(m => m.AccountId).ToHashSet();
-        var accounts = _vm.Accounts.Where(a => ids.Contains(a.Id));
+        bool Offered(Guid accountId) => ids.Contains(accountId) || _vm.CanTakeMessagesFromOtherAccounts(accountId);
+        var accounts = _vm.Accounts.Where(a => Offered(a.Id));
         var folders  = _vm.CachedFolders
-                          .Where(kv => ids.Contains(kv.Key))
+                          .Where(kv => Offered(kv.Key))
                           .ToDictionary(kv => kv.Key, kv => kv.Value);
         return new FolderPickerWindow(accounts, folders, title: title, useTreeView: true,
             // Where this account last filed, falling back to where the messages are now (#490).

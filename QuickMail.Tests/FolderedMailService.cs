@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using QuickMail.Models;
@@ -46,9 +48,55 @@ internal sealed class FolderedMailService : IMailService
     public Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => Task.CompletedTask;
     public Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
     public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default) => Task.CompletedTask;
-    public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => Task.CompletedTask;
-    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
-    public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>Messages put in Trash, as (account, folder, id).</summary>
+    public List<(Guid AccountId, string Folder, string Id)> Trashed { get; } = new();
+
+    public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+    {
+        Trashed.Add((accountId, folderName, messageId));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Accounts that cannot take messages from another account, as Microsoft 365 cannot yet.</summary>
+    public HashSet<Guid> CannotAppend { get; } = new();
+
+    /// <summary>Message-Ids of originals to refuse when appended, to make a transfer stop partway.</summary>
+    public HashSet<string> FailAppendOf { get; } = new();
+
+    /// <summary>Every message added from another account, with the state it was given.</summary>
+    public List<(Guid AccountId, string Folder, string Subject, bool IsRead, bool IsFlagged, DateTimeOffset Received)> Appended { get; } = new();
+
+    public bool CanAppendMessages(Guid accountId) => !CannotAppend.Contains(accountId);
+
+    /// <summary>When set, every append waits for it: lets a test act while a transfer is under way.</summary>
+    public TaskCompletionSource? AppendGate { get; set; }
+
+    public async Task AppendMessageAsync(Guid accountId, string folderName, Stream original, bool isRead, bool isFlagged,
+                                         DateTimeOffset received, CancellationToken ct = default)
+    {
+        if (AppendGate is { } gate) await gate.Task;
+        var message = await MimeKit.MimeMessage.LoadAsync(original, ct);
+        if (message.MessageId is { } id && FailAppendOf.Contains(id))
+            throw new InvalidOperationException("the other server said no");
+        Appended.Add((accountId, folderName, message.Subject, isRead, isFlagged, received));
+    }
+    /// <summary>When set, putting messages in Trash fails, as a dropped connection to the source would.</summary>
+    public bool FailTrash { get; set; }
+
+    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        if (FailTrash) return Task.FromException(new InvalidOperationException("connection lost"));
+        foreach (var id in messageIds) Trashed.Add((accountId, folderName, id));
+        return Task.CompletedTask;
+    }
+    /// <summary>Messages deleted outright, as (account, folder, id).</summary>
+    public List<(Guid AccountId, string Folder, string Id)> PermanentlyDeleted { get; } = new();
+
+    public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        foreach (var id in messageIds) PermanentlyDeleted.Add((accountId, folderName, id));
+        return Task.CompletedTask;
+    }
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
     public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
     public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
@@ -60,9 +108,54 @@ internal sealed class FolderedMailService : IMailService
     public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult<string?>(null);
     public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default) => Task.FromResult("0");
     public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => Task.CompletedTask;
-    public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte>());
-    public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => Task.CompletedTask;
-    public Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>When set, attachment downloads fail as an unreachable server would.</summary>
+    public bool FailDownloads { get; set; }
+
+    /// <summary>Part specifiers downloaded, in order.</summary>
+    public List<string> Downloads { get; } = new();
+
+    public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default)
+    {
+        if (FailDownloads) return Task.FromException<byte[]>(new InvalidOperationException("server said no"));
+        Downloads.Add(partSpecifier);
+        return Task.FromResult(System.Text.Encoding.UTF8.GetBytes($"content of {partSpecifier}"));
+    }
+    /// <summary>Every move and copy asked for, in order, for tests that check what reached the server.</summary>
+    public List<(string Op, Guid AccountId, string From, IReadOnlyList<string> Ids, string To)> Transfers { get; } = new();
+
+    /// <summary>When set, moves and copies throw, as a server that refuses them would.</summary>
+    public bool FailTransfers { get; set; }
+
+    public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
+        => Transfer("copy", accountId, folderName, messageIds, destinationFolder);
+    /// <summary>Message ids whose original the "server" cannot provide, as POP3 can't once a message has left it.</summary>
+    public HashSet<string> OriginalsUnavailable { get; } = new();
+
+    /// <summary>How many originals have been downloaded.</summary>
+    public int OriginalsFetched { get; private set; }
+
+    /// <summary>Per message id, a gate its original download waits for.</summary>
+    public Dictionary<string, TaskCompletionSource> OriginalGates { get; } = new();
+
+    public async Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
+    {
+        if (OriginalGates.TryGetValue(messageId, out var gate)) await gate.Task;
+        if (OriginalsUnavailable.Contains(messageId))
+            throw new MessageOriginalUnavailableException("This account cannot provide the original message.");
+        OriginalsFetched++;
+        var bytes = System.Text.Encoding.ASCII.GetBytes($"From: someone@example.com\r\nSubject: Subject {messageId}\r\nMessage-Id: <{messageId}@example.com>\r\n\r\nBody of {messageId}\r\n");
+        await destination.WriteAsync(bytes, ct);
+    }
+
+    public Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
+        => Transfer("move", accountId, folderName, messageIds, destinationFolder);
+
+    private Task Transfer(string op, Guid accountId, string from, IList<string> ids, string to)
+    {
+        if (FailTransfers) return Task.FromException(new InvalidOperationException("server said no"));
+        Transfers.Add((op, accountId, from, ids.ToList(), to));
+        return Task.CompletedTask;
+    }
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => Task.CompletedTask;
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
@@ -71,3 +164,4 @@ internal sealed class FolderedMailService : IMailService
     public void StopWatchers() { }
     public void Dispose() { }
 }
+

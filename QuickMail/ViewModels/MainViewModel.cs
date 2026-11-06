@@ -6,6 +6,7 @@ using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -1916,9 +1917,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IFolderViewStateService? folderViewState = null,
         IOutboxService? outboxService = null,
         IConnectivityService? connectivity = null,
-        ISoundService? soundService = null)
+        ISoundService? soundService = null,
+        IClipboardService? clipboard = null,
+        ClipboardStaging? clipboardStaging = null)
     {
         _sounds = soundService;
+        _clipboard = clipboard;
+        _clipboardStaging = clipboardStaging;
         _folderViewState = folderViewState;
         _outbox = outboxService;
         _connectivity = connectivity;
@@ -10034,10 +10039,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : null;
     }
 
-    /// <summary>Moves the given messages to a destination folder and removes them from the current view.</summary>
-    public async Task MoveSelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
+    /// <summary>
+    /// Moves the given messages to a destination folder and removes them from the current view.
+    /// Messages from the destination's own account move with the server's MOVE; messages from another
+    /// account are copied across and their originals put in their own account's Trash (#929). If the
+    /// move stops partway, the messages that did move still leave the list, and the user is told how
+    /// many went.
+    /// </summary>
+    public async Task<bool> MoveSelectedMessagesToFolderAsync(
+        IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination, bool moveFocus = true,
+        List<MailMessageSummary>? movedOut = null)
     {
-        if (messages.Count == 0) return;
+        if (messages.Count == 0) return false;
 
         if (AlreadyIn(messages, destination))
         {
@@ -10045,104 +10058,91 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ? $"That message is already in {destination.DisplayName}."
                 : $"Those messages are already in {destination.DisplayName}.";
             Announce(StatusText);
-            return;
+            return false;
         }
+        if (!CanTakeMessagesInto(messages, destination, move: true)) return false;
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         // A single move is silent, as a single delete is (#667): it would talk over the message being read.
         SetStatus($"Moving {label}…",
             messages.Count == 1 ? AnnouncementCategory.Silent : AnnouncementCategory.MessageAction);
-        IsBusy     = true;
+        IsBusy = true;
+        // The caller's list when it wants to know which went even if the move stopped partway (a paste,
+        // which then keeps only the rest on the clipboard).
+        var moved = movedOut ?? new List<MailMessageSummary>(messages.Count);
+        var notRemoved = new List<MailMessageSummary>();
         try
         {
             // Own token per move (same rationale as delete) — a follow-up action no longer cancels
             // this move's in-flight IMAP work. Cancels only at app shutdown. (#311)
             using var actionCts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
-            var ct = actionCts.Token;
-
-            var groups = messages.GroupBy(m => (m.AccountId, m.FolderName));
-            foreach (var group in groups)
+            await TransferAsync(messages, destination, move: true, moved, notRemoved, actionCts.Token);
+            RefreshDestinationCounts(messages, destination);
+            RemoveFiledRows(moved, moveFocus, () =>
             {
-                var uids = group.Select(m => m.MessageId).ToList();
-                await _imap.MoveMessagesAsync(
-                    group.Key.AccountId, group.Key.FolderName, uids,
-                    destination.FullName, ct);
-                if (!OnlineMode)
-                    await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
-            }
-
-            // Moving an unread message changes both the source and destination folder counts; refresh
-            // after the server move lands (only when an unread message actually moved) (#227 follow-up).
-            if (messages.Any(m => !m.IsRead))
-                foreach (var acctId in messages.Select(m => m.AccountId).Distinct())
-                    ScheduleFolderCountRefresh(acctId);
-
-            // The open message may be one of those leaving: clear the reading pane first, as delete, archive
-            // and unwatch do, or it keeps showing a message that is no longer in the list.
-            var selectionLeaving = SelectedMessage != null && messages.Contains(SelectedMessage);
-            if (selectionLeaving)
-            {
-                MessageDetail = null;
-                IsMessageOpen = false;
-            }
-
-            // Land focus on the surviving row before the moved rows leave, as delete does (#670): removing the
-            // row that holds keyboard focus is what a screen reader describes as "unavailable". Only when the
-            // selection is among them: this runs after the server move, and the user may have moved on.
-            var landed = selectionLeaving ? LandFocusBeforeRemoval(messages, parkOnEmptyList: true) : null;
-            foreach (var msg in messages)
-                Messages.Remove(msg);
-
-            // Was missing the To-view branch before §2.1; helper covers all three.
-            RebuildActiveGroupView();
-
-            RememberMessageDestination(destination, copy: false);
-
-            _sounds?.Play(SoundEvent.MessageMoved);
-            var moved = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} moved to {destination.DisplayName}.";
-            if (Messages.Count == 0)
-                // As delete says it: no next row is being read, so there is nothing to interrupt, and "empty"
-                // is a state the user cannot otherwise get from a list that shows nothing.
-                SetStatus($"{moved} Folder is now empty.", AnnouncementCategory.MessageAction);
-            else if (messages.Count == 1)
-                // Self-evident, as a single delete is (#667): the row has gone and the next one has just
-                // been read, and the destination was the user's own choice a moment ago. Status bar only.
-                SetStatusSilently(moved);
-            else
-                SetStatus(moved, AnnouncementCategory.MessageAction);
-
-            if (ViewMode == ViewMode.Messages)
-            {
-                // Only when the selection was among the moved rows and LandFocusBeforeRemoval could not land
-                // (a second focus move reads the row out twice). With the selection elsewhere the user has
-                // moved on while the server move ran, and focus stays where they put it.
-                if (selectionLeaving && Messages.Count > 0 && (landed == null || !Messages.Contains(landed)))
-                    MessageListFocusRequested?.Invoke();
-            }
-            else if (selectionLeaving)
-            {
-                // Conversations/From/To: LandOnX in the view handles focus after the rebuild. Clear the moved
-                // selection, as delete, archive and unwatch do, so the per-message hotkeys don't act on a
-                // message that has gone.
-                SelectedMessage = null;
-            }
+                RememberMessageDestination(destination, copy: false);
+                _sounds?.Play(SoundEvent.MessageMoved);
+                var text = $"{moved.Count} {(moved.Count == 1 ? "message" : "messages")} moved to {DestinationLabel(messages, destination)}.";
+                if (Messages.Count == 0)
+                    // As delete says it: no next row is being read, so there is nothing to interrupt, and "empty"
+                    // is a state the user cannot otherwise get from a list that shows nothing.
+                    SetStatus($"{text} Folder is now empty.", AnnouncementCategory.MessageAction);
+                else if (moved.Count == 1 && moveFocus)
+                    // Self-evident, as a single delete is (#667): the row has gone and the next one has just
+                    // been read, and the destination was the user's own choice a moment ago. Status bar only.
+                    // Not so from the folder tree (a paste, #929): the user is on a folder, not the list, and
+                    // would hear nothing at all.
+                    SetStatusSilently(text);
+                else
+                    SetStatus(text, AnnouncementCategory.MessageAction);
+            });
+            return true;
         }
-        catch (OperationCanceledException) { SetStatus("Move cancelled.", AnnouncementCategory.MessageAction); }
+        catch (OperationCanceledException) when (moved.Count == 0)
+        {
+            SetStatus("Move cancelled.", AnnouncementCategory.MessageAction);
+        }
         catch (Exception ex)
         {
+            LogService.Log("MoveMessages", ex);
+            _sounds?.Play(SoundEvent.ActionFailed);
             // A Result, not MessageAction, as a failed delete is, so the failure is heard even with message-
             // action announcements turned off.
-            SetStatus($"Failed to move: {ex.Message}", AnnouncementCategory.Result);
-            _sounds?.Play(SoundEvent.ActionFailed);
-            LogService.Log("MoveMessages", ex);
+            if (moved.Count > 0 || notRemoved.Count > 0) RefreshDestinationCounts(messages, destination);
+            if (moved.Count == 0 && notRemoved.Count == 0)
+            {
+                SetStatus($"Failed to move: {ex.Message}", AnnouncementCategory.Result);
+            }
+            else
+            {
+                // Those that went have gone from the server's view of this folder; leaving their rows would
+                // show messages that are no longer here.
+                var where = DestinationLabel(messages, destination);
+                var rest = ex is OriginalsNotRemovedException
+                    ? $" {notRemoved.Count} more {(notRemoved.Count == 1 ? "was" : "were")} copied there, but " +
+                      $"{(notRemoved.Count == 1 ? "its original" : "their originals")} could not be removed: {ex.Message}"
+                    : $" The rest could not be moved: {ex.Message}";
+                RemoveFiledRows(moved, moveFocus, () => SetStatus(
+                    $"Moved {moved.Count} of {messages.Count} messages to {where}.{rest}", AnnouncementCategory.Result));
+            }
         }
-        finally { IsBusy = false; }
+        finally
+        {
+            IsBusy = false;
+            // Copied across already, so not to be pasted again: a second paste would make a second copy.
+            movedOut?.AddRange(notRemoved);
+        }
+        return false;
     }
 
-    /// <summary>Copies the given messages to a destination folder without removing them from the current view.</summary>
-    public async Task CopySelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
+    /// <summary>
+    /// Copies the given messages to a destination folder without removing them from the current view.
+    /// Within one account this is the server's COPY; from another account each original is copied
+    /// across (#929).
+    /// </summary>
+    public async Task<bool> CopySelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
-        if (messages.Count == 0) return;
+        if (messages.Count == 0) return false;
 
         if (AlreadyIn(messages, destination))
         {
@@ -10150,33 +10150,570 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ? $"That message is already in {destination.DisplayName}."
                 : $"Those messages are already in {destination.DisplayName}.";
             Announce(StatusText);
-            return;
+            return false;
         }
+        if (!CanTakeMessagesInto(messages, destination, move: false)) return false;
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         StatusText = $"Copying {label}…";
         IsBusy     = true;
+        var copied = new List<MailMessageSummary>(messages.Count);
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            var groups    = messages.GroupBy(m => (m.AccountId, m.FolderName));
-            foreach (var group in groups)
-                await _imap.CopyMessagesAsync(
-                    group.Key.AccountId, group.Key.FolderName,
-                    group.Select(m => m.MessageId).ToList(),
-                    destination.FullName, cts.Token);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+            // A deadline only for the server's own COPY: copying across accounts downloads every message,
+            // and a fixed minute would cut a large selection off partway.
+            if (messages.All(m => m.AccountId == destination.AccountId))
+                cts.CancelAfter(TimeSpan.FromSeconds(60));
+            await TransferAsync(messages, destination, move: false, copied, [], cts.Token);
+            RefreshDestinationCounts(messages, destination);
 
             RememberMessageDestination(destination, copy: true);
 
-            StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} copied to {destination.DisplayName}.";
+            StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} copied to {DestinationLabel(messages, destination)}.";
             Announce(StatusText);
+            return true;
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to copy: {ex.Message}";
             LogService.Log("CopyMessages", ex);
+            _sounds?.Play(SoundEvent.ActionFailed);
+            // A Result, as a failed move is, so the failure is heard: setting the status text alone
+            // spoke it only to someone with background status announcements on.
+            SetStatus(copied.Count == 0
+                ? $"Failed to copy: {ex.Message}"
+                : $"Copied {copied.Count} of {messages.Count} messages to {DestinationLabel(messages, destination)}. " +
+                  $"The rest could not be copied: {ex.Message}",
+                AnnouncementCategory.Result);
         }
         finally { IsBusy = false; }
+        return false;
+    }
+
+    /// <summary>
+    /// The destination's unread count changes when unread messages arrive in it. Within one account the
+    /// source refresh (RemoveFiledRows) covers it; another account needs its own.
+    /// </summary>
+    private void RefreshDestinationCounts(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
+    {
+        if (messages.Any(m => !m.IsRead) && messages.Any(m => m.AccountId != destination.AccountId))
+            ScheduleFolderCountRefresh(destination.AccountId);
+    }
+    /// <summary>
+    /// False, having said why, when some of the messages come from another account and the
+    /// destination's account cannot take messages from elsewhere (Microsoft 365 for now: Graph files a
+    /// message created from its original as a draft).
+    /// </summary>
+    private bool CanTakeMessagesInto(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination, bool move)
+    {
+        if (messages.All(m => m.AccountId == destination.AccountId) || _imap.CanAppendMessages(destination.AccountId))
+            return true;
+        SetStatus($"Messages from another account cannot be {(move ? "moved" : "copied")} into " +
+                  $"{DestinationLabel(messages, destination)} yet.", AnnouncementCategory.Result);
+        _sounds?.Play(SoundEvent.ActionFailed);
+        return false;
+    }
+
+    /// <summary>Whether the folder picker may offer this account's folders to messages from another account.</summary>
+    public bool CanTakeMessagesFromOtherAccounts(Guid accountId) => _imap.CanAppendMessages(accountId);
+
+    /// <summary>
+    /// The destination as the user should hear it: the folder name, and the account too when it is not
+    /// where the messages came from, since "moved to Inbox" says nothing about which Inbox.
+    /// </summary>
+    private string DestinationLabel(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
+    {
+        if (messages.All(m => m.AccountId == destination.AccountId)) return destination.DisplayName;
+        var account = Accounts.FirstOrDefault(a => a.Id == destination.AccountId);
+        return account == null ? destination.DisplayName : $"{destination.DisplayName} in {account.AccountLabel}";
+    }
+
+    /// <summary>
+    /// Moves or copies the messages into <paramref name="destination"/>, adding each one to
+    /// <paramref name="done"/> as it lands, so a caller that catches a failure knows exactly which went.
+    /// Messages already in the destination's account use the server's own MOVE or COPY, one request per
+    /// source folder. Messages from another account go one at a time: the original is downloaded, added
+    /// to the destination, and — for a move — only then put in its own account's Trash, so a failure at
+    /// any step never loses a message (at worst it is in both places).
+    /// </summary>
+    private async Task TransferAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination,
+                                     bool move, List<MailMessageSummary> done, List<MailMessageSummary> notRemoved,
+                                     CancellationToken ct)
+    {
+        var acrossAccounts = messages.Count(m => m.AccountId != destination.AccountId);
+        var verb = move ? "Moving" : "Copying";
+        var position = 0;
+
+        foreach (var group in messages.GroupBy(m => (m.AccountId, m.FolderName)))
+        {
+            var ids = group.Select(m => m.MessageId).ToList();
+            if (group.Key.AccountId == destination.AccountId)
+            {
+                if (move)
+                {
+                    await _imap.MoveMessagesAsync(group.Key.AccountId, group.Key.FolderName, ids, destination.FullName, ct);
+                    if (!OnlineMode)
+                        await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, ids);
+                }
+                else
+                {
+                    await _imap.CopyMessagesAsync(group.Key.AccountId, group.Key.FolderName, ids, destination.FullName, ct);
+                }
+                done.AddRange(group);
+                position += ids.Count;
+                continue;
+            }
+
+            // Copied across one at a time; for a move, the originals of those that landed are then removed
+            // together, in one request for the folder, even when a later copy failed.
+            var landed = new List<MailMessageSummary>();
+            Exception? failure = null;
+            try
+            {
+                foreach (var message in group)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    position++;
+                    if (acrossAccounts > 1)
+                        SetStatus($"{verb} {position} of {messages.Count}…", AnnouncementCategory.Status);
+
+                    using (var original = new MemoryStream())
+                    {
+                        await _imap.CopyOriginalMessageToAsync(message.AccountId, message.FolderName, message.MessageId, original, ct);
+                        if (original.Length == 0)
+                            throw new MessageOriginalUnavailableException("The server returned an empty message.");
+                        original.Position = 0;
+                        await _imap.AppendMessageAsync(destination.AccountId, destination.FullName, original,
+                                                       message.IsRead, message.IsFlagged, message.Date, ct);
+                    }
+                    if (move) landed.Add(message);
+                    else done.Add(message);
+                }
+            }
+            catch (Exception ex) { failure = ex; }
+
+            if (move && landed.Count > 0)
+            {
+                var landedIds = landed.Select(m => m.MessageId).ToList();
+                try
+                {
+                    // Already in Trash: it cannot go to Trash again (an IMAP MOVE onto itself), and the copy
+                    // that has just landed is what the user meant to keep, so the original is deleted.
+                    if (IsTrashFolder(group.Key.AccountId, group.Key.FolderName))
+                        await _imap.PermanentlyDeleteBatchAsync(group.Key.AccountId, group.Key.FolderName, landedIds, ct);
+                    else
+                        await _imap.MoveToTrashBatchAsync(group.Key.AccountId, group.Key.FolderName, landedIds, ct);
+                    if (!OnlineMode)
+                        await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, landedIds);
+                    done.AddRange(landed);
+                }
+                catch (Exception ex)
+                {
+                    // Copied but still where it was: in both places, never lost. Reported, and kept apart
+                    // from the failures so a paste does not copy it across a second time.
+                    notRemoved.AddRange(landed);
+                    failure ??= new OriginalsNotRemovedException(ex);
+                }
+            }
+
+            if (failure != null) ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+    }
+
+    /// <summary>Messages were copied to the other account, but their originals could not be removed.</summary>
+    private sealed class OriginalsNotRemovedException(Exception inner) : Exception(inner.Message, inner);
+
+    private bool IsTrashFolder(Guid accountId, string folderName) =>
+        CachedFolders.TryGetValue(accountId, out var folders) &&
+        folders.Any(f => f.Kind == SpecialFolderKind.Trash &&
+                         string.Equals(f.FullName, folderName, StringComparison.Ordinal));
+    /// <summary>
+    /// After messages have moved away: takes their rows out of the list, landing focus first as delete
+    /// does (#670), and refreshes the folder counts. <paramref name="reportOutcome"/> runs after the rows
+    /// have gone and before any queued focus move, which is where the outcome is spoken.
+    /// </summary>
+    private void RemoveFiledRows(List<MailMessageSummary> leaving, bool moveFocus, Action reportOutcome)
+    {
+        if (leaving.Count == 0) { reportOutcome(); return; }
+
+        // Moving an unread message changes both the source and destination folder counts; refresh
+        // after the server move lands (only when an unread message actually moved) (#227 follow-up).
+        if (leaving.Any(m => !m.IsRead))
+            foreach (var acctId in leaving.Select(m => m.AccountId).Distinct())
+                ScheduleFolderCountRefresh(acctId);
+
+        // The open message may be one of those leaving: clear the reading pane first, as delete, archive
+        // and unwatch do, or it keeps showing a message that is no longer in the list.
+        var selectionLeaving = SelectedMessage != null && leaving.Contains(SelectedMessage);
+        if (selectionLeaving)
+        {
+            MessageDetail = null;
+            IsMessageOpen = false;
+        }
+
+        // Land focus on the surviving row before the moved rows leave, as delete does (#670): removing the
+        // row that holds keyboard focus is what a screen reader describes as "unavailable". Only when the
+        // selection is among them: this runs after the server move, and the user may have moved on.
+        // With moveFocus false (a paste from the folder tree, #929) focus stays where the user is, and only the
+        // selection moves off the rows that are leaving.
+        var landed = selectionLeaving && moveFocus ? LandFocusBeforeRemoval(leaving, parkOnEmptyList: true) : null;
+        if (selectionLeaving && !moveFocus && ViewMode == ViewMode.Messages)
+            SelectedMessage = FindSurvivorOf(leaving);
+        foreach (var msg in leaving)
+            Messages.Remove(msg);
+
+        // Was missing the To-view branch before §2.1; helper covers all three.
+        RebuildActiveGroupView();
+
+        reportOutcome();
+
+        if (ViewMode == ViewMode.Messages)
+        {
+            // Only when the selection was among the moved rows and LandFocusBeforeRemoval could not land
+            // (a second focus move reads the row out twice). With the selection elsewhere the user has
+            // moved on while the server move ran, and focus stays where they put it.
+            if (selectionLeaving && moveFocus && Messages.Count > 0 && (landed == null || !Messages.Contains(landed)))
+                MessageListFocusRequested?.Invoke();
+        }
+        else if (selectionLeaving)
+        {
+            // Conversations/From/To: LandOnX in the view handles focus after the rebuild. Clear the moved
+            // selection, as delete, archive and unwatch do, so the per-message hotkeys don't act on a
+            // message that has gone.
+            SelectedMessage = null;
+        }
+    }
+    // ── Copy, cut and paste messages (#929) ──────────────────────────────────
+
+    /// <summary>The messages waiting to be pasted. See <see cref="ViewModels.MessageClipboard"/>.</summary>
+    public MessageClipboard MessageClipboard { get; } = new();
+
+    // The Windows clipboard and the folder its files are written to. Null in tests that do not
+    // exercise them: copy and paste then work inside QuickMail alone, never touching the machine's
+    // real clipboard (see IClipboardService for why that matters).
+    private readonly IClipboardService? _clipboard;
+    private readonly ClipboardStaging? _clipboardStaging;
+
+    /// <summary>The token of the current copy, as put on the Windows clipboard.</summary>
+    private string? _messageClipboardToken;
+
+    /// <summary>
+    /// Bumped by every copy, cut, attachment copy and paste. Work started under an older value has been
+    /// overtaken and must not report: a newer copy deletes the older one's files as it starts.
+    /// </summary>
+    private int _clipboardGeneration;
+
+    /// <summary>True while a paste runs, so a held or repeated Ctrl+V cannot start a second one.</summary>
+    private bool _pasteInProgress;
+
+    /// <summary>Cancels a copy's download of originals when a newer copy replaces it.</summary>
+    private CancellationTokenSource? _messageStagingCts;
+
+    /// <summary>
+    /// Above this many messages, a copy goes on the clipboard for pasting into folders only, without
+    /// .eml files: Select All and Ctrl+C in a large folder would otherwise download every message in it.
+    /// </summary>
+    internal const int MaxMessagesCopiedAsFiles = 100;
+
+    /// <summary>
+    /// Copies messages: a later paste into a folder copies them there. They also go on the Windows
+    /// clipboard as .eml files, so they paste into Explorer (saving them) or into a message being
+    /// written (attaching them), as Outlook does.
+    /// </summary>
+    public Task CopyMessagesToClipboardAsync(IReadOnlyList<MailMessageSummary> messages)
+        => PutMessagesOnClipboardAsync(messages, cut: false);
+
+    /// <summary>
+    /// Cuts messages: nothing moves yet. They move when pasted into a folder, as files do in
+    /// Explorer, so a cut that is never pasted leaves everything where it was. Like a copy, they go on
+    /// the Windows clipboard as .eml files; pasting those elsewhere never removes anything.
+    /// </summary>
+    public Task CutMessagesToClipboardAsync(IReadOnlyList<MailMessageSummary> messages)
+        => PutMessagesOnClipboardAsync(messages, cut: true);
+
+    private async Task PutMessagesOnClipboardAsync(IReadOnlyList<MailMessageSummary> messages, bool cut)
+    {
+        if (messages.Count == 0)
+        {
+            // Reached from the Message menu with nothing selected; the keys are not available then.
+            SetStatus(cut ? "Select messages to cut first." : "Select messages to copy first.", AnnouncementCategory.Result);
+            return;
+        }
+
+        if (cut) MessageClipboard.Cut(messages);
+        else     MessageClipboard.Copy(messages);
+
+        // Spoken: nothing on screen changes, so this is the only sign the copy happened.
+        var done = (messages.Count == 1 ? "Message " : $"{messages.Count} messages ") + (cut ? "cut." : "copied.");
+
+        CancelMessageStaging();
+
+        if (_clipboard == null)
+        {
+            SetStatus(done, AnnouncementCategory.Result);
+            return;
+        }
+
+        // The marker goes on at once, so a paste a moment later works while the originals are still
+        // downloading, and a copy of anything else afterwards is seen to have replaced this one.
+        var token = Guid.NewGuid().ToString("N");
+        var generation = ++_clipboardGeneration;
+        if (!_clipboard.SetMarker(token))
+        {
+            MessageClipboard.Clear();
+            _messageClipboardToken = null;
+            SetStatus($"Could not {(cut ? "cut" : "copy")} the {(messages.Count == 1 ? "message" : "messages")}: " +
+                      "the clipboard is in use by another program. Try again.", AnnouncementCategory.Result);
+            return;
+        }
+        _messageClipboardToken = token;
+
+        if (_clipboardStaging == null)
+        {
+            SetStatus(done, AnnouncementCategory.Result);
+            return;
+        }
+        if (messages.Count > MaxMessagesCopiedAsFiles)
+        {
+            SetStatus($"{done} Too many to copy as files too; you can paste them into a folder.", AnnouncementCategory.Result);
+            return;
+        }
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+        _messageStagingCts = cts;
+        if (messages.Count > 1)
+            SetStatus(cut ? $"Cutting {messages.Count} messages…" : $"Copying {messages.Count} messages…", AnnouncementCategory.Status);
+        try
+        {
+            var paths = await _clipboardStaging.StageMessagesAsync(_imap, messages.ToList(), cts.Token);
+            // Left alone if the user has copied something else while the originals downloaded:
+            // writing the files now would throw away what they copied since.
+            if (cts.IsCancellationRequested || generation != _clipboardGeneration || _clipboard.GetMarker() != token) return;
+            _clipboard.SetFiles(paths, token);
+            SetStatus(done, AnnouncementCategory.Result);
+        }
+        catch (OperationCanceledException) { /* replaced by a newer copy, or shutting down */ }
+        catch (Exception) when (generation != _clipboardGeneration)
+        {
+            // Replaced by a newer copy or a paste meanwhile (which may have deleted these files, or moved
+            // the messages): what went wrong here is no longer anything the user is waiting for.
+        }
+        catch (Exception ex)
+        {
+            // The copy still pastes into folders; only the files for other programs are missing.
+            LogService.Log("CopyMessages/Stage", ex);
+            var reason = ex is MessageOriginalUnavailableException ? ex.Message : "the original could not be downloaded.";
+            SetStatus($"{done} They can be pasted into a folder, but not as files: {reason}", AnnouncementCategory.Result);
+        }
+        finally
+        {
+            if (ReferenceEquals(_messageStagingCts, cts)) _messageStagingCts = null;
+            cts.Dispose();
+        }
+    }
+
+    // ── Copy attachments (#929) ──────────────────────────────────────────────
+
+    [RelayCommand]
+    private Task CopyAttachment(AttachmentModel? attachment) =>
+        attachment == null ? Task.CompletedTask : CopyAttachmentsToClipboardAsync(MessageDetail, [attachment]);
+
+    [RelayCommand]
+    private Task CopyAllAttachments() =>
+        CopyAttachmentsToClipboardAsync(MessageDetail, MessageDetail?.Attachments.ToList() ?? []);
+
+    /// <summary>
+    /// Puts attachments on the Windows clipboard as files, downloading any not yet fetched, so they
+    /// paste into Explorer, the desktop, or a message being written. <paramref name="report"/> speaks
+    /// the outcome somewhere other than the main window (a message window): a notification raised on
+    /// the main window is not heard while the user is in another one.
+    /// </summary>
+    public async Task CopyAttachmentsToClipboardAsync(
+        MailMessageDetail? detail, IReadOnlyList<AttachmentModel> attachments, Action<string>? report = null)
+    {
+        void Say(string text)
+        {
+            if (report == null) { SetStatus(text, AnnouncementCategory.Result); return; }
+            SetStatusSilently(text);
+            report(text);
+        }
+
+        if (detail == null) return;
+        if (attachments.Count == 0) { Say("This message has no attachments."); return; }
+        if (_clipboard == null || _clipboardStaging == null) return;
+
+        var label = attachments.Count == 1 ? attachments[0].FileName : $"{attachments.Count} attachments";
+        // Overtakes any copy still writing its files: the new set replaces them on the clipboard.
+        CancelMessageStaging();
+        var generation = ++_clipboardGeneration;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+        cts.CancelAfter(TimeSpan.FromMinutes(2));
+        try
+        {
+            if (attachments.Any(a => !a.IsLoaded))
+                SetStatus($"Downloading {label}…", AnnouncementCategory.Status);
+            foreach (var att in attachments.Where(a => !a.IsLoaded))
+            {
+                if (att.PartSpecifier == null)
+                    throw new InvalidOperationException($"{att.FileName} cannot be downloaded.");
+                att.Content = await _imap.DownloadAttachmentAsync(
+                    detail.AccountId, detail.FolderName, detail.MessageId, att.PartSpecifier, cts.Token);
+            }
+
+            if (generation != _clipboardGeneration) return;
+            var paths = await _clipboardStaging.StageFilesAsync(
+                attachments.Select(a => (a.FileName, a.Content!)).ToList(), cts.Token);
+            if (generation != _clipboardGeneration) return;
+
+            // The clipboard now holds attachments, not messages: a copy of messages made earlier is
+            // replaced, as anything copied in another program replaces it.
+            CancelMessageStaging();
+            MessageClipboard.Clear();
+            _messageClipboardToken = null;
+            if (!_clipboard.SetFiles(paths, Guid.NewGuid().ToString("N")))
+            {
+                Say($"Could not copy {label}: the clipboard is in use by another program.");
+                return;
+            }
+            Say($"{label} copied.");
+        }
+        catch (OperationCanceledException) when (_messageActionShutdownCts.IsCancellationRequested) { }
+        catch (Exception) when (generation != _clipboardGeneration)
+        {
+            // Overtaken by a newer copy, which deleted this one's files as it started.
+        }
+        catch (Exception ex)
+        {
+            _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
+            LogService.Log("CopyAttachments", ex);
+            Say(OfflineOrErrorStatus(ex,
+                () => "Attachments are not available offline.",
+                () => $"Could not copy {label}: {ex.Message}", CancellationToken.None));
+        }
+    }
+
+    private void CancelMessageStaging()
+    {
+        _messageStagingCts?.Cancel();
+        _messageStagingCts?.Dispose();
+        _messageStagingCts = null;
+    }
+    /// <summary>
+    /// Forgets the copied messages if the Windows clipboard no longer holds them: the user has copied
+    /// something else since, and pasting then must not resurrect messages they moved on from.
+    /// </summary>
+    private void ForgetCopyIfReplaced()
+    {
+        if (_clipboard == null || MessageClipboard.IsEmpty) return;
+        if (_clipboard.GetMarker() != _messageClipboardToken)
+            MessageClipboard.Clear();
+    }
+    /// <summary>
+    /// Pastes the copied or cut messages into <paramref name="destination"/>: a copy runs Copy to
+    /// Folder, a cut runs Move to Folder and is then cleared, so a second paste does not try to move
+    /// messages that have already gone. A copy stays and can be pasted again elsewhere.
+    /// <paramref name="moveFocus"/> is false for a paste into the folder tree: focus stays on the folder the
+    /// user pasted into rather than jumping back to the message list.
+    /// </summary>
+    public async Task PasteMessagesAsync(MailFolderModel? destination, bool moveFocus = true)
+    {
+        // A held or doubled Ctrl+V: the first paste is still downloading and adding messages one at a
+        // time, and the cut is cleared only when it finishes, so a second would copy them all again.
+        if (_pasteInProgress) return;
+        _pasteInProgress = true;
+        try { await PasteMessagesCoreAsync(destination, moveFocus); }
+        finally { _pasteInProgress = false; }
+    }
+
+    private async Task PasteMessagesCoreAsync(MailFolderModel? destination, bool moveFocus)
+    {        ForgetCopyIfReplaced();
+        var clip = MessageClipboard;
+        var plan = clip.Plan(destination, IsVirtualFolder);
+        switch (plan)
+        {
+            case MessagePasteKind.Nothing:
+                SetStatus("Nothing to paste. Copy or cut messages first.", AnnouncementCategory.Result);
+                return;
+            case MessagePasteKind.NoDestination:
+                // All Inboxes, a saved view, a header in the folder tree: none of them is one folder
+                // the messages could go into.
+                SetStatus("Choose a folder to paste into.", AnnouncementCategory.Result);
+                return;
+            case MessagePasteKind.SameFolder:
+                SetStatus(clip.Messages.Count == 1
+                    ? $"That message is already in {destination!.DisplayName}."
+                    : $"Those messages are already in {destination!.DisplayName}.",
+                    AnnouncementCategory.Result);
+                return;
+        }
+
+        var target = destination!;
+        // Messages already in the destination are left alone: moving a message into its own folder,
+        // or copying it there, would only make a duplicate.
+        var toPaste = CurrentRowsFor(clip.Messages.Where(m =>
+            m.AccountId != target.AccountId ||
+            !string.Equals(m.FolderName, target.FullName, StringComparison.Ordinal)));
+
+        if (plan == MessagePasteKind.Move)
+        {
+            // The cut's .eml files may still be downloading; the messages are about to move, and a download
+            // racing the move would fail and report a failure nobody caused.
+            CancelMessageStaging();
+            _clipboardGeneration++;            var moved = new List<MailMessageSummary>();
+            var ok = await MoveSelectedMessagesToFolderAsync(toPaste, target, moveFocus, moved);
+            clip.Remove(moved);
+            if (!ok) return;
+            clip.Clear();
+        }
+        else if (!await CopySelectedMessagesToFolderAsync(toPaste, target))
+        {
+            return;
+        }
+
+        // Pasted into the folder on screen: fetch it now, or the messages the user just put there would
+        // not appear until the next sync and the paste would look as if it had done nothing.
+        if (SelectedFolder is { } shown && shown.AccountId == target.AccountId &&
+            string.Equals(shown.FullName, target.FullName, StringComparison.Ordinal))
+            await PickUpPastedMessagesAsync(target);
+    }
+
+    /// <summary>
+    /// Syncs the folder messages were just pasted into; <see cref="OnFolderSynced"/> merges them into the
+    /// list. A failure is only logged: the paste itself succeeded and said so, and the next sync picks the
+    /// messages up anyway.
+    /// </summary>
+    private async Task PickUpPastedMessagesAsync(MailFolderModel folder)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == folder.AccountId);
+        if (account == null) return;
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+            cts.CancelAfter(TimeSpan.FromSeconds(60));
+            if (OnlineMode)
+                await _syncService.SyncOneFolderOnlineAsync(account, folder, cts.Token);
+            else
+                await _syncService.SyncOneFolderAsync(account, folder, cts.Token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("PasteMessages/PickUp", ex); }
+    }
+
+    /// <summary>
+    /// The rows on screen for these messages, where they are still in the list. The list replaces
+    /// its rows with fresh objects when it reloads in the background (#925), and a move removes the
+    /// rows it filed by reference, so handing it the copied objects would leave the moved messages
+    /// showing. A message no longer in the list (another folder is shown now) is passed as copied.
+    /// </summary>
+    private List<MailMessageSummary> CurrentRowsFor(IEnumerable<MailMessageSummary> messages)
+    {
+        var onScreen = new Dictionary<(Guid, string, string), MailMessageSummary>();
+        foreach (var row in Messages)
+            onScreen.TryAdd(MessageClipboard.KeyOf(row), row);
+
+        return messages
+            .Select(m => onScreen.TryGetValue(MessageClipboard.KeyOf(m), out var row) ? row : m)
+            .ToList();
     }
 
     // ── Conversation context menu commands ────────────────────────────────────
@@ -11668,3 +12205,4 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 }
+

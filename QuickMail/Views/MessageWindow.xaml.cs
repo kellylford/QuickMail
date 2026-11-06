@@ -109,6 +109,8 @@ public partial class MessageWindow : Window
             ["message.forward"]         = "mail.forward",
             ["message.delete"]          = "mail.delete",
             ["message.markRead"]        = "mail.markRead",
+            ["message.copyAttachment"]  = "mail.copyAttachment",
+            ["message.copyAllAttachments"] = "mail.copyAllAttachments",
             ["message.grabAddresses"]   = "contacts.grabAddresses",
             ["message.createRule"]      = "mail.createRuleFromMessage",
             ["window.manageRules"]      = "mail.rules",
@@ -222,6 +224,25 @@ public partial class MessageWindow : Window
         _localRegistry.Register(new CommandDefinition(
             id: "window.moveToMainWindow", category: "View", title: "Move to Main Window",
             execute: () => _vm.MoveToMainWindowCommand.Execute(null)));
+
+        // Copy attachments to the Windows clipboard as files (#929). Scoped to the attachment list,
+        // so Ctrl+C anywhere else in this window keeps copying text.
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.copyAttachment", category: "Mail", title: "Copy Attachment",
+            description: "Copy the selected attachment, to paste into Explorer or a message",
+            execute: async () =>
+            {
+                if (AttachmentList.SelectedItem is AttachmentModel att)
+                    await _vm.CopyAttachmentCommand.ExecuteAsync(att);
+            },
+            defaultKey: Key.C, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => AttachmentList.IsKeyboardFocusWithin && AttachmentList.SelectedItem is AttachmentModel));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.copyAllAttachments", category: "Mail", title: "Copy All Attachments",
+            description: "Copy every attachment of this message, to paste into Explorer or a message",
+            execute: async () => await _vm.CopyAllAttachmentsCommand.ExecuteAsync(null),
+            isAvailable: () => _vm.MessageDetail?.Attachments.Count > 0));
 
         // Save, Save As and Print (#728) - the same gestures as the main window's. The work is routed
         // back to MainViewModel (SaveAction and friends), with this window's own dialogs (SaveUi).

@@ -62,6 +62,8 @@ public partial class App : Application
     private BugReportService? _bugReportService;
     private WindowsToastNotificationService? _notificationService;
     private SoundService? _soundService;
+    // Files QuickMail has put on the Windows clipboard (#929): tidied at start, deleted at exit.
+    private ClipboardStaging? _clipboardStaging;
     private AutoDiscoverService? _autoDiscoverService;
     private ConnectionTruthProbe? _truthProbe;
 
@@ -644,6 +646,12 @@ public partial class App : Application
                 mailRouter,
                 id => accounts.FirstOrDefault(a => a.Id == id)?.AccountLabel ?? id.ToString());
 
+            // Off the startup path: tidying folders a crashed QuickMail left behind is not worth a delay.
+
+            _clipboardStaging = probeMode ? null : new ClipboardStaging();
+
+            if (_clipboardStaging is { } staging) _ = Task.Run(() => staging.DeleteAbandoned());
+
             var mainVm = new MainViewModel(
                 effectiveMail, accountService, credentialService, localStore, effectiveOAuth, syncService, configService, commandRegistry, viewService, ruleService, effectiveSmtp,
                 onlineMode: onlineMode, flagService: flagService, calendarService: calendarService,
@@ -659,7 +667,9 @@ public partial class App : Application
                 folderViewState: folderViewState,
                 outboxService: outboxService,
                 connectivity: _connectivity,
-                soundService: _soundService);
+                soundService: _soundService,
+                clipboard: probeMode ? null : ClipboardService.Default,
+                clipboardStaging: _clipboardStaging);
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
             // #31: a credential-less shared mailbox borrows its parent account's token. The resolver runs
             // on background sweep threads, so it goes through ResolveAccountById — a thread-safe snapshot
@@ -714,6 +724,11 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // Copied messages and attachments. Kept while the clipboard still offers them: Windows holds the
+        // paths after QuickMail has gone, and pasting into Explorer afterwards would find nothing. The next
+        // start tidies them (DeleteAbandoned). Otherwise nothing can paste them, so they go now.
+        if (_clipboardStaging != null && ClipboardService.Default.GetMarker() == null)
+            _clipboardStaging.DeleteMine();
         _changeNotifier?.Dispose(); // stops all watchers (IDLE + Graph poll) + severs the event chain
         _connectivity?.Dispose();   // stops listening to NetworkChange; after the notifiers, which feed it
         _graphNotifier?.Dispose();  // disposes the Graph poll CTS (StopWatchers already ran; idempotent)

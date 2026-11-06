@@ -2,6 +2,10 @@
 
 ## New
 
+- **Copy, cut and paste messages, as in Outlook.** In the message list, press **Ctrl+C** to copy messages or **Ctrl+X** to cut them, then go to a folder in the folder tree and press **Ctrl+V**. Copied messages are copied there; cut messages move there. As in Explorer, cutting removes nothing until you paste. **Ctrl+V** in the message list pastes into the folder it is showing. The commands are also on the **Message** menu and the context menus. (#929)
+- **Paste a copied message into a new message to attach it.** A message copied with **Ctrl+C** pastes into a message you are writing as an attached email, as Outlook does, and into Explorer or onto the desktop as an email file. (#929)
+- **Copy attachments.** Press **Ctrl+C** on an attachment, or choose **Copy** or **Copy All** in the attachment list's context menu, then paste the files into Explorer or into a message you are writing. (#929)
+- **Move and copy messages between accounts.** **Move to Folder**, **Copy to Folder** and paste now offer your other accounts' folders. A copy leaves the original where it was; a move puts the original in its own account's Trash once the copy is safely in place. Microsoft 365 accounts cannot take messages from other accounts yet. (#929)
 - **Save a message's attachments without opening it.** Open the context menu on a message in the message list (Shift+F10 or the Applications key) and choose **Save All Attachments…**. QuickMail asks for a folder and saves every attachment there. It works on several selected messages at once, and on a whole conversation or sender group when its heading is selected. If there is nothing to save, QuickMail says the message has no attachments instead of asking for a folder. It is in the command palette too, and you can give it a key in keyboard customizations. (#931)
 - **Sound schemes: make your own set of sounds.** The Style box in **Settings → Sounds** is now **Sound scheme**, and each scheme keeps its own choices: changing an event in Glass no longer changes Wood. Choose **New scheme…** to start a scheme of your own with every event silent, then give sounds only to the events you want, using any built-in sound in any tone or your own files. **Copy scheme…** starts from the scheme showing instead. Schemes of your own can be renamed and deleted. Your existing choices move into the scheme you had chosen. (#932)
 - **Reset a built-in scheme.** **Reset scheme…** puts Glass, Soft bell or Wood back to how it ships, so you no longer need to remember what each event used to be. (#932)
@@ -16,6 +20,8 @@
 
 ## Fixed
 
+- **A forwarded or attached email arrived as a file.** An email attached to a message you sent was encoded in a way the standard does not allow, so many mail programs showed it as a file rather than an email the recipient could open. It is now attached as an email. (#929)
+- **A failed Copy to Folder was not always spoken.** It now says so whatever your announcement settings for background progress. (#929)
 - **Screen readers could read an internal name instead of a message.** You could hear "QuickMail.Models.MailMessageSummary" in the message list, at times that were hard to predict. QuickMail now gives a screen reader the message for a row that isn't on screen yet, normally in the fields and order you chose in Message List Fields, which should stop this. (#928)
 
 ---

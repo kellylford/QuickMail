@@ -969,4 +969,31 @@ public class Pop3MailServiceTests
         Assert.NotNull(loaded);
         Assert.Equal("original@example.com", loaded!.InternetMessageId);
     }
+
+    // ── Taking messages from another account (#929) ──────────────────────────────
+
+    [Fact]
+    public async Task AppendMessage_StoresTheOriginalInTheFolder_ReadAndFlaggedAsGiven()
+    {
+        var store   = NewStore();
+        var account = Guid.NewGuid();
+        var pop     = new Pop3MailService(store);
+        var bytes   = System.Text.Encoding.ASCII.GetBytes(
+            "From: a@example.com\r\nSubject: From another account\r\nMessage-Id: <x929@example.com>\r\n\r\nHello\r\n");
+
+        Assert.True(pop.CanAppendMessages(account));
+        using (var original = new MemoryStream(bytes))
+            await pop.AppendMessageAsync(account, "Archive", original, isRead: true, isFlagged: true, default,
+                                         TestContext.Current.CancellationToken);
+
+        var summary = Assert.Single(await store.LoadFolderSummariesAsync(account, "Archive"));
+        Assert.Equal("From another account", summary.Subject);
+        Assert.True(summary.IsRead);
+        Assert.True(summary.IsFlagged);
+
+        // Its original is kept, so it saves, forwards and copies onward like any collected message.
+        using var copy = new MemoryStream();
+        await pop.CopyOriginalMessageToAsync(account, "Archive", summary.MessageId, copy, TestContext.Current.CancellationToken);
+        Assert.Equal(bytes, copy.ToArray());
+    }
 }
