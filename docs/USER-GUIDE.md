@@ -654,7 +654,7 @@ If those two exclusions leave nowhere to go — an account whose only folder is 
 
 Select one or more messages (or a sender/recipient group, or a conversation) and choose **Move to Folder…** or **Copy to Folder…** from the context menu (Shift+F10) or the command palette. Both open a folder picker showing the same hierarchical tree used in the main folder panel — folders nested under their parent, with account names as headers when more than one account is present. Arrow through the tree and press Enter to complete the move or copy. If you need a destination that does not exist yet, activate **New Folder** (or **Alt+N**) in the picker to create one under the selected folder and move into it without leaving the dialog.
 
-**The picker opens on the folder you last filed to**, so filing several messages to the same place takes one keystroke after the first: open the picker, press Enter. Move and copy are remembered separately — copying to a reference folder does not change where Move to Folder opens — and each account keeps its own, since a folder on one account is not a destination for another.
+**The picker opens on the folder you last filed to**, so filing several messages to the same place takes one keystroke after the first: open the picker, press Enter. Move and copy are remembered separately — copying to a reference folder does not change where Move to Folder opens — and each account keeps its own.
 
 Before you have moved anything on that account, and whenever the remembered folder is no longer there — you have deleted or renamed it — the picker opens on the folder the messages are in instead, so you still start somewhere useful. The same applies when the messages you selected come from more than one account: no single remembered folder is right for all of them.
 
@@ -662,6 +662,38 @@ Only the folder you choose in the picker is remembered. Archiving and deleting f
 
 Typing jumps to a folder here too, exactly as it does in the main folder tree: type the beginning of a folder name and the selection moves to it. Because a bare letter belongs to that typing, the picker's buttons take **Alt+O** for Open, **Alt+C** for Cancel, and **Alt+N** for New Folder rather than plain letter shortcuts. Enter and Escape still work as usual.
 
+#### Moving and copying between accounts
+
+The picker shows the folders of your other accounts too, so you can move or copy a message from one account to another, for example from a work account into a folder of your personal one. QuickMail downloads each message and adds it to the other account, keeping whether it was read or flagged and when it arrived. A copy leaves the original where it was. A move puts the original in its own account's Trash once the copy is safely in place, so a mistaken move can be undone from Trash, and a failure part of the way never loses a message.
+
+This takes longer than a move within one account, since every message is downloaded and uploaded again, and the status bar counts through them ("Moving 4 of 20…"). If something stops it part of the way, the messages that did move leave the list and QuickMail tells you how many moved and why the rest did not.
+
+Microsoft 365 accounts cannot take messages from another account yet. Their folders are offered only for their own messages, and QuickMail says so if you try to paste messages from elsewhere into one.
+
+### Copying, Cutting and Pasting Messages
+
+You can also move and copy messages the way you move files in Explorer. In the message list, select messages (or a conversation or sender group's heading) and press:
+
+| Shortcut | Command | What it does |
+|----------|---------|--------------|
+| `Ctrl+C` | **Copy Messages** | Copies the messages. |
+| `Ctrl+X` | **Cut Messages** | Cuts the messages. Nothing moves yet. |
+| `Ctrl+V` | **Paste Messages** | Pastes them into a folder. |
+
+To paste, go to the folder tree (F6), select the folder, and press **Ctrl+V**; focus stays on that folder. Pressing **Ctrl+V** in the message list pastes into the folder it is showing. Pasted copies are copied there; cut messages are moved there, and the cut is then finished, so pasting again has nothing left to paste. A copy can be pasted into as many folders as you like. The destination can be in another account, as described above.
+
+As in Explorer, cutting does not remove anything until you paste, so a cut you change your mind about leaves everything where it was. Copying anything else afterwards, in QuickMail or in another program, replaces what you copied, and **Ctrl+V** in a folder then has nothing to paste. You cannot paste into a combined view such as All Inboxes or a saved view, since it is not one folder; QuickMail asks you to choose a folder.
+
+The same commands are on the **Message** menu, in the message list's context menu (Copy and Cut), and in the folder tree's context menu (Paste Messages), and you can change their keys in keyboard customizations. **Ctrl+C**, **Ctrl+X** and **Ctrl+V** keep their usual meaning in every text field and in the message itself.
+
+#### Copied messages in Explorer and in new messages
+
+Copied and cut messages also go on the Windows clipboard as email files (.eml), as they do in Outlook:
+
+- **Paste in Explorer or on the desktop** to save the messages there as files, named like Save names them. Pasting in Explorer never removes anything from QuickMail, even after a cut.
+- **Paste into a message you are writing** to attach them as emails. Copy a message in the message list, open a new message, reply or forward, and press **Ctrl+V**: the message is attached, and the recipient can open it as an email.
+
+QuickMail downloads each message to do this, so with several messages selected you hear "Copying 3 messages…" and then "3 messages copied." when they are ready. More than 100 messages at once are copied for pasting into folders only, without the files, so that selecting a whole large folder does not download all of it. If a message's original cannot be downloaded (for instance while offline), the copy still pastes into folders, and QuickMail tells you it could not make the files.
 ### Message List Views
 
 Press `Ctrl+Shift+V` (or use the **View** menu) to switch how messages are grouped:
@@ -925,8 +957,12 @@ Once focus is on the list, arrow between attachments and use:
 |----------|--------|
 | `Enter` | Open the selected attachment |
 | `Alt+Enter` | Show the attachment's properties |
-| `Shift+F10` (or the Menu key) | Open the context menu: **Save…**, **Save All…**, **Open** |
+| `Ctrl+C` | Copy the selected attachment to the clipboard |
+| `Shift+F10` (or the Menu key) | Open the context menu: **Save…**, **Save All…**, **Open**, **Copy**, **Copy All** |
 
+#### Copying attachments
+
+**Ctrl+C** on an attachment, or **Copy** in the attachment list's context menu, puts it on the Windows clipboard as a file. Paste it into Explorer or onto the desktop to save it there, or into a message you are writing to attach it. **Copy All** copies every attachment of the message at once; it is also in the command palette as **Copy All Attachments**. QuickMail downloads the attachments first if it has not already, and tells you when they are copied.
 #### Saving attachments without opening the message
 
 You can save a message's attachments straight from the message list. Open the context menu on the message (Shift+F10 or the Applications key) and choose **Save All Attachments…**, then choose a folder. Every attachment is saved there. With several messages selected, or a conversation or sender group's heading, the attachments of all those messages go into the one folder. Saving attachments does not mark a message as read.
@@ -1153,7 +1189,7 @@ You can also leave the setting on and simply wait 15 seconds or so after a long 
 
 ### Attachments
 
-Attach files with `Ctrl+Shift+A` in the compose window, by pasting files from the clipboard (`Ctrl+V`), or by dragging and dropping them onto the window. A screen reader announces how many files were attached.
+Attach files with `Ctrl+Shift+A` in the compose window, by pasting files from the clipboard (`Ctrl+V`), or by dragging and dropping them onto the window. A screen reader announces how many files were attached. A message you copied in the message list (`Ctrl+C`) pastes in as an attached email, and an attachment you copied from another message pastes in as a file.
 
 Press **Alt+A** to move focus to the list of files already attached — the same key that reaches the attachment list of a message you are reading. Arrow through the list and press **Delete** to remove the selected file. If the message has nothing attached yet, QuickMail announces "No attachments."
 
