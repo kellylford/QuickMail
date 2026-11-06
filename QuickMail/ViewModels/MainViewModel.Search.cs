@@ -481,12 +481,9 @@ public partial class MainViewModel
                 try
                 {
                     var hits = await _imap.SearchServerAsync(account.Id, query, folders, ServerSearchMaxResults, ct);
-                    // IMAP summaries never carry attachments, so has:attachment can only be judged where the
-                    // server reports it (Microsoft 365); elsewhere the server's own answer stands.
-                    var check = account.BackendKind == BackendKind.MicrosoftGraph
-                        ? query
-                        : WithoutAttachmentCondition(query);
-                    var matcher = new MessageSearchMatcher(check, SearchFolderNameFor, _ => string.Empty);
+                    // Every backend's results say whether each message has attachments (IMAP's from BODYSTRUCTURE
+                    // since #931), so has:attachment is judged here along with the rest of the query.
+                    var matcher = new MessageSearchMatcher(query, SearchFolderNameFor, _ => string.Empty);
                     foreach (var m in hits)
                     {
                         if (m.IsServerFlagged && m.FlagId == null)
@@ -550,13 +547,6 @@ public partial class MainViewModel
 
     // One server search at a time: a second one would ask every server again and add the same messages.
     private int _serverSearchRunning;
-
-    private static MessageSearchQuery WithoutAttachmentCondition(MessageSearchQuery query)
-    {
-        var copy = MessageSearchQuery.Parse(query.ToQueryString());
-        copy.HasAttachment = null;
-        return copy;
-    }
 
     private (string Text, List<Guid> Accounts, MessageSearchMatcher Matcher)? _arrivalMatcher;
 

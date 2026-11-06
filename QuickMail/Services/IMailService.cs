@@ -142,6 +142,16 @@ public interface IMailService : IDisposable
         Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyDictionary<string, FetchedSender>>(new Dictionary<string, FetchedSender>());
 
+    /// <summary>
+    /// Whether each of the given messages in one folder has an attachment, keyed by message id, with its Message-ID so
+    /// the caller can check the id still names the message it cached (a renumbered folder), for the one-time
+    /// pass over mail cached before the list carried the flag (#931). Only IMAP needs it: Graph and POP3 summaries
+    /// always carried it, so the default finds nothing. Ids the server no longer has are missing from the result.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, FetchedAttachmentFlag>> FetchAttachmentFlagsAsync(
+        Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<string, FetchedAttachmentFlag>>(new Dictionary<string, FetchedAttachmentFlag>());
+
     Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
     /// <summary>

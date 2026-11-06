@@ -253,7 +253,8 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 MessageSummaryItems.UniqueId
                 | MessageSummaryItems.Envelope
                 | MessageSummaryItems.Flags
-                | MessageSummaryItems.PreviewText,   // free if server supports PREVIEW
+                | MessageSummaryItems.PreviewText    // free if server supports PREVIEW
+                | MessageSummaryItems.BodyStructure, // whether it has attachments (#931)
                 _mailingListHeaders,
                 ct);
 
@@ -285,7 +286,8 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             var items = MessageSummaryItems.UniqueId
                       | MessageSummaryItems.Envelope
                       | MessageSummaryItems.Flags
-                      | MessageSummaryItems.PreviewText;
+                      | MessageSummaryItems.PreviewText
+                      | MessageSummaryItems.BodyStructure;   // whether it has attachments (#931)
 
             var summaries = await folder.FetchAsync(uids, items, _mailingListHeaders, ct);
             var result    = summaries
@@ -314,7 +316,8 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         var items = MessageSummaryItems.UniqueId
                   | MessageSummaryItems.Envelope
                   | MessageSummaryItems.Flags
-                  | MessageSummaryItems.PreviewText;
+                  | MessageSummaryItems.PreviewText
+                  | MessageSummaryItems.BodyStructure;   // whether it has attachments (#931)
 
         // Gmail searches the whole mailbox in one request — but All Mail is one folder as far as the result
         // is concerned, so a search that names a folder has to go folder by folder like any other server.
@@ -414,7 +417,8 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             var items = MessageSummaryItems.UniqueId
                       | MessageSummaryItems.Envelope
                       | MessageSummaryItems.Flags
-                      | MessageSummaryItems.PreviewText;   // free if server supports PREVIEW
+                      | MessageSummaryItems.PreviewText    // free if server supports PREVIEW
+                      | MessageSummaryItems.BodyStructure; // whether it has attachments (#931)
 
             IList<IMessageSummary> summaries;
             if (sinceMessageId == "0")
@@ -1127,6 +1131,41 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                     ? string.Empty
                     : MimeKit.Utils.MimeUtils.ParseMessageId(messageIdHeader) ?? messageIdHeader.Trim();
                 result[s.UniqueId.Id.ToString(CultureInfo.InvariantCulture)] = new FetchedSender(emails, messageId);
+            }
+            return result;
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
+    // ── One-time attachment-flag pass (#931) ─────────────────────────────────────
+
+    public async Task<IReadOnlyDictionary<string, FetchedAttachmentFlag>> FetchAttachmentFlagsAsync(
+        Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, FetchedAttachmentFlag>();
+        if (messageIds.Count == 0) return result;
+
+        // Background lease, read-only open, the BODYSTRUCTURE and the Message-ID header alone (BODY.PEEK): no
+        // envelope, no bodies, nothing marked read.
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
+        var folder = await lease.Client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            var request = new FetchRequest(MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure)
+            {
+                Headers = new HeaderSet([HeaderId.MessageId]),
+            };
+            var summaries = await folder.FetchAsync(messageIds.Select(ToUid).ToList(), request, ct);
+            foreach (var s in summaries)
+            {
+                if (s.Body == null) continue;   // nothing to decide by: left unchecked
+                // Without angle brackets, as the ENVELOPE's Message-ID the sync cached was.
+                var header = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.MessageId)?.Value;
+                var messageId = string.IsNullOrWhiteSpace(header)
+                    ? string.Empty
+                    : MimeKit.Utils.MimeUtils.ParseMessageId(header) ?? header.Trim();
+                result[s.UniqueId.Id.ToString(CultureInfo.InvariantCulture)] = new FetchedAttachmentFlag(HasAttachments(s.Body), messageId);
             }
             return result;
         }
@@ -2059,7 +2098,16 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             IsServerFlagged = (s.Flags & MessageFlags.Flagged) != 0,
             Preview         = s.PreviewText ?? string.Empty,   // populated when server supports IMAP PREVIEW
             IsMailingList   = !string.IsNullOrEmpty(s.Headers?["List-Id"]),
+            HasAttachments  = HasAttachments(s.Body),
+            AttachmentsKnown = s.Body != null,
         };
+
+    /// <summary>
+    /// Whether a message has an attachment, by the same rule its attachment list uses
+    /// (<see cref="CollectAttachments"/>), so the list's flag agrees with what opening it shows and
+    /// with what Save All Attachments saves (#931). False when no BODYSTRUCTURE was fetched.
+    /// </summary>
+    internal static bool HasAttachments(BodyPart? body) => ExtractAttachments(body).Count > 0;
 
     private static async Task<IMailFolder?> FindSpecialFolderAsync(
         ImapClient client, CancellationToken ct, params SpecialFolder[] candidates)

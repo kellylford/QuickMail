@@ -189,6 +189,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _syncService.OfflineBodyProgressChanged -= OnOfflineBodyProgress;
         _syncService.SenderEmailBackfillProgressChanged -= OnSenderEmailBackfillProgress;
         _syncService.SenderEmailBackfillEnded -= OnSenderEmailBackfillEnded;
+        _syncService.AttachmentFlagsFound -= OnAttachmentFlagsFound;
         DrainCts(ref _offlineBodyStatusCts);
         if (_rowLayoutService != null && _onRowLayoutsChanged != null)
         {
@@ -2020,6 +2021,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.FolderReadStatesReconciled += OnFolderReadStatesReconciled;
+        _syncService.AttachmentFlagsFound += OnAttachmentFlagsFound;
         _syncService.RulesApplied    += OnRulesApplied;
         if (_changeNotifier != null)
         {

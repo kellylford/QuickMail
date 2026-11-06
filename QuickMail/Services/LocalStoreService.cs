@@ -316,6 +316,12 @@ public partial class LocalStoreService : ILocalStoreService
         // one-time backfill fills them in. AFTER RunDataMigrations for the same reason as mime_bytes above.
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN from_email TEXT NOT NULL DEFAULT '';");
 
+        // Whether has_attachments has been decided (#931). IMAP summaries carried no attachment flag before then, so
+        // the rows already here are unchecked (the default) until the one-time pass asks the server; every row a
+        // summary writes from now on is checked. AFTER RunDataMigrations for the same reason as mime_bytes above.
+        RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN att_checked INTEGER NOT NULL DEFAULT 0;");
+        RunMigration(conn, "CREATE INDEX IF NOT EXISTS idx_summary_att_unchecked ON MessageSummary(account_id, folder_name) WHERE att_checked = 0;");
+
         // Where arriving mail begins, per folder (#712): the highest id and the newest date client rules have settled.
         // Kept apart from MessageSummary so it can't go backwards. A rule that moves mail out deletes those rows, and a
         // line worked out from the rows left would drop with them — for someone who files everything by rule, to
@@ -532,12 +538,12 @@ public partial class LocalStoreService : ILocalStoreService
         await using var cmd = conn.CreateCommand();
         // rules_applied: a message this adds waits for client rules (#712), whichever path is caching it; the
         // DO UPDATE below deliberately leaves it alone, so re-caching a message never makes it wait again.
-        // has_attachments: written from the summary (Graph and POP3 set it; IMAP summaries don't carry it) and never
+        // has_attachments: written from the summary (every backend sets it; IMAP from BODYSTRUCTURE since #931) and never
         // cleared by a later summary once true, since the detail may have found attachments the summary didn't know
         // of. Rules test it on waiting mail read back from here, not only on mail a sync has in hand.
         cmd.CommandText = """
-            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, from_email, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id, has_attachments, rules_applied)
-            VALUES($uid, $aid, $fn, $from, $fromEmail, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid, $att, 0)
+            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, from_email, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id, has_attachments, rules_applied, att_checked)
+            VALUES($uid, $aid, $fn, $from, $fromEmail, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid, $att, 0, $attKnown)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
                 from_disp       = excluded.from_disp,
                 from_email      = CASE WHEN excluded.from_email = '' THEN from_email ELSE excluded.from_email END,
@@ -549,6 +555,7 @@ public partial class LocalStoreService : ILocalStoreService
                 is_forwarded    = excluded.is_forwarded,
                 is_mailing_list = excluded.is_mailing_list,
                 has_attachments = MAX(has_attachments, excluded.has_attachments),
+                att_checked     = MAX(att_checked, excluded.att_checked),
                 internet_message_id = CASE WHEN excluded.internet_message_id = '' THEN internet_message_id ELSE excluded.internet_message_id END,
                 preview_text    = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END,
                 flag_id         = CASE
@@ -577,6 +584,7 @@ public partial class LocalStoreService : ILocalStoreService
         var pFlagId    = cmd.Parameters.Add("$flag_id",   SqliteType.Text);
         var pImid      = cmd.Parameters.Add("$imid",      SqliteType.Text);
         var pAtt       = cmd.Parameters.Add("$att",       SqliteType.Integer);
+        var pAttKnown  = cmd.Parameters.Add("$attKnown",  SqliteType.Integer);
 
         foreach (var s in summaries)
         {
@@ -598,6 +606,7 @@ public partial class LocalStoreService : ILocalStoreService
                 : DBNull.Value;
             pImid.Value      = s.InternetMessageId ?? string.Empty;
             pAtt.Value       = s.HasAttachments   ? 1 : 0;
+            pAttKnown.Value  = s.AttachmentsKnown ? 1 : 0;
             await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();
