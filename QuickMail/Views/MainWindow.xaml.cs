@@ -7880,6 +7880,26 @@ public partial class MainWindow : Window
             return fileDialog.ShowDialog(dialog) == true ? fileDialog.FileName : null;
         };
 
+        // Sharing a sound scheme (#932): Windows file dialogs over Settings, as for a sound file.
+        vm.PickSchemeExportPathRequested = suggested =>
+        {
+            var saveDialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Export Sound Scheme",
+                Filter = SoundSchemeFile.FileFilter,
+                DefaultExt = SoundSchemeFile.FileExtension,
+                FileName = suggested,
+            };
+            return saveDialog.ShowDialog(dialog) == true ? saveDialog.FileName : null;
+        };
+        vm.PickSchemeImportPathRequested = () =>
+        {
+            var openDialog = new Microsoft.Win32.OpenFileDialog { Title = "Import Sound Scheme", Filter = SoundSchemeFile.FileFilter };
+            return openDialog.ShowDialog(dialog) == true ? openDialog.FileName : null;
+        };
+        // So Remove file can say which rules still use a sound.
+        vm.RuleSoundsProvider = _vm.RuleSounds;
+
         // Picking a startup folder needs a window, which is the View's job — the VM asks and gets a
         // plain record back (#516). Wired here rather than in SettingsDialog because this is where
         // the accounts and the folder cache live. The picker is a ShowDialog over the Settings

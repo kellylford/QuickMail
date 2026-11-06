@@ -468,9 +468,11 @@ public class RuleSoundTests
     [Theory]
     [InlineData("builtin:reminder", "play sound Reminder")]
     [InlineData("custom:Pat.wav", "play sound Pat.wav")]
-    [InlineData(null, "play sound Matched")]
-    [InlineData("rubbish", "play sound Matched")]
-    [InlineData("none", "play sound Matched")]
+    [InlineData("builtin:wood/matched", "play sound Matched (Wood)")]
+    [InlineData("builtin:matched", "play the default sound")]
+    [InlineData(null, "play the default sound")]
+    [InlineData("rubbish", "play the default sound")]
+    [InlineData("none", "play the default sound")]
     public void TheRuleListSaysWhichSound(string? sound, string expected)
     {
         var row = UnifiedRuleRow.ForClient(new MailRule

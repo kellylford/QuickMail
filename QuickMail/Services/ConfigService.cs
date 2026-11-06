@@ -135,6 +135,12 @@ public class ConfigService : IConfigService
         var config       = into ?? new ConfigModel();
         string? section  = null;
         Guid    acctGuid = Guid.Empty;
+        // Sounds (#932): [sounds.<id>] sections, and what 0.8.67/0.8.68 wrote, migrated after the loop.
+        string? soundSchemeId   = null;
+        string? legacySoundPack = null;
+        string? soundSection    = null;
+        var legacySounds   = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var schemeSections = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var raw in lines)
         {
@@ -175,6 +181,14 @@ public class ConfigService : IConfigService
                 {
                     section  = "sounds";
                     acctGuid = Guid.Empty;
+                }
+                else if (header.StartsWith("sounds.", StringComparison.Ordinal) && header.Length > "sounds.".Length)
+                {
+                    section      = "soundscheme";
+                    acctGuid     = Guid.Empty;
+                    soundSection = header["sounds.".Length..];
+                    if (!schemeSections.ContainsKey(soundSection))
+                        schemeSections[soundSection] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 }
                 else if (header == "google")
                 {
@@ -315,8 +329,11 @@ public class ConfigService : IConfigService
                         if (int.TryParse(value, out var soundVolume) && soundVolume >= 0 && soundVolume <= 100)
                             config.SoundVolume = soundVolume;
                         break;
-                    case "soundpack":
-                        if (!string.IsNullOrWhiteSpace(value)) config.SoundPack = value;
+                    case "soundscheme":
+                        if (!string.IsNullOrWhiteSpace(value)) soundSchemeId = value;
+                        break;
+                    case "soundpack":   // 0.8.67 and 0.8.68; see ApplySoundSections
+                        if (!string.IsNullOrWhiteSpace(value)) legacySoundPack = value;
                         break;
                     case "closetotray":          config.CloseToTray          = ParseBool(value); break;
                     case "trayhintshown":        config.TrayHintShown        = ParseBool(value); break;
@@ -410,8 +427,13 @@ public class ConfigService : IConfigService
             }
             else if (section == "sounds")
             {
+                // 0.8.67/0.8.68's one list for every style; moved into a scheme after the loop.
+                legacySounds[rawKey] = value;
+            }
+            else if (section == "soundscheme" && soundSection is not null)
+            {
                 // Kept as written; SoundCatalog.Resolve validates a value when it is used.
-                config.SoundEvents[rawKey] = value;
+                schemeSections[soundSection][rawKey] = value;
             }
             else if (section == "google")
             {
@@ -423,7 +445,53 @@ public class ConfigService : IConfigService
             }
         }
 
+        ApplySoundSections(config, soundSchemeId, legacySoundPack, legacySounds, schemeSections);
         return config;
+    }
+
+    /// <summary>
+    /// Builds the sound schemes from what the file holds (#932). A file from 0.8.67 or 0.8.68 has
+    /// <c>SoundPack</c> and one <c>[sounds]</c> list for every style: the pack becomes the scheme in
+    /// use, and the list moves into that scheme, so nobody loses a choice on upgrade. Only the new
+    /// form is ever written back.
+    /// </summary>
+    private static void ApplySoundSections(ConfigModel config, string? schemeId, string? legacyPack,
+        Dictionary<string, string> legacySounds, Dictionary<string, Dictionary<string, string>> sections)
+    {
+        if (schemeId is not null) config.SoundSchemeId = schemeId;
+        else if (legacyPack is not null) config.SoundSchemeId = legacyPack;
+
+        if (legacySounds.Count > 0)
+        {
+            // The list applied to whichever style was chosen when it was written.
+            var target = (legacyPack ?? SoundCatalog.DefaultPack).ToLowerInvariant();
+            if (!sections.TryGetValue(target, out var section))
+                sections[target] = section = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, value) in legacySounds)
+                section.TryAdd(key, value);   // a [sounds.<id>] entry is newer, so it wins
+        }
+
+        if (sections.Count == 0) return;
+        // A new dictionary rather than adding to one the sound worker may be reading (an import's baseline).
+        var schemes = new Dictionary<string, SoundScheme>(config.SoundSchemes, StringComparer.OrdinalIgnoreCase);
+        foreach (var (id, entries) in sections)
+        {
+            if (SoundCatalog.IsBuiltInSchemeId(id))
+            {
+                schemes[id] = new SoundScheme(id, SoundCatalog.PackLabel(id), isBuiltIn: true, pack: id, entries);
+            }
+            else if (SoundCatalog.IsUserSchemeId(id))
+            {
+                entries.Remove("Name", out var name);
+                schemes[id] = new SoundScheme(id, string.IsNullOrWhiteSpace(name) ? id : name, isBuiltIn: false, events: entries);
+            }
+            else
+            {
+                // From a newer QuickMail: kept exactly as written, never shown or played.
+                schemes[id] = new SoundScheme(id, id, isBuiltIn: false, events: entries);
+            }
+        }
+        config.SoundSchemes = schemes;
     }
 
     // ── Writer ────────────────────────────────────────────────────────────────────
@@ -690,8 +758,9 @@ public class ConfigService : IConfigService
         sb.AppendLine("# How loud QuickMail's sounds play, within what Windows is set to (0-100).");
         sb.AppendLine();
 
-        sb.AppendLine($"SoundPack = {config.SoundPack}");
-        sb.AppendLine("# The style of the built-in sounds. Values: glass, softbell, wood.");
+        sb.AppendLine($"SoundScheme = {config.SoundSchemeId}");
+        sb.AppendLine("# The sound scheme in use. Values: glass, softbell, wood, or the id of a scheme of");
+        sb.AppendLine("# your own, which has its own [sounds.user-...] section below.");
         sb.AppendLine();
 
         sb.AppendLine($"CloseToTray = {(config.CloseToTray ? "on" : "off")}");
@@ -940,14 +1009,26 @@ public class ConfigService : IConfigService
             sb.AppendLine();
         }
 
-        // ── [sounds] ───────────────────────────────────────────────────────────────
-        // Only what the person changed; an event not listed uses its default (SoundCatalog.Resolve).
-        if (config.SoundEvents.Count > 0)
+        // ── [sounds.<scheme>] ──────────────────────────────────────────────────────
+        // A built-in scheme lists only what the person changed; an event not listed plays its shipped
+        // sound. A scheme of the person's own lists every event; one not listed plays nothing.
+        foreach (var scheme in config.SoundSchemes.Values)
         {
-            sb.AppendLine("[sounds]");
-            sb.AppendLine("# The sound for each event. Values: none, builtin:<name>, custom:<file in the sounds folder>.");
+            var isOwn = SoundCatalog.IsUserSchemeId(scheme.Id);
+            if (scheme.Events.Count == 0 && !isOwn) continue;
+            sb.AppendLine($"[sounds.{scheme.Id}]");
+            if (scheme.IsBuiltIn)
+            {
+                sb.AppendLine($"# Changes to the {scheme.Name} sound scheme. Values: none, builtin:<name>,");
+                sb.AppendLine("# builtin:<pack>/<name>, custom:<file in the sounds folder>.");
+            }
+            else if (isOwn)
+            {
+                sb.AppendLine("# A sound scheme of your own. An event not listed plays no sound.");
+                sb.AppendLine($"Name = {scheme.Name}");
+            }
             sb.AppendLine();
-            foreach (var (name, value) in config.SoundEvents)
+            foreach (var (name, value) in scheme.Events)
                 sb.AppendLine($"{name} = {value}");
             sb.AppendLine();
         }

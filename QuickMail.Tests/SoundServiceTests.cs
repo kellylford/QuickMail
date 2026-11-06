@@ -104,7 +104,7 @@ public sealed class SoundServiceTests : IDisposable
     public void AChoiceOfNoSoundPlaysNothing()
     {
         Settings().PlayEventSounds = true;
-        Settings().SoundEvents["MessageSent"] = "none";
+        Settings().ActiveSoundEvents()["MessageSent"] = "none";
         Service().Play(SoundEvent.MessageSent);
         AssertPlayed();
     }
@@ -246,7 +246,7 @@ public sealed class SoundServiceTests : IDisposable
         var path = Path.Combine(_folder, "My Chime.wav");
         File.WriteAllBytes(path, [1, 2, 3]);
         Settings().PlayEventSounds = true;
-        Settings().SoundEvents["NewMail"] = "custom:My Chime.wav";
+        Settings().ActiveSoundEvents()["NewMail"] = "custom:My Chime.wav";
 
         Service().Play(SoundEvent.NewMail);
 
@@ -258,7 +258,7 @@ public sealed class SoundServiceTests : IDisposable
     public void AMissingCustomFileFallsBackToTheBuiltInSound()
     {
         Settings().PlayEventSounds = true;
-        Settings().SoundEvents["NewMail"] = "custom:gone.wav";
+        Settings().ActiveSoundEvents()["NewMail"] = "custom:gone.wav";
         Service().Play(SoundEvent.NewMail);
         AssertPlayed("builtin:arrived");
     }
@@ -394,7 +394,7 @@ public sealed class SoundServiceTests : IDisposable
     {
         File.WriteAllBytes(Path.Combine(_folder, "Bad.wav"), [1]);
         Settings().PlayEventSounds = true;
-        Settings().SoundEvents["NewMail"] = "custom:Bad.wav";
+        Settings().ActiveSoundEvents()["NewMail"] = "custom:Bad.wav";
         _output.FailOnlyFor = "custom:Bad.wav";
 
         Service().Play(SoundEvent.NewMail);
@@ -427,7 +427,7 @@ public sealed class SoundServiceTests : IDisposable
     public void AToastStaysSilentForAnEventSetToNone()
     {
         Settings().PlayEventSounds = true;
-        Settings().SoundEvents["NewMail"] = "none";
+        Settings().ActiveSoundEvents()["NewMail"] = "none";
         Assert.True(Service().SilencesToasts);
         Assert.False(Service().IsAudible(SoundEvent.NewMail));
     }
@@ -596,7 +596,7 @@ public sealed class SoundServiceTests : IDisposable
     {
         var asked = new List<string>();
         Settings().PlayEventSounds = true;
-        Settings().SoundPack = "wood";
+        Settings().SoundSchemeId = "wood";
         using var service = new SoundService(_config, _folder, new OpeningOutput(_output), openBuiltIn: (pack, _) =>
         {
             lock (asked) asked.Add(pack);
@@ -613,7 +613,7 @@ public sealed class SoundServiceTests : IDisposable
     public void APreviewPlaysInTheStyleAskedFor()
     {
         var asked = new List<string>();
-        Settings().SoundPack = "wood";
+        Settings().SoundSchemeId = "wood";
         using var service = new SoundService(_config, _folder, new OpeningOutput(_output), openBuiltIn: (pack, _) =>
         {
             lock (asked) asked.Add(pack);
@@ -642,7 +642,7 @@ public sealed class SoundServiceTests : IDisposable
     public void AnUnknownPackFallsBackToTheDefaultPack()
     {
         Settings().PlayEventSounds = true;
-        Settings().SoundPack = "no such pack";
+        Settings().SoundSchemeId = "no such pack";
         using var service = new SoundService(_config, _folder, _output);
         service.Play(SoundEvent.MessageSent);
         Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5)));
@@ -663,7 +663,7 @@ public sealed class SoundServiceTests : IDisposable
         Settings().PlayEventSounds = on;
         Settings().MuteSounds = muted;
         Settings().SoundVolume = volume;
-        if (choice is not null) Settings().SoundEvents["NewMail"] = choice;
+        if (choice is not null) Settings().ActiveSoundEvents()["NewMail"] = choice;
 
         Assert.Equal(expected, Service().IsAudible(SoundEvent.NewMail));
     }

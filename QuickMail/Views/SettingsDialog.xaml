@@ -847,13 +847,42 @@
                                   SelectedItem="{Binding SelectedSoundVolume, Mode=TwoWay}"
                                   DisplayMemberPath="Label"/>
 
-                        <Label Content="St_yle:" Target="{Binding ElementName=SoundStyleCombo}" Padding="0,0,0,2"/>
-                        <ComboBox x:Name="SoundStyleCombo" AutomationProperties.Name="Style" Width="150" HorizontalAlignment="Left" Margin="0,0,0,12"
-                                  ItemsSource="{Binding SoundPacks}"
-                                  SelectedItem="{Binding SelectedSoundPack, Mode=TwoWay}"
-                                  DisplayMemberPath="Label"/>
+                        <!-- Sound schemes (#932). Access keys: every letter of "Sound scheme" but O was taken, and
+                             Rename and Import have none left (L M V E D R F are this tab's, G A K U W P S C the
+                             tabs' and dialog's). -->
+                        <Label Content="S_ound scheme:" Target="{Binding ElementName=SoundSchemeCombo}" Padding="0,0,0,2"/>
+                        <ComboBox x:Name="SoundSchemeCombo" AutomationProperties.Name="Sound scheme" Width="220" HorizontalAlignment="Left" Margin="0,0,0,6"
+                                  ItemsSource="{Binding SoundSchemes}"
+                                  SelectedItem="{Binding SelectedSoundScheme, Mode=TwoWay}"
+                                  DisplayMemberPath="Name"/>
+                        <WrapPanel Margin="0,0,0,4">
+                            <Button x:Name="NewSoundSchemeButton" Content="_New scheme…" AutomationProperties.Name="New scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="NewSoundSchemeButton_Click"/>
+                            <Button x:Name="CopySoundSchemeButton" Content="Cop_y scheme…" AutomationProperties.Name="Copy scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="CopySoundSchemeButton_Click"/>
+                            <Button x:Name="RenameSoundSchemeButton" Content="Rename scheme…" AutomationProperties.Name="Rename scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="RenameSoundSchemeButton_Click"
+                                    IsEnabled="{Binding IsUserSchemeSelected}"/>
+                            <Button x:Name="DeleteSoundSchemeButton" Content="Dele_te scheme…" AutomationProperties.Name="Delete scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="DeleteSoundSchemeButton_Click"
+                                    IsEnabled="{Binding IsUserSchemeSelected}"/>
+                            <Button x:Name="ResetSoundSchemeButton" Content="Reset sc_heme…" AutomationProperties.Name="Reset scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Command="{Binding ResetSchemeCommand}"
+                                    IsEnabled="{Binding CanResetScheme}"/>
+                        </WrapPanel>
+                        <WrapPanel Margin="0,0,0,4">
+                            <Button x:Name="ExportSoundSchemeButton" Content="E_xport scheme…" AutomationProperties.Name="Export scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Command="{Binding ExportSchemeCommand}"/>
+                            <Button x:Name="ImportSoundSchemeButton" Content="Import scheme…" AutomationProperties.Name="Import scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Command="{Binding ImportSchemeCommand}"/>
+                        </WrapPanel>
+                        <TextBlock Text="{Binding SoundSchemeMessage}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                   Visibility="{Binding HasSoundSchemeMessage, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                         <Label Content="Sound _events:" Target="{Binding ElementName=SoundEventList}" Padding="0,0,0,2"/>
+                        <!-- Not a tab stop and not announced: each row already says its sound. -->
+                        <TextBlock x:Name="SchemeSoundCountText" Text="{Binding SchemeSoundCount}" Margin="0,0,0,4"
+                                   Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"/>
                         <ListBox x:Name="SoundEventList" AutomationProperties.Name="Sound events" Height="170" Margin="0,0,0,12"
                                  ItemsSource="{Binding SoundEventRows}"
                                  SelectedItem="{Binding SelectedSoundEvent, Mode=TwoWay}"
@@ -876,8 +905,11 @@
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="PreviewSoundButton" Content="P_review" MinWidth="90" Margin="0,0,8,0"
                                     Command="{Binding PreviewSoundCommand}"/>
-                            <Button x:Name="ChooseSoundFileButton" Content="Choose _File…" MinWidth="110"
+                            <Button x:Name="ChooseSoundFileButton" Content="Choose _File…" MinWidth="110" Margin="0,0,8,0"
                                     Click="ChooseSoundFileButton_Click"/>
+                            <Button x:Name="RemoveSoundFileButton" Content="Remove f_ile…" AutomationProperties.Name="Remove file" MinWidth="110"
+                                    Command="{Binding RemoveSoundFileCommand}"
+                                    IsEnabled="{Binding CanRemoveSoundFile}"/>
                         </StackPanel>
                         <TextBlock Text="{Binding SoundFileMessage}" TextWrapping="Wrap" Margin="0,8,0,0"
                                    Visibility="{Binding HasSoundFileMessage, Converter={StaticResource BoolToVisibilityConverter}}"/>

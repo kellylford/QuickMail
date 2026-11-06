@@ -33,12 +33,12 @@ public partial class ServerRuleEditorViewModel
     /// <summary>Whether the sound's own controls are available. A disabled control drops out of the Tab order.</summary>
     public bool IsPlaySoundSelected => PlaySound && CanPlaySound;
 
-    public ObservableCollection<SoundChoice> RuleSoundChoices { get; } = [.. SoundChoiceList.BuiltIn()];
+    public ObservableCollection<SoundChoice> RuleSoundChoices { get; } = [.. SoundChoiceList.ForRules()];
 
     /// <summary>Set by the View: asks for a sound file and returns its path, or null if cancelled.</summary>
     public Func<string?>? PickSoundFileRequested { get; set; }
 
-    private static SoundChoice DefaultRuleChoice() => SoundChoiceList.BuiltIn()
+    private static SoundChoice DefaultRuleChoice() => SoundChoiceList.ForRules()
         .First(c => c.Stored == SoundRef.BuiltIn(SoundCatalog.DefaultRuleSound).ToStored());
 
     /// <summary>Gives the editor what it needs to list custom sounds, preview them and add new ones. Set by the owner.</summary>

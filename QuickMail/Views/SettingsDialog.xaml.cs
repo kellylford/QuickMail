@@ -20,23 +20,100 @@ public partial class SettingsDialog : Window
         InitializeComponent();
         DataContext = vm;
         vm.DiagnosticsAnnouncementRequested += OnDiagnosticsAnnouncement;
-        vm.SoundFileRefused += OnSoundFileRefused;
+        vm.SoundResultAnnounced += OnSoundResult;
+        vm.ConfirmRequested ??= Confirm;
         Closed += (_, _) =>
         {
             vm.DiagnosticsAnnouncementRequested -= OnDiagnosticsAnnouncement;
-            vm.SoundFileRefused -= OnSoundFileRefused;
+            vm.SoundResultAnnounced -= OnSoundResult;
+            _schemeNameDialog?.Close();
             vm.StopSounds();
         };
     }
 
-    private void OnSoundFileRefused(string reason) =>
-        AccessibilityHelper.Announce(this, reason, interrupt: true, AnnouncementCategory.Result);
+    private SoundSchemeNameDialog? _schemeNameDialog;
+
+    private void OnSoundResult(string text) =>
+        AccessibilityHelper.Announce(this, text, interrupt: true, AnnouncementCategory.Result);
+
+    // A message box has no editable text, so a modal one is safe here (CLAUDE.md, Modal Dialog Rules).
+    private bool Confirm(string question, string title) =>
+        MessageBox.Show(this, question, title, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
 
     private void ChooseSoundFileButton_Click(object sender, RoutedEventArgs e)
     {
-        _vm.ChooseSoundFileCommand.Execute(null);
-        // The file dialog gives focus back on its own only some of the time.
-        ChooseSoundFileButton.Focus();
+        // On success, Sound for this event, so its value, the new file, is read (#932). Otherwise back
+        // here: the file dialog gives focus back on its own only some of the time.
+        if (_vm.TryChooseSoundFile()) SoundChoiceCombo.Focus();
+        else ChooseSoundFileButton.Focus();
+    }
+
+    // ── Sound schemes (#932) ─────────────────────────────────────────────────────
+
+    private void NewSoundSchemeButton_Click(object sender, RoutedEventArgs e) =>
+        AskSchemeName("New Sound Scheme", string.Empty, name => _vm.CreateScheme(name, copyShown: false) ? null : _vm.SchemeNameProblem(name),
+            () => SoundEventList);
+
+    private void CopySoundSchemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var from = _vm.SelectedSoundScheme?.Name ?? string.Empty;
+        AskSchemeName("Copy Sound Scheme", from.Length == 0 ? string.Empty : $"{from} copy",
+            name => _vm.CreateScheme(name, copyShown: true) ? null : _vm.SchemeNameProblem(name),
+            () => SoundEventList);
+    }
+
+    private void RenameSoundSchemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SelectedSoundScheme is not { IsBuiltIn: false } scheme) return;
+        AskSchemeName("Rename Sound Scheme", scheme.Name,
+            name => _vm.RenameSelectedScheme(name) ? null : _vm.SchemeNameProblem(name, _vm.SelectedSoundScheme),
+            () => SoundSchemeCombo);
+    }
+
+    private void DeleteSoundSchemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Rename and Delete are disabled now, so focus can't stay on this button.
+        if (_vm.DeleteSelectedScheme()) SoundSchemeCombo.Focus();
+    }
+
+    /// <summary>
+    /// Asks for a name in a modeless dialog, then puts focus where the person goes next. A list's item,
+    /// not the list, takes focus, so the row is read.
+    /// </summary>
+    private void AskSchemeName(string title, string initialName, Func<string, string?> accept, Func<IInputElement> focusAfter)
+    {
+        if (_schemeNameDialog is not null)
+        {
+            _schemeNameDialog.Activate();
+            return;
+        }
+
+        var returnTo = Keyboard.FocusedElement;
+        var dialog = new SoundSchemeNameDialog(title, initialName, accept) { Owner = this };
+        _schemeNameDialog = dialog;
+        dialog.Closed += (_, _) =>
+        {
+            _schemeNameDialog = null;
+            Activate();
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (!dialog.Accepted)
+                {
+                    returnTo?.Focus();
+                    return;
+                }
+                var target = focusAfter();
+                if (target == SoundEventList && _vm.SelectedSoundEvent is { } row)
+                {
+                    SoundEventList.ScrollIntoView(row);
+                    SoundEventList.UpdateLayout();
+                    if (SoundEventList.ItemContainerGenerator.ContainerFromItem(row) is UIElement item)
+                        target = item;
+                }
+                target.Focus();
+            }, DispatcherPriority.Input);
+        };
+        dialog.Show();
     }
 
     // Meta-announcement about screenshot capture (#175): force bypasses the

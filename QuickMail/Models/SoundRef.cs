@@ -12,12 +12,17 @@ public enum SoundRefKind
 }
 
 /// <summary>
-/// A chosen sound as stored in config.ini and rules.json: <c>none</c>, <c>builtin:&lt;name&gt;</c> or
-/// <c>custom:&lt;file&gt;</c>. A custom sound is only ever a bare file name inside the profile's sounds
+/// A chosen sound as stored in config.ini and rules.json: <c>none</c>, <c>builtin:&lt;name&gt;</c>,
+/// <c>builtin:&lt;pack&gt;/&lt;name&gt;</c> or <c>custom:&lt;file&gt;</c>. A built-in sound with no pack plays in the
+/// current scheme's pack (Glass for a scheme of the person's own); one with a pack always plays in that
+/// pack (#932). A custom sound is only ever a bare file name inside the profile's sounds
 /// folder, because these values arrive in settings files from elsewhere: a stored path must not be able
 /// to point anywhere else on disk.
 /// </summary>
-public readonly record struct SoundRef(SoundRefKind Kind, string Name)
+/// <param name="Kind">What sort of sound.</param>
+/// <param name="Name">The built-in sound's name, or the custom file's name.</param>
+/// <param name="Pack">For a built-in sound, the pack it always plays in; null for the scheme's own.</param>
+public readonly record struct SoundRef(SoundRefKind Kind, string Name, string? Pack = null)
 {
     private const string BuiltInPrefix = "builtin:";
     private const string CustomPrefix = "custom:";
@@ -25,13 +30,14 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name)
 
     public static SoundRef None => new(SoundRefKind.None, string.Empty);
 
-    public static SoundRef BuiltIn(string name) => new(SoundRefKind.BuiltIn, name);
+    public static SoundRef BuiltIn(string name, string? pack = null) => new(SoundRefKind.BuiltIn, name, pack);
 
     public static SoundRef Custom(string fileName) => new(SoundRefKind.Custom, fileName);
 
     /// <summary>What to call the sound on screen and in speech.</summary>
     public string DisplayName => Kind switch
     {
+        SoundRefKind.BuiltIn when Pack is not null => $"{SoundCatalog.BuiltInLabel(Name)} ({SoundCatalog.PackLabel(Pack)})",
         SoundRefKind.BuiltIn => SoundCatalog.BuiltInLabel(Name),
         SoundRefKind.Custom => Name,
         _ => "None",
@@ -40,6 +46,7 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name)
     /// <summary>The form stored in config.ini and rules.json.</summary>
     public string ToStored() => Kind switch
     {
+        SoundRefKind.BuiltIn when Pack is not null => BuiltInPrefix + Pack + "/" + Name,
         SoundRefKind.BuiltIn => BuiltInPrefix + Name,
         SoundRefKind.Custom => CustomPrefix + Name,
         _ => NoneValue,
@@ -56,8 +63,17 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name)
         if (text.StartsWith(BuiltInPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var name = text[BuiltInPrefix.Length..];
+            string? pack = null;
+            var slash = name.IndexOf('/');
+            if (slash >= 0)
+            {
+                pack = name[..slash];
+                name = name[(slash + 1)..];
+                // An unknown pack is refused like an unknown name: it may be from a newer QuickMail.
+                if (!SoundCatalog.Packs.Any(p => p.Id == pack)) return false;
+            }
             if (!SoundCatalog.BuiltInSounds.Contains(name, StringComparer.Ordinal)) return false;
-            sound = BuiltIn(name);
+            sound = BuiltIn(name, pack);
             return true;
         }
 

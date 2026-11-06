@@ -78,10 +78,13 @@ public class SoundCatalogTests
         Assert.Equal(listed.Count, SoundCatalog.Events.Select(e => e.ConfigKey).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
+    private static SoundScheme Glass(Dictionary<string, string>? stored = null) =>
+        new("glass", "Glass", isBuiltIn: true, pack: "glass", events: stored);
+
     [Fact]
     public void EveryEventHasItsOwnSoundByDefault()
     {
-        var none = new Dictionary<string, string>();
+        var none = Glass();
         var sounds = Enum.GetValues<SoundEvent>().Select(e => SoundCatalog.Resolve(e, none)).ToList();
 
         Assert.All(sounds, s => Assert.Equal(SoundRefKind.BuiltIn, s.Kind));
@@ -90,20 +93,20 @@ public class SoundCatalogTests
 
     [Fact]
     public void AnEventWithNoStoredChoiceUsesItsBuiltInSound() =>
-        Assert.Equal(SoundRef.BuiltIn("arrived"), SoundCatalog.Resolve(SoundEvent.NewMail, new Dictionary<string, string>()));
+        Assert.Equal(SoundRef.BuiltIn("arrived"), SoundCatalog.Resolve(SoundEvent.NewMail, Glass()));
 
     [Fact]
     public void AnEventCanBeTurnedOffOnItsOwn()
     {
         var stored = new Dictionary<string, string> { ["NewMail"] = "none" };
-        Assert.Equal(SoundRef.None, SoundCatalog.Resolve(SoundEvent.NewMail, stored));
+        Assert.Equal(SoundRef.None, SoundCatalog.Resolve(SoundEvent.NewMail, Glass(stored)));
     }
 
     [Fact]
     public void AnUnreadableStoredChoiceFallsBackRatherThanSilencingTheEvent()
     {
         var stored = new Dictionary<string, string> { ["NewMail"] = @"custom:..\..\x.wav" };
-        Assert.Equal(SoundRef.BuiltIn("arrived"), SoundCatalog.Resolve(SoundEvent.NewMail, stored));
+        Assert.Equal(SoundRef.BuiltIn("arrived"), SoundCatalog.Resolve(SoundEvent.NewMail, Glass(stored)));
     }
 
     // ── Built-in sounds ────────────────────────────────────────────────────────
@@ -225,8 +228,8 @@ public class SoundCatalogTests
         Assert.False(config.PlayEventSounds);
         Assert.False(config.MuteSounds);
         Assert.Equal(80, config.SoundVolume);
-        Assert.Equal(SoundCatalog.DefaultPack, config.SoundPack);
-        Assert.Empty(config.SoundEvents);
+        Assert.Equal(SoundCatalog.DefaultPack, config.SoundSchemeId);
+        Assert.Empty(config.ActiveSoundEvents());
     }
 
     [Fact]
@@ -238,18 +241,18 @@ public class SoundCatalogTests
         config.PlayEventSounds = true;
         config.MuteSounds = true;
         config.SoundVolume = 40;
-        config.SoundPack = "wood";
-        config.SoundEvents["NewMail"] = "custom:My Chime.wav";
-        config.SoundEvents["MessageSent"] = "none";
+        config.SoundSchemeId = "wood";
+        config.ActiveSoundEvents()["NewMail"] = "custom:My Chime.wav";
+        config.ActiveSoundEvents()["MessageSent"] = "none";
         service.Save(config);
 
         var reloaded = new ConfigService(profile).Load();
         Assert.True(reloaded.PlayEventSounds);
         Assert.True(reloaded.MuteSounds);
         Assert.Equal(40, reloaded.SoundVolume);
-        Assert.Equal("wood", reloaded.SoundPack);
-        Assert.Equal("custom:My Chime.wav", reloaded.SoundEvents["NewMail"]);
-        Assert.Equal("none", reloaded.SoundEvents["MessageSent"]);
+        Assert.Equal("wood", reloaded.SoundSchemeId);
+        Assert.Equal("custom:My Chime.wav", reloaded.ActiveSoundEvents()["NewMail"]);
+        Assert.Equal("none", reloaded.ActiveSoundEvents()["MessageSent"]);
     }
 
     [Fact]
@@ -260,7 +263,7 @@ public class SoundCatalogTests
         var profile = MakeTempProfile();
         var service = new ConfigService(profile);
         var config = service.Load();
-        config.SoundEvents["NewMail"] = "none";
+        config.ActiveSoundEvents()["NewMail"] = "none";
         config.Windowing.ConfirmCloseTabWithUnsaved = !config.Windowing.ConfirmCloseTabWithUnsaved;
         config.ShowDeclinedEvents = true;
         service.Save(config);
@@ -268,7 +271,7 @@ public class SoundCatalogTests
         var reloaded = new ConfigService(profile).Load();
         Assert.Equal(config.Windowing.ConfirmCloseTabWithUnsaved, reloaded.Windowing.ConfirmCloseTabWithUnsaved);
         Assert.True(reloaded.ShowDeclinedEvents);
-        Assert.Equal("none", reloaded.SoundEvents["NewMail"]);
+        Assert.Equal("none", reloaded.ActiveSoundEvents()["NewMail"]);
     }
 
     [Theory]

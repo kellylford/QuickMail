@@ -65,6 +65,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>For the windows that play or preview sounds; null where sound isn't available.</summary>
     internal ISoundService? Sounds => _sounds;
+
+    /// <summary>The stored sound of every rule that plays one (#932). Empty if the rules can't be read.</summary>
+    internal IEnumerable<string?> RuleSounds()
+    {
+        try
+        {
+            return _ruleService.LoadRules().Where(r => r.AllActions().Contains(RuleAction.PlaySound)).Select(r => r.Sound).ToList();
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Reading the rules' sounds failed", ex);
+            return [];
+        }
+    }
     // A single evaluation yielding more genuinely-new messages than this is a catch-up backlog
     // (mail that piled up while the machine slept or the connection was down), not real-time
     // arrivals — so it does not raise a toast. See MaybeNotifyNewMail.

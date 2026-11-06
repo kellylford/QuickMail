@@ -1072,19 +1072,19 @@ public sealed class SettingsTransferTests : IDisposable
         // [sounds] lists only what was changed, so this desktop saying nothing about NewMail means the default.
         var desktop = SeedDesktop();
         var desktopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(desktop, "config.ini")));
-        desktopCfg.SoundEvents["MessageSent"] = "none";
+        desktopCfg.ActiveSoundEvents()["MessageSent"] = "none";
         File.WriteAllText(Path.Combine(desktop, "config.ini"), ConfigService.BuildFileText(desktopCfg));
 
         var laptop = SeedLaptop();
         var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
-        laptopCfg.SoundEvents["NewMail"] = "custom:Laptop.wav";
+        laptopCfg.ActiveSoundEvents()["NewMail"] = "custom:Laptop.wav";
         File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
 
         Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
 
         var imported = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
-        Assert.Equal("none", imported.SoundEvents["MessageSent"]);
-        Assert.False(imported.SoundEvents.ContainsKey("NewMail"));
+        Assert.Equal("none", imported.ActiveSoundEvents()["MessageSent"]);
+        Assert.False(imported.ActiveSoundEvents().ContainsKey("NewMail"));
     }
 
     [Fact]
@@ -1096,12 +1096,65 @@ public sealed class SettingsTransferTests : IDisposable
 
         var laptop = SeedLaptop();
         var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
-        laptopCfg.SoundEvents["NewMail"] = "none";
+        laptopCfg.ActiveSoundEvents()["NewMail"] = "none";
         File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
 
         Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
 
-        Assert.Equal("none", ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini"))).SoundEvents["NewMail"]);
+        Assert.Equal("none", ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini"))).ActiveSoundEvents()["NewMail"]);
+    }
+
+    [Fact]
+    public void SoundSchemes_AllTravelAndReplaceThisComputersOwn()
+    {
+        // #932: every scheme travels, the person's own included, with the scheme in use.
+        var desktop = SeedDesktop();
+        var desktopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(desktop, "config.ini")));
+        desktopCfg.SoundSchemes["wood"] = new SoundScheme("wood", "Wood", isBuiltIn: true, pack: "wood",
+            events: new Dictionary<string, string> { ["TrashEmptied"] = "none" });
+        desktopCfg.SoundSchemes["user-calm"] = new SoundScheme("user-calm", "Calm = quiet", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Desk.wav" });
+        desktopCfg.SoundSchemeId = "user-calm";
+        File.WriteAllText(Path.Combine(desktop, "config.ini"), ConfigService.BuildFileText(desktopCfg));
+        Directory.CreateDirectory(Path.Combine(desktop, "sounds"));
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", "Desk.wav"), [1, 2, 3]);
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", "Unused.wav"), [4, 5, 6]);
+
+        var laptop = SeedLaptop();
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.SoundSchemes["user-mine"] = new SoundScheme("user-mine", "Laptop only", isBuiltIn: false);
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        var imported = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        Assert.Equal("user-calm", imported.SoundSchemeId);
+        Assert.Equal("Calm = quiet", imported.SoundSchemes["user-calm"].Name);
+        Assert.Equal("custom:Desk.wav", imported.SoundSchemes["user-calm"].Events["NewMail"]);
+        Assert.Equal("none", imported.SoundSchemes["wood"].Events["TrashEmptied"]);
+        Assert.False(imported.SoundSchemes.ContainsKey("user-mine"));
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Desk.wav")));
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Unused.wav")));
+    }
+
+    [Fact]
+    public void SoundSchemes_AFileFrom0867MovesItsListIntoTheStyleItWasChosenWith()
+    {
+        var desktop = SeedDesktop();
+        var path = Path.Combine(desktop, "config.ini");
+        var lines = File.ReadAllLines(path)
+            .Select(l => l.StartsWith("SoundScheme =", StringComparison.Ordinal) ? "SoundPack = softbell" : l)
+            .Append("[sounds]").Append("NewMail = none");
+        File.WriteAllLines(path, lines);
+
+        var laptop = SeedLaptop();
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        var imported = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        Assert.Equal("softbell", imported.SoundSchemeId);
+        Assert.Equal("none", imported.SoundSchemes["softbell"].Events["NewMail"]);
+        Assert.False(imported.SoundSchemes.ContainsKey("glass"));
+        Assert.DoesNotContain("[sounds]", File.ReadAllText(Path.Combine(laptop, "config.ini")), StringComparison.Ordinal);
     }
 
     [Fact]
