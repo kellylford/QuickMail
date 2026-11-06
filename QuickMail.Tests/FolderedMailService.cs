@@ -68,16 +68,35 @@ internal sealed class FolderedMailService : IMailService
 
     public bool CanAppendMessages(Guid accountId) => !CannotAppend.Contains(accountId);
 
+    /// <summary>When set, every append waits for it: lets a test act while a transfer is under way.</summary>
+    public TaskCompletionSource? AppendGate { get; set; }
+
     public async Task AppendMessageAsync(Guid accountId, string folderName, Stream original, bool isRead, bool isFlagged,
                                          DateTimeOffset received, CancellationToken ct = default)
     {
+        if (AppendGate is { } gate) await gate.Task;
         var message = await MimeKit.MimeMessage.LoadAsync(original, ct);
         if (message.MessageId is { } id && FailAppendOf.Contains(id))
             throw new InvalidOperationException("the other server said no");
         Appended.Add((accountId, folderName, message.Subject, isRead, isFlagged, received));
     }
-    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
-    public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>When set, putting messages in Trash fails, as a dropped connection to the source would.</summary>
+    public bool FailTrash { get; set; }
+
+    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        if (FailTrash) return Task.FromException(new InvalidOperationException("connection lost"));
+        foreach (var id in messageIds) Trashed.Add((accountId, folderName, id));
+        return Task.CompletedTask;
+    }
+    /// <summary>Messages deleted outright, as (account, folder, id).</summary>
+    public List<(Guid AccountId, string Folder, string Id)> PermanentlyDeleted { get; } = new();
+
+    public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        foreach (var id in messageIds) PermanentlyDeleted.Add((accountId, folderName, id));
+        return Task.CompletedTask;
+    }
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
     public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
     public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
@@ -115,8 +134,12 @@ internal sealed class FolderedMailService : IMailService
     /// <summary>How many originals have been downloaded.</summary>
     public int OriginalsFetched { get; private set; }
 
+    /// <summary>Per message id, a gate its original download waits for.</summary>
+    public Dictionary<string, TaskCompletionSource> OriginalGates { get; } = new();
+
     public async Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
     {
+        if (OriginalGates.TryGetValue(messageId, out var gate)) await gate.Task;
         if (OriginalsUnavailable.Contains(messageId))
             throw new MessageOriginalUnavailableException("This account cannot provide the original message.");
         OriginalsFetched++;

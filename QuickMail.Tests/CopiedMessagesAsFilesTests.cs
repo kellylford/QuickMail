@@ -40,7 +40,8 @@ public sealed class CopiedMessagesAsFilesTests : IDisposable
         public bool SetText(string text) { Marker = null; Files = []; return true; }
         public string GetText() => string.Empty;
         public bool SetFiles(IReadOnlyList<string> paths, string marker) { Marker = marker; Files = paths; FileSets++; return true; }
-        public bool SetMarker(string marker) { Marker = marker; Files = []; return true; }
+        public bool Busy { get; set; }
+        public bool SetMarker(string marker) { if (Busy) return false; Marker = marker; Files = []; return true; }
         public string? GetMarker() => Marker;
 
         public void CopyTextElsewhere() => SetText("something else");
@@ -381,5 +382,59 @@ public sealed class CopiedMessagesAsFilesTests : IDisposable
         // Nothing spoken through the main window: at most silent status-bar text.
         Assert.All(f.Announced.Announced.Skip(spokenBefore), a => Assert.Equal(AnnouncementCategory.Silent, a.Category));
         Assert.Equal("a.txt copied.", f.Vm.StatusText);           // still shown in its status bar
+    }
+
+    // ── Found in review ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task WhenTheClipboardIsInUse_TheCopyFailsAndSaysSo()
+    {
+        // It used to say "Message copied." and then, on Ctrl+V, "Nothing to paste".
+        var f = await CreateAsync();
+        f.Clipboard.Busy = true;
+
+        await f.Vm.CopyMessagesToClipboardAsync([f.Row("a0")]);
+
+        Assert.True(f.Vm.MessageClipboard.IsEmpty);
+        Assert.Equal(AnnouncementCategory.Result, f.Announced.Last.Category);
+        Assert.Contains("the clipboard is in use by another program", f.Announced.Last.Text);
+    }
+
+    [Fact]
+    public async Task ACopyOvertakenByANewerOne_DoesNotReportItsFailure()
+    {
+        // The newer copy deletes the older one's files as it starts, so the older one's download fails;
+        // the user is no longer waiting for it and must not hear about it.
+        var f = await CreateAsync();
+        var gate = new TaskCompletionSource();
+        f.Mail.OriginalGates["a0"] = gate;
+        f.Mail.OriginalsUnavailable.Add("a0");
+
+        var older = f.Vm.CopyMessagesToClipboardAsync([f.Row("a0")]);
+        await f.Vm.CopyMessagesToClipboardAsync([f.Row("b0")]);
+        gate.SetResult();
+        await older;
+
+        Assert.Equal(("Message copied.", AnnouncementCategory.Result), f.Announced.Last);
+        Assert.DoesNotContain(f.Announced.Announced, a => a.Text.Contains("not as files"));
+        Assert.Equal("b0", Assert.Single(f.Vm.MessageClipboard.Messages).MessageId);
+    }
+
+    [Fact]
+    public async Task PastingACut_StopsItsFilesBeingMade_WithoutAFalseFailure()
+    {
+        // Ctrl+X then Ctrl+V at once: the move must not race the download of the same originals.
+        var f = await CreateAsync();
+        var gate = new TaskCompletionSource();
+        f.Mail.OriginalGates["a0"] = gate;
+
+        var cut = f.Vm.CutMessagesToClipboardAsync([f.Row("a0")]);
+        await f.Vm.PasteMessagesAsync(f.Archive);
+        f.Mail.OriginalsUnavailable.Add("a0");   // it has moved: its original is no longer there
+        gate.SetResult();
+        await cut;
+
+        Assert.Single(f.Mail.Transfers);
+        Assert.DoesNotContain(f.Announced.Announced, a => a.Text.Contains("not as files"));
     }
 }

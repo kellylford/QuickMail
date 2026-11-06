@@ -724,7 +724,11 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _clipboardStaging?.DeleteMine(); // copied messages and attachments: nothing can paste them once we are gone
+        // Copied messages and attachments. Kept while the clipboard still offers them: Windows holds the
+        // paths after QuickMail has gone, and pasting into Explorer afterwards would find nothing. The next
+        // start tidies them (DeleteAbandoned). Otherwise nothing can paste them, so they go now.
+        if (_clipboardStaging != null && ClipboardService.Default.GetMarker() == null)
+            _clipboardStaging.DeleteMine();
         _changeNotifier?.Dispose(); // stops all watchers (IDLE + Graph poll) + severs the event chain
         _connectivity?.Dispose();   // stops listening to NetworkChange; after the notifiers, which feed it
         _graphNotifier?.Dispose();  // disposes the Graph poll CTS (StopWatchers already ran; idempotent)

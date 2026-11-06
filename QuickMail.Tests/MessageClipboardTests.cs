@@ -178,6 +178,7 @@ public class MessageClipboardTests
         public required MailFolderModel Inbox { get; init; }
         public required MailFolderModel Archive { get; init; }
         public required MailFolderModel HomeInbox { get; init; }
+        public required MailFolderModel Trash { get; init; }
 
         public MailMessageSummary Row(string id) => Vm.Messages.First(m => m.MessageId == id);
 
@@ -185,13 +186,15 @@ public class MessageClipboardTests
         {
             var inbox     = Folder("INBOX", SpecialFolderKind.Inbox);
             var archive   = Folder("Archive", SpecialFolderKind.Archive);
+            var trash     = Folder("Trash", SpecialFolderKind.Trash);
             var homeInbox = Folder("INBOX", SpecialFolderKind.Inbox, Home);
             var mail = new FolderedMailService(
-                new Dictionary<Guid, List<MailFolderModel>> { [Work] = [inbox, archive], [Home] = [homeInbox] },
+                new Dictionary<Guid, List<MailFolderModel>> { [Work] = [inbox, archive, trash], [Home] = [homeInbox] },
                 new Dictionary<(Guid, string), List<MailMessageSummary>>
                 {
                     [(Work, "INBOX")]   = [Msg("a", daysAgo: 0), Msg("b", daysAgo: 1), Msg("c", daysAgo: 2)],
                     [(Work, "Archive")] = [Msg("z", folder: "Archive", daysAgo: 5)],
+                    [(Work, "Trash")]   = [Msg("t", folder: "Trash", daysAgo: 6)],
                 });
             var sync = new RecordingSyncService();
 
@@ -210,7 +213,7 @@ public class MessageClipboardTests
             return new Fixture
             {
                 Vm = vm, Mail = mail, Sync = sync, Announced = StatusAnnouncementRecorder.Watch(vm),
-                Inbox = inbox, Archive = archive, HomeInbox = homeInbox,
+                Inbox = inbox, Archive = archive, HomeInbox = homeInbox, Trash = trash,
             };
         }
     }
@@ -520,5 +523,72 @@ public class MessageClipboardTests
 
         Assert.Empty(f.Mail.Transfers);
         Assert.Equal(Home, Assert.Single(f.Mail.Appended).AccountId);
+    }
+
+    // ── Found in review ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AHeldCtrlV_PastesOnce()
+    {
+        // The first paste is still adding messages one at a time; the cut is cleared only when it
+        // finishes, so a second paste started meanwhile would copy them all across again.
+        var f = await Fixture.CreateAsync();
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("a")]);
+        f.Mail.AppendGate = new TaskCompletionSource();
+
+        var first  = f.Vm.PasteMessagesAsync(f.HomeInbox);
+        var second = f.Vm.PasteMessagesAsync(f.HomeInbox);
+        Assert.True(second.IsCompleted);   // turned away at once
+        f.Mail.AppendGate.SetResult();
+        await first;
+
+        Assert.Single(f.Mail.Appended);
+        Assert.Single(f.Mail.Trashed);
+    }
+
+    [Fact]
+    public async Task AnOriginalThatCouldNotBeRemoved_IsNotPastedAcrossASecondTime()
+    {
+        var f = await Fixture.CreateAsync();
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("a"), f.Row("b")]);
+        f.Mail.FailTrash = true;
+
+        await f.Vm.PasteMessagesAsync(f.HomeInbox);
+
+        Assert.Equal(2, f.Mail.Appended.Count);
+        Assert.Contains(f.Vm.Messages, m => m.MessageId == "a");   // still there, so still listed
+        Assert.Equal(AnnouncementCategory.Result, f.Announced.Last.Category);
+        Assert.Contains("2 more were copied there, but their originals could not be removed", f.Announced.Last.Text);
+
+        // Pasting again must not make second copies of messages already copied across.
+        await f.Vm.PasteMessagesAsync(f.HomeInbox);
+        Assert.Equal(2, f.Mail.Appended.Count);
+    }
+
+    [Fact]
+    public async Task ACutFromTrash_IsDeletedOnceItLands_NotPutInTrashAgain()
+    {
+        var f = await Fixture.CreateAsync();
+        await f.Vm.SelectFolderCommand.ExecuteAsync(f.Trash);
+        await f.Vm.CutMessagesToClipboardAsync([f.Vm.Messages.First(m => m.MessageId == "t")]);
+
+        await f.Vm.PasteMessagesAsync(f.HomeInbox);
+
+        Assert.Single(f.Mail.Appended);
+        Assert.Empty(f.Mail.Trashed);
+        Assert.Equal([(Work, "Trash", "t")], f.Mail.PermanentlyDeleted);
+    }
+
+    [Fact]
+    public async Task CopyOrCutWithNothingSelected_SaysSo()
+    {
+        // The Message menu reaches these with nothing selected; it used to close with no word at all.
+        var f = await Fixture.CreateAsync();
+
+        await f.Vm.CopyMessagesToClipboardAsync([]);
+        Assert.Equal(("Select messages to copy first.", AnnouncementCategory.Result), f.Announced.Last);
+
+        await f.Vm.CutMessagesToClipboardAsync([]);
+        Assert.Equal(("Select messages to cut first.", AnnouncementCategory.Result), f.Announced.Last);
     }
 }

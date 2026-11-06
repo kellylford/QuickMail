@@ -28,50 +28,11 @@ public sealed class ClipboardService : IClipboardService
     public bool SetText(string text)
     {
         if (string.IsNullOrEmpty(text)) return false;
-
-        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
-        {
-            try
-            {
-                Clipboard.SetText(text);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                if (attempt == MaxAttempts)
-                {
-                    LogService.Log($"Clipboard: could not copy after {MaxAttempts} attempts — {ex.Message}");
-                    return false;
-                }
-                Thread.Sleep(RetryDelayMs);
-            }
-        }
-
-        return false;
+        return Retry("copy", () => { Clipboard.SetText(text); return true; }, fallback: false);
     }
 
-    public string GetText()
-    {
-        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
-        {
-            try
-            {
-                return Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty;
-            }
-            catch (Exception ex)
-            {
-                if (attempt == MaxAttempts)
-                {
-                    LogService.Log($"Clipboard: could not read after {MaxAttempts} attempts — {ex.Message}");
-                    return string.Empty;
-                }
-                Thread.Sleep(RetryDelayMs);
-            }
-        }
-
-        return string.Empty;
-    }
-
+    public string GetText() =>
+        Retry("read", () => Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty, fallback: string.Empty);
     /// <summary>
     /// The private clipboard format that says "QuickMail put this here", holding the token of the
     /// copy it belongs to. Every other program ignores it.
