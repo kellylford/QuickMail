@@ -1568,6 +1568,31 @@ public partial class MainWindow : Window
             execute: async () => await CopyMessageToFolderAsync(),
             isAvailable: _vm.CanActOnSelection));
 
+        // Copy, cut and paste messages (#929). Scoped by focus, as Alt+Up/Down are to the account list:
+        // Ctrl+C, Ctrl+X and Ctrl+V must keep their ordinary meaning in every text field and in the
+        // message body, so each is available only in the message area (and, for paste, the folder
+        // tree), and never while a text box inside either has focus (a folder being renamed in place).
+        _registry.Register(new CommandDefinition(
+            id: "mail.copyMessages", category: "Mail", title: "Copy Messages",
+            description: "Copy the selected messages, to paste into another folder",
+            execute: () => _vm.CopyMessagesToClipboard(MessageClipboardTarget()),
+            defaultKey: Key.C, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => IsMessageAreaFocused() && !IsTextEntryFocused() && _vm.CanActOnSelection()));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.cutMessages", category: "Mail", title: "Cut Messages",
+            description: "Cut the selected messages; they move when you paste them into another folder",
+            execute: () => _vm.CutMessagesToClipboard(MessageClipboardTarget()),
+            defaultKey: Key.X, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => IsMessageAreaFocused() && !IsTextEntryFocused() && _vm.CanActOnSelection()));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.pasteMessages", category: "Mail", title: "Paste Messages",
+            description: "Paste copied or cut messages into the selected folder",
+            execute: async () => await PasteMessagesAsync(),
+            defaultKey: Key.V, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => (FolderList.IsKeyboardFocusWithin || IsMessageAreaFocused()) && !IsTextEntryFocused()));
+
         // Save, Save As and Print (#728). Registered here rather than in the VM because what they act
         // on — a multi-selection, a group header's messages — is the window's to resolve, as for
         // Move/Copy above. Save writes the default format into the save folder without asking; Save
@@ -8022,6 +8047,19 @@ public partial class MainWindow : Window
     private async void MenuCopyToFolder_Click(object sender, RoutedEventArgs e)
         => await CopyMessageToFolderAsync();
 
+    private void MenuCopyMessages_Click(object sender, RoutedEventArgs e)
+        => _vm.CopyMessagesToClipboard(MessageClipboardTarget());
+
+    private void MenuCutMessages_Click(object sender, RoutedEventArgs e)
+        => _vm.CutMessagesToClipboard(MessageClipboardTarget());
+
+    private async void MenuPasteMessages_Click(object sender, RoutedEventArgs e)
+        => await PasteMessagesAsync();
+
+    /// <summary>Pastes into the folder the context menu was opened on, and leaves focus in the tree.</summary>
+    private async void FolderContextMenu_PasteMessages_Click(object sender, RoutedEventArgs e)
+        => await _vm.PasteMessagesAsync(GetContextMenuFolderNode(sender)?.Folder, moveFocus: false);
+
     private async Task MoveMessageToFolderAsync()
     {
         // A selected group header wins over the selected message — see SelectedGroupTarget (#566).
@@ -8089,6 +8127,37 @@ public partial class MainWindow : Window
         if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
+    }
+
+    // ── Copy, cut and paste messages (#929) ──────────────────────────────────
+
+    /// <summary>
+    /// What Ctrl+C and Ctrl+X act on: a selected group header's messages, else the selected
+    /// messages. The same rule Move to Folder follows, for the reason <see cref="SelectedGroupTarget"/>
+    /// gives.
+    /// </summary>
+    private IReadOnlyList<MailMessageSummary> MessageClipboardTarget() =>
+        SelectedGroupTarget()?.Messages ?? GetSelectedMessages();
+
+    /// <summary>
+    /// True when a text box has focus, so Ctrl+C, Ctrl+X and Ctrl+V edit its text. The pane-level
+    /// scopes alone would not do: a folder being renamed in place has its text box inside the
+    /// folder tree.
+    /// </summary>
+    private static bool IsTextEntryFocused() => Keyboard.FocusedElement is TextBoxBase;
+
+    /// <summary>
+    /// Pastes into the folder selected in the folder tree when it has focus, or else into the folder
+    /// the message list is showing. From the tree focus stays put; the paste is about that folder.
+    /// </summary>
+    private async Task PasteMessagesAsync()
+    {
+        if (FolderList.IsKeyboardFocusWithin)
+        {
+            await _vm.PasteMessagesAsync((FolderList.SelectedItem as FolderTreeNode)?.Folder, moveFocus: false);
+            return;
+        }
+        await _vm.PasteMessagesAsync(_vm.SelectedFolder);
     }
 
     // ── Save / Save As / Print (#728) ────────────────────────────────────────

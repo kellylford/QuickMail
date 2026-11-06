@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using QuickMail.Models;
@@ -61,8 +62,23 @@ internal sealed class FolderedMailService : IMailService
     public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default) => Task.FromResult("0");
     public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => Task.CompletedTask;
     public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte>());
-    public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => Task.CompletedTask;
-    public Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>Every move and copy asked for, in order, for tests that check what reached the server.</summary>
+    public List<(string Op, Guid AccountId, string From, IReadOnlyList<string> Ids, string To)> Transfers { get; } = new();
+
+    /// <summary>When set, moves and copies throw, as a server that refuses them would.</summary>
+    public bool FailTransfers { get; set; }
+
+    public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
+        => Transfer("copy", accountId, folderName, messageIds, destinationFolder);
+    public Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
+        => Transfer("move", accountId, folderName, messageIds, destinationFolder);
+
+    private Task Transfer(string op, Guid accountId, string from, IList<string> ids, string to)
+    {
+        if (FailTransfers) return Task.FromException(new InvalidOperationException("server said no"));
+        Transfers.Add((op, accountId, from, ids.ToList(), to));
+        return Task.CompletedTask;
+    }
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => Task.CompletedTask;
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;

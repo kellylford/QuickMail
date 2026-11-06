@@ -73,6 +73,12 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Sender Group to Folder"
                       Click="SenderGroupContextMenu_CopyToFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
+                      AutomationProperties.Name="Copy Messages"
+                      Click="MenuCopyMessages_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="Cut Messag_es"
+                      AutomationProperties.Name="Cut Messages"
+                      Click="MenuCutMessages_Click"/>
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Messages As…"
                       AutomationProperties.Name="Save Messages from Sender As"
                       Click="MenuSaveAs_Click"/>
@@ -132,6 +138,12 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Recipient Group to Folder"
                       Click="ToGroupContextMenu_CopyToFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
+                      AutomationProperties.Name="Copy Messages"
+                      Click="MenuCopyMessages_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="Cut Messag_es"
+                      AutomationProperties.Name="Cut Messages"
+                      Click="MenuCutMessages_Click"/>
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Messages As…"
                       AutomationProperties.Name="Save Messages to Recipient As"
                       Click="MenuSaveAs_Click"/>
@@ -192,6 +204,12 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Conversation to Folder"
                       Click="ConversationContextMenu_CopyToFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
+                      AutomationProperties.Name="Copy Messages"
+                      Click="MenuCopyMessages_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="Cut Messag_es"
+                      AutomationProperties.Name="Cut Messages"
+                      Click="MenuCutMessages_Click"/>
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Conversation As…"
                       AutomationProperties.Name="Save Conversation As"
                       Click="MenuSaveAs_Click"/>
@@ -252,6 +270,12 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy to Folder"
                       Click="MessageContextMenu_CopyToFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
+                      AutomationProperties.Name="Copy Messages"
+                      Click="MenuCopyMessages_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="Cut Messag_es"
+                      AutomationProperties.Name="Cut Messages"
+                      Click="MenuCutMessages_Click"/>
             <MenuItem Header="Sa_ve As…"
                       sc:CommandShortcut.Id="mail.saveAs"
                       AutomationProperties.Name="Save As"
@@ -300,6 +324,9 @@
             <MenuItem Header="_Copy Folder…"
                       AutomationProperties.Name="Copy Folder"
                       Click="FolderContextMenu_CopyFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.pasteMessages" Header="Paste Messa_ges"
+                      AutomationProperties.Name="Paste Messages"
+                      Click="FolderContextMenu_PasteMessages_Click"/>
             <Separator/>
             <MenuItem Header="Set as _Archive Folder"
                       AutomationProperties.Name="Set as Archive Folder"
@@ -557,6 +584,14 @@
                         </Style>
                     </MenuItem.Style>
                 </MenuItem>
+                <!-- Copy, cut and paste messages (#929). Click, not Command, for the reason Move and Copy to
+                     Folder are: what they act on is the window's to resolve. -->
+                <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
+                          Click="MenuCopyMessages_Click"/>
+                <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="Cut Messag_es"
+                          Click="MenuCutMessages_Click"/>
+                <MenuItem sc:CommandShortcut.Id="mail.pasteMessages" Header="_Paste Messages"
+                          Click="MenuPasteMessages_Click"/>
                 <Separator/>
                 <MenuItem Header="_Grab Addresses from Message"
                           Click="MenuGrabAddresses_Click"
