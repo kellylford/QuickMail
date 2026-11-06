@@ -64,6 +64,20 @@ public sealed class MessageClipboard
     }
 
     /// <summary>
+    /// Drops messages that have already been pasted away: a cut whose paste stopped partway keeps only
+    /// the messages still where they were, so pasting again does not ask for ones that have gone.
+    /// </summary>
+    public void Remove(IEnumerable<MailMessageSummary> gone)
+    {
+        var goneKeys = gone.Select(KeyOf).ToHashSet();
+        if (goneKeys.Count == 0 || IsEmpty) return;
+        var kept = _messages.Where(m => !goneKeys.Contains(KeyOf(m))).ToList();
+        if (kept.Count == _messages.Count) return;
+        if (kept.Count == 0) { Clear(); return; }
+        _messages = kept;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+    /// <summary>
     /// What pasting into <paramref name="destination"/> would do.
     /// <paramref name="isVirtual"/> tells real folders from the app's virtual ones (All Inboxes,
     /// saved views…), which hold no messages of their own and so cannot be pasted into.

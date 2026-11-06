@@ -8562,11 +8562,12 @@ public partial class MainWindow : Window
     private void RulesStatusButton_Click(object sender, RoutedEventArgs e) => OpenRulesManager();
 
     /// <summary>
-    /// Creates a <see cref="FolderPickerWindow"/> scoped to only the accounts that own
-    /// the given messages.  This prevents the user from selecting a destination folder
-    /// from a different IMAP account — the server-side MOVE command is connection-scoped
-    /// and cannot reach folders on a different account, which would produce a
-    /// "folder not found" error from the IMAP server.
+    /// Creates a <see cref="FolderPickerWindow"/> offering the accounts that own the given messages,
+    /// and every other account that can take messages from elsewhere (#929). The server's MOVE and COPY
+    /// are connection-scoped and reach only the source account's folders, so a destination in another
+    /// account is filled by copying each original across (MainViewModel.TransferAsync), which routes by
+    /// the destination's AccountId and never by folder name alone. An account that cannot take messages
+    /// from elsewhere (Microsoft 365, for now) is offered only for its own messages.
     /// </summary>
     /// <param name="copy">
     /// Whether this is a copy rather than a move. Passed rather than inferred from the title
@@ -8578,9 +8579,10 @@ public partial class MainWindow : Window
     {
         var list     = messages.ToList();
         var ids      = list.Select(m => m.AccountId).ToHashSet();
-        var accounts = _vm.Accounts.Where(a => ids.Contains(a.Id));
+        bool Offered(Guid accountId) => ids.Contains(accountId) || _vm.CanTakeMessagesFromOtherAccounts(accountId);
+        var accounts = _vm.Accounts.Where(a => Offered(a.Id));
         var folders  = _vm.CachedFolders
-                          .Where(kv => ids.Contains(kv.Key))
+                          .Where(kv => Offered(kv.Key))
                           .ToDictionary(kv => kv.Key, kv => kv.Value);
         return new FolderPickerWindow(accounts, folders, title: title, useTreeView: true,
             // Where this account last filed, falling back to where the messages are now (#490).

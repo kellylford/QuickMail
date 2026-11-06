@@ -392,17 +392,121 @@ public class MessageClipboardTests
         Assert.DoesNotContain(f.Vm.Messages, m => m.MessageId == "b");
     }
 
+    // ── Between accounts ─────────────────────────────────────────────────────────
+
     [Fact]
-    public async Task PasteIntoAnotherAccount_IsRefusedForNow()
+    public async Task ACutPastedIntoAnotherAccount_CopiesTheOriginalAcross_ThenPutsItInTrash()
     {
-        // Moving between accounts is its own piece of #929 (the backends move by folder name over the
-        // source account's connection). Until it lands, a paste there must not reach the server.
+        // Kelly's decision on #929: cut removes the original, into its own account's Trash, so a
+        // mistaken move can be undone.
         var f = await Fixture.CreateAsync();
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("b")]);
+
+        await f.Vm.PasteMessagesAsync(f.HomeInbox);
+
+        var added = Assert.Single(f.Mail.Appended);
+        Assert.Equal((Home, "INBOX", "Subject b"), (added.AccountId, added.Folder, added.Subject));
+        Assert.Equal((Work, "INBOX", "b"), Assert.Single(f.Mail.Trashed));
+        Assert.Empty(f.Mail.Transfers);   // the server's own MOVE cannot reach another account
+        Assert.DoesNotContain(f.Vm.Messages, m => m.MessageId == "b");
+        Assert.True(f.Vm.MessageClipboard.IsEmpty);
+        Assert.Contains("INBOX in Home", f.Vm.StatusText);
+    }
+
+    [Fact]
+    public async Task ACopyPastedIntoAnotherAccount_LeavesTheOriginalWhereItWas()
+    {
+        var f = await Fixture.CreateAsync();
+        await f.Vm.CopyMessagesToClipboardAsync([f.Row("a"), f.Row("c")]);
+
+        await f.Vm.PasteMessagesAsync(f.HomeInbox);
+
+        Assert.Equal(["Subject a", "Subject c"], f.Mail.Appended.Select(a => a.Subject));
+        Assert.Empty(f.Mail.Trashed);
+        Assert.Equal(3, f.Vm.Messages.Count);
+        Assert.Equal(("2 messages copied to INBOX in Home.", AnnouncementCategory.Result), f.Announced.Last);
+    }
+
+    [Fact]
+    public async Task AcrossAccounts_ReadFlaggedAndArrivalTime_GoWithTheMessage()
+    {
+        var f = await Fixture.CreateAsync();
+        var a = f.Row("a");
+        a.IsRead = true;
+        a.FlagId = "red";
+        await f.Vm.CopyMessagesToClipboardAsync([a, f.Row("b")]);
+
+        await f.Vm.PasteMessagesAsync(f.HomeInbox);
+
+        Assert.Equal((true, true, a.Date), (f.Mail.Appended[0].IsRead, f.Mail.Appended[0].IsFlagged, f.Mail.Appended[0].Received));
+        Assert.Equal((false, false), (f.Mail.Appended[1].IsRead, f.Mail.Appended[1].IsFlagged));
+    }
+
+    [Fact]
+    public async Task AMoveThatStopsPartway_TakesOutOnlyWhatWent_AndKeepsTheRestToTryAgain()
+    {
+        var f = await Fixture.CreateAsync();
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("a"), f.Row("b"), f.Row("c")]);
+        f.Mail.FailAppendOf.Add("b@example.com");
+
+        await f.Vm.PasteMessagesAsync(f.HomeInbox);
+
+        // "a" went and is in Trash; "b" was refused, so its original was never touched.
+        Assert.Equal([(Work, "INBOX", "a")], f.Mail.Trashed);
+        Assert.DoesNotContain(f.Vm.Messages, m => m.MessageId == "a");
+        Assert.Contains(f.Vm.Messages, m => m.MessageId == "b");
+        Assert.Equal(AnnouncementCategory.Result, f.Announced.Last.Category);
+        Assert.StartsWith("Moved 1 of 3 messages to INBOX in Home.", f.Announced.Last.Text);
+
+        // The cut now holds only what is still where it was.
+        Assert.True(f.Vm.MessageClipboard.IsCut);
+        Assert.Equal(["b", "c"], f.Vm.MessageClipboard.Messages.Select(m => m.MessageId));
+    }
+
+    [Fact]
+    public async Task AnOriginalThatCannotBeFetched_IsNotRemoved()
+    {
+        var f = await Fixture.CreateAsync();
+        f.Mail.OriginalsUnavailable.Add("a");
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("a")]);
+
+        await f.Vm.PasteMessagesAsync(f.HomeInbox);
+
+        Assert.Empty(f.Mail.Appended);
+        Assert.Empty(f.Mail.Trashed);
+        Assert.Contains(f.Vm.Messages, m => m.MessageId == "a");
+        Assert.StartsWith("Failed to move", f.Announced.Last.Text);
+    }
+
+    [Fact]
+    public async Task IntoAnAccountThatCannotTakeMessagesFromElsewhere_ItSaysSo_AndTouchesNothing()
+    {
+        // Microsoft 365, for now: Graph files a message created from its original as a draft.
+        var f = await Fixture.CreateAsync();
+        f.Mail.CannotAppend.Add(Home);
         await f.Vm.CopyMessagesToClipboardAsync([f.Row("a")]);
 
         await f.Vm.PasteMessagesAsync(f.HomeInbox);
 
+        Assert.Empty(f.Mail.Appended);
+        Assert.Equal(("Messages from another account cannot be copied into INBOX in Home yet.", AnnouncementCategory.Result), f.Announced.Last);
+        Assert.False(f.Vm.CanTakeMessagesFromOtherAccounts(Home));
+        Assert.True(f.Vm.CanTakeMessagesFromOtherAccounts(Work));
+    }
+
+    [Fact]
+    public async Task AFolderWithTheSameNameInAnotherAccount_IsNeverMistakenForTheSourceAccounts()
+    {
+        // The collision CLAUDE.md warns of: the backends move by folder name over the source account's
+        // connection, so "INBOX" in Home must not become a MOVE into Work's INBOX.
+        var f = await Fixture.CreateAsync();
+        await f.Vm.SelectFolderCommand.ExecuteAsync(f.Archive);
+        var z = f.Vm.Messages.First(m => m.MessageId == "z");
+        await f.Vm.CutMessagesToClipboardAsync([z]);
+
+        await f.Vm.PasteMessagesAsync(f.HomeInbox);
+
         Assert.Empty(f.Mail.Transfers);
-        Assert.Equal(AnnouncementCategory.Result, f.Announced.Last.Category);
+        Assert.Equal(Home, Assert.Single(f.Mail.Appended).AccountId);
     }
 }

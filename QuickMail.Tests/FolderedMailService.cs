@@ -48,7 +48,34 @@ internal sealed class FolderedMailService : IMailService
     public Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => Task.CompletedTask;
     public Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
     public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default) => Task.CompletedTask;
-    public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>Messages put in Trash, as (account, folder, id).</summary>
+    public List<(Guid AccountId, string Folder, string Id)> Trashed { get; } = new();
+
+    public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
+    {
+        Trashed.Add((accountId, folderName, messageId));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Accounts that cannot take messages from another account, as Microsoft 365 cannot yet.</summary>
+    public HashSet<Guid> CannotAppend { get; } = new();
+
+    /// <summary>Message-Ids of originals to refuse when appended, to make a transfer stop partway.</summary>
+    public HashSet<string> FailAppendOf { get; } = new();
+
+    /// <summary>Every message added from another account, with the state it was given.</summary>
+    public List<(Guid AccountId, string Folder, string Subject, bool IsRead, bool IsFlagged, DateTimeOffset Received)> Appended { get; } = new();
+
+    public bool CanAppendMessages(Guid accountId) => !CannotAppend.Contains(accountId);
+
+    public async Task AppendMessageAsync(Guid accountId, string folderName, Stream original, bool isRead, bool isFlagged,
+                                         DateTimeOffset received, CancellationToken ct = default)
+    {
+        var message = await MimeKit.MimeMessage.LoadAsync(original, ct);
+        if (message.MessageId is { } id && FailAppendOf.Contains(id))
+            throw new InvalidOperationException("the other server said no");
+        Appended.Add((accountId, folderName, message.Subject, isRead, isFlagged, received));
+    }
     public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
     public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;

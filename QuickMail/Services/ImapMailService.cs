@@ -851,6 +851,25 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    public bool CanAppendMessages(Guid accountId) => true;
+
+    /// <summary>
+    /// APPEND, the standard IMAP way to put a message into a folder (#929). Keeps the read and flagged
+    /// state, and the arrival time as the folder's internal date, so the message sorts where it did.
+    /// APPEND does not need the folder selected.
+    /// </summary>
+    public async Task AppendMessageAsync(Guid accountId, string folderName, Stream original, bool isRead, bool isFlagged,
+                                         DateTimeOffset received, CancellationToken ct = default)
+    {
+        var message = await MimeMessage.LoadAsync(original, ct);
+        var flags = (isRead ? MessageFlags.Seen : MessageFlags.None) | (isFlagged ? MessageFlags.Flagged : MessageFlags.None);
+
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+        var dest = await lease.Client.GetFolderAsync(folderName, ct);
+        var request = new AppendRequest(message, flags);
+        if (received != default) request.InternalDate = received;
+        await dest.AppendAsync(request, ct);
+    }
     public async Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);

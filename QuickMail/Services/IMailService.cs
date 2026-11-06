@@ -186,6 +186,22 @@ public interface IMailService : IDisposable
         => Task.FromException(new MessageOriginalUnavailableException("This account cannot provide the original message."));
 
     // ── Copy / Move messages ─────────────────────────────────────────────────
+    /// <summary>
+    /// Whether <see cref="AppendMessageAsync"/> works for this account: whether messages from another
+    /// account can be moved or copied into it (#929). False by default.
+    /// </summary>
+    bool CanAppendMessages(Guid accountId) => false;
+
+    /// <summary>
+    /// Adds a message to <paramref name="folderName"/> from its original (the bytes
+    /// <see cref="CopyOriginalMessageToAsync"/> writes), keeping whether it was read and flagged and,
+    /// where the backend can, when it arrived. How messages move and copy between accounts (#929):
+    /// <see cref="MoveMessagesAsync"/> and <see cref="CopyMessagesAsync"/> work by folder name over the
+    /// source account's own connection and cannot reach another account.
+    /// </summary>
+    Task AppendMessageAsync(Guid accountId, string folderName, Stream original, bool isRead, bool isFlagged,
+                            DateTimeOffset received, CancellationToken ct = default)
+        => Task.FromException(new NotSupportedException("This account cannot take messages from another account."));
     Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default);
     Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default);
 

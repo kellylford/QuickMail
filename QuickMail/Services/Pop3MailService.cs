@@ -599,6 +599,32 @@ public class Pop3MailService : IMailService
         Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
         => MoveLocalAsync(accountId, folderName, destinationFolder, messageIds, copy: false);
 
+    // ── Taking messages from another account (#929) ───────────────────────────
+
+    public bool CanAppendMessages(Guid accountId) => !_onlineMode;
+
+    /// <summary>
+    /// Files a message from another account into one of this account's local folders: stored exactly
+    /// as collected mail is, with its original kept, so it opens, saves and forwards like any other.
+    /// The date shown is the message's own Date header, as for every POP3 message.
+    /// </summary>
+    public async Task AppendMessageAsync(Guid accountId, string folderName, Stream original, bool isRead, bool isFlagged,
+                                         DateTimeOffset received, CancellationToken ct = default)
+    {
+        if (_onlineMode)
+            throw new InvalidOperationException(OnlineModeExplanation);
+
+        using var buffer = new MemoryStream();
+        await original.CopyToAsync(buffer, ct);
+        var raw = buffer.ToArray();
+        buffer.Position = 0;
+        var msg = await MimeMessage.LoadAsync(buffer, ct);
+
+        var id = NewLocalId();
+        await StoreMessageAsync(accountId, id, msg, folderName, isRead, ct, raw);
+        if (isFlagged)
+            await SetMessageFlaggedAsync(accountId, folderName, id, true, ct);
+    }
     // ── Local folders (#794) ──────────────────────────────────────────────────
     // POP3 has no folder namespace on the server, so the folders a user makes live in the store
     // alone. Each failure throws with a sentence the caller shows as is ("Failed to create folder:

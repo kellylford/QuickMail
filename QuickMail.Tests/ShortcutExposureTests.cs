@@ -145,6 +145,7 @@ public class ShortcutExposureTests
             ["Save Messages from Sender As"] = "F12", ["Save Messages to Recipient As"] = "F12", ["Save Conversation As"] = "F12",
             ["Save As"] = "F12",
             // Copy, cut and paste messages (#929).
+            ["_Copy"] = "Ctrl+C", // the attachment menu
             ["Copy Messages"] = "Ctrl+C", ["Cut Messages"] = "Ctrl+X", ["Paste Messages"] = "Ctrl+V",
             ["Cop_y Messages"] = "Ctrl+C", ["Cut Messag_es"] = "Ctrl+X", ["_Paste Messages"] = "Ctrl+V",
             ["Print"] = "Ctrl+P",
@@ -187,6 +188,7 @@ public class ShortcutExposureTests
         },
         ["MessageWindow.xaml"] = new()
         {
+            ["_Copy"] = "Ctrl+C", // the attachment menu (#929)
             ["Previous message"] = "Alt+Left", ["Next message"] = "Alt+Right",
             ["Save"] = "Ctrl+S",
             ["Save As"] = "F12",

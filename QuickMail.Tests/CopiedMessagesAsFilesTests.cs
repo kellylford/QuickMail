@@ -378,7 +378,8 @@ public sealed class CopiedMessagesAsFilesTests : IDisposable
         await f.Vm.CopyAttachmentsToClipboardAsync(DetailWith(att), [att], heard.Add);
 
         Assert.Equal(["a.txt copied."], heard);
-        Assert.Equal(spokenBefore, f.Announced.Announced.Count); // nothing said through the main window
+        // Nothing spoken through the main window: at most silent status-bar text.
+        Assert.All(f.Announced.Announced.Skip(spokenBefore), a => Assert.Equal(AnnouncementCategory.Silent, a.Category));
         Assert.Equal("a.txt copied.", f.Vm.StatusText);           // still shown in its status bar
     }
 }
