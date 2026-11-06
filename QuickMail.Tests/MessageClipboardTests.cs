@@ -220,7 +220,7 @@ public class MessageClipboardTests
     {
         var f = await Fixture.CreateAsync();
 
-        f.Vm.CopyMessagesToClipboard([f.Row("a"), f.Row("b")]);
+        await f.Vm.CopyMessagesToClipboardAsync([f.Row("a"), f.Row("b")]);
         Assert.Equal(("2 messages copied.", AnnouncementCategory.Result), f.Announced.Last);
 
         await f.Vm.PasteMessagesAsync(f.Archive);
@@ -237,7 +237,7 @@ public class MessageClipboardTests
     {
         var f = await Fixture.CreateAsync();
 
-        f.Vm.CutMessagesToClipboard([f.Row("b")]);
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("b")]);
         Assert.Equal(("Message cut.", AnnouncementCategory.Result), f.Announced.Last);
         Assert.Empty(f.Mail.Transfers);
         Assert.Equal(3, f.Vm.Messages.Count);
@@ -259,7 +259,7 @@ public class MessageClipboardTests
     public async Task AFailedMove_KeepsTheCut_SoItCanBeTriedAgain()
     {
         var f = await Fixture.CreateAsync();
-        f.Vm.CutMessagesToClipboard([f.Row("b")]);
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("b")]);
         f.Mail.FailTransfers = true;
 
         await f.Vm.PasteMessagesAsync(f.Archive);
@@ -276,7 +276,7 @@ public class MessageClipboardTests
         // Copy to Folder used to set only the status text on failure, spoken only with background
         // status announcements on. Paste leans on it, so the failure is now a Result.
         var f = await Fixture.CreateAsync();
-        f.Vm.CopyMessagesToClipboard([f.Row("a")]);
+        await f.Vm.CopyMessagesToClipboardAsync([f.Row("a")]);
         f.Mail.FailTransfers = true;
 
         await f.Vm.PasteMessagesAsync(f.Archive);
@@ -299,7 +299,7 @@ public class MessageClipboardTests
     {
         // A folder-tree header, or a combined view: there is no one folder to put the messages in.
         var f = await Fixture.CreateAsync();
-        f.Vm.CopyMessagesToClipboard([f.Row("a")]);
+        await f.Vm.CopyMessagesToClipboardAsync([f.Row("a")]);
 
         await f.Vm.PasteMessagesAsync(null);
 
@@ -311,7 +311,7 @@ public class MessageClipboardTests
     public async Task PasteBackIntoTheSameFolder_DoesNothing_AndSaysWhy()
     {
         var f = await Fixture.CreateAsync();
-        f.Vm.CutMessagesToClipboard([f.Row("a")]);
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("a")]);
 
         await f.Vm.PasteMessagesAsync(f.Inbox);
 
@@ -327,7 +327,7 @@ public class MessageClipboardTests
         var f = await Fixture.CreateAsync();
         await f.Vm.SelectFolderCommand.ExecuteAsync(f.Archive);
         var z = f.Vm.Messages.First(m => m.MessageId == "z");
-        f.Vm.CopyMessagesToClipboard([z, Msg("a")]);
+        await f.Vm.CopyMessagesToClipboardAsync([z, Msg("a")]);
 
         await f.Vm.PasteMessagesAsync(f.Archive);
 
@@ -340,7 +340,7 @@ public class MessageClipboardTests
     public async Task PasteIntoTheFolderOnScreen_FetchesIt_SoTheMessagesAppear()
     {
         var f = await Fixture.CreateAsync();
-        f.Vm.CopyMessagesToClipboard([f.Row("a")]);
+        await f.Vm.CopyMessagesToClipboardAsync([f.Row("a")]);
         await f.Vm.SelectFolderCommand.ExecuteAsync(f.Archive);
         f.Sync.OneFolderSyncs.Clear();
 
@@ -353,7 +353,7 @@ public class MessageClipboardTests
     public async Task PasteIntoAnotherFolder_DoesNotFetchIt()
     {
         var f = await Fixture.CreateAsync();
-        f.Vm.CopyMessagesToClipboard([f.Row("a")]);
+        await f.Vm.CopyMessagesToClipboardAsync([f.Row("a")]);
         f.Sync.OneFolderSyncs.Clear();
 
         await f.Vm.PasteMessagesAsync(f.Archive);
@@ -370,7 +370,7 @@ public class MessageClipboardTests
         f.Vm.MessageListFocusNowRequested += () => { focusRequests++; return true; };
         f.Vm.MessageListFocusRequested    += () => focusRequests++;
         f.Vm.SelectedMessage = f.Row("b");
-        f.Vm.CutMessagesToClipboard([f.Row("b")]);
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("b")]);
 
         await f.Vm.PasteMessagesAsync(f.Archive, moveFocus: false);
 
@@ -385,7 +385,7 @@ public class MessageClipboardTests
         // The list replaces its rows with fresh objects on a background reload (#925). The move
         // removes rows by reference, so paste must hand it the row on screen, not the copied object.
         var f = await Fixture.CreateAsync();
-        f.Vm.CutMessagesToClipboard([Msg("b")]); // same message, different object from the row
+        await f.Vm.CutMessagesToClipboardAsync([Msg("b")]); // same message, different object from the row
 
         await f.Vm.PasteMessagesAsync(f.Archive);
 
@@ -398,7 +398,7 @@ public class MessageClipboardTests
         // Moving between accounts is its own piece of #929 (the backends move by folder name over the
         // source account's connection). Until it lands, a paste there must not reach the server.
         var f = await Fixture.CreateAsync();
-        f.Vm.CopyMessagesToClipboard([f.Row("a")]);
+        await f.Vm.CopyMessagesToClipboardAsync([f.Row("a")]);
 
         await f.Vm.PasteMessagesAsync(f.HomeInbox);
 

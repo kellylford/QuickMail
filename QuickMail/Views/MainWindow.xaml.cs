@@ -1575,14 +1575,14 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "mail.copyMessages", category: "Mail", title: "Copy Messages",
             description: "Copy the selected messages, to paste into another folder",
-            execute: () => _vm.CopyMessagesToClipboard(MessageClipboardTarget()),
+            execute: async () => await _vm.CopyMessagesToClipboardAsync(MessageClipboardTarget()),
             defaultKey: Key.C, defaultModifiers: ModifierKeys.Control,
             isAvailable: () => IsMessageAreaFocused() && !IsTextEntryFocused() && _vm.CanActOnSelection()));
 
         _registry.Register(new CommandDefinition(
             id: "mail.cutMessages", category: "Mail", title: "Cut Messages",
             description: "Cut the selected messages; they move when you paste them into another folder",
-            execute: () => _vm.CutMessagesToClipboard(MessageClipboardTarget()),
+            execute: async () => await _vm.CutMessagesToClipboardAsync(MessageClipboardTarget()),
             defaultKey: Key.X, defaultModifiers: ModifierKeys.Control,
             isAvailable: () => IsMessageAreaFocused() && !IsTextEntryFocused() && _vm.CanActOnSelection()));
 
@@ -8047,11 +8047,11 @@ public partial class MainWindow : Window
     private async void MenuCopyToFolder_Click(object sender, RoutedEventArgs e)
         => await CopyMessageToFolderAsync();
 
-    private void MenuCopyMessages_Click(object sender, RoutedEventArgs e)
-        => _vm.CopyMessagesToClipboard(MessageClipboardTarget());
+    private async void MenuCopyMessages_Click(object sender, RoutedEventArgs e)
+        => await _vm.CopyMessagesToClipboardAsync(MessageClipboardTarget());
 
-    private void MenuCutMessages_Click(object sender, RoutedEventArgs e)
-        => _vm.CutMessagesToClipboard(MessageClipboardTarget());
+    private async void MenuCutMessages_Click(object sender, RoutedEventArgs e)
+        => await _vm.CutMessagesToClipboardAsync(MessageClipboardTarget());
 
     private async void MenuPasteMessages_Click(object sender, RoutedEventArgs e)
         => await PasteMessagesAsync();

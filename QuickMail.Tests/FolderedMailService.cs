@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -70,6 +71,21 @@ internal sealed class FolderedMailService : IMailService
 
     public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
         => Transfer("copy", accountId, folderName, messageIds, destinationFolder);
+    /// <summary>Message ids whose original the "server" cannot provide, as POP3 can't once a message has left it.</summary>
+    public HashSet<string> OriginalsUnavailable { get; } = new();
+
+    /// <summary>How many originals have been downloaded.</summary>
+    public int OriginalsFetched { get; private set; }
+
+    public async Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
+    {
+        if (OriginalsUnavailable.Contains(messageId))
+            throw new MessageOriginalUnavailableException("This account cannot provide the original message.");
+        OriginalsFetched++;
+        var bytes = System.Text.Encoding.ASCII.GetBytes($"From: someone@example.com\r\nSubject: Subject {messageId}\r\nMessage-Id: <{messageId}@example.com>\r\n\r\nBody of {messageId}\r\n");
+        await destination.WriteAsync(bytes, ct);
+    }
+
     public Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
         => Transfer("move", accountId, folderName, messageIds, destinationFolder);
 
@@ -87,3 +103,4 @@ internal sealed class FolderedMailService : IMailService
     public void StopWatchers() { }
     public void Dispose() { }
 }
+

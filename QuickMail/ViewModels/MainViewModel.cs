@@ -1916,9 +1916,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IFolderViewStateService? folderViewState = null,
         IOutboxService? outboxService = null,
         IConnectivityService? connectivity = null,
-        ISoundService? soundService = null)
+        ISoundService? soundService = null,
+        IClipboardService? clipboard = null,
+        ClipboardStaging? clipboardStaging = null)
     {
         _sounds = soundService;
+        _clipboard = clipboard;
+        _clipboardStaging = clipboardStaging;
         _folderViewState = folderViewState;
         _outbox = outboxService;
         _connectivity = connectivity;
@@ -10196,28 +10200,115 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>The messages waiting to be pasted. See <see cref="ViewModels.MessageClipboard"/>.</summary>
     public MessageClipboard MessageClipboard { get; } = new();
 
-    /// <summary>Copies messages so a later paste puts a copy of them into another folder.</summary>
-    public void CopyMessagesToClipboard(IReadOnlyList<MailMessageSummary> messages)
-    {
-        if (messages.Count == 0) return;
-        MessageClipboard.Copy(messages);
-        // Spoken: nothing on screen changes, so this is the only sign the copy happened.
-        SetStatus(messages.Count == 1 ? "Message copied." : $"{messages.Count} messages copied.",
-            AnnouncementCategory.Result);
-    }
+    // The Windows clipboard and the folder its files are written to. Null in tests that do not
+    // exercise them: copy and paste then work inside QuickMail alone, never touching the machine's
+    // real clipboard (see IClipboardService for why that matters).
+    private readonly IClipboardService? _clipboard;
+    private readonly ClipboardStaging? _clipboardStaging;
+
+    /// <summary>The token of the current copy, as put on the Windows clipboard.</summary>
+    private string? _messageClipboardToken;
+
+    /// <summary>Cancels a copy's download of originals when a newer copy replaces it.</summary>
+    private CancellationTokenSource? _messageStagingCts;
+
+    /// <summary>
+    /// Above this many messages, a copy goes on the clipboard for pasting into folders only, without
+    /// .eml files: Select All and Ctrl+C in a large folder would otherwise download every message in it.
+    /// </summary>
+    internal const int MaxMessagesCopiedAsFiles = 100;
+
+    /// <summary>
+    /// Copies messages: a later paste into a folder copies them there. They also go on the Windows
+    /// clipboard as .eml files, so they paste into Explorer (saving them) or into a message being
+    /// written (attaching them), as Outlook does.
+    /// </summary>
+    public Task CopyMessagesToClipboardAsync(IReadOnlyList<MailMessageSummary> messages)
+        => PutMessagesOnClipboardAsync(messages, cut: false);
 
     /// <summary>
     /// Cuts messages: nothing moves yet. They move when pasted into a folder, as files do in
-    /// Explorer, so a cut that is never pasted leaves everything where it was.
+    /// Explorer, so a cut that is never pasted leaves everything where it was. Like a copy, they go on
+    /// the Windows clipboard as .eml files; pasting those elsewhere never removes anything.
     /// </summary>
-    public void CutMessagesToClipboard(IReadOnlyList<MailMessageSummary> messages)
+    public Task CutMessagesToClipboardAsync(IReadOnlyList<MailMessageSummary> messages)
+        => PutMessagesOnClipboardAsync(messages, cut: true);
+
+    private async Task PutMessagesOnClipboardAsync(IReadOnlyList<MailMessageSummary> messages, bool cut)
     {
         if (messages.Count == 0) return;
-        MessageClipboard.Cut(messages);
-        SetStatus(messages.Count == 1 ? "Message cut." : $"{messages.Count} messages cut.",
-            AnnouncementCategory.Result);
+
+        if (cut) MessageClipboard.Cut(messages);
+        else     MessageClipboard.Copy(messages);
+
+        // Spoken: nothing on screen changes, so this is the only sign the copy happened.
+        var done = (messages.Count == 1 ? "Message " : $"{messages.Count} messages ") + (cut ? "cut." : "copied.");
+
+        _messageStagingCts?.Cancel();
+        _messageStagingCts?.Dispose();
+        _messageStagingCts = null;
+
+        if (_clipboard == null)
+        {
+            SetStatus(done, AnnouncementCategory.Result);
+            return;
+        }
+
+        // The marker goes on at once, so a paste a moment later works while the originals are still
+        // downloading, and a copy of anything else afterwards is seen to have replaced this one.
+        var token = Guid.NewGuid().ToString("N");
+        _messageClipboardToken = token;
+        _clipboard.SetMarker(token);
+
+        if (_clipboardStaging == null)
+        {
+            SetStatus(done, AnnouncementCategory.Result);
+            return;
+        }
+        if (messages.Count > MaxMessagesCopiedAsFiles)
+        {
+            SetStatus($"{done} Too many to copy as files too; you can paste them into a folder.", AnnouncementCategory.Result);
+            return;
+        }
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+        _messageStagingCts = cts;
+        if (messages.Count > 1)
+            SetStatus(cut ? $"Cutting {messages.Count} messages…" : $"Copying {messages.Count} messages…", AnnouncementCategory.Status);
+        try
+        {
+            var paths = await _clipboardStaging.StageMessagesAsync(_imap, messages.ToList(), cts.Token);
+            // Left alone if the user has copied something else while the originals downloaded:
+            // writing the files now would throw away what they copied since.
+            if (cts.IsCancellationRequested || _clipboard.GetMarker() != token) return;
+            _clipboard.SetFiles(paths, token);
+            SetStatus(done, AnnouncementCategory.Result);
+        }
+        catch (OperationCanceledException) { /* replaced by a newer copy, or shutting down */ }
+        catch (Exception ex)
+        {
+            // The copy still pastes into folders; only the files for other programs are missing.
+            LogService.Log("CopyMessages/Stage", ex);
+            var reason = ex is MessageOriginalUnavailableException ? ex.Message : "the original could not be downloaded.";
+            SetStatus($"{done} They can be pasted into a folder, but not as files: {reason}", AnnouncementCategory.Result);
+        }
+        finally
+        {
+            if (ReferenceEquals(_messageStagingCts, cts)) _messageStagingCts = null;
+            cts.Dispose();
+        }
     }
 
+    /// <summary>
+    /// Forgets the copied messages if the Windows clipboard no longer holds them: the user has copied
+    /// something else since, and pasting then must not resurrect messages they moved on from.
+    /// </summary>
+    private void ForgetCopyIfReplaced()
+    {
+        if (_clipboard == null || MessageClipboard.IsEmpty) return;
+        if (_clipboard.GetMarker() != _messageClipboardToken)
+            MessageClipboard.Clear();
+    }
     /// <summary>
     /// Pastes the copied or cut messages into <paramref name="destination"/>: a copy runs Copy to
     /// Folder, a cut runs Move to Folder and is then cleared, so a second paste does not try to move
@@ -10227,6 +10318,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task PasteMessagesAsync(MailFolderModel? destination, bool moveFocus = true)
     {
+        ForgetCopyIfReplaced();
         var clip = MessageClipboard;
         var plan = clip.Plan(destination, IsVirtualFolder);
         switch (plan)
@@ -11805,3 +11897,4 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 }
+
