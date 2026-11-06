@@ -62,10 +62,12 @@
                 <Separator/>
                 <MenuItem Header="_Delete"
                           AutomationProperties.Name="Delete"
+                          Visibility="{Binding IsInMailbox, Converter={StaticResource BoolToVisibilityConverter}}"
                           Command="{Binding DeleteMessageCommand}"
                           sc:CommandShortcut.Id="message.delete"/>
                 <MenuItem Header="_Mark as Read"
                           AutomationProperties.Name="Mark as Read"
+                          Visibility="{Binding IsInMailbox, Converter={StaticResource BoolToVisibilityConverter}}"
                           Command="{Binding MarkReadCommand}"
                           sc:CommandShortcut.Id="message.markRead"/>
                 <Separator/>
@@ -75,6 +77,7 @@
                           sc:CommandShortcut.Id="message.grabAddresses"/>
                 <MenuItem Header="Crea_te Rule from Message…"
                           AutomationProperties.Name="Create Rule from Message"
+                          Visibility="{Binding IsInMailbox, Converter={StaticResource BoolToVisibilityConverter}}"
                           Command="{Binding CreateRuleFromMessageCommand}"
                           sc:CommandShortcut.Id="message.createRule"/>
             </MenuItem>
@@ -89,6 +92,7 @@
                           sc:CommandShortcut.Id="window.nextMessage"/>
                 <Separator/>
                 <MenuItem sc:CommandShortcut.Id="window.moveToMainWindow" Header="Move to _Main Window"
+                          Visibility="{Binding IsInMailbox, Converter={StaticResource BoolToVisibilityConverter}}"
                           AutomationProperties.Name="Move to Main Window"
                           Command="{Binding MoveToMainWindowCommand}"/>
             </MenuItem>
@@ -136,12 +140,14 @@
                 <Separator/>
                 <Button Content="Delete"
                         Command="{Binding DeleteMessageCommand}"
+                        Visibility="{Binding IsInMailbox, Converter={StaticResource BoolToVisibilityConverter}}"
                         Padding="6,2"
                         sc:CommandShortcut.Id="message.delete" sc:CommandShortcut.ToolTip="Delete"
                         AutomationProperties.Name="Delete"/>
                 <Separator/>
                 <Button Content="Move to Main Window"
                         Command="{Binding MoveToMainWindowCommand}"
+                        Visibility="{Binding IsInMailbox, Converter={StaticResource BoolToVisibilityConverter}}"
                         Padding="6,2"
                         AutomationProperties.Name="Move this message to the main window as a tab"/>
             </ToolBar>

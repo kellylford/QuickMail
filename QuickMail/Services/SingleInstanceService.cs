@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -16,13 +19,15 @@ public sealed class SingleInstanceService : IDisposable
 {
     private readonly Mutex _mutex;
     private readonly EventWaitHandle _activateRequested;
+    private readonly string _key;
     private RegisteredWaitHandle? _waitRegistration;
     private bool _disposed;
 
-    private SingleInstanceService(Mutex mutex, EventWaitHandle activateRequested)
+    private SingleInstanceService(Mutex mutex, EventWaitHandle activateRequested, string key)
     {
         _mutex = mutex;
         _activateRequested = activateRequested;
+        _key = key;
     }
 
     /// <summary>
@@ -40,12 +45,18 @@ public sealed class SingleInstanceService : IDisposable
         if (!createdNew)
         {
             mutex.Dispose();
-            if (signalExisting) SignalExistingInstance(key);
+            if (signalExisting)
+            {
+                // A .eml file to open (#939): left for the running instance before it is signalled,
+                // which then takes it up along with coming to the front.
+                if (EmailFileFrom(args) is { } path) LeaveOpenRequest(key, path);
+                SignalExistingInstance(key);
+            }
             return null;
         }
 
         var activateRequested = new EventWaitHandle(false, EventResetMode.AutoReset, ActivateEventName(key));
-        return new SingleInstanceService(mutex, activateRequested);
+        return new SingleInstanceService(mutex, activateRequested, key);
     }
 
     /// <summary>
@@ -89,6 +100,72 @@ public sealed class SingleInstanceService : IDisposable
 
     private static string ActivateEventName(string key) => $@"Local\QuickMail-{key}-activate";
 
+    // ── Files to open (#939) ─────────────────────────────────────────────────
+    //
+    // The activation signal carries nothing (see SignalExistingInstance), and the startup path has a
+    // history of hangs that rules out a pipe. A .eml file opened from Explorer while QuickMail is
+    // running is therefore handed over as a small file: the new launch writes the path into a folder
+    // named for the profile, then signals, and the running instance takes whatever is waiting there.
+
+    /// <summary>
+    /// The .eml file QuickMail was started to open, as Explorer's Open with passes it: a plain path
+    /// argument, not an option. Null when there is none.
+    /// </summary>
+    public static string? EmailFileFrom(string[] args) =>
+        args.FirstOrDefault(a => !a.StartsWith('-') && !a.StartsWith('/')
+                                 && string.Equals(Path.GetExtension(a), ".eml", StringComparison.OrdinalIgnoreCase));
+
+    internal static string OpenRequestFolder(string key) =>
+        Path.Combine(Path.GetTempPath(), "QuickMail", "Open", key);
+
+    internal static void LeaveOpenRequest(string key, string path)
+    {
+        try
+        {
+            var folder = OpenRequestFolder(key);
+            Directory.CreateDirectory(folder);
+            // Written under a temporary name and renamed, so the running instance never reads half a path.
+            var name = $"{DateTime.UtcNow.Ticks:D20}-{Guid.NewGuid():N}";
+            var writing = Path.Combine(folder, name + ".tmp");
+            File.WriteAllText(writing, Path.GetFullPath(path));
+            File.Move(writing, Path.Combine(folder, name + ".req"));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            // Nothing to open with, but the running window still comes to the front.
+            LogService.Log("SingleInstance: could not hand over a file to open", ex);
+        }
+    }
+
+    /// <summary>
+    /// The files later launches asked this instance to open, oldest first, each taken only once.
+    /// </summary>
+    public IReadOnlyList<string> TakeOpenRequests() => TakeOpenRequests(_key);
+
+    internal static IReadOnlyList<string> TakeOpenRequests(string key)
+    {
+        var folder = OpenRequestFolder(key);
+        var paths = new List<string>();
+        try
+        {
+            if (!Directory.Exists(folder)) return paths;
+            foreach (var request in Directory.GetFiles(folder, "*.req").Order(StringComparer.Ordinal))
+            {
+                try
+                {
+                    var path = File.ReadAllText(request).Trim();
+                    File.Delete(request);
+                    if (path.Length > 0) paths.Add(path);
+                }
+                catch (IOException) { /* being written or taken by someone else: next signal */ }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("SingleInstance: could not read files to open", ex);
+        }
+        return paths;
+    }
     /// <summary>
     /// Derives a fixed-length identity for the profile directory chosen by the command line,
     /// so the kernel object names stay valid regardless of path length or characters.

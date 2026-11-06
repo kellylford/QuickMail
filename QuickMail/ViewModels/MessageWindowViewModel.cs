@@ -55,6 +55,12 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     public Func<Task>? SaveAllAttachmentsAction { get; set; }
 
     /// <summary>Copy one attachment, or all of them, to the Windows clipboard as files (#929).</summary>
+    /// <summary>
+    /// False for a message that is in no mailbox: an opened .eml file or attached email (#939). Delete,
+    /// Mark as Read, Create Rule and Move to Main Window are hidden, and their keys do nothing.
+    /// </summary>
+    public bool IsInMailbox { get; init; } = true;
+
     public Func<AttachmentModel?, Task>? CopyAttachmentAction { get; set; }
     public Func<Task>? CopyAllAttachmentsAction { get; set; }
 

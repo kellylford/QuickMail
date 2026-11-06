@@ -170,12 +170,14 @@ public partial class MessageWindow : Window
         _localRegistry.Register(new CommandDefinition(
             id: "message.delete", category: "Mail", title: "Delete",
             execute: () => _vm.DeleteMessageCommand.Execute(null),
-            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None));
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => _vm.IsInMailbox));
 
         _localRegistry.Register(new CommandDefinition(
             id: "message.markRead", category: "Mail", title: "Mark as Read",
             execute: () => _vm.MarkReadCommand.Execute(null),
-            defaultKey: Key.Q, defaultModifiers: ModifierKeys.Control));
+            defaultKey: Key.Q, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => _vm.IsInMailbox));
 
         _localRegistry.Register(new CommandDefinition(
             id: "message.grabAddresses", category: "Contacts", title: "Grab Addresses from Message",
@@ -187,7 +189,8 @@ public partial class MessageWindow : Window
         _localRegistry.Register(new CommandDefinition(
             id: "message.createRule", category: "Mail", title: "Create Rule from Message",
             execute: () => _vm.CreateRuleFromMessageCommand.Execute(null),
-            defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+            defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => _vm.IsInMailbox));
 
         _localRegistry.Register(new CommandDefinition(
             id: "window.manageRules", category: "Mail", title: "Manage Rules",
@@ -223,7 +226,8 @@ public partial class MessageWindow : Window
 
         _localRegistry.Register(new CommandDefinition(
             id: "window.moveToMainWindow", category: "View", title: "Move to Main Window",
-            execute: () => _vm.MoveToMainWindowCommand.Execute(null)));
+            execute: () => _vm.MoveToMainWindowCommand.Execute(null),
+            isAvailable: () => _vm.IsInMailbox));
 
         // Copy attachments to the Windows clipboard as files (#929). Scoped to the attachment list,
         // so Ctrl+C anywhere else in this window keeps copying text.
