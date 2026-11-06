@@ -244,6 +244,16 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void SoundGalleryWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var window = new SoundGalleryWindow(new SoundGalleryViewModel(new SoundGalleryService(System.IO.Path.GetTempPath())));
+        Assert.Equal("Sound Scheme Gallery", window.Title);
+        Assert.NotNull(window.FindName("SchemeList") as System.Windows.Controls.ListBox);
+        window.Close();
+    }
+
+    [StaFact]
     public void WatchedConversationsWindow_XamlParsesWithoutException()
     {
         EnsureApplication();

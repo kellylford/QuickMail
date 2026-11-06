@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Xml.Linq;
 using QuickMail.Models;
+using QuickMail.Services;
 using QuickMail.ViewModels;
 using QuickMail.Views;
 using Xunit;
@@ -66,6 +67,7 @@ public class TypeAheadWiringTests
         new("Views/MainWindow.xaml",           "AccountList",      "AccountLabel",            typeof(AccountModel)),
         new("Views/FolderPickerWindow.xaml",   "FolderListBox",    "FolderPath",              typeof(FolderPickerWindow.FolderPickerItem)),
         new("Views/WatchedConversationsWindow.xaml", "WatchList",  "Label",                   typeof(WatchRow)),
+        new("Views/SoundGalleryWindow.xaml",   "SchemeList",       "Name",                    typeof(SoundGalleryEntry)),
     ];
 
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";

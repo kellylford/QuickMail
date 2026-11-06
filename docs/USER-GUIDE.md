@@ -2145,6 +2145,8 @@ Each scheme keeps its own choices. Changing an event while **Glass** is chosen c
 
 **Reset a built-in scheme.** If you have changed Glass, Soft bell or Wood, **Reset scheme…** puts it back to how it ships. It is available only when the scheme showing has changes.
 
+**Get more schemes.** **Browse schemes…** opens the Sound Scheme Gallery, a list of schemes that other people have made and shared. Each entry gives the scheme's name, who made it, and how many events it has a sound for; its description is read as the entry's help text and shown below the list. Choose **Add** (or press Enter on a scheme) to add it as a scheme of your own, ready to preview. Choose **Save** to keep it, or delete it if you don't like it. QuickMail contacts the gallery only while it is open. Before using anything from it, QuickMail checks that the list is signed with the gallery's own key and that the file is exactly the one the list names, and then checks the scheme's sound files as it does for **Import scheme…**. To propose a scheme of your own, see [the gallery on GitHub](https://github.com/kellylford/quickmail-sounds).
+
 **Share a scheme.** **Export scheme…** saves the scheme showing, and any sound files of your own it uses, as a `.qmsounds` file. On another computer, or for someone else, **Import scheme…** adds it as a new scheme of your own, with its sound files. If a scheme of that name is already there, the new one gets a number after its name. Choose **Save** to keep an imported scheme.
 
 ### New Mail Sounds and Notifications

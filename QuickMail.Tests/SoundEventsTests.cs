@@ -1327,6 +1327,32 @@ public class SoundsTabAccessibilityTests
     }
 
     [StaFact]
+    public void BrowseSchemesFollowsWhetherThereIsAGallery()
+    {
+        // Bound, not set once in the constructor: MainWindow used to give the gallery after building
+        // the dialog, which left Browse hidden for good (#937 review).
+        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        var dialog = new SettingsDialog(vm);
+        try
+        {
+            var browse = dialog.FindName("BrowseSoundSchemesButton") as System.Windows.Controls.Button;
+            Assert.NotNull(browse);
+            var binding = System.Windows.Data.BindingOperations.GetBinding(browse, System.Windows.UIElement.VisibilityProperty);
+            Assert.NotNull(binding);
+            Assert.Equal(nameof(SettingsViewModel.HasSoundGallery), binding.Path.Path);
+
+            var changed = new List<string?>();
+            vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+            Assert.False(vm.HasSoundGallery);
+            vm.SoundGallery = new SoundGalleryService(System.IO.Path.GetTempPath());
+            Assert.True(vm.HasSoundGallery);
+            Assert.Contains(nameof(SettingsViewModel.HasSoundGallery), changed);
+        }
+        finally { dialog.Close(); }
+    }
+
+    [StaFact]
     public void TypingMovesToAMatchingEvent()
     {
         var (dialog, vm) = MakeDialog();

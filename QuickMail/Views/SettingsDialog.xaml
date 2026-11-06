@@ -875,6 +875,10 @@
                                     MinWidth="90" Margin="0,0,8,4" Click="ExportSoundSchemeButton_Click"/>
                             <Button x:Name="ImportSoundSchemeButton" Content="Import scheme…" AutomationProperties.Name="Import scheme"
                                     MinWidth="90" Margin="0,0,8,4" Click="ImportSoundSchemeButton_Click"/>
+                            <!-- #937: B, the one letter of "Browse" left on this tab. -->
+                            <Button x:Name="BrowseSoundSchemesButton" Content="_Browse schemes…" AutomationProperties.Name="Browse schemes"
+                                    MinWidth="90" Margin="0,0,8,4" Click="BrowseSoundSchemesButton_Click"
+                                    Visibility="{Binding HasSoundGallery, Converter={StaticResource BoolToVisibilityConverter}}"/>
                         </WrapPanel>
                         <TextBlock Text="{Binding SoundSchemeMessage}" TextWrapping="Wrap" Margin="0,0,0,8"
                                    Visibility="{Binding HasSoundSchemeMessage, Converter={StaticResource BoolToVisibilityConverter}}"/>

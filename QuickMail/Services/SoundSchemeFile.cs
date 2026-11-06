@@ -18,7 +18,10 @@ public sealed class SoundSchemeFileException(string message, Exception? inner = 
 /// <param name="Events">Every event's stored sound, with custom files renamed to where they landed.</param>
 /// <param name="SoundsAdded">How many sound files were copied in.</param>
 /// <param name="SoundsDropped">Events whose sound file was missing from the file or refused, now set to None.</param>
-public sealed record SoundSchemeImport(string Name, Dictionary<string, string> Events, int SoundsAdded, int SoundsDropped);
+/// <param name="Author">Who made it, if the file says; kept so the credit travels with it.</param>
+/// <param name="License">Its licence, if the file says.</param>
+public sealed record SoundSchemeImport(string Name, Dictionary<string, string> Events, int SoundsAdded, int SoundsDropped,
+    string? Author = null, string? License = null);
 
 /// <summary>
 /// A sound scheme shared as a file (#932): a zip holding <c>scheme.json</c> and the custom sounds it
@@ -38,8 +41,8 @@ public static class SoundSchemeFile
     private const int MaxEntries = 64;
     private const int MaxEvents = 100;
 
-    // Every event with its own custom file at the largest size accepted, with room to spare.
-    private const long MaxTotalBytes = 80L * 1024 * 1024;
+    /// <summary>The largest scheme file accepted: every event with its own custom file at the largest size, with room to spare.</summary>
+    public const long MaxFileBytes = 80L * 1024 * 1024;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
@@ -47,6 +50,8 @@ public static class SoundSchemeFile
     {
         [JsonPropertyName("format")] public int Format { get; set; }
         [JsonPropertyName("name")] public string? Name { get; set; }
+        [JsonPropertyName("author")] public string? Author { get; set; }
+        [JsonPropertyName("license")] public string? License { get; set; }
         [JsonPropertyName("events")] public Dictionary<string, string>? Events { get; set; }
     }
 
@@ -68,12 +73,15 @@ public static class SoundSchemeFile
     }
 
     /// <summary>Writes a scheme and the custom sounds it uses. Throws IOException or UnauthorizedAccessException.</summary>
-    public static void Export(string path, string name, IReadOnlyDictionary<string, string> events, ISoundService sounds)
+    /// <param name="author">Who made it, if known, so the credit a licence such as CC-BY asks for travels.</param>
+    /// <param name="license">Its licence, if known.</param>
+    public static void Export(string path, string name, IReadOnlyDictionary<string, string> events, ISoundService sounds,
+        string? author = null, string? license = null)
     {
         using var stream = new MemoryStream();
         using (var zip = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
         {
-            var json = JsonSerializer.Serialize(new SchemeJson { Format = CurrentFormat, Name = name, Events = new(events) }, JsonOptions);
+            var json = JsonSerializer.Serialize(new SchemeJson { Format = CurrentFormat, Name = name, Author = author, License = license, Events = new(events) }, JsonOptions);
             using (var es = zip.CreateEntry(SchemeEntry).Open())
                 es.Write(Encoding.UTF8.GetBytes(json));
 
@@ -87,7 +95,7 @@ public static class SoundSchemeFile
                 // A file that has gone stays behind; the import sets that event to None and says so.
                 if (sounds.CustomSoundPath(file) is not { } source) continue;
                 var bytes = File.ReadAllBytes(source);
-                if (bytes.Length > SoundCatalog.MaxCustomFileBytes || total + bytes.Length > MaxTotalBytes) continue;
+                if (bytes.Length > SoundCatalog.MaxCustomFileBytes || total + bytes.Length > MaxFileBytes) continue;
                 total += bytes.Length;
                 using var es = zip.CreateEntry(SoundsPrefix + file).Open();
                 es.Write(bytes);
@@ -144,7 +152,7 @@ public static class SoundSchemeFile
             try { if (Directory.Exists(temp)) Directory.Delete(temp, recursive: true); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { LogService.Log("Could not tidy up after a sound scheme import", ex); }
         }
-        return new SoundSchemeImport(name, events, added, dropped);
+        return new SoundSchemeImport(name, events, added, dropped, CleanCredit(scheme.Author, 60), CleanCredit(scheme.License, 40));
     }
 
     /// <summary>Where a sound the scheme names ends up: copied in from the file, or already here. Null if neither.</summary>
@@ -166,9 +174,22 @@ public static class SoundSchemeFile
     /// <summary>The name to show for an imported scheme: one line, trimmed, and not too long.</summary>
     public static string CleanName(string? name)
     {
-        var text = new string((name ?? string.Empty).Where(c => !char.IsControl(c)).ToArray()).Trim();
-        if (text.Length > SoundCatalog.MaxSchemeNameLength) text = text[..SoundCatalog.MaxSchemeNameLength].TrimEnd();
+        var text = Cut(new string((name ?? string.Empty).Where(c => !char.IsControl(c)).ToArray()).Trim(), SoundCatalog.MaxSchemeNameLength);
         return text.Length == 0 ? "Imported scheme" : text;
+    }
+
+    private static string? CleanCredit(string? text, int max)
+    {
+        var clean = Cut(new string((text ?? string.Empty).Where(c => !char.IsControl(c)).ToArray()).Trim(), max);
+        return clean.Length == 0 ? null : clean;
+    }
+
+    /// <summary>Text cut to at most <paramref name="max"/> characters, never between the two halves of an emoji or other surrogate pair.</summary>
+    public static string Cut(string text, int max)
+    {
+        if (text.Length <= max) return text;
+        var end = char.IsHighSurrogate(text[max - 1]) ? max - 1 : max;
+        return text[..end].TrimEnd();
     }
 
     private static (SchemeJson Scheme, Dictionary<string, byte[]> Files) Read(string path)
@@ -179,7 +200,7 @@ public static class SoundSchemeFile
         try
         {
             using var stream = File.OpenRead(path);
-            if (stream.Length > MaxTotalBytes) throw new SoundSchemeFileException(notASchemeFile);
+            if (stream.Length > MaxFileBytes) throw new SoundSchemeFileException(notASchemeFile);
             using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
             if (zip.Entries.Count > MaxEntries) throw new SoundSchemeFileException(notASchemeFile);
             long total = 0;
@@ -194,7 +215,7 @@ public static class SoundSchemeFile
 
                 var bytes = ReadCapped(entry, limit, notASchemeFile);
                 total += bytes.Length;
-                if (total > MaxTotalBytes) throw new SoundSchemeFileException(notASchemeFile);
+                if (total > MaxFileBytes) throw new SoundSchemeFileException(notASchemeFile);
                 if (limit == MaxSchemeJsonBytes)
                 {
                     using var reader = new StreamReader(new MemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);

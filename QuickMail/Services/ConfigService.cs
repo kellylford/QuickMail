@@ -489,7 +489,10 @@ public class ConfigService : IConfigService
             else if (SoundCatalog.IsUserSchemeId(id))
             {
                 entries.Remove("Name", out var name);
-                schemes[id] = new SoundScheme(id, string.IsNullOrWhiteSpace(name) ? id : name, isBuiltIn: false, events: entries);
+                entries.Remove("Author", out var author);
+                entries.Remove("License", out var license);
+                schemes[id] = new SoundScheme(id, string.IsNullOrWhiteSpace(name) ? id : name, isBuiltIn: false, events: entries,
+                    author: author, license: license);
             }
             else
             {
@@ -1032,6 +1035,8 @@ public class ConfigService : IConfigService
             {
                 sb.AppendLine("# A sound scheme of your own. An event not listed plays no sound.");
                 sb.AppendLine($"Name = {scheme.Name}");
+                if (scheme.Author is not null) sb.AppendLine($"Author = {scheme.Author}");
+                if (scheme.License is not null) sb.AppendLine($"License = {scheme.License}");
             }
             sb.AppendLine();
             foreach (var (name, value) in scheme.Events)

@@ -7920,6 +7920,8 @@ public partial class MainWindow : Window
             (Application.Current as App)?.ScreenshotCapture,
             (Application.Current as App)?.LaunchAtSignIn,
             _vm.Sounds);
+        // Before the dialog is built, so Browse schemes is there from the start (#937).
+        vm.SoundGallery = (Application.Current as App)?.SoundGallery;
         var dialog = new SettingsDialog(vm) { Owner = this };
 
         // A sound file for an event (#912). The Windows file dialog, over the Settings dialog, which

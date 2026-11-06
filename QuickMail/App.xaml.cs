@@ -34,6 +34,9 @@ public partial class App : Application
     /// <summary>Start at Windows sign-in (#770). Exposed for Settings, like <see cref="Profile"/>.</summary>
     public ILaunchAtSignInService? LaunchAtSignIn { get; private set; }
 
+    /// <summary>The sound scheme gallery (#937): GitHub Pages, or the --soundGallery folder or URL.</summary>
+    public SoundGalleryService? SoundGallery { get; private set; }
+
     /// <summary>
     /// True when Windows started this process at sign-in and the user wants that to be unobtrusive
     /// (StartMinimizedAtSignIn): the main window starts minimized without taking focus, moves to the
@@ -239,6 +242,9 @@ public partial class App : Application
                 "  --online              Run in fully online mode: fetch everything live from\n" +
                 "                        IMAP on every folder selection. Nothing is read from\n" +
                 "                        or written to the local SQLite cache.\n\n" +
+                "  --soundGallery <path> Browse sound schemes in <path> (a folder or https URL)\n" +
+                "                        instead of the published gallery. It must be signed\n" +
+                "                        with the gallery's key.\n\n" +
                 "  --updateFeed <path>   Check for updates in <path> (a folder or URL of\n" +
                 "                        Velopack packages) instead of GitHub Releases.\n" +
                 "                        For testing update delivery.\n\n" +
@@ -631,6 +637,15 @@ public partial class App : Application
                                                                  _calDavCalendarClient, credentialService);
 
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
+            try
+            {
+                SoundGallery = new SoundGalleryService(ParseArgValue(e.Args, "--soundGallery"));
+            }
+            catch (ArgumentException ex)
+            {
+                LogService.Log("--soundGallery was not an https address or a folder; using the published gallery", ex);
+                SoundGallery = new SoundGalleryService();
+            }
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
             _soundService = probeMode ? null : new SoundService(
@@ -748,6 +763,7 @@ public partial class App : Application
         _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
         _notificationService?.Dispose(); // unhooks the toast-activation static event
         _soundService?.Dispose();   // ends the sound worker; after everything that could ask for a sound
+        SoundGallery?.Dispose();
         _autoDiscoverService?.Dispose(); // releases the autoconfig HttpClient
         _truthProbe?.Dispose();     // cancels in-flight probes before releasing their token source
         ScreenshotCapture?.Dispose(); // flushes any in-flight PNG save (best effort, bounded)
@@ -771,6 +787,17 @@ public partial class App : Application
                 disable.Add(args[i + 1]);
         }
         return (enable, disable);
+    }
+
+    /// <summary>The value after a flag such as --soundGallery, or null if it isn't given.</summary>
+    private static string? ParseArgValue(string[] args, string flag)
+    {
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], flag, StringComparison.OrdinalIgnoreCase))
+                return args[i + 1];
+        }
+        return null;
     }
 
     private static bool IsHelpRequest(string[] args)
