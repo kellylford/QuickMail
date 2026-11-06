@@ -380,6 +380,18 @@ public class MessageClipboardTests
     }
 
     [Fact]
+    public async Task OneMessagePastedFromTheFolderTree_IsAnnounced()
+    {
+        // A single move is silent from the list, where the row leaving and the next row being read say
+        // it all (#667). From the folder tree the user is not on the list and would hear nothing.
+        var f = await Fixture.CreateAsync();
+        await f.Vm.CutMessagesToClipboardAsync([f.Row("b")]);
+
+        await f.Vm.PasteMessagesAsync(f.Archive, moveFocus: false);
+
+        Assert.Equal(("1 message moved to Archive.", AnnouncementCategory.MessageAction), f.Announced.Last);
+    }
+    [Fact]
     public async Task ACutWhoseRowWasReloaded_StillLeavesTheList()
     {
         // The list replaces its rows with fresh objects on a background reload (#925). The move

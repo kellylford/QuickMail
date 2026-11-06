@@ -10084,9 +10084,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     // As delete says it: no next row is being read, so there is nothing to interrupt, and "empty"
                     // is a state the user cannot otherwise get from a list that shows nothing.
                     SetStatus($"{text} Folder is now empty.", AnnouncementCategory.MessageAction);
-                else if (moved.Count == 1)
+                else if (moved.Count == 1 && moveFocus)
                     // Self-evident, as a single delete is (#667): the row has gone and the next one has just
                     // been read, and the destination was the user's own choice a moment ago. Status bar only.
+                    // Not so from the folder tree (a paste, #929): the user is on a folder, not the list, and
+                    // would hear nothing at all.
                     SetStatusSilently(text);
                 else
                     SetStatus(text, AnnouncementCategory.MessageAction);
