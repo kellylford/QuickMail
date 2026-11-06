@@ -66,7 +66,8 @@ public sealed class SoundService : ISoundService
             if (!config.PlayEventSounds) return;
             var info = SoundCatalog.Info(soundEvent);
             var origin = background && info.Origin == SoundOrigin.Direct ? SoundOrigin.Background : info.Origin;
-            Enqueue(SoundCatalog.Resolve(soundEvent, config.SoundEvents), info.BuiltInSound, origin, config);
+            var scheme = SoundCatalog.ActiveScheme(config);
+            Enqueue(SoundCatalog.Resolve(soundEvent, scheme), info.BuiltInSound, origin, config, scheme);
         }
         catch (Exception ex)
         {
@@ -78,6 +79,13 @@ public sealed class SoundService : ISoundService
     {
         try
         {
+            var config = _config.Load();
+            var scheme = SoundCatalog.ActiveScheme(config);
+            var sound = RuleSound(storedSound, scheme);
+            // A scheme can set its rule sound to None. Then nothing plays, so the new-mail sound and the
+            // toast's own sound aren't held back for this mail either.
+            if (sound.Kind == SoundRefKind.None) return;
+
             foreach (var key in messageKeys ?? [])
             {
                 // Bounded, as the new-mail key set is. Clearing risks at most one message sounding twice.
@@ -85,15 +93,36 @@ public sealed class SoundService : ISoundService
                 _ruleSoundedKeys[key] = 0;
             }
 
-            // The editor has no "None" for a rule: a rule told to play a sound plays one.
-            var sound = SoundRef.TryParse(storedSound, out var parsed) && parsed.Kind != SoundRefKind.None
-                ? parsed
-                : SoundRef.BuiltIn(SoundCatalog.DefaultRuleSound);
-            Enqueue(sound, SoundCatalog.DefaultRuleSound, SoundOrigin.Rule, _config.Load());
+            Enqueue(sound, SoundCatalog.DefaultRuleSound, SoundOrigin.Rule, config, scheme);
         }
         catch (Exception ex)
         {
             LogService.Log("Rule sound failed", ex);
+        }
+    }
+
+    /// <summary>
+    /// What a rule plays. The editor has no "None" for a rule, so a rule told to play a sound plays one:
+    /// its own, or, for the default (stored as an unqualified <c>builtin:matched</c>) or a value that
+    /// can't be read, the scheme's "A rule matched" sound (#932).
+    /// </summary>
+    internal static SoundRef RuleSound(string? storedSound, SoundScheme scheme)
+    {
+        if (SoundRef.TryParse(storedSound, out var parsed) && parsed.Kind != SoundRefKind.None && !SoundCatalog.IsDefaultRuleSound(parsed))
+            return parsed;
+        return SoundCatalog.Resolve(SoundEvent.RuleMatched, scheme);
+    }
+
+    public void PreviewRule(string? storedSound)
+    {
+        try
+        {
+            var sound = RuleSound(storedSound, SoundCatalog.ActiveScheme(_config.Load()));
+            Preview(sound.ToStored());   // None just stops what is playing: the rule would play nothing
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Rule sound preview failed", ex);
         }
     }
 
@@ -106,7 +135,8 @@ public sealed class SoundService : ISoundService
             if (Volatile.Read(ref _disposed) != 0) return;
             StopAll();   // Previewing "None" is how someone stops the last preview.
             if (!SoundRef.TryParse(storedSound, out var sound) || sound.Kind == SoundRefKind.None) return;
-            var clip = ToClip(sound, SoundCatalog.DefaultRuleSound, _config.Load(), pack);
+            var schemePack = pack ?? SoundCatalog.PackFor(SoundRef.None, SoundCatalog.ActiveScheme(_config.Load()));
+            var clip = ToClip(sound, SoundCatalog.DefaultRuleSound, schemePack);
             if (clip is not null) TryAdd(new Request(clip, IsPreview: true, VolumePercent: volumePercent));
         }
         catch (Exception ex)
@@ -152,7 +182,7 @@ public sealed class SoundService : ISoundService
         {
             var config = _config.Load();
             return config.PlayEventSounds && !config.MuteSounds && config.SoundVolume > 0
-                && SoundCatalog.Resolve(soundEvent, config.SoundEvents).Kind != SoundRefKind.None;
+                && SoundCatalog.Resolve(soundEvent, SoundCatalog.ActiveScheme(config)).Kind != SoundRefKind.None;
         }
         catch (Exception ex)
         {
@@ -175,6 +205,30 @@ public sealed class SoundService : ISoundService
         {
             LogService.Log("Listing custom sounds failed", ex);
             return [];
+        }
+    }
+
+    public string? CustomSoundPath(string fileName)
+    {
+        if (!SoundRef.IsSafeCustomFileName(fileName)) return null;
+        var path = Path.Combine(_soundsFolder, fileName);
+        return File.Exists(path) ? path : null;
+    }
+
+    public bool TryRemoveCustomSound(string fileName, out string refusal)
+    {
+        refusal = string.Empty;
+        if (!SoundRef.IsSafeCustomFileName(fileName)) return true;   // can't be in the folder, so nothing to remove
+        try
+        {
+            File.Delete(Path.Combine(_soundsFolder, fileName));   // no error if it's already gone
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log($"Removing the custom sound {fileName} failed", ex);
+            refusal = $"{fileName} could not be removed. It may be open in another program; try again later.";
+            return false;
         }
     }
 
@@ -253,14 +307,15 @@ public sealed class SoundService : ISoundService
     private static bool SameBytes(string a, string b) =>
         new FileInfo(a).Length == new FileInfo(b).Length && File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
 
-    private void Enqueue(SoundRef sound, string fallback, SoundOrigin origin, ConfigModel config)
+    private void Enqueue(SoundRef sound, string fallback, SoundOrigin origin, ConfigModel config, SoundScheme scheme)
     {
         if (Volatile.Read(ref _disposed) != 0) return;
         if (sound.Kind == SoundRefKind.None || config.SoundVolume <= 0) return;
         if (!_policy.ShouldPlay(sound.ToStored(), origin, config.MuteSounds, _isQuiet(), _queue.Count)) return;
-        var clip = ToClip(sound, fallback, config);
+        var schemePack = SoundCatalog.PackFor(SoundRef.None, scheme);
+        var clip = ToClip(sound, fallback, schemePack);
         if (clip is null) return;
-        var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(fallback), config);
+        var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(fallback), schemePack);
         TryAdd(new Request(clip, IsPreview: false, Fallback: backup));
     }
 
@@ -278,7 +333,8 @@ public sealed class SoundService : ISoundService
     }
 
     /// <summary>The clip for a sound. A custom file that has gone falls back to the built-in sound.</summary>
-    private SoundClip? ToClip(SoundRef sound, string fallback, ConfigModel config, string? pack = null)
+    /// <param name="schemePack">The pack a built-in sound with none of its own plays in.</param>
+    private SoundClip? ToClip(SoundRef sound, string fallback, string schemePack)
     {
         if (sound.Kind == SoundRefKind.Custom)
         {
@@ -289,13 +345,13 @@ public sealed class SoundService : ISoundService
             sound = SoundRef.BuiltIn(fallback);
         }
 
-        return BuiltInClip(sound, config, pack);
+        return BuiltInClip(sound, schemePack);
     }
 
-    private SoundClip BuiltInClip(SoundRef sound, ConfigModel config, string? packOverride = null)
+    private SoundClip BuiltInClip(SoundRef sound, string schemePack)
     {
         var name = sound.Name;
-        var pack = packOverride ?? config.SoundPack;
+        var pack = sound.Pack ?? schemePack;
         return new SoundClip(sound.ToStored(), null, () => _openBuiltIn(pack, name)
             ?? _openBuiltIn(SoundCatalog.DefaultPack, name)
             ?? throw new FileNotFoundException($"No built-in sound '{name}'."));

@@ -33,12 +33,12 @@ public partial class ServerRuleEditorViewModel
     /// <summary>Whether the sound's own controls are available. A disabled control drops out of the Tab order.</summary>
     public bool IsPlaySoundSelected => PlaySound && CanPlaySound;
 
-    public ObservableCollection<SoundChoice> RuleSoundChoices { get; } = [.. SoundChoiceList.BuiltIn()];
+    public ObservableCollection<SoundChoice> RuleSoundChoices { get; } = [.. SoundChoiceList.ForRules()];
 
     /// <summary>Set by the View: asks for a sound file and returns its path, or null if cancelled.</summary>
     public Func<string?>? PickSoundFileRequested { get; set; }
 
-    private static SoundChoice DefaultRuleChoice() => SoundChoiceList.BuiltIn()
+    private static SoundChoice DefaultRuleChoice() => SoundChoiceList.ForRules()
         .First(c => c.Stored == SoundRef.BuiltIn(SoundCatalog.DefaultRuleSound).ToStored());
 
     /// <summary>Gives the editor what it needs to list custom sounds, preview them and add new ones. Set by the owner.</summary>
@@ -92,19 +92,23 @@ public partial class ServerRuleEditorViewModel
     {
         if (SelectedRuleSound is null) return;
         _previewedSound = true;
-        _sounds?.Preview(SelectedRuleSound.Stored);
+        _sounds?.PreviewRule(SelectedRuleSound.Stored);   // the default follows the scheme in use (#932)
     }
 
     [RelayCommand]
-    private void ChooseRuleSoundFile()
+    private void ChooseRuleSoundFile() => TryChooseRuleSoundFile();
+
+    /// <summary>Asks for a sound file and makes it the rule's sound.</summary>
+    /// <returns>True if one was chosen and accepted, so the View can put focus where its name is read.</returns>
+    public bool TryChooseRuleSoundFile()
     {
-        if (_sounds is null || PickSoundFileRequested?.Invoke() is not { } path) return;
+        if (_sounds is null || PickSoundFileRequested?.Invoke() is not { } path) return false;
 
         if (!_sounds.TryAddCustomSound(path, out var fileName, out var refusal))
         {
             RuleSoundMessage = refusal;
             AnnouncementRequested?.Invoke(refusal, AnnouncementCategory.Result);
-            return;
+            return false;
         }
 
         var stored = SoundRef.Custom(fileName).ToStored();
@@ -114,5 +118,6 @@ public partial class ServerRuleEditorViewModel
         else if (existing != choice) RuleSoundChoices[RuleSoundChoices.IndexOf(existing)] = choice;
         else choice = existing;
         SelectedRuleSound = choice;
+        return true;
     }
 }

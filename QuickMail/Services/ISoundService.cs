@@ -38,8 +38,14 @@ public interface ISoundService : IDisposable
     /// </summary>
     /// <param name="storedSound">The sound, as stored.</param>
     /// <param name="volumePercent">A volume to hear it at, for one not saved yet.</param>
-    /// <param name="pack">A style to hear it in, for one not saved yet.</param>
+    /// <param name="pack">The pack to hear a built-in sound with no pack of its own in, for a scheme not saved yet.</param>
     void Preview(string storedSound, int? volumePercent = null, string? pack = null);
+
+    /// <summary>
+    /// Previews what a rule with this sound would play now: for the default sound, the scheme in use's
+    /// "A rule matched", which may be nothing (#932). Otherwise as <see cref="Preview"/>.
+    /// </summary>
+    void PreviewRule(string? storedSound);
 
     /// <summary>Stops what is playing and whatever is waiting.</summary>
     void StopAll();
@@ -56,6 +62,17 @@ public interface ISoundService : IDisposable
 
     /// <summary>The file names in the profile's folder of custom sounds.</summary>
     IReadOnlyList<string> CustomSoundFiles();
+
+    /// <summary>The full path of a custom sound in the folder, or null if there is none by that name.</summary>
+    string? CustomSoundPath(string fileName);
+
+    /// <summary>
+    /// Deletes a custom sound from the folder (#932). Anything still naming it then plays its fallback,
+    /// as for a file that has gone missing. True if the file is gone, including if it was never there.
+    /// </summary>
+    /// <param name="fileName">The file's name in the folder.</param>
+    /// <param name="refusal">Why it couldn't be deleted, in words for the person.</param>
+    bool TryRemoveCustomSound(string fileName, out string refusal);
 
     /// <summary>
     /// Checks a file the person chose and copies it into the folder of custom sounds, so it survives

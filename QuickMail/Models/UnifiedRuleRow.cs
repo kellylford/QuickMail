@@ -156,13 +156,15 @@ public sealed class UnifiedRuleRow
             RuleAction.CopyToFolder => $"copy to {Folder(_copyFolderDisplay, r.CopyTargetFolder)}",
             RuleAction.MoveToFolder => $"move to {Folder(_targetFolderDisplay, r.TargetFolder)}",
             RuleAction.Delete => "move to Trash",
-            RuleAction.PlaySound => "play sound " + SoundName(r.Sound),
+            RuleAction.PlaySound => SoundName(r.Sound),
             _ => action.ToString(),
         }).ToList();
 
-        static string SoundName(string? stored) => SoundRef.TryParse(stored, out var sound) && sound.Kind != SoundRefKind.None
-            ? sound.DisplayName
-            : SoundCatalog.BuiltInLabel(SoundCatalog.DefaultRuleSound);
+        // The default is the scheme's "A rule matched" sound, which differs from scheme to scheme (#932).
+        static string SoundName(string? stored) =>
+            SoundRef.TryParse(stored, out var sound) && sound.Kind != SoundRefKind.None && !SoundCatalog.IsDefaultRuleSound(sound)
+                ? "play sound " + sound.DisplayName
+                : "play the default sound";
 
         // Prefer the VM-resolved folder name. Fall back to the raw folder only when it is readable (IMAP,
         // whose folder is the folder path); an opaque Graph id that didn't resolve (folder not cached, or its

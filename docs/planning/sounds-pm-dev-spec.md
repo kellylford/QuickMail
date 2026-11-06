@@ -238,6 +238,8 @@ All tests and app runs happen in the VM (`vmtest` skill), never on Kelly's PC. B
 - `scripts/ui-probe.ps1` for the Sounds tab and rule editor in parchment and dark (add the surface to `ui-probe-plan.json`)
 - `sr-test` speech check for the Sounds tab and rule editor
 
+**Later: sound schemes (#932).** Per-scheme choices, schemes of your own, Reset, sharing a scheme as a `.qmsounds` file, Remove file and "A rule matched" as an event are specified in issue #932, which supersedes this spec's single `[sounds]` list and the pack-import entry under Out of scope. `config.ini` now has `SoundScheme` in `[global]` and one `[sounds.<id>]` section per scheme; a 0.8.67/0.8.68 `SoundPack` and `[sounds]` are migrated on load.
+
 **Kelly to check** (only a person can judge):
 - Choose among the candidate sounds.
 - With a screen reader running, do sounds play well over speech, or cut it off or get lost? Is the volume right next to speech?

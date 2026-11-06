@@ -3,10 +3,16 @@
 ## New
 
 - **Save a message's attachments without opening it.** Open the context menu on a message in the message list (Shift+F10 or the Applications key) and choose **Save All Attachments…**. QuickMail asks for a folder and saves every attachment there. It works on several selected messages at once, and on a whole conversation or sender group when its heading is selected. If there is nothing to save, QuickMail says the message has no attachments instead of asking for a folder. It is in the command palette too, and you can give it a key in keyboard customizations. (#931)
+- **Sound schemes: make your own set of sounds.** The Style box in **Settings → Sounds** is now **Sound scheme**, and each scheme keeps its own choices: changing an event in Glass no longer changes Wood. Choose **New scheme…** to start a scheme of your own with every event silent, then give sounds only to the events you want, using any built-in sound in any tone or your own files. **Copy scheme…** starts from the scheme showing instead. Schemes of your own can be renamed and deleted. Your existing choices move into the scheme you had chosen. (#932)
+- **Reset a built-in scheme.** **Reset scheme…** puts Glass, Soft bell or Wood back to how it ships, so you no longer need to remember what each event used to be. (#932)
+- **Share a scheme.** **Export scheme…** saves a scheme and its sound files as one `.qmsounds` file, and **Import scheme…** adds one. If you make a set of sounds you like, we would love to hear it. (#932)
+- **Remove a sound file.** **Remove file…** deletes one of your own sound files from QuickMail, after saying which schemes and rules still use it. Until now files could only pile up. (#932)
+- **Choose the default rule sound.** "A rule matched" is now in the list of events, and is what a rule set to **Default sound** plays. (#932)
 
 ## Changed
 
 - **Saving attachments no longer replaces files with the same name.** When two attachments share a name, or the folder already has a file by that name, the new copy is saved as, for example, "image001 (2).png". This applies to **Save All…** in the attachment list as well. (#931)
+- **After you choose a sound file, you hear which one.** Choosing a file in Settings or the rule editor now puts focus on the sound box, which reads the file's name, instead of back on the button. (#932)
 
 ## Fixed
 

@@ -171,7 +171,31 @@ public class RuleSoundTests
         vm.AttachSounds(sounds);
         vm.SelectedRuleSound = vm.RuleSoundChoices.Single(c => c.Label == "Arrived");
         vm.PreviewRuleSoundCommand.Execute(null);
-        Assert.Equal(["builtin:arrived"], sounds.Previewed);
+        Assert.Equal(["builtin:arrived"], sounds.RulePreviewed);
+    }
+
+    [Fact]
+    public void TheDefaultSoundComesFirstAndIsWhatANewRuleHas()
+    {
+        var vm = Named();
+        Assert.Equal("Default sound", vm.RuleSoundChoices[0].Label);
+        Assert.Equal("builtin:matched", vm.RuleSoundChoices[0].Stored);
+        Assert.Equal(vm.RuleSoundChoices[0], vm.SelectedRuleSound);
+        Assert.DoesNotContain(vm.RuleSoundChoices, c => c.Label == "Matched");
+    }
+
+    [Fact]
+    public void ChoosingAFileSaysWhetherItWorkedSoTheViewCanMoveFocus()
+    {
+        var vm = Named();
+        vm.AttachSounds(new RecordingSoundService());
+        vm.PickSoundFileRequested = () => @"C:\Music\Ding.wav";
+        Assert.True(vm.TryChooseRuleSoundFile());
+        vm.PickSoundFileRequested = () => null;
+        Assert.False(vm.TryChooseRuleSoundFile());
+        vm.AttachSounds(new RecordingSoundService { RefuseWith = "No." });
+        vm.PickSoundFileRequested = () => @"C:\Music\Junk.wav";
+        Assert.False(vm.TryChooseRuleSoundFile());
     }
 
     [Fact]
@@ -468,9 +492,11 @@ public class RuleSoundTests
     [Theory]
     [InlineData("builtin:reminder", "play sound Reminder")]
     [InlineData("custom:Pat.wav", "play sound Pat.wav")]
-    [InlineData(null, "play sound Matched")]
-    [InlineData("rubbish", "play sound Matched")]
-    [InlineData("none", "play sound Matched")]
+    [InlineData("builtin:wood/matched", "play sound Matched (Wood)")]
+    [InlineData("builtin:matched", "play the default sound")]
+    [InlineData(null, "play the default sound")]
+    [InlineData("rubbish", "play the default sound")]
+    [InlineData("none", "play the default sound")]
     public void TheRuleListSaysWhichSound(string? sound, string expected)
     {
         var row = UnifiedRuleRow.ForClient(new MailRule

@@ -49,6 +49,10 @@ internal sealed class RecordingSoundService : ISoundService
     public bool WasSoundedByRule(string messageKey) => RuleSoundedKeys.Contains(messageKey);
     public string? PreviewPack { get; private set; }
 
+    public List<string?> RulePreviewed { get; } = [];
+
+    public void PreviewRule(string? storedSound) => RulePreviewed.Add(storedSound);
+
     public void Preview(string storedSound, int? volumePercent = null, string? pack = null)
     {
         Previewed.Add(storedSound);
@@ -57,6 +61,21 @@ internal sealed class RecordingSoundService : ISoundService
     }
     public bool IsAudible(SoundEvent soundEvent) => Audible.Contains(soundEvent);
     public IReadOnlyList<string> CustomSoundFiles() => CustomFiles;
+
+    public string? CustomSoundPath(string fileName) =>
+        CustomFiles.Contains(fileName, StringComparer.OrdinalIgnoreCase) ? Path.Combine(Path.GetTempPath(), fileName) : null;
+
+    public List<string> Removed { get; } = [];
+    public string? RemoveRefusal { get; set; }
+
+    public bool TryRemoveCustomSound(string fileName, out string refusal)
+    {
+        refusal = RemoveRefusal ?? string.Empty;
+        if (RemoveRefusal is not null) return false;
+        Removed.Add(fileName);
+        CustomFiles.RemoveAll(f => f.Equals(fileName, StringComparison.OrdinalIgnoreCase));
+        return true;
+    }
 
     public bool TryAddCustomSound(string sourcePath, out string fileName, out string refusal)
     {
@@ -1129,16 +1148,16 @@ public class SoundEventsTests
         var saved = config.Load();
         Assert.True(saved.PlayEventSounds);
         Assert.Equal(50, saved.SoundVolume);
-        Assert.Equal("none", Assert.Single(saved.SoundEvents).Value);
+        Assert.Equal("none", Assert.Single(saved.ActiveSoundEvents()).Value);
     }
 
     [Fact]
     public void SavingDoesNotChangeTheDictionaryTheSoundWorkerMayBeReading()
     {
         var config = new StubConfigService();
-        var before = config.Load().SoundEvents;
+        var before = config.Load().SoundSchemes;
         MakeSettings(config).SaveCommand.Execute(null);
-        Assert.NotSame(before, config.Load().SoundEvents);
+        Assert.NotSame(before, config.Load().SoundSchemes);
     }
 
     [Fact]
@@ -1156,7 +1175,7 @@ public class SoundEventsTests
     public void ASoundWhoseFileHasGoneStaysListedAsMissing()
     {
         var config = new StubConfigService();
-        config.Load().SoundEvents["NewMail"] = "custom:Gone.wav";
+        config.Load().ActiveSoundEvents()["NewMail"] = "custom:Gone.wav";
         var vm = MakeSettings(config);
         Assert.Equal("New mail: Gone.wav (missing)", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.NewMail).AccessibleName);
     }
@@ -1166,9 +1185,9 @@ public class SoundEventsTests
     {
         var sounds = new RecordingSoundService();
         var vm = MakeSettings(new StubConfigService(), sounds);
+        vm.SelectedSoundScheme = vm.SoundSchemes.Single(p => p.Name == "Wood");
         vm.SelectedSoundChoice = vm.SoundChoices.Single(c => c.Label == "Reminder");
         vm.SelectedSoundVolume = vm.SoundVolumeOptions.Single(o => o.Percent == 20);
-        vm.SelectedSoundPack = vm.SoundPacks.Single(p => p.Label == "Wood");
         vm.PreviewSoundCommand.Execute(null);
         Assert.Equal(["builtin:reminder"], sounds.Previewed);
         Assert.Equal(20, sounds.PreviewVolume);
@@ -1180,22 +1199,22 @@ public class SoundEventsTests
     {
         var config = new StubConfigService();
         var vm = MakeSettings(config);
-        Assert.Equal(SoundCatalog.DefaultPack, vm.SelectedSoundPack!.Id);
+        Assert.Equal(SoundCatalog.DefaultPack, vm.SelectedSoundScheme!.Id);
 
-        vm.SelectedSoundPack = vm.SoundPacks.Single(p => p.Label == "Soft bell");
+        vm.SelectedSoundScheme = vm.SoundSchemes.Single(p => p.Name == "Soft bell");
         vm.SaveCommand.Execute(null);
 
-        Assert.Equal("softbell", config.Load().SoundPack);
-        Assert.Equal("Soft bell", MakeSettings(config).SelectedSoundPack!.Label);
+        Assert.Equal("softbell", config.Load().SoundSchemeId);
+        Assert.Equal("Soft bell", MakeSettings(config).SelectedSoundScheme!.Name);
     }
 
     [Fact]
     public void SavingOnAnotherTabKeepsAStyleThisBuildDoesNotHave()
     {
         var config = new StubConfigService();
-        config.Load().SoundPack = "from-the-future";
+        config.Load().SoundSchemeId = "from-the-future";
         MakeSettings(config).SaveCommand.Execute(null);
-        Assert.Equal("from-the-future", config.Load().SoundPack);
+        Assert.Equal("from-the-future", config.Load().SoundSchemeId);
     }
 
     [Fact]
@@ -1223,16 +1242,16 @@ public class SoundEventsTests
     public void AStyleThisBuildDoesNotHaveShowsAsTheDefault()
     {
         var config = new StubConfigService();
-        config.Load().SoundPack = "from-the-future";
-        Assert.Equal(SoundCatalog.DefaultPack, MakeSettings(config).SelectedSoundPack!.Id);
+        config.Load().SoundSchemeId = "from-the-future";
+        Assert.Equal(SoundCatalog.DefaultPack, MakeSettings(config).SelectedSoundScheme!.Id);
     }
 
     [Fact]
     public void ChoosingAMissingFileAgainRepairsTheEntryForEveryEventUsingIt()
     {
         var config = new StubConfigService();
-        config.Load().SoundEvents["NewMail"] = "custom:Gone.wav";
-        config.Load().SoundEvents["MessageSent"] = "custom:Gone.wav";
+        config.Load().ActiveSoundEvents()["NewMail"] = "custom:Gone.wav";
+        config.Load().ActiveSoundEvents()["MessageSent"] = "custom:Gone.wav";
         var vm = MakeSettings(config, new RecordingSoundService());
         vm.PickSoundFileRequested = () => @"C:\Music\Gone.wav";
 
@@ -1247,9 +1266,9 @@ public class SoundEventsTests
     public void SavingKeepsAnEntryFromANewerQuickMail()
     {
         var config = new StubConfigService();
-        config.Load().SoundEvents["SomethingNew"] = "builtin:future";
+        config.Load().ActiveSoundEvents()["SomethingNew"] = "builtin:future";
         MakeSettings(config).SaveCommand.Execute(null);
-        Assert.Equal("builtin:future", config.Load().SoundEvents["SomethingNew"]);
+        Assert.Equal("builtin:future", config.Load().ActiveSoundEvents()["SomethingNew"]);
     }
 
     [Fact]
@@ -1285,7 +1304,7 @@ public class SoundEventsTests
         var vm = MakeSettings(new StubConfigService(), sounds);
         var before = vm.SelectedSoundEvent!.Choice;
         string? announced = null;
-        vm.SoundFileRefused += reason => announced = reason;
+        vm.SoundResultAnnounced += reason => announced = reason;
         vm.PickSoundFileRequested = () => @"C:\Music\junk.wav";
 
         vm.ChooseSoundFileCommand.Execute(null);
@@ -1369,7 +1388,9 @@ public class SoundsTabAccessibilityTests
             Assert.NotNull(row);
             Assert.Equal(vm.SoundEventRows[0].AccessibleName, AutomationProperties.GetName(row));
 
-            foreach (var name in new[] { "SoundEventList", "SoundVolumeCombo", "SoundStyleCombo", "SoundChoiceCombo" })
+            foreach (var name in new[] { "SoundEventList", "SoundVolumeCombo", "SoundSchemeCombo", "SoundChoiceCombo",
+                "NewSoundSchemeButton", "CopySoundSchemeButton", "RenameSoundSchemeButton", "DeleteSoundSchemeButton",
+                "ResetSoundSchemeButton", "ExportSoundSchemeButton", "ImportSoundSchemeButton", "RemoveSoundFileButton" })
             {
                 var control = window.FindName(name) as FrameworkElement;
                 Assert.NotNull(control);

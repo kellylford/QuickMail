@@ -20,6 +20,9 @@ public enum SoundEvent
     MessageArchived,
     MessageMoved,
     TrashEmptied,
+
+    /// <summary>A rule set to the default sound matched new mail (#932). Played through <c>PlayRule</c>, not <c>Play</c>.</summary>
+    RuleMatched,
 }
 
 /// <summary>Why a sound is playing, which decides what can hold it back.</summary>
@@ -47,8 +50,8 @@ public enum SoundOrigin
 public sealed record SoundEventInfo(
     SoundEvent Event, string ConfigKey, string Label, string BuiltInSound, SoundOrigin Origin);
 
-/// <summary>A style of built-in sound. A screen reader reads the item from <see cref="ToString"/>.</summary>
-/// <param name="Id">Its folder under Sounds/BuiltIn, and its value in config.ini.</param>
+/// <summary>A tone of built-in sound: a folder of WAVs. A screen reader reads the item from <see cref="ToString"/>.</summary>
+/// <param name="Id">Its folder under Sounds/BuiltIn, and the id of the built-in scheme that uses it.</param>
 /// <param name="Label">What Settings calls it.</param>
 public sealed record SoundPack(string Id, string Label)
 {
@@ -61,10 +64,16 @@ public static class SoundCatalog
     /// <summary>The sound a new rule starts with.</summary>
     public const string DefaultRuleSound = "matched";
 
-    /// <summary>The style used until someone chooses another, or if config.ini names one this build doesn't have.</summary>
+    /// <summary>The pack, and built-in scheme, used until someone chooses another, or if config.ini names one this build doesn't have.</summary>
     public const string DefaultPack = "glass";
 
-    /// <summary>Every style has every sound, with the same melody; only the tone differs.</summary>
+    /// <summary>The id of every scheme of the person's own starts with this, then a GUID (#932).</summary>
+    public const string UserSchemePrefix = "user-";
+
+    /// <summary>The longest name a scheme of the person's own may have.</summary>
+    public const int MaxSchemeNameLength = 60;
+
+    /// <summary>Every pack has every sound, with the same melody; only the tone differs. Each is also a built-in scheme.</summary>
     public static readonly IReadOnlyList<SoundPack> Packs =
     [
         new("glass", "Glass"),
@@ -99,11 +108,11 @@ public static class SoundCatalog
         new(SoundEvent.MessageArchived,    "MessageArchived",    "Message archived",           "filed",        SoundOrigin.Direct),
         new(SoundEvent.MessageMoved,       "MessageMoved",       "Message moved",              "moved",        SoundOrigin.Direct),
         new(SoundEvent.TrashEmptied,       "TrashEmptied",       "Trash emptied",              "emptied",      SoundOrigin.Direct),
+        new(SoundEvent.RuleMatched,        "RuleMatched",        "A rule matched",             DefaultRuleSound, SoundOrigin.Rule),
     ];
 
-    /// <summary>Every built-in sound name: one per event, plus the rule default.</summary>
-    public static readonly IReadOnlyList<string> BuiltInSounds =
-        [.. Events.Select(e => e.BuiltInSound), DefaultRuleSound];
+    /// <summary>Every built-in sound name, one per event.</summary>
+    public static readonly IReadOnlyList<string> BuiltInSounds = [.. Events.Select(e => e.BuiltInSound).Distinct()];
 
     private static readonly Dictionary<SoundEvent, SoundEventInfo> ByEvent = Events.ToDictionary(e => e.Event);
 
@@ -116,16 +125,56 @@ public static class SoundCatalog
     public static string BuiltInLabel(string name) =>
         name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
+    /// <summary>A rule's "default sound": the unqualified built-in rule sound, which is what every rule stored before #932.</summary>
+    public static bool IsDefaultRuleSound(SoundRef sound) =>
+        sound.Kind == SoundRefKind.BuiltIn && sound.Pack is null && sound.Name == DefaultRuleSound;
+
+    /// <summary>What Settings calls a pack, or its id if this build doesn't have it.</summary>
+    public static string PackLabel(string id) => Packs.FirstOrDefault(p => p.Id == id)?.Label ?? id;
+
+    public static bool IsBuiltInSchemeId(string? id) => Packs.Any(p => p.Id == id);
+
+    public static bool IsUserSchemeId(string? id) =>
+        id is not null && id.StartsWith(UserSchemePrefix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A new id for a scheme of the person's own.</summary>
+    public static string NewUserSchemeId() => UserSchemePrefix + Guid.NewGuid().ToString("N");
+
+    /// <summary>A built-in scheme as it ships, with nothing changed.</summary>
+    public static SoundScheme BuiltInScheme(string packId) =>
+        new(packId, PackLabel(packId), isBuiltIn: true, pack: packId);
+
     /// <summary>
-    /// What an event plays under these settings: the person's choice if a valid one is stored, else
-    /// its built-in sound. An unreadable stored value falls back
-    /// the same way rather than silencing the event.
+    /// The scheme in use: the one config.ini names, with whatever is stored for it. An id this build
+    /// doesn't know, from a newer QuickMail or a scheme since deleted, plays as Glass.
     /// </summary>
-    public static SoundRef Resolve(SoundEvent e, IReadOnlyDictionary<string, string> stored)
+    public static SoundScheme ActiveScheme(ConfigModel config)
+    {
+        var id = config.SoundSchemeId;
+        if (IsBuiltInSchemeId(id))
+            return config.SoundSchemes.TryGetValue(id, out var stored) ? stored : BuiltInScheme(id);
+        if (IsUserSchemeId(id) && config.SoundSchemes.TryGetValue(id, out var own))
+            return own;
+        return config.SoundSchemes.TryGetValue(DefaultPack, out var glass) ? glass : BuiltInScheme(DefaultPack);
+    }
+
+    /// <summary>
+    /// What an event plays in a scheme. In a built-in scheme: the person's choice if a valid one is
+    /// stored, else the event's built-in sound. In a scheme of the person's own: the stored choice,
+    /// else nothing, since a new scheme starts silent. An unreadable stored value falls back the same way.
+    /// </summary>
+    public static SoundRef Resolve(SoundEvent e, SoundScheme scheme)
     {
         var info = Info(e);
-        if (stored.TryGetValue(info.ConfigKey, out var value) && SoundRef.TryParse(value, out var chosen))
+        if (scheme.Events.TryGetValue(info.ConfigKey, out var value) && SoundRef.TryParse(value, out var chosen))
             return chosen;
-        return SoundRef.BuiltIn(info.BuiltInSound);
+        return scheme.IsBuiltIn ? SoundRef.BuiltIn(info.BuiltInSound) : SoundRef.None;
     }
+
+    /// <summary>
+    /// The pack a built-in sound plays in: its own if it names one, else the scheme's, else Glass,
+    /// which is where a scheme of the person's own plays an unqualified built-in sound.
+    /// </summary>
+    public static string PackFor(SoundRef sound, SoundScheme? scheme) =>
+        sound.Pack ?? scheme?.Pack ?? DefaultPack;
 }

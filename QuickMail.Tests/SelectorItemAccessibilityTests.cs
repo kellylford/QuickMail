@@ -111,7 +111,7 @@ public class SelectorItemAccessibilityTests
 
             Assert.Contains("Message sent: Sent", Names(list));
 
-            foreach (var (name, expected) in new[] { ("SoundVolumeCombo", "40%"), ("SoundStyleCombo", "Soft bell"), ("SoundChoiceCombo", "Arrived") })
+            foreach (var (name, expected) in new[] { ("SoundVolumeCombo", "40%"), ("SoundSchemeCombo", "Soft bell"), ("SoundChoiceCombo", "Arrived") })
             {
                 var combo = window.FindName(name) as ComboBox;
                 Assert.NotNull(combo);
@@ -164,6 +164,9 @@ public class SelectorItemAccessibilityTests
         Assert.Equal("Arrived", new SoundChoice("builtin:arrived", "Arrived").ToString());
         Assert.Equal("40%", new SoundVolumeOption(40).ToString());
         Assert.Equal("Soft bell", new SoundPack("softbell", "Soft bell").ToString());
+        // Sound scheme combo (#932).
+        Assert.Equal("My calm scheme", new SoundScheme("user-1", "My calm scheme", isBuiltIn: false).ToString());
+        Assert.Equal("Wood", SoundCatalog.BuiltInScheme("wood").ToString());
         Assert.Equal("New mail: None", new SoundEventRow(SoundCatalog.Info(SoundEvent.NewMail), new SoundChoice("none", "None")).ToString());
         // Save format combo in Settings (#728).
         Assert.Equal("Web page (.html)", new MessageSaveFormatOption(MessageSaveFormat.Html, "Web page (.html)").ToString());

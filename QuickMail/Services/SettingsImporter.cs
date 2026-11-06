@@ -274,6 +274,8 @@ public static class SettingsImporter
                 SettingsCategory.LocalCalendar =>
                     SettingsImportPlan.Plural(CountEvents(bundle.GetText(SettingsBundle.CalendarName)), "appointment")
                     + ", added or updated, never removed",
+                SettingsCategory.Preferences =>
+                    "replaced, including every sound scheme here, apart from settings that belong to this computer",
                 _ => "replaced, apart from settings that belong to this computer",
             };
             lines.Add($"{name}: {detail}");
@@ -639,10 +641,14 @@ public static class SettingsImporter
         // default. Per-account sections start empty: those are the file's alone.
         var baseline = File.Exists(path) ? ConfigService.ParseFile(File.ReadAllLines(path)) : new ConfigModel();
         baseline.Accounts = [];
-        // [sounds] lists only what was changed, so an event missing from it means "the default", not
+        // The file's sound schemes replace this computer's, its own schemes included (#932): a built-in
+        // scheme lists only what was changed, so one missing from the file means "as it ships", not
         // "keep this computer's". A file from before sounds existed says nothing about them either way.
         if (text.Contains("PlayEventSounds", StringComparison.OrdinalIgnoreCase))
-            baseline.SoundEvents = new(StringComparer.OrdinalIgnoreCase);
+        {
+            baseline.SoundSchemes = new(StringComparer.OrdinalIgnoreCase);
+            baseline.SoundSchemeId = SoundCatalog.DefaultPack;
+        }
         var incoming = ConfigService.ParseFile(SplitLines(rewrite(text)), into: baseline);
         SettingsConfigTransfer.Apply(incoming, local, carriedIds);
 

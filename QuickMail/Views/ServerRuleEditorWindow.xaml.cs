@@ -76,9 +76,10 @@ public partial class ServerRuleEditorWindow : Window
 
     private void ChooseRuleSoundButton_Click(object sender, RoutedEventArgs e)
     {
-        _vm.ChooseRuleSoundFileCommand.Execute(null);
-        // The file dialog gives focus back on its own only some of the time.
-        ChooseRuleSoundButton.Focus();
+        // On success, the Sound box, so its value, the new file, is read (#932). Otherwise back here:
+        // the file dialog gives focus back on its own only some of the time.
+        if (_vm.TryChooseRuleSoundFile()) RuleSoundCombo.Focus();
+        else ChooseRuleSoundButton.Focus();
     }
 
     private (string Id, string Name)? OnPickFolderRequested(string? currentFolderId)

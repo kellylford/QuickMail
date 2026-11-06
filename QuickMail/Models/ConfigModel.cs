@@ -442,15 +442,25 @@ public class ConfigModel
     /// <summary>How loud QuickMail's sounds play, 0-100, within whatever Windows is set to.</summary>
     public int SoundVolume { get; set; } = 80;
 
-    /// <summary>The built-in sound pack in use.</summary>
-    public string SoundPack { get; set; } = SoundCatalog.DefaultPack;
+    /// <summary>
+    /// The sound scheme in use (#932): a built-in pack's id ("glass", "softbell", "wood") or a scheme of
+    /// the person's own ("user-&lt;guid&gt;"). Replaces 0.8.67's SoundPack, which is read when this is absent.
+    /// An id this build doesn't have plays as Glass and is kept, as written, until someone chooses another.
+    /// </summary>
+    public string SoundSchemeId { get; set; } = SoundCatalog.DefaultPack;
 
     /// <summary>
-    /// The [sounds] section of config.ini: an event's <see cref="SoundEventInfo.ConfigKey"/> to the
-    /// <see cref="SoundRef"/> chosen for it. An event not listed uses what
-    /// <see cref="SoundCatalog.Resolve"/> gives it, so the file records only what the person changed.
+    /// Every scheme with something stored, by id: one <c>[sounds.&lt;id&gt;]</c> section each. A built-in
+    /// scheme is here only if the person changed it; every scheme of their own is here. A section this
+    /// build doesn't understand is kept so that saving doesn't erase it. Replaced as a whole on save,
+    /// never changed in place: the sound worker reads it from another thread.
     /// </summary>
-    public Dictionary<string, string> SoundEvents { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, SoundScheme> SoundSchemes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A scheme as stored, or a built-in one as it ships. Null for an id that is neither.</summary>
+    public SoundScheme? FindSoundScheme(string id) =>
+        SoundSchemes.TryGetValue(id, out var scheme) ? scheme
+        : SoundCatalog.IsBuiltInSchemeId(id) ? SoundCatalog.BuiltInScheme(id) : null;
 
     /// <summary>
     /// When closing the main window, hide QuickMail to the notification area (system tray) instead

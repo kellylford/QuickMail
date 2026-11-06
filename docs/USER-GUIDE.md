@@ -1452,7 +1452,7 @@ The editor has the same parts whichever kind of rule you are writing.
 
 **Save** stores the rule and closes the editor; **Cancel** closes it without saving. A **Move to folder**, **Copy to folder** or **Delete** rule needs at least one condition — with none it would act on every message — so QuickMail will not save it until you add one. **Mark as read**, **Mark as unread** and **Play a sound** rules can have none.
 
-**Play a sound** plays a sound when a rule runs, so you can tell mail from one sender by ear, or hear when something has been filed. Check it, then choose a sound, or choose **Choose Sound File…** to use your own WAV or MP3. It plays once each time the rule runs, however many messages it matched. It works even with **Play sounds for mail events** turned off, since adding it to a rule already asks for it. **Mute All Sounds** silences it, and it stays quiet during a presentation or while an app is running full screen. If the rule also moves or deletes the message, the sound only plays if that worked.
+**Play a sound** plays a sound when a rule runs, so you can tell mail from one sender by ear, or hear when something has been filed. Check it, then choose a sound, or choose **Choose Sound File…** to use your own WAV or MP3; focus then moves to **Sound**, which names your file. **Default sound** plays whatever the sound scheme in use has for **A rule matched** in **Settings → Sounds**, so changing that changes every rule set to the default. If the scheme sets it to **None**, those rules make no sound. It plays once each time the rule runs, however many messages it matched. It works even with **Play sounds for mail events** turned off, since adding it to a rule already asks for it. **Mute All Sounds** silences it, and it stays quiet during a presentation or while an app is running full screen. If the rule also moves or deletes the message, the sound only plays if that worked.
 
 A rule's sound is for mail arriving while QuickMail is running. Like the new-mail sound, it stays silent for mail that came in while QuickMail was closed, and when more than five matching messages arrive at once, such as when your computer wakes up. **Run on Existing Mail** stays silent too. A message a rule has played a sound for doesn't also play the new-mail sound. Rules run in order, and one that moves or deletes a message takes it away from the rules after it, so put a rule that plays a sound first if another rule files the same mail.
 
@@ -1991,7 +1991,7 @@ Exporting and importing settings are off until you turn them on, on each compute
 3. Press **Tab** to read a summary of what the file will hold. It contains email addresses, server names, signatures and, if you leave them checked, your address book and Local Calendar. **It never contains a password or a sign-in.**
 4. Choose **Export…** and save the file. Its name ends in `.qmsettings`. QuickMail says how many categories it saved and how large the file is, and returns you to where you were.
 
-Your own sound files go into the file along with rules or preferences, up to 32 MB of them. On the other computer they are added to the sounds already there. If a sound with the same name is already there, it stays as it is.
+Your own sound files go into the file along with rules or preferences, up to 32 MB of them. On the other computer they are added to the sounds already there. If a sound with the same name is already there, it stays as it is. Importing preferences replaces the sound schemes on the other computer, including schemes of your own, with the ones in the file. To share a single scheme instead, see [Sound Schemes](#sound-schemes).
 
 Keep the file somewhere private: although it has no passwords in it, it does have your contacts and account details. Copy it to the other computer however you like, on a USB stick or through a folder you already sync.
 
@@ -2083,6 +2083,7 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 - Calendar reminder, if you have turned on calendar reminders
 - Message deleted, archived and moved
 - Trash emptied
+- A rule matched, which is the sound a [rule](mail-rules.html) set to **Default sound** plays
 
 If you delete or file a lot of mail in a row, you may prefer to set those three message sounds to **None**. Repeats of the same sound within a second are dropped.
 
@@ -2091,13 +2092,24 @@ If you delete or file a lot of mail in a row, you may prefer to set those three 
 1. In **Settings → Sounds**, arrow through **Sound events**. Each entry says the event and its sound, such as "New mail: Arrived".
 2. Choose a sound in **Sound for this event**, or choose **None** to silence that event.
 3. Choose **Preview** to hear it, at the volume showing. Preview plays even if sounds are muted, and stops when you close Settings or preview **None**.
-4. To use a sound of your own, choose **Choose File…** and pick a WAV or MP3 file of up to 5 MB and 30 seconds. QuickMail keeps its own copy, so you can move or delete the original.
+4. To use a sound of your own, choose **Choose File…** and pick a WAV or MP3 file of up to 5 MB and 30 seconds. QuickMail keeps its own copy, so you can move or delete the original. Focus moves to **Sound for this event**, which now names your file.
+5. To delete one of your own sound files from QuickMail, select an event that uses it and choose **Remove file…**. QuickMail first says which sound schemes and rules still use the file. Those play a built-in sound instead once the file is gone, and the file shows as "(missing)" in the list. Removing a file takes effect at once, even if you then choose Cancel.
 
 Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to. It starts at 80%.
 
-### Choosing a Style
+### Sound Schemes
 
-**Style** sets how the built-in sounds sound: **Glass**, **Soft bell** or **Wood**. Each style has the same sounds with the same melodies, so a sound means the same thing whichever you choose. The tone changes, and **Wood** is also a little quieter. To compare them, select an event with a built-in sound, change the style and choose **Preview**, all before saving. An event set to **None** has nothing to preview, and sounds you added yourself don't change with the style.
+A sound scheme is a set of choices, one sound for each event. **Sound scheme** chooses the one in use. QuickMail comes with three: **Glass**, **Soft bell** and **Wood**. They have the same sounds with the same melodies, so a sound means the same thing whichever you choose. The tone changes, and **Wood** is also a little quieter. To compare them, select an event, change the scheme and choose **Preview**, all before saving.
+
+Each scheme keeps its own choices. Changing an event while **Glass** is chosen changes Glass only, and switching to **Wood** shows Wood's own choices. Changes you make to several schemes are all kept until you choose **Save** or **Cancel**, so you can switch back and forth while you decide. The line above **Sound events** says how many events in the scheme have a sound, such as "4 of 14 events have a sound".
+
+**Make your own scheme.** Choose **New scheme…**, type a name and press Enter. The new scheme starts with every event set to **None**, so it is silent until you give events a sound. Focus moves to **Sound events**, ready for you to pick sounds. A scheme of your own can use the built-in sounds in any tone, listed as, for example, "Arrived (Soft bell)", as well as your own sound files. **Copy scheme…** does the same, but starts from the sounds of the scheme showing, which is the quickest way to make, say, Glass with your own new-mail sound.
+
+**Rename scheme…** and **Delete scheme…** work on schemes of your own. Deleting a scheme does not delete any sound files it used. If you delete the scheme in use, QuickMail goes back to Glass.
+
+**Reset a built-in scheme.** If you have changed Glass, Soft bell or Wood, **Reset scheme…** puts it back to how it ships. It is available only when the scheme showing has changes.
+
+**Share a scheme.** **Export scheme…** saves the scheme showing, and any sound files of your own it uses, as a `.qmsounds` file. On another computer, or for someone else, **Import scheme…** adds it as a new scheme of your own, with its sound files. If a scheme of that name is already there, the new one gets a number after its name. Choose **Save** to keep an imported scheme.
 
 ### New Mail Sounds and Notifications
 
@@ -2124,7 +2136,7 @@ Choose **Tools → Mute All Sounds**, or run it from the Command Palette, to sil
 Sounds are new, and your experience decides where they go next. We would especially like to know:
 
 - Are these the right events? Which are missing, and which would you never use?
-- What do you think of the sounds? Which style do you prefer, and are any two sounds too alike, harsh, or easy to confuse with your screen reader's own sounds?
+- What do you think of the sounds? Which scheme do you prefer, and are any two sounds too alike, harsh, or easy to confuse with your screen reader's own sounds?
 - How do the sounds work alongside your screen reader's speech?
 
 Use **Help → Report a Bug**, or email [support@theideaplace.net](mailto:support@theideaplace.net).
