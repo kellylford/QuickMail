@@ -7953,6 +7953,7 @@ public partial class MainWindow : Window
         };
         // So Remove file can say which rules still use a sound.
         vm.RuleSoundsProvider = _vm.RuleSounds;
+        vm.SoundGallery = (Application.Current as App)?.SoundGallery;
 
         // Picking a startup folder needs a window, which is the View's job — the VM asks and gets a
         // plain record back (#516). Wired here rather than in SettingsDialog because this is where

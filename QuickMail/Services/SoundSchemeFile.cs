@@ -38,8 +38,8 @@ public static class SoundSchemeFile
     private const int MaxEntries = 64;
     private const int MaxEvents = 100;
 
-    // Every event with its own custom file at the largest size accepted, with room to spare.
-    private const long MaxTotalBytes = 80L * 1024 * 1024;
+    /// <summary>The largest scheme file accepted: every event with its own custom file at the largest size, with room to spare.</summary>
+    public const long MaxFileBytes = 80L * 1024 * 1024;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
@@ -87,7 +87,7 @@ public static class SoundSchemeFile
                 // A file that has gone stays behind; the import sets that event to None and says so.
                 if (sounds.CustomSoundPath(file) is not { } source) continue;
                 var bytes = File.ReadAllBytes(source);
-                if (bytes.Length > SoundCatalog.MaxCustomFileBytes || total + bytes.Length > MaxTotalBytes) continue;
+                if (bytes.Length > SoundCatalog.MaxCustomFileBytes || total + bytes.Length > MaxFileBytes) continue;
                 total += bytes.Length;
                 using var es = zip.CreateEntry(SoundsPrefix + file).Open();
                 es.Write(bytes);
@@ -179,7 +179,7 @@ public static class SoundSchemeFile
         try
         {
             using var stream = File.OpenRead(path);
-            if (stream.Length > MaxTotalBytes) throw new SoundSchemeFileException(notASchemeFile);
+            if (stream.Length > MaxFileBytes) throw new SoundSchemeFileException(notASchemeFile);
             using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
             if (zip.Entries.Count > MaxEntries) throw new SoundSchemeFileException(notASchemeFile);
             long total = 0;
@@ -194,7 +194,7 @@ public static class SoundSchemeFile
 
                 var bytes = ReadCapped(entry, limit, notASchemeFile);
                 total += bytes.Length;
-                if (total > MaxTotalBytes) throw new SoundSchemeFileException(notASchemeFile);
+                if (total > MaxFileBytes) throw new SoundSchemeFileException(notASchemeFile);
                 if (limit == MaxSchemeJsonBytes)
                 {
                     using var reader = new StreamReader(new MemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);

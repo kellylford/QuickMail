@@ -22,6 +22,7 @@ public partial class SettingsDialog : Window
         vm.DiagnosticsAnnouncementRequested += OnDiagnosticsAnnouncement;
         vm.SoundResultAnnounced += OnSoundResult;
         vm.ConfirmRequested ??= Confirm;
+        if (vm.SoundGallery is null) BrowseSoundSchemesButton.Visibility = Visibility.Collapsed;
         Closing += (_, e) => _closing = !e.Cancel;
         Closed += (_, _) =>
         {
@@ -100,6 +101,27 @@ public partial class SettingsDialog : Window
     {
         _vm.ExportSchemeCommand.Execute(null);
         ExportSoundSchemeButton.Focus();   // the file dialog gives focus back on its own only some of the time
+    }
+
+    // The gallery (#937). Modal over Settings: it has no editable text, so the nested loop is safe.
+    private void BrowseSoundSchemesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SoundGallery is not { } gallery) return;
+        var window = new SoundGalleryWindow(new SoundGalleryViewModel(gallery)) { Owner = this };
+        if (window.ShowDialog() != true || window.DownloadedPath is not { } path)
+        {
+            BrowseSoundSchemesButton.Focus();
+            return;
+        }
+        try
+        {
+            if (_vm.ImportSchemeFrom(path)) FocusSelectedEvent();
+            else BrowseSoundSchemesButton.Focus();
+        }
+        finally
+        {
+            SoundGalleryService.DeleteDownload(path);
+        }
     }
 
     private void ImportSoundSchemeButton_Click(object sender, RoutedEventArgs e)

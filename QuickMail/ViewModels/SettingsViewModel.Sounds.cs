@@ -163,6 +163,9 @@ public partial class SettingsViewModel
     /// <summary>Set by the View: asks a yes-or-no question and returns true for Yes.</summary>
     public Func<string, string, bool>? ConfirmRequested { get; set; }
 
+    /// <summary>Set by the owner: the sound scheme gallery (#937), or null where there is none, which hides Browse schemes.</summary>
+    public ISoundGalleryService? SoundGallery { get; set; }
+
     /// <summary>Set by the owner: the stored sound of every rule that plays one, for Remove file's warning.</summary>
     public Func<IEnumerable<string?>>? RuleSoundsProvider { get; set; }
 
@@ -460,9 +463,17 @@ public partial class SettingsViewModel
 
     /// <summary>Asks for a scheme file and adds the scheme in it.</summary>
     /// <returns>True if a scheme was added, so the View can put focus in its event list.</returns>
-    public bool TryImportScheme()
+    public bool TryImportScheme() =>
+        _sounds is not null && PickSchemeImportPathRequested?.Invoke() is { } path && ImportSchemeFrom(path);
+
+    /// <summary>
+    /// Adds the scheme in a .qmsounds file as a scheme of the person's own, and shows it: from a file
+    /// they chose, or one the gallery fetched and checked (#937). Says what happened either way.
+    /// </summary>
+    /// <returns>True if a scheme was added, so the View can put focus in its event list.</returns>
+    public bool ImportSchemeFrom(string path)
     {
-        if (_sounds is null || PickSchemeImportPathRequested?.Invoke() is not { } path) return false;
+        if (_sounds is null) return false;
         SoundSchemeImport imported;
         try
         {
