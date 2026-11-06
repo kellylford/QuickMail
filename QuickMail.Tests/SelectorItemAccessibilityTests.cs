@@ -111,7 +111,7 @@ public class SelectorItemAccessibilityTests
 
             Assert.Contains("Message sent: Sent", Names(list));
 
-            foreach (var (name, expected) in new[] { ("SoundVolumeCombo", "40%"), ("SoundStyleCombo", "Soft bell"), ("SoundChoiceCombo", "Arrived") })
+            foreach (var (name, expected) in new[] { ("SoundVolumeCombo", "40%"), ("SoundSchemeCombo", "Soft bell"), ("SoundChoiceCombo", "Arrived") })
             {
                 var combo = window.FindName(name) as ComboBox;
                 Assert.NotNull(combo);

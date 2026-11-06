@@ -1185,9 +1185,9 @@ public class SoundEventsTests
     {
         var sounds = new RecordingSoundService();
         var vm = MakeSettings(new StubConfigService(), sounds);
+        vm.SelectedSoundScheme = vm.SoundSchemes.Single(p => p.Name == "Wood");
         vm.SelectedSoundChoice = vm.SoundChoices.Single(c => c.Label == "Reminder");
         vm.SelectedSoundVolume = vm.SoundVolumeOptions.Single(o => o.Percent == 20);
-        vm.SelectedSoundScheme = vm.SoundSchemes.Single(p => p.Name == "Wood");
         vm.PreviewSoundCommand.Execute(null);
         Assert.Equal(["builtin:reminder"], sounds.Previewed);
         Assert.Equal(20, sounds.PreviewVolume);
@@ -1388,7 +1388,9 @@ public class SoundsTabAccessibilityTests
             Assert.NotNull(row);
             Assert.Equal(vm.SoundEventRows[0].AccessibleName, AutomationProperties.GetName(row));
 
-            foreach (var name in new[] { "SoundEventList", "SoundVolumeCombo", "SoundStyleCombo", "SoundChoiceCombo" })
+            foreach (var name in new[] { "SoundEventList", "SoundVolumeCombo", "SoundSchemeCombo", "SoundChoiceCombo",
+                "NewSoundSchemeButton", "CopySoundSchemeButton", "RenameSoundSchemeButton", "DeleteSoundSchemeButton",
+                "ResetSoundSchemeButton", "ExportSoundSchemeButton", "ImportSoundSchemeButton", "RemoveSoundFileButton" })
             {
                 var control = window.FindName(name) as FrameworkElement;
                 Assert.NotNull(control);
