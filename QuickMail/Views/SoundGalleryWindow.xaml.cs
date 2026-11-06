@@ -134,11 +134,11 @@ public partial class SoundGalleryWindow : Window
         {
             // Three panes: the list, the selected scheme's details, and the buttons.
             var reverse = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-            var pane = SchemeList.IsKeyboardFocusWithin ? 0 : DetailsLabel.IsKeyboardFocused ? 1 : 2;
+            var pane = SchemeList.IsKeyboardFocusWithin ? 0 : DetailsBox.IsKeyboardFocusWithin ? 1 : 2;
             var next = (pane + (reverse ? 2 : 1)) % 3;
-            if (next == 1 && !DetailsLabel.IsVisible) next = reverse ? 0 : 2;
+            if (next == 1 && !DetailsBox.IsVisible) next = reverse ? 0 : 2;
             if (next == 0) FocusList();
-            else if (next == 1) DetailsLabel.Focus();
+            else if (next == 1) FocusDetails();
             else (AddButton.IsEnabled ? AddButton : RetryButton).Focus();
             e.Handled = true;
         }
@@ -154,6 +154,13 @@ public partial class SoundGalleryWindow : Window
             _ = AddAsync();   // Enter on a scheme adds it, as Add does
             e.Handled = true;
         }
+    }
+
+    /// <summary>Focuses the details at their start, so reading begins with the description.</summary>
+    private void FocusDetails()
+    {
+        DetailsBox.Focus();
+        DetailsBox.CaretIndex = 0;
     }
 
     protected override void OnClosed(EventArgs e)
