@@ -234,6 +234,106 @@ public sealed class SaveAttachmentsFromListTests : IDisposable
     }
 
     [Fact]
+    public async Task OneMessageThatCannotBeReadDoesNotStopTheOthers()
+    {
+        var f = new Fixture(_folder);
+        f.Store.Details["m1"] = Detail("m1", "a.txt");
+        // m2 is neither cached nor on the server: the prefetch throws.
+        f.Store.Details["m3"] = Detail("m3", "b.txt");
+
+        await f.Vm.SaveAttachmentsOfMessagesAsync([Msg("m1"), Msg("m2"), Msg("m3")]);
+
+        Assert.Equal(["a.txt", "b.txt"], SavedNames());
+        Assert.Equal("Saved 2 attachments. 1 message could not be read.", f.Vm.StatusText);
+        Assert.False(f.Vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task AFailedWriteIsReportedAsTheDisksProblemNotAsOffline()
+    {
+        var missing = Path.Combine(_folder, "gone");
+        var f = new Fixture(missing);
+        f.Store.Details["m1"] = Detail("m1", "a.txt");
+
+        await f.Vm.SaveAttachmentsOfMessagesAsync([Msg("m1")]);
+
+        Assert.StartsWith("Saved 0 attachments. 1 could not be saved: ", f.Vm.StatusText);
+        Assert.DoesNotContain("offline", f.Vm.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.False(f.Vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task ADownloadThatFailsAfterOthersSavedSaysHowMany()
+    {
+        var f = new Fixture(_folder);
+        f.Store.Details["m1"] = Detail("m1", "a.txt");
+        f.Store.Details["m1"].Attachments.Add(new AttachmentModel { FileName = "lost.bin" }); // no part, no content
+
+        await f.Vm.SaveAttachmentsOfMessagesAsync([Msg("m1")]);
+
+        Assert.Equal(["a.txt"], SavedNames());
+        Assert.Equal("Saved 1 attachment. 1 could not be downloaded from the server.", f.Vm.StatusText);
+    }
+
+    [Fact]
+    public async Task TheSameResultTwiceIsAnnouncedBothTimes()
+    {
+        var f = new Fixture(_folder);
+        f.Store.Details["m1"] = Detail("m1");
+        f.Store.Details["m2"] = Detail("m2");
+        var raised = 0;
+        f.Vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.StatusText)) raised++; };
+
+        await f.Vm.SaveAttachmentsOfMessagesAsync([Msg("m1")]);
+        var afterFirst = raised;
+        await f.Vm.SaveAttachmentsOfMessagesAsync([Msg("m2")]);
+
+        Assert.Equal("This message has no attachments.", f.Vm.StatusText);
+        Assert.True(raised > afterFirst);
+    }
+
+    [Fact]
+    public async Task TheOpenMessageIsUsedAsItIsAndKeepsWhatItDownloaded()
+    {
+        var f = new Fixture(_folder);
+        var open = Detail("m1", "a.txt");
+        open.Attachments[0].Content = [1, 2, 3];
+        f.Vm.MessageDetail = open;
+
+        await f.Vm.SaveAttachmentsOfMessagesAsync([Msg("m1")]);
+
+        Assert.Equal(["a.txt"], SavedNames());
+        Assert.Empty(f.Mail.Prefetched);
+        Assert.Empty(f.Mail.Downloads);
+        Assert.NotNull(open.Attachments[0].Content);
+    }
+
+    [Fact]
+    public async Task AnotherMessagesBytesAreDroppedOnceWritten()
+    {
+        var f = new Fixture(_folder);
+        var cached = Detail("m1", "a.txt");
+        f.Store.Details["m1"] = cached;
+
+        await f.Vm.SaveAttachmentsOfMessagesAsync([Msg("m1")]);
+
+        Assert.Null(cached.Attachments[0].Content);
+    }
+
+    [Fact]
+    public async Task TheReadingPanesSaveAllNumbersRepeatsToo()
+    {
+        File.WriteAllText(Path.Combine(_folder, "a.txt"), "mine");
+        var f = new Fixture(_folder);
+        f.Vm.MessageDetail = Detail("m1", "a.txt");
+
+        await f.Vm.SaveAllAttachmentsCommand.ExecuteAsync(null);
+
+        Assert.Equal(["a (2).txt", "a.txt"], SavedNames());
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(_folder, "a.txt")));
+    }
+
+    [Fact]
     public async Task OutboxRowsAreNotSaved()
     {
         var f = new Fixture(_folder);
