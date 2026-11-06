@@ -1336,6 +1336,11 @@ public class SoundsTabAccessibilityTests
         {
             var browse = dialog.FindName("BrowseSoundSchemesButton") as System.Windows.Controls.Button;
             Assert.NotNull(browse);
+            // A tab's content binds once the tab is shown.
+            System.Windows.DependencyObject? parent = browse;
+            while (parent is not null and not System.Windows.Controls.TabItem) parent = System.Windows.LogicalTreeHelper.GetParent(parent);
+            Assert.IsType<System.Windows.Controls.TabItem>(parent).IsSelected = true;
+            dialog.UpdateLayout();
             Assert.Equal(System.Windows.Visibility.Collapsed, browse.Visibility);   // no gallery: not offered
             vm.SoundGallery = new SoundGalleryService(System.IO.Path.GetTempPath());
             Assert.Equal(System.Windows.Visibility.Visible, browse.Visibility);
