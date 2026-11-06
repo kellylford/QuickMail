@@ -198,7 +198,7 @@ public class SoundSchemeTests
     public void ANewSchemeStartsWithEveryEventSilentAndIsShown()
     {
         var vm = MakeSettings(new StubConfigService());
-        Assert.True(vm.CreateScheme("  Calm  ", copyShown: false));
+        Assert.True(vm.CreateScheme("  Calm  "));
 
         Assert.Equal("Calm", vm.SelectedSoundScheme!.Name);
         Assert.False(vm.SelectedSoundScheme.IsBuiltIn);
@@ -213,7 +213,7 @@ public class SoundSchemeTests
     public void ASchemeOfYourOwnOffersEveryBuiltInSoundInEveryPack()
     {
         var vm = MakeSettings(new StubConfigService());
-        vm.CreateScheme("Calm", copyShown: false);
+        vm.CreateScheme("Calm");
         Assert.Contains(vm.SoundChoices, c => c.Label == "Arrived (Soft bell)" && c.Stored == "builtin:softbell/arrived");
         Assert.Contains(vm.SoundChoices, c => c.Label == "Arrived (Glass)");
         Assert.DoesNotContain(vm.SoundChoices, c => c.Label == "Arrived");
@@ -232,11 +232,11 @@ public class SoundSchemeTests
     public void ANameThatIsEmptyOrTakenIsRefused(string name)
     {
         var vm = MakeSettings(new StubConfigService());
-        vm.CreateScheme("Calm", copyShown: false);
+        vm.CreateScheme("Calm");
         var count = vm.SoundSchemes.Count;
 
         Assert.NotNull(vm.SchemeNameProblem(name));
-        Assert.False(vm.CreateScheme(name, copyShown: false));
+        Assert.False(vm.CreateScheme(name));
         Assert.Equal(count, vm.SoundSchemes.Count);
     }
 
@@ -257,7 +257,7 @@ public class SoundSchemeTests
         var vm = MakeSettings(config);
         Choose(vm, SoundEvent.TrashEmptied, "Reminder");   // unsaved, still copied
 
-        Assert.True(vm.CreateScheme("Wood mine", copyShown: true));
+        Assert.True(vm.CreateScheme("Wood mine", "wood"));
 
         Assert.Equal("builtin:wood/arrived", Row(vm, SoundEvent.NewMail).Choice.Stored);
         Assert.Equal("none", Row(vm, SoundEvent.MessageSent).Choice.Stored);
@@ -298,7 +298,7 @@ public class SoundSchemeTests
         var vm = MakeSettings(config);
         vm.SelectedSoundScheme = vm.SoundSchemes.Single(s => s.Name == "Wood");
         Choose(vm, SoundEvent.TrashEmptied, "None");
-        vm.CreateScheme("Calm", copyShown: false);
+        vm.CreateScheme("Calm");
         Choose(vm, SoundEvent.NewMail, "Arrived (Soft bell)");
 
         vm.SaveCommand.Execute(null);
@@ -348,7 +348,7 @@ public class SoundSchemeTests
     public void ResetIsNotForYourOwnSchemes()
     {
         var vm = MakeSettings(new StubConfigService());
-        vm.CreateScheme("Calm", copyShown: false);
+        vm.CreateScheme("Calm");
         Assert.False(vm.CanResetScheme);
     }
 
@@ -356,18 +356,113 @@ public class SoundSchemeTests
     public void RenameKeepsTheSchemesSoundsAndRefusesATakenName()
     {
         var vm = MakeSettings(new StubConfigService());
-        vm.CreateScheme("Calm", copyShown: false);
-        vm.CreateScheme("Busy", copyShown: false);
+        vm.CreateScheme("Calm");
+        vm.CreateScheme("Busy");
         vm.SelectedSoundScheme = vm.SoundSchemes.Single(s => s.Name == "Calm");
         Choose(vm, SoundEvent.NewMail, "Arrived (Wood)");
 
-        Assert.False(vm.RenameSelectedScheme("busy"));
-        Assert.True(vm.RenameSelectedScheme("CALM"));   // its own name, in other letters
-        Assert.True(vm.RenameSelectedScheme("Aaa quiet"));
+        Assert.False(vm.RenameScheme(vm.SelectedSoundScheme!.Id, "busy"));
+        Assert.True(vm.RenameScheme(vm.SelectedSoundScheme!.Id, "CALM"));   // its own name, in other letters
+        Assert.True(vm.RenameScheme(vm.SelectedSoundScheme!.Id, "Aaa quiet"));
 
         Assert.Equal("Aaa quiet", vm.SelectedSoundScheme!.Name);
         Assert.Equal("builtin:wood/arrived", Row(vm, SoundEvent.NewMail).Choice.Stored);
         Assert.Equal(["Glass", "Soft bell", "Wood", "Aaa quiet", "Busy"], vm.SoundSchemes.Select(s => s.Name));
+    }
+
+    [Fact]
+    public void RenameActsOnTheSchemeItWasAskedForEvenIfAnotherIsShowingNow()
+    {
+        // The name dialog is modeless: the person can change Sound scheme before answering it.
+        var vm = MakeSettings(new StubConfigService());
+        vm.CreateScheme("Calm");
+        var calm = vm.SelectedSoundScheme!.Id;
+        Choose(vm, SoundEvent.NewMail, "Arrived (Wood)");
+        vm.CreateScheme("Busy");
+        Choose(vm, SoundEvent.MessageSent, "Sent (Glass)");   // unsaved edit to the scheme showing
+
+        Assert.True(vm.RenameScheme(calm, "Quiet"));
+
+        Assert.Equal("Quiet", vm.SelectedSoundScheme!.Name);
+        Assert.Equal("builtin:wood/arrived", Row(vm, SoundEvent.NewMail).Choice.Stored);
+        Assert.Contains(vm.SoundSchemes, s => s.Name == "Busy");
+        vm.SelectedSoundScheme = vm.SoundSchemes.Single(s => s.Name == "Busy");
+        Assert.Equal("builtin:glass/sent", Row(vm, SoundEvent.MessageSent).Choice.Stored);   // kept
+    }
+
+    [Fact]
+    public void RenameOrCopyOfASchemeThatHasGoneFailsWithAReason()
+    {
+        var vm = MakeSettings(new StubConfigService());
+        vm.ConfirmRequested = (_, _) => true;
+        vm.CreateScheme("Calm");
+        var calm = vm.SelectedSoundScheme!.Id;
+        vm.DeleteSelectedScheme();
+
+        Assert.False(vm.RenameScheme(calm, "Quiet"));
+        Assert.Equal("That sound scheme is no longer there.", vm.SchemeRenameProblem(calm, "Quiet"));
+        Assert.False(vm.CreateScheme("Copy", calm));
+        Assert.Null(vm.SchemeNameProblem("Copy"));   // so the View gives its own reason
+        Assert.Equal(3, vm.SoundSchemes.Count);
+    }
+
+    [Fact]
+    public void DeletingASchemeNotInUseLeavesTheOneInUse()
+    {
+        var config = new StubConfigService();
+        config.Load().SoundSchemes["user-a"] = new SoundScheme("user-a", "Calm", isBuiltIn: false);
+        config.Load().SoundSchemes["user-b"] = new SoundScheme("user-b", "Busy", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" });
+        config.Load().SoundSchemeId = "user-b";
+        var vm = MakeSettings(config);
+        vm.ConfirmRequested = (_, _) => true;
+        vm.SelectedSoundScheme = vm.SoundSchemes.Single(s => s.Name == "Calm");
+        vm.DeleteSelectedScheme();
+        vm.SelectedSoundScheme = vm.SoundSchemes.Single(s => s.Name == "Busy");
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal("user-b", config.Load().SoundSchemeId);
+        Assert.False(config.Load().SoundSchemes.ContainsKey("user-a"));
+        Assert.Equal("builtin:wood/arrived", config.Load().SoundSchemes["user-b"].Events["NewMail"]);
+    }
+
+    [Fact]
+    public void ASchemeRenamedButNeverEditedIsSavedWithItsNewNameAndSounds()
+    {
+        var config = new StubConfigService();
+        config.Load().SoundSchemes["user-a"] = new SoundScheme("user-a", "Calm", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived", ["Unknown"] = "x" });
+        var vm = MakeSettings(config);
+
+        Assert.True(vm.RenameScheme("user-a", "Quiet"));
+        vm.SelectedSoundScheme = vm.SoundSchemes.Single(s => s.Id == "glass");
+        vm.SaveCommand.Execute(null);
+
+        var saved = config.Load().SoundSchemes["user-a"];
+        Assert.Equal("Quiet", saved.Name);
+        Assert.Equal("builtin:wood/arrived", saved.Events["NewMail"]);
+        Assert.Equal("none", saved.Events["MessageSent"]);
+        Assert.Equal("x", saved.Events["Unknown"]);
+    }
+
+    [Fact]
+    public void ImportOrDeleteClearsAnOldSchemeMessage()
+    {
+        var vm = MakeSettings(new StubConfigService());
+        vm.SoundSchemeMessage = "Added the sound scheme Calm. Save to keep it.";
+        vm.SelectedSoundScheme = vm.SoundSchemes.Single(s => s.Name == "Wood");
+        Assert.False(vm.HasSoundSchemeMessage);
+    }
+
+    [Theory]
+    [InlineData("Wood", "wood")]
+    [InlineData("from-the-future", "glass")]
+    public void AnOldListUnderAStyleWrittenOddlyOrUnknownStillPlays(string pack, string section)
+    {
+        var config = ConfigService.ParseFile(["[global]", $"SoundPack = {pack}", "[sounds]", "NewMail = none"]);
+        Assert.Equal("none", config.SoundSchemes[section].Events["NewMail"]);
+        Assert.Equal(SoundRef.None, SoundCatalog.Resolve(SoundEvent.NewMail, SoundCatalog.ActiveScheme(config)));
     }
 
     [Fact]
@@ -376,7 +471,7 @@ public class SoundSchemeTests
         var vm = MakeSettings(new StubConfigService());
         vm.ConfirmRequested = (_, _) => true;
         Assert.False(vm.IsUserSchemeSelected);
-        Assert.False(vm.RenameSelectedScheme("Other"));
+        Assert.False(vm.RenameScheme("glass", "Other"));
         Assert.False(vm.DeleteSelectedScheme());
         Assert.Equal(3, vm.SoundSchemes.Count);
     }
@@ -427,7 +522,7 @@ public class SoundSchemeTests
     {
         var sounds = new RecordingSoundService();
         var vm = MakeSettings(new StubConfigService(), sounds);
-        vm.CreateScheme("Calm", copyShown: false);
+        vm.CreateScheme("Calm");
         Choose(vm, SoundEvent.NewMail, "Arrived (Wood)");
         vm.PreviewSoundCommand.Execute(null);
         Assert.Equal("builtin:wood/arrived", sounds.Previewed.Last());
@@ -445,7 +540,7 @@ public class SoundSchemeTests
         sounds.CustomFiles.Add("Ding.wav");
         var vm = MakeSettings(config, sounds);
         vm.RuleSoundsProvider = () => ["custom:Ding.wav", "builtin:reminder", null, "custom:DING.wav"];
-        vm.CreateScheme("Calm", copyShown: false);
+        vm.CreateScheme("Calm");
         Choose(vm, SoundEvent.MessageSent, "Ding.wav");
 
         var (schemes, rules) = vm.SoundFileUses("Ding.wav");
@@ -457,7 +552,7 @@ public class SoundSchemeTests
         Assert.True(vm.CanRemoveSoundFile);
         vm.RemoveSoundFileCommand.Execute(null);
 
-        Assert.Equal("Remove the sound file Ding.wav from QuickMail? It is still used by the sound schemes Wood and Calm, and by 2 rules, which will play a built-in sound instead.", asked);
+        Assert.Equal("Remove the sound file Ding.wav from QuickMail? It is still used by the sound schemes Wood and Calm, and by 2 rules, which will play a built-in sound instead. The file is deleted now, even if you then cancel Settings.", asked);
         Assert.Equal(["Ding.wav"], sounds.Removed);
         Assert.Equal("Message sent: Ding.wav (missing)", Row(vm, SoundEvent.MessageSent).AccessibleName);
         Assert.False(vm.CanRemoveSoundFile);
@@ -509,6 +604,20 @@ public class SoundSchemeTests
         Assert.Equal("Ding.wav could not be removed.", vm.SoundFileMessage);
         Assert.Equal(vm.SoundFileMessage, announced);
         Assert.Equal("Message sent: Ding.wav", vm.SoundEventRows[0].AccessibleName);   // not marked missing
+    }
+
+    [Fact]
+    public void ResetAndRemoveSayTheyWorkedSoTheViewCanMoveFocus()
+    {
+        var sounds = new RecordingSoundService();
+        sounds.CustomFiles.Add("Ding.wav");
+        var vm = MakeSettings(new StubConfigService(), sounds);
+        vm.ConfirmRequested = (_, _) => true;
+        Assert.False(vm.TryResetScheme());   // nothing to reset
+        Choose(vm, SoundEvent.NewMail, "Ding.wav");
+        Assert.True(vm.TryRemoveSoundFile());
+        Assert.False(vm.TryRemoveSoundFile());   // gone now
+        Assert.True(vm.TryResetScheme());
     }
 
     [Fact]
@@ -584,6 +693,20 @@ public sealed class SoundSchemeServiceTests : IDisposable
     }
 
     [Fact]
+    public void PreviewingADefaultRuleSoundPlaysTheSchemesRuleSound()
+    {
+        _config.Load().SoundSchemeId = "user-1";
+        _config.Load().SoundSchemes["user-1"] = new SoundScheme("user-1", "Mine", false,
+            events: new Dictionary<string, string> { ["RuleMatched"] = "builtin:softbell/attention" });
+        using var service = Service(Folder("pr"));
+
+        service.PreviewRule("builtin:matched");
+
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5)));
+        lock (_output.Played) Assert.Equal(["builtin:softbell/attention"], _output.Played);
+    }
+
+    [Fact]
     public void ARuleWithTheDefaultSoundInASilentSchemePlaysNothingAndHoldsNothingBack()
     {
         _config.Load().SoundSchemeId = "user-1";
@@ -605,10 +728,14 @@ public sealed class SoundSchemeServiceTests : IDisposable
         File.WriteAllBytes(Path.Combine(folder, "Keep.wav"), [2]);
         using var service = Service(folder);
 
+        var outside = Path.Combine(folder, "..", "Outside.wav");
+        File.WriteAllBytes(outside, [3]);
+
         Assert.True(service.TryRemoveCustomSound("Ding.wav", out _));
         Assert.True(service.TryRemoveCustomSound("Ding.wav", out _));   // already gone is fine
-        Assert.True(service.TryRemoveCustomSound(@"..\Keep.wav", out _));   // never outside the folder
+        Assert.True(service.TryRemoveCustomSound(@"..\Outside.wav", out _));   // never outside the folder
 
+        Assert.True(File.Exists(outside));
         Assert.Equal(["Keep.wav"], service.CustomSoundFiles());
         Assert.Null(service.CustomSoundPath("Ding.wav"));
         Assert.NotNull(service.CustomSoundPath("Keep.wav"));
@@ -704,6 +831,33 @@ public sealed class SoundSchemeServiceTests : IDisposable
         using var service = Service(Folder("n"));
         var ex = Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Import(file, service));
         Assert.Contains("newer version", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnEntryLargerThanItsHeaderSaysIsRefusedAsItIsRead()
+    {
+        var file = Path.Combine(_root, "liar.qmsounds");
+        using (var zip = ZipFile.Open(file, ZipArchiveMode.Create))
+        {
+            using (var writer = new StreamWriter(zip.CreateEntry("scheme.json").Open()))
+                writer.Write("""{"format":1,"name":"Liar","events":{}}""");
+            using var es = zip.CreateEntry("sounds/Big.wav", CompressionLevel.Optimal).Open();
+            es.Write(new byte[SoundCatalog.MaxCustomFileBytes + 1]);
+        }
+        // Rewrite the central directory's uncompressed size for Big.wav to 1 byte: the header now lies.
+        var bytes = File.ReadAllBytes(file);
+        var name = System.Text.Encoding.ASCII.GetBytes("sounds/Big.wav");
+        for (var i = 0; i + 46 < bytes.Length; i++)
+        {
+            if (bytes[i] != 0x50 || bytes[i + 1] != 0x4b || bytes[i + 2] != 0x01 || bytes[i + 3] != 0x02) continue;
+            if (!bytes.AsSpan(i + 46, name.Length).SequenceEqual(name)) continue;
+            BitConverter.GetBytes(1u).CopyTo(bytes, i + 24);
+        }
+        File.WriteAllBytes(file, bytes);
+
+        using var service = Service(Folder("liar"));
+        Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Import(file, service));
+        Assert.Empty(service.CustomSoundFiles());
     }
 
     [Fact]

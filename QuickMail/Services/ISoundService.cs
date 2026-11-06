@@ -41,6 +41,12 @@ public interface ISoundService : IDisposable
     /// <param name="pack">The pack to hear a built-in sound with no pack of its own in, for a scheme not saved yet.</param>
     void Preview(string storedSound, int? volumePercent = null, string? pack = null);
 
+    /// <summary>
+    /// Previews what a rule with this sound would play now: for the default sound, the scheme in use's
+    /// "A rule matched", which may be nothing (#932). Otherwise as <see cref="Preview"/>.
+    /// </summary>
+    void PreviewRule(string? storedSound);
+
     /// <summary>Stops what is playing and whatever is waiting.</summary>
     void StopAll();
 

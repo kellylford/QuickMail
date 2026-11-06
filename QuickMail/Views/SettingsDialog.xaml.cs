@@ -22,8 +22,10 @@ public partial class SettingsDialog : Window
         vm.DiagnosticsAnnouncementRequested += OnDiagnosticsAnnouncement;
         vm.SoundResultAnnounced += OnSoundResult;
         vm.ConfirmRequested ??= Confirm;
+        Closing += (_, e) => _closing = !e.Cancel;
         Closed += (_, _) =>
         {
+            _closing = true;
             vm.DiagnosticsAnnouncementRequested -= OnDiagnosticsAnnouncement;
             vm.SoundResultAnnounced -= OnSoundResult;
             _schemeNameDialog?.Close();
@@ -32,6 +34,7 @@ public partial class SettingsDialog : Window
     }
 
     private SoundSchemeNameDialog? _schemeNameDialog;
+    private bool _closing;
 
     private void OnSoundResult(string text) =>
         AccessibilityHelper.Announce(this, text, interrupt: true, AnnouncementCategory.Result);
@@ -50,15 +53,19 @@ public partial class SettingsDialog : Window
 
     // ── Sound schemes (#932) ─────────────────────────────────────────────────────
 
+    // The name dialog is modeless, so Settings can change underneath it: each action is tied to the
+    // scheme showing when it was asked for, and reports a problem unless it really happened.
     private void NewSoundSchemeButton_Click(object sender, RoutedEventArgs e) =>
-        AskSchemeName("New Sound Scheme", string.Empty, name => _vm.CreateScheme(name, copyShown: false) ? null : _vm.SchemeNameProblem(name),
+        AskSchemeName("New Sound Scheme", string.Empty,
+            name => _vm.CreateScheme(name) ? null : _vm.SchemeNameProblem(name) ?? "The sound scheme could not be made.",
             () => SoundEventList);
 
     private void CopySoundSchemeButton_Click(object sender, RoutedEventArgs e)
     {
-        var from = _vm.SelectedSoundScheme?.Name ?? string.Empty;
-        AskSchemeName("Copy Sound Scheme", from.Length == 0 ? string.Empty : $"{from} copy",
-            name => _vm.CreateScheme(name, copyShown: true) ? null : _vm.SchemeNameProblem(name),
+        if (_vm.SelectedSoundScheme is not { } source) return;
+        AskSchemeName("Copy Sound Scheme", $"{source.Name} copy",
+            name => _vm.CreateScheme(name, source.Id) ? null
+                : _vm.SchemeNameProblem(name) ?? $"The sound scheme {source.Name} is no longer there to copy.",
             () => SoundEventList);
     }
 
@@ -66,7 +73,7 @@ public partial class SettingsDialog : Window
     {
         if (_vm.SelectedSoundScheme is not { IsBuiltIn: false } scheme) return;
         AskSchemeName("Rename Sound Scheme", scheme.Name,
-            name => _vm.RenameSelectedScheme(name) ? null : _vm.SchemeNameProblem(name, _vm.SelectedSoundScheme),
+            name => _vm.RenameScheme(scheme.Id, name) ? null : _vm.SchemeRenameProblem(scheme.Id, name),
             () => SoundSchemeCombo);
     }
 
@@ -74,6 +81,45 @@ public partial class SettingsDialog : Window
     {
         // Rename and Delete are disabled now, so focus can't stay on this button.
         if (_vm.DeleteSelectedScheme()) SoundSchemeCombo.Focus();
+    }
+
+    private void ResetSoundSchemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Reset is disabled now; the selected event reads its sound as shipped.
+        if (_vm.TryResetScheme()) FocusSelectedEvent();
+    }
+
+    private void RemoveSoundFileButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Remove file is disabled now; Sound for this event reads the file as missing.
+        if (_vm.TryRemoveSoundFile()) SoundChoiceCombo.Focus();
+        else RemoveSoundFileButton.Focus();
+    }
+
+    private void ExportSoundSchemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.ExportSchemeCommand.Execute(null);
+        ExportSoundSchemeButton.Focus();   // the file dialog gives focus back on its own only some of the time
+    }
+
+    private void ImportSoundSchemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.TryImportScheme()) FocusSelectedEvent();
+        else ImportSoundSchemeButton.Focus();
+    }
+
+    /// <summary>Focuses the selected event's row, not the list, so the row is read.</summary>
+    private void FocusSelectedEvent()
+    {
+        if (_vm.SelectedSoundEvent is not { } row)
+        {
+            SoundEventList.Focus();
+            return;
+        }
+        SoundEventList.ScrollIntoView(row);
+        SoundEventList.UpdateLayout();
+        if (SoundEventList.ItemContainerGenerator.ContainerFromItem(row) is UIElement item) item.Focus();
+        else SoundEventList.Focus();
     }
 
     /// <summary>
@@ -94,23 +140,20 @@ public partial class SettingsDialog : Window
         dialog.Closed += (_, _) =>
         {
             _schemeNameDialog = null;
+            // Closed along with Settings: there is nothing to come back to, and Activate would throw.
+            if (_closing) return;
             Activate();
             Dispatcher.InvokeAsync(() =>
             {
+                if (_closing) return;
                 if (!dialog.Accepted)
                 {
                     returnTo?.Focus();
                     return;
                 }
                 var target = focusAfter();
-                if (target == SoundEventList && _vm.SelectedSoundEvent is { } row)
-                {
-                    SoundEventList.ScrollIntoView(row);
-                    SoundEventList.UpdateLayout();
-                    if (SoundEventList.ItemContainerGenerator.ContainerFromItem(row) is UIElement item)
-                        target = item;
-                }
-                target.Focus();
+                if (target == SoundEventList) FocusSelectedEvent();
+                else target.Focus();
             }, DispatcherPriority.Input);
         };
         dialog.Show();

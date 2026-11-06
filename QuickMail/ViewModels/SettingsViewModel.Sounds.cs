@@ -237,6 +237,7 @@ public partial class SettingsViewModel
         var values = SchemeValues(scheme);
         var eventIndex = SelectedSoundEvent is { } current ? SoundEventRows.IndexOf(current) : 0;
         _shownSchemeId = scheme.Id;
+        SoundSchemeMessage = string.Empty;   // about the scheme that was showing
 
         // A scheme of the person's own has no pack, so it offers every built-in sound in every pack.
         SoundChoices.Clear();
@@ -364,12 +365,17 @@ public partial class SettingsViewModel
     /// copy starts from the sounds of the scheme showing, each built-in sound pinned to the pack it
     /// played in there, so the copy sounds the same.
     /// </summary>
-    /// <returns>False if the name can't be used; <see cref="SchemeNameProblem"/> says why.</returns>
-    public bool CreateScheme(string name, bool copyShown)
+    /// <param name="name">The name typed.</param>
+    /// <param name="copyFromId">The scheme to copy, or null for a new, silent one. Given by id, since the
+    /// name dialog is modeless and the scheme showing may have changed by the time it's answered.</param>
+    /// <returns>False if the name can't be used, or the scheme to copy has gone; <see cref="SchemeNameProblem"/> says why.</returns>
+    public bool CreateScheme(string name, string? copyFromId = null)
     {
         if (SchemeNameProblem(name) is not null) return false;
+        SoundScheme? source = null;
+        if (copyFromId is not null && (source = SoundSchemes.FirstOrDefault(s => s.Id == copyFromId)) is null) return false;
         var scheme = new SoundScheme(SoundCatalog.NewUserSchemeId(), name.Trim(), isBuiltIn: false);
-        _schemeValues[scheme.Id] = copyShown && SelectedSoundScheme is { } source
+        _schemeValues[scheme.Id] = source is not null
             ? SoundSchemeFile.Portable(source.With(events: SchemeValues(source)))
             : SoundCatalog.Events.ToDictionary(i => i.ConfigKey, _ => SoundRef.None.ToStored(), StringComparer.OrdinalIgnoreCase);
         InsertUserScheme(scheme);
@@ -377,11 +383,15 @@ public partial class SettingsViewModel
         return true;
     }
 
-    /// <summary>Renames the scheme showing, which must be one of the person's own.</summary>
+    /// <summary>Renames a scheme of the person's own, and shows it.</summary>
+    /// <param name="schemeId">The scheme, by id: the name dialog is modeless, so the one showing may have changed.</param>
+    /// <param name="name">The new name.</param>
     /// <returns>False if the name can't be used, or the scheme isn't one that can be renamed.</returns>
-    public bool RenameSelectedScheme(string name)
+    public bool RenameScheme(string schemeId, string name)
     {
-        if (SelectedSoundScheme is not { IsBuiltIn: false } scheme || SchemeNameProblem(name, scheme) is not null) return false;
+        if (SoundSchemes.FirstOrDefault(s => s.Id == schemeId) is not { IsBuiltIn: false } scheme
+            || SchemeNameProblem(name, scheme) is not null) return false;
+        if (scheme.Id != _shownSchemeId) SelectedSoundScheme = scheme;   // keeps the edits of the one showing
         CaptureSchemeRows();
         var renamed = scheme.With(name: name.Trim());
         // Same id, so OnSelectedSoundSchemeChanged leaves the rows alone; re-placed so the list stays in order.
@@ -390,6 +400,12 @@ public partial class SettingsViewModel
         SelectedSoundScheme = renamed;
         return true;
     }
+
+    /// <summary>Why a rename can't happen: the name, or the scheme having gone or being built in.</summary>
+    public string SchemeRenameProblem(string schemeId, string name) =>
+        SoundSchemes.FirstOrDefault(s => s.Id == schemeId) is { IsBuiltIn: false } scheme
+            ? SchemeNameProblem(name, scheme) ?? "The sound scheme could not be renamed."
+            : "That sound scheme is no longer there.";
 
     /// <summary>Deletes the scheme showing, after asking. Its sound files stay: other schemes or rules may use them.</summary>
     /// <returns>True if it was deleted, so the View can put focus on Sound scheme.</returns>
@@ -404,15 +420,19 @@ public partial class SettingsViewModel
         return true;
     }
 
-    /// <summary>Puts the built-in scheme showing back to how it ships, after asking.</summary>
     [RelayCommand]
-    private void ResetScheme()
+    private void ResetScheme() => TryResetScheme();
+
+    /// <summary>Puts the built-in scheme showing back to how it ships, after asking.</summary>
+    /// <returns>True if it was reset, so the View can move focus off the button it has just disabled.</returns>
+    public bool TryResetScheme()
     {
-        if (!CanResetScheme || SelectedSoundScheme is not { } scheme) return;
-        if (ConfirmRequested?.Invoke($"Reset {scheme.Name} to how it ships? Every event goes back to its built-in sound.", "Reset Sound Scheme") != true) return;
+        if (!CanResetScheme || SelectedSoundScheme is not { } scheme) return false;
+        if (ConfirmRequested?.Invoke($"Reset {scheme.Name} to how it ships? Every event goes back to its built-in sound.", "Reset Sound Scheme") != true) return false;
         foreach (var row in SoundEventRows)
             row.Choice = ChoiceFor(SoundRef.BuiltIn(row.Info.BuiltInSound));
         if (SelectedSoundEvent is not null) SelectedSoundChoice = SelectedSoundEvent.Choice;
+        return true;
     }
 
     // ── Sharing a scheme (#932) ─────────────────────────────────────────────────
@@ -436,9 +456,13 @@ public partial class SettingsViewModel
     }
 
     [RelayCommand]
-    private void ImportScheme()
+    private void ImportScheme() => TryImportScheme();
+
+    /// <summary>Asks for a scheme file and adds the scheme in it.</summary>
+    /// <returns>True if a scheme was added, so the View can put focus in its event list.</returns>
+    public bool TryImportScheme()
     {
-        if (_sounds is null || PickSchemeImportPathRequested?.Invoke() is not { } path) return;
+        if (_sounds is null || PickSchemeImportPathRequested?.Invoke() is not { } path) return false;
         SoundSchemeImport imported;
         try
         {
@@ -448,7 +472,7 @@ public partial class SettingsViewModel
         {
             LogService.Log("Importing a sound scheme failed", ex);
             ReportScheme(ex.Message);
-            return;
+            return false;
         }
 
         // Numbered rather than refused: the name is the file's, not one the person typed.
@@ -476,6 +500,7 @@ public partial class SettingsViewModel
         if (imported.SoundsDropped > 0)
             message += $" {Plural(imported.SoundsDropped, "event")} had a sound file that was missing or could not be played, and now {(imported.SoundsDropped == 1 ? "has" : "have")} no sound.";
         ReportScheme(message + " Save to keep it.");
+        return true;
     }
 
     private void ReportScheme(string message)
@@ -555,15 +580,18 @@ public partial class SettingsViewModel
         return (schemes, rules);
     }
 
+    [RelayCommand]
+    private void RemoveSoundFile() => TryRemoveSoundFile();
+
     /// <summary>
     /// Deletes the custom sound file showing, after asking, and says what still uses it. Those uses
     /// stay, listed as missing, and play their fallback, as for any file that has gone.
     /// </summary>
-    [RelayCommand]
-    private void RemoveSoundFile()
+    /// <returns>True if it was removed, so the View can move focus off the button it has just disabled.</returns>
+    public bool TryRemoveSoundFile()
     {
         if (!CanRemoveSoundFile || _sounds is null || SelectedSoundChoice is not { } choice
-            || !SoundRef.TryParse(choice.Stored, out var sound)) return;
+            || !SoundRef.TryParse(choice.Stored, out var sound)) return false;
 
         var (schemes, rules) = SoundFileUses(sound.Name);
         var uses = new List<string>();
@@ -572,14 +600,15 @@ public partial class SettingsViewModel
         if (rules > 0) uses.Add(Plural(rules, "rule"));
         var question = $"Remove the sound file {sound.Name} from QuickMail?"
             + (uses.Count == 0 ? " Nothing uses it."
-                : $" It is still used by {string.Join(", and by ", uses)}, which will play a built-in sound instead.");
-        if (ConfirmRequested?.Invoke(question, "Remove Sound File") != true) return;
+                : $" It is still used by {string.Join(", and by ", uses)}, which will play a built-in sound instead.")
+            + " The file is deleted now, even if you then cancel Settings.";
+        if (ConfirmRequested?.Invoke(question, "Remove Sound File") != true) return false;
 
         if (!_sounds.TryRemoveCustomSound(sound.Name, out var refusal))
         {
             SoundFileMessage = refusal;
             SoundResultAnnounced?.Invoke(refusal);
-            return;
+            return false;
         }
 
         SoundFileMessage = string.Empty;
@@ -589,6 +618,7 @@ public partial class SettingsViewModel
             row.Choice = missing;
         if (SelectedSoundEvent is not null) SelectedSoundChoice = SelectedSoundEvent.Choice;
         OnPropertyChanged(nameof(CanRemoveSoundFile));
+        return true;
     }
 
     private static string JoinNames(IReadOnlyList<string> names) => names.Count switch

@@ -867,14 +867,14 @@
                                     MinWidth="90" Margin="0,0,8,4" Click="DeleteSoundSchemeButton_Click"
                                     IsEnabled="{Binding IsUserSchemeSelected}"/>
                             <Button x:Name="ResetSoundSchemeButton" Content="Reset sc_heme…" AutomationProperties.Name="Reset scheme"
-                                    MinWidth="90" Margin="0,0,8,4" Command="{Binding ResetSchemeCommand}"
+                                    MinWidth="90" Margin="0,0,8,4" Click="ResetSoundSchemeButton_Click"
                                     IsEnabled="{Binding CanResetScheme}"/>
                         </WrapPanel>
                         <WrapPanel Margin="0,0,0,4">
                             <Button x:Name="ExportSoundSchemeButton" Content="E_xport scheme…" AutomationProperties.Name="Export scheme"
-                                    MinWidth="90" Margin="0,0,8,4" Command="{Binding ExportSchemeCommand}"/>
+                                    MinWidth="90" Margin="0,0,8,4" Click="ExportSoundSchemeButton_Click"/>
                             <Button x:Name="ImportSoundSchemeButton" Content="Import scheme…" AutomationProperties.Name="Import scheme"
-                                    MinWidth="90" Margin="0,0,8,4" Command="{Binding ImportSchemeCommand}"/>
+                                    MinWidth="90" Margin="0,0,8,4" Click="ImportSoundSchemeButton_Click"/>
                         </WrapPanel>
                         <TextBlock Text="{Binding SoundSchemeMessage}" TextWrapping="Wrap" Margin="0,0,0,8"
                                    Visibility="{Binding HasSoundSchemeMessage, Converter={StaticResource BoolToVisibilityConverter}}"/>
@@ -908,7 +908,7 @@
                             <Button x:Name="ChooseSoundFileButton" Content="Choose _File…" MinWidth="110" Margin="0,0,8,0"
                                     Click="ChooseSoundFileButton_Click"/>
                             <Button x:Name="RemoveSoundFileButton" Content="Remove f_ile…" AutomationProperties.Name="Remove file" MinWidth="110"
-                                    Command="{Binding RemoveSoundFileCommand}"
+                                    Click="RemoveSoundFileButton_Click"
                                     IsEnabled="{Binding CanRemoveSoundFile}"/>
                         </StackPanel>
                         <TextBlock Text="{Binding SoundFileMessage}" TextWrapping="Wrap" Margin="0,8,0,0"

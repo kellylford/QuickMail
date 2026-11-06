@@ -459,12 +459,18 @@ public class ConfigService : IConfigService
         Dictionary<string, string> legacySounds, Dictionary<string, Dictionary<string, string>> sections)
     {
         if (schemeId is not null) config.SoundSchemeId = schemeId;
-        else if (legacyPack is not null) config.SoundSchemeId = legacyPack;
+        else if (legacyPack is not null)
+        {
+            var pack = legacyPack.Trim().ToLowerInvariant();
+            config.SoundSchemeId = SoundCatalog.IsBuiltInSchemeId(pack) ? pack : legacyPack;
+        }
 
         if (legacySounds.Count > 0)
         {
-            // The list applied to whichever style was chosen when it was written.
-            var target = (legacyPack ?? SoundCatalog.DefaultPack).ToLowerInvariant();
+            // The list applied to whichever style was chosen when it was written, and under any style
+            // that build didn't have it played as Glass, so it goes to Glass then.
+            var target = (legacyPack ?? SoundCatalog.DefaultPack).Trim().ToLowerInvariant();
+            if (!SoundCatalog.IsBuiltInSchemeId(target)) target = SoundCatalog.DefaultPack;
             if (!sections.TryGetValue(target, out var section))
                 sections[target] = section = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var (key, value) in legacySounds)

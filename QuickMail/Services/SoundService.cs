@@ -108,14 +108,23 @@ public sealed class SoundService : ISoundService
     /// </summary>
     internal static SoundRef RuleSound(string? storedSound, SoundScheme scheme)
     {
-        if (SoundRef.TryParse(storedSound, out var parsed) && parsed.Kind != SoundRefKind.None && !IsDefaultRuleSound(parsed))
+        if (SoundRef.TryParse(storedSound, out var parsed) && parsed.Kind != SoundRefKind.None && !SoundCatalog.IsDefaultRuleSound(parsed))
             return parsed;
         return SoundCatalog.Resolve(SoundEvent.RuleMatched, scheme);
     }
 
-    /// <summary>A rule's "default sound": the unqualified built-in rule sound, which is what every rule stored before #932.</summary>
-    public static bool IsDefaultRuleSound(SoundRef sound) =>
-        sound.Kind == SoundRefKind.BuiltIn && sound.Pack is null && sound.Name == SoundCatalog.DefaultRuleSound;
+    public void PreviewRule(string? storedSound)
+    {
+        try
+        {
+            var sound = RuleSound(storedSound, SoundCatalog.ActiveScheme(_config.Load()));
+            Preview(sound.ToStored());   // None just stops what is playing: the rule would play nothing
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Rule sound preview failed", ex);
+        }
+    }
 
     public bool WasSoundedByRule(string messageKey) => _ruleSoundedKeys.ContainsKey(messageKey);
 

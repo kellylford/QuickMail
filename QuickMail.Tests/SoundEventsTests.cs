@@ -49,6 +49,10 @@ internal sealed class RecordingSoundService : ISoundService
     public bool WasSoundedByRule(string messageKey) => RuleSoundedKeys.Contains(messageKey);
     public string? PreviewPack { get; private set; }
 
+    public List<string?> RulePreviewed { get; } = [];
+
+    public void PreviewRule(string? storedSound) => RulePreviewed.Add(storedSound);
+
     public void Preview(string storedSound, int? volumePercent = null, string? pack = null)
     {
         Previewed.Add(storedSound);

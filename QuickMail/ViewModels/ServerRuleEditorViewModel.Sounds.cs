@@ -92,7 +92,7 @@ public partial class ServerRuleEditorViewModel
     {
         if (SelectedRuleSound is null) return;
         _previewedSound = true;
-        _sounds?.Preview(SelectedRuleSound.Stored);
+        _sounds?.PreviewRule(SelectedRuleSound.Stored);   // the default follows the scheme in use (#932)
     }
 
     [RelayCommand]

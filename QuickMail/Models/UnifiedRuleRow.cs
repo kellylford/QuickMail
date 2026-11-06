@@ -162,7 +162,7 @@ public sealed class UnifiedRuleRow
 
         // The default is the scheme's "A rule matched" sound, which differs from scheme to scheme (#932).
         static string SoundName(string? stored) =>
-            SoundRef.TryParse(stored, out var sound) && sound.Kind != SoundRefKind.None && !Services.SoundService.IsDefaultRuleSound(sound)
+            SoundRef.TryParse(stored, out var sound) && sound.Kind != SoundRefKind.None && !SoundCatalog.IsDefaultRuleSound(sound)
                 ? "play sound " + sound.DisplayName
                 : "play the default sound";
 

@@ -133,6 +133,12 @@ public static class SoundSchemeFile
                 events[key] = sound.ToStored();
             }
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Staging in the temp folder failed: full, or locked down. Sounds copied in so far stay,
+            // as files only; nothing names them until a scheme does.
+            throw new SoundSchemeFileException("The scheme's sounds could not be copied into QuickMail. " + ex.Message, ex);
+        }
         finally
         {
             try { if (Directory.Exists(temp)) Directory.Delete(temp, recursive: true); }

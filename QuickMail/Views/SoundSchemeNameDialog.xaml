@@ -27,7 +27,7 @@
 
         <StackPanel>
             <Label Content="_Name:" Target="{Binding ElementName=NameBox}" Padding="0,0,0,2"/>
-            <TextBox x:Name="NameBox" AutomationProperties.Name="Name" MaxLength="200"/>
+            <TextBox x:Name="NameBox" AutomationProperties.Name="Name" MaxLength="60"/>
             <TextBlock x:Name="ProblemText" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
         </StackPanel>
 

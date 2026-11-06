@@ -234,6 +234,16 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void SoundSchemeNameDialog_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var window = new SoundSchemeNameDialog("New Sound Scheme", "Calm", _ => null);
+        Assert.Equal("New Sound Scheme", window.Title);
+        Assert.Equal(60, (window.FindName("NameBox") as System.Windows.Controls.TextBox)?.MaxLength);
+        window.Close();
+    }
+
+    [StaFact]
     public void WatchedConversationsWindow_XamlParsesWithoutException()
     {
         EnsureApplication();

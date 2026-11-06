@@ -63,10 +63,12 @@ public partial class SoundSchemeNameDialog : Window
         }
 
         // Shown in the dialog, and spoken, since the text box keeps focus and reports nothing new.
+        // Focus first, so moving it back from OK doesn't talk over the reason.
         ProblemText.Text = problem;
         ProblemText.Visibility = Visibility.Visible;
-        AccessibilityHelper.Announce(this, problem, interrupt: true, AnnouncementCategory.Result);
+        System.Windows.Automation.AutomationProperties.SetHelpText(NameBox, problem);
         NameBox.SelectAll();
         NameBox.Focus();
+        AccessibilityHelper.Announce(this, problem, interrupt: true, AnnouncementCategory.Result);
     }
 }

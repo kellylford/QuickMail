@@ -125,6 +125,10 @@ public static class SoundCatalog
     public static string BuiltInLabel(string name) =>
         name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
+    /// <summary>A rule's "default sound": the unqualified built-in rule sound, which is what every rule stored before #932.</summary>
+    public static bool IsDefaultRuleSound(SoundRef sound) =>
+        sound.Kind == SoundRefKind.BuiltIn && sound.Pack is null && sound.Name == DefaultRuleSound;
+
     /// <summary>What Settings calls a pack, or its id if this build doesn't have it.</summary>
     public static string PackLabel(string id) => Packs.FirstOrDefault(p => p.Id == id)?.Label ?? id;
 
