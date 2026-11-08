@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using NAudio.Utils;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using QuickMail.Models;
@@ -34,7 +33,8 @@ public static class SchemeWavConverter
                 samples = new WdlResamplingSampleProvider(samples, FallbackRate);
 
             using var ms = new MemoryStream();
-            using (var writer = new WaveFileWriter(new IgnoreDisposeStream(ms),
+            // WaveFileWriter leaves a stream it was given open, so ms is still readable afterwards.
+            using (var writer = new WaveFileWriter(ms,
                        new WaveFormat(samples.WaveFormat.SampleRate, 16, samples.WaveFormat.Channels)))
             {
                 var pcm = new SampleToWaveProvider16(samples);
