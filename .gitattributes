@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# app-kit's shared sound scheme test files: kept byte for byte, or a signed index (signature line,
+# "\n", then the exact signed bytes) would stop verifying once line endings were changed.
+QuickMail.Tests/SharedSoundTestData/** binary
+QuickMail.Tests/SharedSoundTestData/README.md text diff merge

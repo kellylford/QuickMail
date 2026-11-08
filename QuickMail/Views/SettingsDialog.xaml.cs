@@ -106,7 +106,8 @@ public partial class SettingsDialog : Window
     private void BrowseSoundSchemesButton_Click(object sender, RoutedEventArgs e)
     {
         if (_vm.SoundGallery is not { } gallery) return;
-        var window = new SoundGalleryWindow(new SoundGalleryViewModel(gallery)) { Owner = this };
+        // The schemes here, saved or not, so the gallery can say which it has and which have updates.
+        var window = new SoundGalleryWindow(new SoundGalleryViewModel(gallery, _vm.GalleryOrigins())) { Owner = this };
         if (window.ShowDialog() != true || window.DownloadedPath is not { } path)
         {
             BrowseSoundSchemesButton.Focus();
@@ -114,7 +115,7 @@ public partial class SettingsDialog : Window
         }
         try
         {
-            if (_vm.ImportSchemeFrom(path)) FocusSelectedEvent();
+            if (_vm.ImportSchemeFrom(path, window.DownloadedEntry)) FocusSelectedEvent();
             else BrowseSoundSchemesButton.Focus();
         }
         finally

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 
@@ -62,7 +63,9 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name, string? P
 
         if (text.StartsWith(BuiltInPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            var name = text[BuiltInPrefix.Length..];
+            // The pack and name match whatever their case and are kept in lowercase, as every app
+            // reads them (app-kit sounds/SCHEMES.md): BUILTIN:SoftBell/Tap is builtin:softbell/tap.
+            var name = text[BuiltInPrefix.Length..].ToLowerInvariant();
             string? pack = null;
             var slash = name.IndexOf('/');
             if (slash >= 0)
@@ -91,24 +94,32 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name, string? P
     // Leaves room for the profile path, so a long name can't fail mid-import and roll the whole thing back.
     private const int MaxFileNameLength = 100;
 
-    // On older Windows, COM1.wav still means the serial port, whatever folder it is in.
-    private static bool IsReservedDeviceName(string stem)
+    // On older Windows, COM1.wav still means the serial port, whatever folder it is in, and so does
+    // COM1.anything.wav: Windows reads the device from the name up to its first dot.
+    private static bool IsReservedDeviceName(string file)
     {
-        var name = stem.TrimEnd(' ', '.').ToUpperInvariant();
+        var dot = file.IndexOf('.');
+        var name = (dot < 0 ? file : file[..dot]).TrimEnd(' ').ToUpperInvariant();
         if (name is "CON" or "PRN" or "AUX" or "NUL" or "CONIN$" or "CONOUT$") return true;
         return name.Length == 4 && (name.StartsWith("COM", StringComparison.Ordinal) || name.StartsWith("LPT", StringComparison.Ordinal))
-            && (char.IsDigit(name[3]) || name[3] is '¹' or '²' or '³');
+            && (char.IsAsciiDigit(name[3]) || name[3] is '¹' or '²' or '³');
     }
 
-    /// <summary>A bare WAV or MP3 file name, with nothing that could lead out of the sounds folder or reach a device.</summary>
+    /// <summary>
+    /// A bare WAV or MP3 file name, with nothing that could lead out of the sounds folder or reach a
+    /// device, and nothing that could make it read as another name: no control or formatting
+    /// character (such as a right-to-left override, which can make x.wav look like something else)
+    /// and no surrogate. The rules are app-kit's sounds/SCHEMES.md "A safe file name".
+    /// </summary>
     public static bool IsSafeCustomFileName(string? file)
     {
         if (string.IsNullOrWhiteSpace(file)) return false;
         if (file != file.Trim() || file.EndsWith('.')) return false;   // Windows drops these, changing which file is meant.
         if (file.IndexOfAny(['/', '\\', ':']) >= 0) return false;
         if (file.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;
+        if (file.Any(c => char.GetUnicodeCategory(c) is UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.Surrogate)) return false;
         if (file.Length > MaxFileNameLength) return false;
-        if (IsReservedDeviceName(Path.GetFileNameWithoutExtension(file))) return false;
+        if (IsReservedDeviceName(file)) return false;
         var extension = Path.GetExtension(file);
         return extension.Equals(".wav", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase);

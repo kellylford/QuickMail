@@ -20,8 +20,10 @@
 
         <StackPanel x:Name="ButtonPanel" DockPanel.Dock="Bottom" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,10,0,0">
-            <Button x:Name="AddButton" Content="_Add" MinWidth="85" Margin="0,0,6,0" TabIndex="2"
-                    AutomationProperties.Name="Add"
+            <!-- Add, or Update when the gallery has a newer version of a scheme already added; turned
+                 off for one already added. -->
+            <Button x:Name="AddButton" Content="{Binding AddLabel}" MinWidth="85" Margin="0,0,6,0" TabIndex="2"
+                    AutomationProperties.Name="{Binding AddName}"
                     IsEnabled="{Binding CanAdd}" Click="AddButton_Click"/>
             <Button x:Name="ReloadButton" Content="_Reload" MinWidth="85" Margin="0,0,6,0" TabIndex="3"
                     AutomationProperties.Name="Reload" Click="ReloadButton_Click"/>

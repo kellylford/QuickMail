@@ -132,6 +132,37 @@ public class SoundSchemeTests
     }
 
     [Fact]
+    public void WhereAGallerySchemeCameFromAndItsDescriptionRoundTrip()
+    {
+        var sha = new string('a', 64);
+        var config = new ConfigModel();
+        config.SoundSchemes["user-g"] = new SoundScheme("user-g", "Rain", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "none", ["FromNewerQuickMail"] = "x" },
+            author: "Pat", license: "CC0-1.0", description: "Soft sounds.", galleryOrigin: new SoundGalleryOrigin("rain-at-night", sha));
+
+        var back = RoundTrip(config).SoundSchemes["user-g"];
+
+        Assert.Equal("Soft sounds.", back.Description);
+        Assert.Equal(new SoundGalleryOrigin("rain-at-night", sha), back.GalleryOrigin);
+        Assert.Equal("x", back.Events["FromNewerQuickMail"]);   // a key no event owns is kept, as before
+        Assert.False(back.Events.ContainsKey("GalleryId"));
+        Assert.False(back.Events.ContainsKey("Description"));
+    }
+
+    [Theory]
+    [InlineData("Bad_Id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("rain", "not a hash")]
+    [InlineData("rain", null)]
+    public void AGalleryOriginEditedByHandIntoNonsenseIsDropped(string id, string? sha)
+    {
+        var lines = new List<string> { "[sounds.user-g]", "Name = Rain", $"GalleryId = {id}" };
+        if (sha is not null) lines.Add($"GallerySha256 = {sha}");
+        var scheme = Parse([.. lines]).SoundSchemes["user-g"];
+        Assert.Null(scheme.GalleryOrigin);
+        Assert.False(scheme.Events.ContainsKey("GalleryId"));
+    }
+
+    [Fact]
     public void ASchemeOfYourOwnRoundTripsWithEveryEventAndAnAwkwardName()
     {
         var config = new ConfigModel { SoundSchemeId = "user-abc" };
@@ -747,14 +778,16 @@ public sealed class SoundSchemeServiceTests : IDisposable
     public void AnExportedSchemeImportsWithItsSoundsElsewhere()
     {
         var here = Folder("here");
-        File.WriteAllBytes(Path.Combine(here, "Ding.wav"), [1, 2, 3]);
+        var ding = TestWav.Tone();
+        var otherDing = TestWav.Tone(salt: 9);
+        File.WriteAllBytes(Path.Combine(here, "Ding.wav"), ding);
         var scheme = new SoundScheme("wood", "Wood", true, "wood", new Dictionary<string, string> { ["NewMail"] = "custom:Ding.wav", ["MessageSent"] = "none" });
         var file = Path.Combine(_root, "Wood.qmsounds");
         using (var service = Service(here))
-            SoundSchemeFile.Export(file, "Wood mine", SoundSchemeFile.Portable(scheme), service);
+            Assert.Equal(0, SoundSchemeFile.Export(file, "Wood mine", SoundSchemeFile.Portable(scheme), service));
 
         var there = Folder("there");
-        File.WriteAllBytes(Path.Combine(there, "Ding.wav"), [9, 9]);   // a different sound with the same name
+        File.WriteAllBytes(Path.Combine(there, "Ding.wav"), otherDing);   // a different sound with the same name
         using var other = Service(there);
         var imported = SoundSchemeFile.Import(file, other);
 
@@ -764,27 +797,304 @@ public sealed class SoundSchemeServiceTests : IDisposable
         Assert.Equal("builtin:wood/queued", imported.Events["MessageQueued"]);
         Assert.Equal(1, imported.SoundsAdded);
         Assert.Equal(0, imported.SoundsDropped);
-        Assert.Equal([1, 2, 3], File.ReadAllBytes(Path.Combine(there, "Ding 2.wav")));
-        Assert.Equal([9, 9], File.ReadAllBytes(Path.Combine(there, "Ding.wav")));
+        Assert.Equal(ding, File.ReadAllBytes(Path.Combine(there, "Ding 2.wav")));
+        Assert.Equal(otherDing, File.ReadAllBytes(Path.Combine(there, "Ding.wav")));
     }
 
     [Fact]
     public void ASoundThatWillNotPlayIsDroppedOnImportAndCounted()
     {
         var here = Folder("here2");
-        File.WriteAllBytes(Path.Combine(here, "Bad.wav"), [1]);
+        File.WriteAllBytes(Path.Combine(here, "Bad.wav"), TestWav.Tone());
         var file = Path.Combine(_root, "Bad.qmsounds");
         using (var service = Service(here))
-            SoundSchemeFile.Export(file, "Bad", new Dictionary<string, string> { ["NewMail"] = "custom:Bad.wav", ["SendFailed"] = "custom:Gone.wav" }, service);
+        {
+            // Gone.wav isn't there to export, so its event goes as none: one left out.
+            Assert.Equal(1, SoundSchemeFile.Export(file, "Bad",
+                new Dictionary<string, string> { ["NewMail"] = "custom:Bad.wav", ["SendFailed"] = "custom:Gone.wav" }, service));
+        }
 
-        _output.Refuse = true;
+        _output.Refuse = true;   // the sound won't decode here
         using var other = Service(Folder("there2"));
         var imported = SoundSchemeFile.Import(file, other);
 
         Assert.Equal("none", imported.Events["NewMail"]);
         Assert.Equal("none", imported.Events["SendFailed"]);
-        Assert.Equal(2, imported.SoundsDropped);
+        Assert.Equal(1, imported.SoundsDropped);
         Assert.Empty(other.CustomSoundFiles());
+    }
+
+    [Fact]
+    public void AnExportedFileSaysWhichAppItIsForAndKeepsItsDescription()
+    {
+        var file = Path.Combine(_root, "Described.qmsounds");
+        using var service = Service(Folder("described"));
+        SoundSchemeFile.Export(file, "Calm", new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" }, service,
+            author: "Pat", license: "CC0-1.0", description: "Quiet sounds.\nFor late.");
+
+        using (var zip = ZipFile.OpenRead(file))
+        {
+            Assert.Equal("scheme.json", zip.Entries[0].FullName);
+            using var doc = System.Text.Json.JsonDocument.Parse(zip.Entries[0].Open());
+            var root = doc.RootElement;
+            Assert.Equal(["format", "app", "name", "author", "license", "description", "events"], root.EnumerateObject().Select(p => p.Name));
+            Assert.Equal("quickmail", root.GetProperty("app").GetString());
+            Assert.Equal("Quiet sounds.For late.", root.GetProperty("description").GetString());
+            // Every event, in QuickMail's order.
+            Assert.Equal(SoundCatalog.Events.Select(e => e.ConfigKey), root.GetProperty("events").EnumerateObject().Select(p => p.Name));
+            Assert.Equal(new DateTime(2026, 1, 1), zip.Entries[0].LastWriteTime.DateTime);
+        }
+
+        var imported = SoundSchemeFile.Import(file, service);
+        Assert.Equal("Quiet sounds.For late.", imported.Description);
+        Assert.Equal("Pat", imported.Author);
+        // The same scheme gives the same bytes, which the gallery needs: it names a file by its hash.
+        var again = Path.Combine(_root, "Described2.qmsounds");
+        SoundSchemeFile.Export(again, "Calm", new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" }, service,
+            author: "Pat", license: "CC0-1.0", description: "Quiet sounds.\nFor late.");
+        Assert.Equal(File.ReadAllBytes(file), File.ReadAllBytes(again));
+    }
+
+    [Fact]
+    public void AnMp3StaysBehindWhenExportingAndIsCounted()
+    {
+        var here = Folder("mp3");
+        File.WriteAllBytes(Path.Combine(here, "Song.mp3"), [0x49, 0x44, 0x33, 3, 0]);
+        File.WriteAllBytes(Path.Combine(here, "Wide.wav"), TestWav.Tone(formatTag: 0xFFFE));   // WAVE_FORMAT_EXTENSIBLE
+        var file = Path.Combine(_root, "Mp3.qmsounds");
+        using var service = Service(here);
+
+        var leftOut = SoundSchemeFile.Export(file, "Songs",
+            new Dictionary<string, string> { ["NewMail"] = "custom:Song.mp3", ["SendFailed"] = "custom:Song.mp3", ["MessageSent"] = "custom:Wide.wav" }, service);
+
+        Assert.Equal(3, leftOut);
+        using var zip = ZipFile.OpenRead(file);
+        Assert.Equal(["scheme.json"], zip.Entries.Select(e => e.FullName));
+    }
+
+    /// <summary>A .qmsounds file with this scheme.json and these entries, written as given.</summary>
+    private string SchemeZip(string name, string json, params (string Name, byte[] Bytes)[] entries)
+    {
+        var file = Path.Combine(_root, name);
+        using var zip = ZipFile.Open(file, ZipArchiveMode.Create);
+        using (var writer = new StreamWriter(zip.CreateEntry("scheme.json").Open()))
+            writer.Write(json);
+        foreach (var (entryName, bytes) in entries)
+        {
+            using var es = zip.CreateEntry(entryName).Open();
+            es.Write(bytes);
+        }
+        return file;
+    }
+
+    [Fact]
+    public void AFileFromQuickMail0869KeepsItsMp3s()
+    {
+        // 0.8.69 wrote no "app", and could carry the MP3s QuickMail plays; those still come in.
+        var file = SchemeZip("old.qmsounds", """{"format":1,"name":"Old","events":{"NewMail":"custom:Song.mp3"}}""",
+            ("sounds/Song.mp3", [0x49, 0x44, 0x33, 3, 0]));
+        using var service = Service(Folder("old"));
+
+        var imported = SoundSchemeFile.Import(file, service);
+
+        Assert.Equal("custom:Song.mp3", imported.Events["NewMail"]);
+        Assert.Equal(0, imported.SoundsDropped);
+        Assert.Equal(["Song.mp3"], service.CustomSoundFiles());
+    }
+
+    [Fact]
+    public void ANewerFileOrAGalleryFileHoldsOnlyPlainWavs()
+    {
+        var events = """{"NewMail":"custom:Song.mp3","SendFailed":"custom:Wide.wav","MessageSent":"custom:Eight.wav","MessageQueued":"custom:Good.wav"}""";
+        (string, byte[])[] sounds =
+        [
+            ("sounds/Song.mp3", [0x49, 0x44, 0x33, 3, 0]),
+            ("sounds/Wide.wav", TestWav.Tone(formatTag: 0xFFFE)),
+            ("sounds/Eight.wav", TestWav.Tone(bits: 8)),
+            ("sounds/Good.wav", TestWav.Tone()),
+        ];
+        var newer = SchemeZip("new.qmsounds", $$"""{"format":1,"app":"quickmail","name":"New","events":{{events}}}""", sounds);
+        var old = SchemeZip("old-gallery.qmsounds", $$"""{"format":1,"name":"Old","events":{{events}}}""", sounds);
+
+        foreach (var read in new[] { SoundSchemeFile.Read(newer), SoundSchemeFile.Read(old, fromGallery: true) })
+        {
+            Assert.Equal(["Good.wav"], read.Sounds.Keys);
+            Assert.Equal(3, read.Dropped);
+            Assert.Equal("custom:Good.wav", read.Events["MessageQueued"]);
+            Assert.Equal("none", read.Events["NewMail"]);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"format":1,"app":"thechatplace","name":"X","events":{}}""", "This is a sound scheme for The Chat Place, so QuickMail can't use it.")]
+    [InlineData("""{"format":1,"app":"someday","name":"X","events":{}}""", "This is a sound scheme for someday, so QuickMail can't use it.")]
+    [InlineData("""{"format":1,"app":5,"name":"X","events":{}}""", "This is a sound scheme for another app, so QuickMail can't use it.")]
+    [InlineData("""{"format":1,"app":"\u0007","name":"X","events":{}}""", "This is a sound scheme for another app, so QuickMail can't use it.")]
+    [InlineData("""{"format":1,"app":"quickmail","name":"X","app":"thechatplace","events":{}}""", "This is a sound scheme for The Chat Place, so QuickMail can't use it.")]
+    [InlineData("""{"format":1.0,"name":"X","events":{}}""", "This file could not be read as a sound scheme for QuickMail.")]
+    [InlineData("""{"format":1,"name":"X","events":[]}""", "This file could not be read as a sound scheme for QuickMail.")]
+    [InlineData("""{"format":1,"name":"X","events":{},}""", "This file could not be read as a sound scheme for QuickMail.")]
+    [InlineData("""{"format":99999999999,"name":"X","events":{}}""", "This file could not be read as a sound scheme for QuickMail.")]
+    [InlineData("""{"format":2,"app":"thechatplace","name":"X","events":{}}""", "This sound scheme was made by a newer version of QuickMail. Update QuickMail and try again.")]
+    public void AFileThatCantBeUsedSaysWhy(string json, string message)
+    {
+        var file = SchemeZip("refused.qmsounds", json);
+        Assert.Equal(message, Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Read(file)).Message);
+    }
+
+    [Fact]
+    public void JsonNestedEightDeepIsReadButNineIsNot()
+    {
+        // The outermost object is the first level, so seven arrays inside it make eight.
+        Assert.Equal("X", SoundSchemeFile.Read(SchemeZip("eight.qmsounds", """{"format":1,"name":"X","events":{},"d":[[[[[[[1]]]]]]]}""")).Name);
+        Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Read(SchemeZip("nine.qmsounds", """{"format":1,"name":"X","events":{},"d":[[[[[[[[1]]]]]]]]}""")));
+    }
+
+    [Fact]
+    public void TheReadingRulesMatchTheSpec()
+    {
+        var wav = TestWav.Tone();
+        // A repeated key: the last counts. A lone surrogate is removed. Case is folded for built-in sounds.
+        // Knock.wav and knock.wav are one file on Windows: the first in QuickMail's event order counts.
+        var json = """
+            {"format":1,"app":"quickmail","name":"Before","name":"Rain \ud800","description":"  One line. ",
+             "events":{"SendFailed":"custom:Knock.wav","MessageSent":"custom:knock.wav","NewMail":"BUILTIN:SoftBell/Arrived",
+                       "MessageQueued":"None","WatchedMail":" none","newmail":"none","ActionFailed":"custom:missing.wav",
+                       "ConnectionLost":"custom:big.wav","NewMail":"builtin:wood/arrived"}}
+            """;
+        var file = SchemeZip("rules.qmsounds", "﻿" + json,
+            ("sounds/Knock.wav", wav), ("sounds/knock.wav", wav), ("sounds/knock.wav", TestWav.Tone(bits: 8)),
+            ("sounds/big.wav", new byte[SoundCatalog.MaxCustomFileBytes + 1]), ("sounds/../evil.wav", wav), ("other.txt", [1]));
+
+        var read = SoundSchemeFile.Read(file);
+
+        Assert.Equal("Rain", read.Name);
+        Assert.Equal("One line.", read.Description);
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["MessageSent"] = "custom:knock.wav",   // MessageSent comes before SendFailed in QuickMail's order
+            ["SendFailed"] = "none",
+            ["NewMail"] = "builtin:wood/arrived",
+            ["MessageQueued"] = "none",
+            ["WatchedMail"] = "none",
+            ["ActionFailed"] = "none",
+            ["ConnectionLost"] = "none",
+        }.OrderBy(e => e.Key, StringComparer.Ordinal), read.Events.OrderBy(e => e.Key, StringComparer.Ordinal));
+        Assert.Equal(["knock.wav"], read.Sounds.Keys);
+        Assert.Equal(wav, read.Sounds["knock.wav"]);   // the first sounds/knock.wav, not the 8-bit one after it
+        Assert.Equal(3, read.Dropped);   // Knock.wav (case), missing.wav, big.wav
+    }
+
+    [Fact]
+    public void ASoundAlreadyHereIsUsedWhenTheFileDoesNotCarryIt()
+    {
+        var file = SchemeZip("here.qmsounds", """{"format":1,"app":"quickmail","name":"X","events":{"NewMail":"custom:Mine.wav","SendFailed":"custom:Gone.wav"}}""");
+        var read = SoundSchemeFile.Read(file, haveFile: name => name == "Mine.wav");
+        Assert.Equal("custom:Mine.wav", read.Events["NewMail"]);
+        Assert.Equal("none", read.Events["SendFailed"]);
+        Assert.Equal(1, read.Dropped);
+        Assert.Empty(read.Sounds);
+    }
+
+    [Fact]
+    public void OnlyTheFirstHundredEventsAreRead()
+    {
+        var junk = string.Join(",", Enumerable.Range(0, 100).Select(i => $"\"Junk{i}\":\"none\""));
+        var file = SchemeZip("many.qmsounds", $$$"""{"format":1,"name":"X","events":{"MessageSent":"none",{{{junk}}},"NewMail":"none"}}""");
+        var read = SoundSchemeFile.Read(file);
+        Assert.Equal(["MessageSent"], read.Events.Keys);
+    }
+
+    [Fact]
+    public void OnlyStoredAndDeflateEntriesAreRead()
+    {
+        // Stored is readable; a method other than stored or DEFLATE isn't, so its sound is dropped.
+        var file = SchemeZip("methods.qmsounds", """{"format":1,"app":"quickmail","name":"X","events":{"NewMail":"custom:a.wav","SendFailed":"custom:b.wav"}}""");
+        using (var zip = ZipFile.Open(file, ZipArchiveMode.Update))
+        {
+            using (var es = zip.CreateEntry("sounds/a.wav", CompressionLevel.NoCompression).Open()) es.Write(TestWav.Tone());
+            using (var es = zip.CreateEntry("sounds/b.wav", CompressionLevel.Optimal).Open()) es.Write(TestWav.Tone());
+        }
+        // Mark b.wav as Deflate64 (method 9) in its local and central headers: .NET could read it, other apps can't.
+        var bytes = File.ReadAllBytes(file);
+        var name = System.Text.Encoding.ASCII.GetBytes("sounds/b.wav");
+        for (var i = 0; i + 46 < bytes.Length; i++)
+        {
+            if (bytes[i] == 0x50 && bytes[i + 1] == 0x4b && bytes[i + 2] == 0x01 && bytes[i + 3] == 0x02
+                && bytes.AsSpan(i + 46, name.Length).SequenceEqual(name))
+                BitConverter.GetBytes((ushort)9).CopyTo(bytes, i + 10);
+        }
+        File.WriteAllBytes(file, bytes);
+
+        var read = SoundSchemeFile.Read(file);
+        Assert.Equal("custom:a.wav", read.Events["NewMail"]);
+        Assert.Equal("none", read.Events["SendFailed"]);
+        Assert.Equal(1, read.Dropped);
+    }
+
+    [Theory]
+    [InlineData(16, 1, 8000, 1, null)]
+    [InlineData(16, 2, 192000, 1, null)]
+    [InlineData(8, 1, 8000, 1, "16-bit")]
+    [InlineData(24, 1, 8000, 1, "16-bit")]
+    [InlineData(16, 3, 8000, 1, "16-bit")]
+    [InlineData(16, 1, 7999, 1, "sample rate")]
+    [InlineData(16, 1, 192001, 1, "sample rate")]
+    [InlineData(16, 1, 8000, 0xFFFE, "PCM")]
+    [InlineData(16, 1, 8000, 3, "PCM")]
+    public void OnlyAPlainSixteenBitWavMayBeInASchemeFile(int bits, int channels, int rate, int tag, string? problem)
+    {
+        var result = SoundSchemeFile.SchemeWavProblem(TestWav.Tone(bits, channels, rate, seconds: 0.01, formatTag: (ushort)tag));
+        if (problem is null) Assert.Null(result);
+        else Assert.Contains(problem, result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AWavLongerThanThirtySecondsOrEmptyIsRefused()
+    {
+        Assert.Contains("30 seconds", SoundSchemeFile.SchemeWavProblem(TestWav.Tone(seconds: 0.01, declaredDataBytes: 8000 * 2 * 31)), StringComparison.Ordinal);
+        Assert.Contains("no sound", SoundSchemeFile.SchemeWavProblem(TestWav.Tone(seconds: 0)), StringComparison.Ordinal);
+        Assert.NotNull(SoundSchemeFile.SchemeWavProblem([1, 2, 3]));
+        Assert.NotNull(SoundSchemeFile.SchemeWavProblem("RIFF\0\0\0\0WAVEdata\0\0\0\0"u8));   // data before fmt
+    }
+
+    [Theory]
+    [InlineData("\u0007  Ho\u0001stile  ", 60, "Hostile")]
+    [InlineData("abc  def", 4, "abc")]
+    [InlineData("ab😀", 3, "ab")]
+    [InlineData("\u0085\u009F", 60, "")]
+    public void TextIsCleanedInTheSpecsOrder(string text, int max, string clean) =>
+        Assert.Equal(clean, SoundSchemeFile.CleanText(text, max));
+
+    [Fact]
+    public void AnUnpairedSurrogateIsRemovedButAPairIsKept()
+    {
+        // Built here rather than in InlineData, which can't carry an unpaired surrogate intact.
+        Assert.Equal("ab", SoundSchemeFile.CleanText("  a" + '\uD800' + "b ", 60));
+        Assert.Equal("ab", SoundSchemeFile.CleanText("a" + '\uDC00' + "b", 60));
+        Assert.Equal("a😀", SoundSchemeFile.CleanText("a😀", 60));
+    }
+
+    [Theory]
+    [InlineData("CON.wav", false)]
+    [InlineData("con.tar.wav", false)]
+    [InlineData("COM¹.wav", false)]
+    [InlineData("COM10.wav", true)]
+    [InlineData("a‮wav.mp3", false)]
+    [InlineData("a\u0085.wav", false)]
+    [InlineData("knock.wav", true)]
+    [InlineData("song.MP3", true)]
+    [InlineData(" knock.wav", false)]
+    [InlineData("knock.wav.", false)]
+    public void ASafeFileNameIsTheSpecs(string name, bool safe) => Assert.Equal(safe, SoundRef.IsSafeCustomFileName(name));
+
+    [Fact]
+    public void ABuiltInSoundMatchesWhateverItsCase()
+    {
+        Assert.True(SoundRef.TryParse("BUILTIN:SoftBell/Arrived", out var sound));
+        Assert.Equal("builtin:softbell/arrived", sound.ToStored());
+        Assert.False(SoundRef.TryParse("builtin:chrome/sent", out _));
+        Assert.False(SoundRef.TryParse("builtin:arrived/extra/x", out _));
     }
 
     [Fact]
@@ -804,7 +1114,9 @@ public sealed class SoundSchemeServiceTests : IDisposable
         var imported = SoundSchemeFile.Import(file, service);
 
         Assert.Equal("Oddname", imported.Name);
-        Assert.Equal(new Dictionary<string, string> { ["MessageSent"] = "builtin:softbell/sent" }, imported.Events);
+        // A value QuickMail can't use plays nothing; a key that isn't one of its events is skipped.
+        Assert.Equal(new Dictionary<string, string> { ["NewMail"] = "none", ["SendFailed"] = "none", ["MessageSent"] = "builtin:softbell/sent" }
+            .OrderBy(e => e.Key, StringComparer.Ordinal), imported.Events.OrderBy(e => e.Key, StringComparer.Ordinal));
         Assert.Empty(Directory.GetFiles(there));
         Assert.False(File.Exists(Path.Combine(_root, "evil.wav")));
     }
@@ -864,25 +1176,43 @@ public sealed class SoundSchemeServiceTests : IDisposable
     }
 
     [Fact]
-    public void AnOversizedEntryIsRefused()
+    public void AnOversizedSoundIsDroppedAndCounted()
     {
-        var file = Path.Combine(_root, "big.qmsounds");
-        using (var zip = ZipFile.Open(file, ZipArchiveMode.Create))
-        {
-            using (var writer = new StreamWriter(zip.CreateEntry("scheme.json").Open()))
-                writer.Write("""{"format":1,"name":"Big","events":{}}""");
-            using var es = zip.CreateEntry("sounds/Big.wav").Open();
-            es.Write(new byte[SoundCatalog.MaxCustomFileBytes + 1]);
-        }
+        var file = SchemeZip("big.qmsounds", """{"format":1,"app":"quickmail","name":"Big","events":{"NewMail":"custom:Big.wav"}}""",
+            ("sounds/Big.wav", new byte[SoundCatalog.MaxCustomFileBytes + 1]));
         using var service = Service(Folder("big"));
-        Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Import(file, service));
+        var imported = SoundSchemeFile.Import(file, service);
+        Assert.Equal("none", imported.Events["NewMail"]);
+        Assert.Equal(1, imported.SoundsDropped);
+        Assert.Empty(service.CustomSoundFiles());
+    }
+
+    [Fact]
+    public void AFileLargerThanEightyMegabytesIsTooLarge()
+    {
+        var file = Path.Combine(_root, "huge.qmsounds");
+        using (var stream = File.Create(file)) stream.SetLength(SoundSchemeFile.MaxFileBytes + 1);
+        Assert.Equal("This sound scheme is too large to use.", Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Read(file)).Message);
+    }
+
+    [Fact]
+    public void ASoundIsNeverWrittenOverAFolderOfTheSameName()
+    {
+        var file = SchemeZip("folder.qmsounds", """{"format":1,"app":"quickmail","name":"X","events":{"NewMail":"custom:Ding.wav"}}""",
+            ("sounds/Ding.wav", TestWav.Tone()));
+        var there = Folder("folder-clash");
+        Directory.CreateDirectory(Path.Combine(there, "Ding.wav"));
+        using var service = Service(there);
+        var imported = SoundSchemeFile.Import(file, service);
+        Assert.Equal("custom:Ding 2.wav", imported.Events["NewMail"]);
+        Assert.True(File.Exists(Path.Combine(there, "Ding 2.wav")));
     }
 
     [Fact]
     public void SettingsImportAddsTheSchemeWithAUniqueNameAndShowsIt()
     {
         var here = Folder("vm-here");
-        File.WriteAllBytes(Path.Combine(here, "Ding.wav"), [1, 2, 3]);
+        File.WriteAllBytes(Path.Combine(here, "Ding.wav"), TestWav.Tone());
         var file = Path.Combine(_root, "Calm.qmsounds");
         using (var service = Service(here))
             SoundSchemeFile.Export(file, "Wood", new Dictionary<string, string> { ["NewMail"] = "custom:Ding.wav" }, service);

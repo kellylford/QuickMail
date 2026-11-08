@@ -49,4 +49,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- app-kit's shared sound scheme test files (SharedSoundTestData/README.md), read by SharedSoundTestDataTests. -->
+  <ItemGroup>
+    <None Include="SharedSoundTestData\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

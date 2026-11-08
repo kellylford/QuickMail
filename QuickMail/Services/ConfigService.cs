@@ -491,8 +491,16 @@ public class ConfigService : IConfigService
                 entries.Remove("Name", out var name);
                 entries.Remove("Author", out var author);
                 entries.Remove("License", out var license);
+                entries.Remove("Description", out var description);
+                entries.Remove("GalleryId", out var galleryId);
+                entries.Remove("GallerySha256", out var gallerySha);
+                // Where it came from in the gallery: both halves, well formed, or nothing, so a hand
+                // edit can't make the gallery offer an update that isn't one.
+                var origin = galleryId is not null && gallerySha is not null
+                    && SoundGalleryService.IsValidId(galleryId) && SoundGalleryService.IsValidSha256(gallerySha)
+                    ? new SoundGalleryOrigin(galleryId, gallerySha) : null;
                 schemes[id] = new SoundScheme(id, string.IsNullOrWhiteSpace(name) ? id : name, isBuiltIn: false, events: entries,
-                    author: author, license: license);
+                    author: author, license: license, description: description, galleryOrigin: origin);
             }
             else
             {
@@ -1037,6 +1045,13 @@ public class ConfigService : IConfigService
                 sb.AppendLine($"Name = {scheme.Name}");
                 if (scheme.Author is not null) sb.AppendLine($"Author = {scheme.Author}");
                 if (scheme.License is not null) sb.AppendLine($"License = {scheme.License}");
+                if (scheme.Description is not null) sb.AppendLine($"Description = {scheme.Description}");
+                if (scheme.GalleryOrigin is { } origin)
+                {
+                    sb.AppendLine("# Where it came from in the sound scheme gallery, so the gallery can offer updates.");
+                    sb.AppendLine($"GalleryId = {origin.Id}");
+                    sb.AppendLine($"GallerySha256 = {origin.Sha256}");
+                }
             }
             sb.AppendLine();
             foreach (var (name, value) in scheme.Events)

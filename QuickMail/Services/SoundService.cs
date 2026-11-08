@@ -297,7 +297,8 @@ public sealed class SoundService : ISoundService
         for (var n = 2; ; n++)
         {
             var target = Path.Combine(_soundsFolder, candidate);
-            if (!File.Exists(target) || SameBytes(target, sourcePath)) return candidate;
+            // A folder of that name takes the name too: a file is never written over anything (SCHEMES.md).
+            if (!Directory.Exists(target) && (!File.Exists(target) || SameBytes(target, sourcePath))) return candidate;
             // Shortened if need be: past the length limit, the name would be refused when next read.
             var shortened = stem.Length > 90 ? stem[..90] : stem;
             candidate = $"{shortened} {n}{extension}";

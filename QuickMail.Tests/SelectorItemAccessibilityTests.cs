@@ -165,8 +165,13 @@ public class SelectorItemAccessibilityTests
         Assert.Equal("40%", new SoundVolumeOption(40).ToString());
         Assert.Equal("Soft bell", new SoundPack("softbell", "Soft bell").ToString());
         // Sound scheme gallery list (#937).
-        Assert.Equal($"Rain, by Pat. 3 of {SoundCatalog.Events.Count} events have a sound",
-            new QuickMail.Services.SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('0', 64), 3).ToString());
+        var galleryEntry = new QuickMail.Services.SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('0', 64), 3);
+        Assert.Equal($"Rain, by Pat. 3 of {SoundCatalog.Events.Count} events have a sound.", galleryEntry.ToString());
+        // The list's rows are SoundGalleryRow: the entry, and whether it's added.
+        Assert.Equal($"Rain, by Pat. 3 of {SoundCatalog.Events.Count} events have a sound. Added.",
+            new SoundGalleryRow(galleryEntry, SoundGalleryState.Added).ToString());
+        Assert.Equal($"Rain, by Pat. 3 of {SoundCatalog.Events.Count} events have a sound. Update available.",
+            new SoundGalleryRow(galleryEntry, SoundGalleryState.UpdateAvailable).ToString());
         // Sound scheme combo (#932).
         Assert.Equal("My calm scheme", new SoundScheme("user-1", "My calm scheme", isBuiltIn: false).ToString());
         Assert.Equal("Wood", SoundCatalog.BuiltInScheme("wood").ToString());
