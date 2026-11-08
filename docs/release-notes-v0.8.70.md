@@ -12,6 +12,10 @@
 - **Sound file names with hidden formatting characters are no longer used.** A name containing an invisible character that changes how text is shown, such as a right-to-left mark, could make one file look like another, so QuickMail no longer accepts it. If one of your own sounds has a name like that, QuickMail stops playing it; rename the file and choose it again. Emoji in names are fine. (#937)
 - **Test and Run on Existing Mail now say what they counted.** In the Rules Manager, **Test** says it checked only the selected rule against the message list, for example "This rule would match 1,108 of the 2,526 messages in the message list for the XS4All account." **Run on Existing Mail** says how many rules ran, on how many stored Inbox messages, and what each rule moved or deleted, for example "Ran 3 rules on 2,900 stored Inbox messages for the XS4All account. They moved 1,936 messages and deleted 6: techtalk moved 1,886; Newsletters moved 50; Spam deleted 6." Before, the two numbers could not be compared, and looked wrong side by side. Both messages now group large numbers, such as 1,942 rather than 1942. (#949)
 
+## Fixed
+
+- **New Folder in the folder picker can now create a folder at the top level of a single account.** When the picker showed only one account, such as when choosing a rule's move to folder or moving messages that all come from one account, a new folder was always made inside the selected folder. The picker now shows the account as the top of the tree, as the main folder tree does. Select the account and choose **New Folder** (or press **Alt+N**) to create the folder beside Inbox and Sent. The picker still opens on the folder you came from. (#950)
+
 ---
 
 ## Reporting Issues
