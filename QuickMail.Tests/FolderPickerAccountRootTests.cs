@@ -343,6 +343,76 @@ public class FolderPickerAccountRootTests
         }
     }
 
+    /// <summary>
+    /// An IMAP account whose top level is only path segments: "Lists" is not itself a mailbox, so
+    /// no node directly under the header carries a folder. The new folder must still be found under
+    /// the header (by its account id) and selected.
+    /// </summary>
+    private static Dictionary<Guid, List<MailFolderModel>> PathSegmentOnlyFolders() => new()
+    {
+        [AccountId] = [Folder("Lists/a", "a"), Folder("Lists/b", "b")],
+    };
+
+    [StaFact]
+    public async Task NewFolderOnTheRootIsSelectedEvenWhenTheTopLevelIsOnlyPathSegments()
+    {
+        var creator = new RecordingCreator
+        {
+            Result = (_, name) => [.. PathSegmentOnlyFolders()[AccountId], Folder(name, name)],
+        };
+        var window = Shown(new FolderPickerWindow(
+            [Account()], PathSegmentOnlyFolders(), title: "Move to Folder", useTreeView: true,
+            folderCreator: creator.CreateAsync));
+        try
+        {
+            SelectNode(window, AccountRoot(window));
+            await window.CreateFolderAtSelectionAsync(_ => "News");
+            Drain();
+
+            Assert.Null(Assert.Single(creator.Calls).Parent);
+            Assert.Contains(AccountRoot(window).Children, n => n.Label == "News");
+            AssertOpenedOn(window, "News");
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// A path segment is not a folder, so there is nothing to create inside. With the account root
+    /// there for the top level, New Folder on the segment says to choose a place rather than quietly
+    /// creating the folder at the top level, somewhere the user did not select.
+    /// </summary>
+    [StaFact]
+    public async Task NewFolderOnAPathSegmentAsksWhereInsteadOfCreatingAtTheTop()
+    {
+        var creator = new RecordingCreator();
+        var heard = new List<(string Text, AnnouncementCategory Category)>();
+        AccessibilityHelper.AnnouncementObserver = (text, category) => heard.Add((text, category));
+
+        var window = Shown(new FolderPickerWindow(
+            [Account()], PathSegmentOnlyFolders(), title: "Move to Folder", useTreeView: true,
+            folderCreator: creator.CreateAsync));
+        try
+        {
+            var lists = Flatten(Roots(window)).First(n => n.Label == "Lists");
+            Assert.Null(lists.Folder);
+            SelectNode(window, lists);
+
+            var prompted = false;
+            await window.CreateFolderAtSelectionAsync(_ => { prompted = true; return "News"; });
+            Drain();
+
+            Assert.False(prompted, "The name prompt opened for a path segment.");
+            Assert.Empty(creator.Calls);
+            Assert.Contains(heard, h => h.Category == AnnouncementCategory.Result &&
+                                        h.Text.Contains("where", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
+            window.Close();
+        }
+    }
+
     // ── Pickers that cannot create folders are unchanged ──────────────────────────
 
     [StaFact]

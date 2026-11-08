@@ -842,8 +842,8 @@ public partial class FolderPickerWindow : Window
         if (_folderCreator == null || !_useTreeView || _treeFolders == null) return;
         if (!TryResolveTreeCreateTarget(out var accountId, out var parentFullName, out var parentLabel))
         {
-            // Nothing selected that says which account and which parent — a path-only node in a
-            // multi-account tree, say. An enabled button that does nothing at all is a dead end, and
+            // Nothing selected that says which account and which parent — a path-only node, which
+            // is not a folder to create inside, say. An enabled button that does nothing at all is a dead end, and
             // silence is how it reads to a screen reader, so name the missing input. "Where" rather
             // than "which folder": an account header is a legal parent too.
             AccessibilityHelper.Announce(
@@ -922,11 +922,15 @@ public partial class FolderPickerWindow : Window
             }
         }
 
-        // Nothing (usable) selected → fall back to the sole account's root. Unambiguous with one
-        // account; with several and no folder selected we can't guess a destination. Rarely reached
-        // now: a picker that offers New Folder shows the account header (ShowsAccountHeaders, #950)
-        // and opens on a real folder, so this covers only a path segment or a lost selection.
-        if (_treeFolders != null && _treeFolders.Count == 1 && _treeAccounts != null)
+        // Nothing selected → fall back to the sole account's root. Unambiguous with one account;
+        // with several we can't guess a destination. Rarely reached: a picker that offers New Folder
+        // shows the account header (ShowsAccountHeaders, #950) and opens on a real folder.
+        //
+        // Deliberately not for an IMAP path segment (a node with no folder that is not a header):
+        // the user chose "Lists", and quietly creating the folder at the top level instead is the
+        // wrong place. Now that the header is there to choose for the top level, the segment gets
+        // the "Choose where" announcement below, as it always did in a multi-account tree.
+        if (node == null && _treeFolders != null && _treeFolders.Count == 1 && _treeAccounts != null)
         {
             var acct = _treeAccounts.FirstOrDefault(a => _treeFolders.ContainsKey(a.Id));
             if (acct != null)
