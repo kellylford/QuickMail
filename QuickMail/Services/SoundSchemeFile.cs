@@ -53,7 +53,24 @@ public static class SoundSchemeFile
     /// <summary>QuickMail's id in app-kit's <c>sounds/apps.json</c>, written into every scheme file.</summary>
     public const string AppId = "quickmail";
 
-    private const string AppName = "QuickMail";
+    /// <summary>
+    /// The app a scheme file is read for: its id and name, its events in order, its built-in sounds,
+    /// and whether its own files may be MP3s. Always QuickMail in the app; the tests read app-kit's
+    /// shared files as The Chat Place too, from app-kit's apps.json, to check every rule of the reader.
+    /// </summary>
+    internal sealed record SchemeApp(string Id, string Name, IReadOnlyList<string> EventKeys, IReadOnlyList<string> BuiltInSounds, bool AllowMp3)
+    {
+        public static readonly SchemeApp QuickMail = new(AppId, "QuickMail",
+            [.. SoundCatalog.Events.Select(e => e.ConfigKey)], SoundCatalog.BuiltInSounds, AllowMp3: true);
+
+        public bool TryParse(string? value, out SoundRef sound) => SoundRef.TryParse(value, out sound, BuiltInSounds, AllowMp3);
+
+        public string Unreadable => $"This file could not be read as a sound scheme for {Name}.";
+
+        public string NewerVersion => $"This sound scheme was made by a newer version of {Name}. Update {Name} and try again.";
+
+        public string ForAnotherApp(string appName) => $"This is a sound scheme for {appName}, so {Name} can't use it.";
+    }
 
     /// <summary>The apps app-kit knows, so a scheme file for one of them can be refused by name.</summary>
     private static readonly Dictionary<string, string> KnownApps = new(StringComparer.Ordinal)
@@ -78,12 +95,10 @@ public static class SoundSchemeFile
     /// <summary>The largest scheme file accepted, counting every byte read from it.</summary>
     public const long MaxFileBytes = 80L * 1024 * 1024;
 
-    internal const string Unreadable = "This file could not be read as a sound scheme for QuickMail.";
     internal const string TooLarge = "This sound scheme is too large to use.";
-    internal const string NewerVersion = "This sound scheme was made by a newer version of QuickMail. Update QuickMail and try again.";
 
     /// <summary>The words for a scheme file made for another app.</summary>
-    internal static string ForAnotherApp(string appName) => $"This is a sound scheme for {appName}, so QuickMail can't use it.";
+    internal static string ForAnotherApp(string appName) => SchemeApp.QuickMail.ForAnotherApp(appName);
 
     // Every entry gets the same time and attributes, so the same scheme always gives the same bytes:
     // the gallery names a file by its hash (SCHEMES.md, "Writing one").
@@ -164,14 +179,23 @@ public static class SoundSchemeFile
         return leftOutEvents;
     }
 
-    /// <summary>A file's bytes if it is no larger than a sound may be; null if it's larger.</summary>
+    /// <summary>A file's bytes if it is no larger than a sound may be; null if it's larger or can't be read, so it's left out.</summary>
     private static byte[]? ReadSmallFile(string path)
     {
-        using var file = File.OpenRead(path);
-        if (file.Length > SoundCatalog.MaxCustomFileBytes) return null;
-        var bytes = new byte[file.Length];
-        file.ReadExactly(bytes);
-        return bytes;
+        try
+        {
+            using var file = File.OpenRead(path);
+            if (file.Length > SoundCatalog.MaxCustomFileBytes) return null;
+            var bytes = new byte[file.Length];
+            file.ReadExactly(bytes);
+            return bytes;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Locked, or gone since it was found: one sound left out, not the whole export failed.
+            LogService.Log($"Sound scheme export: could not read {Path.GetFileName(path)}", ex);
+            return null;
+        }
     }
 
     private static void AddEntry(ZipArchive zip, string name, byte[] bytes)
@@ -285,18 +309,25 @@ public static class SoundSchemeFile
     /// </summary>
     /// <param name="haveFile">Whether a sound the file names but doesn't carry is already in QuickMail's sounds folder, so the event keeps it.</param>
     /// <param name="fromGallery">Hold the sounds to the scheme-file rules even if the file is QuickMail 0.8.69's.</param>
-    public static SoundSchemeFileContents Read(string path, Func<string, bool>? haveFile = null, bool fromGallery = false)
+    public static SoundSchemeFileContents Read(string path, Func<string, bool>? haveFile = null, bool fromGallery = false) =>
+        Read(path, SchemeApp.QuickMail, haveFile, fromGallery);
+
+    /// <summary><see cref="Read(string, Func{string, bool}?, bool)"/> for a given app; the tests use it to read app-kit's files as The Chat Place.</summary>
+    internal static SoundSchemeFileContents Read(string path, SchemeApp app, Func<string, bool>? haveFile = null, bool fromGallery = false)
     {
         haveFile ??= _ => false;
+        var unreadable = app.Unreadable;
         try
         {
             using var stream = File.OpenRead(path);
             if (stream.Length > MaxFileBytes) throw new SoundSchemeFileException(TooLarge);
+            // The entry count from the directory itself, before ZipArchive builds an entry for each:
+            // a hostile file could claim millions.
             var methods = CentralDirectory(stream);
+            if (methods is null || methods.Count > MaxEntries) throw new SoundSchemeFileException(unreadable);
             stream.Position = 0;
             using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
-            if (zip.Entries.Count > MaxEntries || methods is null || methods.Count != zip.Entries.Count)
-                throw new SoundSchemeFileException(Unreadable);
+            if (methods.Count != zip.Entries.Count) throw new SoundSchemeFileException(unreadable);
             List<ushort> compression = methods;
 
             // Only scheme.json and sounds/<safe name>; the first of a repeated name counts. Anything
@@ -307,15 +338,15 @@ public static class SoundSchemeFile
             {
                 var name = zip.Entries[i].FullName.Replace('\\', '/');
                 if (name == SchemeEntry) meta ??= i;
-                else if (name.StartsWith(SoundsPrefix, StringComparison.Ordinal) && SoundRef.IsSafeCustomFileName(name[SoundsPrefix.Length..]))
+                else if (name.StartsWith(SoundsPrefix, StringComparison.Ordinal) && app.TryParse("custom:" + name[SoundsPrefix.Length..], out _))
                     entries.TryAdd(name[SoundsPrefix.Length..], i);
             }
             bool Readable(int i) => !zip.Entries[i].IsEncrypted && compression[i] is 0 or 8;   // stored or DEFLATE only
 
             long budget = MaxFileBytes;
-            if (meta is not { } metaIndex || !Readable(metaIndex)) throw new SoundSchemeFileException(Unreadable);
-            var metaBytes = ReadCapped(zip.Entries[metaIndex], MaxSchemeJsonBytes, ref budget) ?? throw new SoundSchemeFileException(Unreadable);
-            var (contents, legacy) = ParseSchemeJson(metaBytes);
+            if (meta is not { } metaIndex || !Readable(metaIndex)) throw new SoundSchemeFileException(unreadable);
+            var metaBytes = ReadCapped(zip.Entries[metaIndex], MaxSchemeJsonBytes, ref budget) ?? throw new SoundSchemeFileException(unreadable);
+            var (contents, legacy) = ParseSchemeJson(metaBytes, app);
 
             // A file QuickMail 0.8.69 wrote (no "app") may hold the MP3s and other sounds QuickMail
             // plays; those are checked when they're added, as a file chosen in Settings is. Anything
@@ -323,7 +354,7 @@ public static class SoundSchemeFile
             var strict = fromGallery || !legacy;
             var droppedFiles = new HashSet<string>(StringComparer.Ordinal);
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var name in FilesUsed(contents.Events))
+            foreach (var name in FilesUsed(contents.Events, app))
             {
                 // Two names that differ only in case are one file on Windows: the first in event order counts.
                 if (!seen.Add(name))
@@ -348,7 +379,9 @@ public static class SoundSchemeFile
                             sound = null;
                         }
                     }
-                    catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or IOException)
+                    // Whatever a damaged entry makes the decompressor throw, it costs that sound only.
+                    catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or IOException
+                                                   or InvalidOperationException or ArgumentException or OverflowException)
                     {
                         LogService.Log($"Sound scheme import: could not read {name}", ex);
                     }
@@ -360,7 +393,7 @@ public static class SoundSchemeFile
             var dropped = 0;
             foreach (var (key, value) in contents.Events.ToList())
             {
-                if (SoundRef.TryParse(value, out var s) && s.Kind == SoundRefKind.Custom && droppedFiles.Contains(s.Name))
+                if (app.TryParse(value, out var s) && s.Kind == SoundRefKind.Custom && droppedFiles.Contains(s.Name))
                 {
                     contents.Events[key] = SoundRef.None.ToStored();
                     dropped++;
@@ -369,9 +402,10 @@ public static class SoundSchemeFile
             return contents with { Dropped = dropped };
         }
         catch (SoundSchemeFileException) { throw; }
-        catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or EndOfStreamException or ArgumentException)
+        catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or EndOfStreamException
+                                       or ArgumentException or InvalidOperationException or OverflowException)
         {
-            throw new SoundSchemeFileException(Unreadable, ex);
+            throw new SoundSchemeFileException(unreadable, ex);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -380,12 +414,12 @@ public static class SoundSchemeFile
     }
 
     /// <summary>The custom files the events use, each once, in QuickMail's event order.</summary>
-    private static List<string> FilesUsed(Dictionary<string, string> events)
+    private static List<string> FilesUsed(Dictionary<string, string> events, SchemeApp app)
     {
         var files = new List<string>();
-        foreach (var info in SoundCatalog.Events)
+        foreach (var key in app.EventKeys)
         {
-            if (events.TryGetValue(info.ConfigKey, out var value) && SoundRef.TryParse(value, out var sound)
+            if (events.TryGetValue(key, out var value) && app.TryParse(value, out var sound)
                 && sound.Kind == SoundRefKind.Custom && !files.Contains(sound.Name, StringComparer.Ordinal))
                 files.Add(sound.Name);
         }
@@ -393,7 +427,7 @@ public static class SoundSchemeFile
     }
 
     /// <summary>scheme.json's contents, and whether it is from QuickMail 0.8.69, which wrote no "app".</summary>
-    private static (SoundSchemeFileContents Contents, bool Legacy) ParseSchemeJson(byte[] bytes)
+    private static (SoundSchemeFileContents Contents, bool Legacy) ParseSchemeJson(byte[] bytes, SchemeApp app)
     {
         JsonDocument doc;
         try
@@ -402,33 +436,34 @@ public static class SoundSchemeFile
         }
         catch (JsonException ex)
         {
-            throw new SoundSchemeFileException(Unreadable, ex);
+            throw new SoundSchemeFileException(app.Unreadable, ex);
         }
         using (doc)
         {
             var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) throw new SoundSchemeFileException(Unreadable);
+            if (root.ValueKind != JsonValueKind.Object) throw new SoundSchemeFileException(app.Unreadable);
 
             var format = Property(root, "format") is { } f ? WholeNumber(f) : null;
-            if (format is not { } version || version < 1) throw new SoundSchemeFileException(Unreadable);
-            if (version > CurrentFormat) throw new SoundSchemeFileException(NewerVersion);
+            if (format is not { } version || version < 1) throw new SoundSchemeFileException(app.Unreadable);
+            if (version > CurrentFormat) throw new SoundSchemeFileException(app.NewerVersion);
 
             // Missing or null means QuickMail: 0.8.69 wrote no "app".
-            var app = Property(root, "app");
-            var legacy = app is null || app.Value.ValueKind == JsonValueKind.Null;
-            if (!legacy && (app!.Value.ValueKind != JsonValueKind.String || JsonText(app.Value) != AppId))
-                throw new SoundSchemeFileException(ForAnotherApp(AppNameFor(app.Value)));
+            var owner = Property(root, "app");
+            var legacy = owner is null || owner.Value.ValueKind == JsonValueKind.Null;
+            var ownerId = legacy ? AppId : owner!.Value.ValueKind == JsonValueKind.String ? JsonText(owner.Value) : null;
+            if (ownerId != app.Id)
+                throw new SoundSchemeFileException(app.ForAnotherApp(AppNameFor(ownerId)));
 
             if (Property(root, "events") is not { ValueKind: JsonValueKind.Object } eventsElement)
-                throw new SoundSchemeFileException(Unreadable);
+                throw new SoundSchemeFileException(app.Unreadable);
 
             var events = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var (key, value) in DistinctProperties(eventsElement).Take(MaxEvents))
             {
-                // Only QuickMail's own keys, exactly; a value it can't use plays nothing.
-                if (key is null || SoundCatalog.Events.All(i => i.ConfigKey != key)) continue;
+                // Only the app's own keys, exactly; a value it can't use plays nothing.
+                if (key is null || !app.EventKeys.Contains(key, StringComparer.Ordinal)) continue;
                 var text = value.ValueKind == JsonValueKind.String ? JsonText(value) : null;
-                events[key] = text is not null && text == text.Trim() && SoundRef.TryParse(text, out var sound)
+                events[key] = text is not null && text == text.Trim() && app.TryParse(text, out var sound)
                     ? sound.ToStored() : SoundRef.None.ToStored();
             }
 
@@ -448,9 +483,8 @@ public static class SoundSchemeFile
     }
 
     /// <summary>What to call the app a scheme file is for: app-kit's name for it, else the value cleaned, else "another app".</summary>
-    private static string AppNameFor(JsonElement app)
+    private static string AppNameFor(string? id)
     {
-        var id = app.ValueKind == JsonValueKind.String ? JsonText(app) : null;
         if (id is not null && KnownApps.TryGetValue(id, out var known)) return known;
         var clean = CleanText(id, MaxAppNameLength);
         return clean.Length > 0 ? clean : "another app";
@@ -497,7 +531,12 @@ public static class SoundSchemeFile
             var size = BinaryPrimitives.ReadUInt32LittleEndian(tail.AsSpan(at + 12));
             var offset = BinaryPrimitives.ReadUInt32LittleEndian(tail.AsSpan(at + 16));
             // A ZIP64 directory: never needed for 64 entries in 80 MB, so not one QuickMail writes or reads.
-            if (count == ushort.MaxValue || offset == uint.MaxValue || size == uint.MaxValue) return null;
+            // Any of these fields at its maximum sends ZipArchive to the ZIP64 record instead, so this
+            // parser would be reading a different directory from it.
+            if (count == ushort.MaxValue || offset == uint.MaxValue || size == uint.MaxValue
+                || BinaryPrimitives.ReadUInt16LittleEndian(tail.AsSpan(at + 4)) == ushort.MaxValue
+                || BinaryPrimitives.ReadUInt16LittleEndian(tail.AsSpan(at + 6)) == ushort.MaxValue
+                || BinaryPrimitives.ReadUInt16LittleEndian(tail.AsSpan(at + 8)) == ushort.MaxValue) return null;
             if ((long)offset + size > length || size > 1024 * 1024) return null;
             var directory = new byte[size];
             stream.Position = offset;
@@ -529,6 +568,11 @@ public static class SoundSchemeFile
         if (data.Length > SoundCatalog.MaxCustomFileBytes) return "It's larger than 5 MB.";
         if (data.Length < 12 || !data[..4].SequenceEqual("RIFF"u8) || !data[8..12].SequenceEqual("WAVE"u8))
             return "It isn't a WAV file.";
+        // Only what the RIFF chunk says it holds is read, as every app's WAV reader does: a file whose
+        // RIFF size leaves out its fmt or data chunk is refused here as it is elsewhere.
+        long riffSize = BinaryPrimitives.ReadUInt32LittleEndian(data[4..]);
+        if (riffSize < 4) return "It isn't a WAV file.";
+        data = data[..(int)Math.Min(data.Length, 8 + riffSize)];
         int channels = 0, rate = 0;
         var haveFormat = false;
         long at = 12;

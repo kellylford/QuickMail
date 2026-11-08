@@ -101,7 +101,50 @@ public sealed partial class SharedSoundTestDataTests
             return;
         }
 
-        var read = SoundSchemeFile.Read(DataPath(file));
+        AssertContents(expected, SoundSchemeFile.Read(DataPath(file)));
+    }
+
+    /// <summary>The Chat Place as app-kit's apps.json lists it: its events, its built-in sounds, and WAV files only.</summary>
+    private static SoundSchemeFile.SchemeApp TheChatPlace()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllBytes(DataPath("apps.json")));
+        var app = doc.RootElement.GetProperty("apps").GetProperty("thechatplace");
+        var events = app.GetProperty("events").EnumerateArray().ToList();
+        return new SoundSchemeFile.SchemeApp("thechatplace", app.GetProperty("name").GetString()!,
+            [.. events.Select(e => e.GetProperty("key").GetString()!)],
+            [.. events.Select(e => e.GetProperty("sound").GetString()!).Distinct()],
+            AllowMp3: false);
+    }
+
+    public static TheoryData<string> SchemeFilesForTheChatPlace() =>
+        [.. Expected("schemes").EnumerateObject().Where(p => p.Value.TryGetProperty("thechatplace", out _)).Select(p => p.Name)];
+
+    /// <summary>
+    /// The same reader, given The Chat Place's events, gives exactly what expected.json says The Chat
+    /// Place gets. Most files are The Chat Place's, so this is what puts every reading rule (duplicates,
+    /// case clashes, damaged and hostile entries, the dropped count) to the shared test, not only the
+    /// refusal QuickMail gives them.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(SchemeFilesForTheChatPlace))]
+    public void TheReaderGivesWhatAppKitSaysForTheChatPlaceToo(string file)
+    {
+        var expected = Expected("schemes").GetProperty(file).GetProperty("thechatplace");
+        var app = TheChatPlace();
+
+        if (expected.TryGetProperty("refused", out var refused))
+        {
+            var ex = Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Read(DataPath(file), app));
+            Assert.Equal(refused.GetString(), ex.Message);
+            return;
+        }
+
+        var read = SoundSchemeFile.Read(DataPath(file), app);
+        AssertContents(expected, read);
+    }
+
+    private static void AssertContents(JsonElement expected, SoundSchemeFileContents read)
+    {
         Assert.Equal(expected.GetProperty("name").GetString(), read.Name);
         Assert.Equal(Text(expected, "author"), read.Author);
         Assert.Equal(Text(expected, "license"), read.License);

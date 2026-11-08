@@ -120,7 +120,7 @@ public partial class SoundGalleryWindow : Window
 
     private void RegisterLocalCommands()
     {
-        _localRegistry.Register(new CommandDefinition("gallery.add", "Settings", "Add Sound Scheme",
+        _localRegistry.Register(new CommandDefinition("gallery.add", "Settings", "Add or Update Sound Scheme",
             () => _ = AddAsync(), isAvailable: () => _vm.CanAdd));
         _localRegistry.Register(new CommandDefinition("gallery.reload", "Settings", "Reload the Gallery",
             () => _ = LoadAsync(), isAvailable: () => !_vm.IsBusy));

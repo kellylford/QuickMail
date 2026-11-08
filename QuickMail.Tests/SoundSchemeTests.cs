@@ -1055,7 +1055,36 @@ public sealed class SoundSchemeServiceTests : IDisposable
         Assert.Contains("30 seconds", SoundSchemeFile.SchemeWavProblem(TestWav.Tone(seconds: 0.01, declaredDataBytes: 8000 * 2 * 31)), StringComparison.Ordinal);
         Assert.Contains("no sound", SoundSchemeFile.SchemeWavProblem(TestWav.Tone(seconds: 0)), StringComparison.Ordinal);
         Assert.NotNull(SoundSchemeFile.SchemeWavProblem([1, 2, 3]));
-        Assert.NotNull(SoundSchemeFile.SchemeWavProblem("RIFF\0\0\0\0WAVEdata\0\0\0\0"u8));   // data before fmt
+        Assert.NotNull(SoundSchemeFile.SchemeWavProblem("RIFF\x0c\0\0\0WAVEdata\0\0\0\0"u8));   // data before fmt
+    }
+
+    [Fact]
+    public void AWavIsReadOnlyAsFarAsItsRiffSizeSays()
+    {
+        var wav = TestWav.Tone();
+        var zero = (byte[])wav.Clone();
+        BitConverter.GetBytes(0u).CopyTo(zero, 4);
+        Assert.NotNull(SoundSchemeFile.SchemeWavProblem(zero));
+        var short_ = (byte[])wav.Clone();
+        BitConverter.GetBytes(4u + 24).CopyTo(short_, 4);   // WAVE and the fmt chunk, but not data
+        Assert.NotNull(SoundSchemeFile.SchemeWavProblem(short_));
+        Assert.Null(SoundSchemeFile.SchemeWavProblem(wav));
+    }
+
+    [Fact]
+    public void ASoundFileThatCantBeReadIsLeftOutOfAnExportRatherThanFailingIt()
+    {
+        var here = Folder("locked");
+        File.WriteAllBytes(Path.Combine(here, "Locked.wav"), TestWav.Tone());
+        File.WriteAllBytes(Path.Combine(here, "Fine.wav"), TestWav.Tone(salt: 3));
+        var file = Path.Combine(_root, "locked.qmsounds");
+        using var service = Service(here);
+        using (new FileStream(Path.Combine(here, "Locked.wav"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.Equal(1, SoundSchemeFile.Export(file, "L",
+                new Dictionary<string, string> { ["NewMail"] = "custom:Locked.wav", ["SendFailed"] = "custom:Fine.wav" }, service));
+        }
+        Assert.Equal(["Fine.wav"], SoundSchemeFile.Read(file).Sounds.Keys);
     }
 
     [Theory]
@@ -1086,6 +1115,9 @@ public sealed class SoundSchemeServiceTests : IDisposable
     [InlineData("song.MP3", true)]
     [InlineData(" knock.wav", false)]
     [InlineData("knock.wav.", false)]
+    [InlineData("\U0001F514 bell.wav", true)]   // an emoji is a surrogate pair, and fine
+    [InlineData("a‍b.wav", false)]          // a zero-width joiner is a formatting character
+    [InlineData("a\U000E0001.wav", false)]       // so is this one, outside the Basic Multilingual Plane
     public void ASafeFileNameIsTheSpecs(string name, bool safe) => Assert.Equal(safe, SoundRef.IsSafeCustomFileName(name));
 
     [Fact]
