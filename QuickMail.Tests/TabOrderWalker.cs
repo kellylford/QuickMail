@@ -97,9 +97,14 @@ internal static class TabOrderWalker
     {
         // A list is entered at its ITEM, never at the container, so report an item stop under the
         // owning list's name — for tab order, that stop IS the list.
-        if (ItemsControl.ItemsControlFromItemContainer(fe) is FrameworkElement owner
-            && !string.IsNullOrEmpty(owner.Name))
-            return owner.Name;
+        // A nested tree item's owner is its parent item, not the tree, so climb the containers to
+        // the first named owner: a folder under an account header is still a stop in the tree.
+        for (var owner = ItemsControl.ItemsControlFromItemContainer(fe);
+             owner != null;
+             owner = ItemsControl.ItemsControlFromItemContainer(owner))
+        {
+            if (!string.IsNullOrEmpty(owner.Name)) return owner.Name;
+        }
         if (!string.IsNullOrEmpty(fe.Name)) return fe.Name;
         var auto = AutomationProperties.GetName(fe);
         if (!string.IsNullOrEmpty(auto)) return auto;
