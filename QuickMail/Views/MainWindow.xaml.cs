@@ -8495,8 +8495,8 @@ public partial class MainWindow : Window
         var accounts = _vm.Accounts.ToList();
 
         // On-demand "Run on Existing Mail" (issue #346): the VM has no local store, so the owner runs
-        // client rules over cached mail off the UI thread and returns how many were moved/deleted.
-        async Task<int> RunClientRulesOnExisting(Guid? accountScope)
+        // client rules over cached mail off the UI thread and returns what each rule moved or deleted (#949).
+        async Task<ExistingMailRunReport> RunClientRulesOnExisting(Guid? accountScope)
         {
             // Client rules act on the Inbox only (issue #346 follow-up). Resolve each account's Inbox
             // here, where folder kinds are known, and hand the map to the rule service so it never
@@ -8534,10 +8534,10 @@ public partial class MainWindow : Window
                     string.Join(", ", skipped.Select(a => a.AccountLabel)));
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            var removed = await Task.Run(() => _ruleService.ApplyRulesToExistingAsync(_localStore, inboxByAccount, cts.Token));
-            if (removed.Count > 0)
+            var report = await Task.Run(() => _ruleService.ApplyRulesToExistingAsync(_localStore, inboxByAccount, cts.Token));
+            if (report.Removed.Count > 0)
                 _vm.RefreshCommand.Execute(null);
-            return removed.Count;
+            return report;
         }
 
         // Unowned (issue #347) so the window reads its own title, not the main window's. Modeless

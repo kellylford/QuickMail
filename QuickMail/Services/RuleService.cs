@@ -385,13 +385,16 @@ public class RuleService : IRuleService
     /// moving or deleting comes last, because after either the message is no longer where the others look.
     /// Returns the messages a move or delete actually took out of their folder — not every message the
     /// rule matched. A move that failed left its messages where they were, and a caller that treated
-    /// them as gone deleted them from the local store: for a POP3 account, the only copy (#794).</summary>
+    /// them as gone deleted them from the local store: for a POP3 account, the only copy (#794).
+    /// <paramref name="deleted"/>, when given, receives the ones the delete took, so a caller can tell a rule's moves
+    /// from its deletes (#949).</summary>
     private async Task<List<MailMessageSummary>> ExecuteActionsAsync(
         MailRule rule,
         List<MailMessageSummary> matched,
         Guid accountId,
         bool playSound,
-        CancellationToken ct)
+        CancellationToken ct,
+        List<MailMessageSummary>? deleted = null)
     {
         var taken = new List<MailMessageSummary>();
         foreach (var action in rule.AllActions())
@@ -417,7 +420,9 @@ public class RuleService : IRuleService
                     break;
 
                 case RuleAction.Delete:
-                    taken.AddRange(await DeleteAsync(matched, ct));
+                    var trashed = await DeleteAsync(matched, ct);
+                    taken.AddRange(trashed);
+                    deleted?.AddRange(trashed);
                     break;
 
                 case RuleAction.PlaySound:
@@ -576,16 +581,26 @@ public class RuleService : IRuleService
 
     // ── Apply to existing messages ──────────────────────────────────────────
 
-    public async Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
+    public async Task<ExistingMailRunReport> ApplyRulesToExistingAsync(
         ILocalStoreService store,
         IReadOnlyDictionary<Guid, string> inboxFolderByAccount,
         CancellationToken ct)
     {
         var rules = LoadRules();
-        var enabledRules = rules.Where(r => r.IsEnabled).ToList();
-        if (enabledRules.Count == 0) return [];
+        // No account's Inbox to run on: the caller leaves out an account that is offline or not connected yet. Said
+        // apart from having no rules, so the user is not told they have none when they do (#949).
+        if (inboxFolderByAccount.Count == 0)
+            return rules.Any(r => r.IsEnabled) ? ExistingMailRunReport.NoInbox : ExistingMailRunReport.Empty;
+
+        // Only the rules that can act on an account in this run. A rule tied to another account matches nothing
+        // here, and the report would count it as a rule that ran (#949).
+        var enabledRules = rules
+            .Where(r => r.IsEnabled && (r.AccountId is not Guid id || inboxFolderByAccount.ContainsKey(id)))
+            .ToList();
+        if (enabledRules.Count == 0) return ExistingMailRunReport.Empty;
 
         var removedMessages = new List<MailMessageSummary>();
+        var results = new List<ExistingMailRuleResult>(enabledRules.Count);
 
         // Load all cached messages once, then keep only Inbox mail (issue #346 follow-up).
         // Client rules act on the Inbox only, so drop everything in Sent/Archive/Junk/Trash/custom
@@ -596,6 +611,7 @@ public class RuleService : IRuleService
         var inboxMessages = allMessages.Where(m =>
             inboxFolderByAccount.TryGetValue(m.AccountId, out var inbox) &&
             string.Equals(m.FolderName, inbox, StringComparison.Ordinal)).ToList();
+        var inspectedCount = inboxMessages.Count;
         LogService.Debug($"ApplyRulesToExisting: {allMessages.Count} cached, {inboxMessages.Count} in Inbox, {enabledRules.Count} enabled rules");
 
         // Everything this pass looks at has now had the rules run on it, so record it. A message a view cached a moment
@@ -617,14 +633,21 @@ public class RuleService : IRuleService
             }).ToList();
 
             LogService.Debug($"  Rule '{rule.Name}': {matched.Count} matched in existing mail (actions={string.Join(", ", rule.AllActions())})");
-            if (matched.Count == 0) continue;
+            if (matched.Count == 0)
+            {
+                results.Add(new ExistingMailRuleResult(rule.Name, 0, 0));
+                continue;
+            }
 
+            var deleted = new List<MailMessageSummary>();
+            List<MailMessageSummary> taken = [];
+            var threw = false;
             try
             {
                 // Only what a move or delete really took: a message whose move failed is still in the
                 // Inbox, and deleting its row below would, on a POP3 account, destroy the only copy (#794).
                 // Silent: this is old mail being tidied up, not something arriving, and it could be every rule at once.
-                var taken = await ExecuteActionsAsync(rule, matched, matched[0].AccountId, playSound: false, ct);
+                taken = await ExecuteActionsAsync(rule, matched, matched[0].AccountId, playSound: false, ct, deleted);
 
                 if (taken.Count > 0)
                 {
@@ -634,6 +657,9 @@ public class RuleService : IRuleService
                     // failure updating the local store below can't leave the message in the running.
                     var gone = new HashSet<MailMessageSummary>(taken);
                     inboxMessages.RemoveAll(gone.Contains);
+                    // Before the store is updated, too: the mail has left the Inbox on the server either way, and the
+                    // caller refreshes its list only for what is reported here (#949).
+                    removedMessages.AddRange(taken);
 
                     var byFolder = taken.GroupBy(m => (m.AccountId, m.FolderName));
                     foreach (var group in byFolder)
@@ -642,16 +668,25 @@ public class RuleService : IRuleService
                             group.Key.AccountId, group.Key.FolderName,
                             group.Select(m => m.MessageId));
                     }
-                    removedMessages.AddRange(taken);
                 }
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
+                threw = true;
                 LogService.Log($"ApplyRulesToExisting: rule '{rule.Name}' failed", ex);
             }
+
+            // Counted from what the server took, even if updating the local store failed afterwards: the mail moved.
+            // A message both actions reached counts once, as deleted. What a filing rule matched and didn't take, it
+            // failed on (the server refused, or a failed copy stopped the rule); a rule that only marks or copies
+            // failed only if it threw. Reported, so a rule that failed doesn't read as one that matched nothing.
+            var trashed = deleted.Intersect(taken).Count();
+            var files = rule.Does(RuleAction.MoveToFolder) || rule.Does(RuleAction.Delete);
+            var failed = files ? matched.Count - taken.Count : threw ? matched.Count : 0;
+            results.Add(new ExistingMailRuleResult(rule.Name, taken.Count - trashed, trashed, failed));
         }
 
-        return removedMessages;
+        return new ExistingMailRunReport(inspectedCount, results, removedMessages);
     }
 }
