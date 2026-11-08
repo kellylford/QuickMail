@@ -64,6 +64,10 @@ public partial class FolderPickerWindow : Window
     // Inbox, but a message cannot live in an account, so every other picker keeps Open off the root.
     private readonly bool _accountRootIsDestination;
 
+    /// <summary>Read by the tree's item style to give the account root its "Top level of the
+    /// account" help text where it is a destination. Fixed at construction, so it never notifies.</summary>
+    public bool AccountRootIsDestination => _accountRootIsDestination;
+
     // Tree view only: the excluded folder sat directly under its account root, so choosing the root
     // would put it back where it already is.
     private bool _sourceIsTopLevel;
@@ -246,7 +250,8 @@ public partial class FolderPickerWindow : Window
     /// Puts the selection — and keyboard focus — on the folder the user came from, so the picker
     /// opens somewhere meaningful instead of on an empty tree. When that folder is not in the tree
     /// (moving a folder excludes it, and an aggregate view is not a folder at all) the nearest
-    /// standing-in node is used: the parent it was moved out of, else the first real folder. Landing
+    /// standing-in node is used: the parent it was moved out of, else the first real folder, else —
+    /// in the folder move/copy picker, when it is the only destination — the account root. Landing
     /// on nothing is never the answer — a tree with no selection announces the tree and no item, and
     /// leaves the user to guess that Down is what starts things.
     /// </summary>
@@ -300,11 +305,13 @@ public partial class FolderPickerWindow : Window
     /// single-account picker could only create a folder inside whichever folder was selected, since
     /// <see cref="SelectOpeningNode"/> always selects a real folder and so the "nothing selected"
     /// fallback in <see cref="TryResolveTreeCreateTarget"/> is never reached. Open stays disabled on
-    /// the header, and the picker never opens on it, so the extra level costs a picker that cannot
+    /// the header, and the picker does not open on it, so the extra level costs a picker that cannot
     /// create folders nothing: those keep the flat single-account tree they had.
     ///
     /// <para>Also in the folder move/copy picker (issue #954), where the header is a destination in
-    /// its own right — the top level of the account — and Open is enabled on it.</para>
+    /// its own right — the top level of the account — and Open is enabled on it. There the picker
+    /// opens on the header only as a last resort, when it is the one destination left (see
+    /// <see cref="SelectOpeningNode"/>).</para>
     /// </summary>
     private bool ShowsAccountHeaders =>
         _treeAccounts is { Count: > 1 } || _folderCreator != null || _accountRootIsDestination;
@@ -862,7 +869,14 @@ public partial class FolderPickerWindow : Window
         }
     }
 
-    private void FolderTreeView_MouseDoubleClick(object sender, MouseButtonEventArgs e) => Commit();
+    private void FolderTreeView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        // A double-click on the account root also expands or collapses it. Where the root is a
+        // destination (#954) committing would move the folder to the top level on what was meant as
+        // a collapse, so the root takes Open or Enter, never a double-click.
+        if (_accountRootIsDestination && FolderTreeView.SelectedItem is FolderTreeNode { IsHeader: true }) return;
+        Commit();
+    }
 
     private void OpenButton_Click(object sender, RoutedEventArgs e) => Commit();
 

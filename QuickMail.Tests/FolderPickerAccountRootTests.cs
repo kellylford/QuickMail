@@ -489,6 +489,36 @@ public class FolderPickerAccountRootTests
         finally { window.Close(); }
     }
 
+    /// <summary>
+    /// The root keeps the account's name, and says what choosing it means as help text, in the folder move picker
+    /// only. Read from the container, which is what a screen reader asks.
+    /// </summary>
+    [StaFact]
+    public void TheRootSaysItIsTheTopLevelOnlyWhereItIsADestination()
+    {
+        var move    = Shown(MoveFolderPicker(Folder("INBOX/Projects", "Projects")));
+        var message = Shown(MessagePicker(NeverCreates));
+        try
+        {
+            string HelpOfRoot(Window w)
+            {
+                var tree = Named<TreeView>(w, "FolderTreeView");
+                var container = tree.ItemContainerGenerator.ContainerFromIndex(0) as TreeViewItem;
+                Assert.True(container is not null, "the root's container was not generated.");
+                Assert.Equal("Work", System.Windows.Automation.AutomationProperties.GetName(container!));
+                return System.Windows.Automation.AutomationProperties.GetHelpText(container!);
+            }
+
+            Assert.Equal("Top level of the account", HelpOfRoot(move));
+            Assert.Equal(string.Empty, HelpOfRoot(message));
+        }
+        finally
+        {
+            move.Close();
+            message.Close();
+        }
+    }
+
     /// <summary>Choosing a folder in the same picker is unchanged, and does not report the root.</summary>
     [StaFact]
     public void ChoosingAFolderInTheFolderMovePickerIsNotTheRoot()

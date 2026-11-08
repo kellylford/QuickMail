@@ -963,8 +963,11 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
+        // No app caller since folder moves went to MoveFolderAsync (#954); kept for the interface and
+        // its tests. A null parent goes through the same top-level check, so it can never land a
+        // folder under INBOX on a prefix-namespace server.
         IMailFolder parent = string.IsNullOrEmpty(newParentFolderName)
-            ? client.GetFolder(client.PersonalNamespaces[0])
+            ? TopLevelFolder(client)
             : await client.GetFolderAsync(newParentFolderName, ct);
         await RenameUnderAsync(folder, parent, newName, ct);
     }
@@ -998,9 +1001,11 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
         var ns = client.PersonalNamespaces[0];
         var prefix = ns.Path.TrimEnd(ns.DirectorySeparator);
+        // No "choose X instead": the prefix is not always a folder the picker can open (a "Mail/"
+        // namespace is only a path segment), and a direct child of INBOX is already in it.
         if (prefix.Length > 0)
             throw new NotSupportedException(
-                $"This mail server keeps every folder inside {prefix}, so a folder cannot be moved or copied above it. Choose {prefix} instead.");
+                $"This mail server keeps every folder inside {prefix}, so a folder cannot be moved or copied to the top level.");
 
         return client.GetFolder(ns);
     }

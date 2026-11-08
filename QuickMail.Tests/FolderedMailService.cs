@@ -159,7 +159,20 @@ internal sealed class FolderedMailService : IMailService
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => Task.CompletedTask;
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
-    public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>Folder moves and copies asked for, as (operation, account, folder, new parent).</summary>
+    public List<(string Op, Guid AccountId, string Folder, string? Parent)> FolderOps { get; } = new();
+
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+    {
+        FolderOps.Add(("move", accountId, folderName, newParentFolderName));
+        return Task.CompletedTask;
+    }
+
+    public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
+    {
+        FolderOps.Add(("copy", accountId, folderName, destinationParentName));
+        return Task.CompletedTask;
+    }
     public void StartWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) { }
     public void StopWatchers() { }
     public void Dispose() { }

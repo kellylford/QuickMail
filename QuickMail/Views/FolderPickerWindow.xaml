@@ -115,6 +115,18 @@
                     <Setter Property="IsExpanded"                Value="{Binding IsExpanded, Mode=TwoWay}"/>
                     <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
                     <Setter Property="AutomationProperties.ItemStatus" Value="{Binding ItemStatusLabel}"/>
+                    <!-- In the folder move/copy picker the account root is a destination, the top
+                         level of the account (#954). Its name stays the account's; what choosing it
+                         means is help text, not part of the name. -->
+                    <Style.Triggers>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding IsHeader}" Value="True"/>
+                                <Condition Binding="{Binding AccountRootIsDestination, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="AutomationProperties.HelpText" Value="Top level of the account"/>
+                        </MultiDataTrigger>
+                    </Style.Triggers>
                 </Style>
             </TreeView.ItemContainerStyle>
         </TreeView>
