@@ -571,6 +571,55 @@ public sealed class SoundSchemeFolderTidySettingsTests : IDisposable
     }
 
     [Fact]
+    public void SaveAfterAGalleryUpdateDeletesTheOldVersionsFilesItNoLongerUses()
+    {
+        var profile = TempDir();
+        var config = new StubConfigService();
+        config.Load().SoundSchemes["user-rain"] = new SoundScheme("user-rain", "My rain", false,
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Old.wav", ["MessageSent"] = "custom:Shared.wav" },
+            galleryOrigin: new SoundGalleryOrigin("rain", new string('1', 64)));
+        using var sounds = new SoundService(config, Path.Combine(profile, SoundCatalog.CustomFolderName), new SoundSchemeFolderCleanupTests.NoOutput());
+        var rain = Directory.CreateDirectory(Path.Combine(profile, "sounds", "user-rain")).FullName;
+        File.WriteAllBytes(Path.Combine(rain, "Old.wav"), TestWav.Tone(salt: 1));
+        File.WriteAllBytes(Path.Combine(rain, "Unused.wav"), TestWav.Tone(salt: 5));
+        var update = GalleryFile(sounds, profile);   // NewMail plays its own New.wav
+
+        var vm = MakeSettings(config, sounds);
+        vm.ConfirmRequested = (_, _) => true;
+        Assert.True(vm.ImportSchemeFrom(update, new SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('2', 64), null)));
+        // After the update, a file of the person's own for another event: it is used, so it stays.
+        vm.SelectedSoundEvent = vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.TrashEmptied);
+        vm.PickSoundFileRequested = () => Wav("Mine.wav", 6);
+        Assert.True(vm.TryChooseSoundFile());
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal(["Mine.wav", "New.wav"], Directory.GetFiles(rain).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void AGalleryUpdateDeletesNothingOnCancelButWhatItBrought()
+    {
+        var profile = TempDir();
+        var config = new StubConfigService();
+        config.Load().SoundSchemes["user-rain"] = new SoundScheme("user-rain", "My rain", false,
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Old.wav" },
+            galleryOrigin: new SoundGalleryOrigin("rain", new string('1', 64)));
+        using var sounds = new SoundService(config, Path.Combine(profile, SoundCatalog.CustomFolderName), new SoundSchemeFolderCleanupTests.NoOutput());
+        var rain = Directory.CreateDirectory(Path.Combine(profile, "sounds", "user-rain")).FullName;
+        File.WriteAllBytes(Path.Combine(rain, "Old.wav"), TestWav.Tone(salt: 1));
+        File.WriteAllBytes(Path.Combine(rain, "Unused.wav"), TestWav.Tone(salt: 5));
+        var update = GalleryFile(sounds, profile);
+
+        var vm = MakeSettings(config, sounds);
+        vm.ConfirmRequested = (_, _) => true;
+        vm.ImportSchemeFrom(update, new SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('2', 64), null));
+        vm.DiscardUnsavedSchemeSounds();
+
+        Assert.Equal(["Old.wav", "Unused.wav"], Directory.GetFiles(rain).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void SaveAfterAGalleryUpdateKeepsWhatItBrought()
     {
         var profile = TempDir();

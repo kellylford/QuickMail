@@ -97,9 +97,10 @@ public partial class SettingsViewModel
     private readonly HashSet<string> _schemesMadeHere = new(StringComparer.OrdinalIgnoreCase);
     private bool _soundSchemesSaved;
 
-    // Built-in schemes reset here (#955): on Save, the files in their folders that the saved scheme
-    // no longer names are deleted. Cancel leaves them, since the scheme then still names them.
-    private readonly HashSet<string> _schemesResetHere = new(StringComparer.OrdinalIgnoreCase);
+    // Schemes whose sounds were replaced here (#955): a built-in scheme reset, or a scheme updated
+    // from the gallery. On Save, the files in their folders that the saved scheme no longer names are
+    // deleted. Cancel leaves them, since the scheme then still names them.
+    private readonly HashSet<string> _schemesReplacedHere = new(StringComparer.OrdinalIgnoreCase);
 
     // The files a gallery update brought into the folder of a scheme already here (#955), by scheme.
     // Only names that weren't in the folder before, so Cancel deleting them leaves the folder exactly
@@ -482,7 +483,7 @@ public partial class SettingsViewModel
         foreach (var row in SoundEventRows)
             row.Choice = ChoiceFor(SoundRef.BuiltIn(row.Info.BuiltInSound));
         if (SelectedSoundEvent is not null) SelectedSoundChoice = SelectedSoundEvent.Choice;
-        _schemesResetHere.Add(scheme.Id);   // its files it no longer names go on Save (#955)
+        _schemesReplacedHere.Add(scheme.Id);   // its files it no longer names go on Save (#955)
         return true;
     }
 
@@ -547,7 +548,7 @@ public partial class SettingsViewModel
         var replacing = fromGallery is null ? null
             : SoundSchemes.FirstOrDefault(s => !s.IsBuiltIn && s.GalleryOrigin?.Id == fromGallery.Id);
         if (replacing is not null && ConfirmRequested?.Invoke(
-                $"Replace your copy of {replacing.Name} with the gallery's newer version? Any changes you made to it are lost.",
+                $"Replace your copy of {replacing.Name} with the gallery's newer version? Any changes you made to it are lost, and its sound files the new version doesn't use are deleted when you save.",
                 "Update Sound Scheme") != true)
             return false;
 
@@ -581,7 +582,12 @@ public partial class SettingsViewModel
             ReportScheme(ex.Message);
             return false;
         }
-        if (before is not null) NoteFilesAddedByUpdate(schemeId, AddedSince(schemeId, before));
+        if (before is not null)
+        {
+            NoteFilesAddedByUpdate(schemeId, AddedSince(schemeId, before));
+            // The old version's files it no longer names go on Save, as for a reset (#955).
+            _schemesReplacedHere.Add(schemeId);
+        }
 
         var origin = fromGallery is null ? null : new SoundGalleryOrigin(fromGallery.Id, fromGallery.Sha256);
         var values = SoundCatalog.Events.ToDictionary(
@@ -771,9 +777,12 @@ public partial class SettingsViewModel
             .Distinct(StringComparer.OrdinalIgnoreCase);
         var notDeleted = gone.Where(id => !_sounds.TryDeleteSchemeSounds(id)).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var id in _schemesResetHere.Where(SoundCatalog.IsBuiltInSchemeId))
+        foreach (var id in _schemesReplacedHere)
         {
-            var used = saved.SoundSchemes.TryGetValue(id, out var scheme) ? CustomFilesNamed(scheme.Events.Values) : [];
+            HashSet<string> used;
+            if (saved.SoundSchemes.TryGetValue(id, out var scheme)) used = CustomFilesNamed(scheme.Events.Values);
+            else if (SoundCatalog.IsBuiltInSchemeId(id)) used = [];   // as it ships: no files of its own
+            else continue;   // deleted since, so its whole folder has gone (or stays, if that failed)
             RemoveFiles(id, _sounds.CustomSoundFiles(id).Where(file => !used.Contains(file)).ToList());
         }
 
