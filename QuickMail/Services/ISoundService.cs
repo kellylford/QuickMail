@@ -106,9 +106,20 @@ public interface ISoundService : IDisposable
     bool TryDeleteSchemeSounds(string schemeId);
 
     /// <summary>
-    /// Deletes the folders of schemes of the person's own that nothing owns any more (#955): not
-    /// named in config.ini or an import backup's, and not in <paramref name="schemesInUse"/>. Removes
-    /// nothing if it can't be sure what config.ini owns (<see cref="SoundSchemeFolderCleanup"/>).
+    /// Writes down the folders of schemes made but not saved yet (#955), so that if they are never
+    /// saved, even because QuickMail stops, <see cref="RemoveUnusedSchemeFolders"/> can remove them.
+    /// Call before anything goes in the folder.
+    /// </summary>
+    void NoteUnsavedSchemeFolders(IEnumerable<string> schemeIds);
+
+    /// <summary>Crosses off schemes written down by <see cref="NoteUnsavedSchemeFolders"/> that are now saved, or whose folders are gone.</summary>
+    void ForgetUnsavedSchemeFolders(IEnumerable<string> schemeIds);
+
+    /// <summary>
+    /// Deletes the folders written down as unsaved (<see cref="NoteUnsavedSchemeFolders"/>) that
+    /// nothing owns (#955): not named in config.ini or an import backup's, and not in
+    /// <paramref name="schemesInUse"/>. No other folder is ever touched, and nothing is removed if it
+    /// can't be sure what config.ini owns (<see cref="SoundSchemeFolderCleanup"/>).
     /// </summary>
     /// <param name="schemesInUse">Schemes whose folders stay whatever config.ini says, such as every scheme open in Settings.</param>
     /// <returns>How many folders were deleted, or null if it removed nothing because it couldn't be sure.</returns>

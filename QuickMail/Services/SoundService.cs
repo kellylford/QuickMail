@@ -271,6 +271,12 @@ public sealed class SoundService : ISoundService
         }
     }
 
+    public void NoteUnsavedSchemeFolders(IEnumerable<string> schemeIds) =>
+        SoundSchemeFolderCleanup.NoteUnsaved(_soundsFolder, schemeIds);
+
+    public void ForgetUnsavedSchemeFolders(IEnumerable<string> schemeIds) =>
+        SoundSchemeFolderCleanup.ForgetUnsaved(_soundsFolder, schemeIds);
+
     public int? RemoveUnusedSchemeFolders(IEnumerable<string> schemesInUse)
     {
         // Only for a sounds folder where the profile keeps it, next to the config.ini that says what

@@ -198,7 +198,10 @@ public partial class SettingsDialog : Window
                     if (target == SoundEventList) FocusSelectedEvent();
                     else target.Focus();
                 }
-                // After the newly focused control has been read, the way formatting results are in compose.
+                // Once focus has moved, at ApplicationIdle and interrupting, the way compose announces
+                // formatting results: said as the dialog closed, the move back here cut it off.
+                // ApplicationIdle comes as soon as the dispatcher is idle, not after the screen reader
+                // has read the newly focused row, so this may cut that short instead (a person check).
                 if (_heldSoundResults.TakeAll() is { } held)
                     Dispatcher.InvokeAsync(() =>
                     {

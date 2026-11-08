@@ -102,8 +102,9 @@ public partial class SettingsViewModel
     private readonly HashSet<string> _schemesResetHere = new(StringComparer.OrdinalIgnoreCase);
 
     // The files a gallery update brought into the folder of a scheme already here (#955), by scheme.
-    // Only names that weren't in the folder before, so the saved scheme can't be using them; Cancel
-    // deletes them, leaving the folder as it was.
+    // Only names that weren't in the folder before, so Cancel deleting them leaves the folder exactly
+    // as it was. (If the saved scheme names a file it had lost and the update brought one of that
+    // name, the saved scheme is back to missing it, as it was before.)
     private readonly Dictionary<string, HashSet<string>> _filesAddedByUpdate = new(StringComparer.OrdinalIgnoreCase);
 
     [ObservableProperty] private bool _playEventSounds;
@@ -220,9 +221,9 @@ public partial class SettingsViewModel
         _schemeShownAtLoad = shown.Id;
         SelectedSoundScheme = shown;
 
-        // Folders no scheme owns, left by QuickMail stopping with a new scheme unsaved, or a settings
-        // file bringing sounds without the schemes that use them (#955). Nothing has been made here yet,
-        // so what config.ini has is everything in use.
+        // Folders written down as unsaved that no scheme owns, left by QuickMail stopping with a new
+        // scheme unsaved, or a settings file bringing sounds without the schemes that use them (#955).
+        // Nothing has been made here yet, so what config.ini has is everything in use.
         sounds?.RemoveUnusedSchemeFolders([.. cfg.SoundSchemes.Keys]);
     }
 
@@ -412,6 +413,7 @@ public partial class SettingsViewModel
         var scheme = new SoundScheme(SoundCatalog.NewUserSchemeId(), name.Trim(), isBuiltIn: false,
             author: source?.Author, license: source?.License, description: source?.Description);
         _schemesMadeHere.Add(scheme.Id);
+        _sounds?.NoteUnsavedSchemeFolders([scheme.Id]);   // before its folder has anything in it (#955)
         // A copy has copies of the files too (#948), so the two can then be changed or deleted apart.
         var filesCopied = source is null || _sounds is null || _sounds.TryCopySchemeSounds(source.Id, scheme.Id);
         _schemeValues[scheme.Id] = source is not null
@@ -555,6 +557,9 @@ public partial class SettingsViewModel
         // out again if it fails or Settings is cancelled (#955). What was there is never touched.
         var before = replacing is null ? null
             : new HashSet<string>(_sounds.CustomSoundFiles(schemeId), StringComparer.OrdinalIgnoreCase);
+        // A new scheme's folder is written down before anything lands in it, so it goes even if
+        // QuickMail stops before Save or Cancel (#955).
+        if (replacing is null) _sounds.NoteUnsavedSchemeFolders([schemeId]);
         SoundSchemeImport imported;
         try
         {
@@ -565,8 +570,14 @@ public partial class SettingsViewModel
             LogService.Log("Importing a sound scheme failed", ex);
             // Any sounds that landed before it failed belong to a scheme that was never made, or to
             // an update that didn't happen.
-            if (replacing is null) _sounds.TryDeleteSchemeSounds(schemeId);
-            else RemoveFiles(schemeId, AddedSince(schemeId, before!));
+            if (replacing is null)
+            {
+                if (_sounds.TryDeleteSchemeSounds(schemeId)) _sounds.ForgetUnsavedSchemeFolders([schemeId]);
+            }
+            else
+            {
+                RemoveFiles(schemeId, AddedSince(schemeId, before!));
+            }
             ReportScheme(ex.Message);
             return false;
         }
@@ -758,7 +769,7 @@ public partial class SettingsViewModel
         var gone = _storedSchemes.Keys.Where(SoundCatalog.IsUserSchemeId).Concat(_schemesMadeHere)
             .Where(id => SoundSchemes.All(s => !s.Id.Equals(id, StringComparison.OrdinalIgnoreCase)))
             .Distinct(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in gone) _sounds.TryDeleteSchemeSounds(id);
+        var notDeleted = gone.Where(id => !_sounds.TryDeleteSchemeSounds(id)).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var id in _schemesResetHere.Where(SoundCatalog.IsBuiltInSchemeId))
         {
@@ -766,8 +777,11 @@ public partial class SettingsViewModel
             RemoveFiles(id, _sounds.CustomSoundFiles(id).Where(file => !used.Contains(file)).ToList());
         }
 
-        // Every scheme in the list was saved just now, but they're named as well as config.ini, in
-        // case the file couldn't be written.
+        // Every scheme made here is now saved or deleted, so it isn't waiting any more. Then
+        // any folder still written down as unsaved, such as one left by QuickMail stopping, goes,
+        // unless a scheme owns it; every scheme in the list was saved just now, and is named too.
+        // One whose folder wouldn't delete stays written down, to be removed next time.
+        _sounds.ForgetUnsavedSchemeFolders(_schemesMadeHere.Where(id => !notDeleted.Contains(id)));
         _sounds.RemoveUnusedSchemeFolders([.. SoundSchemes.Select(s => s.Id), .. saved.SoundSchemes.Keys]);
     }
 
@@ -779,7 +793,9 @@ public partial class SettingsViewModel
     public void DiscardUnsavedSchemeSounds()
     {
         if (_soundSchemesSaved || _sounds is null) return;
-        foreach (var id in _schemesMadeHere) _sounds.TryDeleteSchemeSounds(id);
+        // A folder that wouldn't delete stays written down, to be removed next time.
+        var deleted = _schemesMadeHere.Where(_sounds.TryDeleteSchemeSounds).ToList();
+        _sounds.ForgetUnsavedSchemeFolders(deleted);
         _schemesMadeHere.Clear();
         foreach (var (id, files) in _filesAddedByUpdate) RemoveFiles(id, files);
         _filesAddedByUpdate.Clear();

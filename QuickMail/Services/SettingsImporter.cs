@@ -607,7 +607,13 @@ public static class SettingsImporter
                 if (isFlat) flatKept.Add(relative);
                 continue;
             }
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            var folder = Path.GetDirectoryName(target)!;
+            // A scheme folder this import makes is written down, so that if no scheme here owns it,
+            // such as when the file brought sounds but not the preferences, the tidy-up after the
+            // import removes it (#955). One that was already here is never written down.
+            if (!isFlat && !Directory.Exists(folder))
+                SoundSchemeFolderCleanup.NoteUnsaved(dir, [Path.GetFileName(folder)]);
+            Directory.CreateDirectory(folder);
             File.WriteAllBytes(target, bytes);
             if (isFlat) flatAdded.Add(relative);
             added++;

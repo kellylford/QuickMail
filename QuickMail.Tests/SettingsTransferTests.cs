@@ -1147,6 +1147,33 @@ public sealed class SettingsTransferTests : IDisposable
         Assert.False(File.Exists(Path.Combine(laptop, "sounds", "user-calm", "Unused.wav")));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Sounds_ASchemeFolderBroughtWithoutItsSchemeIsRemovedAfterTheImport(bool withPreferences)
+    {
+        // #955: a file's scheme folder for a scheme that doesn't end up here (the preferences, which
+        // carry the schemes, weren't imported) is removed by the tidy-up that follows the import.
+        const string id = "user-0123456789abcdef0123456789abcdef";
+        var desktop = SeedDesktop();
+        var desktopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(desktop, "config.ini")));
+        desktopCfg.SoundSchemes[id] = new SoundScheme(id, "Calm", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Desk.wav" });
+        File.WriteAllText(Path.Combine(desktop, "config.ini"), ConfigService.BuildFileText(desktopCfg));
+        Directory.CreateDirectory(Path.Combine(desktop, "sounds", id));
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", id, "Desk.wav"), [1]);
+        var laptop = SeedLaptop();
+        Directory.CreateDirectory(Path.Combine(laptop, "sounds", "user-fedcba9876543210fedcba9876543210"));   // the laptop's own, never written down
+
+        Import(Export(desktop, withPreferences ? [SettingsCategory.Preferences] : [SettingsCategory.RulesAndViews]), laptop);
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", id, "Desk.wav")));
+        SoundSchemeFolderCleanup.RunAtStartup(laptop);
+
+        Assert.Equal(withPreferences, Directory.Exists(Path.Combine(laptop, "sounds", id)));
+        Assert.True(Directory.Exists(Path.Combine(laptop, "sounds", "user-fedcba9876543210fedcba9876543210")));
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", SoundSchemeFolderCleanup.JournalFileName)));
+    }
+
     [Fact]
     public void Sounds_AnOldFilesSoundWhoseNameIsHereGivesItsSchemesTheFileThatIsHere()
     {

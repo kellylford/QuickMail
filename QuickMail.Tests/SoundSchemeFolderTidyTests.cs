@@ -51,12 +51,21 @@ public sealed class SoundSchemeFolderCleanupTests : IDisposable
         return dir;
     }
 
+    /// <summary>A scheme folder made for a scheme not saved yet, written down as Settings would.</summary>
+    private string Unsaved(string id)
+    {
+        Assert.True(SoundSchemeFolderCleanup.NoteUnsaved(Sounds, [id]));
+        return Folder(id);
+    }
+
+    private HashSet<string> Journal => SoundSchemeFolderCleanup.ReadJournal(Sounds);
+
     [Fact]
-    public void AFolderNoSchemeOwnsIsRemovedAndEverythingElseStays()
+    public void AnUnsavedFolderNoSchemeOwnsIsRemovedAndEverythingElseStays()
     {
         Config(Own(Calm));
         var calm = Folder(Calm);
-        var gone = Folder(Gone);
+        var gone = Unsaved(Gone);
         var glass = Folder("glass");                  // a built-in scheme's, never touched
         var notAScheme = Folder("notes");             // not a scheme's folder name at all
         var almost = Folder("user-calm_x");           // a character a scheme id can't have
@@ -71,17 +80,87 @@ public sealed class SoundSchemeFolderCleanupTests : IDisposable
         Assert.True(Directory.Exists(notAScheme));
         Assert.True(Directory.Exists(almost));
         Assert.True(File.Exists(rules));
+        Assert.Empty(Journal);
+        Assert.False(File.Exists(Path.Combine(Sounds, SoundSchemeFolderCleanup.JournalFileName)));
+    }
+
+    [Fact]
+    public void AFolderNeverWrittenDownIsNeverRemovedEvenIfNothingOwnsIt()
+    {
+        // A config.ini deleted or reset to the defaults must not make every scheme of your own look
+        // like it belongs to nothing (#955 review).
+        Config();
+        var mine = Folder(Gone);
+        Unsaved(Other);
+
+        Assert.Equal(1, SoundSchemeFolderCleanup.Run(_profile, []));
+
+        Assert.True(File.Exists(Path.Combine(mine, "Ding.wav")));
+    }
+
+    [Fact]
+    public void AtStartupAfterConfigWasDeletedAndRecreatedYourSchemesStay()
+    {
+        // The real order at startup: ConfigService.Load writes a default config.ini when there is
+        // none, and the tidy-up runs after it.
+        var mine = Folder(Calm);
+        new ConfigService(new ProfileContext(_profile)).Load();
+        Assert.True(File.Exists(Path.Combine(_profile, "config.ini")));
+
+        SoundSchemeFolderCleanup.RunAtStartup(_profile);
+
+        Assert.True(File.Exists(Path.Combine(mine, "Ding.wav")));
+    }
+
+    [Fact]
+    public void AnUnsavedFolderThatIsNowOwnedIsKeptAndCrossedOff()
+    {
+        // Crossed off, so a config.ini lost later can't make it look unsaved again.
+        Config(Own(Calm));
+        var calm = Unsaved(Calm);
+
+        Assert.Equal(0, SoundSchemeFolderCleanup.Run(_profile, []));
+
+        Assert.True(Directory.Exists(calm));
+        Assert.Empty(Journal);
+    }
+
+    [Fact]
+    public void ForgettingASavedSchemeCrossesItOffAndKeepsTheRest()
+    {
+        Unsaved(Calm);
+        Unsaved(Other);
+
+        Assert.True(SoundSchemeFolderCleanup.ForgetUnsaved(Sounds, [Calm.ToUpperInvariant(), "glass"]));
+
+        Assert.Equal([Other], Journal);
+    }
+
+    [Fact]
+    public void TheListIgnoresAnythingThatIsntASchemeOfYourOwn()
+    {
+        File.WriteAllLines(Path.Combine(Sounds, SoundSchemeFolderCleanup.JournalFileName), ["glass", "..", @"user-..\x", "", "notes", Calm]);
+        Config();
+        Folder("glass");
+        Folder("notes");
+
+        SoundSchemeFolderCleanup.Run(_profile, []);
+
+        Assert.True(Directory.Exists(Path.Combine(Sounds, "glass")));
+        Assert.True(Directory.Exists(Path.Combine(Sounds, "notes")));
+        Assert.True(Directory.Exists(Sounds));
     }
 
     [Fact]
     public void ASchemeOpenInSettingsKeepsItsFolderThoughConfigDoesNotHaveIt()
     {
         Config(Own(Calm));
-        var unsaved = Folder(Other);
+        var unsaved = Unsaved(Other);
 
         Assert.Equal(0, SoundSchemeFolderCleanup.Run(_profile, [Other]));
 
         Assert.True(Directory.Exists(unsaved));
+        Assert.Equal([Other], Journal);   // still unsaved: if Settings never saves it, it goes later
     }
 
     [Fact]
@@ -90,7 +169,7 @@ public sealed class SoundSchemeFolderCleanupTests : IDisposable
         // Named anywhere in config.ini is enough, such as by a line a newer QuickMail wrote.
         Config(Own(Calm));
         File.AppendAllText(Path.Combine(_profile, "config.ini"), $"{Environment.NewLine}[later]{Environment.NewLine}Scheme = {Other.ToUpperInvariant()}{Environment.NewLine}");
-        var mentioned = Folder(Other);
+        var mentioned = Unsaved(Other);
 
         SoundSchemeFolderCleanup.Run(_profile, []);
 
@@ -104,7 +183,7 @@ public sealed class SoundSchemeFolderCleanupTests : IDisposable
         // find the replaced scheme's sounds.
         Config(Own(Calm));
         ConfigIn(Path.Combine(_profile, "backup-20261108-101500"), Own(Gone));
-        var replaced = Folder(Gone);
+        var replaced = Unsaved(Gone);
 
         Assert.Equal(0, SoundSchemeFolderCleanup.Run(_profile, []));
 
@@ -114,7 +193,7 @@ public sealed class SoundSchemeFolderCleanupTests : IDisposable
     [Fact]
     public void WithoutAConfigNothingIsRemoved()
     {
-        var folder = Folder(Gone);
+        var folder = Unsaved(Gone);
 
         Assert.Null(SoundSchemeFolderCleanup.Run(_profile, []));
 
@@ -126,7 +205,7 @@ public sealed class SoundSchemeFolderCleanupTests : IDisposable
     {
         // No PlayEventSounds: its having no schemes proves nothing.
         File.WriteAllText(Path.Combine(_profile, "config.ini"), "[general]" + Environment.NewLine + "PreviewLines = 2" + Environment.NewLine);
-        var folder = Folder(Gone);
+        var folder = Unsaved(Gone);
 
         Assert.Null(SoundSchemeFolderCleanup.Run(_profile, []));
 
@@ -137,7 +216,7 @@ public sealed class SoundSchemeFolderCleanupTests : IDisposable
     public void AnEmptyConfigRemovesNothing()
     {
         File.WriteAllText(Path.Combine(_profile, "config.ini"), string.Empty);
-        var folder = Folder(Gone);
+        var folder = Unsaved(Gone);
 
         Assert.Null(SoundSchemeFolderCleanup.Run(_profile, []));
 
@@ -148,7 +227,7 @@ public sealed class SoundSchemeFolderCleanupTests : IDisposable
     public void AConfigThatCannotBeReadRemovesNothing()
     {
         Config(Own(Calm));
-        var folder = Folder(Gone);
+        var folder = Unsaved(Gone);
         using var locked = new FileStream(Path.Combine(_profile, "config.ini"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
         Assert.Null(SoundSchemeFolderCleanup.Run(_profile, []));
@@ -183,6 +262,9 @@ public sealed class SoundSchemeFolderCleanupTests : IDisposable
     {
         Config(Own(Calm));
         var gone = Folder(Gone);
+        using (var noting = new SoundService(new StubConfigService(), Sounds, new NoOutput()))
+            noting.NoteUnsavedSchemeFolders([Gone]);
+        Assert.Equal([Gone], Journal);
         using (var elsewhere = new SoundService(new StubConfigService(), Path.Combine(_profile, "other"), new NoOutput()))
             Assert.Null(elsewhere.RemoveUnusedSchemeFolders([]));   // not a "sounds" folder: nothing to check it against
         Assert.True(Directory.Exists(gone));
@@ -193,11 +275,11 @@ public sealed class SoundSchemeFolderCleanupTests : IDisposable
     }
 
     [Fact]
-    public void AtStartupItKeepsWhatConfigHasAndRemovesTheRest()
+    public void AtStartupItKeepsWhatConfigHasAndRemovesWhatWasLeftUnsaved()
     {
         Config(Own(Calm));
         var calm = Folder(Calm);
-        var gone = Folder(Gone);
+        var gone = Unsaved(Gone);
 
         SoundSchemeFolderCleanup.RunAtStartup(_profile);
 
@@ -272,6 +354,49 @@ public sealed class SoundSchemeFolderTidySettingsTests : IDisposable
     }
 
     [Fact]
+    public void SchemesMadeInSettingsAreWrittenDownUntilSavedOrCancelled()
+    {
+        var sounds = new RecordingSoundService();
+        var vm = MakeSettings(WithGlass(), sounds);
+        vm.CreateScheme("New one");
+        var made = vm.SelectedSoundScheme!.Id;
+        vm.CreateScheme("Copied", "glass");
+        var copied = vm.SelectedSoundScheme!.Id;
+        Assert.Equal(2, sounds.UnsavedFolders.Count);
+        Assert.Contains(made, sounds.UnsavedFolders);
+        Assert.Contains(copied, sounds.UnsavedFolders);
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.Empty(sounds.UnsavedFolders);
+    }
+
+    [Fact]
+    public void CancelCrossesOffTheSchemesWhoseFoldersItDeleted()
+    {
+        var sounds = new RecordingSoundService();
+        var vm = MakeSettings(WithGlass(), sounds);
+        vm.CreateScheme("New one");
+
+        vm.DiscardUnsavedSchemeSounds();
+
+        Assert.Empty(sounds.UnsavedFolders);
+    }
+
+    [Fact]
+    public void AnImportedSchemeIsWrittenDownBeforeItsSoundsLand()
+    {
+        var file = Path.Combine(TempDir(), "rain.qmsounds");
+        SoundSchemeFile.Export(file, "Rain", new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" }, new RecordingSoundService(), "wood");
+        var sounds = new RecordingSoundService();
+        var vm = MakeSettings(new StubConfigService(), sounds);
+
+        Assert.True(vm.ImportSchemeFrom(file));
+
+        Assert.Equal([vm.SelectedSoundScheme!.Id], sounds.UnsavedFolders);
+    }
+
+    [Fact]
     public void CancelNeverSweeps()
     {
         var sounds = new RecordingSoundService();
@@ -305,6 +430,33 @@ public sealed class SoundSchemeFolderTidySettingsTests : IDisposable
         vm.SaveCommand.Execute(null);
 
         Assert.True(File.Exists(file));
+    }
+
+    [Fact]
+    public void ASchemeLeftUnsavedByAStopIsRemovedAtTheNextStartAndSavedOnesStay()
+    {
+        // QuickMail stops while Settings has a new scheme with a file in it: neither Save nor Cancel.
+        var profile = TempDir();
+        var config = WithGlass();
+        config.Load().SoundSchemes["user-calm"] = new SoundScheme("user-calm", "Calm", false);
+        File.WriteAllText(Path.Combine(profile, "config.ini"), ConfigService.BuildFileText(config.Load()));
+        var calm = Directory.CreateDirectory(Path.Combine(profile, "sounds", "user-calm")).FullName;
+        File.WriteAllBytes(Path.Combine(calm, "Mine.wav"), TestWav.Tone(salt: 3));
+        string left;
+        using (var sounds = new SoundService(config, Path.Combine(profile, SoundCatalog.CustomFolderName), new SoundSchemeFolderCleanupTests.NoOutput()))
+        {
+            var vm = MakeSettings(config, sounds);
+            vm.PickSoundFileRequested = () => Wav("New.wav", 4);
+            Assert.True(vm.CreateScheme("Unsaved"));
+            Assert.True(vm.TryChooseSoundFile());
+            left = Path.Combine(profile, "sounds", SoundCatalog.SchemeFolderName(vm.SelectedSoundScheme!.Id)!);
+            Assert.True(Directory.Exists(left));
+        }
+
+        SoundSchemeFolderCleanup.RunAtStartup(profile);
+
+        Assert.False(Directory.Exists(left));
+        Assert.True(File.Exists(Path.Combine(calm, "Mine.wav")));
     }
 
     // ── Reset ───────────────────────────────────────────────────────────────────
