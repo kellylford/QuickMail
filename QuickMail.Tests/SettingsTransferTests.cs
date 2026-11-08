@@ -974,6 +974,12 @@ public sealed class SettingsTransferTests : IDisposable
     [InlineData("sounds/My Song.MP3", true)]
     [InlineData("sounds/../../evil.wav", false)]
     [InlineData("sounds/sub/evil.wav", false)]
+    [InlineData("sounds/glass/Chime.wav", true)]                                   // a scheme's own folder (#948)
+    [InlineData("sounds/user-0123456789abcdef0123456789abcdef/Chime.wav", true)]
+    [InlineData("sounds/glass/../evil.wav", false)]
+    [InlineData("sounds/glass/sub/evil.wav", false)]
+    [InlineData("sounds/user-a.b/evil.wav", false)]
+    [InlineData("sounds/glass/", false)]
     [InlineData(@"sounds/..\evil.wav", false)]
     [InlineData("sounds/C:evil.wav", false)]
     [InlineData("sounds/evil.exe", false)]
@@ -1135,6 +1141,63 @@ public sealed class SettingsTransferTests : IDisposable
         Assert.False(imported.SoundSchemes.ContainsKey("user-mine"));
         Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Desk.wav")));
         Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Unused.wav")));
+        // As from QuickMail 0.8.69, every sound arrived in the shared folder, so the one a scheme uses
+        // is copied into that scheme's folder, where it plays from now (#948). Nothing uses the other.
+        Assert.Equal([(byte)1, 2, 3], File.ReadAllBytes(Path.Combine(laptop, "sounds", "user-calm", "Desk.wav")));
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "user-calm", "Unused.wav")));
+    }
+
+    [Fact]
+    public void Sounds_ARulesSoundInANewerFileNeverStandsInForASchemesMissingFile()
+    {
+        // A 0.8.70 file: a scheme's sound in its folder, and a rule's in the root.
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Ding.wav", [1]);
+        Directory.CreateDirectory(Path.Combine(desktop, "sounds", "glass"));
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", "glass", "Other.wav"), [2]);
+        var bundle = Export(desktop, [SettingsCategory.RulesAndViews]);
+
+        // Here, Wood names a Ding.wav its folder no longer has (removed in Settings).
+        var laptop = SeedLaptop();
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.SoundSchemes["wood"] = new SoundScheme("wood", "Wood", isBuiltIn: true, pack: "wood",
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Ding.wav" });
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(bundle, laptop);
+
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Ding.wav")));
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "wood", "Ding.wav")));
+    }
+
+    [Fact]
+    public void Sounds_InSchemeFoldersTravelInTheirFolders()
+    {
+        var desktop = SeedDesktop();
+        void Put(string relative, byte b)
+        {
+            var path = Path.Combine(desktop, "sounds", relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, [b]);
+        }
+        Put("Rule.wav", 1);
+        Put(Path.Combine("not-a-scheme", "Ding.wav"), 2);   // no scheme's folder, so it stays behind
+        Put(Path.Combine("glass", "Ding.wav"), 3);
+        Put(Path.Combine("user-calm", "Ding.wav"), 4);
+        Put(SoundFolderMigration.MarkerFileName, 5);
+
+        var bundlePath = Export(desktop, [SettingsCategory.Preferences]);
+        var names = SettingsBundle.Open(bundlePath).SoundEntries.Select(e => e.Key).Order(StringComparer.Ordinal);
+        Assert.Equal(["sounds/Rule.wav", "sounds/glass/Ding.wav", "sounds/user-calm/Ding.wav"], names);
+
+        var laptop = SeedLaptop();
+        Import(bundlePath, laptop);
+
+        Assert.Equal([(byte)1], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Rule.wav")));
+        Assert.Equal([(byte)3], File.ReadAllBytes(Path.Combine(laptop, "sounds", "glass", "Ding.wav")));
+        Assert.Equal([(byte)4], File.ReadAllBytes(Path.Combine(laptop, "sounds", "user-calm", "Ding.wav")));
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "Ding.wav")));
+        Assert.False(Directory.Exists(Path.Combine(laptop, "sounds", "not-a-scheme")));
     }
 
     [Fact]
@@ -1186,10 +1249,14 @@ public sealed class SettingsTransferTests : IDisposable
         var desktop = SeedDesktop();
         AddSound(desktop, "Chime.wav", [9, 9]);
         AddSound(desktop, "Desktop only.wav", [3]);
+        Directory.CreateDirectory(Path.Combine(desktop, "sounds", "wood"));
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", "wood", "Desk wood.wav"), [4]);   // a scheme's (#948)
         var bundle = Export(desktop);
         var laptop = SeedLaptop();
         AddSound(laptop, "Chime.wav", [1]);
         AddSound(laptop, "Laptop only.wav", [2]);
+        Directory.CreateDirectory(Path.Combine(laptop, "sounds", "glass"));
+        File.WriteAllBytes(Path.Combine(laptop, "sounds", "glass", "Laptop glass.wav"), [5]);
 
         // The folder-name file is written after the sounds, so a lock on it fails the import once they're in.
         var heal = Path.Combine(laptop, ImportFolderHeal.FileName);
@@ -1200,6 +1267,8 @@ public sealed class SettingsTransferTests : IDisposable
         Assert.False(File.Exists(Path.Combine(laptop, "sounds", "Desktop only.wav")));
         Assert.Equal([(byte)1], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Chime.wav")));
         Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Laptop only.wav")));
+        Assert.False(Directory.Exists(Path.Combine(laptop, "sounds", "wood")));   // the folder the import made, gone with its file
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "glass", "Laptop glass.wav")));
     }
 
     // ── Config classification (spec §5.2, R7) ──────────────────────────────────

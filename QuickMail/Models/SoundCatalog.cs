@@ -81,7 +81,10 @@ public static class SoundCatalog
         new("wood", "Wood"),
     ];
 
-    /// <summary>The folder under the profile that holds custom sounds.</summary>
+    /// <summary>
+    /// The folder under the profile that holds custom sounds: a rule's own files directly in it, and
+    /// each scheme's in a folder of its own inside it (<see cref="SchemeFolderName"/>, #948).
+    /// </summary>
     public const string CustomFolderName = "sounds";
 
     /// <summary>The largest custom sound accepted, whether chosen in Settings or arriving in a settings file.</summary>
@@ -139,6 +142,28 @@ public static class SoundCatalog
 
     /// <summary>A new id for a scheme of the person's own.</summary>
     public static string NewUserSchemeId() => UserSchemePrefix + Guid.NewGuid().ToString("N");
+
+    /// <summary>The longest scheme id that gets a folder of its own; a real one is 37 characters.</summary>
+    private const int MaxSchemeFolderNameLength = 64;
+
+    /// <summary>
+    /// The name of a scheme's own folder of sound files, under the sounds folder (#948): its id, in
+    /// lowercase, since an id is stable through a rename and a name can hold characters a folder
+    /// can't. Null for an id that can't safely be a folder name: one from a newer QuickMail, or a
+    /// hand edit such as <c>user-..\x</c>. A scheme with no folder has no files of its own, so its
+    /// custom sounds play as missing.
+    /// </summary>
+    public static string? SchemeFolderName(string? schemeId)
+    {
+        if (IsBuiltInSchemeId(schemeId)) return schemeId;
+        if (!IsUserSchemeId(schemeId) || schemeId!.Length > MaxSchemeFolderNameLength
+            || schemeId.Length == UserSchemePrefix.Length) return null;
+        foreach (var c in schemeId)
+        {
+            if (!(char.IsAsciiLetterOrDigit(c) || c == '-')) return null;
+        }
+        return schemeId.ToLowerInvariant();
+    }
 
     /// <summary>A built-in scheme as it ships, with nothing changed.</summary>
     public static SoundScheme BuiltInScheme(string packId) =>

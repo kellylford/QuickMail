@@ -1037,7 +1037,7 @@ public class ConfigService : IConfigService
             if (scheme.IsBuiltIn)
             {
                 sb.AppendLine($"# Changes to the {scheme.Name} sound scheme. Values: none, builtin:<name>,");
-                sb.AppendLine("# builtin:<pack>/<name>, custom:<file in the sounds folder>.");
+                sb.AppendLine($"# builtin:<pack>/<name>, custom:<file in the sounds\\{SoundCatalog.SchemeFolderName(scheme.Id)} folder>.");
             }
             else if (isOwn)
             {

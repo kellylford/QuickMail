@@ -51,7 +51,7 @@ public sealed class SoundSchemeCreditTests : IDisposable
     {
         var sounds = new RecordingSoundService();
         var file = Path.Combine(_root, "in.qmsounds");
-        SoundSchemeFile.Export(file, "Rain", new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" }, sounds,
+        SoundSchemeFile.Export(file, "Rain", new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" }, sounds, "wood",
             author: "Pat Lee", license: "CC-BY-4.0");
 
         var config = new StubConfigService();
@@ -69,7 +69,7 @@ public sealed class SoundSchemeCreditTests : IDisposable
         var exported = Path.Combine(_root, "out.qmsounds");
         vm.PickSchemeExportPathRequested = _ => exported;
         vm.ExportSchemeCommand.Execute(null);
-        var again = SoundSchemeFile.Import(exported, sounds);
+        var again = SoundSchemeFile.Import(exported, sounds, SoundCatalog.NewUserSchemeId());
         Assert.Equal("Pat Lee", again.Author);
         Assert.Equal("CC-BY-4.0", again.License);
     }

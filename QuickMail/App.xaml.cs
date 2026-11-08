@@ -675,8 +675,12 @@ public partial class App : Application
             }
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
+            var soundsFolder = System.IO.Path.Combine(profile.ProfileDir, SoundCatalog.CustomFolderName);
+            // The one-time move of 0.8.69's shared sound files into each scheme's folder (#948), before
+            // the sound service starts, so nothing plays from a folder being changed.
+            if (!probeMode) SoundFolderMigration.RunAtStartup(profile.ProfileDir, ruleService.LoadRules);
             _soundService = probeMode ? null : new SoundService(
-                configService, System.IO.Path.Combine(profile.ProfileDir, "sounds"), new NAudioSoundOutput(), isQuiet: WindowsQuietState.IsQuiet);
+                configService, soundsFolder, new NAudioSoundOutput(), isQuiet: WindowsQuietState.IsQuiet);
             ruleService.Sounds = _soundService;
             // Answers the question the app cannot answer about itself: when an account shows as
             // disconnected, is it actually unreachable? Probes on a connection that shares nothing

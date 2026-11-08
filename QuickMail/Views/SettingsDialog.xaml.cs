@@ -30,6 +30,7 @@ public partial class SettingsDialog : Window
             vm.SoundResultAnnounced -= OnSoundResult;
             _schemeNameDialog?.Close();
             vm.StopSounds();
+            vm.DiscardUnsavedSchemeSounds();   // the folders of schemes made here, unless Save kept them (#948)
         };
     }
 

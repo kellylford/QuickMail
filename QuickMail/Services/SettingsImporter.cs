@@ -593,16 +593,45 @@ public static class SettingsImporter
         if (sounds.Count == 0) return;
         var dir = Directory.CreateDirectory(Path.Combine(profileDir, SoundCatalog.CustomFolderName)).FullName;
         var added = 0;
+        var flatAdded = new List<string>();
+        var anyInSchemeFolders = false;
         foreach (var (name, bytes) in sounds)
         {
-            var target = Path.Combine(dir, name[SettingsBundle.SoundsPrefix.Length..]);
+            if (SettingsBundle.SoundEntryPath(name) is not { } relative) continue;
+            var isFlat = Path.GetDirectoryName(relative) is null or "";
+            anyInSchemeFolders |= !isFlat;
+            var target = Path.Combine(dir, relative);
             if (File.Exists(target)) continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllBytes(target, bytes);
+            if (isFlat) flatAdded.Add(relative);
             added++;
         }
         var kept = sounds.Count - added;
         result.Lines.Add($"Custom sounds: {SettingsImportPlan.Plural(added, "sound")} added"
                          + (kept > 0 ? $", {kept} already here kept." : "."));
+
+        // A file from QuickMail 0.8.69 has every sound directly under sounds/, where only the rules'
+        // belong now (#948): each one it brought that a scheme uses is copied into that scheme's
+        // folder too. Copied, not moved, so undoing the import never needs a file put back. A newer
+        // file, with schemes' folders of its own, already has its schemes' sounds in place; its flat
+        // ones are rules', and must never stand in for a file a scheme here has lost.
+        if (!anyInSchemeFolders && flatAdded.Count > 0) PlaceFlatSounds(profileDir, dir, flatAdded);
+    }
+
+    private static void PlaceFlatSounds(string profileDir, string soundsFolder, IReadOnlyCollection<string> names)
+    {
+        try
+        {
+            var config = Path.Combine(profileDir, "config.ini");
+            if (!File.Exists(config)) return;
+            var schemes = ConfigService.ParseFile(File.ReadAllLines(config)).SoundSchemes.Values;
+            SoundFolderMigration.Place(soundsFolder, schemes, [], removeFromShared: false, onlyNames: names);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Settings import: could not copy sounds into their schemes' folders", ex);
+        }
     }
 
     // A rule naming an account that is not here would act on nothing; turned off and named, never deleted.
@@ -818,9 +847,10 @@ public static class SettingsImporter
             }
             // Only the names, not megabytes of audio in every backup: an import never changes a sound
             // that's here, so undoing one only means removing what it added.
+            // Each as its path in the sounds folder, so a scheme's (#948) is "<scheme folder>\<file>".
             var sounds = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
             File.WriteAllLines(Path.Combine(dir, SoundsBeforeFileName),
-                Directory.Exists(sounds) ? Directory.GetFiles(sounds).Select(f => Path.GetFileName(f)!) : []);
+                Directory.Exists(sounds) ? Directory.GetFiles(sounds, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(sounds, f)) : []);
             return dir;
         }
         catch
@@ -888,8 +918,15 @@ public static class SettingsImporter
             if (Directory.Exists(sounds) && File.Exists(soundsBefore))
             {
                 var keep = File.ReadAllLines(soundsBefore).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                foreach (var file in Directory.GetFiles(sounds))
-                    if (!keep.Contains(Path.GetFileName(file))) File.Delete(file);
+                foreach (var file in Directory.GetFiles(sounds, "*", SearchOption.AllDirectories))
+                    if (!keep.Contains(Path.GetRelativePath(sounds, file))) File.Delete(file);
+                // A scheme's folder the import made, now empty (#948). One that was here before stays.
+                foreach (var folder in Directory.GetDirectories(sounds))
+                {
+                    var prefix = Path.GetFileName(folder) + Path.DirectorySeparatorChar;
+                    if (!Directory.EnumerateFileSystemEntries(folder).Any() && !keep.Any(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                        Directory.Delete(folder);
+                }
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

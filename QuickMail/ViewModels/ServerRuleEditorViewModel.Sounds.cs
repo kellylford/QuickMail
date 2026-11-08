@@ -45,7 +45,7 @@ public partial class ServerRuleEditorViewModel
     internal void AttachSounds(ISoundService? sounds)
     {
         _sounds = sounds;
-        foreach (var file in sounds?.CustomSoundFiles() ?? [])
+        foreach (var file in sounds?.CustomSoundFiles(schemeId: null) ?? [])   // the rules' own folder, not a scheme's (#948)
         {
             var stored = SoundRef.Custom(file).ToStored();
             var existing = RuleSoundChoices.FirstOrDefault(c => c.Stored == stored);
@@ -104,7 +104,7 @@ public partial class ServerRuleEditorViewModel
     {
         if (_sounds is null || PickSoundFileRequested?.Invoke() is not { } path) return false;
 
-        if (!_sounds.TryAddCustomSound(path, out var fileName, out var refusal))
+        if (!_sounds.TryAddCustomSound(schemeId: null, path, out var fileName, out var refusal))
         {
             RuleSoundMessage = refusal;
             AnnouncementRequested?.Invoke(refusal, AnnouncementCategory.Result);

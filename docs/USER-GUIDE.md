@@ -2041,7 +2041,7 @@ Exporting and importing settings are off until you turn them on, on each compute
 3. Press **Tab** to read a summary of what the file will hold. It contains email addresses, server names, signatures and, if you leave them checked, your address book and Local Calendar. **It never contains a password or a sign-in.**
 4. Choose **Export…** and save the file. Its name ends in `.qmsettings`. QuickMail says how many categories it saved and how large the file is, and returns you to where you were.
 
-Your own sound files go into the file along with rules or preferences, up to 32 MB of them. On the other computer they are added to the sounds already there. If a sound with the same name is already there, it stays as it is. Importing preferences replaces the sound schemes on the other computer, including schemes of your own, with the ones in the file. To share a single scheme instead, see [Sound Schemes](#sound-schemes).
+Your own sound files go into the file along with rules or preferences, up to 32 MB of them, each scheme's with that scheme. On the other computer they are added to the sounds already there. If a sound with the same name is already there, it stays as it is. A settings file from QuickMail 0.8.69 or earlier keeps all its sounds together; QuickMail copies each one into the schemes that use it. Importing preferences replaces the sound schemes on the other computer, including schemes of your own, with the ones in the file. To share a single scheme instead, see [Sound Schemes](#sound-schemes).
 
 Keep the file somewhere private: although it has no passwords in it, it does have your contacts and account details. Copy it to the other computer however you like, on a USB stick or through a folder you already sync.
 
@@ -2142,8 +2142,8 @@ If you delete or file a lot of mail in a row, you may prefer to set those three 
 1. In **Settings → Sounds**, arrow through **Sound events**. Each entry says the event and its sound, such as "New mail: Arrived".
 2. Choose a sound in **Sound for this event**, or choose **None** to silence that event.
 3. Choose **Preview** to hear it, at the volume showing. Preview plays even if sounds are muted, and stops when you close Settings or preview **None**.
-4. To use a sound of your own, choose **Choose File…** and pick a WAV or MP3 file of up to 5 MB and 30 seconds. QuickMail keeps its own copy, so you can move or delete the original. Focus moves to **Sound for this event**, which now names your file.
-5. To delete one of your own sound files from QuickMail, select an event that uses it and choose **Remove file…**. QuickMail first says which sound schemes and rules still use the file. Those play a built-in sound instead once the file is gone, and the file shows as "(missing)" in the list. Removing a file takes effect at once, even if you then choose Cancel.
+4. To use a sound of your own, choose **Choose File…** and pick a WAV or MP3 file of up to 5 MB and 30 seconds. QuickMail keeps its own copy in the scheme showing, so you can move or delete the original. Focus moves to **Sound for this event**, which now names your file. Each scheme keeps its own sound files, and lists only those, so to use the same file in another scheme, choose it there as well.
+5. To delete one of your own sound files from a scheme, select an event that uses it and choose **Remove file…**. QuickMail first says how many of the scheme's events still use the file. Those play a built-in sound instead once the file is gone, and the file shows as "(missing)" in the list. Other schemes and rules keep their own copies. Removing a file takes effect at once, even if you then choose Cancel.
 
 Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to. It starts at 80%.
 
@@ -2155,7 +2155,7 @@ Each scheme keeps its own choices. Changing an event while **Glass** is chosen c
 
 **Make your own scheme.** Choose **New scheme…**, type a name and press Enter. The new scheme starts with every event set to **None**, so it is silent until you give events a sound. Focus moves to **Sound events**, ready for you to pick sounds. A scheme of your own can use the built-in sounds in any tone, listed as, for example, "Arrived (Soft bell)", as well as your own sound files. **Copy scheme…** does the same, but starts from the sounds of the scheme showing, which is the quickest way to make, say, Glass with your own new-mail sound.
 
-**Rename scheme…** and **Delete scheme…** work on schemes of your own. Deleting a scheme does not delete any sound files it used. If you delete the scheme in use, QuickMail goes back to Glass.
+**Rename scheme…** and **Delete scheme…** work on schemes of your own. Deleting a scheme deletes its sound files too, once you choose **Save**; no other scheme or rule uses them, since each keeps its own. If you choose **Cancel** instead, the scheme and its files stay. If you delete the scheme in use, QuickMail goes back to Glass. **Copy scheme…** copies the scheme's sound files along with it, so the copy and the original can then be changed or deleted separately.
 
 **Reset a built-in scheme.** If you have changed Glass, Soft bell or Wood, **Reset scheme…** puts it back to how it ships. It is available only when the scheme showing has changes.
 

@@ -39,7 +39,8 @@ public interface ISoundService : IDisposable
     /// <param name="storedSound">The sound, as stored.</param>
     /// <param name="volumePercent">A volume to hear it at, for one not saved yet.</param>
     /// <param name="pack">The pack to hear a built-in sound with no pack of its own in, for a scheme not saved yet.</param>
-    void Preview(string storedSound, int? volumePercent = null, string? pack = null);
+    /// <param name="schemeId">The scheme whose folder a custom sound is in; null for a rule's own sound (#948).</param>
+    void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null);
 
     /// <summary>
     /// Previews what a rule with this sound would play now: for the default sound, the scheme in use's
@@ -60,28 +61,49 @@ public interface ISoundService : IDisposable
     /// <summary>Whether this event would make a sound under the current settings.</summary>
     bool IsAudible(SoundEvent soundEvent);
 
-    /// <summary>The file names in the profile's folder of custom sounds.</summary>
-    IReadOnlyList<string> CustomSoundFiles();
+    // Every custom sound file lives in one folder (#948): a scheme's own, which a scheme's events play
+    // from and which is deleted with the scheme, or, for a rule's own sound, the sounds folder itself.
+    // In each method below, schemeId names the scheme, and null means the rules' folder.
 
-    /// <summary>The full path of a custom sound in the folder, or null if there is none by that name.</summary>
-    string? CustomSoundPath(string fileName);
+    /// <summary>The file names in a scheme's folder, or with a null id, the rules' folder.</summary>
+    IReadOnlyList<string> CustomSoundFiles(string? schemeId);
+
+    /// <summary>The full path of a custom sound in a scheme's folder (null: the rules'), or null if there is none by that name.</summary>
+    string? CustomSoundPath(string? schemeId, string fileName);
 
     /// <summary>
-    /// Deletes a custom sound from the folder (#932). Anything still naming it then plays its fallback,
-    /// as for a file that has gone missing. True if the file is gone, including if it was never there.
+    /// Deletes a custom sound from a scheme's folder, or with a null id, the rules' folder (#932).
+    /// Anything still naming it then plays its fallback, as for a file that has gone missing. True if
+    /// the file is gone, including if it was never there.
     /// </summary>
+    /// <param name="schemeId">The scheme, or null for the rules' folder.</param>
     /// <param name="fileName">The file's name in the folder.</param>
     /// <param name="refusal">Why it couldn't be deleted, in words for the person.</param>
-    bool TryRemoveCustomSound(string fileName, out string refusal);
+    bool TryRemoveCustomSound(string? schemeId, string fileName, out string refusal);
 
     /// <summary>
-    /// Checks a file the person chose and copies it into the folder of custom sounds, so it survives
-    /// the original moving and travels in settings files.
+    /// Checks a file the person chose and copies it into a scheme's folder, or with a null id, the
+    /// rules' folder, so it survives the original moving and travels in settings files.
     /// </summary>
+    /// <param name="schemeId">The scheme, or null for the rules' folder.</param>
     /// <param name="sourcePath">The chosen file.</param>
     /// <param name="fileName">Its name in the folder, which can differ from the original's.</param>
     /// <param name="refusal">Why it was refused, in words for the person.</param>
-    bool TryAddCustomSound(string sourcePath, out string fileName, out string refusal);
+    bool TryAddCustomSound(string? schemeId, string sourcePath, out string fileName, out string refusal);
+
+    /// <summary>
+    /// Copies every sound file in one scheme's folder into another's, for a copy of a scheme (#948).
+    /// A name the other folder already has keeps its own file. False, after logging, if any file
+    /// could not be copied.
+    /// </summary>
+    bool TryCopySchemeSounds(string fromSchemeId, string toSchemeId);
+
+    /// <summary>
+    /// Deletes a scheme's folder and every file in it, for a scheme that has been deleted (#948). No
+    /// other scheme's files, and none of the rules', are touched. True if the folder is gone,
+    /// including if there never was one.
+    /// </summary>
+    bool TryDeleteSchemeSounds(string schemeId);
 }
 
 /// <summary>A sound ready to play: a file on disk, or a stream from the app's own resources.</summary>

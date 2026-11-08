@@ -159,12 +159,15 @@ public sealed class SettingsBundle
         return new SettingsBundle(manifest, entries);
     }
 
-    /// <summary>A known profile file, or a theme or sound file with a plain name directly under its folder.</summary>
+    /// <summary>
+    /// A known profile file, a theme file with a plain name directly under its folder, or a sound file:
+    /// a rule's, directly under <c>sounds/</c>, or a scheme's, in its scheme's folder under that (#948).
+    /// </summary>
     internal static bool IsAcceptedName(string name)
     {
         if (KnownFiles.Contains(name)) return true;
         if (name.StartsWith(SoundsPrefix, StringComparison.OrdinalIgnoreCase))
-            return SoundRef.IsSafeCustomFileName(name[SoundsPrefix.Length..]);
+            return SoundEntryPath(name) is not null;
         if (!name.StartsWith(ThemesPrefix, StringComparison.OrdinalIgnoreCase)) return false;
         var file = name[ThemesPrefix.Length..];
         return file.Length > 0
@@ -172,6 +175,24 @@ public sealed class SettingsBundle
                && file.IndexOfAny(['/', '\\', ':']) < 0
                && file.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
                && file != "." && file != "..";
+    }
+
+    /// <summary>
+    /// Where a <c>sounds/</c> entry goes, relative to the sounds folder: <c>&lt;file&gt;</c> for a rule's
+    /// sound, or <c>&lt;scheme folder&gt;\&lt;file&gt;</c> for a scheme's (#948). Null for any other name,
+    /// which is never extracted.
+    /// </summary>
+    internal static string? SoundEntryPath(string name)
+    {
+        if (!name.StartsWith(SoundsPrefix, StringComparison.OrdinalIgnoreCase)) return null;
+        var parts = name[SoundsPrefix.Length..].Split('/');
+        return parts switch
+        {
+            [var file] when SoundRef.IsSafeCustomFileName(file) => file,
+            [var folder, var file] when SoundRef.IsSafeCustomFileName(file) && SoundCatalog.SchemeFolderName(folder) is { } safe
+                && safe.Equals(folder, StringComparison.OrdinalIgnoreCase) => Path.Combine(safe, file),
+            _ => null,
+        };
     }
 
     // ── Writing ──────────────────────────────────────────────────────────────────
@@ -259,24 +280,36 @@ public sealed class SettingsBundle
             WriteSounds(zip, dir);
     }
 
+    // The rules' sounds directly under sounds/, and each scheme's in its own folder under that (#948).
     private static void WriteSounds(ZipArchive zip, string profileDir)
     {
-        var folder = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
-        if (!Directory.Exists(folder)) return;
+        var root = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
+        if (!Directory.Exists(root)) return;
+
+        var folders = new List<(string Prefix, string Path)> { (SoundsPrefix, root) };
+        foreach (var dir in Directory.GetDirectories(root).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+        {
+            var name = Path.GetFileName(dir);
+            if (SoundCatalog.SchemeFolderName(name) is { } safe && safe.Equals(name, StringComparison.OrdinalIgnoreCase))
+                folders.Add((SoundsPrefix + safe + "/", dir));
+        }
 
         long total = 0;
-        foreach (var file in Directory.GetFiles(folder).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        foreach (var (prefix, folder) in folders)
         {
-            var name = Path.GetFileName(file);
-            var length = new FileInfo(file).Length;
-            if (!SoundRef.IsSafeCustomFileName(name) || length > SoundCatalog.MaxCustomFileBytes) continue;
-            if (total + length > MaxExportedSoundBytes)
+            foreach (var file in Directory.GetFiles(folder).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
             {
-                LogService.Log($"Settings export: left out the sound {name}, as the sounds already fill the file.");
-                continue;
+                var name = Path.GetFileName(file);
+                var length = new FileInfo(file).Length;
+                if (!SoundRef.IsSafeCustomFileName(name) || length > SoundCatalog.MaxCustomFileBytes) continue;
+                if (total + length > MaxExportedSoundBytes)
+                {
+                    LogService.Log($"Settings export: left out the sound {name}, as the sounds already fill the file.");
+                    continue;
+                }
+                total += length;
+                AddBytes(zip, prefix + name, File.ReadAllBytes(file));
             }
-            total += length;
-            AddBytes(zip, SoundsPrefix + name, File.ReadAllBytes(file));
         }
     }
 

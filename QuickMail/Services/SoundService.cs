@@ -67,7 +67,7 @@ public sealed class SoundService : ISoundService
             var info = SoundCatalog.Info(soundEvent);
             var origin = background && info.Origin == SoundOrigin.Direct ? SoundOrigin.Background : info.Origin;
             var scheme = SoundCatalog.ActiveScheme(config);
-            Enqueue(SoundCatalog.Resolve(soundEvent, scheme), info.BuiltInSound, origin, config, scheme);
+            Enqueue(SoundCatalog.Resolve(soundEvent, scheme), info.BuiltInSound, origin, config, scheme, scheme.Id);
         }
         catch (Exception ex)
         {
@@ -81,7 +81,7 @@ public sealed class SoundService : ISoundService
         {
             var config = _config.Load();
             var scheme = SoundCatalog.ActiveScheme(config);
-            var sound = RuleSound(storedSound, scheme);
+            var (sound, folder) = RuleSoundAndFolder(storedSound, scheme);
             // A scheme can set its rule sound to None. Then nothing plays, so the new-mail sound and the
             // toast's own sound aren't held back for this mail either.
             if (sound.Kind == SoundRefKind.None) return;
@@ -93,7 +93,7 @@ public sealed class SoundService : ISoundService
                 _ruleSoundedKeys[key] = 0;
             }
 
-            Enqueue(sound, SoundCatalog.DefaultRuleSound, SoundOrigin.Rule, config, scheme);
+            Enqueue(sound, SoundCatalog.DefaultRuleSound, SoundOrigin.Rule, config, scheme, folder);
         }
         catch (Exception ex)
         {
@@ -106,19 +106,25 @@ public sealed class SoundService : ISoundService
     /// its own, or, for the default (stored as an unqualified <c>builtin:matched</c>) or a value that
     /// can't be read, the scheme's "A rule matched" sound (#932).
     /// </summary>
-    internal static SoundRef RuleSound(string? storedSound, SoundScheme scheme)
+    internal static SoundRef RuleSound(string? storedSound, SoundScheme scheme) => RuleSoundAndFolder(storedSound, scheme).Sound;
+
+    /// <summary>
+    /// <see cref="RuleSound"/>, and the scheme whose folder a custom file is in (#948): null for the
+    /// rule's own sound, which is in the rules' folder; the scheme's id for its "A rule matched".
+    /// </summary>
+    internal static (SoundRef Sound, string? SchemeId) RuleSoundAndFolder(string? storedSound, SoundScheme scheme)
     {
         if (SoundRef.TryParse(storedSound, out var parsed) && parsed.Kind != SoundRefKind.None && !SoundCatalog.IsDefaultRuleSound(parsed))
-            return parsed;
-        return SoundCatalog.Resolve(SoundEvent.RuleMatched, scheme);
+            return (parsed, null);
+        return (SoundCatalog.Resolve(SoundEvent.RuleMatched, scheme), scheme.Id);
     }
 
     public void PreviewRule(string? storedSound)
     {
         try
         {
-            var sound = RuleSound(storedSound, SoundCatalog.ActiveScheme(_config.Load()));
-            Preview(sound.ToStored());   // None just stops what is playing: the rule would play nothing
+            var (sound, folder) = RuleSoundAndFolder(storedSound, SoundCatalog.ActiveScheme(_config.Load()));
+            Preview(sound.ToStored(), schemeId: folder);   // None just stops what is playing: the rule would play nothing
         }
         catch (Exception ex)
         {
@@ -128,7 +134,7 @@ public sealed class SoundService : ISoundService
 
     public bool WasSoundedByRule(string messageKey) => _ruleSoundedKeys.ContainsKey(messageKey);
 
-    public void Preview(string storedSound, int? volumePercent = null, string? pack = null)
+    public void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null)
     {
         try
         {
@@ -136,7 +142,7 @@ public sealed class SoundService : ISoundService
             StopAll();   // Previewing "None" is how someone stops the last preview.
             if (!SoundRef.TryParse(storedSound, out var sound) || sound.Kind == SoundRefKind.None) return;
             var schemePack = pack ?? SoundCatalog.PackFor(SoundRef.None, SoundCatalog.ActiveScheme(_config.Load()));
-            var clip = ToClip(sound, SoundCatalog.DefaultRuleSound, schemePack);
+            var clip = ToClip(sound, SoundCatalog.DefaultRuleSound, schemePack, schemeId);
             if (clip is not null) TryAdd(new Request(clip, IsPreview: true, VolumePercent: volumePercent));
         }
         catch (Exception ex)
@@ -191,12 +197,22 @@ public sealed class SoundService : ISoundService
         }
     }
 
-    public IReadOnlyList<string> CustomSoundFiles()
+    /// <summary>
+    /// The folder a scheme's files are in (#948), or for a null id, the rules' folder, which is the
+    /// sounds folder itself. Null for a scheme id that can't be a folder name, which has no files.
+    /// </summary>
+    private string? FolderFor(string? schemeId) =>
+        schemeId is null ? _soundsFolder
+        : SoundCatalog.SchemeFolderName(schemeId) is { } name ? Path.Combine(_soundsFolder, name)
+        : null;
+
+    public IReadOnlyList<string> CustomSoundFiles(string? schemeId)
     {
         try
         {
-            if (!Directory.Exists(_soundsFolder)) return [];
-            return [.. Directory.GetFiles(_soundsFolder)
+            if (FolderFor(schemeId) is not { } folder || !Directory.Exists(folder)) return [];
+            // Files only, so the rules' folder doesn't list the schemes' folders inside it.
+            return [.. Directory.GetFiles(folder)
                 .Select(f => Path.GetFileName(f)!)
                 .Where(SoundRef.IsSafeCustomFileName)
                 .Order(StringComparer.CurrentCultureIgnoreCase)];
@@ -208,20 +224,65 @@ public sealed class SoundService : ISoundService
         }
     }
 
-    public string? CustomSoundPath(string fileName)
+    public string? CustomSoundPath(string? schemeId, string fileName)
     {
-        if (!SoundRef.IsSafeCustomFileName(fileName)) return null;
-        var path = Path.Combine(_soundsFolder, fileName);
+        if (!SoundRef.IsSafeCustomFileName(fileName) || FolderFor(schemeId) is not { } folder) return null;
+        var path = Path.Combine(folder, fileName);
         return File.Exists(path) ? path : null;
     }
 
-    public bool TryRemoveCustomSound(string fileName, out string refusal)
+    public bool TryCopySchemeSounds(string fromSchemeId, string toSchemeId)
     {
-        refusal = string.Empty;
-        if (!SoundRef.IsSafeCustomFileName(fileName)) return true;   // can't be in the folder, so nothing to remove
+        if (FolderFor(fromSchemeId) is not { } from || FolderFor(toSchemeId) is not { } to
+            || string.Equals(from, to, StringComparison.OrdinalIgnoreCase)) return false;
         try
         {
-            File.Delete(Path.Combine(_soundsFolder, fileName));   // no error if it's already gone
+            if (!Directory.Exists(from)) return true;   // nothing of its own to copy
+            Directory.CreateDirectory(to);
+            foreach (var file in Directory.GetFiles(from))
+            {
+                var name = Path.GetFileName(file);
+                if (!SoundRef.IsSafeCustomFileName(name)) continue;
+                var target = Path.Combine(to, name);
+                if (!File.Exists(target) && !Directory.Exists(target)) File.Copy(file, target);
+            }
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Copying a sound scheme's files failed", ex);
+            return false;
+        }
+    }
+
+    public bool TryDeleteSchemeSounds(string schemeId)
+    {
+        // Never the rules' folder, which a null id would name: only a scheme's own folder inside it.
+        if (schemeId is null || FolderFor(schemeId) is not { } folder) return true;
+        try
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Deleting a sound scheme's files failed", ex);
+            return false;
+        }
+    }
+
+    public bool TryRemoveCustomSound(string? schemeId, string fileName, out string refusal)
+    {
+        refusal = string.Empty;
+        // A name that can't be in a folder, or a scheme with no folder: nothing to remove.
+        if (!SoundRef.IsSafeCustomFileName(fileName) || FolderFor(schemeId) is not { } folder) return true;
+        try
+        {
+            File.Delete(Path.Combine(folder, fileName));   // no error if it, or its folder, is already gone
+            return true;
+        }
+        catch (DirectoryNotFoundException)
+        {
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -232,10 +293,15 @@ public sealed class SoundService : ISoundService
         }
     }
 
-    public bool TryAddCustomSound(string sourcePath, out string fileName, out string refusal)
+    public bool TryAddCustomSound(string? schemeId, string sourcePath, out string fileName, out string refusal)
     {
         fileName = string.Empty;
         refusal = string.Empty;
+        if (FolderFor(schemeId) is not { } folder)
+        {
+            refusal = "QuickMail can't keep sound files for this sound scheme.";
+            return false;
+        }
         var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
         if (extension is not (".wav" or ".mp3"))
         {
@@ -269,9 +335,9 @@ public sealed class SoundService : ISoundService
                 return false;
             }
 
-            Directory.CreateDirectory(_soundsFolder);
-            fileName = NameInFolder(sourcePath, extension);
-            var target = Path.Combine(_soundsFolder, fileName);
+            Directory.CreateDirectory(folder);
+            fileName = NameInFolder(folder, sourcePath, extension);
+            var target = Path.Combine(folder, fileName);
             if (!File.Exists(target)) File.Copy(sourcePath, target);
             return true;
         }
@@ -288,7 +354,7 @@ public sealed class SoundService : ISoundService
     /// The name to file a chosen sound under: its own, or that name numbered when a different sound
     /// already has it. Choosing the same file again finds the copy already there.
     /// </summary>
-    private string NameInFolder(string sourcePath, string extension)
+    private static string NameInFolder(string folder, string sourcePath, string extension)
     {
         var original = Path.GetFileName(sourcePath);
         // A name that isn't safe here, such as COM1.wav, gets a plain one rather than refusing a good sound.
@@ -296,7 +362,7 @@ public sealed class SoundService : ISoundService
         var candidate = stem + extension;
         for (var n = 2; ; n++)
         {
-            var target = Path.Combine(_soundsFolder, candidate);
+            var target = Path.Combine(folder, candidate);
             // A folder of that name takes the name too: a file is never written over anything (SCHEMES.md).
             if (!Directory.Exists(target) && (!File.Exists(target) || SameBytes(target, sourcePath))) return candidate;
             // Shortened if need be: past the length limit, the name would be refused when next read.
@@ -308,13 +374,14 @@ public sealed class SoundService : ISoundService
     private static bool SameBytes(string a, string b) =>
         new FileInfo(a).Length == new FileInfo(b).Length && File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
 
-    private void Enqueue(SoundRef sound, string fallback, SoundOrigin origin, ConfigModel config, SoundScheme scheme)
+    /// <param name="folderSchemeId">The scheme whose folder a custom file is in; null for a rule's own (#948).</param>
+    private void Enqueue(SoundRef sound, string fallback, SoundOrigin origin, ConfigModel config, SoundScheme scheme, string? folderSchemeId)
     {
         if (Volatile.Read(ref _disposed) != 0) return;
         if (sound.Kind == SoundRefKind.None || config.SoundVolume <= 0) return;
         if (!_policy.ShouldPlay(sound.ToStored(), origin, config.MuteSounds, _isQuiet(), _queue.Count)) return;
         var schemePack = SoundCatalog.PackFor(SoundRef.None, scheme);
-        var clip = ToClip(sound, fallback, schemePack);
+        var clip = ToClip(sound, fallback, schemePack, folderSchemeId);
         if (clip is null) return;
         var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(fallback), schemePack);
         TryAdd(new Request(clip, IsPreview: false, Fallback: backup));
@@ -335,13 +402,18 @@ public sealed class SoundService : ISoundService
 
     /// <summary>The clip for a sound. A custom file that has gone falls back to the built-in sound.</summary>
     /// <param name="schemePack">The pack a built-in sound with none of its own plays in.</param>
-    private SoundClip? ToClip(SoundRef sound, string fallback, string schemePack)
+    /// <param name="folderSchemeId">The scheme whose folder a custom file is in; null for a rule's own (#948).
+    /// There is no looking anywhere else: a scheme plays only its own files.</param>
+    private SoundClip? ToClip(SoundRef sound, string fallback, string schemePack, string? folderSchemeId)
     {
         if (sound.Kind == SoundRefKind.Custom)
         {
-            var path = Path.GetFullPath(Path.Combine(_soundsFolder, sound.Name));
-            var inFolder = string.Equals(Path.GetDirectoryName(path), Path.GetFullPath(_soundsFolder).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
-            if (inFolder && File.Exists(path)) return new SoundClip(sound.ToStored(), path, null);
+            if (FolderFor(folderSchemeId) is { } folder)
+            {
+                var path = Path.GetFullPath(Path.Combine(folder, sound.Name));
+                var inFolder = string.Equals(Path.GetDirectoryName(path), Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
+                if (inFolder && File.Exists(path)) return new SoundClip(sound.ToStored(), path, null);
+            }
             LogOnce($"missing:{sound.Name}", $"Custom sound '{sound.Name}' is missing; using the built-in sound.");
             sound = SoundRef.BuiltIn(fallback);
         }
