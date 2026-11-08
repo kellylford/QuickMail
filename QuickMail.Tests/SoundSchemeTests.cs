@@ -519,7 +519,7 @@ public class SoundSchemeTests
 
         Assert.True(vm.DeleteSelectedScheme());
 
-        Assert.Equal("Delete the sound scheme Calm?", asked);
+        Assert.Equal("Delete the sound scheme Calm and its sound files?", asked);
         Assert.Equal("glass", vm.SelectedSoundScheme!.Id);
         Assert.Equal("Message sent: Sent", Row(vm, SoundEvent.MessageSent).AccessibleName);
         vm.SaveCommand.Execute(null);
