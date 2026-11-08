@@ -2083,7 +2083,8 @@ public class UnifiedRulesViewModelTests
 
         await vm.RunOnExistingCommand.ExecuteAsync(null);
 
-        const string expected = "Ran the C1 rule on 12 stored Inbox messages for the Work account. It didn't move or delete any of them.";
+        // "C1" has a digit in it, so it is quoted (QuoteIfAmbiguous).
+        const string expected = "Ran the “C1” rule on 12 stored Inbox messages for the Work account. It didn't move or delete any of them.";
         Assert.Equal(expected, vm.StatusText);
         Assert.Equal((expected, AnnouncementCategory.Result), announced[^1]);
     }

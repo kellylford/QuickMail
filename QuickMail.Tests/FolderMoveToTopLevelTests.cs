@@ -44,7 +44,12 @@ public class FolderMoveToTopLevelTests
             new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
             new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
             new StubRuleService(), new StubSmtpService());
-        vm.Accounts.Add(new AccountModel { Id = AccountId, AccountName = "Work", Username = "work@example.com" });
+        // OAuth, as AllArchiveVirtualFolderTests does: an IMAP password account needs a stored
+        // password to connect, and the stub credential store has none.
+        vm.Accounts.Add(new AccountModel
+        {
+            Id = AccountId, AccountName = "Work", Username = "work@example.com", AuthType = AuthType.OAuth2Microsoft,
+        });
         await vm.ConnectAllAccountsAsync();
         Assert.True(vm.CachedFolders.ContainsKey(AccountId), "the account's folders were not loaded.");
         return (vm, mail);
