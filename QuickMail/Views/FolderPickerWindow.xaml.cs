@@ -252,6 +252,20 @@ public partial class FolderPickerWindow : Window
         return null;
     }
 
+    /// <summary>
+    /// Whether each account appears as a header node above its folders. Always with several
+    /// accounts, so the user can tell them apart. With one account, only when the picker offers New
+    /// Folder (issue #950): the header is the only way to say "create this at the top level", beside
+    /// Inbox and Sent, as selecting the account does in the main folder tree. Without it a
+    /// single-account picker could only create a folder inside whichever folder was selected, since
+    /// <see cref="SelectOpeningNode"/> always selects a real folder and so the "nothing selected"
+    /// fallback in <see cref="TryResolveTreeCreateTarget"/> is never reached. Open stays disabled on
+    /// the header, and the picker never opens on it, so the extra level costs a picker that cannot
+    /// create folders nothing: those keep the flat single-account tree they had.
+    /// </summary>
+    private bool ShowsAccountHeaders =>
+        _treeAccounts is { Count: > 1 } || _folderCreator != null;
+
     private void RebuildTreeView()
     {
         if (_treeAccounts == null || _treeFolders == null) return;
@@ -268,7 +282,7 @@ public partial class FolderPickerWindow : Window
             if (!_treeFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0)
                 continue;
 
-            var nodes = FolderTreeBuilder.Build(folders, _treeAccounts.Count > 1 ? account : null);
+            var nodes = FolderTreeBuilder.Build(folders, ShowsAccountHeaders ? account : null);
             ExpandAll(nodes);
             roots.AddRange(nodes);
         }
@@ -278,7 +292,10 @@ public partial class FolderPickerWindow : Window
             // Where the excluded folder sat, captured before it is removed: for a move or copy that
             // is the folder the user came from, and the closest thing to it that survives into the
             // destination tree. Null for a top-level folder — its parent is the account root, which
-            // this picker does not offer — and SelectOpeningNode falls back from there.
+            // the folder move/copy picker does not offer (it has no account header and no creator;
+            // moving a folder to the top level is a separate gap) — and SelectOpeningNode falls back
+            // from there. Where a header is present it is unopenable, and SelectOpeningNode steps
+            // past it to a real folder beneath it.
             _openingNode = FindParentOfFolder(roots, _excludeFolder);
 
             RemoveFolderSubtree(roots, _excludeFolder);
@@ -804,7 +821,23 @@ public partial class FolderPickerWindow : Window
     // is the currently selected folder, or the account root when a header / nothing is selected.
     // After creation the tree is rebuilt from the refreshed folder list and the new folder selected
     // so the user can immediately Open it as the move/copy destination.
-    private async void NewFolderButton_Click(object sender, RoutedEventArgs e)
+    private async void NewFolderButton_Click(object sender, RoutedEventArgs e) =>
+        await CreateFolderAtSelectionAsync(PromptForFolderName);
+
+    /// <summary>Asks for the new folder's name; null when the user cancels.</summary>
+    private string? PromptForFolderName(string parentLabel)
+    {
+        var dlg = new NewFolderDialog { Owner = this, ParentFolderName = parentLabel };
+        return dlg.ShowDialog() == true ? dlg.FolderName : null;
+    }
+
+    /// <summary>
+    /// The body of New Folder, with the name prompt passed in so tests can drive the whole path —
+    /// where the folder goes, what the creator is handed, and what is selected afterwards — without
+    /// a modal <see cref="NewFolderDialog"/> they cannot answer. <paramref name="promptForName"/> is
+    /// given the label of the parent the folder will be created in.
+    /// </summary>
+    internal async Task CreateFolderAtSelectionAsync(Func<string, string?> promptForName)
     {
         if (_folderCreator == null || !_useTreeView || _treeFolders == null) return;
         if (!TryResolveTreeCreateTarget(out var accountId, out var parentFullName, out var parentLabel))
@@ -819,10 +852,8 @@ public partial class FolderPickerWindow : Window
             return;
         }
 
-        var dlg = new NewFolderDialog { Owner = this, ParentFolderName = parentLabel };
-        if (dlg.ShowDialog() != true) return;
+        if (promptForName(parentLabel) is not { } name) return;
 
-        var name = dlg.FolderName;
         IReadOnlyList<MailFolderModel>? updated;
         string? reason = null;
         try
@@ -891,9 +922,10 @@ public partial class FolderPickerWindow : Window
             }
         }
 
-        // Nothing (usable) selected → fall back to the sole account's root. The move/copy-message
-        // picker is scoped to the accounts owning the messages, so this is unambiguous when there
-        // is only one. With several accounts and no folder selected we can't guess a destination.
+        // Nothing (usable) selected → fall back to the sole account's root. Unambiguous with one
+        // account; with several and no folder selected we can't guess a destination. Rarely reached
+        // now: a picker that offers New Folder shows the account header (ShowsAccountHeaders, #950)
+        // and opens on a real folder, so this covers only a path segment or a lost selection.
         if (_treeFolders != null && _treeFolders.Count == 1 && _treeAccounts != null)
         {
             var acct = _treeAccounts.FirstOrDefault(a => _treeFolders.ContainsKey(a.Id));
@@ -913,7 +945,7 @@ public partial class FolderPickerWindow : Window
         if (FolderTreeView.ItemsSource is not IEnumerable<FolderTreeNode> roots) return;
 
         // Siblings of the new folder: the parent's children, the account header's children, or the
-        // top level (single-account tree).
+        // top level (a tree with no account headers).
         IEnumerable<FolderTreeNode> siblings;
         if (parentFullName != null)
         {
@@ -922,8 +954,10 @@ public partial class FolderPickerWindow : Window
         }
         else
         {
-            var header = roots.FirstOrDefault(n => n.IsHeader &&
-                n.Children.Any(c => c.Folder?.AccountId == accountId));
+            // Matched on the id the tree builder stamps on the header (#31), as in
+            // TryResolveTreeCreateTarget, not on its children: an IMAP account whose top level is
+            // all path segments has no child carrying a folder to match.
+            var header = roots.FirstOrDefault(n => n is { IsHeader: true, AccountId: Guid id } && id == accountId);
             siblings = header?.Children ?? roots;
         }
 

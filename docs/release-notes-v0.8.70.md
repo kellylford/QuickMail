@@ -11,6 +11,10 @@
 - **One large sound no longer stops an import.** A sound file in a scheme that is too large is left out, and QuickMail says how many events have no sound, instead of refusing the whole scheme. (#937)
 - **Sound file names with hidden formatting characters are no longer used.** A name containing an invisible character that changes how text is shown, such as a right-to-left mark, could make one file look like another, so QuickMail no longer accepts it. If one of your own sounds has a name like that, QuickMail stops playing it; rename the file and choose it again. Emoji in names are fine. (#937)
 
+## Fixed
+
+- **New Folder in the folder picker can now create a folder at the top level of a single account.** When the picker showed only one account, such as when choosing a rule's move to folder or moving messages that all come from one account, a new folder was always made inside the selected folder. The picker now shows the account as the top of the tree, as the main folder tree does. Select the account and choose **New Folder** (or press **Alt+N**) to create the folder beside Inbox and Sent. The picker still opens on the folder you came from. (#950)
+
 ---
 
 ## Reporting Issues
