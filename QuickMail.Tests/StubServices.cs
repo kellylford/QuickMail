@@ -694,9 +694,9 @@ sealed class StubRuleService : IRuleService
     public List<MailMessageSummary> TestRule(MailRule rule, IEnumerable<MailMessageSummary> messages)
         => messages.ToList(); // Stub matches everything
 
-    public Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
+    public Task<ExistingMailRunReport> ApplyRulesToExistingAsync(
         ILocalStoreService store, IReadOnlyDictionary<Guid, string> inboxFolderByAccount, CancellationToken ct)
-        => Task.FromResult(new List<MailMessageSummary>());
+        => Task.FromResult(ExistingMailRunReport.Empty);
 }
 
 /// <summary>
