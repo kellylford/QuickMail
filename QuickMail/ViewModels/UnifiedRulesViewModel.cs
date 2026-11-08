@@ -344,11 +344,35 @@ public partial class UnifiedRulesViewModel : ObservableObject
         {
             var trimmed = name?.Trim();
             if (string.IsNullOrEmpty(trimmed)) return "1 rule";
-            return trimmed.EndsWith(" rule", StringComparison.OrdinalIgnoreCase) ? $"the {trimmed}" : $"the {trimmed} rule";
+            return trimmed.EndsWith(" rule", StringComparison.OrdinalIgnoreCase)
+                ? $"the {QuoteIfAmbiguous(trimmed)}"
+                : $"the {QuoteIfAmbiguous(trimmed)} rule";
         }
 
-        static string Name(string? name) => string.IsNullOrWhiteSpace(name) ? "an unnamed rule" : name.Trim();
+        static string Name(string? name) => string.IsNullOrWhiteSpace(name) ? "an unnamed rule" : QuoteIfAmbiguous(name.Trim());
     }
+
+    /// <summary>
+    /// A rule name as Run on Existing's report writes it: as is, unless it could be read as part of the
+    /// report around it, and then in quotation marks. The report joins rules with semicolons and follows each
+    /// name with a verb and a count ("techtalk moved 1,886; Newsletters moved 50"), so a name holding one of
+    /// those — punctuation that separates clauses, a digit, or the report's own verbs — blurs into it:
+    /// "Top 10 moved 5", "Lists; work moved 3". Most rule names are plain words, and quoting every one would
+    /// put a pair of marks round each, spoken aloud at some punctuation settings, to fix a problem only these
+    /// names have. Curly marks, so a name with a straight quote of its own still reads as one name.
+    /// </summary>
+    internal static string QuoteIfAmbiguous(string name)
+    {
+        var ambiguous = name.IndexOfAny(['.', ',', ';', ':']) >= 0
+                        || name.Any(char.IsDigit)
+                        || ReportWords.IsMatch(name);
+        return ambiguous ? $"“{name}”" : name;
+    }
+
+    // The verbs the report puts after a name, as whole words.
+    private static readonly System.Text.RegularExpressions.Regex ReportWords = new(
+        @"\b(moved|deleted|failed)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>A count grouped for the reader's culture: 1,942 rather than 1942 (#949).</summary>
     private static string N(int value) => value.ToString("N0", CultureInfo.CurrentCulture);

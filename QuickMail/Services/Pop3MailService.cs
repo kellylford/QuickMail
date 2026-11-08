@@ -647,6 +647,9 @@ public class Pop3MailService : IMailService
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
         => UnderFolderLockAsync(() => RenameFolderCoreAsync(accountId, folderName, newName, newParentFolderName), ct);
 
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+        => UnderFolderLockAsync(() => MoveFolderCoreAsync(accountId, folderName, newParentFolderName), ct);
+
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
         => UnderFolderLockAsync(() => DeleteFolderCoreAsync(accountId, folderName), ct);
 
@@ -690,6 +693,29 @@ public class Pop3MailService : IMailService
                 $"'{folder.DisplayName}' cannot be moved into itself or into a folder inside it.");
 
         var clean = ValidateName(newName, parent, locals, renaming: folder.Id);
+        await _store.SavePop3LocalFolderAsync(accountId, folder with { DisplayName = clean, ParentId = parent });
+    }
+
+    /// <summary>
+    /// Moves a local folder, keeping its name, under <paramref name="newParentFolderName"/> — null or
+    /// empty for the top level, beside the built-in four (#954). Unlike
+    /// <see cref="RenameFolderCoreAsync"/>, a null parent here is a destination, not "stay put". The
+    /// name is checked against its new siblings, so a folder cannot land beside one of the same name,
+    /// built-in or not.
+    /// </summary>
+    private async Task MoveFolderCoreAsync(Guid accountId, string folderName, string? newParentFolderName)
+    {
+        ThrowIfOnlineMode();
+        ThrowIfBuiltIn(folderName, "moved");
+        var locals = await _store.LoadPop3LocalFoldersAsync(accountId);
+        var folder = FindLocal(folderName, locals);
+
+        var parent = ResolveParent(newParentFolderName, locals);
+        if (parent != null && SubtreeIds(folder.Id, locals).Contains(parent))
+            throw new InvalidOperationException(
+                $"'{folder.DisplayName}' cannot be moved into itself or into a folder inside it.");
+
+        var clean = ValidateName(folder.DisplayName, parent, locals, renaming: folder.Id);
         await _store.SavePop3LocalFolderAsync(accountId, folder with { DisplayName = clean, ParentId = parent });
     }
 

@@ -9829,7 +9829,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RebuildFolderListFromCache();
     }
 
-    /// <summary>Moves a folder to a new parent (IMAP RENAME) and refreshes the tree.</summary>
     /// <summary>
     /// Whether <paramref name="folder"/> already sits directly under <paramref name="destination"/>.
     ///
@@ -9859,12 +9858,52 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return full.IndexOfAny(['/', '.'], dest.Length + 1) < 0;
     }
 
-    public async Task MoveFolderToAsync(FolderTreeNode node, MailFolderModel destination)
+    /// <summary>
+    /// Whether <paramref name="folder"/> is at the top level of its account — directly under the
+    /// account in the folder tree, beside Inbox. Decided by building the tree the user sees from
+    /// <paramref name="accountFolders"/>, so it agrees with it whichever way the account nests its
+    /// folders: by path for IMAP, by parent id (with a top-level parent that is not in the list) for
+    /// Microsoft 365 and POP3.
+    /// </summary>
+    internal static bool IsAtTopLevel(MailFolderModel folder, IEnumerable<MailFolderModel> accountFolders) =>
+        FolderTreeBuilder.Build(accountFolders).Any(n =>
+            n.Folder is { } f &&
+            f.AccountId == folder.AccountId &&
+            string.Equals(f.FullName, folder.FullName, StringComparison.Ordinal));
+
+    /// <summary>
+    /// What to say instead of moving or copying when <paramref name="node"/>'s folder is already
+    /// where it would go; null when it is not. A null <paramref name="destination"/> is the top level
+    /// of the folder's account (#954). Moving there again is not harmless — IMAP refuses a rename to
+    /// the same name, and a Microsoft 365 copy beside the original makes a duplicate — so it is
+    /// reported as a no-op, the same as picking the folder's own parent.
+    /// </summary>
+    private string? AlreadyThereMessage(FolderTreeNode node, MailFolderModel folder, MailFolderModel? destination)
+    {
+        if (destination != null)
+            return IsAlreadyUnder(folder, destination)
+                ? $"'{node.Label}' is already in {destination.DisplayName}."
+                : null;
+
+        if (!_cachedFolders.TryGetValue(folder.AccountId, out var accountFolders) ||
+            !IsAtTopLevel(folder, accountFolders))
+            return null;
+
+        return Accounts.FirstOrDefault(a => a.Id == folder.AccountId) is { } account
+            ? $"'{node.Label}' is already at the top level of {account.AccountLabel}."
+            : $"'{node.Label}' is already at the top level.";
+    }
+
+    /// <summary>
+    /// Moves a folder under <paramref name="destination"/>, or to the top level of its account when
+    /// <paramref name="destination"/> is null (#954), and refreshes the tree.
+    /// </summary>
+    public async Task MoveFolderToAsync(FolderTreeNode node, MailFolderModel? destination)
     {
         if (node.Folder == null) return;
-        if (IsAlreadyUnder(node.Folder, destination))
+        if (AlreadyThereMessage(node, node.Folder, destination) is { } already)
         {
-            StatusText = $"'{node.Label}' is already in {destination.DisplayName}.";
+            StatusText = already;
             Announce(StatusText);
             return;
         }
@@ -9873,14 +9912,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await _imap.RenameFolderAsync(
+            await _imap.MoveFolderAsync(
                 node.Folder.AccountId,
                 node.Folder.FullName,
-                node.Folder.DisplayName,
-                destination.FullName,
+                destination?.FullName,
                 cts.Token);
             await RefreshFolderListAsync(node.Folder.AccountId);
-            StatusText = $"Folder '{node.Label}' moved.";
+            StatusText = destination == null
+                ? $"Folder '{node.Label}' moved to the top level."
+                : $"Folder '{node.Label}' moved.";
         }
         catch (Exception ex)
         {
@@ -9890,13 +9930,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         finally { IsBusy = false; }
     }
 
-    /// <summary>Copies a folder (and all its messages) to a new parent and refreshes the tree.</summary>
-    public async Task CopyFolderToAsync(FolderTreeNode node, MailFolderModel destination)
+    /// <summary>
+    /// Copies a folder (and all its messages) under <paramref name="destination"/>, or to the top
+    /// level of its account when <paramref name="destination"/> is null (#954), and refreshes the tree.
+    /// </summary>
+    public async Task CopyFolderToAsync(FolderTreeNode node, MailFolderModel? destination)
     {
         if (node.Folder == null) return;
-        if (IsAlreadyUnder(node.Folder, destination))
+        if (AlreadyThereMessage(node, node.Folder, destination) is { } already)
         {
-            StatusText = $"'{node.Label}' is already in {destination.DisplayName}.";
+            StatusText = already;
             Announce(StatusText);
             return;
         }
@@ -9908,10 +9951,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             await _imap.CopyFolderAsync(
                 node.Folder.AccountId,
                 node.Folder.FullName,
-                destination.FullName,
+                destination?.FullName,
                 cts.Token);
             await RefreshFolderListAsync(node.Folder.AccountId);
-            StatusText = $"Folder '{node.Label}' copied.";
+            StatusText = destination == null
+                ? $"Folder '{node.Label}' copied to the top level."
+                : $"Folder '{node.Label}' copied.";
         }
         catch (Exception ex)
         {

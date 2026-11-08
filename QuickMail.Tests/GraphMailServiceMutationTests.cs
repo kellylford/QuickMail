@@ -248,6 +248,41 @@ public class GraphMailServiceMutationTests : IDisposable
     }
 
     [Fact]
+    public async Task MoveFolderAsync_PostsMoveToTheNewParent_WithoutRenaming()
+    {
+        var (svc, h, acct) = await ConnectedAsync();
+
+        await svc.MoveFolderAsync(acct.Id, "f1", "parent2");
+
+        var move = Assert.Single(h.Calls, c => c.Method == "POST" && c.Url.Contains("/me/mailFolders/f1/move"));
+        Assert.Contains("parent2", move.Body);
+        Assert.DoesNotContain(h.Calls, c => c.Method == "PATCH");
+    }
+
+    /// <summary>The top level of the mailbox (#954) is the hidden msgfolderroot that Inbox sits in.</summary>
+    [Fact]
+    public async Task MoveFolderAsync_WithNoParent_MovesToTheMailboxRoot()
+    {
+        var (svc, h, acct) = await ConnectedAsync();
+
+        await svc.MoveFolderAsync(acct.Id, "f1", newParentFolderName: null);
+
+        var move = Assert.Single(h.Calls, c => c.Method == "POST" && c.Url.Contains("/me/mailFolders/f1/move"));
+        Assert.Contains("msgfolderroot", move.Body);
+    }
+
+    [Fact]
+    public async Task CopyFolderAsync_WithNoParent_CopiesToTheMailboxRoot()
+    {
+        var (svc, h, acct) = await ConnectedAsync();
+
+        await svc.CopyFolderAsync(acct.Id, "f1", destinationParentName: null);
+
+        var copy = Assert.Single(h.Calls, c => c.Method == "POST" && c.Url.Contains("/me/mailFolders/f1/copy"));
+        Assert.Contains("msgfolderroot", copy.Body);
+    }
+
+    [Fact]
     public async Task CopyFolderAsync_PostsCopyToDestination()
     {
         var (svc, h, acct) = await ConnectedAsync();

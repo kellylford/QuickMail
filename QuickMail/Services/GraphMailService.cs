@@ -538,6 +538,15 @@ public class GraphMailService : IMailService, IConnectionProbe
             await _client.PostAsync(account, $"/me/mailFolders/{folderName}/move", new { destinationId = newParentFolderName }, ct);
     }
 
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+    {
+        // The name is unchanged, so no PATCH: only the move. The top level of a mailbox is the
+        // hidden msgfolderroot that Inbox and Sent Items sit in, a well-known id Graph accepts as a
+        // destination (#954).
+        var destination = string.IsNullOrEmpty(newParentFolderName) ? RootFolderId : newParentFolderName;
+        return _client.PostAsync(Account(accountId), $"/me/mailFolders/{folderName}/move", new { destinationId = destination }, ct);
+    }
+
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
     {
         // Graph copies the folder and all of its messages (and sub-folders) server-side in one call.

@@ -24,6 +24,10 @@ namespace QuickMail.Tests;
 /// These tests pin that, that the picker still opens on the folder it was asked to, that New Folder
 /// on the root hands the creator a null parent and selects the result, and that pickers which
 /// cannot create folders keep the flat single-account tree they had.</para>
+///
+/// <para>The exception is the folder move/copy picker (issue #954), which shows the root because it
+/// is a destination there — the top level of the account — and enables Open on it. Every other
+/// picker keeps Open off the root.</para>
 /// </summary>
 [Collection("WpfTests")]
 public class FolderPickerAccountRootTests
@@ -440,17 +444,188 @@ public class FolderPickerAccountRootTests
         finally { window.Close(); }
     }
 
-    [StaFact]
-    public void FolderMoveCopyPickerHasNoAccountRoot()
+    // ── The folder move/copy picker: the root is a destination (#954) ─────────────
+
+    private static FolderPickerWindow MoveFolderPicker(
+        MailFolderModel source, Dictionary<Guid, List<MailFolderModel>>? folders = null)
     {
-        var window = FolderPickerWindow.ForFolderMoveCopy(
-            [Account()], Folders(), Folder("Archive", "Archive"), "Move Folder To");
-        Assert.NotNull(window);
+        var window = FolderPickerWindow.ForFolderMoveCopy([Account()], folders ?? Folders(), source, "Move Folder To");
+        Assert.True(window is not null, "ForFolderMoveCopy offered nowhere to move the folder.");
+        return window!;
+    }
+
+    [StaFact]
+    public void FolderMoveCopyPickerShowsTheAccountAsItsRoot()
+    {
+        var window = MoveFolderPicker(Folder("INBOX/Projects", "Projects"));
         try
         {
-            Assert.DoesNotContain(Flatten(Roots(window!)), n => n.IsHeader);
+            var root = AccountRoot(window);
+            Assert.Contains(root.Children, n => n.Label == "INBOX");
+            Assert.Contains(root.Children, n => n.Label == "Archive");
         }
-        finally { window!.Close(); }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// Open is enabled on the root in this picker, and choosing it reports the top level of the account:
+    /// no folder, the account, and <see cref="FolderPickerWindow.SelectedAccountRoot"/> set.
+    /// </summary>
+    [StaFact]
+    public void ChoosingTheRootInTheFolderMovePickerMeansTheTopLevelOfTheAccount()
+    {
+        var window = Shown(MoveFolderPicker(Folder("INBOX/Projects", "Projects")));
+        try
+        {
+            SelectNode(window, AccountRoot(window));
+            Assert.True(Named<Button>(window, "OpenButton").IsEnabled,
+                        "Open is disabled on the account root, so a folder cannot be moved to the top level.");
+
+            Assert.True(window.TakeTreeSelection());
+            Assert.True(window.SelectedAccountRoot);
+            Assert.Null(window.SelectedFolder);
+            Assert.Equal(AccountId, window.SelectedAccount?.Id);
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// The root keeps the account's name, and says what choosing it means as help text, in the folder move picker
+    /// only. Read from the container, which is what a screen reader asks.
+    /// </summary>
+    [StaFact]
+    public void TheRootSaysItIsTheTopLevelOnlyWhereItIsADestination()
+    {
+        var move    = Shown(MoveFolderPicker(Folder("INBOX/Projects", "Projects")));
+        var message = Shown(MessagePicker(NeverCreates));
+        try
+        {
+            string HelpOfRoot(Window w)
+            {
+                var tree = Named<TreeView>(w, "FolderTreeView");
+                var container = tree.ItemContainerGenerator.ContainerFromIndex(0) as TreeViewItem;
+                Assert.True(container is not null, "the root's container was not generated.");
+                Assert.Equal("Work", System.Windows.Automation.AutomationProperties.GetName(container!));
+                return System.Windows.Automation.AutomationProperties.GetHelpText(container!);
+            }
+
+            Assert.Equal("Top level of the account", HelpOfRoot(move));
+            Assert.Equal(string.Empty, HelpOfRoot(message));
+        }
+        finally
+        {
+            move.Close();
+            message.Close();
+        }
+    }
+
+    /// <summary>Choosing a folder in the same picker is unchanged, and does not report the root.</summary>
+    [StaFact]
+    public void ChoosingAFolderInTheFolderMovePickerIsNotTheRoot()
+    {
+        var window = Shown(MoveFolderPicker(Folder("INBOX/Projects", "Projects")));
+        try
+        {
+            SelectNode(window, Flatten(Roots(window)).First(n => n.Label == "Archive"));
+            Assert.True(window.TakeTreeSelection());
+            Assert.False(window.SelectedAccountRoot);
+            Assert.Equal("Archive", window.SelectedFolder?.FullName);
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>The root is a destination, but the picker still opens on the folder's parent, not the root.</summary>
+    [StaFact]
+    public void FolderMovePickerStillOpensOnTheParentNotTheRoot()
+    {
+        var window = Shown(MoveFolderPicker(Folder("INBOX/Projects", "Projects")));
+        try
+        {
+            AssertOpenedOn(window, "INBOX");
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>A top-level folder's parent is the root; the picker steps past it to a real folder.</summary>
+    [StaFact]
+    public void FolderMovePickerForATopLevelFolderDoesNotOpenOnTheRoot()
+    {
+        var window = Shown(MoveFolderPicker(Folder("Archive", "Archive")));
+        try
+        {
+            AssertOpenedOn(window, "INBOX");
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// The root alone is somewhere to go for a nested folder: an IMAP account whose only real folder is the one
+    /// being moved, under a path segment. The picker is offered, and with nothing else to open on, opens on the
+    /// root rather than on nothing.
+    /// </summary>
+    [StaFact]
+    public void WhenTheRootIsTheOnlyDestinationThePickerOffersItAndOpensOnIt()
+    {
+        var folders = new Dictionary<Guid, List<MailFolderModel>> { [AccountId] = [Folder("Lists/a", "a")] };
+        var window = Shown(MoveFolderPicker(Folder("Lists/a", "a"), folders));
+        try
+        {
+            var root = AccountRoot(window);
+            Assert.Empty(root.Children);   // the emptied path segment is pruned
+            var selected = Assert.IsType<FolderTreeNode>(Named<TreeView>(window, "FolderTreeView").SelectedItem);
+            Assert.Same(root, selected);
+            Assert.True(Named<Button>(window, "OpenButton").IsEnabled);
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// But for a top-level folder the root is where it already is, so an account with nothing else in it still has
+    /// nowhere to move the folder to, and the factory says so rather than offering a pointless root.
+    /// </summary>
+    [StaFact]
+    public void ATopLevelFolderWithNoOtherFolderStillHasNowhereToGo()
+    {
+        var only = Folder("Archive", "Archive");
+        Assert.Null(FolderPickerWindow.ForFolderMoveCopy(
+            [Account()], new Dictionary<Guid, List<MailFolderModel>> { [AccountId] = [only] }, only, "Move Folder To"));
+    }
+
+    /// <summary>
+    /// Every other picker keeps Open off the root: a message cannot live in an account, and a rule cannot file into
+    /// one. Enter there says to choose a folder and chooses nothing.
+    /// </summary>
+    [StaFact]
+    public void OtherPickersStillRefuseTheRoot()
+    {
+        var heard = new List<(string Text, AnnouncementCategory Category)>();
+        AccessibilityHelper.AnnouncementObserver = (text, category) => heard.Add((text, category));
+        var pickers = new[]
+        {
+            Shown(MessagePicker(NeverCreates)),
+            Shown(FolderPickerWindow.ForRuleTarget(
+                [Account()], Folders(), AccountId, currentFolderKey: null, "Choose Target Folder", NeverCreates)),
+        };
+        try
+        {
+            foreach (var window in pickers)
+            {
+                SelectNode(window, AccountRoot(window));
+                Assert.False(Named<Button>(window, "OpenButton").IsEnabled, $"Open is enabled on the root in '{window.Title}'.");
+
+                heard.Clear();
+                Assert.False(window.TakeTreeSelection(), $"'{window.Title}' accepted the account root.");
+                Assert.False(window.SelectedAccountRoot);
+                Assert.Null(window.SelectedFolder);
+                Assert.Contains(heard, h => h.Category == AnnouncementCategory.Result &&
+                                            h.Text.Contains("folder", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
+            foreach (var window in pickers) window.Close();
+        }
     }
 
     [StaFact]
