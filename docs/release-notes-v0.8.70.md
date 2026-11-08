@@ -7,7 +7,7 @@
 ## Changed
 
 - **Sound schemes work the same way in QuickMail and The Chat Place.** A `.qmsounds` file now says it is for QuickMail and keeps the scheme's description. If you import a scheme made for another app, QuickMail says which app it is for. (#937)
-- **Exported schemes hold WAV files only.** An MP3 of your own stays out of an exported scheme, since other apps can't play it, and **Export scheme…** says how many events have no sound in the file because of it. Schemes exported from QuickMail 0.8.69 still import with their MP3s. (#937)
+- **Export scheme now turns MP3 sounds into WAV files inside the exported file**, so the scheme works in any app and in the gallery. Your own MP3s stay as they are, and QuickMail still plays them. A sound that can't be turned into a WAV file of 5 MB and 30 seconds or less is left out, and **Export scheme…** says how many events have no sound in the file. Schemes exported from QuickMail 0.8.69 still import with their MP3s. (#937)
 - **One large sound no longer stops an import.** A sound file in a scheme that is too large is left out, and QuickMail says how many events have no sound, instead of refusing the whole scheme. (#937)
 - **Sound file names with hidden formatting characters are no longer used.** A name containing an invisible character that changes how text is shown, such as a right-to-left mark, could make one file look like another, so QuickMail no longer accepts it. If one of your own sounds has a name like that, QuickMail stops playing it; rename the file and choose it again. Emoji in names are fine. (#937)
 

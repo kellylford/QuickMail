@@ -856,11 +856,11 @@ public sealed class SoundSchemeServiceTests : IDisposable
     }
 
     [Fact]
-    public void AnMp3StaysBehindWhenExportingAndIsCounted()
+    public void ASoundThatWontConvertStaysBehindWhenExportingAndIsCounted()
     {
         var here = Folder("mp3");
-        File.WriteAllBytes(Path.Combine(here, "Song.mp3"), [0x49, 0x44, 0x33, 3, 0]);
-        File.WriteAllBytes(Path.Combine(here, "Wide.wav"), TestWav.Tone(formatTag: 0xFFFE));   // WAVE_FORMAT_EXTENSIBLE
+        File.WriteAllBytes(Path.Combine(here, "Song.mp3"), [0x49, 0x44, 0x33, 3, 0]);   // not really an MP3
+        File.WriteAllBytes(Path.Combine(here, "Wide.wav"), TestWav.Tone(formatTag: 0xFFFE));   // a broken WAVE_FORMAT_EXTENSIBLE header
         var file = Path.Combine(_root, "Mp3.qmsounds");
         using var service = Service(here);
 
@@ -870,6 +870,102 @@ public sealed class SoundSchemeServiceTests : IDisposable
         Assert.Equal(3, leftOut);
         using var zip = ZipFile.OpenRead(file);
         Assert.Equal(["scheme.json"], zip.Entries.Select(e => e.FullName));
+    }
+
+    /// <summary>The format tag, channels, rate and bit depth in a WAV's fmt chunk.</summary>
+    private static (int Tag, int Channels, int Rate, int Bits) WavFormat(byte[] wav) =>
+        (BitConverter.ToUInt16(wav, 20), BitConverter.ToUInt16(wav, 22), BitConverter.ToInt32(wav, 24), BitConverter.ToUInt16(wav, 34));
+
+    /// <summary>Exports one event's sound and returns the scheme file read back, as every app reads it.</summary>
+    private SoundSchemeFileContents ExportOne(string folder, string fileName, byte[] bytes, out int leftOut)
+    {
+        File.WriteAllBytes(Path.Combine(folder, fileName), bytes);
+        var file = Path.Combine(_root, Guid.NewGuid().ToString("N") + ".qmsounds");
+        using var service = Service(folder);
+        leftOut = SoundSchemeFile.Export(file, "Converted", new Dictionary<string, string> { ["NewMail"] = "custom:" + fileName }, service);
+        return SoundSchemeFile.Read(file);
+    }
+
+    [Theory]
+    [InlineData(24, 1, 22050, 1, 22050)]   // 24-bit: same rate and channels, 16-bit
+    [InlineData(16, 4, 22050, 2, 22050)]   // four channels: mixed down to stereo
+    [InlineData(16, 1, 4000, 1, 44100)]    // a rate a scheme file can't hold: resampled to 44.1 kHz
+    public void ANonPcmWavIsConvertedToSixteenBitPcmOnExport(int bits, int channels, int rate, int outChannels, int outRate)
+    {
+        var read = ExportOne(Folder("convert-" + bits + "-" + channels + "-" + rate), "Bell.wav",
+            TestWav.Tone(bits, channels, rate, seconds: 0.2), out var leftOut);
+
+        Assert.Equal(0, leftOut);
+        Assert.Equal("custom:Bell.wav", read.Events["NewMail"]);
+        var wav = read.Sounds["Bell.wav"];
+        Assert.Null(SoundSchemeFile.SchemeWavProblem(wav));
+        Assert.Equal((1, outChannels, outRate, 16), WavFormat(wav));
+    }
+
+    [Fact]
+    public void AnMp3IsConvertedToAWavOnExportWithTheSameName()
+    {
+        var mp3 = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "TestAudio", "tone.mp3"));
+        var probe = Path.Combine(_root, "probe.mp3");
+        File.WriteAllBytes(probe, mp3);
+        try
+        {
+            using var reader = new NAudio.Wave.MediaFoundationReader(probe);
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or DllNotFoundException or TypeInitializationException)
+        {
+            Assert.Skip("This computer has no Media Foundation MP3 decoder, which QuickMail also needs to play MP3s: " + ex.Message);
+        }
+
+        var read = ExportOne(Folder("convert-mp3"), "Tone.mp3", mp3, out var leftOut);
+
+        Assert.Equal(0, leftOut);
+        Assert.Equal("custom:Tone.wav", read.Events["NewMail"]);
+        var wav = Assert.Single(read.Sounds).Value;
+        Assert.Null(SoundSchemeFile.SchemeWavProblem(wav));
+        var (tag, outChannels, outRate, outBits) = WavFormat(wav);
+        Assert.Equal((1, 1, 22050, 16), (tag, outChannels, outRate, outBits));
+    }
+
+    [Fact]
+    public void AConvertedSoundIsNumberedWhenItsWavNameIsTaken()
+    {
+        var here = Folder("convert-names");
+        File.WriteAllBytes(Path.Combine(here, "Bell.mp3"), [1]);
+        File.WriteAllBytes(Path.Combine(here, "bell.wav"), TestWav.Tone(salt: 5));   // a different sound, already a WAV
+        var converted = TestWav.Tone(salt: 9);
+        var file = Path.Combine(_root, "names.qmsounds");
+        using var service = Service(here);
+
+        var leftOut = SoundSchemeFile.Export(file, "Bells",
+            new Dictionary<string, string> { ["MessageSent"] = "custom:Bell.mp3", ["NewMail"] = "custom:Bell.mp3", ["SendFailed"] = "custom:bell.wav" },
+            service, toSchemeWav: _ => converted);
+
+        Assert.Equal(0, leftOut);
+        var read = SoundSchemeFile.Read(file);
+        Assert.Equal("custom:Bell 2.wav", read.Events["MessageSent"]);
+        Assert.Equal("custom:Bell 2.wav", read.Events["NewMail"]);
+        Assert.Equal("custom:bell.wav", read.Events["SendFailed"]);
+        Assert.Equal(converted, read.Sounds["Bell 2.wav"]);
+        Assert.Equal(0, read.Dropped);
+    }
+
+    [Fact]
+    public void AConversionOverASchemeFilesLimitsLeavesTheSoundOut()
+    {
+        var here = Folder("convert-long");
+        File.WriteAllBytes(Path.Combine(here, "Long.wav"), TestWav.Tone(bits: 24, rate: 192000, channels: 2, seconds: 5));
+        File.WriteAllBytes(Path.Combine(here, "Longer.wav"), TestWav.Tone(bits: 24, channels: 1, rate: 8000, seconds: 31));   // over 30 seconds
+        var file = Path.Combine(_root, "long.qmsounds");
+        using var service = Service(here);
+
+        var leftOut = SoundSchemeFile.Export(file, "Long",
+            new Dictionary<string, string> { ["NewMail"] = "custom:Long.wav", ["SendFailed"] = "custom:Longer.wav" }, service);
+
+        Assert.Equal(1, leftOut);   // 5 s of 192 kHz stereo is 3.8 MB as 16-bit, so it fits; 31 s doesn't
+        var read = SoundSchemeFile.Read(file);
+        Assert.Equal("custom:Long.wav", read.Events["NewMail"]);
+        Assert.Equal("none", read.Events["SendFailed"]);
     }
 
     /// <summary>A .qmsounds file with this scheme.json and these entries, written as given.</summary>

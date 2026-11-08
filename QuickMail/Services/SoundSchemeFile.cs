@@ -124,48 +124,72 @@ public static class SoundSchemeFile
     // ── Writing ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Writes a scheme and the custom sounds it uses. A sound file that's missing, larger than 5 MB,
-    /// would take the file past its limit, or isn't a 16-bit PCM WAV (the only kind every app reads
-    /// alike, so an MP3 stays behind) is left out, and its events are written as <c>none</c>.
-    /// Throws IOException or UnauthorizedAccessException.
+    /// Writes a scheme and the custom sounds it uses. A scheme file holds only 16-bit PCM WAVs, the
+    /// kind every app reads alike, so a sound of the person's own that isn't one (an MP3, a 24-bit
+    /// WAV) goes in converted to one, named <c>&lt;its name&gt;.wav</c> (numbered if that's taken), and
+    /// its events point at that. A file that's missing, can't be converted, is over 5 MB or 30
+    /// seconds as a WAV, or would take the file past its limit is left out, and its events are
+    /// written as <c>none</c>. Throws IOException or UnauthorizedAccessException.
     /// </summary>
     /// <param name="author">Who made it, if known, so the credit a licence such as CC-BY asks for travels.</param>
     /// <param name="license">Its licence, if known.</param>
     /// <param name="description">One line about it, if known.</param>
+    /// <param name="toSchemeWav">Converts a sound file to a scheme-file WAV, or returns null; <see cref="SchemeWavConverter.Convert"/> unless a test says otherwise.</param>
     /// <returns>How many events were written as <c>none</c> because their sound file was left out.</returns>
     public static int Export(string path, string name, IReadOnlyDictionary<string, string> events, ISoundService sounds,
-        string? author = null, string? license = null, string? description = null)
+        string? author = null, string? license = null, string? description = null, Func<string, byte[]?>? toSchemeWav = null)
     {
-        var written = new List<KeyValuePair<string, string>>();
-        var files = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
-        var leftOut = new HashSet<string>(StringComparer.Ordinal);
-        int leftOutEvents = 0;
-        long total = 0;
+        toSchemeWav ??= SchemeWavConverter.Convert;
+        var chosen = new List<(string Key, SoundRef Sound)>();
         foreach (var info in SoundCatalog.Events)
+            chosen.Add((info.ConfigKey, events.TryGetValue(info.ConfigKey, out var value) && SoundRef.TryParse(value, out var parsed) ? parsed : SoundRef.None));
+
+        // Every file name the scheme uses: a converted sound's new name must not be one of them, or
+        // another file in the export, even differing only in case, which Windows treats as the same file.
+        var used = new HashSet<string>(chosen.Where(c => c.Sound.Kind == SoundRefKind.Custom).Select(c => c.Sound.Name), StringComparer.OrdinalIgnoreCase);
+        var files = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var exportedAs = new Dictionary<string, string?>(StringComparer.Ordinal);
+        long total = 0;
+
+        string? Prepare(string file)
         {
-            var sound = events.TryGetValue(info.ConfigKey, out var value) && SoundRef.TryParse(value, out var parsed) ? parsed : SoundRef.None;
-            if (sound.Kind == SoundRefKind.Custom && !files.ContainsKey(sound.Name))
+            if (sounds.CustomSoundPath(file) is not { } source) return null;
+            var bytes = ReadSmallFile(source);
+            var exportName = file;
+            if (bytes is null || SchemeWavProblem(bytes) is not null)
             {
-                if (!leftOut.Contains(sound.Name))
-                {
-                    var bytes = sounds.CustomSoundPath(sound.Name) is { } source ? ReadSmallFile(source) : null;
-                    if (bytes is null || total + bytes.Length > MaxFileBytes - MaxSchemeJsonBytes || SchemeWavProblem(bytes) is not null)
-                    {
-                        leftOut.Add(sound.Name);
-                    }
-                    else
-                    {
-                        files[sound.Name] = bytes;
-                        total += bytes.Length;
-                    }
-                }
-                if (leftOut.Contains(sound.Name))
+                bytes = toSchemeWav(source);
+                if (bytes is null) return null;
+                exportName = WavNameFor(file, used, taken);
+            }
+            if (total + bytes.Length > MaxFileBytes - MaxSchemeJsonBytes) return null;
+            total += bytes.Length;
+            files[exportName] = bytes;
+            taken.Add(exportName);
+            return exportName;
+        }
+
+        var written = new List<KeyValuePair<string, string>>();
+        int leftOutEvents = 0;
+        foreach (var (key, chosenSound) in chosen)
+        {
+            var sound = chosenSound;
+            if (sound.Kind == SoundRefKind.Custom)
+            {
+                if (!exportedAs.TryGetValue(sound.Name, out var exportName))
+                    exportedAs[sound.Name] = exportName = Prepare(sound.Name);
+                if (exportName is null)
                 {
                     sound = SoundRef.None;
                     leftOutEvents++;
                 }
+                else
+                {
+                    sound = SoundRef.Custom(exportName);
+                }
             }
-            written.Add(new(info.ConfigKey, sound.ToStored()));
+            written.Add(new(key, sound.ToStored()));
         }
 
         using var stream = new MemoryStream();
@@ -177,6 +201,22 @@ public static class SoundSchemeFile
         }
         File.WriteAllBytes(path, stream.ToArray());   // built in memory first, so a failure leaves no half-written file
         return leftOutEvents;
+    }
+
+    /// <summary>
+    /// The name a converted sound goes in the scheme file under: its own name with <c>.wav</c>, or
+    /// that numbered (<c>bell 2.wav</c>) if another file the scheme uses, or one already in the export,
+    /// has it.
+    /// </summary>
+    private static string WavNameFor(string file, HashSet<string> used, HashSet<string> taken)
+    {
+        var stem = Path.GetFileNameWithoutExtension(file);
+        bool Free(string candidate) => SoundRef.IsSafeCustomFileName(candidate) && !taken.Contains(candidate)
+            && (!used.Contains(candidate) || candidate.Equals(file, StringComparison.OrdinalIgnoreCase));
+        var name = stem + ".wav";
+        for (var n = 2; !Free(name) && n < 1000; n++)
+            name = Cut(stem, 90) + $" {n}.wav";
+        return Free(name) ? name : $"Converted sound {Guid.NewGuid():N}.wav";
     }
 
     /// <summary>A file's bytes if it is no larger than a sound may be; null if it's larger or can't be read, so it's left out.</summary>

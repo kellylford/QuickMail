@@ -467,9 +467,10 @@ public partial class SettingsViewModel
             var leftOut = SoundSchemeFile.Export(path, scheme.Name, SoundSchemeFile.Portable(scheme.With(events: SchemeValues(scheme))), _sounds,
                 scheme.Author, scheme.License, scheme.Description);
             var message = $"Saved the sound scheme {scheme.Name} to {Path.GetFileName(path)}.";
-            // A scheme file holds only WAV files every app can play, so an MP3 stays behind, as does a file that has gone.
+            // An MP3 goes in converted to WAV; only a file that has gone, or won't convert within a scheme
+            // file's limits, stays behind.
             if (leftOut > 0)
-                message += $" {Plural(leftOut, "event")} {(leftOut == 1 ? "has" : "have")} no sound in it, because {(leftOut == 1 ? "its sound file is" : "their sound files are")} missing or not a 16-bit WAV file, which is all a scheme file can hold.";
+                message += $" {Plural(leftOut, "event")} {(leftOut == 1 ? "has" : "have")} no sound in it, because {(leftOut == 1 ? "its sound file is" : "their sound files are")} missing, or could not be made into a WAV file of 5 MB and 30 seconds or less.";
             ReportScheme(message);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
