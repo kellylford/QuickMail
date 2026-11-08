@@ -135,8 +135,9 @@ public static class SoundSchemeFile
     /// <param name="license">Its licence, if known.</param>
     /// <param name="description">One line about it, if known.</param>
     /// <param name="toSchemeWav">Converts a sound file to a scheme-file WAV, or returns null; <see cref="SchemeWavConverter.Convert"/> unless a test says otherwise.</param>
+    /// <param name="schemeId">The scheme being exported, whose folder its sound files are read from (#948).</param>
     /// <returns>How many events were written as <c>none</c> because their sound file was left out.</returns>
-    public static int Export(string path, string name, IReadOnlyDictionary<string, string> events, ISoundService sounds,
+    public static int Export(string path, string name, IReadOnlyDictionary<string, string> events, ISoundService sounds, string schemeId,
         string? author = null, string? license = null, string? description = null, Func<string, byte[]?>? toSchemeWav = null)
     {
         toSchemeWav ??= SchemeWavConverter.Convert;
@@ -154,7 +155,7 @@ public static class SoundSchemeFile
 
         string? Prepare(string file)
         {
-            if (sounds.CustomSoundPath(file) is not { } source) return null;
+            if (sounds.CustomSoundPath(schemeId, file) is not { } source) return null;
             var bytes = ReadSmallFile(source);
             var exportName = file;
             if (bytes is null || SchemeWavProblem(bytes) is not null)
@@ -279,10 +280,12 @@ public static class SoundSchemeFile
     // ── Reading ────────────────────────────────────────────────────────────────
 
     /// <summary>Reads a scheme file and copies in the sounds it carries. Throws <see cref="SoundSchemeFileException"/>.</summary>
+    /// <param name="schemeId">The scheme it becomes, whose folder its sounds go in (#948). A sound the file
+    /// names but doesn't carry is kept only if that folder already has it, as it can for a gallery update.</param>
     /// <param name="fromGallery">The file came from the gallery, so its sounds must be ones every app reads alike, whatever the file says.</param>
-    public static SoundSchemeImport Import(string path, ISoundService sounds, bool fromGallery = false)
+    public static SoundSchemeImport Import(string path, ISoundService sounds, string schemeId, bool fromGallery = false)
     {
-        var contents = Read(path, name => sounds.CustomSoundPath(name) is not null, fromGallery);
+        var contents = Read(path, name => sounds.CustomSoundPath(schemeId, name) is not null, fromGallery);
 
         int added = 0, dropped = contents.Dropped;
         var landed = new Dictionary<string, string?>(StringComparer.Ordinal);
@@ -291,15 +294,15 @@ public static class SoundSchemeFile
         {
             foreach (var (name, bytes) in contents.Sounds.OrderBy(s => s.Key, StringComparer.Ordinal))
             {
-                var fileName = AddSound(name, bytes, sounds, temp);
+                var fileName = AddSound(name, bytes, sounds, schemeId, temp);
                 landed[name] = fileName;
                 if (fileName is not null) added++;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Staging in the temp folder failed: full, or locked down. Sounds copied in so far stay,
-            // as files only; nothing names them until a scheme does.
+            // Staging in the temp folder failed: full, or locked down. Sounds copied in so far are in
+            // the scheme's folder, which the caller deletes for a scheme that was never made (#948).
             throw new SoundSchemeFileException("The scheme's sounds could not be copied into QuickMail. " + ex.Message, ex);
         }
         finally
@@ -331,14 +334,14 @@ public static class SoundSchemeFile
     }
 
     /// <summary>Where a sound the scheme carried ends up, or null if it was refused.</summary>
-    private static string? AddSound(string name, byte[] bytes, ISoundService sounds, string temp)
+    private static string? AddSound(string name, byte[] bytes, ISoundService sounds, string schemeId, string temp)
     {
         // Through the same door as a file chosen in Settings: decoded, length-checked, and numbered
         // rather than overwriting a different sound of the same name already here.
         Directory.CreateDirectory(temp);
         var staged = Path.Combine(temp, name);
         File.WriteAllBytes(staged, bytes);
-        if (sounds.TryAddCustomSound(staged, out var fileName, out var refusal)) return fileName;
+        if (sounds.TryAddCustomSound(schemeId, staged, out var fileName, out var refusal)) return fileName;
         LogService.Log($"Sound scheme import: refused the sound {name}: {refusal}");
         return null;
     }

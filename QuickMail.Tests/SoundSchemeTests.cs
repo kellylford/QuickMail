@@ -570,21 +570,20 @@ public class SoundSchemeTests
         var sounds = new RecordingSoundService();
         sounds.CustomFiles.Add("Ding.wav");
         var vm = MakeSettings(config, sounds);
-        vm.RuleSoundsProvider = () => ["custom:Ding.wav", "builtin:reminder", null, "custom:DING.wav"];
-        vm.CreateScheme("Calm");
+        vm.SelectedSoundScheme = vm.SoundSchemes.Single(s => s.Id == "wood");
         Choose(vm, SoundEvent.MessageSent, "Ding.wav");
 
-        var (schemes, rules) = vm.SoundFileUses("Ding.wav");
-        Assert.Equal(["Wood", "Calm"], schemes);
-        Assert.Equal(2, rules);
+        // Only the scheme's own events can use a file in its folder (#948).
+        Assert.Equal(2, vm.SoundFileUses("Ding.wav"));
 
         string? asked = null;
         vm.ConfirmRequested = (question, _) => { asked = question; return true; };
         Assert.True(vm.CanRemoveSoundFile);
         vm.RemoveSoundFileCommand.Execute(null);
 
-        Assert.Equal("Remove the sound file Ding.wav from QuickMail? It is still used by the sound schemes Wood and Calm, and by 2 rules, which will play a built-in sound instead. The file is deleted now, even if you then cancel Settings.", asked);
+        Assert.Equal("Remove the sound file Ding.wav from the sound scheme Wood? 2 events still use it, and will play a built-in sound instead. The file is deleted now, even if you then cancel Settings.", asked);
         Assert.Equal(["Ding.wav"], sounds.Removed);
+        Assert.Equal(["wood"], sounds.RemovedFrom);
         Assert.Equal("Message sent: Ding.wav (missing)", Row(vm, SoundEvent.MessageSent).AccessibleName);
         Assert.False(vm.CanRemoveSoundFile);
         vm.SaveCommand.Execute(null);
@@ -599,12 +598,11 @@ public class SoundSchemeTests
         sounds.CustomFiles.Add("Spare.wav");
         var vm = MakeSettings(new StubConfigService(), sounds);
         vm.SelectedSoundChoice = vm.SoundChoices.Single(c => c.Label == "Spare.wav");
-        var (schemes, _) = vm.SoundFileUses("Spare.wav");
-        Assert.Equal(["Glass"], schemes);
+        Assert.Equal(1, vm.SoundFileUses("Spare.wav"));
         string? asked = null;
         vm.ConfirmRequested = (question, _) => { asked = question; return false; };
         vm.RemoveSoundFileCommand.Execute(null);
-        Assert.Contains("still used by the sound scheme Glass", asked, StringComparison.Ordinal);
+        Assert.Contains("from the sound scheme Glass? 1 event still uses it", asked, StringComparison.Ordinal);
         Assert.Empty(sounds.Removed);   // the answer was No
     }
 
@@ -696,9 +694,14 @@ public sealed class SoundSchemeServiceTests : IDisposable
         try { Directory.Delete(_root, recursive: true); } catch (IOException) { }
     }
 
-    private string Folder(string name) => Directory.CreateDirectory(Path.Combine(_root, name)).FullName;
+    /// <summary>The scheme these tests keep their sound files for; each scheme has a folder of its own (#948).</summary>
+    private const string Scheme = "wood";
 
-    private SoundService Service(string folder) => new(_config, folder, _output, openBuiltIn: (pack, _) =>
+    /// <summary>A sounds folder of its own for one test, given as its <see cref="Scheme"/>'s folder, where that scheme's files go.</summary>
+    private string Folder(string name) => Directory.CreateDirectory(Path.Combine(_root, name, Scheme)).FullName;
+
+    /// <summary>The sound service whose sounds folder holds <paramref name="folder"/> as <see cref="Scheme"/>'s folder.</summary>
+    private SoundService Service(string folder) => new(_config, Path.GetDirectoryName(folder)!, _output, openBuiltIn: (pack, _) =>
     {
         lock (_packsAsked) _packsAsked.Add(pack);
         return new MemoryStream();
@@ -762,14 +765,14 @@ public sealed class SoundSchemeServiceTests : IDisposable
         var outside = Path.Combine(folder, "..", "Outside.wav");
         File.WriteAllBytes(outside, [3]);
 
-        Assert.True(service.TryRemoveCustomSound("Ding.wav", out _));
-        Assert.True(service.TryRemoveCustomSound("Ding.wav", out _));   // already gone is fine
-        Assert.True(service.TryRemoveCustomSound(@"..\Outside.wav", out _));   // never outside the folder
+        Assert.True(service.TryRemoveCustomSound(Scheme, "Ding.wav", out _));
+        Assert.True(service.TryRemoveCustomSound(Scheme, "Ding.wav", out _));   // already gone is fine
+        Assert.True(service.TryRemoveCustomSound(Scheme, @"..\Outside.wav", out _));   // never outside the folder
 
         Assert.True(File.Exists(outside));
-        Assert.Equal(["Keep.wav"], service.CustomSoundFiles());
-        Assert.Null(service.CustomSoundPath("Ding.wav"));
-        Assert.NotNull(service.CustomSoundPath("Keep.wav"));
+        Assert.Equal(["Keep.wav"], service.CustomSoundFiles(Scheme));
+        Assert.Null(service.CustomSoundPath(Scheme, "Ding.wav"));
+        Assert.NotNull(service.CustomSoundPath(Scheme, "Keep.wav"));
     }
 
     // ── Sharing a scheme ───────────────────────────────────────────────────────
@@ -784,12 +787,12 @@ public sealed class SoundSchemeServiceTests : IDisposable
         var scheme = new SoundScheme("wood", "Wood", true, "wood", new Dictionary<string, string> { ["NewMail"] = "custom:Ding.wav", ["MessageSent"] = "none" });
         var file = Path.Combine(_root, "Wood.qmsounds");
         using (var service = Service(here))
-            Assert.Equal(0, SoundSchemeFile.Export(file, "Wood mine", SoundSchemeFile.Portable(scheme), service));
+            Assert.Equal(0, SoundSchemeFile.Export(file, "Wood mine", SoundSchemeFile.Portable(scheme), service, Scheme));
 
         var there = Folder("there");
         File.WriteAllBytes(Path.Combine(there, "Ding.wav"), otherDing);   // a different sound with the same name
         using var other = Service(there);
-        var imported = SoundSchemeFile.Import(file, other);
+        var imported = SoundSchemeFile.Import(file, other, Scheme);
 
         Assert.Equal("Wood mine", imported.Name);
         Assert.Equal("custom:Ding 2.wav", imported.Events["NewMail"]);
@@ -811,17 +814,17 @@ public sealed class SoundSchemeServiceTests : IDisposable
         {
             // Gone.wav isn't there to export, so its event goes as none: one left out.
             Assert.Equal(1, SoundSchemeFile.Export(file, "Bad",
-                new Dictionary<string, string> { ["NewMail"] = "custom:Bad.wav", ["SendFailed"] = "custom:Gone.wav" }, service));
+                new Dictionary<string, string> { ["NewMail"] = "custom:Bad.wav", ["SendFailed"] = "custom:Gone.wav" }, service, Scheme));
         }
 
         _output.Refuse = true;   // the sound won't decode here
         using var other = Service(Folder("there2"));
-        var imported = SoundSchemeFile.Import(file, other);
+        var imported = SoundSchemeFile.Import(file, other, Scheme);
 
         Assert.Equal("none", imported.Events["NewMail"]);
         Assert.Equal("none", imported.Events["SendFailed"]);
         Assert.Equal(1, imported.SoundsDropped);
-        Assert.Empty(other.CustomSoundFiles());
+        Assert.Empty(other.CustomSoundFiles(Scheme));
     }
 
     [Fact]
@@ -829,7 +832,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
     {
         var file = Path.Combine(_root, "Described.qmsounds");
         using var service = Service(Folder("described"));
-        SoundSchemeFile.Export(file, "Calm", new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" }, service,
+        SoundSchemeFile.Export(file, "Calm", new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" }, service, Scheme,
             author: "Pat", license: "CC0-1.0", description: "Quiet sounds.\nFor late.");
 
         using (var zip = ZipFile.OpenRead(file))
@@ -845,12 +848,12 @@ public sealed class SoundSchemeServiceTests : IDisposable
             Assert.Equal(new DateTime(2026, 1, 1), zip.Entries[0].LastWriteTime.DateTime);
         }
 
-        var imported = SoundSchemeFile.Import(file, service);
+        var imported = SoundSchemeFile.Import(file, service, Scheme);
         Assert.Equal("Quiet sounds.For late.", imported.Description);
         Assert.Equal("Pat", imported.Author);
         // The same scheme gives the same bytes, which the gallery needs: it names a file by its hash.
         var again = Path.Combine(_root, "Described2.qmsounds");
-        SoundSchemeFile.Export(again, "Calm", new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" }, service,
+        SoundSchemeFile.Export(again, "Calm", new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" }, service, Scheme,
             author: "Pat", license: "CC0-1.0", description: "Quiet sounds.\nFor late.");
         Assert.Equal(File.ReadAllBytes(file), File.ReadAllBytes(again));
     }
@@ -865,7 +868,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
         using var service = Service(here);
 
         var leftOut = SoundSchemeFile.Export(file, "Songs",
-            new Dictionary<string, string> { ["NewMail"] = "custom:Song.mp3", ["SendFailed"] = "custom:Song.mp3", ["MessageSent"] = "custom:Wide.wav" }, service);
+            new Dictionary<string, string> { ["NewMail"] = "custom:Song.mp3", ["SendFailed"] = "custom:Song.mp3", ["MessageSent"] = "custom:Wide.wav" }, service, Scheme);
 
         Assert.Equal(3, leftOut);
         using var zip = ZipFile.OpenRead(file);
@@ -882,7 +885,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
         File.WriteAllBytes(Path.Combine(folder, fileName), bytes);
         var file = Path.Combine(_root, Guid.NewGuid().ToString("N") + ".qmsounds");
         using var service = Service(folder);
-        leftOut = SoundSchemeFile.Export(file, "Converted", new Dictionary<string, string> { ["NewMail"] = "custom:" + fileName }, service);
+        leftOut = SoundSchemeFile.Export(file, "Converted", new Dictionary<string, string> { ["NewMail"] = "custom:" + fileName }, service, Scheme);
         return SoundSchemeFile.Read(file);
     }
 
@@ -939,7 +942,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
 
         var leftOut = SoundSchemeFile.Export(file, "Bells",
             new Dictionary<string, string> { ["MessageSent"] = "custom:Bell.mp3", ["NewMail"] = "custom:Bell.mp3", ["SendFailed"] = "custom:bell.wav" },
-            service, toSchemeWav: _ => converted);
+            service, Scheme, toSchemeWav: _ => converted);
 
         Assert.Equal(0, leftOut);
         var read = SoundSchemeFile.Read(file);
@@ -960,7 +963,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
         using var service = Service(here);
 
         var leftOut = SoundSchemeFile.Export(file, "Long",
-            new Dictionary<string, string> { ["NewMail"] = "custom:Long.wav", ["SendFailed"] = "custom:Longer.wav" }, service);
+            new Dictionary<string, string> { ["NewMail"] = "custom:Long.wav", ["SendFailed"] = "custom:Longer.wav" }, service, Scheme);
 
         Assert.Equal(1, leftOut);   // 5 s of 192 kHz stereo is 3.8 MB as 16-bit, so it fits; 31 s doesn't
         var read = SoundSchemeFile.Read(file);
@@ -991,11 +994,11 @@ public sealed class SoundSchemeServiceTests : IDisposable
             ("sounds/Song.mp3", [0x49, 0x44, 0x33, 3, 0]));
         using var service = Service(Folder("old"));
 
-        var imported = SoundSchemeFile.Import(file, service);
+        var imported = SoundSchemeFile.Import(file, service, Scheme);
 
         Assert.Equal("custom:Song.mp3", imported.Events["NewMail"]);
         Assert.Equal(0, imported.SoundsDropped);
-        Assert.Equal(["Song.mp3"], service.CustomSoundFiles());
+        Assert.Equal(["Song.mp3"], service.CustomSoundFiles(Scheme));
     }
 
     [Fact]
@@ -1178,7 +1181,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
         using (new FileStream(Path.Combine(here, "Locked.wav"), FileMode.Open, FileAccess.Read, FileShare.None))
         {
             Assert.Equal(1, SoundSchemeFile.Export(file, "L",
-                new Dictionary<string, string> { ["NewMail"] = "custom:Locked.wav", ["SendFailed"] = "custom:Fine.wav" }, service));
+                new Dictionary<string, string> { ["NewMail"] = "custom:Locked.wav", ["SendFailed"] = "custom:Fine.wav" }, service, Scheme));
         }
         Assert.Equal(["Fine.wav"], SoundSchemeFile.Read(file).Sounds.Keys);
     }
@@ -1239,7 +1242,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
         var there = Folder("there3");
         using var service = Service(there);
 
-        var imported = SoundSchemeFile.Import(file, service);
+        var imported = SoundSchemeFile.Import(file, service, Scheme);
 
         Assert.Equal("Oddname", imported.Name);
         // A value QuickMail can't use plays nothing; a key that isn't one of its events is skipped.
@@ -1257,7 +1260,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
         var file = Path.Combine(_root, "junk.qmsounds");
         File.WriteAllText(file, content);
         using var service = Service(Folder("j"));
-        var ex = Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Import(file, service));
+        var ex = Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Import(file, service, Scheme));
         Assert.Contains("sound scheme", ex.Message, StringComparison.Ordinal);
     }
 
@@ -1269,7 +1272,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
         using (var writer = new StreamWriter(zip.CreateEntry("scheme.json").Open()))
             writer.Write("""{"format":99,"name":"Future","events":{}}""");
         using var service = Service(Folder("n"));
-        var ex = Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Import(file, service));
+        var ex = Assert.Throws<SoundSchemeFileException>(() => SoundSchemeFile.Import(file, service, Scheme));
         Assert.Contains("newer version", ex.Message, StringComparison.Ordinal);
     }
 
@@ -1298,9 +1301,9 @@ public sealed class SoundSchemeServiceTests : IDisposable
         // Either the read stops at the cap and refuses the file, or the archive reader stops at the
         // length the header claims; what must never happen is the oversized sound arriving.
         using var service = Service(Folder("liar"));
-        try { SoundSchemeFile.Import(file, service); }
+        try { SoundSchemeFile.Import(file, service, Scheme); }
         catch (SoundSchemeFileException) { }
-        Assert.Empty(service.CustomSoundFiles());
+        Assert.Empty(service.CustomSoundFiles(Scheme));
     }
 
     [Fact]
@@ -1309,10 +1312,10 @@ public sealed class SoundSchemeServiceTests : IDisposable
         var file = SchemeZip("big.qmsounds", """{"format":1,"app":"quickmail","name":"Big","events":{"NewMail":"custom:Big.wav"}}""",
             ("sounds/Big.wav", new byte[SoundCatalog.MaxCustomFileBytes + 1]));
         using var service = Service(Folder("big"));
-        var imported = SoundSchemeFile.Import(file, service);
+        var imported = SoundSchemeFile.Import(file, service, Scheme);
         Assert.Equal("none", imported.Events["NewMail"]);
         Assert.Equal(1, imported.SoundsDropped);
-        Assert.Empty(service.CustomSoundFiles());
+        Assert.Empty(service.CustomSoundFiles(Scheme));
     }
 
     [Fact]
@@ -1331,7 +1334,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
         var there = Folder("folder-clash");
         Directory.CreateDirectory(Path.Combine(there, "Ding.wav"));
         using var service = Service(there);
-        var imported = SoundSchemeFile.Import(file, service);
+        var imported = SoundSchemeFile.Import(file, service, Scheme);
         Assert.Equal("custom:Ding 2.wav", imported.Events["NewMail"]);
         Assert.True(File.Exists(Path.Combine(there, "Ding 2.wav")));
     }
@@ -1343,7 +1346,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
         File.WriteAllBytes(Path.Combine(here, "Ding.wav"), TestWav.Tone());
         var file = Path.Combine(_root, "Calm.qmsounds");
         using (var service = Service(here))
-            SoundSchemeFile.Export(file, "Wood", new Dictionary<string, string> { ["NewMail"] = "custom:Ding.wav" }, service);
+            SoundSchemeFile.Export(file, "Wood", new Dictionary<string, string> { ["NewMail"] = "custom:Ding.wav" }, service, Scheme);
 
         using var target = Service(Folder("vm-there"));
         var vm = new SettingsViewModel(_config, new StubCommandRegistry(), sounds: target);
@@ -1375,7 +1378,7 @@ public sealed class SoundSchemeServiceTests : IDisposable
         vm.ExportSchemeCommand.Execute(null);
 
         Assert.Equal("Glass.qmsounds", suggested);
-        var imported = SoundSchemeFile.Import(file, service);
+        var imported = SoundSchemeFile.Import(file, service, Scheme);
         Assert.Equal("Glass", imported.Name);
         Assert.Equal("none", imported.Events["NewMail"]);
         Assert.Equal("builtin:glass/sent", imported.Events["MessageSent"]);

@@ -53,35 +53,69 @@ internal sealed class RecordingSoundService : ISoundService
 
     public void PreviewRule(string? storedSound) => RulePreviewed.Add(storedSound);
 
-    public void Preview(string storedSound, int? volumePercent = null, string? pack = null)
+    public string? PreviewSchemeId { get; private set; }
+
+    public void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null)
     {
         Previewed.Add(storedSound);
         PreviewVolume = volumePercent;
         PreviewPack = pack;
+        PreviewSchemeId = schemeId;
     }
     public bool IsAudible(SoundEvent soundEvent) => Audible.Contains(soundEvent);
-    public IReadOnlyList<string> CustomSoundFiles() => CustomFiles;
 
-    public string? CustomSoundPath(string fileName) =>
+    // One list of files whatever the folder, which is all most tests need; the folders asked for are
+    // recorded, for the tests of which folder each action uses (#948).
+    public List<string?> ListedFor { get; } = [];
+
+    public IReadOnlyList<string> CustomSoundFiles(string? schemeId)
+    {
+        ListedFor.Add(schemeId);
+        return CustomFiles;
+    }
+
+    public string? CustomSoundPath(string? schemeId, string fileName) =>
         CustomFiles.Contains(fileName, StringComparer.OrdinalIgnoreCase) ? Path.Combine(Path.GetTempPath(), fileName) : null;
 
     public List<string> Removed { get; } = [];
+    public List<string?> RemovedFrom { get; } = [];
     public string? RemoveRefusal { get; set; }
 
-    public bool TryRemoveCustomSound(string fileName, out string refusal)
+    public bool TryRemoveCustomSound(string? schemeId, string fileName, out string refusal)
     {
         refusal = RemoveRefusal ?? string.Empty;
         if (RemoveRefusal is not null) return false;
         Removed.Add(fileName);
+        RemovedFrom.Add(schemeId);
         CustomFiles.RemoveAll(f => f.Equals(fileName, StringComparison.OrdinalIgnoreCase));
         return true;
     }
 
-    public bool TryAddCustomSound(string sourcePath, out string fileName, out string refusal)
+    public List<string?> AddedTo { get; } = [];
+
+    public bool TryAddCustomSound(string? schemeId, string sourcePath, out string fileName, out string refusal)
     {
         fileName = RefuseWith is null ? Path.GetFileName(sourcePath) : string.Empty;
         refusal = RefuseWith ?? string.Empty;
+        if (RefuseWith is null) AddedTo.Add(schemeId);
         return RefuseWith is null;
+    }
+
+    public List<(string From, string To)> SchemeCopies { get; } = [];
+    public bool CopySchemeSoundsFails { get; set; }
+
+    public bool TryCopySchemeSounds(string fromSchemeId, string toSchemeId)
+    {
+        SchemeCopies.Add((fromSchemeId, toSchemeId));
+        return !CopySchemeSoundsFails;
+    }
+
+    public List<string> SchemeFoldersDeleted { get; } = [];
+
+    public bool TryDeleteSchemeSounds(string schemeId)
+    {
+        SchemeFoldersDeleted.Add(schemeId);
+        return true;
     }
 
     public void Dispose() { }
