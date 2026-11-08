@@ -676,7 +676,9 @@ public partial class App : Application
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
             var soundsFolder = System.IO.Path.Combine(profile.ProfileDir, SoundCatalog.CustomFolderName);
-            if (!probeMode) MoveSoundFilesIntoSchemeFolders(soundsFolder, configService, ruleService);
+            // The one-time move of 0.8.69's shared sound files into each scheme's folder (#948), before
+            // the sound service starts, so nothing plays from a folder being changed.
+            if (!probeMode) SoundFolderMigration.RunAtStartup(profile.ProfileDir, ruleService.LoadRules);
             _soundService = probeMode ? null : new SoundService(
                 configService, soundsFolder, new NAudioSoundOutput(), isQuiet: WindowsQuietState.IsQuiet);
             ruleService.Sounds = _soundService;
@@ -847,25 +849,6 @@ public partial class App : Application
                 disable.Add(args[i + 1]);
         }
         return (enable, disable);
-    }
-
-    /// <summary>
-    /// The one-time move of 0.8.69's shared sound files into each scheme's own folder (#948). Before
-    /// the sound service starts, so nothing plays from a folder being changed. Does nothing once done.
-    /// </summary>
-    private static void MoveSoundFilesIntoSchemeFolders(string soundsFolder, ConfigService config, RuleService rules)
-    {
-        try
-        {
-            if (System.IO.File.Exists(System.IO.Path.Combine(soundsFolder, SoundFolderMigration.MarkerFileName))) return;
-            var ruleSounds = rules.LoadRules().Select(r => r.Sound).ToList();
-            SoundFolderMigration.Run(soundsFolder, config.Load().SoundSchemes.Values, ruleSounds);
-        }
-        catch (Exception ex)
-        {
-            // Rules that can't be read: better to move nothing now than to move a file a rule plays.
-            LogService.Log("Sound files: could not check whether they need moving into scheme folders", ex);
-        }
     }
 
     /// <summary>The value after a flag such as --soundGallery, or null if it isn't given.</summary>

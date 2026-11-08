@@ -30,6 +30,34 @@ public static class SoundFolderMigration
     internal const string PartialSuffix = ".moving";
 
     /// <summary>
+    /// The move at startup, reading the schemes from config.ini and the rules from rules.json itself.
+    /// Not through <see cref="ConfigService.Load"/>, which answers an unreadable file with the
+    /// defaults, and so with no schemes: the move would find nothing to do and never run again. If
+    /// either file can't be read, nothing is moved, and it is tried again at the next start.
+    /// </summary>
+    /// <param name="profileDir">The profile folder, holding config.ini and the sounds folder.</param>
+    /// <param name="loadRules">Reads the rules; throws if rules.json can't be read.</param>
+    public static void RunAtStartup(string profileDir, Func<IEnumerable<MailRule>> loadRules)
+    {
+        try
+        {
+            var soundsFolder = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
+            if (File.Exists(Path.Combine(soundsFolder, MarkerFileName))) return;
+            var configFile = Path.Combine(profileDir, "config.ini");
+            var schemes = File.Exists(configFile)
+                ? ConfigService.ParseFile(File.ReadAllLines(configFile)).SoundSchemes.Values.ToList()
+                : [];
+            var ruleSounds = loadRules().Select(r => r.Sound).ToList();
+            Run(soundsFolder, schemes, ruleSounds);
+        }
+        catch (Exception ex)
+        {
+            // Better to move nothing now than to move a file a rule plays, or to mark it done unseen.
+            LogService.Log("Sound files: could not check whether they need moving into scheme folders; will try again next time", ex);
+        }
+    }
+
+    /// <summary>
     /// Moves the shared files into the schemes' folders, unless that has already been done. Never
     /// throws: a sound file in the wrong place must not stop QuickMail starting.
     /// </summary>
@@ -60,9 +88,12 @@ public static class SoundFolderMigration
     /// <paramref name="removeFromShared"/>, then removes it from the sounds folder if every copy is in
     /// place and no rule uses it. Running it again changes nothing.
     /// </summary>
+    /// <param name="onlyNames">If given, only these files are looked at: what a settings file just brought in.</param>
     /// <returns>True if everything that should have been done was.</returns>
-    internal static bool Place(string soundsFolder, IEnumerable<SoundScheme> schemes, IEnumerable<string?> ruleSounds, bool removeFromShared)
+    internal static bool Place(string soundsFolder, IEnumerable<SoundScheme> schemes, IEnumerable<string?> ruleSounds, bool removeFromShared,
+        IReadOnlyCollection<string>? onlyNames = null)
     {
+        var only = onlyNames is null ? null : new HashSet<string>(onlyNames, StringComparer.OrdinalIgnoreCase);
         // Each file name a scheme uses, and the folders of the schemes that use it. Windows treats
         // names differing only in case as one file, and so does this.
         var wanted = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
@@ -72,6 +103,7 @@ public static class SoundFolderMigration
             foreach (var value in scheme.Events.Values)
             {
                 if (!SoundRef.TryParse(value, out var sound) || sound.Kind != SoundRefKind.Custom) continue;
+                if (only is not null && !only.Contains(sound.Name)) continue;
                 if (!wanted.TryGetValue(sound.Name, out var folders))
                     wanted[sound.Name] = folders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 folders.Add(folder);

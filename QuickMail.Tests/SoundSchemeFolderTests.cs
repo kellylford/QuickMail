@@ -206,6 +206,81 @@ public sealed class SoundFolderMigrationTests : IDisposable
         Assert.False(SoundRef.IsSafeCustomFileName("Ding.wav" + SoundFolderMigration.PartialSuffix));
     }
 
+    // ── At startup, reading config.ini and the rules itself ───────────────────
+
+    private string Profile(string configText)
+    {
+        var profile = Directory.CreateDirectory(Path.Combine(_sounds, "profile-" + Guid.NewGuid().ToString("N")[..8])).FullName;
+        File.WriteAllText(Path.Combine(profile, "config.ini"), configText);
+        var sounds = Directory.CreateDirectory(Path.Combine(profile, SoundCatalog.CustomFolderName)).FullName;
+        File.WriteAllBytes(Path.Combine(sounds, "Ding.wav"), [1]);
+        return profile;
+    }
+
+    private const string GlassUsesDing = "[global]\n[sounds.glass]\nNewMail = custom:Ding.wav\n";
+
+    [Fact]
+    public void AtStartupItReadsTheSchemesFromConfigIni()
+    {
+        var profile = Profile(GlassUsesDing);
+
+        SoundFolderMigration.RunAtStartup(profile, () => []);
+
+        Assert.True(File.Exists(Path.Combine(profile, "sounds", "glass", "Ding.wav")));
+        Assert.False(File.Exists(Path.Combine(profile, "sounds", "Ding.wav")));
+        Assert.True(File.Exists(Path.Combine(profile, "sounds", SoundFolderMigration.MarkerFileName)));
+    }
+
+    [Fact]
+    public void AtStartupAConfigIniThatCannotBeReadMovesNothingAndIsTriedAgain()
+    {
+        var profile = Profile(GlassUsesDing);
+        var config = Path.Combine(profile, "config.ini");
+
+        using (new FileStream(config, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            SoundFolderMigration.RunAtStartup(profile, () => []);
+
+        Assert.False(File.Exists(Path.Combine(profile, "sounds", SoundFolderMigration.MarkerFileName)));
+        SoundFolderMigration.RunAtStartup(profile, () => []);   // the next start, with the file readable
+        Assert.True(File.Exists(Path.Combine(profile, "sounds", "glass", "Ding.wav")));
+    }
+
+    [Fact]
+    public void AtStartupRulesThatCannotBeReadMoveNothingAndAreTriedAgain()
+    {
+        var profile = Profile(GlassUsesDing);
+
+        SoundFolderMigration.RunAtStartup(profile, () => throw new IOException("rules.json is locked"));
+
+        Assert.True(File.Exists(Path.Combine(profile, "sounds", "Ding.wav")));
+        Assert.False(Directory.Exists(Path.Combine(profile, "sounds", "glass")));
+        Assert.False(File.Exists(Path.Combine(profile, "sounds", SoundFolderMigration.MarkerFileName)));
+    }
+
+    [Fact]
+    public void AtStartupARuleUsingTheFileKeepsItInPlace()
+    {
+        var profile = Profile(GlassUsesDing);
+
+        SoundFolderMigration.RunAtStartup(profile, () => [new MailRule { Name = "Ding", Action = RuleAction.PlaySound, Sound = "custom:Ding.wav" }]);
+
+        Assert.True(File.Exists(Path.Combine(profile, "sounds", "Ding.wav")));
+        Assert.True(File.Exists(Path.Combine(profile, "sounds", "glass", "Ding.wav")));
+    }
+
+    [Fact]
+    public void PlacingOnlyNamedFilesLeavesOthersAlone()
+    {
+        Shared("Ding.wav", 1);
+        Shared("Pat.wav", 2);
+
+        SoundFolderMigration.Place(_sounds, [BuiltIn("glass", ("NewMail", "custom:Ding.wav"), ("SendFailed", "custom:Pat.wav"))], [],
+            removeFromShared: false, onlyNames: ["Pat.wav"]);
+
+        Assert.True(File.Exists(InScheme("glass", "Pat.wav")));
+        Assert.False(File.Exists(InScheme("glass", "Ding.wav")));
+    }
+
     private string[] Snapshot() =>
         [.. Directory.GetFiles(_sounds, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(_sounds, f)).Order(StringComparer.Ordinal)];
 }
@@ -657,6 +732,32 @@ public class SoundSchemeFolderSettingsTests
 
             vm.DiscardUnsavedSchemeSounds();
             Assert.Equal([id], sounds.SchemeFoldersDeleted);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public void AGalleryUpdateGoesIntoTheSchemesOwnFolderWhichCancelNeverDeletes()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"QM-SFG-{Guid.NewGuid():N}.qmsounds");
+        try
+        {
+            SoundSchemeFile.Export(file, "Rain", new Dictionary<string, string> { ["NewMail"] = "builtin:wood/arrived" }, new RecordingSoundService(), "wood");
+            var config = new StubConfigService();
+            config.Load().SoundSchemes["user-rain"] = new SoundScheme("user-rain", "My rain", false,
+                galleryOrigin: new SoundGalleryOrigin("rain", new string('1', 64)));
+            var sounds = new RecordingSoundService();
+            var vm = MakeSettings(config, sounds);
+            vm.ConfirmRequested = (_, _) => true;
+
+            Assert.True(vm.ImportSchemeFrom(file, new SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('2', 64), null)));
+            Assert.Equal("user-rain", vm.SelectedSoundScheme!.Id);   // the same scheme, so the same folder
+
+            vm.DiscardUnsavedSchemeSounds();
+            Assert.Empty(sounds.SchemeFoldersDeleted);
         }
         finally
         {

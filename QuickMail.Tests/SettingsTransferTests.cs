@@ -1148,6 +1148,29 @@ public sealed class SettingsTransferTests : IDisposable
     }
 
     [Fact]
+    public void Sounds_ARulesSoundInANewerFileNeverStandsInForASchemesMissingFile()
+    {
+        // A 0.8.70 file: a scheme's sound in its folder, and a rule's in the root.
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Ding.wav", [1]);
+        Directory.CreateDirectory(Path.Combine(desktop, "sounds", "glass"));
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", "glass", "Other.wav"), [2]);
+        var bundle = Export(desktop, [SettingsCategory.RulesAndViews]);
+
+        // Here, Wood names a Ding.wav its folder no longer has (removed in Settings).
+        var laptop = SeedLaptop();
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.SoundSchemes["wood"] = new SoundScheme("wood", "Wood", isBuiltIn: true, pack: "wood",
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Ding.wav" });
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(bundle, laptop);
+
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Ding.wav")));
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "wood", "Ding.wav")));
+    }
+
+    [Fact]
     public void Sounds_InSchemeFoldersTravelInTheirFolders()
     {
         var desktop = SeedDesktop();

@@ -593,15 +593,18 @@ public static class SettingsImporter
         if (sounds.Count == 0) return;
         var dir = Directory.CreateDirectory(Path.Combine(profileDir, SoundCatalog.CustomFolderName)).FullName;
         var added = 0;
-        var flat = false;
+        var flatAdded = new List<string>();
+        var anyInSchemeFolders = false;
         foreach (var (name, bytes) in sounds)
         {
             if (SettingsBundle.SoundEntryPath(name) is not { } relative) continue;
-            flat |= Path.GetDirectoryName(relative) is null or "";
+            var isFlat = Path.GetDirectoryName(relative) is null or "";
+            anyInSchemeFolders |= !isFlat;
             var target = Path.Combine(dir, relative);
             if (File.Exists(target)) continue;
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllBytes(target, bytes);
+            if (isFlat) flatAdded.Add(relative);
             added++;
         }
         var kept = sounds.Count - added;
@@ -609,19 +612,21 @@ public static class SettingsImporter
                          + (kept > 0 ? $", {kept} already here kept." : "."));
 
         // A file from QuickMail 0.8.69 has every sound directly under sounds/, where only the rules'
-        // belong now (#948): each one a scheme uses is copied into that scheme's folder too. Copied,
-        // not moved, so undoing the import never needs a file put back.
-        if (flat) PlaceFlatSounds(profileDir, dir);
+        // belong now (#948): each one it brought that a scheme uses is copied into that scheme's
+        // folder too. Copied, not moved, so undoing the import never needs a file put back. A newer
+        // file, with schemes' folders of its own, already has its schemes' sounds in place; its flat
+        // ones are rules', and must never stand in for a file a scheme here has lost.
+        if (!anyInSchemeFolders && flatAdded.Count > 0) PlaceFlatSounds(profileDir, dir, flatAdded);
     }
 
-    private static void PlaceFlatSounds(string profileDir, string soundsFolder)
+    private static void PlaceFlatSounds(string profileDir, string soundsFolder, IReadOnlyCollection<string> names)
     {
         try
         {
             var config = Path.Combine(profileDir, "config.ini");
             if (!File.Exists(config)) return;
             var schemes = ConfigService.ParseFile(File.ReadAllLines(config)).SoundSchemes.Values;
-            SoundFolderMigration.Place(soundsFolder, schemes, [], removeFromShared: false);
+            SoundFolderMigration.Place(soundsFolder, schemes, [], removeFromShared: false, onlyNames: names);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
