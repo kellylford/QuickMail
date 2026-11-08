@@ -425,8 +425,8 @@ public class RuleSoundTests
             rule.AccountId = account;
             rules.SaveRules([rule]);
 
-            var removed = await rules.ApplyRulesToExistingAsync(
-                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
+            var removed = (await rules.ApplyRulesToExistingAsync(
+                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken)).Removed;
 
             Assert.Single(removed);   // The rule did run.
             Assert.Empty(sounds.RuleSounds);

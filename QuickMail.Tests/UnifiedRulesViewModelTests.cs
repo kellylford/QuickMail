@@ -1098,16 +1098,131 @@ public class UnifiedRulesViewModelTests
         var a = Guid.NewGuid();
         var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [Graph(a)]);
         Guid? scope = Guid.Empty;
-        vm.RunOnExistingRequested += id => { scope = id; return Task.FromResult(3); };
-        string? announced = null;
-        vm.AnnouncementRequested += (t, _) => announced = t;
+        vm.RunOnExistingRequested += id =>
+        {
+            scope = id;
+            return Task.FromResult(new ExistingMailRunReport(10, [new ExistingMailRuleResult("Receipts", 3, 0)], []));
+        };
+        (string Text, AnnouncementCategory Cat)? announced = null;
+        vm.AnnouncementRequested += (t, c) => announced = (t, c);
 
         await vm.RunOnExistingCommand.ExecuteAsync(null);
 
         Assert.Equal(a, scope);   // #493: runs only the account in the picker, not all accounts
-        Assert.Contains("3 messages moved or deleted", announced);
-        Assert.Contains("3 messages moved or deleted", vm.StatusText);   // visible too, for announcements-off users
+        const string expected = "Ran the Receipts rule on 10 stored Inbox messages for the Work account. It moved 3 messages.";
+        Assert.Equal(expected, announced?.Text);
+        Assert.Equal(AnnouncementCategory.Result, announced?.Cat);
+        Assert.Equal(expected, vm.StatusText);   // visible too, for announcements-off users
     }
+
+    // ── Run on Existing and Test messages (#949) ─────────
+
+    /// <summary>Runs <paramref name="body"/> with en-US as the current culture, so grouped numbers read "1,886".</summary>
+    private static void InEnglish(Action body)
+    {
+        var saved = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+        try { body(); }
+        finally { System.Globalization.CultureInfo.CurrentCulture = saved; }
+    }
+
+    private static ExistingMailRunReport Report(int inspected, params ExistingMailRuleResult[] rules) => new(inspected, rules, []);
+
+    [Fact]
+    public void DescribeRunOnExisting_SeveralRules_ListsEachThatActed_WithTheTotal() => InEnglish(() =>
+        Assert.Equal(
+            "Ran 4 rules on 2,900 stored Inbox messages for the XS4All account. They moved 1,936 messages and deleted 6: "
+            + "techtalk moved 1,886; Newsletters moved 50; Spam deleted 6.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the XS4All account", Report(2900,
+                new("techtalk", 1886, 0), new("Newsletters", 50, 0), new("Idle", 0, 0), new("Spam", 0, 6)))));
+
+    [Fact]
+    public void DescribeRunOnExisting_SeveralRules_OnlyOneActed_NamesIt() => InEnglish(() =>
+        Assert.Equal(
+            "Ran 2 rules on 2,900 stored Inbox messages for the XS4All account. One of them, techtalk, moved 1,886 messages.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the XS4All account", Report(2900, new("techtalk", 1886, 0), new("Idle", 0, 0)))));
+
+    [Fact]
+    public void DescribeRunOnExisting_SeveralRules_NoneActed() => InEnglish(() =>
+        Assert.Equal(
+            "Ran 3 rules on 1,200 stored Inbox messages for the Work account. None of them moved or deleted any messages.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(1200, new("A", 0, 0), new("B", 0, 0), new("C", 0, 0)))));
+
+    [Fact]
+    public void DescribeRunOnExisting_OneRule_NoMatches() => InEnglish(() =>
+        Assert.Equal(
+            "Ran the Receipts rule on 1 stored Inbox message for the Work account. It didn't move or delete any of them.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(1, new ExistingMailRuleResult("Receipts", 0, 0)))));
+
+    [Fact]
+    public void DescribeRunOnExisting_OneRule_MovedAndDeleted_AndANameEndingInRule() => InEnglish(() =>
+        Assert.Equal(
+            "Ran the Spam rule on 5,000 stored Inbox messages for the Work account. It moved 1 message and deleted 1,200.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(5000, new ExistingMailRuleResult("Spam rule", 1, 1200)))));
+
+    [Fact]
+    public void DescribeRunOnExisting_ManyRulesActed_SumsUpTheRest()
+    {
+        var rules = Enumerable.Range(1, UnifiedRulesViewModel.MaxRulesNamedInRunReport + 2)
+            .Select(i => new ExistingMailRuleResult($"R{i}", i, 0)).ToArray();
+        InEnglish(() =>
+            Assert.Equal(
+                "Ran 7 rules on 100 stored Inbox messages for the Work account. They moved 28 messages: "
+                + "R1 moved 1; R2 moved 2; R3 moved 3; R4 moved 4; R5 moved 5; 2 other rules moved 13.",
+                UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(100, rules))));
+    }
+
+    [Fact]
+    public void DescribeRunOnExisting_ARuleThatFailed_IsNotReportedAsMatchingNothing() => InEnglish(() =>
+    {
+        Assert.Equal(
+            "Ran the Digests rule on 40 stored Inbox messages for the Work account. It moved 5 messages and failed on 2. The log says why.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(40, new ExistingMailRuleResult("Digests", 5, 0, Failed: 2))));
+        Assert.Equal(
+            "Ran 2 rules on 40 stored Inbox messages for the Work account. They moved 5 messages: Digests moved 5; Spam failed on 3. The log says why.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(40, new("Digests", 5, 0), new("Spam", 0, 0, Failed: 3))));
+        Assert.Equal(
+            "Ran 2 rules on 40 stored Inbox messages for the Work account. One of them, Spam, failed on 3 messages. The log says why.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(40, new("Idle", 0, 0), new("Spam", 0, 0, Failed: 3))));
+        Assert.Equal(
+            "Ran 2 rules on 40 stored Inbox messages for the Work account. None of them moved or deleted any messages: A failed on 1; B failed on 2. The log says why.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(40, new("A", 0, 0, Failed: 1), new("B", 0, 0, Failed: 2))));
+    });
+
+    [Fact]
+    public void DescribeRunOnExisting_InboxNotReadYet_DoesNotSayThereAreNoRules() => InEnglish(() =>
+        Assert.Equal(
+            "The rules didn't run: QuickMail hasn't read the Inbox for the Work account yet. Try again once the account has connected.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", ExistingMailRunReport.NoInbox)));
+
+    [Fact]
+    public void DescribeRunOnExisting_NoStoredInboxMail_SaysSo() => InEnglish(() =>
+    {
+        Assert.Equal(
+            "There are no stored Inbox messages for the Work account, so there was nothing to run the rules on.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(0, new("A", 0, 0), new("B", 0, 0))));
+        Assert.Equal(
+            "There are no stored Inbox messages for the Work account, so there was nothing to run the rule on.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(0, new ExistingMailRuleResult("A", 0, 0))));
+    });
+
+    [Fact]
+    public void DescribeRunOnExisting_NoRules_SaysSo() => InEnglish(() =>
+        Assert.Equal(
+            "There are no enabled rules to run for the Work account.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", ExistingMailRunReport.Empty)));
+
+    [Fact]
+    public void DescribeTest_GroupsNumbers_AndSaysWhatItMeasured() => InEnglish(() =>
+        Assert.Equal(
+            "This rule would match 1,108 of the 2,526 messages in the message list for the XS4All account.",
+            UnifiedRulesViewModel.DescribeTest("the XS4All account", 1108, 2526)));
+
+    [Fact]
+    public void DescribeTest_NoMatches() => InEnglish(() =>
+        Assert.Equal(
+            "This rule would match 0 of the 40 messages in the message list for the Work account.",
+            UnifiedRulesViewModel.DescribeTest("the Work account", 0, 40)));
 
     [Fact]
     public async Task RunOnExisting_DisabledWhenAccountHasNoEnabledClientRules()
@@ -1179,7 +1294,7 @@ public class UnifiedRulesViewModelTests
 
             vm.TestRuleCommand.Execute(null);
 
-            Assert.Equal("Rule would match 1 of the 2 messages in the list for the Work account.", vm.StatusText);
+            Assert.Equal("This rule would match 1 of the 2 messages in the message list for the Work account.", vm.StatusText);
             Assert.NotNull(announced);
             Assert.Equal(AnnouncementCategory.Result, announced!.Value.Cat);
         }
@@ -1252,7 +1367,7 @@ public class UnifiedRulesViewModelTests
 
         vm.TestRuleCommand.Execute(null);
 
-        Assert.Equal("Rule would match the only message in the list for the Work account.", vm.StatusText);
+        Assert.Equal("This rule would match the only message in the message list for the Work account.", vm.StatusText);
     }
 
     [Fact]
@@ -1274,7 +1389,7 @@ public class UnifiedRulesViewModelTests
 
             vm.TestRuleCommand.Execute(null);
 
-            Assert.Equal("Rule would not match the only message in the list for the Work account.", vm.StatusText);
+            Assert.Equal("This rule would not match the only message in the message list for the Work account.", vm.StatusText);
         }
         finally { try { System.IO.Directory.Delete(dir, true); } catch { } }
     }
@@ -1927,13 +2042,13 @@ public class UnifiedRulesViewModelTests
             new FakeServerRules(), [Graph(a)], preferredAccountId: a);
         await vm.RefreshCommand.ExecuteAsync(null);
         Assert.True(vm.CanRunOnExisting);
-        vm.RunOnExistingRequested += _ => Task.FromResult(0);
+        vm.RunOnExistingRequested += _ => Task.FromResult(new ExistingMailRunReport(12, [new ExistingMailRuleResult("C1", 0, 0)], []));
         var announced = new List<(string, AnnouncementCategory)>();
         vm.AnnouncementRequested += (t, c) => announced.Add((t, c));
 
         await vm.RunOnExistingCommand.ExecuteAsync(null);
 
-        var expected = $"Applied {vm.SelectedAccount!.DisplayName}'s rules to existing mail.";
+        const string expected = "Ran the C1 rule on 12 stored Inbox messages for the Work account. It didn't move or delete any of them.";
         Assert.Equal(expected, vm.StatusText);
         Assert.Equal((expected, AnnouncementCategory.Result), announced[^1]);
     }

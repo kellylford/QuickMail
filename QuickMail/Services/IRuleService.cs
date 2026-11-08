@@ -49,9 +49,11 @@ public interface IRuleService
     /// untouched, and any account missing from the map is skipped entirely (fail-closed),
     /// matching the "client rules only ever act on the Inbox" model.
     /// </para>
-    /// Returns messages that were moved or deleted (should be removed from UI).
+    /// Returns how many stored Inbox messages the run looked at, what each enabled rule for those accounts
+    /// moved or deleted (a message counts under the first rule that took it, #685), and the messages that
+    /// were moved or deleted, which should be removed from the UI (#949).
     /// </summary>
-    Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
+    Task<ExistingMailRunReport> ApplyRulesToExistingAsync(
         ILocalStoreService store,
         IReadOnlyDictionary<Guid, string> inboxFolderByAccount,
         CancellationToken ct);
