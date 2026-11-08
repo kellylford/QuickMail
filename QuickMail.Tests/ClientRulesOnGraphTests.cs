@@ -287,11 +287,13 @@ public class ClientRulesOnGraphTests : IDisposable
         var h = Build(MoveRule(_graphAccountId));
         await _store.UpsertSummariesAsync([Cached("in-1", "INBOX")]);
 
-        var removed = (await h.Rules.ApplyRulesToExistingAsync(
-            _store, new Dictionary<Guid, string>(), CancellationToken.None)).Removed;
+        var report = await h.Rules.ApplyRulesToExistingAsync(
+            _store, new Dictionary<Guid, string>(), CancellationToken.None);
 
         Assert.Empty(h.Graph.Actions);
-        Assert.Empty(removed);
+        Assert.Empty(report.Removed);
+        // Said as "the Inbox wasn't read", never as "no enabled rules": the account has one (#949).
+        Assert.True(report.InboxUnavailable);
     }
 
     [Fact]
@@ -380,6 +382,7 @@ public class ClientRulesOnGraphTests : IDisposable
 
         Assert.Empty(report.Rules);
         Assert.Empty(report.Removed);
+        Assert.False(report.InboxUnavailable);
         Assert.Empty(h.Graph.Actions);
     }
 }

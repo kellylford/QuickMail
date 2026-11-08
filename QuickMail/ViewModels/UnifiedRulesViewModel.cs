@@ -275,10 +275,12 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
     /// <summary>Run on Existing's result (#949): what it looked at (every enabled client rule for the account, on its
     /// stored Inbox mail, which can be more than the message list shows) and what each rule did, so it is never
-    /// mistaken for Test's count. Only rules that moved or deleted something are named; the rest are in the rule
-    /// count. Numbers are grouped for the current culture.</summary>
+    /// mistaken for Test's count. Only rules that moved, deleted or failed on something are named; the rest are in
+    /// the rule count. Numbers are grouped for the current culture.</summary>
     internal static string DescribeRunOnExisting(string account, ExistingMailRunReport report)
     {
+        if (report.InboxUnavailable)
+            return $"The rules didn't run: QuickMail hasn't read the Inbox for {account} yet. Try again once the account has connected.";
         var ruleCount = report.Rules.Count;
         if (ruleCount == 0)
             return $"There are no enabled rules to run for {account}.";
@@ -287,14 +289,16 @@ public partial class UnifiedRulesViewModel : ObservableObject
                    + (ruleCount == 1 ? "the rule on." : "the rules on.");
 
         var scope = $"{N(report.InspectedCount)} stored Inbox {Plural(report.InspectedCount, "message")} for {account}";
-        var acted = report.Rules.Where(r => r.TookAny).ToList();
+        var acted = report.Rules.Where(r => r.HasNews).ToList();
+        // Said once, at the end, wherever a failure is reported.
+        var logNote = report.TotalFailed > 0 ? " The log says why." : "";
 
         if (ruleCount == 1)
         {
             var only = report.Rules[0];
             var opening = $"Ran {RuleLabel(only.RuleName)} on {scope}.";
-            return only.TookAny
-                ? $"{opening} It {Took(only.Moved, only.Deleted, withNoun: true)}."
+            return only.HasNews
+                ? $"{opening} It {Did(only.Moved, only.Deleted, only.Failed, withNoun: true)}.{logNote}"
                 : $"{opening} It didn't move or delete any of them.";
         }
 
@@ -302,26 +306,36 @@ public partial class UnifiedRulesViewModel : ObservableObject
         if (acted.Count == 0)
             return $"{start} None of them moved or deleted any messages.";
         if (acted.Count == 1)
-            return $"{start} One of them, {Name(acted[0].RuleName)}, {Took(acted[0].Moved, acted[0].Deleted, withNoun: true)}.";
+            return $"{start} One of them, {Name(acted[0].RuleName)}, "
+                   + $"{Did(acted[0].Moved, acted[0].Deleted, acted[0].Failed, withNoun: true)}.{logNote}";
 
         var named = acted.Take(MaxRulesNamedInRunReport)
-            .Select(r => $"{Name(r.RuleName)} {Took(r.Moved, r.Deleted, withNoun: false)}")
+            .Select(r => $"{Name(r.RuleName)} {Did(r.Moved, r.Deleted, r.Failed, withNoun: false)}")
             .ToList();
         var rest = acted.Skip(MaxRulesNamedInRunReport).ToList();
         if (rest.Count > 0)
-        {
-            var restCount = rest.Sum(r => r.Moved + r.Deleted);
-            named.Add($"{N(rest.Count)} other {Plural(rest.Count, "rule")} moved or deleted {N(restCount)}");
-        }
-        return $"{start} They {Took(report.TotalMoved, report.TotalDeleted, withNoun: true)}: {string.Join("; ", named)}.";
+            named.Add($"{N(rest.Count)} other {Plural(rest.Count, "rule")} "
+                      + Did(rest.Sum(r => r.Moved), rest.Sum(r => r.Deleted), rest.Sum(r => r.Failed), withNoun: false));
+        var total = report.TotalMoved + report.TotalDeleted > 0
+            ? $"They {Did(report.TotalMoved, report.TotalDeleted, 0, withNoun: true)}"
+            : "None of them moved or deleted any messages";
+        return $"{start} {total}: {string.Join("; ", named)}.{logNote}";
 
-        // "moved 1,886 messages and deleted 6", or without the noun "moved 1,886 and deleted 6".
-        static string Took(int moved, int deleted, bool withNoun)
+        // "moved 1,886 messages and deleted 6", "moved 5 messages, deleted 2 and failed on 1", or without the noun
+        // "moved 1,886 and deleted 6". The noun goes on the first number only.
+        static string Did(int moved, int deleted, int failed, bool withNoun)
         {
-            var first = moved > 0 ? moved : deleted;
-            var noun = withNoun ? " " + Plural(first, "message") : "";
-            if (moved > 0 && deleted > 0) return $"moved {N(moved)}{noun} and deleted {N(deleted)}";
-            return moved > 0 ? $"moved {N(moved)}{noun}" : $"deleted {N(deleted)}{noun}";
+            var parts = new List<string>(3);
+            void Add(string verb, int count)
+            {
+                if (count <= 0) return;
+                var noun = withNoun && parts.Count == 0 ? " " + Plural(count, "message") : "";
+                parts.Add($"{verb} {N(count)}{noun}");
+            }
+            Add("moved", moved);
+            Add("deleted", deleted);
+            Add("failed on", failed);
+            return parts.Count == 1 ? parts[0] : $"{string.Join(", ", parts.Take(parts.Count - 1))} and {parts[^1]}";
         }
 
         // "the techtalk rule"; a name that already ends in "rule" doesn't get a second one, as AccountPhrase does
@@ -330,9 +344,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         {
             var trimmed = name?.Trim();
             if (string.IsNullOrEmpty(trimmed)) return "1 rule";
-            var endsInRule = trimmed.Equals("rule", StringComparison.OrdinalIgnoreCase)
-                             || trimmed.EndsWith(" rule", StringComparison.OrdinalIgnoreCase);
-            return endsInRule ? $"the {trimmed}" : $"the {trimmed} rule";
+            return trimmed.EndsWith(" rule", StringComparison.OrdinalIgnoreCase) ? $"the {trimmed}" : $"the {trimmed} rule";
         }
 
         static string Name(string? name) => string.IsNullOrWhiteSpace(name) ? "an unnamed rule" : name.Trim();

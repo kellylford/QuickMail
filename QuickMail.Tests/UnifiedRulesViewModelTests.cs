@@ -1168,9 +1168,32 @@ public class UnifiedRulesViewModelTests
         InEnglish(() =>
             Assert.Equal(
                 "Ran 7 rules on 100 stored Inbox messages for the Work account. They moved 28 messages: "
-                + "R1 moved 1; R2 moved 2; R3 moved 3; R4 moved 4; R5 moved 5; 2 other rules moved or deleted 13.",
+                + "R1 moved 1; R2 moved 2; R3 moved 3; R4 moved 4; R5 moved 5; 2 other rules moved 13.",
                 UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(100, rules))));
     }
+
+    [Fact]
+    public void DescribeRunOnExisting_ARuleThatFailed_IsNotReportedAsMatchingNothing() => InEnglish(() =>
+    {
+        Assert.Equal(
+            "Ran the Digests rule on 40 stored Inbox messages for the Work account. It moved 5 messages and failed on 2. The log says why.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(40, new ExistingMailRuleResult("Digests", 5, 0, Failed: 2))));
+        Assert.Equal(
+            "Ran 2 rules on 40 stored Inbox messages for the Work account. They moved 5 messages: Digests moved 5; Spam failed on 3. The log says why.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(40, new("Digests", 5, 0), new("Spam", 0, 0, Failed: 3))));
+        Assert.Equal(
+            "Ran 2 rules on 40 stored Inbox messages for the Work account. One of them, Spam, failed on 3 messages. The log says why.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(40, new("Idle", 0, 0), new("Spam", 0, 0, Failed: 3))));
+        Assert.Equal(
+            "Ran 2 rules on 40 stored Inbox messages for the Work account. None of them moved or deleted any messages: A failed on 1; B failed on 2. The log says why.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(40, new("A", 0, 0, Failed: 1), new("B", 0, 0, Failed: 2))));
+    });
+
+    [Fact]
+    public void DescribeRunOnExisting_InboxNotReadYet_DoesNotSayThereAreNoRules() => InEnglish(() =>
+        Assert.Equal(
+            "The rules didn't run: QuickMail hasn't read the Inbox for the Work account yet. Try again once the account has connected.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", ExistingMailRunReport.NoInbox)));
 
     [Fact]
     public void DescribeRunOnExisting_NoStoredInboxMail_SaysSo() => InEnglish(() =>
