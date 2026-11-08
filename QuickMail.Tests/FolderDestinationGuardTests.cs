@@ -75,4 +75,37 @@ public class FolderDestinationGuardTests
     [Fact]
     public void AnEmptyDestinationPathIsNotAParent()
         => Assert.False(MainViewModel.IsAlreadyUnder(F("INBOX/Projects"), F(string.Empty)));
+
+    // ── The top level of the account (#954) ──────────────────────────────────────
+    //
+    // Moving or copying a folder to the account root, when it is already directly under it, is the same
+    // no-op as choosing its own parent: IMAP refuses the rename, and a Microsoft 365 copy duplicates it.
+    // MainViewModel.IsAtTopLevel decides that from the tree the user sees.
+
+    [Theory]
+    [InlineData("Archive", true)]
+    [InlineData("INBOX", true)]
+    [InlineData("INBOX/Projects", false)]
+    [InlineData("Clients/Acme", false)]   // under a path segment that is not a mailbox: still not the top
+    public void Imap_TopLevelIsAFolderWithNoParentPath(string folder, bool expected)
+    {
+        var all = new[] { F("INBOX"), F("INBOX/Projects"), F("Archive"), F("Clients/Acme") };
+        Assert.Equal(expected, MainViewModel.IsAtTopLevel(F(folder), all));
+    }
+
+    [Fact]
+    public void Graph_TopLevelIsAFolderWhoseParentIsNotInTheList()
+    {
+        // Top-level Graph folders point at the hidden msgfolderroot, which is never fetched.
+        var inbox    = F("AAA", parentId: "ROOT");
+        var projects = F("BBB", parentId: "AAA");
+        var all = new[] { inbox, projects };
+
+        Assert.True(MainViewModel.IsAtTopLevel(inbox, all));
+        Assert.False(MainViewModel.IsAtTopLevel(projects, all));
+    }
+
+    [Fact]
+    public void AFolderThatIsNotInTheListIsNotKnownToBeAtTheTop()
+        => Assert.False(MainViewModel.IsAtTopLevel(F("Archive"), [F("INBOX")]));
 }

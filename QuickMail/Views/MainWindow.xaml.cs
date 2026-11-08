@@ -7202,9 +7202,10 @@ public partial class MainWindow : Window
         picker.Owner = this;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
-        if (pickerOpened != true || picker.SelectedFolder == null) return;
+        if (pickerOpened != true || (picker.SelectedFolder == null && !picker.SelectedAccountRoot)) return;
 
-        await _vm.MoveFolderToAsync(node, picker.SelectedFolder);
+        // A null folder with SelectedAccountRoot is the top level of the account (#954).
+        await _vm.MoveFolderToAsync(node, picker.SelectedAccountRoot ? null : picker.SelectedFolder);
     }
 
     private async void FolderContextMenu_CopyFolder_Click(object sender, RoutedEventArgs e)
@@ -7223,9 +7224,10 @@ public partial class MainWindow : Window
         picker.Owner = this;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
-        if (pickerOpened != true || picker.SelectedFolder == null) return;
+        if (pickerOpened != true || (picker.SelectedFolder == null && !picker.SelectedAccountRoot)) return;
 
-        await _vm.CopyFolderToAsync(node, picker.SelectedFolder);
+        // A null folder with SelectedAccountRoot is the top level of the account (#954).
+        await _vm.CopyFolderToAsync(node, picker.SelectedAccountRoot ? null : picker.SelectedFolder);
     }
 
     private async void FolderContextMenu_DeleteFolder_Click(object sender, RoutedEventArgs e)

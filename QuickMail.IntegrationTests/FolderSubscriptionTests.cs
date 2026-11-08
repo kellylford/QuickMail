@@ -62,6 +62,38 @@ public sealed class FolderSubscriptionTests
         Assert.DoesNotContain($"Projects{separator}2026", subscribed);
     }
 
+    /// <summary>
+    /// Move Folder to the account root (#954): a nested folder goes to the top level of the personal
+    /// namespace, keeping its name, with its subscription moved with it.
+    /// </summary>
+    [Fact]
+    public async Task AFolderMovedToTheTopLevel_LandsThere_AndIsSubscribedUnderItsNewName()
+    {
+        _greenMail.RequireServers();
+        var ct = TestContext.Current.CancellationToken;
+        var account = _greenMail.CreateAccount("move954a");
+        using var imap = new ImapMailService(new NoOpOAuthService());
+        await imap.ConnectAsync(account, "pw", ct);
+        string separator;
+        List<string> names;
+        try
+        {
+            await imap.CreateFolderAsync(account.Id, null, "Projects", ct);
+            separator = await SeparatorAsync(account, ct);
+            await imap.CreateFolderAsync(account.Id, "Projects", "2026", ct);
+
+            await imap.MoveFolderAsync(account.Id, $"Projects{separator}2026", null, ct);
+            names = (await imap.GetFoldersAsync(account.Id, ct)).Select(f => f.FullName).ToList();
+        }
+        finally { await imap.DisconnectAsync(account.Id, ct); }
+
+        Assert.Contains("2026", names);
+        Assert.DoesNotContain($"Projects{separator}2026", names);
+        var subscribed = await SubscribedAsync(account, ct);
+        Assert.Contains("2026", subscribed);
+        Assert.DoesNotContain($"Projects{separator}2026", subscribed);
+    }
+
     [Fact]
     public async Task ACopiedFolder_IsSubscribed()
     {

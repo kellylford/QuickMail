@@ -248,6 +248,9 @@ public class MailServiceRouter : IMailService, IConnectionProbe
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
         => For(accountId).RenameFolderAsync(accountId, folderName, newName, newParentFolderName, ct);
 
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+        => For(accountId).MoveFolderAsync(accountId, folderName, newParentFolderName, ct);
+
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
         => For(accountId).CopyFolderAsync(accountId, folderName, destinationParentName, ct);
 

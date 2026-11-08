@@ -218,8 +218,22 @@ public interface IMailService : IDisposable
     // ── Folder CRUD ──────────────────────────────────────────────────────────
     Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default);
     Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default);
-    /// <summary>Moves a folder by renaming it under a new parent. Pass null for <paramref name="newParentFolderName"/> to move to the account root.</summary>
+    /// <summary>
+    /// Renames a folder and optionally moves it under <paramref name="newParentFolderName"/>. What a
+    /// null parent means differs between backends — Microsoft 365 and POP3 keep the folder where it
+    /// is, IMAP puts it at the top of the personal namespace — so to move a folder, including to the
+    /// top level, use <see cref="MoveFolderAsync"/>, whose null always means the top level.
+    /// </summary>
     Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves a folder, keeping its name, under <paramref name="newParentFolderName"/>; null moves it
+    /// to the top level of the account, beside Inbox (#954). A backend that cannot put a folder there
+    /// throws with a sentence the caller can show as is. Default: not supported, for test doubles and
+    /// any backend with no folders of its own.
+    /// </summary>
+    Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+        => Task.FromException(new NotSupportedException("This account cannot move folders."));
     /// <summary>Recursively copies a folder and all its messages into a new parent folder.</summary>
     Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default);
 }

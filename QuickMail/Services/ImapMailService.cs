@@ -966,6 +966,48 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         IMailFolder parent = string.IsNullOrEmpty(newParentFolderName)
             ? client.GetFolder(client.PersonalNamespaces[0])
             : await client.GetFolderAsync(newParentFolderName, ct);
+        await RenameUnderAsync(folder, parent, newName, ct);
+    }
+
+    public async Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        var parent = string.IsNullOrEmpty(newParentFolderName)
+            ? TopLevelFolder(client)
+            : await client.GetFolderAsync(newParentFolderName, ct);
+        // The server's own leaf name, not the display name: the display name can be a friendlier
+        // label than the mailbox is called.
+        await RenameUnderAsync(folder, parent, folder.Name, ct);
+    }
+
+    /// <summary>
+    /// The folder a move or copy to "the top level of the account" goes into (#954): the root of the
+    /// personal namespace, which is where Inbox's siblings live on almost every server. Some servers
+    /// (Courier and older Cyrus) put every folder inside INBOX — a namespace of "INBOX." — and there
+    /// a folder cannot go beside INBOX at all. Moving it into that namespace would land it under
+    /// INBOX in the folder tree, which is not what the user chose, so it is refused in words they can
+    /// act on instead.
+    /// </summary>
+    private static IMailFolder TopLevelFolder(ImapClient client)
+    {
+        if (client.PersonalNamespaces.Count == 0)
+            throw new NotSupportedException(
+                "This mail server did not say where its top-level folders are, so a folder cannot be moved or copied to the top level.");
+
+        var ns = client.PersonalNamespaces[0];
+        var prefix = ns.Path.TrimEnd(ns.DirectorySeparator);
+        if (prefix.Length > 0)
+            throw new NotSupportedException(
+                $"This mail server keeps every folder inside {prefix}, so a folder cannot be moved or copied above it. Choose {prefix} instead.");
+
+        return client.GetFolder(ns);
+    }
+
+    /// <summary>Renames <paramref name="folder"/> to <paramref name="newName"/> under <paramref name="parent"/>, carrying its subscriptions across.</summary>
+    private static async Task RenameUnderAsync(IMailFolder folder, IMailFolder parent, string newName, CancellationToken ct)
+    {
         // A subscription is to a name, so it does not follow a rename: the new names are subscribed
         // and the old ones dropped, for every folder beneath it too (#943).
         // The old names are dropped before the rename, while they still exist to be named; a rename the
@@ -995,8 +1037,9 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
     {
         var srcFolder = await client.GetFolderAsync(folderName, ct);
 
+        // Only the top call can be given no parent; the recursion below always names one.
         IMailFolder destParent = string.IsNullOrEmpty(destinationParentName)
-            ? client.GetFolder(client.PersonalNamespaces[0])
+            ? TopLevelFolder(client)
             : await client.GetFolderAsync(destinationParentName, ct);
 
         var newFolder = await destParent.CreateAsync(srcFolder.Name, true, ct)

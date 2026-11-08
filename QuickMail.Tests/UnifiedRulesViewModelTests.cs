@@ -1168,9 +1168,44 @@ public class UnifiedRulesViewModelTests
         InEnglish(() =>
             Assert.Equal(
                 "Ran 7 rules on 100 stored Inbox messages for the Work account. They moved 28 messages: "
-                + "R1 moved 1; R2 moved 2; R3 moved 3; R4 moved 4; R5 moved 5; 2 other rules moved 13.",
+                + "“R1” moved 1; “R2” moved 2; “R3” moved 3; “R4” moved 4; "
+                + "“R5” moved 5; 2 other rules moved 13.",
                 UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(100, rules))));
     }
+
+    /// <summary>
+    /// A rule name that could be read as part of the report is quoted; a plain one is not (#949 review). The report
+    /// follows each name with a verb and a count and joins them with semicolons, so "Top 10 moved 5; Lists; work
+    /// moved 3" no longer says which words are names.
+    /// </summary>
+    [Fact]
+    public void DescribeRunOnExisting_QuotesOnlyNamesThatCouldBlurIntoTheReport() => InEnglish(() =>
+    {
+        Assert.Equal(
+            "Ran 4 rules on 900 stored Inbox messages for the Work account. They moved 11 messages: "
+            + "“Top 10” moved 5; “Lists; work” moved 3; “Mail I moved” moved 2; Newsletters moved 1.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(900,
+                new("Top 10", 5, 0), new("Lists; work", 3, 0), new("Mail I moved", 2, 0), new("Newsletters", 1, 0))));
+
+        // The single-rule and one-of-several wordings use the same rule.
+        Assert.Equal(
+            "Ran the “Bills: 2026” rule on 40 stored Inbox messages for the Work account. It moved 4 messages.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(40, new ExistingMailRuleResult("Bills: 2026", 4, 0))));
+        Assert.Equal(
+            "Ran 2 rules on 40 stored Inbox messages for the Work account. One of them, “Deleted items”, moved 4 messages.",
+            UnifiedRulesViewModel.DescribeRunOnExisting("the Work account", Report(40, new("Deleted items", 4, 0), new("Idle", 0, 0))));
+    });
+
+    [Theory]
+    [InlineData("techtalk", "techtalk")]
+    [InlineData("Bills and receipts", "Bills and receipts")]   // "and" is too common in names to quote for
+    [InlineData("Movedrafts", "Movedrafts")]                    // only the report's verbs as whole words
+    [InlineData("Mr. Smith", "“Mr. Smith”")]
+    [InlineData("a, b", "“a, b”")]
+    [InlineData("FAILED builds", "“FAILED builds”")]
+    [InlineData("Kelly's 2nd", "“Kelly's 2nd”")]
+    public void QuoteIfAmbiguous(string name, string expected) =>
+        Assert.Equal(expected, UnifiedRulesViewModel.QuoteIfAmbiguous(name));
 
     [Fact]
     public void DescribeRunOnExisting_ARuleThatFailed_IsNotReportedAsMatchingNothing() => InEnglish(() =>
