@@ -93,7 +93,7 @@ public sealed class SoundGalleryTests : IDisposable
             File.WriteAllBytes(Path.Combine(dir, FileName(id, file)), file);
             entries.Add(Entry(id, file));
         }
-        var json = JsonSerializer.Serialize(new { format = 1, schemes = entries });
+        var json = JsonSerializer.Serialize(new { format = 1, app = "quickmail", schemes = entries });
         if (rewriteIndex is not null) json = rewriteIndex(json);
         var index = Encoding.UTF8.GetBytes(json);
         File.WriteAllBytes(SignedPath(dir), Signed(index, key));
@@ -117,7 +117,7 @@ public sealed class SoundGalleryTests : IDisposable
         var entries = await Service(dir).LoadAsync(TestContext.Current.CancellationToken);
         var entry = Assert.Single(entries);
         Assert.Equal("rain", entry.Id);
-        Assert.Equal($"rain, by Pat. 2 of {SoundCatalog.Events.Count} events have a sound", entry.ToString());
+        Assert.Equal($"rain, by Pat. 2 of {SoundCatalog.Events.Count} events have a sound.", entry.ToString());
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public sealed class SoundGalleryTests : IDisposable
     // ── The index ──────────────────────────────────────────────────────────────
 
     private IReadOnlyList<SoundGalleryEntry> ParseOne(object entry) =>
-        SoundGalleryService.Parse(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { format = 1, schemes = new[] { entry } })));
+        SoundGalleryService.Parse(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { format = 1, app = "quickmail", schemes = new[] { entry } })));
 
     public static TheoryData<string, string> BadNames => new()
     {
@@ -227,7 +227,7 @@ public sealed class SoundGalleryTests : IDisposable
     [Fact]
     public void AnEntryMissingItsAuthorOrLicenceIsDropped()
     {
-        var json = """{"format":1,"schemes":[{"id":"rain","name":"Rain","file":"rain.qmsounds","size":1,"sha256":"0000000000000000000000000000000000000000000000000000000000000000"}]}""";
+        var json = """{"format":1,"app":"quickmail","schemes":[{"id":"rain","name":"Rain","file":"rain.qmsounds","size":1,"sha256":"0000000000000000000000000000000000000000000000000000000000000000"}]}""";
         Assert.Empty(SoundGalleryService.Parse(Encoding.UTF8.GetBytes(json)));
     }
 
@@ -249,7 +249,7 @@ public sealed class SoundGalleryTests : IDisposable
     [Fact]
     public void DuplicateIdsKeepTheFirst()
     {
-        var json = JsonSerializer.Serialize(new { format = 1, schemes = new[] { Entry("rain", [1], name: "First"), Entry("rain", [2], name: "Second") } });
+        var json = JsonSerializer.Serialize(new { format = 1, app = "quickmail", schemes = new[] { Entry("rain", [1], name: "First"), Entry("rain", [2], name: "Second") } });
         Assert.Equal("First", Assert.Single(SoundGalleryService.Parse(Encoding.UTF8.GetBytes(json))).Name);
     }
 
@@ -257,7 +257,7 @@ public sealed class SoundGalleryTests : IDisposable
     public void AtMostTwoHundredSchemesAreRead()
     {
         var entries = Enumerable.Range(0, 250).Select(i => Entry($"s{i}", [1])).ToArray();
-        var json = JsonSerializer.Serialize(new { format = 1, schemes = entries });
+        var json = JsonSerializer.Serialize(new { format = 1, app = "quickmail", schemes = entries });
         Assert.Equal(SoundGalleryService.MaxSchemes, SoundGalleryService.Parse(Encoding.UTF8.GetBytes(json)).Count);
     }
 
@@ -266,8 +266,8 @@ public sealed class SoundGalleryTests : IDisposable
     [InlineData("[]")]
     [InlineData("""{"schemes":[]}""")]
     [InlineData("""{"format":"1","schemes":[]}""")]
-    [InlineData("""{"format":1,"schemes":{}}""")]
-    [InlineData("""{"format":1,"schemes":[[[[[[[[[[[[1]]]]]]]]]]]]}""")]
+    [InlineData("""{"format":1,"app":"quickmail","schemes":{}}""")]
+    [InlineData("""{"format":1,"app":"quickmail","schemes":[[[[[[[[[[[[1]]]]]]]]]]]]}""")]
     public void AMalformedIndexIsRefused(string json) =>
         Assert.Throws<SoundGalleryException>(() => SoundGalleryService.Parse(Encoding.UTF8.GetBytes(json)));
 
@@ -300,12 +300,12 @@ public sealed class SoundGalleryTests : IDisposable
         Assert.Empty(ParseOne(WithSize(true)));
         Assert.Empty(ParseOne(WithSize(1.5)));
 
-        var json = JsonSerializer.Serialize(new { format = 1, schemes = new[] { new
+        var json = JsonSerializer.Serialize(new { format = 1, app = "quickmail", schemes = new[] { new
         {
             id = "rain", name = "Rain", author = "Pat", description = "", license = "CC0-1.0",
             file = FileName("rain", file), size = 1, sha256 = sha, eventsWithSound = (int?)null,
         } } });
-        Assert.Equal(0, Assert.Single(SoundGalleryService.Parse(Encoding.UTF8.GetBytes(json))).EventsWithSound);
+        Assert.Null(Assert.Single(SoundGalleryService.Parse(Encoding.UTF8.GetBytes(json))).EventsWithSound);
     }
 
     [Fact]
@@ -408,7 +408,7 @@ public sealed class SoundGalleryTests : IDisposable
     private (byte[] Signed, string FileName, byte[] File) Published(string id = "rain")
     {
         var file = SchemeFile("Rain", TwoSounds);
-        var index = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { format = 1, schemes = new[] { Entry(id, file) } }));
+        var index = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { format = 1, app = "quickmail", schemes = new[] { Entry(id, file) } }));
         return (Signed(index), FileName(id, file), file);
     }
 
@@ -664,5 +664,205 @@ public sealed class SoundGalleryTests : IDisposable
         Assert.Null(await vm.DownloadSelectedAsync(TestContext.Current.CancellationToken));
         Assert.Equal("The download of rain was not the file the gallery lists.", vm.Status);
         Assert.True(vm.CanAdd);   // can try again
+    }
+
+    // ── The list is QuickMail's, read strictly (app-kit sounds/SCHEMES.md) ─────
+
+    [Theory]
+    [InlineData("""{"format":1,"schemes":[]}""")]
+    [InlineData("""{"format":1,"app":null,"schemes":[]}""")]
+    [InlineData("""{"format":1,"app":"thechatplace","schemes":[]}""")]
+    [InlineData("""{"format":1,"app":"QuickMail","schemes":[]}""")]
+    [InlineData("""{"format":1,"app":"quickmail","app":"thechatplace","schemes":[]}""")]
+    [InlineData("""{"format":1.0,"app":"quickmail","schemes":[]}""")]
+    [InlineData("""{"format":99999999999,"app":"quickmail","schemes":[]}""")]
+    [InlineData("""{"format":1,"app":"quickmail","schemes":[],"x":NaN}""")]
+    public void AListThatIsNotQuickMailsOrNotStrictJsonIsNotTrusted(string json)
+    {
+        var ex = Assert.Throws<SoundGalleryException>(() => SoundGalleryService.Parse(Encoding.UTF8.GetBytes(json)));
+        Assert.Equal(SoundGalleryProblem.Untrusted, ex.Kind);
+    }
+
+    [Fact]
+    public void AListWithAByteOrderMarkIsNotTrusted()
+    {
+        var ex = Assert.Throws<SoundGalleryException>(() => SoundGalleryService.Parse([0xEF, 0xBB, 0xBF, .. """{"format":1,"app":"quickmail","schemes":[]}"""u8]));
+        Assert.Equal(SoundGalleryProblem.Untrusted, ex.Kind);
+    }
+
+    [Fact]
+    public void ANewerListSaysToUpdate() =>
+        Assert.Equal(SoundGalleryProblem.NeedsUpdate,
+            Assert.Throws<SoundGalleryException>(() => SoundGalleryService.Parse("""{"format":2,"app":"quickmail","schemes":[]}"""u8.ToArray())).Kind);
+
+    [Theory]
+    [InlineData("rain\n")]
+    [InlineData("-rain")]
+    [InlineData("r" + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public void AnIdMustMatchTheWholeText(string id) => Assert.False(SoundGalleryService.IsValidId(id));
+
+    [Fact]
+    public void AHashWithATrailingNewlineIsDropped()
+    {
+        var sha = new string('0', 64);
+        Assert.False(SoundGalleryService.IsValidSha256(sha + "\n"));
+        Assert.Empty(ParseOne(new { id = "rain", name = "Rain", author = "Pat", license = "CC0-1.0", file = $"rain-{sha[..16]}.qmsounds", size = 1, sha256 = sha + "\n" }));
+    }
+
+    [Fact]
+    public void AnEntryWhoseNameIsEmptyOnceCleanedIsDropped()
+    {
+        var sha = new string('0', 64);
+        Assert.Empty(ParseOne(new { id = "rain", name = " \u0007 ", author = "Pat", license = "CC0-1.0", file = $"rain-{sha[..16]}.qmsounds", size = 1, sha256 = sha }));
+    }
+
+    [Fact]
+    public void ASizeThatDoesNotFitThirtyTwoBitsDropsTheEntry()
+    {
+        var sha = new string('0', 64);
+        Assert.Empty(ParseOne(new { id = "rain", name = "Rain", author = "Pat", license = "CC0-1.0", file = $"rain-{sha[..16]}.qmsounds", size = 5_000_000_000L, sha256 = sha }));
+    }
+
+    [Theory]
+    [InlineData("\r")]   // a CRLF after the signature
+    [InlineData(" ")]
+    public void ASignatureLineWithAnythingButBase64IsRefused(string extra)
+    {
+        var index = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { format = 1, app = "quickmail", schemes = Array.Empty<object>() }));
+        byte[] signed = [.. Encoding.ASCII.GetBytes(Sign(index) + extra + "\n"), .. index];
+        Assert.Equal(SoundGalleryProblem.Untrusted, Assert.Throws<SoundGalleryException>(() => SoundGalleryService.ReadIndex(signed, _publicPem)).Kind);
+        Assert.Empty(SoundGalleryService.ReadIndex([.. Encoding.ASCII.GetBytes(Sign(index) + "\n"), .. index], _publicPem));
+    }
+
+    [Theory]
+    [InlineData(@"\\server\share\gallery")]
+    [InlineData("//server/share/gallery")]
+    [InlineData("file://server/share/gallery")]
+    [InlineData("https://user:secret@gallery.example/")]
+    [InlineData("https://user@gallery.example/")]
+    public void ANetworkShareOrAUserNameIsRefused(string location) =>
+        Assert.Throws<ArgumentException>(() => new SoundGalleryService(location));
+
+    [Fact]
+    public async Task ADownloadOfTheWrongSizeIsNotTheListedFile()
+    {
+        var dir = Gallery([("rain", SchemeFile("Rain", TwoSounds))]);
+        var service = Service(dir);
+        var entry = Assert.Single(await service.LoadAsync(TestContext.Current.CancellationToken));
+        var path = Path.Combine(dir, entry.File);
+        File.WriteAllBytes(path, [.. File.ReadAllBytes(path), 0]);
+        var ex = await Assert.ThrowsAsync<SoundGalleryException>(() => service.DownloadAsync(entry, TestContext.Current.CancellationToken));
+        Assert.Equal(SoundGalleryProblem.NotTheListedFile, ex.Kind);
+        Assert.Equal("The download of rain was not the file the gallery lists, so it was not used. Try again later.", ex.Message);
+    }
+
+    // ── Added, and updates ─────────────────────────────────────────────────────
+
+    private static SoundGalleryEntry Listed(string id, string sha) =>
+        new(id, id, "Pat", "Soft drops.", "CC-BY-4.0", id + ".qmsounds", 10, sha, 3);
+
+    [Fact]
+    public async Task TheListMarksSchemesAlreadyAddedAndOnesWithUpdates()
+    {
+        var oldSha = new string('1', 64);
+        var vm = new SoundGalleryViewModel(
+            new FakeGallery { Entries = [Listed("rain"), Listed("wind", new string('2', 64)), Listed("hail")] },
+            new Dictionary<string, string> { ["rain"] = new string('0', 64), ["wind"] = oldSha });
+
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+        [
+            $"rain, by Pat. 3 of {SoundCatalog.Events.Count} events have a sound. Added.",
+            $"wind, by Pat. 3 of {SoundCatalog.Events.Count} events have a sound. Update available.",
+            $"hail, by Pat. 3 of {SoundCatalog.Events.Count} events have a sound.",
+        ], vm.Entries.Select(r => r.ToString()));
+
+        // Added: nothing to add, and Enter says so.
+        Assert.Equal(SoundGalleryState.Added, vm.SelectedEntry!.State);
+        Assert.False(vm.CanAdd);
+        Assert.Equal("Add", vm.AddName);
+        string? said = null;
+        vm.AnnouncementRequested += (t, c) => { if (c == AnnouncementCategory.Result) said = t; };
+        Assert.True(vm.SayAlreadyAdded());
+        Assert.Equal("You've already added rain.", said);
+        Assert.Null(await vm.DownloadSelectedAsync(TestContext.Current.CancellationToken));
+
+        // An update: the button says Update.
+        vm.SelectedEntry = vm.Entries[1];
+        Assert.True(vm.CanAdd);
+        Assert.Equal("_Update", vm.AddLabel);
+        Assert.Equal("Update", vm.AddName);
+        Assert.False(vm.SayAlreadyAdded());
+
+        vm.SelectedEntry = vm.Entries[2];
+        Assert.Equal("_Add", vm.AddLabel);
+        Assert.True(vm.CanAdd);
+    }
+
+    [Fact]
+    public void AnEntryWithNoEventCountLeavesItOut() =>
+        Assert.Equal("Rain, by Pat.", new SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('0', 64), null).ToString());
+
+    [Fact]
+    public async Task AddingFromTheGalleryRemembersItAndAnUpdateReplacesTheCopyAfterAsking()
+    {
+        var first = SchemeFile("Rain", TwoSounds);
+        var config = new StubConfigService();
+        var vm = new SettingsViewModel(config, new StubCommandRegistry(), sounds: new RecordingSoundService());
+        var asked = new List<string>();
+        var answer = true;
+        vm.ConfirmRequested = (question, _) => { asked.Add(question); return answer; };
+
+        // Add it.
+        var service = Service(Gallery([("rain", first)]));
+        var entry = Assert.Single(await service.LoadAsync(TestContext.Current.CancellationToken));
+        var path = await service.DownloadAsync(entry, TestContext.Current.CancellationToken);
+        Assert.True(vm.ImportSchemeFrom(path, entry));
+        SoundGalleryService.DeleteDownload(path);
+        var added = vm.SelectedSoundScheme!;
+        Assert.Equal(new SoundGalleryOrigin("rain", Hash(first)), added.GalleryOrigin);
+        Assert.Empty(asked);
+        Assert.Equal(Hash(first), vm.GalleryOrigins()["rain"]);
+        vm.RenameScheme(added.Id, "My rain");
+
+        // The gallery's copy changes.
+        var second = SchemeFile("Rain", new Dictionary<string, string> { ["NewMail"] = "builtin:softbell/arrived" });
+        var newer = Service(Gallery([("rain", second)]));
+        var newerEntry = Assert.Single(await newer.LoadAsync(TestContext.Current.CancellationToken));
+        var galleryVm = new SoundGalleryViewModel(new FakeGallery { Entries = [newerEntry] }, vm.GalleryOrigins());
+        await galleryVm.LoadAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(SoundGalleryState.UpdateAvailable, galleryVm.SelectedEntry!.State);
+
+        var newerPath = await newer.DownloadAsync(newerEntry, TestContext.Current.CancellationToken);
+        try
+        {
+            // Saying no changes nothing.
+            answer = false;
+            Assert.False(vm.ImportSchemeFrom(newerPath, newerEntry));
+            Assert.Equal(["Replace your copy of My rain with the gallery's newer version? Any changes you made to it are lost."], asked);
+            Assert.Equal(Hash(first), vm.GalleryOrigins()["rain"]);
+
+            // Saying yes replaces its sounds, keeps its name and place, and remembers the new file.
+            answer = true;
+            var count = vm.SoundSchemes.Count;
+            Assert.True(vm.ImportSchemeFrom(newerPath, newerEntry));
+            Assert.Equal(count, vm.SoundSchemes.Count);
+            var updated = vm.SelectedSoundScheme!;
+            Assert.Equal(added.Id, updated.Id);
+            Assert.Equal("My rain", updated.Name);
+            Assert.Equal(new SoundGalleryOrigin("rain", Hash(second)), updated.GalleryOrigin);
+            Assert.Equal("builtin:softbell/arrived", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.NewMail).Choice.Stored);
+            Assert.Equal("none", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.SendFailed).Choice.Stored);
+            Assert.StartsWith("Updated My rain.", vm.SoundSchemeMessage, StringComparison.Ordinal);
+        }
+        finally
+        {
+            SoundGalleryService.DeleteDownload(newerPath);
+        }
+
+        // And it's kept with the scheme when Settings saves.
+        vm.SaveCommand.Execute(null);
+        Assert.Equal(new SoundGalleryOrigin("rain", Hash(second)), config.Load().SoundSchemes[added.Id].GalleryOrigin);
     }
 }

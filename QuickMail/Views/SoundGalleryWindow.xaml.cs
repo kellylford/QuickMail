@@ -40,6 +40,9 @@ public partial class SoundGalleryWindow : Window
     /// <summary>The checked scheme file Add fetched, for the owner to import and then delete.</summary>
     public string? DownloadedPath { get; private set; }
 
+    /// <summary>The gallery's listing for <see cref="DownloadedPath"/>, so the owner can remember where it came from.</summary>
+    public SoundGalleryEntry? DownloadedEntry { get; private set; }
+
     private void OnAnnouncement(string text, AnnouncementCategory category) =>
         AccessibilityHelper.Announce(this, text, interrupt: category == AnnouncementCategory.Result, category);
 
@@ -85,6 +88,7 @@ public partial class SoundGalleryWindow : Window
 
     private async Task AddAsync()
     {
+        var entry = _vm.SelectedEntry?.Entry;
         string? path;
         try
         {
@@ -106,6 +110,7 @@ public partial class SoundGalleryWindow : Window
             return;
         }
         DownloadedPath = path;
+        DownloadedEntry = entry;
         DialogResult = true;
     }
 
@@ -115,7 +120,7 @@ public partial class SoundGalleryWindow : Window
 
     private void RegisterLocalCommands()
     {
-        _localRegistry.Register(new CommandDefinition("gallery.add", "Settings", "Add Sound Scheme",
+        _localRegistry.Register(new CommandDefinition("gallery.add", "Settings", "Add or Update Sound Scheme",
             () => _ = AddAsync(), isAvailable: () => _vm.CanAdd));
         _localRegistry.Register(new CommandDefinition("gallery.reload", "Settings", "Reload the Gallery",
             () => _ = LoadAsync(), isAvailable: () => !_vm.IsBusy));
@@ -149,9 +154,12 @@ public partial class SoundGalleryWindow : Window
             if (IsLoaded) (previous ?? SchemeList).Focus();
             e.Handled = true;
         }
-        else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None && e.OriginalSource is ListBoxItem && _vm.CanAdd)
+        else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None && e.OriginalSource is ListBoxItem)
         {
-            _ = AddAsync();   // Enter on a scheme adds it, as Add does
+            // Enter on a scheme adds or updates it, as the button does; on one already added, says so
+            // rather than doing nothing.
+            if (_vm.CanAdd) _ = AddAsync();
+            else _vm.SayAlreadyAdded();
             e.Handled = true;
         }
     }

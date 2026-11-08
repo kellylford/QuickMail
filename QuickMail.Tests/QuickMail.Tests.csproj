@@ -49,4 +49,14 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- app-kit's shared sound scheme test files (SharedSoundTestData/README.md), read by SharedSoundTestDataTests. -->
+  <ItemGroup>
+    <None Include="SharedSoundTestData\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- A 0.4-second sine tone as MP3 (made with ffmpeg), for converting MP3s on Export scheme. -->
+  <ItemGroup>
+    <None Include="TestAudio\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

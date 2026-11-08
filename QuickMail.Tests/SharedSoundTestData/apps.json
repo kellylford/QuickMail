@@ -1,0 +1,46 @@
+{
+  "format": 1,
+  "apps": {
+    "quickmail": {
+      "name": "QuickMail",
+      "extension": ".qmsounds",
+      "events": [
+        { "key": "MessageSent", "label": "Message sent", "sound": "sent" },
+        { "key": "MessageQueued", "label": "Message queued", "sound": "queued" },
+        { "key": "SendFailed", "label": "Send failed", "sound": "failed" },
+        { "key": "NewMail", "label": "New mail", "sound": "arrived" },
+        { "key": "WatchedMail", "label": "Watched conversation mail", "sound": "attention" },
+        { "key": "ActionFailed", "label": "Delete, move, archive or empty trash failed", "sound": "error" },
+        { "key": "ConnectionLost", "label": "Connection lost", "sound": "disconnected" },
+        { "key": "ConnectionRestored", "label": "Connection restored", "sound": "connected" },
+        { "key": "CalendarReminder", "label": "Calendar reminder", "sound": "reminder" },
+        { "key": "MessageDeleted", "label": "Message deleted", "sound": "removed" },
+        { "key": "MessageArchived", "label": "Message archived", "sound": "filed" },
+        { "key": "MessageMoved", "label": "Message moved", "sound": "moved" },
+        { "key": "TrashEmptied", "label": "Trash emptied", "sound": "emptied" },
+        { "key": "RuleMatched", "label": "A rule matched", "sound": "matched" }
+      ]
+    },
+    "thechatplace": {
+      "name": "The Chat Place",
+      "extension": ".tcpsounds",
+      "events": [
+        { "key": "ToolRan", "label": "Tool ran", "sound": "tap" },
+        { "key": "FileChanged", "label": "File changed", "sound": "changed" },
+        { "key": "StillWorking", "label": "Still working", "sound": "pulse" },
+        { "key": "MessageSent", "label": "Message sent", "sound": "sent" },
+        { "key": "MessageQueued", "label": "Message queued", "sound": "queued" },
+        { "key": "MessageNotSent", "label": "Message not sent", "sound": "error" },
+        { "key": "ReplyFinished", "label": "Reply finished", "sound": "arrived" },
+        { "key": "OtherChatFinished", "label": "Another chat finished", "sound": "elsewhere" },
+        { "key": "NeedsYou", "label": "Needs you", "sound": "attention" },
+        { "key": "TurnFailed", "label": "Turn failed", "sound": "failed" },
+        { "key": "TurnStopped", "label": "You stopped a turn", "sound": "stopped" },
+        { "key": "ServiceTrouble", "label": "Service trouble", "sound": "disconnected" },
+        { "key": "Compacted", "label": "Conversation compacted", "sound": "filed" },
+        { "key": "UsageWarning", "label": "Usage or context warning", "sound": "reminder" },
+        { "key": "PeerMessage", "label": "Message from another session", "sound": "matched" }
+      ]
+    }
+  }
+}

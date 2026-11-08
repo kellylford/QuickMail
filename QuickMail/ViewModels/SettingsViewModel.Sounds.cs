@@ -341,7 +341,8 @@ public partial class SettingsViewModel
                 if (!scheme.IsBuiltIn || value != SoundRef.BuiltIn(info.BuiltInSound).ToStored()) events[info.ConfigKey] = value;
             }
             if (scheme.IsBuiltIn && events.Count == 0) continue;
-            schemes[scheme.Id] = new SoundScheme(scheme.Id, scheme.Name, scheme.IsBuiltIn, scheme.Pack, events, scheme.Author, scheme.License);
+            schemes[scheme.Id] = new SoundScheme(scheme.Id, scheme.Name, scheme.IsBuiltIn, scheme.Pack, events,
+                scheme.Author, scheme.License, scheme.Description, scheme.GalleryOrigin);
         }
         cfg.SoundSchemes = schemes;
     }
@@ -389,9 +390,10 @@ public partial class SettingsViewModel
         if (SchemeNameProblem(name) is not null) return false;
         SoundScheme? source = null;
         if (copyFromId is not null && (source = SoundSchemes.FirstOrDefault(s => s.Id == copyFromId)) is null) return false;
-        // A copy of someone else's scheme keeps their credit.
+        // A copy of someone else's scheme keeps their credit, but not where it came from in the
+        // gallery: the gallery's updates are for the copy it added.
         var scheme = new SoundScheme(SoundCatalog.NewUserSchemeId(), name.Trim(), isBuiltIn: false,
-            author: source?.Author, license: source?.License);
+            author: source?.Author, license: source?.License, description: source?.Description);
         _schemeValues[scheme.Id] = source is not null
             ? SoundSchemeFile.Portable(source.With(events: SchemeValues(source)))
             : SoundCatalog.Events.ToDictionary(i => i.ConfigKey, _ => SoundRef.None.ToStored(), StringComparer.OrdinalIgnoreCase);
@@ -462,9 +464,14 @@ public partial class SettingsViewModel
         if (PickSchemeExportPathRequested?.Invoke(safeName + SoundSchemeFile.FileExtension) is not { } path) return;
         try
         {
-            SoundSchemeFile.Export(path, scheme.Name, SoundSchemeFile.Portable(scheme.With(events: SchemeValues(scheme))), _sounds,
-                scheme.Author, scheme.License);
-            ReportScheme($"Saved the sound scheme {scheme.Name} to {Path.GetFileName(path)}.");
+            var leftOut = SoundSchemeFile.Export(path, scheme.Name, SoundSchemeFile.Portable(scheme.With(events: SchemeValues(scheme))), _sounds,
+                scheme.Author, scheme.License, scheme.Description);
+            var message = $"Saved the sound scheme {scheme.Name} to {Path.GetFileName(path)}.";
+            // An MP3 goes in converted to WAV; only a file that has gone, or won't convert within a scheme
+            // file's limits, stays behind.
+            if (leftOut > 0)
+                message += $" {Plural(leftOut, "event")} {(leftOut == 1 ? "has" : "have")} no sound in it, because {(leftOut == 1 ? "its sound file is" : "their sound files are")} missing, or could not be made into a WAV file of 5 MB and 30 seconds or less.";
+            ReportScheme(message);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -482,23 +489,65 @@ public partial class SettingsViewModel
         _sounds is not null && PickSchemeImportPathRequested?.Invoke() is { } path && ImportSchemeFrom(path);
 
     /// <summary>
+    /// Where each gallery scheme already here came from: its gallery id to the SHA-256 of the file it
+    /// was added from, including schemes added since Settings opened. The gallery uses it to mark a
+    /// scheme "Added" or offer its update.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> GalleryOrigins()
+    {
+        var origins = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var scheme in SoundSchemes)
+            if (scheme.GalleryOrigin is { } origin) origins.TryAdd(origin.Id, origin.Sha256);
+        return origins;
+    }
+
+    /// <summary>
     /// Adds the scheme in a .qmsounds file as a scheme of the person's own, and shows it: from a file
     /// they chose, or one the gallery fetched and checked (#937). Says what happened either way.
+    /// From the gallery, it remembers where the scheme came from, and if that scheme is already here,
+    /// asks, then replaces the copy's sounds with the gallery's newer version, keeping its name.
     /// </summary>
-    /// <returns>True if a scheme was added, so the View can put focus in its event list.</returns>
-    public bool ImportSchemeFrom(string path)
+    /// <param name="fromGallery">The gallery's listing for the file, or null for a file the person chose.</param>
+    /// <returns>True if a scheme was added or updated, so the View can put focus in its event list.</returns>
+    public bool ImportSchemeFrom(string path, SoundGalleryEntry? fromGallery = null)
     {
         if (_sounds is null) return false;
+        var replacing = fromGallery is null ? null
+            : SoundSchemes.FirstOrDefault(s => !s.IsBuiltIn && s.GalleryOrigin?.Id == fromGallery.Id);
+        if (replacing is not null && ConfirmRequested?.Invoke(
+                $"Replace your copy of {replacing.Name} with the gallery's newer version? Any changes you made to it are lost.",
+                "Update Sound Scheme") != true)
+            return false;
+
         SoundSchemeImport imported;
         try
         {
-            imported = SoundSchemeFile.Import(path, _sounds);
+            imported = SoundSchemeFile.Import(path, _sounds, fromGallery: fromGallery is not null);
         }
         catch (SoundSchemeFileException ex)
         {
             LogService.Log("Importing a sound scheme failed", ex);
             ReportScheme(ex.Message);
             return false;
+        }
+
+        var origin = fromGallery is null ? null : new SoundGalleryOrigin(fromGallery.Id, fromGallery.Sha256);
+        var values = SoundCatalog.Events.ToDictionary(
+            i => i.ConfigKey,
+            i => imported.Events.TryGetValue(i.ConfigKey, out var v) ? v : SoundRef.None.ToStored(),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (replacing is not null)
+        {
+            // Same id and name, so it stays where it is in the list and in config.ini; everything else is the gallery's.
+            var updated = new SoundScheme(replacing.Id, replacing.Name, isBuiltIn: false,
+                author: imported.Author, license: imported.License, description: imported.Description, galleryOrigin: origin);
+            _schemeValues[updated.Id] = values;
+            if (_shownSchemeId == updated.Id) _shownSchemeId = null;   // so the rows are filled again from the new values
+            SoundSchemes[SoundSchemes.IndexOf(replacing)] = updated;
+            SelectedSoundScheme = updated;
+            ReportScheme(ImportMessage($"Updated {updated.Name}", imported));
+            return true;
         }
 
         // Numbered rather than refused: the name is the file's, not one the person typed.
@@ -513,21 +562,22 @@ public partial class SettingsViewModel
         }
 
         var scheme = new SoundScheme(SoundCatalog.NewUserSchemeId(), name, isBuiltIn: false,
-            author: imported.Author, license: imported.License);
-        _schemeValues[scheme.Id] = SoundCatalog.Events.ToDictionary(
-            i => i.ConfigKey,
-            i => imported.Events.TryGetValue(i.ConfigKey, out var v) ? v : SoundRef.None.ToStored(),
-            StringComparer.OrdinalIgnoreCase);
+            author: imported.Author, license: imported.License, description: imported.Description, galleryOrigin: origin);
+        _schemeValues[scheme.Id] = values;
         InsertUserScheme(scheme);
         SelectedSoundScheme = scheme;
+        ReportScheme(ImportMessage($"Added the sound scheme {name}", imported));
+        return true;
+    }
 
-        var message = $"Added the sound scheme {name}";
+    private static string ImportMessage(string done, SoundSchemeImport imported)
+    {
+        var message = done;
         if (imported.SoundsAdded > 0) message += $", with {Plural(imported.SoundsAdded, "sound file")}";
         message += ".";
         if (imported.SoundsDropped > 0)
             message += $" {Plural(imported.SoundsDropped, "event")} had a sound file that was missing or could not be played, and now {(imported.SoundsDropped == 1 ? "has" : "have")} no sound.";
-        ReportScheme(message + " Save to keep it.");
-        return true;
+        return message + " Save to keep it.";
     }
 
     private void ReportScheme(string message)

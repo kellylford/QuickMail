@@ -24,14 +24,15 @@ namespace QuickMail.Services;
 /// changed scheme is a new file and no cache can pair it with the wrong listing.</param>
 /// <param name="Size">The file's exact size in bytes.</param>
 /// <param name="Sha256">The file's SHA-256, as lowercase hex.</param>
-/// <param name="EventsWithSound">How many events it gives a sound.</param>
+/// <param name="EventsWithSound">How many events it gives a sound, or null when the list doesn't say.</param>
 public sealed record SoundGalleryEntry(
     string Id, string Name, string Author, string Description, string License,
-    string File, long Size, string Sha256, int EventsWithSound)
+    string File, long Size, string Sha256, int? EventsWithSound)
 {
-    /// <summary>What the gallery's list says for it.</summary>
+    /// <summary>What the gallery's list says for it, worded as The Chat Place words it.</summary>
     public string AccessibleName =>
-        $"{Name}, by {Author}. {EventsWithSound} of {SoundCatalog.Events.Count} events have a sound";
+        $"{Name}, by {Author}."
+        + (EventsWithSound is { } count ? $" {count} of {SoundCatalog.Events.Count} events have a sound." : string.Empty);
 
     /// <summary>The row's help text: its description and licence.</summary>
     public string HelpText => (Description.Length > 0 ? Description + " " : string.Empty) + $"Licence: {License}.";
@@ -39,8 +40,33 @@ public sealed record SoundGalleryEntry(
     public override string ToString() => AccessibleName;
 }
 
+/// <summary>What sort of trouble the gallery had, as SCHEMES.md sorts it.</summary>
+public enum SoundGalleryProblem
+{
+    /// <summary>Couldn't connect, timed out, not a 200 answer, or a damaged answer.</summary>
+    Unreachable,
+
+    /// <summary>The signature or the list is wrong, or the list is another app's.</summary>
+    Untrusted,
+
+    /// <summary>The list is in a newer format than this QuickMail reads.</summary>
+    NeedsUpdate,
+
+    /// <summary>A download that isn't the file the list names.</summary>
+    NotTheListedFile,
+
+    /// <summary>Anything else, such as a download that couldn't be saved.</summary>
+    Other,
+}
+
 /// <summary>The gallery couldn't be read, or a scheme from it couldn't be fetched; the message is for the person.</summary>
-public sealed class SoundGalleryException(string message, Exception? inner = null) : Exception(message, inner);
+public sealed class SoundGalleryException(string message, Exception? inner = null, SoundGalleryProblem kind = SoundGalleryProblem.Other)
+    : Exception(message, inner)
+{
+    public SoundGalleryException(string message, SoundGalleryProblem kind) : this(message, null, kind) { }
+
+    public SoundGalleryProblem Kind { get; } = kind;
+}
 
 /// <summary>Lists and fetches the sound schemes in the gallery (#937).</summary>
 public interface ISoundGalleryService
@@ -88,11 +114,14 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
     private readonly TimeSpan _readTimeout;
     internal const int MaxSchemes = 200;
     internal const int CurrentFormat = 1;
-    private const int MaxAuthorLength = 60;
-    private const int MaxDescriptionLength = 300;
 
-    private const string Unreachable = "The gallery could not be reached. Check your connection, then choose Reload.";
-    private const string NotTrusted = "The gallery's list could not be checked, so it was not used. Try again later.";
+    internal const string Unreachable = "The gallery could not be reached. Check your connection, then choose Reload.";
+    internal const string NotTrusted = "The gallery's list could not be checked, so it was not used. Try again later.";
+    internal const string NeedsUpdate = "The gallery needs a newer version of QuickMail. Update QuickMail and try again.";
+
+    private static SoundGalleryException UnreachableError(Exception? inner = null) => new(Unreachable, inner, SoundGalleryProblem.Unreachable);
+
+    private static SoundGalleryException Untrusted(Exception? inner = null) => new(NotTrusted, inner, SoundGalleryProblem.Untrusted);
 
     private readonly string _location;
     private readonly bool _isFolder;
@@ -109,7 +138,15 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
         location = string.IsNullOrWhiteSpace(location) ? DefaultLocation : location.Trim();
         _publicKeyPem = publicKeyPem ?? GalleryPublicKeyPem;
 
-        if (Uri.TryCreate(location, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+        // Never a network share, which would hand that host your Windows sign-in, and never an
+        // address with a user name in it (SCHEMES.md, "The gallery").
+        if (location.Replace('\\', '/').StartsWith("//", StringComparison.Ordinal))
+            throw new ArgumentException("The sound gallery can't be on a network share.", nameof(location));
+        Uri.TryCreate(location, UriKind.Absolute, out var uri);
+        if (uri is not null && (uri.UserInfo.Length > 0 || (uri.IsFile && (uri.IsUnc || !(uri.Host.Length == 0 || uri.IsLoopback)))))
+            throw new ArgumentException("The sound gallery must be an https address or a folder on this computer.", nameof(location));
+
+        if (uri is not null && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
         {
             // Plain http only for a gallery on this computer, which is how a staging copy is tested.
             if (uri.Scheme == Uri.UriSchemeHttp && !uri.IsLoopback)
@@ -134,10 +171,19 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
     public async Task<IReadOnlyList<SoundGalleryEntry>> LoadAsync(CancellationToken ct)
     {
         var signed = await ReadAsync(IndexName, MaxIndexBytes + MaxSignatureLine, ct).ConfigureAwait(false);
-        if (!TrySplitSigned(signed, out var signature, out var index) || !Verify(index, signature, _publicKeyPem))
+        return ReadIndex(signed, _publicKeyPem);
+    }
+
+    /// <summary>
+    /// The schemes a whole <c>index.signed</c> lists for QuickMail, once its signature verifies.
+    /// Throws <see cref="SoundGalleryException"/>: untrusted, or needing a newer QuickMail.
+    /// </summary>
+    internal static IReadOnlyList<SoundGalleryEntry> ReadIndex(byte[] signed, string publicKeyPem)
+    {
+        if (!TrySplitSigned(signed, out var signature, out var index) || !Verify(index, signature, publicKeyPem))
         {
             LogService.Log("Sound gallery: the index's signature did not verify; ignored.");
-            throw new SoundGalleryException(NotTrusted);
+            throw Untrusted();
         }
         return Parse(index);
     }
@@ -146,6 +192,8 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
     internal static bool TrySplitSigned(byte[] signed, out byte[] signature, out byte[] index)
     {
         signature = index = [];
+        // The newline is one of the first 512 bytes, and is "\n" alone: a "\r" before it isn't base64,
+        // so Verify refuses it.
         var newline = Array.IndexOf(signed, (byte)'\n', 0, Math.Min(signed.Length, MaxSignatureLine));
         if (newline <= 0 || signed.Length - newline - 1 > MaxIndexBytes) return false;
         signature = signed[..newline];
@@ -159,16 +207,29 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
     public async Task<string> DownloadAsync(SoundGalleryEntry entry, CancellationToken ct)
     {
         // Only a name this class's own parser accepted, so it can't point anywhere else.
-        if (!IsValidId(entry.Id) || !Sha256Pattern().IsMatch(entry.Sha256) || entry.File != FileFor(entry.Id, entry.Sha256)
+        if (!IsValidId(entry.Id) || !IsValidSha256(entry.Sha256) || entry.File != FileFor(entry.Id, entry.Sha256)
             || entry.Size <= 0 || entry.Size > SoundSchemeFile.MaxFileBytes)
             throw new SoundGalleryException("That scheme's listing is not valid.");
 
-        var bytes = await ReadAsync(entry.File, entry.Size, ct, exactSize: true).ConfigureAwait(false);
+        var notTheFile = new SoundGalleryException(
+            $"The download of {entry.Name} was not the file the gallery lists, so it was not used. Try again later.",
+            SoundGalleryProblem.NotTheListedFile);
+        byte[] bytes;
+        try
+        {
+            bytes = await ReadAsync(entry.File, entry.Size, ct, exactSize: true).ConfigureAwait(false);
+        }
+        catch (SoundGalleryException ex) when (ex.Kind == SoundGalleryProblem.Untrusted)
+        {
+            // Larger or smaller than listed.
+            LogService.Log($"Sound gallery: {entry.File} was not its listed size; discarded.");
+            throw notTheFile;
+        }
         var hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
         if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(hash), Encoding.ASCII.GetBytes(entry.Sha256)))
         {
             LogService.Log($"Sound gallery: {entry.File} did not match its listed hash; discarded.");
-            throw new SoundGalleryException($"The download of {entry.Name} was not the file the gallery lists, so it was not used. Try again later.");
+            throw notTheFile;
         }
 
         var dir = Path.Combine(Path.GetTempPath(), "QuickMail-gallery-" + Guid.NewGuid().ToString("N"));
@@ -210,9 +271,13 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
     /// <summary>Whether <paramref name="signature"/> (base64 DER ECDSA P-256/SHA-256) signs exactly <paramref name="data"/>.</summary>
     internal static bool Verify(byte[] data, byte[] signature, string publicKeyPem)
     {
+        // Base64 and nothing else on the line: Convert.FromBase64String would skip spaces, tabs and
+        // line breaks, which SCHEMES.md doesn't allow.
+        if (signature.Length == 0 || signature.Any(b => !(char.IsAsciiLetterOrDigit((char)b) || b is (byte)'+' or (byte)'/' or (byte)'=')))
+            return false;
         try
         {
-            var der = Convert.FromBase64String(Encoding.ASCII.GetString(signature).Trim());
+            var der = Convert.FromBase64String(Encoding.ASCII.GetString(signature));
             using var key = ECDsa.Create();
             key.ImportFromPem(publicKeyPem);
             return key.VerifyData(data, der, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
@@ -223,32 +288,41 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
         }
     }
 
-    /// <summary>Reads the signed index. An entry that breaks any rule is dropped, not trusted in part.</summary>
+    /// <summary>
+    /// Reads the signed index, as SCHEMES.md "index.signed" sets out: strict JSON with no byte-order
+    /// mark, a whole-number format, and QuickMail's own list. One key signs every app's list, so
+    /// <c>app</c> is what stops QuickMail from taking another app's. An entry that breaks any rule is
+    /// dropped, not trusted in part.
+    /// </summary>
     internal static IReadOnlyList<SoundGalleryEntry> Parse(byte[] index)
     {
         JsonDocument doc;
         try
         {
-            doc = JsonDocument.Parse(index, new JsonDocumentOptions { MaxDepth = 8 });
+            doc = SoundSchemeFile.ParseStrictJson(index, allowBom: false);
         }
         catch (JsonException ex)
         {
-            throw new SoundGalleryException(NotTrusted, ex);
+            throw Untrusted(ex);
         }
 
         using (doc)
         {
             var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("format", out var format)
-                || format.ValueKind != JsonValueKind.Number || !format.TryGetInt32(out var version) || version < 1)
-                throw new SoundGalleryException(NotTrusted);
-            if (version > CurrentFormat)
-                throw new SoundGalleryException("The gallery needs a newer version of QuickMail. Update QuickMail and try again.");
-            if (!root.TryGetProperty("schemes", out var schemes) || schemes.ValueKind != JsonValueKind.Array)
-                throw new SoundGalleryException(NotTrusted);
+            if (root.ValueKind != JsonValueKind.Object) throw Untrusted();
+            var format = SoundSchemeFile.Property(root, "format") is { } f ? SoundSchemeFile.WholeNumber(f) : null;
+            if (format is not { } version || version < 1) throw Untrusted();
+            if (version > CurrentFormat) throw new SoundGalleryException(NeedsUpdate, SoundGalleryProblem.NeedsUpdate);
+            if (SoundSchemeFile.Property(root, "app") is not { ValueKind: JsonValueKind.String } app
+                || SoundSchemeFile.JsonText(app) != SoundSchemeFile.AppId)
+            {
+                LogService.Log("Sound gallery: the index is not QuickMail's; ignored.");
+                throw Untrusted();
+            }
+            if (SoundSchemeFile.Property(root, "schemes") is not { ValueKind: JsonValueKind.Array } schemes) throw Untrusted();
 
             var entries = new List<SoundGalleryEntry>();
-            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (var item in schemes.EnumerateArray().Take(MaxSchemes))
             {
                 if (TryReadEntry(item) is { } entry && ids.Add(entry.Id)) entries.Add(entry);
@@ -261,38 +335,36 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
     private static SoundGalleryEntry? TryReadEntry(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object) return null;
-        string? Text(string name) =>
-            item.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        JsonElement? Value(string name) => SoundSchemeFile.Property(item, name);
+        string? Text(string name) => Value(name) is { } v ? SoundSchemeFile.JsonText(v) : null;
 
         var id = Text("id");
         var file = Text("file");
         var sha = Text("sha256");
-        var name = SoundSchemeFile.CleanName(Text("name"));
-        var author = Clean(Text("author"), MaxAuthorLength);
-        var description = Clean(Text("description"), MaxDescriptionLength);
-        var license = Clean(Text("license"), 40);
-        if (id is null || !IsValidId(id) || sha is null || !Sha256Pattern().IsMatch(sha) || file != FileFor(id, sha)) return null;
-        if (author.Length == 0 || license.Length == 0) return null;
-        // TryGetInt64 throws for a value that isn't a number, so the kind is checked first.
-        if (!item.TryGetProperty("size", out var sizeElement) || sizeElement.ValueKind != JsonValueKind.Number
-            || !sizeElement.TryGetInt64(out var size) || size <= 0 || size > SoundSchemeFile.MaxFileBytes) return null;
-        var events = item.TryGetProperty("eventsWithSound", out var e) && e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var n)
-            ? Math.Clamp(n, 0, SoundCatalog.Events.Count) : 0;
+        if (id is null || !IsValidId(id) || sha is null || !IsValidSha256(sha) || file != FileFor(id, sha)) return null;
+        if (Value("size") is not { } sizeElement || SoundSchemeFile.WholeNumber(sizeElement) is not { } size
+            || size < 1 || size > SoundSchemeFile.MaxFileBytes) return null;
+        var name = SoundSchemeFile.CleanText(Text("name"), SoundCatalog.MaxSchemeNameLength);
+        var author = SoundSchemeFile.CleanText(Text("author"), SoundSchemeFile.MaxAuthorLength);
+        var license = SoundSchemeFile.CleanText(Text("license"), SoundSchemeFile.MaxLicenseLength);
+        if (name.Length == 0 || author.Length == 0 || license.Length == 0) return null;
+        var description = SoundSchemeFile.CleanText(Text("description"), SoundSchemeFile.MaxDescriptionLength);
+        int? events = Value("eventsWithSound") is { } e && SoundSchemeFile.WholeNumber(e) is { } n
+            ? Math.Clamp(n, 0, SoundCatalog.Events.Count) : null;
         return new SoundGalleryEntry(id, name, author, description, license, file, size, sha, events);
     }
 
-    private static string Clean(string? text, int max)
-    {
-        var clean = new string((text ?? string.Empty).Where(c => !char.IsControl(c)).ToArray()).Trim();
-        return SoundSchemeFile.Cut(clean, max);
-    }
-
+    /// <summary>A gallery id: a lowercase letter or digit, then up to 39 more or hyphens. Matches the whole text, so a trailing newline can't pass.</summary>
     internal static bool IsValidId(string id) => IdPattern().IsMatch(id);
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9-]{0,39}$")]
+    /// <summary>A SHA-256 as 64 lowercase hex digits, the whole text.</summary>
+    internal static bool IsValidSha256(string sha) => Sha256Pattern().IsMatch(sha);
+
+    // \z, not $: in .NET, $ also matches before a final newline.
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{0,39}\z")]
     private static partial Regex IdPattern();
 
-    [GeneratedRegex("^[0-9a-f]{64}$")]
+    [GeneratedRegex(@"^[0-9a-f]{64}\z")]
     private static partial Regex Sha256Pattern();
 
     /// <summary>Reads one file from the gallery, never more than <paramref name="limit"/> bytes.</summary>
@@ -317,10 +389,10 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
             if (response.StatusCode != HttpStatusCode.OK)
             {
                 LogService.Log($"Sound gallery: {name} answered {(int)response.StatusCode}.");
-                throw new SoundGalleryException(Unreachable);
+                throw UnreachableError();
             }
             if (response.Content.Headers.ContentLength is { } length && (length > limit || (exactSize && length != limit)))
-                throw new SoundGalleryException(NotTrusted);
+                throw Untrusted();
             await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             return await ReadCappedAsync(stream, limit, exactSize, ct).ConfigureAwait(false);
         }
@@ -329,12 +401,12 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
         catch (OperationCanceledException ex)
         {
             LogService.Log($"Sound gallery: reading {name} timed out", ex);
-            throw new SoundGalleryException(Unreachable, ex);
+            throw UnreachableError(ex);
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException)
         {
             LogService.Log($"Sound gallery: reading {name} failed", ex);
-            throw new SoundGalleryException(Unreachable, ex);
+            throw UnreachableError(ex);
         }
     }
 
@@ -347,10 +419,10 @@ public sealed partial class SoundGalleryService : ISoundGalleryService, IDisposa
         for (int read; (read = await stream.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0;)
         {
             total += read;
-            if (total > limit) throw new SoundGalleryException(NotTrusted);
+            if (total > limit) throw Untrusted();
             ms.Write(buffer, 0, read);
         }
-        if (exactSize && total != limit) throw new SoundGalleryException(NotTrusted);
+        if (exactSize && total != limit) throw Untrusted();
         return ms.ToArray();
     }
 

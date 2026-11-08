@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Linq;
 
 namespace QuickMail.Models;
@@ -52,7 +55,14 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name, string? P
         _ => NoneValue,
     };
 
-    public static bool TryParse(string? value, out SoundRef sound)
+    public static bool TryParse(string? value, out SoundRef sound) =>
+        TryParse(value, out sound, SoundCatalog.BuiltInSounds, allowMp3: true);
+
+    /// <summary>
+    /// Parses a stored sound against another app's built-in sounds, and with or without MP3 files, so
+    /// app-kit's shared test files can be read as that app reads them (SharedSoundTestDataTests).
+    /// </summary>
+    internal static bool TryParse(string? value, out SoundRef sound, IReadOnlyList<string> builtInSounds, bool allowMp3)
     {
         sound = None;
         if (string.IsNullOrWhiteSpace(value)) return false;
@@ -62,7 +72,9 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name, string? P
 
         if (text.StartsWith(BuiltInPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            var name = text[BuiltInPrefix.Length..];
+            // The pack and name match whatever their case and are kept in lowercase, as every app
+            // reads them (app-kit sounds/SCHEMES.md): BUILTIN:SoftBell/Tap is builtin:softbell/tap.
+            var name = text[BuiltInPrefix.Length..].ToLowerInvariant();
             string? pack = null;
             var slash = name.IndexOf('/');
             if (slash >= 0)
@@ -72,7 +84,7 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name, string? P
                 // An unknown pack is refused like an unknown name: it may be from a newer QuickMail.
                 if (!SoundCatalog.Packs.Any(p => p.Id == pack)) return false;
             }
-            if (!SoundCatalog.BuiltInSounds.Contains(name, StringComparer.Ordinal)) return false;
+            if (!builtInSounds.Contains(name, StringComparer.Ordinal)) return false;
             sound = BuiltIn(name, pack);
             return true;
         }
@@ -81,6 +93,7 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name, string? P
         {
             var file = text[CustomPrefix.Length..];
             if (!IsSafeCustomFileName(file)) return false;
+            if (!allowMp3 && !file.EndsWith(".wav", StringComparison.OrdinalIgnoreCase)) return false;
             sound = Custom(file);
             return true;
         }
@@ -91,24 +104,59 @@ public readonly record struct SoundRef(SoundRefKind Kind, string Name, string? P
     // Leaves room for the profile path, so a long name can't fail mid-import and roll the whole thing back.
     private const int MaxFileNameLength = 100;
 
-    // On older Windows, COM1.wav still means the serial port, whatever folder it is in.
-    private static bool IsReservedDeviceName(string stem)
+    // On older Windows, COM1.wav still means the serial port, whatever folder it is in, and so does
+    // COM1.anything.wav: Windows reads the device from the name up to its first dot.
+    private static bool IsReservedDeviceName(string file)
     {
-        var name = stem.TrimEnd(' ', '.').ToUpperInvariant();
+        var dot = file.IndexOf('.');
+        var name = (dot < 0 ? file : file[..dot]).TrimEnd(' ').ToUpperInvariant();
         if (name is "CON" or "PRN" or "AUX" or "NUL" or "CONIN$" or "CONOUT$") return true;
         return name.Length == 4 && (name.StartsWith("COM", StringComparison.Ordinal) || name.StartsWith("LPT", StringComparison.Ordinal))
-            && (char.IsDigit(name[3]) || name[3] is '¹' or '²' or '³');
+            && (char.IsAsciiDigit(name[3]) || name[3] is '¹' or '²' or '³');
     }
 
-    /// <summary>A bare WAV or MP3 file name, with nothing that could lead out of the sounds folder or reach a device.</summary>
+    /// <summary>
+    /// No control or formatting character and no unpaired surrogate, judged a whole character at a
+    /// time: an emoji (a surrogate pair) is fine, as it is in every app's reading of the spec.
+    /// </summary>
+    private static bool HasOnlyPlainCharacters(string text)
+    {
+        for (var i = 0; i < text.Length; i++)
+        {
+            UnicodeCategory category;
+            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                category = Rune.GetUnicodeCategory(new Rune(text[i], text[i + 1]));
+                i++;
+            }
+            else if (char.IsSurrogate(text[i]))
+            {
+                return false;
+            }
+            else
+            {
+                category = char.GetUnicodeCategory(text[i]);
+            }
+            if (category is UnicodeCategory.Control or UnicodeCategory.Format) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// A bare WAV or MP3 file name, with nothing that could lead out of the sounds folder or reach a
+    /// device, and nothing that could make it read as another name: no control or formatting
+    /// character (such as a right-to-left override, which can make x.wav look like something else)
+    /// and no surrogate. The rules are app-kit's sounds/SCHEMES.md "A safe file name".
+    /// </summary>
     public static bool IsSafeCustomFileName(string? file)
     {
         if (string.IsNullOrWhiteSpace(file)) return false;
         if (file != file.Trim() || file.EndsWith('.')) return false;   // Windows drops these, changing which file is meant.
         if (file.IndexOfAny(['/', '\\', ':']) >= 0) return false;
         if (file.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;
+        if (!HasOnlyPlainCharacters(file)) return false;
         if (file.Length > MaxFileNameLength) return false;
-        if (IsReservedDeviceName(Path.GetFileNameWithoutExtension(file))) return false;
+        if (IsReservedDeviceName(file)) return false;
         var extension = Path.GetExtension(file);
         return extension.Equals(".wav", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase);
