@@ -271,6 +271,22 @@ public sealed class SoundService : ISoundService
         }
     }
 
+    public void NoteUnsavedSchemeFolders(IEnumerable<string> schemeIds) =>
+        SoundSchemeFolderCleanup.NoteUnsaved(_soundsFolder, schemeIds);
+
+    public void ForgetUnsavedSchemeFolders(IEnumerable<string> schemeIds) =>
+        SoundSchemeFolderCleanup.ForgetUnsaved(_soundsFolder, schemeIds);
+
+    public int? RemoveUnusedSchemeFolders(IEnumerable<string> schemesInUse)
+    {
+        // Only for a sounds folder where the profile keeps it, next to the config.ini that says what
+        // is owned; anywhere else there's nothing to check against, so nothing is removed.
+        var full = Path.GetFullPath(_soundsFolder).TrimEnd(Path.DirectorySeparatorChar);
+        if (!string.Equals(Path.GetFileName(full), SoundCatalog.CustomFolderName, StringComparison.OrdinalIgnoreCase)
+            || Path.GetDirectoryName(full) is not { } profileDir) return null;
+        return SoundSchemeFolderCleanup.Run(profileDir, schemesInUse);
+    }
+
     public bool TryRemoveCustomSound(string? schemeId, string fileName, out string refusal)
     {
         refusal = string.Empty;

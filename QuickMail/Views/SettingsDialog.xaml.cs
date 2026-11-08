@@ -37,8 +37,15 @@ public partial class SettingsDialog : Window
     private SoundSchemeNameDialog? _schemeNameDialog;
     private bool _closing;
 
-    private void OnSoundResult(string text) =>
+    // What a name dialog's action reports, such as files a copy couldn't bring (#955), is said once
+    // the dialog has closed and focus has settled, not as it closes, when it would be cut off.
+    private readonly HeldAnnouncements _heldSoundResults = new();
+
+    private void OnSoundResult(string text)
+    {
+        if (_heldSoundResults.TryHold(text)) return;
         AccessibilityHelper.Announce(this, text, interrupt: true, AnnouncementCategory.Result);
+    }
 
     // A message box has no editable text, so a modal one is safe here (CLAUDE.md, Modal Dialog Rules).
     private bool Confirm(string question, string title) =>
@@ -158,13 +165,25 @@ public partial class SettingsDialog : Window
         }
 
         var returnTo = Keyboard.FocusedElement;
-        var dialog = new SoundSchemeNameDialog(title, initialName, accept) { Owner = this };
+        // The action runs while the name dialog is still open and about to close, so what it reports
+        // is held until focus has moved back here.
+        string? Accept(string name)
+        {
+            _heldSoundResults.Hold();
+            try { return accept(name); }
+            finally { _heldSoundResults.Stop(); }
+        }
+        var dialog = new SoundSchemeNameDialog(title, initialName, Accept) { Owner = this };
         _schemeNameDialog = dialog;
         dialog.Closed += (_, _) =>
         {
             _schemeNameDialog = null;
             // Closed along with Settings: there is nothing to come back to, and Activate would throw.
-            if (_closing) return;
+            if (_closing)
+            {
+                _heldSoundResults.TakeAll();
+                return;
+            }
             Activate();
             Dispatcher.InvokeAsync(() =>
             {
@@ -172,11 +191,22 @@ public partial class SettingsDialog : Window
                 if (!dialog.Accepted)
                 {
                     returnTo?.Focus();
-                    return;
                 }
-                var target = focusAfter();
-                if (target == SoundEventList) FocusSelectedEvent();
-                else target.Focus();
+                else
+                {
+                    var target = focusAfter();
+                    if (target == SoundEventList) FocusSelectedEvent();
+                    else target.Focus();
+                }
+                // Once focus has moved, at ApplicationIdle and interrupting, the way compose announces
+                // formatting results: said as the dialog closed, the move back here cut it off.
+                // ApplicationIdle comes as soon as the dispatcher is idle, not after the screen reader
+                // has read the newly focused row, so this may cut that short instead (a person check).
+                if (_heldSoundResults.TakeAll() is { } held)
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        if (!_closing) AccessibilityHelper.Announce(this, held, interrupt: true, AnnouncementCategory.Result);
+                    }, DispatcherPriority.ApplicationIdle);
             }, DispatcherPriority.Input);
         };
         dialog.Show();

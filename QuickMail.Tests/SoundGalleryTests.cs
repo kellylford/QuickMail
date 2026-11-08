@@ -840,7 +840,7 @@ public sealed class SoundGalleryTests : IDisposable
             // Saying no changes nothing.
             answer = false;
             Assert.False(vm.ImportSchemeFrom(newerPath, newerEntry));
-            Assert.Equal(["Replace your copy of My rain with the gallery's newer version? Any changes you made to it are lost."], asked);
+            Assert.Equal(["Replace your copy of My rain with the gallery's newer version? Any changes you made to it are lost, and its sound files the new version doesn't use are deleted when you save."], asked);
             Assert.Equal(Hash(first), vm.GalleryOrigins()["rain"]);
 
             // Saying yes replaces its sounds, keeps its name and place, and remembers the new file.

@@ -729,7 +729,7 @@ public partial class SettingsViewModel : ObservableObject
             .ToList();
 
         _configService.Save(cfg);
-        DeleteFoldersOfDeletedSchemes();   // only once the schemes without them are saved (#948)
+        TidySchemeFoldersAfterSave(cfg);   // only once the schemes without them are saved (#948, #955)
     }
 
     [RelayCommand]
