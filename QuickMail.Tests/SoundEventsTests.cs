@@ -118,6 +118,15 @@ internal sealed class RecordingSoundService : ISoundService
         return true;
     }
 
+    /// <summary>The schemes named as in use at each call to <see cref="RemoveUnusedSchemeFolders"/> (#955).</summary>
+    public List<HashSet<string>> UnusedFolderSweeps { get; } = [];
+
+    public int? RemoveUnusedSchemeFolders(IEnumerable<string> schemesInUse)
+    {
+        UnusedFolderSweeps.Add(new HashSet<string>(schemesInUse, StringComparer.OrdinalIgnoreCase));
+        return 0;
+    }
+
     public void Dispose() { }
 }
 

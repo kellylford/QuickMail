@@ -594,6 +594,7 @@ public static class SettingsImporter
         var dir = Directory.CreateDirectory(Path.Combine(profileDir, SoundCatalog.CustomFolderName)).FullName;
         var added = 0;
         var flatAdded = new List<string>();
+        var flatKept = new List<string>();
         var anyInSchemeFolders = false;
         foreach (var (name, bytes) in sounds)
         {
@@ -601,7 +602,11 @@ public static class SettingsImporter
             var isFlat = Path.GetDirectoryName(relative) is null or "";
             anyInSchemeFolders |= !isFlat;
             var target = Path.Combine(dir, relative);
-            if (File.Exists(target)) continue;
+            if (File.Exists(target))
+            {
+                if (isFlat) flatKept.Add(relative);
+                continue;
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllBytes(target, bytes);
             if (isFlat) flatAdded.Add(relative);
@@ -616,16 +621,34 @@ public static class SettingsImporter
         // folder too. Copied, not moved, so undoing the import never needs a file put back. A newer
         // file, with schemes' folders of its own, already has its schemes' sounds in place; its flat
         // ones are rules', and must never stand in for a file a scheme here has lost.
-        if (!anyInSchemeFolders && flatAdded.Count > 0) PlaceFlatSounds(profileDir, dir, flatAdded);
+        if (anyInSchemeFolders) return;
+        if (flatAdded.Count > 0) PlaceFlatSounds(profileDir, dir, flatAdded, onlySchemes: null);
+        // A name this computer already had kept its own file, so the schemes the settings file brought
+        // that use that name would otherwise play a missing sound: they get a copy of the file that's
+        // here (#955). Only the file's own schemes: one that was here already was never using it.
+        if (flatKept.Count > 0 && SchemesFromFile(bundle) is { Count: > 0 } fromFile)
+            PlaceFlatSounds(profileDir, dir, flatKept, onlySchemes: fromFile);
     }
 
-    private static void PlaceFlatSounds(string profileDir, string soundsFolder, IReadOnlyCollection<string> names)
+    /// <summary>The ids of the sound schemes a settings file brought in, or null if it brought none in.</summary>
+    private static HashSet<string>? SchemesFromFile(SettingsBundle bundle)
+    {
+        // As in ApplyPreferences: only a file with the preferences, from a QuickMail with sounds,
+        // replaces this computer's schemes with its own.
+        if (!bundle.Has(SettingsCategory.Preferences) || bundle.GetText("config.ini") is not { } text
+            || !text.Contains("PlayEventSounds", StringComparison.OrdinalIgnoreCase)) return null;
+        return new HashSet<string>(ConfigService.ParseFile(SplitLines(text)).SoundSchemes.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void PlaceFlatSounds(string profileDir, string soundsFolder, IReadOnlyCollection<string> names,
+        HashSet<string>? onlySchemes)
     {
         try
         {
             var config = Path.Combine(profileDir, "config.ini");
             if (!File.Exists(config)) return;
-            var schemes = ConfigService.ParseFile(File.ReadAllLines(config)).SoundSchemes.Values;
+            var schemes = ConfigService.ParseFile(File.ReadAllLines(config)).SoundSchemes.Values
+                .Where(s => onlySchemes is null || onlySchemes.Contains(s.Id));
             SoundFolderMigration.Place(soundsFolder, schemes, [], removeFromShared: false, onlyNames: names);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

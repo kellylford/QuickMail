@@ -97,6 +97,15 @@ public partial class SettingsViewModel
     private readonly HashSet<string> _schemesMadeHere = new(StringComparer.OrdinalIgnoreCase);
     private bool _soundSchemesSaved;
 
+    // Built-in schemes reset here (#955): on Save, the files in their folders that the saved scheme
+    // no longer names are deleted. Cancel leaves them, since the scheme then still names them.
+    private readonly HashSet<string> _schemesResetHere = new(StringComparer.OrdinalIgnoreCase);
+
+    // The files a gallery update brought into the folder of a scheme already here (#955), by scheme.
+    // Only names that weren't in the folder before, so the saved scheme can't be using them; Cancel
+    // deletes them, leaving the folder as it was.
+    private readonly Dictionary<string, HashSet<string>> _filesAddedByUpdate = new(StringComparer.OrdinalIgnoreCase);
+
     [ObservableProperty] private bool _playEventSounds;
     [ObservableProperty] private bool _muteSounds;
     [ObservableProperty] private SoundVolumeOption? _selectedSoundVolume;
@@ -210,6 +219,11 @@ public partial class SettingsViewModel
             ?? SoundSchemes.First(s => s.Id == SoundCatalog.DefaultPack);
         _schemeShownAtLoad = shown.Id;
         SelectedSoundScheme = shown;
+
+        // Folders no scheme owns, left by QuickMail stopping with a new scheme unsaved, or a settings
+        // file bringing sounds without the schemes that use them (#955). Nothing has been made here yet,
+        // so what config.ini has is everything in use.
+        sounds?.RemoveUnusedSchemeFolders([.. cfg.SoundSchemes.Keys]);
     }
 
     private void InsertVolumeInOrder(int percent)
@@ -458,10 +472,15 @@ public partial class SettingsViewModel
     public bool TryResetScheme()
     {
         if (!CanResetScheme || SelectedSoundScheme is not { } scheme) return false;
-        if (ConfirmRequested?.Invoke($"Reset {scheme.Name} to how it ships? Every event goes back to its built-in sound.", "Reset Sound Scheme") != true) return false;
+        var question = $"Reset {scheme.Name} to how it ships? Every event goes back to its built-in sound.";
+        // Said only when there are any: on Save, the files the scheme then doesn't use are deleted (#955).
+        if (_sounds?.CustomSoundFiles(scheme.Id).Count > 0)
+            question += " The sound files you added to it are deleted when you save, unless an event still uses them.";
+        if (ConfirmRequested?.Invoke(question, "Reset Sound Scheme") != true) return false;
         foreach (var row in SoundEventRows)
             row.Choice = ChoiceFor(SoundRef.BuiltIn(row.Info.BuiltInSound));
         if (SelectedSoundEvent is not null) SelectedSoundChoice = SelectedSoundEvent.Choice;
+        _schemesResetHere.Add(scheme.Id);   // its files it no longer names go on Save (#955)
         return true;
     }
 
@@ -532,6 +551,10 @@ public partial class SettingsViewModel
 
         // The scheme's id is chosen first, so its sounds go straight into its own folder (#948).
         var schemeId = replacing?.Id ?? SoundCatalog.NewUserSchemeId();
+        // An update goes into a folder that's already in use, so what it adds is noted, to be taken
+        // out again if it fails or Settings is cancelled (#955). What was there is never touched.
+        var before = replacing is null ? null
+            : new HashSet<string>(_sounds.CustomSoundFiles(schemeId), StringComparer.OrdinalIgnoreCase);
         SoundSchemeImport imported;
         try
         {
@@ -540,11 +563,14 @@ public partial class SettingsViewModel
         catch (SoundSchemeFileException ex)
         {
             LogService.Log("Importing a sound scheme failed", ex);
-            // Any sounds that landed before it failed belong to a scheme that was never made.
+            // Any sounds that landed before it failed belong to a scheme that was never made, or to
+            // an update that didn't happen.
             if (replacing is null) _sounds.TryDeleteSchemeSounds(schemeId);
+            else RemoveFiles(schemeId, AddedSince(schemeId, before!));
             ReportScheme(ex.Message);
             return false;
         }
+        if (before is not null) NoteFilesAddedByUpdate(schemeId, AddedSince(schemeId, before));
 
         var origin = fromGallery is null ? null : new SoundGalleryOrigin(fromGallery.Id, fromGallery.Sha256);
         var values = SoundCatalog.Events.ToDictionary(
@@ -720,10 +746,12 @@ public partial class SettingsViewModel
     // ── Each scheme's folder of sound files (#948) ───────────────────────────────
 
     /// <summary>
-    /// Called once the settings are saved: deletes the folder of every scheme of the person's own that
-    /// is no longer in the list, now that nothing can bring it back.
+    /// Called once the settings are saved, with what was saved, now that nothing can bring back what
+    /// they no longer have: deletes the folder of every scheme of the person's own that is no longer
+    /// in the list, the files a reset built-in scheme no longer names (#955), and any folder no
+    /// scheme owns (#955).
     /// </summary>
-    private void DeleteFoldersOfDeletedSchemes()
+    private void TidySchemeFoldersAfterSave(ConfigModel saved)
     {
         _soundSchemesSaved = true;
         if (_sounds is null) return;
@@ -731,16 +759,60 @@ public partial class SettingsViewModel
             .Where(id => SoundSchemes.All(s => !s.Id.Equals(id, StringComparison.OrdinalIgnoreCase)))
             .Distinct(StringComparer.OrdinalIgnoreCase);
         foreach (var id in gone) _sounds.TryDeleteSchemeSounds(id);
+
+        foreach (var id in _schemesResetHere.Where(SoundCatalog.IsBuiltInSchemeId))
+        {
+            var used = saved.SoundSchemes.TryGetValue(id, out var scheme) ? CustomFilesNamed(scheme.Events.Values) : [];
+            RemoveFiles(id, _sounds.CustomSoundFiles(id).Where(file => !used.Contains(file)).ToList());
+        }
+
+        // Every scheme in the list was saved just now, but they're named as well as config.ini, in
+        // case the file couldn't be written.
+        _sounds.RemoveUnusedSchemeFolders([.. SoundSchemes.Select(s => s.Id), .. saved.SoundSchemes.Keys]);
     }
 
     /// <summary>
     /// Called by the View when Settings closes. Without Save, the schemes made here were never kept,
-    /// so their folders, and the sound files copied into them, are deleted.
+    /// so their folders, and the sound files copied into them, are deleted, as are the files a gallery
+    /// update brought into a scheme that was already here (#955).
     /// </summary>
     public void DiscardUnsavedSchemeSounds()
     {
         if (_soundSchemesSaved || _sounds is null) return;
         foreach (var id in _schemesMadeHere) _sounds.TryDeleteSchemeSounds(id);
         _schemesMadeHere.Clear();
+        foreach (var (id, files) in _filesAddedByUpdate) RemoveFiles(id, files);
+        _filesAddedByUpdate.Clear();
+    }
+
+    /// <summary>The file names of the custom sounds among some stored sounds.</summary>
+    private static HashSet<string> CustomFilesNamed(IEnumerable<string> storedSounds)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in storedSounds)
+        {
+            if (SoundRef.TryParse(value, out var sound) && sound.Kind == SoundRefKind.Custom) names.Add(sound.Name);
+        }
+        return names;
+    }
+
+    /// <summary>The files in a scheme's folder now that weren't in <paramref name="before"/>.</summary>
+    private List<string> AddedSince(string schemeId, HashSet<string> before) =>
+        _sounds is null ? [] : [.. _sounds.CustomSoundFiles(schemeId).Where(file => !before.Contains(file))];
+
+    private void NoteFilesAddedByUpdate(string schemeId, IEnumerable<string> files)
+    {
+        if (!_filesAddedByUpdate.TryGetValue(schemeId, out var noted))
+            _filesAddedByUpdate[schemeId] = noted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        noted.UnionWith(files);
+    }
+
+    /// <summary>Deletes some files from a scheme's folder. One that won't go is logged and left.</summary>
+    private void RemoveFiles(string schemeId, IReadOnlyCollection<string> files)
+    {
+        if (_sounds is null || files.Count == 0) return;
+        var failed = files.Count(file => !_sounds.TryRemoveCustomSound(schemeId, file, out _));
+        LogService.Log($"Sound files: removed {files.Count - failed} from a scheme's folder that it no longer uses"
+            + (failed > 0 ? $"; {failed} could not be removed." : "."));
     }
 }
