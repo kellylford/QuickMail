@@ -265,7 +265,7 @@ public class ClientRulesOnGraphTests : IDisposable
         await _store.UpsertSummariesAsync([Cached("in-1", "INBOX"), Cached("ar-1", "Archive")]);
 
         var inboxByAccount = new Dictionary<Guid, string> { [_graphAccountId] = "INBOX" };
-        var removed = await h.Rules.ApplyRulesToExistingAsync(_store, inboxByAccount, CancellationToken.None);
+        var removed = (await h.Rules.ApplyRulesToExistingAsync(_store, inboxByAccount, CancellationToken.None)).Removed;
 
         // Only the Inbox copy was moved.
         var move = Assert.Single(h.Graph.Actions);
@@ -287,8 +287,8 @@ public class ClientRulesOnGraphTests : IDisposable
         var h = Build(MoveRule(_graphAccountId));
         await _store.UpsertSummariesAsync([Cached("in-1", "INBOX")]);
 
-        var removed = await h.Rules.ApplyRulesToExistingAsync(
-            _store, new Dictionary<Guid, string>(), CancellationToken.None);
+        var removed = (await h.Rules.ApplyRulesToExistingAsync(
+            _store, new Dictionary<Guid, string>(), CancellationToken.None)).Removed;
 
         Assert.Empty(h.Graph.Actions);
         Assert.Empty(removed);
@@ -311,11 +311,75 @@ public class ClientRulesOnGraphTests : IDisposable
         var h = Build(MoveRule(_graphAccountId), deleteRule);
         await _store.UpsertSummariesAsync([Cached("in-1", "INBOX")]);
 
-        var removed = await h.Rules.ApplyRulesToExistingAsync(
-            _store, new Dictionary<Guid, string> { [_graphAccountId] = "INBOX" }, CancellationToken.None);
+        var removed = (await h.Rules.ApplyRulesToExistingAsync(
+            _store, new Dictionary<Guid, string> { [_graphAccountId] = "INBOX" }, CancellationToken.None)).Removed;
 
         var action = Assert.Single(h.Graph.Actions);   // moved once, and never also sent to Trash
         Assert.Equal("Move", action.Method);
         Assert.Equal(["in-1"], removed.Select(m => m.MessageId).ToList());   // counted once
+    }
+
+    [Fact]
+    public async Task RunOnExisting_ReportsEachRulesCount_WithOverlappingMailCountedUnderTheFirstRule() // #949
+    {
+        // "invoice ready" matches both rules: the first moves it, so it is counted there and not again under the
+        // second. A rule that only marks as read takes nothing out of the Inbox and reports zero. A rule for another
+        // account cannot act in this run and is not reported as one that ran.
+        var deleteRule = new MailRule
+        {
+            Name = "Bin ready",
+            AccountId = _graphAccountId,
+            UseSubjectCondition = true,
+            SubjectContains = "ready",
+            Action = RuleAction.Delete,
+        };
+        var markRule = new MailRule
+        {
+            Name = "Read everything",
+            AccountId = _graphAccountId,
+            Action = RuleAction.MarkAsRead,
+        };
+        var otherAccountRule = MoveRule(_imapAccountId);
+        otherAccountRule.Name = "Elsewhere";
+        var h = Build(MoveRule(_graphAccountId), deleteRule, markRule, otherAccountRule);
+        await _store.UpsertSummariesAsync(
+        [
+            Cached("in-1", "INBOX", "invoice ready"),
+            Cached("in-2", "INBOX", "invoice due"),
+            Cached("in-3", "INBOX", "ready now"),
+            Cached("in-4", "INBOX", "hello"),
+            Cached("ar-1", "Archive", "invoice ready"),
+        ]);
+
+        var report = await h.Rules.ApplyRulesToExistingAsync(
+            _store, new Dictionary<Guid, string> { [_graphAccountId] = "INBOX" }, CancellationToken.None);
+
+        Assert.Equal(4, report.InspectedCount);   // the Inbox only, not the Archive copy
+        Assert.Equal(
+            [
+                new ExistingMailRuleResult("File invoices", Moved: 2, Deleted: 0),
+                new ExistingMailRuleResult("Bin ready", Moved: 0, Deleted: 1),
+                new ExistingMailRuleResult("Read everything", Moved: 0, Deleted: 0),
+            ],
+            report.Rules);
+        Assert.Equal(2, report.TotalMoved);
+        Assert.Equal(1, report.TotalDeleted);
+        Assert.Equal(["in-1", "in-2", "in-3"], report.Removed.Select(m => m.MessageId).Order().ToList());
+    }
+
+    [Fact]
+    public async Task RunOnExisting_NoEnabledRules_ReportsNothingRan() // #949
+    {
+        var rule = MoveRule(_graphAccountId);
+        rule.IsEnabled = false;
+        var h = Build(rule);
+        await _store.UpsertSummariesAsync([Cached("in-1", "INBOX")]);
+
+        var report = await h.Rules.ApplyRulesToExistingAsync(
+            _store, new Dictionary<Guid, string> { [_graphAccountId] = "INBOX" }, CancellationToken.None);
+
+        Assert.Empty(report.Rules);
+        Assert.Empty(report.Removed);
+        Assert.Empty(h.Graph.Actions);
     }
 }

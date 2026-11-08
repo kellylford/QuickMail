@@ -595,8 +595,8 @@ public class ClientRuleActionsTests
                 TargetFolder = "INBOX/Digests", CopyTargetFolder = "INBOX/Kept",
             }]);
 
-            var removed = await rules.ApplyRulesToExistingAsync(
-                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
+            var removed = (await rules.ApplyRulesToExistingAsync(
+                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken)).Removed;
 
             Assert.Equal(["copy 7 to INBOX/Kept"], server.Calls);   // the move never ran
             Assert.Empty(removed);
@@ -673,8 +673,8 @@ public class ClientRuleActionsTests
                 Action = RuleAction.MoveToFolder, TargetFolder = "folder-deleted",
             }]);
 
-            var removed = await rules.ApplyRulesToExistingAsync(
-                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
+            var removed = (await rules.ApplyRulesToExistingAsync(
+                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken)).Removed;
 
             Assert.Empty(removed);
             Assert.Empty(store.Deleted);
@@ -702,8 +702,8 @@ public class ClientRuleActionsTests
                 Action = RuleAction.CopyToFolder, CopyTargetFolder = "INBOX/Kept",
             }]);
 
-            var removed = await rules.ApplyRulesToExistingAsync(
-                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
+            var removed = (await rules.ApplyRulesToExistingAsync(
+                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken)).Removed;
 
             Assert.Equal(["copy 7 to INBOX/Kept"], server.Calls);
             Assert.Empty(removed);          // nothing left the Inbox, so nothing counts as moved or deleted

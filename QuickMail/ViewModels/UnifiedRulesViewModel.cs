@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -228,11 +229,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
     }
 
     /// <summary>Ask the owner to run client rules over already-cached mail (it owns the local store),
-    /// returning how many messages were moved/deleted. The Guid is the account to scope the run to —
-    /// this window is one account at a time, so it runs only the account in the picker, not every
-    /// account (#493). Server rules run server-side, so this is client-only — same as the standalone
-    /// manager (#346).</summary>
-    public event Func<Guid?, Task<int>>? RunOnExistingRequested;
+    /// returning what the run looked at and what each rule moved or deleted (#949). The Guid is the account
+    /// to scope the run to — this window is one account at a time, so it runs only the account in the
+    /// picker, not every account (#493). Server rules run server-side, so this is client-only — same as the
+    /// standalone manager (#346).</summary>
+    public event Func<Guid?, Task<ExistingMailRunReport>>? RunOnExistingRequested;
 
     /// <summary>Run on Existing applies the selected account's ENABLED client rules to its Inbox. Disabled
     /// when that account has none — a Graph account whose rules are all server-side has nothing for this
@@ -253,10 +254,10 @@ public partial class UnifiedRulesViewModel : ObservableObject
         // button that appears to do nothing.
         StatusText = $"Running {account.DisplayName}'s rules on existing mail…";
         Announce(StatusText, AnnouncementCategory.Status);
-        int affected;
+        ExistingMailRunReport report;
         try
         {
-            affected = await RunOnExistingRequested.Invoke(account.Id);
+            report = await RunOnExistingRequested.Invoke(account.Id);
         }
         catch (Exception ex)
         {
@@ -264,11 +265,83 @@ public partial class UnifiedRulesViewModel : ObservableObject
             Announce(StatusText, AnnouncementCategory.Result);
             return;
         }
-        StatusText = affected > 0
-            ? $"Applied {account.DisplayName}'s rules to existing mail: {affected} message{(affected == 1 ? "" : "s")} moved or deleted."
-            : $"Applied {account.DisplayName}'s rules to existing mail.";
+        StatusText = DescribeRunOnExisting(AccountPhrase(account.DisplayName), report);
         Announce(StatusText, AnnouncementCategory.Result);
     }
+
+    /// <summary>How many rules Run on Existing lists by name before summing up the rest, so a long list of rules
+    /// still reads as one status line.</summary>
+    internal const int MaxRulesNamedInRunReport = 5;
+
+    /// <summary>Run on Existing's result (#949): what it looked at (every enabled client rule for the account, on its
+    /// stored Inbox mail, which can be more than the message list shows) and what each rule did, so it is never
+    /// mistaken for Test's count. Only rules that moved or deleted something are named; the rest are in the rule
+    /// count. Numbers are grouped for the current culture.</summary>
+    internal static string DescribeRunOnExisting(string account, ExistingMailRunReport report)
+    {
+        var ruleCount = report.Rules.Count;
+        if (ruleCount == 0)
+            return $"There are no enabled rules to run for {account}.";
+        if (report.InspectedCount == 0)
+            return $"There are no stored Inbox messages for {account}, so there was nothing to run "
+                   + (ruleCount == 1 ? "the rule on." : "the rules on.");
+
+        var scope = $"{N(report.InspectedCount)} stored Inbox {Plural(report.InspectedCount, "message")} for {account}";
+        var acted = report.Rules.Where(r => r.TookAny).ToList();
+
+        if (ruleCount == 1)
+        {
+            var only = report.Rules[0];
+            var opening = $"Ran {RuleLabel(only.RuleName)} on {scope}.";
+            return only.TookAny
+                ? $"{opening} It {Took(only.Moved, only.Deleted, withNoun: true)}."
+                : $"{opening} It didn't move or delete any of them.";
+        }
+
+        var start = $"Ran {N(ruleCount)} rules on {scope}.";
+        if (acted.Count == 0)
+            return $"{start} None of them moved or deleted any messages.";
+        if (acted.Count == 1)
+            return $"{start} One of them, {Name(acted[0].RuleName)}, {Took(acted[0].Moved, acted[0].Deleted, withNoun: true)}.";
+
+        var named = acted.Take(MaxRulesNamedInRunReport)
+            .Select(r => $"{Name(r.RuleName)} {Took(r.Moved, r.Deleted, withNoun: false)}")
+            .ToList();
+        var rest = acted.Skip(MaxRulesNamedInRunReport).ToList();
+        if (rest.Count > 0)
+        {
+            var restCount = rest.Sum(r => r.Moved + r.Deleted);
+            named.Add($"{N(rest.Count)} other {Plural(rest.Count, "rule")} moved or deleted {N(restCount)}");
+        }
+        return $"{start} They {Took(report.TotalMoved, report.TotalDeleted, withNoun: true)}: {string.Join("; ", named)}.";
+
+        // "moved 1,886 messages and deleted 6", or without the noun "moved 1,886 and deleted 6".
+        static string Took(int moved, int deleted, bool withNoun)
+        {
+            var first = moved > 0 ? moved : deleted;
+            var noun = withNoun ? " " + Plural(first, "message") : "";
+            if (moved > 0 && deleted > 0) return $"moved {N(moved)}{noun} and deleted {N(deleted)}";
+            return moved > 0 ? $"moved {N(moved)}{noun}" : $"deleted {N(deleted)}{noun}";
+        }
+
+        // "the techtalk rule"; a name that already ends in "rule" doesn't get a second one, as AccountPhrase does
+        // for "account", and a rule with no name is just "1 rule".
+        static string RuleLabel(string? name)
+        {
+            var trimmed = name?.Trim();
+            if (string.IsNullOrEmpty(trimmed)) return "1 rule";
+            var endsInRule = trimmed.Equals("rule", StringComparison.OrdinalIgnoreCase)
+                             || trimmed.EndsWith(" rule", StringComparison.OrdinalIgnoreCase);
+            return endsInRule ? $"the {trimmed}" : $"the {trimmed} rule";
+        }
+
+        static string Name(string? name) => string.IsNullOrWhiteSpace(name) ? "an unnamed rule" : name.Trim();
+    }
+
+    /// <summary>A count grouped for the reader's culture: 1,942 rather than 1942 (#949).</summary>
+    private static string N(int value) => value.ToString("N0", CultureInfo.CurrentCulture);
+
+    private static string Plural(int count, string noun) => count == 1 ? noun : noun + "s";
 
     [RelayCommand(CanExecute = nameof(CanEditSelected))]
     private void EditRule()
@@ -404,11 +477,16 @@ public partial class UnifiedRulesViewModel : ObservableObject
         }
 
         var matched = _clientRules.TestRule(row.Client!, messages).Count;
-        StatusText = messages.Count == 1
-            ? $"Rule would {(matched == 1 ? "" : "not ")}match the only message in the list for {account}."
-            : $"Rule would match {matched} of the {messages.Count} messages in the list for {account}.";
+        StatusText = DescribeTest(account, matched, messages.Count);
         Announce(StatusText, AnnouncementCategory.Result);
     }
+
+    /// <summary>Test's result (#949). "This rule" and "the message list" say what it measured: the one selected rule,
+    /// against the messages the main window's list shows for the account — not the stored Inbox, and not every rule,
+    /// which is what Run on Existing uses. Numbers are grouped for the current culture.</summary>
+    internal static string DescribeTest(string account, int matched, int total) => total == 1
+        ? $"This rule would {(matched == 1 ? "" : "not ")}match the only message in the message list for {account}."
+        : $"This rule would match {N(matched)} of the {N(total)} messages in the message list for {account}.";
 
     /// <summary>"the Work account", for Test's result. A label that already ends in "account" does not get a
     /// second one: "the Work Account", not "the Work Account account".</summary>
