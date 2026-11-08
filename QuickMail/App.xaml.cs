@@ -679,6 +679,9 @@ public partial class App : Application
             // The one-time move of 0.8.69's shared sound files into each scheme's folder (#948), before
             // the sound service starts, so nothing plays from a folder being changed.
             if (!probeMode) SoundFolderMigration.RunAtStartup(profile.ProfileDir, ruleService.LoadRules);
+            // Then the folders of schemes that are no longer anywhere (#955), such as a new scheme
+            // left by QuickMail stopping while Settings was open. Nothing else is open at this point.
+            if (!probeMode) SoundSchemeFolderCleanup.RunAtStartup(profile.ProfileDir);
             _soundService = probeMode ? null : new SoundService(
                 configService, soundsFolder, new NAudioSoundOutput(), isQuiet: WindowsQuietState.IsQuiet);
             ruleService.Sounds = _soundService;

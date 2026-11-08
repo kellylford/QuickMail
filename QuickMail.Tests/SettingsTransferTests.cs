@@ -1147,6 +1147,78 @@ public sealed class SettingsTransferTests : IDisposable
         Assert.False(File.Exists(Path.Combine(laptop, "sounds", "user-calm", "Unused.wav")));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Sounds_ASchemeFolderBroughtWithoutItsSchemeIsRemovedAfterTheImport(bool withPreferences)
+    {
+        // #955: a file's scheme folder for a scheme that doesn't end up here (the preferences, which
+        // carry the schemes, weren't imported) is removed by the tidy-up that follows the import.
+        const string id = "user-0123456789abcdef0123456789abcdef";
+        var desktop = SeedDesktop();
+        var desktopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(desktop, "config.ini")));
+        desktopCfg.SoundSchemes[id] = new SoundScheme(id, "Calm", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Desk.wav" });
+        File.WriteAllText(Path.Combine(desktop, "config.ini"), ConfigService.BuildFileText(desktopCfg));
+        Directory.CreateDirectory(Path.Combine(desktop, "sounds", id));
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", id, "Desk.wav"), [1]);
+        var laptop = SeedLaptop();
+        Directory.CreateDirectory(Path.Combine(laptop, "sounds", "user-fedcba9876543210fedcba9876543210"));   // the laptop's own, never written down
+
+        Import(Export(desktop, withPreferences ? [SettingsCategory.Preferences] : [SettingsCategory.RulesAndViews]), laptop);
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", id, "Desk.wav")));
+        SoundSchemeFolderCleanup.RunAtStartup(laptop);
+
+        Assert.Equal(withPreferences, Directory.Exists(Path.Combine(laptop, "sounds", id)));
+        Assert.True(Directory.Exists(Path.Combine(laptop, "sounds", "user-fedcba9876543210fedcba9876543210")));
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", SoundSchemeFolderCleanup.JournalFileName)));
+    }
+
+    [Fact]
+    public void Sounds_AnOldFilesSoundWhoseNameIsHereGivesItsSchemesTheFileThatIsHere()
+    {
+        // #955: a 0.8.69 file (every sound flat) brings a scheme using Desk.wav, and this computer
+        // already has a Desk.wav. The one here is kept, so it's the one the scheme gets a copy of.
+        var desktop = SeedDesktop();
+        var desktopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(desktop, "config.ini")));
+        desktopCfg.SoundSchemes["user-calm"] = new SoundScheme("user-calm", "Calm", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Desk.wav" });
+        desktopCfg.SoundSchemes["wood"] = new SoundScheme("wood", "Wood", isBuiltIn: true, pack: "wood",
+            events: new Dictionary<string, string> { ["MessageSent"] = "custom:Desk.wav" });
+        File.WriteAllText(Path.Combine(desktop, "config.ini"), ConfigService.BuildFileText(desktopCfg));
+        AddSound(desktop, "Desk.wav", [1, 2, 3]);
+
+        var laptop = SeedLaptop();
+        AddSound(laptop, "Desk.wav", [9, 9]);
+
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        Assert.Equal([(byte)9, 9], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Desk.wav")));   // kept, as before
+        Assert.Equal([(byte)9, 9], File.ReadAllBytes(Path.Combine(laptop, "sounds", "user-calm", "Desk.wav")));
+        Assert.Equal([(byte)9, 9], File.ReadAllBytes(Path.Combine(laptop, "sounds", "wood", "Desk.wav")));
+    }
+
+    [Fact]
+    public void Sounds_AnOldFilesNameThatIsHereNeverFillsASchemeThisComputerAlreadyHad()
+    {
+        // Without the preferences, the schemes are this computer's own, and none of them was using
+        // the file the settings file found already here: nothing is copied for it.
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Ding.wav", [1]);
+
+        var laptop = SeedLaptop();
+        AddSound(laptop, "Ding.wav", [2]);
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.SoundSchemes["wood"] = new SoundScheme("wood", "Wood", isBuiltIn: true, pack: "wood",
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Ding.wav" });
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(Export(desktop, [SettingsCategory.RulesAndViews]), laptop);
+
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "wood", "Ding.wav")));
+        Assert.Equal([(byte)2], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Ding.wav")));
+    }
+
     [Fact]
     public void Sounds_ARulesSoundInANewerFileNeverStandsInForASchemesMissingFile()
     {
@@ -1224,14 +1296,70 @@ public sealed class SettingsTransferTests : IDisposable
     public void Sounds_ThatWouldOverfillTheFileAreLeftOutAndTheFileStillOpens()
     {
         var desktop = SeedDesktop();
-        var big = new byte[SoundCatalog.MaxCustomFileBytes];
         var fit = (int)(SettingsBundle.MaxExportedSoundBytes / SoundCatalog.MaxCustomFileBytes);
         for (var i = 0; i < fit + 3; i++)
+        {
+            var big = new byte[SoundCatalog.MaxCustomFileBytes];
+            big[0] = (byte)i;   // each a different sound: the limit counts the same sound once (#955)
             AddSound(desktop, $"Sound {i:D2}.wav", big);
+        }
 
         var bundle = SettingsBundle.Open(Export(desktop));
 
         Assert.Equal(fit, bundle.SoundEntries.Count());
+    }
+
+    [Fact]
+    public void Sounds_TheSameSoundInSeveralSchemesCountsOnceTowardTheLimit()
+    {
+        // #955: each scheme has its own copy of a sound they share (#948). Five schemes sharing one
+        // sound must not make the export leave out a sixth, different one.
+        var desktop = SeedDesktop();
+        var fit = (int)(SettingsBundle.MaxExportedSoundBytes / SoundCatalog.MaxCustomFileBytes);
+        var shared = new byte[SoundCatalog.MaxCustomFileBytes];
+        shared[0] = 0xAA;
+        string[] schemes = ["glass", "wood", "softbell", "user-0123456789abcdef0123456789abcdef", "user-fedcba9876543210fedcba9876543210"];
+        foreach (var scheme in schemes)
+        {
+            Directory.CreateDirectory(Path.Combine(desktop, "sounds", scheme));
+            File.WriteAllBytes(Path.Combine(desktop, "sounds", scheme, "Shared.wav"), shared);
+        }
+        for (var i = 0; i < fit - 1; i++)
+        {
+            var own = new byte[SoundCatalog.MaxCustomFileBytes];
+            own[0] = (byte)i;
+            AddSound(desktop, $"Rule {i}.wav", own);
+        }
+
+        var bundle = SettingsBundle.Open(Export(desktop));
+
+        // Every scheme's copy, and every different sound, since together they are only "fit" sounds.
+        Assert.Equal(schemes.Length + fit - 1, bundle.SoundEntries.Count());
+        foreach (var scheme in schemes)
+            Assert.Contains($"sounds/{scheme}/Shared.wav", bundle.SoundEntries.Select(e => e.Key));
+    }
+
+    [Fact]
+    public void Sounds_CopiesOfOneSoundStillStopBeforeTheFileWouldBeTooBigToImport()
+    {
+        // Counted once toward the sounds' limit, but each copy is in the file, and an import refuses
+        // a file over its own cap. So the copies stop short of that, and the file still opens.
+        var desktop = SeedDesktop();
+        var shared = new byte[SoundCatalog.MaxCustomFileBytes];
+        var copies = (int)(SettingsBundle.MaxExportedTotalBytes / SoundCatalog.MaxCustomFileBytes) + 2;
+        for (var i = 0; i < copies; i++)
+        {
+            var id = $"user-{i:D32}";
+            Directory.CreateDirectory(Path.Combine(desktop, "sounds", id));
+            File.WriteAllBytes(Path.Combine(desktop, "sounds", id, "Same.wav"), shared);
+        }
+
+        var path = Export(desktop);
+        var bundle = SettingsBundle.Open(path);   // throws if the file were over the import's cap
+
+        var written = bundle.SoundEntries.Count();
+        Assert.InRange(written, 1, copies - 1);
+        Assert.True(bundle.Entries.Values.Sum(v => (long)v.Length) <= SettingsBundle.MaxExportedTotalBytes);
     }
 
     [Fact]
