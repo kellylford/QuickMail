@@ -2,6 +2,9 @@
 
 ## New
 
+- **The Sound Scheme Gallery is open.** **Settings → Sounds → Browse schemes…** now lists schemes you can add with one key press. It starts with two:
+  - **Essentials** has sounds only for the events you might otherwise miss: new mail, a send that failed, an action that failed, and the connection dropping and coming back. Everything else is quiet.
+  - **Maya Voicing Glass** plays each event's Glass sound, then an AI voice says what the event was. It's a good way to learn the sounds: once you know them, switch back to Glass.
 - **The sound gallery shows which schemes you already have.** In **Settings → Sounds → Browse schemes…**, a scheme you have added says "Added." When the gallery has a newer version of it, it says "Update available." and **Add** becomes **Update**, which replaces your copy's sounds with the new version after asking. Your copy keeps its name. (#937)
 
 ## Changed
