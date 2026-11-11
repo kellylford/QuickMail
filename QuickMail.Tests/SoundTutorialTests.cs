@@ -205,7 +205,21 @@ public class SoundTutorialTests
     }
 
     [StaFact]
-    public void SpaceInSettingsSoundEventsPreviewsThatEvent()
+    public void EscapeClosesTheWindow()
+    {
+        var window = MakeWindow();
+        window.Show();
+        window.UpdateLayout();
+
+        var args = Press(window, Key.Escape);
+        window.RaiseEvent(args);
+
+        Assert.True(args.Handled);
+        Assert.False(window.IsVisible);
+    }
+
+    [StaFact]
+    public void SpaceInSettingsSoundEventsPreviewsTheRowItCameFrom()
     {
         WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
         var vm = new SettingsViewModel(_config, new StubCommandRegistry(), sounds: _sounds);
@@ -215,15 +229,20 @@ public class SoundTutorialTests
             dialog.Show();
             var list = dialog.FindName("SoundEventList") as ListBox;
             Assert.NotNull(list);
+            DependencyObject? parent = list;
+            while (parent is not null and not TabItem) parent = LogicalTreeHelper.GetParent(parent);
+            Assert.NotNull(parent);
+            ((TabItem)parent).IsSelected = true;
+            dialog.UpdateLayout();
+            var row = RowContainer(list, 3);
 
-            var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(dialog)!, 0, Key.Space)
-            {
-                RoutedEvent = Keyboard.PreviewKeyDownEvent,
-            };
-            list.RaiseEvent(args);
+            var args = Press(row, Key.Space);
+            row.RaiseEvent(args);
 
             Assert.True(args.Handled);
-            Assert.Equal([vm.SelectedSoundEvent!.Choice.Stored], _sounds.Previewed);
+            Assert.Equal(SoundCatalog.Events[3].Event, vm.SelectedSoundEvent!.Info.Event);
+            Assert.Equal([vm.SelectedSoundEvent.Choice.Stored], _sounds.Previewed);
+            Assert.Equal(SoundCatalog.Events[3].BuiltInSound, _sounds.PreviewFallback);
         }
         finally { dialog.Close(); }
     }

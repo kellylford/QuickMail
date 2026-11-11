@@ -275,6 +275,10 @@ Stepping and free-text parsing live in `Helpers/DateTimeFieldParser.cs` (pure, u
 
 **Automation surface — do not change without listening first.** The control is a plain `TextBox` with no automation peer of its own. Three shapes were built and evaluated with three screen readers before this one was chosen: an edit field, an edit field claiming `AutomationControlType.Spinner`, and a purpose-built spinner control implementing `IValueProvider` and `IRangeValueProvider`. All three announced correctly, so the one that invents nothing won — replacing `TextBox.Text` raises the UIA value-change event screen readers already act on. There is **no** `AccessibilityHelper.Announce` in the stepping path, and there must not be: a programmatic announcement is filtered by the user's announcement settings, while a native value change is not.
 
+## Sound event lists: Space and Enter
+
+In **Help → Sound Tutorial**, Space and Enter on an event play its sound. In **Settings → Sounds**, Space on an event previews it; Enter stays with the dialog. These are in-list keys, like the arrows inside the same list, and meaningless outside it, so they are not registry commands. The Tutorial's local command palette (`Ctrl+Shift+P`) has **Play Sound for Selected Event** and **Close Sound Tutorial**.
+
 ## Tab strips
 
 Left, Right, Home and End on a tab header move through the tabs of any `TabControl` in the app, in

@@ -656,7 +656,7 @@ public partial class SettingsViewModel
         if (SelectedSoundChoice is null) return;
         _previewedSound = true;
         _sounds?.Preview(SelectedSoundChoice.Stored, SelectedSoundVolume?.Percent, SelectedSoundScheme?.Pack ?? SoundCatalog.DefaultPack,
-            _shownSchemeId ?? SoundCatalog.DefaultPack);
+            _shownSchemeId ?? SoundCatalog.DefaultPack, SelectedSoundEvent?.Info.BuiltInSound);
     }
 
     /// <summary>Ends a preview when Settings closes, so it doesn't play on over speech afterward.</summary>

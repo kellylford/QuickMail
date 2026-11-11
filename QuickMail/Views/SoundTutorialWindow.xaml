@@ -15,32 +15,39 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
     </Window.Resources>
 
-    <DockPanel Margin="12">
+    <!-- A Grid, so the order in the element tree, and so Tab and a screen reader's reading order, is the order on screen. -->
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
-        <TextBlock x:Name="IntroText" DockPanel.Dock="Top" Text="{Binding Intro}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+        <TextBlock x:Name="IntroText" Grid.Row="0" Text="{Binding Intro}" TextWrapping="Wrap" Margin="0,0,0,8"/>
 
-        <Button x:Name="CloseButton" DockPanel.Dock="Bottom" Content="Close" MinWidth="85" Margin="0,10,0,0"
-                HorizontalAlignment="Right" Click="CloseButton_Click"/>
+        <!-- No access key: focus starts in the list, and TextSearch lets unmatched letters through to fire one without Alt (#418). -->
+        <Label Grid.Row="1" Content="Sound events:" Target="{Binding ElementName=SoundEventList}" Padding="0,0,0,2"/>
 
-        <TextBlock x:Name="NoteText" DockPanel.Dock="Bottom" Text="{Binding Note}" TextWrapping="Wrap" Margin="0,8,0,0"
+        <ListBox x:Name="SoundEventList" Grid.Row="2" AutomationProperties.Name="Sound events"
+                 ItemsSource="{Binding Rows}"
+                 SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                 DisplayMemberPath="Label"
+                 IsTextSearchEnabled="True" TextSearch.TextPath="Label"
+                 PreviewKeyDown="SoundEventList_PreviewKeyDown">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding Label}"/>
+                    <EventSetter Event="MouseDoubleClick" Handler="SoundEventRow_MouseDoubleClick"/>
+                </Style>
+            </ListBox.ItemContainerStyle>
+        </ListBox>
+
+        <TextBlock x:Name="NoteText" Grid.Row="3" Text="{Binding Note}" TextWrapping="Wrap" Margin="0,8,0,0"
                    Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}"/>
 
-        <DockPanel>
-            <Label DockPanel.Dock="Top" Content="_Sound events:" Target="{Binding ElementName=SoundEventList}" Padding="0,0,0,2"/>
-            <ListBox x:Name="SoundEventList" AutomationProperties.Name="Sound events"
-                     ItemsSource="{Binding Rows}"
-                     SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
-                     DisplayMemberPath="Label"
-                     IsTextSearchEnabled="True" TextSearch.TextPath="Label"
-                     PreviewKeyDown="SoundEventList_PreviewKeyDown">
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                        <Setter Property="AutomationProperties.Name" Value="{Binding Label}"/>
-                        <EventSetter Event="MouseDoubleClick" Handler="SoundEventRow_MouseDoubleClick"/>
-                    </Style>
-                </ListBox.ItemContainerStyle>
-            </ListBox>
-        </DockPanel>
-
-    </DockPanel>
+        <Button x:Name="CloseButton" Grid.Row="4" Content="Close" MinWidth="85" Margin="0,10,0,0"
+                HorizontalAlignment="Right" Click="CloseButton_Click"/>
+    </Grid>
 </Window>

@@ -55,9 +55,12 @@ internal sealed class RecordingSoundService : ISoundService
 
     public string? PreviewSchemeId { get; private set; }
 
-    public void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null)
+    public string? PreviewFallback { get; private set; }
+
+    public void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null, string? fallback = null)
     {
         Previewed.Add(storedSound);
+        PreviewFallback = fallback;
         PreviewVolume = volumePercent;
         PreviewPack = pack;
         PreviewSchemeId = schemeId;

@@ -142,6 +142,25 @@ public sealed class SoundServiceTests : IDisposable
     }
 
     [Fact]
+    public void APreviewWhoseFileIsGonePlaysTheFallbackItWasGiven()
+    {
+        Service().Preview(SoundRef.Custom("gone.wav").ToStored(), fallback: "sent");
+        AssertPlayed("builtin:sent");
+    }
+
+    [Fact]
+    public void APreviewWhoseFileWontPlayPlaysTheFallbackItWasGiven()
+    {
+        var stored = SoundRef.Custom("bad.wav").ToStored();
+        File.WriteAllText(Path.Combine(_folder, "bad.wav"), "not a sound");
+        _output.FailOnlyFor = stored;
+
+        Service().Preview(stored, fallback: "sent");
+
+        AssertPlayed(stored, "builtin:sent");
+    }
+
+    [Fact]
     public void EventSoundsAreSilentUntilTurnedOn()
     {
         Service().Play(SoundEvent.MessageSent);

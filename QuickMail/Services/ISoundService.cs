@@ -40,7 +40,8 @@ public interface ISoundService : IDisposable
     /// <param name="volumePercent">A volume to hear it at, for one not saved yet.</param>
     /// <param name="pack">The pack to hear a built-in sound with no pack of its own in, for a scheme not saved yet.</param>
     /// <param name="schemeId">The scheme whose folder a custom sound is in; null for a rule's own sound (#948).</param>
-    void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null);
+    /// <param name="fallback">The built-in sound to play if a custom file is gone or won't play; null for the default rule sound.</param>
+    void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null, string? fallback = null);
 
     /// <summary>
     /// Previews what a rule with this sound would play now: for the default sound, the scheme in use's
