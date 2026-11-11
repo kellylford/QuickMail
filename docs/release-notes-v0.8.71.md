@@ -3,6 +3,7 @@
 ## New
 
 - **Sound Tutorial.** **Help → Sound Tutorial** lists every sound event by name. Arrow to one and press **Space** or **Enter** to hear its sound in the scheme you use, at your saved volume, even if sounds are off or muted. If an event has no sound, QuickMail says "No sound."
+- **A great way to learn the sounds: Maya Voicing Glass.** This scheme in the Sound Scheme Gallery plays each event's Glass sound, then an AI voice says what the event was. Choose **Settings → Sounds → Browse schemes…**, add **Maya Voicing Glass**, and choose **Save**. Then open the Sound Tutorial and arrow through the events to hear each sound and its name together. Once you know them, switch back to **Glass** or try another scheme from the gallery.
 
 ## Changed
 
