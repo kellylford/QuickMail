@@ -7337,8 +7337,11 @@ public partial class MainWindow : Window
     // logical focus survives the menu bar and the palette taking keyboard focus for a moment.
     private void HideSelectedFolder()
     {
-        var inTree = FolderList.IsKeyboardFocusWithin ||
-                     (FocusManager.GetFocusedElement(this) is DependencyObject logical && IsDescendantOf(FolderList, logical));
+        // The message body is checked first: while the WebView2 has focus WPF reports nothing focused,
+        // and the window's logical focus can still name the tree item the user left (#672).
+        var inTree = !IsMessageBodyFocused &&
+                     (FolderList.IsKeyboardFocusWithin ||
+                      (FocusManager.GetFocusedElement(this) is DependencyObject logical && IsDescendantOf(FolderList, logical)));
         HideFolderWithFocus(CurrentFolderNode(), inTree);
     }
 
@@ -7352,17 +7355,45 @@ public partial class MainWindow : Window
             return;
         }
 
-        var above = FindVisibleFolderNodeAbove(node!);
-        // Where FolderList_GotKeyboardFocus lands if the removed item still held focus (#719).
+        var visibleBefore = FlattenVisibleFolderNodes(_vm.FolderTree).ToList();
+        var landing = HideLandingNode(visibleBefore, node!);
+        // Where FolderList_GotKeyboardFocus lands if the removed item still held focus (#719). Set
+        // before the hide, because the item goes during the rebuild.
         if (_folderTreeSpot is { } spot && ReferenceEquals(spot.Node, node))
-            _folderTreeSpot = spot with { Above = above };
+            _folderTreeSpot = spot with { Above = landing };
 
         Report(_vm.HideFolder(node));
+        AccessibilityHelper.Announce(this, MainViewModel.HiddenFoldersHint, category: AnnouncementCategory.Hint);
 
-        if (!fromFolderTree || above == null) return;
+        // A saved view's copy of the folder stays where it is, and so does focus.
+        if (!fromFolderTree || IsInFolderTree(node!)) return;
+
+        // The prediction can only miss toward something that is gone; walk on up if it did.
+        if (landing != null && !IsInFolderTree(landing))
+            landing = visibleBefore.Take(Math.Max(0, visibleBefore.FindIndex(n => ReferenceEquals(n, node))))
+                                   .LastOrDefault(IsInFolderTree);
+        if (landing == null) return;
         // Queued behind the menu or palette closing, which restores focus to where it was taken
         // from: the item that no longer exists.
-        Dispatcher.InvokeAsync(() => FocusTreeItem(FolderList, above), DispatcherPriority.Input);
+        Dispatcher.InvokeAsync(() => FocusTreeItem(FolderList, landing), DispatcherPriority.Input);
+    }
+
+    // The node above `node` that will still be in the tree once it is hidden. Path segments that hold
+    // `node` are skipped: the builder drops a segment that hiding leaves empty, and landing on one
+    // that is about to vanish loses focus entirely.
+    internal static FolderTreeNode? HideLandingNode(List<FolderTreeNode> visible, FolderTreeNode node)
+    {
+        var index = visible.FindIndex(n => ReferenceEquals(n, node));
+        for (int i = index - 1; i >= 0; i--)
+        {
+            var candidate = visible[i];
+            if (candidate.Folder == null && !candidate.IsHeader && ContainsNode(candidate, node)) continue;
+            return candidate;
+        }
+        return null;
+
+        static bool ContainsNode(FolderTreeNode parent, FolderTreeNode target) =>
+            parent.Children.Any(c => ReferenceEquals(c, target) || ContainsNode(c, target));
     }
 
     // ── Calendar context menu handlers (issue #497) ──────────────────────────

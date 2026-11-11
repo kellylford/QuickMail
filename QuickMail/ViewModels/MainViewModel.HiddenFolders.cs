@@ -14,8 +14,11 @@ namespace QuickMail.ViewModels;
 /// </summary>
 public partial class MainViewModel
 {
-    /// <summary>True when any account has a hidden folder.</summary>
-    public bool HasHiddenFolders => Accounts.Any(a => a.HiddenFolders.Count > 0);
+    /// <summary>
+    /// What the View says after a folder is hidden, as a Hint so it respects the user's hint setting.
+    /// Kept out of the Result sentence <see cref="HideFolder"/> returns.
+    /// </summary>
+    public const string HiddenFoldersHint = "Show All Hidden Folders, on the Folder menu, brings hidden folders back.";
 
     /// <summary>
     /// <see cref="CachedFolders"/> without the hidden folders and everything inside them: what Go to
@@ -27,17 +30,17 @@ public partial class MainViewModel
         {
             var result = new Dictionary<Guid, List<MailFolderModel>>();
             foreach (var (accountId, folders) in _cachedFolders)
-            {
-                var hidden = Accounts.FirstOrDefault(a => a.Id == accountId)?.HiddenFolders;
-                result[accountId] = FolderTreeBuilder.VisibleFolders(folders, hidden);
-            }
+                result[accountId] = FolderTreeBuilder.VisibleFolders(folders, HiddenFoldersOf(accountId));
             return result;
         }
     }
 
+    private List<string>? HiddenFoldersOf(Guid accountId) =>
+        Accounts.FirstOrDefault(a => a.Id == accountId)?.HiddenFolders;
+
     /// <summary>
     /// Why <paramref name="node"/> cannot be hidden, or null when it can. Kept apart from
-    /// <see cref="HideFolder"/> so the View can refuse before it moves focus.
+    /// <see cref="HideFolder"/> so the View can refuse before it touches focus.
     /// </summary>
     public string? HideFolderRefusal(FolderTreeNode? node)
     {
@@ -63,6 +66,11 @@ public partial class MainViewModel
     /// <summary>
     /// Hides the node's folder, with every folder inside it, and rebuilds the tree without it.
     /// Returns the sentence the View reports (status bar plus a Result announcement).
+    /// <para>
+    /// The node may be a folder listed inside a saved view. Hiding acts on the folder, so it goes from
+    /// under its account; the view keeps it, because the user put it there by name, and the sentence
+    /// says so rather than leave them wondering why it is still in front of them.
+    /// </para>
     /// </summary>
     public string HideFolder(FolderTreeNode? node)
     {
@@ -70,13 +78,13 @@ public partial class MainViewModel
 
         var folder  = node!.Folder!;
         var account = Accounts.First(a => a.Id == folder.AccountId);
+        // Counted on the account's own node: a view's copy of the folder has no children.
+        var inside = AccountTreeNodeFor(folder) is { } own ? CountFoldersInside(own) : 0;
+
         if (!account.HiddenFolders.Contains(folder.FullName, StringComparer.Ordinal))
             account.HiddenFolders.Add(folder.FullName);
         _accountService.SaveAccounts([.. Accounts]);
-
-        var inside = CountFoldersInside(node);
         BuildFolderTree();
-        OnPropertyChanged(nameof(HasHiddenFolders));
 
         var what = inside switch
         {
@@ -84,26 +92,82 @@ public partial class MainViewModel
             1 => $"{node.Label} and the folder inside it hidden.",
             _ => $"{node.Label} and the {inside} folders inside it hidden.",
         };
-        return what + " Show All Hidden Folders brings it back.";
+        if (IsInViewsGroup(node))
+            what += " It still shows in the saved view, which lists it by name.";
+        return what;
     }
 
     /// <summary>
     /// Brings back every hidden folder in every account. Returns the sentence the View reports.
+    /// The number is folders, not entries: hiding Archive with two folders inside it brings three back.
     /// </summary>
     public string ShowAllHiddenFolders()
     {
-        var count = 0;
-        foreach (var account in Accounts)
-        {
-            count += account.HiddenFolders.Count;
-            account.HiddenFolders.Clear();
-        }
-        if (count == 0) return "No folders are hidden.";
+        if (Accounts.All(a => a.HiddenFolders.Count == 0)) return "No folders are hidden.";
+
+        var folders = 0;
+        foreach (var (accountId, cached) in _cachedFolders)
+            folders += cached.Count - FolderTreeBuilder.VisibleFolders(cached, HiddenFoldersOf(accountId)).Count;
+        foreach (var account in Accounts) account.HiddenFolders.Clear();
 
         _accountService.SaveAccounts([.. Accounts]);
         BuildFolderTree();
-        OnPropertyChanged(nameof(HasHiddenFolders));
-        return count == 1 ? "1 hidden folder shown again." : $"{count} hidden folders shown again.";
+        return folders switch
+        {
+            // Entries whose folders this session has not loaded (an account still connecting).
+            0 => "All hidden folders shown again.",
+            1 => "1 hidden folder shown again.",
+            _ => $"{folders} hidden folders shown again.",
+        };
+    }
+
+    /// <summary>
+    /// Drops the hidden entries for a folder that no longer exists at <paramref name="fullName"/> —
+    /// deleted or moved — and for every folder inside it, so a folder created at that path later is
+    /// not hidden from birth. Inside means an IMAP path continuing with '/' or '.' (the two separators
+    /// QuickMail meets); a Graph folder's children have unrelated ids, and their entries simply stop
+    /// matching anything.
+    /// </summary>
+    internal void ForgetHiddenFolders(Guid accountId, string fullName)
+    {
+        if (Accounts.FirstOrDefault(a => a.Id == accountId) is not { HiddenFolders.Count: > 0 } account) return;
+        var removed = account.HiddenFolders.RemoveAll(h =>
+            string.Equals(h, fullName, StringComparison.Ordinal) ||
+            h.StartsWith(fullName + "/", StringComparison.Ordinal) ||
+            h.StartsWith(fullName + ".", StringComparison.Ordinal));
+        if (removed > 0) _accountService.SaveAccounts([.. Accounts]);
+    }
+
+    /// <summary>True when the node is part of the folder tree's Views group, not of an account.</summary>
+    public bool IsInViewsGroup(FolderTreeNode node)
+    {
+        if (FolderTree == null) return false;
+        foreach (var root in FolderTree)
+            if (root.IsHeader && root.AccountId is null && root.Label == "Views" && Contains(root, node))
+                return true;
+        return false;
+
+        static bool Contains(FolderTreeNode parent, FolderTreeNode target) =>
+            parent.Children.Any(c => ReferenceEquals(c, target) || Contains(c, target));
+    }
+
+    // The node for this folder under its own account header, as opposed to a saved view's copy.
+    private FolderTreeNode? AccountTreeNodeFor(MailFolderModel folder)
+    {
+        var header = FolderTree?.FirstOrDefault(n => n.IsHeader && n.AccountId == folder.AccountId);
+        return header == null ? null : Find(header);
+
+        FolderTreeNode? Find(FolderTreeNode parent)
+        {
+            foreach (var c in parent.Children)
+            {
+                if (c.Folder is { } f && f.AccountId == folder.AccountId &&
+                    string.Equals(f.FullName, folder.FullName, StringComparison.Ordinal))
+                    return c;
+                if (Find(c) is { } found) return found;
+            }
+            return null;
+        }
     }
 
     private static int CountFoldersInside(FolderTreeNode node)

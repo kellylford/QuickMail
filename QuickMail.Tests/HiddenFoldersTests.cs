@@ -169,8 +169,17 @@ public class HiddenFoldersTests
         public void SetDefaultAccount(Guid accountId) { }
     }
 
-    private static async Task<(MainViewModel Vm, RecordingAccountService Accounts)> MakeVmAsync(
-        params string[] alreadyHidden)
+    private sealed class ViewsStub(params SavedView[] views) : IViewService
+    {
+        public List<SavedView> Load() => [.. views];
+        public void Save(List<SavedView> v) { }
+    }
+
+    private static Task<(MainViewModel Vm, RecordingAccountService Accounts)> MakeVmAsync(
+        params string[] alreadyHidden) => MakeVmWithAsync(alreadyHidden, new StubViewService());
+
+    private static async Task<(MainViewModel Vm, RecordingAccountService Accounts)> MakeVmWithAsync(
+        string[] alreadyHidden, IViewService views, params MailFolderModel[] extraA)
     {
         var folders = new Dictionary<Guid, List<MailFolderModel>>
         {
@@ -181,6 +190,7 @@ public class HiddenFoldersTests
                 F("Archive/2020", "2020", accountId: AccountA),
                 F("Archive/2021", "2021", accountId: AccountA),
                 F("Notes", "Notes", accountId: AccountA),
+                .. extraA,
             ],
             [AccountB] =
             [
@@ -193,7 +203,7 @@ public class HiddenFoldersTests
         var vm = new MainViewModel(
             new FolderedMailService(folders, []), accounts, new StubCredentialService(),
             new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
-            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubConfigService(), new StubCommandRegistry(), views,
             new StubRuleService(), new StubSmtpService());
 
         var a = new AccountModel
@@ -209,6 +219,7 @@ public class HiddenFoldersTests
             AuthType = AuthType.OAuth2Microsoft,
         });
         await vm.ConnectAllAccountsAsync();
+        vm.UpdateSavedViews();
         return (vm, accounts);
     }
 
@@ -232,8 +243,7 @@ public class HiddenFoldersTests
         Assert.True(TreeShows(vm, AccountA, "Notes"));
         Assert.Equal(["Archive"], vm.Accounts.Single(x => x.Id == AccountA).HiddenFolders);
         Assert.Equal(savesBefore + 1, accounts.Saves);
-        Assert.True(vm.HasHiddenFolders);
-        Assert.Equal("Archive and the 2 folders inside it hidden. Show All Hidden Folders brings it back.", message);
+        Assert.Equal("Archive and the 2 folders inside it hidden.", message);
     }
 
     [Fact]
@@ -254,7 +264,7 @@ public class HiddenFoldersTests
     {
         var (vm, _) = await MakeVmAsync();
 
-        Assert.Equal("Notes hidden. Show All Hidden Folders brings it back.", vm.HideFolder(NodeFor(vm, AccountA, "Notes")));
+        Assert.Equal("Notes hidden.", vm.HideFolder(NodeFor(vm, AccountA, "Notes")));
     }
 
     [Fact]
@@ -363,13 +373,12 @@ public class HiddenFoldersTests
 
         var message = vm.ShowAllHiddenFolders();
 
-        Assert.Equal("2 hidden folders shown again.", message);
+        Assert.Equal("4 hidden folders shown again.", message);
         Assert.True(TreeShows(vm, AccountA, "Archive"));
         Assert.True(TreeShows(vm, AccountA, "Archive/2020"));
         Assert.True(TreeShows(vm, AccountB, "Notes"));
         Assert.All(vm.Accounts, a => Assert.Empty(a.HiddenFolders));
         Assert.Equal(savesBefore + 1, accounts.Saves);
-        Assert.False(vm.HasHiddenFolders);
     }
 
     [Fact]
@@ -426,7 +435,143 @@ public class HiddenFoldersTests
         Assert.Empty(back.HiddenFolders);
     }
 
+    [Fact]
+    public async Task HideFolder_KeepsTheSameNodeObjectsForEverythingElse()
+    {
+        // The window captures the node above before hiding and focuses it afterwards; that only works
+        // because the rebuild merges into the live tree rather than replacing its nodes (#719).
+        var (vm, _) = await MakeVmAsync();
+        var inbox = NodeFor(vm, AccountA, "INBOX");
+        var notes = NodeFor(vm, AccountB, "Notes");
+
+        vm.HideFolder(NodeFor(vm, AccountA, "Archive"));
+
+        Assert.Same(inbox, NodeFor(vm, AccountA, "INBOX"));
+        Assert.Same(notes, NodeFor(vm, AccountB, "Notes"));
+    }
+
+    [Fact]
+    public async Task TheLandingNode_SkipsAPathSegmentThatHidingEmpties()
+    {
+        // "Lists" is not a folder; it exists for "Lists/Dev" alone. Hiding Dev removes Lists too, so
+        // focus must land above Lists, on a node still in the tree afterwards.
+        var (vm, _) = await MakeVmWithAsync([], new StubViewService(), F("Lists/Dev", "Dev", accountId: AccountA));
+        foreach (var n in Flatten(vm.FolderTree!)) n.IsExpanded = true;
+        var dev = NodeFor(vm, AccountA, "Lists/Dev");
+        var visible = Flatten(vm.FolderTree!).ToList();   // everything is expanded, so this is the visible order
+
+        var landing = QuickMail.Views.MainWindow.HideLandingNode(visible, dev);
+        vm.HideFolder(dev);
+
+        Assert.NotNull(landing);
+        Assert.NotEqual("Lists", landing!.Label);
+        Assert.Contains(Flatten(vm.FolderTree!), n => ReferenceEquals(n, landing));
+        Assert.DoesNotContain(Flatten(vm.FolderTree!), n => n.Label == "Lists");
+    }
+
+    [Fact]
+    public async Task HidingAFolderListedInASavedView_HidesItFromTheAccount_AndSaysTheViewKeepsIt()
+    {
+        var view = new SavedView
+        {
+            Name = "Reading",
+            Folders =
+            [
+                new ViewFolder { AccountId = AccountA, FolderFullName = "Notes" },
+                new ViewFolder { AccountId = AccountA, FolderFullName = "Archive" },
+            ],
+        };
+        var (vm, _) = await MakeVmWithAsync([], new ViewsStub(view));
+        var viewsGroup = vm.FolderTree!.Single(n => n.IsHeader && n.Label == "Views");
+        var viewCopy = Flatten(viewsGroup.Children).First(n => n.Folder?.FullName == "Archive");
+
+        var message = vm.HideFolder(viewCopy);
+
+        // Gone from under the account, with the two folders inside it, counted from the account's node.
+        var header = vm.FolderTree!.Single(n => n.IsHeader && n.AccountId == AccountA);
+        Assert.DoesNotContain(Flatten(header.Children), n => n.Folder?.FullName is "Archive" or "Archive/2020");
+        Assert.Equal("Archive and the 2 folders inside it hidden. It still shows in the saved view, which lists it by name.", message);
+        // Still in the view, which is why the window must not move focus off it.
+        Assert.Contains(Flatten(viewsGroup.Children), n => ReferenceEquals(n, viewCopy));
+        Assert.True(vm.IsInViewsGroup(viewCopy));
+    }
+
+    [Fact]
+    public async Task DeletingAFolder_ForgetsItsHiddenEntries_AndThoseInsideIt()
+    {
+        var (vm, _) = await MakeVmAsync("Archive/2020", "Notes");
+
+        vm.ForgetHiddenFolders(AccountA, "Archive");
+
+        Assert.Equal(["Notes"], vm.Accounts.Single(a => a.Id == AccountA).HiddenFolders);
+    }
+
+    [Fact]
+    public async Task ForgettingAFolder_DoesNotTouchANameThatMerelyStartsTheSame()
+    {
+        var (vm, _) = await MakeVmAsync("Archives", "Archive2");
+
+        vm.ForgetHiddenFolders(AccountA, "Archive");
+
+        Assert.Equal(["Archives", "Archive2"], vm.Accounts.Single(a => a.Id == AccountA).HiddenFolders);
+    }
+
+    // ── Remapping (IMAP to Microsoft 365, settings import) ───────────────────
+
+    [Fact]
+    public void Remap_RewritesHiddenPathsToGraphIds_AndDropsWhatItCannotMatch()
+    {
+        var graph = new List<MailFolderModel>
+        {
+            F("id-inbox", "Inbox", kind: SpecialFolderKind.Inbox), F("id-rss", "RSS Feeds"), F("id-notes", "Notes"),
+        };
+        var hidden = new List<string> { "RSS Feeds", "Gone Folder", "Notes" };
+
+        var report = FolderReferenceRemapper.Remap(AccountA, graph, [], [], new ConfigModel(), hidden);
+
+        Assert.Equal(["id-rss", "id-notes"], hidden);
+        Assert.True(report.HiddenFoldersChanged);
+        Assert.False(report.AnythingChanged);   // nothing to say aloud; the caller saves the account
+    }
+
+    [Fact]
+    public void Remap_AlreadyGraphIds_IsNoChange()
+    {
+        var graph = new List<MailFolderModel> { F("id-rss", "RSS Feeds") };
+        var hidden = new List<string> { "id-rss" };
+
+        var report = FolderReferenceRemapper.Remap(AccountA, graph, [], [], new ConfigModel(), hidden);
+
+        Assert.Equal(["id-rss"], hidden);
+        Assert.False(report.HiddenFoldersChanged);
+    }
+
+    [Fact]
+    public void ImportHeal_TranslatesHiddenIdsFromTheOtherComputer()
+    {
+        // The other computer's Graph id means nothing here; its recorded path is matched by name.
+        var here = new List<MailFolderModel> { F("here-rss", "RSS Feeds"), F("here-inbox", "Inbox", kind: SpecialFolderKind.Inbox) };
+        var paths = new Dictionary<string, string> { ["there-rss"] = "RSS Feeds" };
+        var account = new AccountModel { Id = AccountA };
+        account.HiddenFolders.Add("there-rss");
+
+        var report = ImportFolderHeal.Heal(AccountA, here, paths, [], [], new ConfigModel(), account, out var archiveChanged);
+
+        Assert.Equal(["here-rss"], account.HiddenFolders);
+        Assert.True(report.HiddenFoldersChanged);
+        Assert.False(archiveChanged);
+    }
+
     // ── Entry points ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void TheDestinationPickers_StillOfferHiddenFolders()
+    {
+        // Out of scope by design: a hidden folder can still be filed into. Only Go to Folder filters.
+        var source = Source("Views/MainWindow.xaml.cs");
+        Assert.Single(Regex.Matches(source, "VisibleCachedFolders"));
+        Assert.Contains("_vm.Accounts, _vm.CachedFolders, node!.Folder!, \"Move Folder To\"", source, StringComparison.Ordinal);
+    }
 
     [Theory]
     [InlineData("folder.hide")]

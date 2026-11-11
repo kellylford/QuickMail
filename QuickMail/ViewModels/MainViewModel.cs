@@ -2144,12 +2144,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { rules = null; }
         var views = _viewService.Load();
         var cfg = _configService.Load();
-        report = FolderReferenceRemapper.Remap(accountId, graphFolders, rules ?? [], views, cfg);
+        // Hidden folders (#963) hold IMAP paths until now; rewrite them to the Graph ids too.
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        report = FolderReferenceRemapper.Remap(accountId, graphFolders, rules ?? [], views, cfg, account?.HiddenFolders);
         if (report.AnythingChanged)
         {
             if (rules is not null) _ruleService.SaveRules(rules);
             _viewService.Save(views);
             _configService.Save(cfg);
+        }
+        if (report.HiddenFoldersChanged)
+        {
+            _accountService.SaveAccounts([.. Accounts]);
+            BuildFolderTree();
         }
         return rules is not null;
     }
@@ -9922,6 +9929,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 node.Folder.FullName,
                 destination?.FullName,
                 cts.Token);
+            // Hidden folders inside it now have other names; drop the old ones before the refresh
+            // builds the tree, so they cannot hide a folder created at the old path later (#963).
+            ForgetHiddenFolders(node.Folder.AccountId, node.Folder.FullName);
             await RefreshFolderListAsync(node.Folder.AccountId);
             StatusText = destination == null
                 ? $"Folder '{node.Label}' moved to the top level."
@@ -10006,6 +10016,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // the View land focus on the neighbour (a full rebuild would collapse and reset focus).
             RemoveFolderFromCacheOptimistically(node.Folder.AccountId, node.Folder);
             RemoveNodeFromTree(node);
+            ForgetHiddenFolders(node.Folder.AccountId, node.Folder.FullName);
             // The folder's mail went to Trash, whose badge — part of its spoken name — would
             // otherwise keep the old count until the next full folder fetch (#794).
             ScheduleFolderCountRefresh(node.Folder.AccountId);
