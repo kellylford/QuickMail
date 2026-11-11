@@ -3117,6 +3117,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             execute: () => TutorialRequested?.Invoke(this, EventArgs.Empty)));
 
         registry.Register(new CommandDefinition(
+            id: "help.soundTutorial", category: "Help", title: "Sound Tutorial",
+            execute: () => SoundTutorialRequested?.Invoke(this, EventArgs.Empty)));
+
+        registry.Register(new CommandDefinition(
             id: "help.about", category: "Help", title: "About QuickMail",
             execute: () => AboutRequested?.Invoke(this, EventArgs.Empty)));
 
@@ -8565,6 +8569,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event EventHandler? RulesManagerRequested;
     public event EventHandler<MailRule>? CreateRuleFromMessageRequested;
     public event EventHandler? TutorialRequested;
+    public event EventHandler? SoundTutorialRequested;
     public event EventHandler? AboutRequested;
     public event EventHandler? ReportBugRequested;
 

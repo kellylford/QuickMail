@@ -75,6 +75,7 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `mail.declineInvite` | Decline Invitation |
 | *(unassigned)* | `mail.tentativeInvite` | Tentatively Accept Invitation |
 | *(unassigned)* | `help.keyboardTutorial` | Keyboard Tutorial |
+| *(unassigned)* | `help.soundTutorial` | Sound Tutorial |
 | Ctrl+Shift+T | `view.focusTabs` | Focus Tab Strip |
 | Alt+A | `view.focusAttachments` | Focus Attachment List (of the open message) |
 | Alt+Enter | `view.showProperties` | View Properties |
@@ -273,6 +274,10 @@ These are **deliberately not registered in `CommandRegistry`**. They are in-fiel
 Stepping and free-text parsing live in `Helpers/DateTimeFieldParser.cs` (pure, unit-tested in `DateTimeFieldParserTests`). A time field holds a full instant, not a `TimeSpan`, so stepping past midnight carries into the date instead of wrapping. `TryParseTime` uses an explicit format list and **rejects date-shaped text**: `DateTime.TryParse("8/3")` succeeds with a `TimeOfDay` of zero, which used to turn a date typed into the time box into a silent midnight.
 
 **Automation surface — do not change without listening first.** The control is a plain `TextBox` with no automation peer of its own. Three shapes were built and evaluated with three screen readers before this one was chosen: an edit field, an edit field claiming `AutomationControlType.Spinner`, and a purpose-built spinner control implementing `IValueProvider` and `IRangeValueProvider`. All three announced correctly, so the one that invents nothing won — replacing `TextBox.Text` raises the UIA value-change event screen readers already act on. There is **no** `AccessibilityHelper.Announce` in the stepping path, and there must not be: a programmatic announcement is filtered by the user's announcement settings, while a native value change is not.
+
+## Sound event lists: Space and Enter
+
+In **Help → Sound Tutorial**, Space and Enter on an event play its sound. In **Settings → Sounds**, Space on an event previews it; Enter stays with the dialog. These are in-list keys, like the arrows inside the same list, and meaningless outside it, so they are not registry commands. The Tutorial's local command palette (`Ctrl+Shift+P`) has **Play Sound for Selected Event** and **Close Sound Tutorial**.
 
 ## Tab strips
 

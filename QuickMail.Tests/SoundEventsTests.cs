@@ -55,13 +55,21 @@ internal sealed class RecordingSoundService : ISoundService
 
     public string? PreviewSchemeId { get; private set; }
 
-    public void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null)
+    public string? PreviewFallback { get; private set; }
+
+    public void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null, string? fallback = null)
     {
         Previewed.Add(storedSound);
+        PreviewFallback = fallback;
         PreviewVolume = volumePercent;
         PreviewPack = pack;
         PreviewSchemeId = schemeId;
     }
+
+    public List<SoundEvent> PreviewedEvents { get; } = [];
+
+    public void PreviewEvent(SoundEvent soundEvent) => PreviewedEvents.Add(soundEvent);
+
     public bool IsAudible(SoundEvent soundEvent) => Audible.Contains(soundEvent);
 
     // One list of files whatever the folder, which is all most tests need; the folders asked for are

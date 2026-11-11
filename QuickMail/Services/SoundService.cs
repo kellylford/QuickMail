@@ -134,7 +134,7 @@ public sealed class SoundService : ISoundService
 
     public bool WasSoundedByRule(string messageKey) => _ruleSoundedKeys.ContainsKey(messageKey);
 
-    public void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null)
+    public void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null, string? fallback = null)
     {
         try
         {
@@ -142,12 +142,29 @@ public sealed class SoundService : ISoundService
             StopAll();   // Previewing "None" is how someone stops the last preview.
             if (!SoundRef.TryParse(storedSound, out var sound) || sound.Kind == SoundRefKind.None) return;
             var schemePack = pack ?? SoundCatalog.PackFor(SoundRef.None, SoundCatalog.ActiveScheme(_config.Load()));
-            var clip = ToClip(sound, SoundCatalog.DefaultRuleSound, schemePack, schemeId);
-            if (clip is not null) TryAdd(new Request(clip, IsPreview: true, VolumePercent: volumePercent));
+            AddRequest(sound, fallback ?? SoundCatalog.DefaultRuleSound, schemePack, schemeId, isPreview: true, volumePercent);
         }
         catch (Exception ex)
         {
             LogService.Log("Sound preview failed", ex);
+        }
+    }
+
+    public void PreviewEvent(SoundEvent soundEvent)
+    {
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return;
+            StopAll();
+            var config = _config.Load();
+            var scheme = SoundCatalog.ActiveScheme(config);
+            var sound = SoundCatalog.Resolve(soundEvent, scheme);
+            if (sound.Kind == SoundRefKind.None) return;
+            AddRequest(sound, SoundCatalog.Info(soundEvent).BuiltInSound, SoundCatalog.PackFor(SoundRef.None, scheme), scheme.Id, isPreview: true);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Sound preview for {soundEvent} failed", ex);
         }
     }
 
@@ -396,11 +413,16 @@ public sealed class SoundService : ISoundService
         if (Volatile.Read(ref _disposed) != 0) return;
         if (sound.Kind == SoundRefKind.None || config.SoundVolume <= 0) return;
         if (!_policy.ShouldPlay(sound.ToStored(), origin, config.MuteSounds, _isQuiet(), _queue.Count)) return;
-        var schemePack = SoundCatalog.PackFor(SoundRef.None, scheme);
+        AddRequest(sound, fallback, SoundCatalog.PackFor(SoundRef.None, scheme), folderSchemeId, isPreview: false);
+    }
+
+    /// <summary>Queues a sound, with the built-in sound to play instead if a custom file turns out not to play.</summary>
+    private void AddRequest(SoundRef sound, string fallback, string schemePack, string? folderSchemeId, bool isPreview, int? volumePercent = null)
+    {
         var clip = ToClip(sound, fallback, schemePack, folderSchemeId);
         if (clip is null) return;
         var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(fallback), schemePack);
-        TryAdd(new Request(clip, IsPreview: false, Fallback: backup));
+        TryAdd(new Request(clip, isPreview, backup, volumePercent));
     }
 
     private void TryAdd(Request request)

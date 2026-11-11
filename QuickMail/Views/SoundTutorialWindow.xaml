@@ -1,0 +1,53 @@
+<Window x:Class="QuickMail.Views.SoundTutorialWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sound Tutorial"
+        Height="460" Width="420"
+        MinHeight="300" MinWidth="320"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </Window.Resources>
+
+    <!-- A Grid, so the order in the element tree, and so Tab and a screen reader's reading order, is the order on screen. -->
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="IntroText" Grid.Row="0" Text="{Binding Intro}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+        <!-- No access key: focus starts in the list, and TextSearch lets unmatched letters through to fire one without Alt (#418). -->
+        <Label Grid.Row="1" Content="Sound events:" Target="{Binding ElementName=SoundEventList}" Padding="0,0,0,2"/>
+
+        <ListBox x:Name="SoundEventList" Grid.Row="2" AutomationProperties.Name="Sound events"
+                 ItemsSource="{Binding Rows}"
+                 SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                 DisplayMemberPath="Label"
+                 IsTextSearchEnabled="True" TextSearch.TextPath="Label"
+                 PreviewKeyDown="SoundEventList_PreviewKeyDown">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding Label}"/>
+                    <EventSetter Event="MouseDoubleClick" Handler="SoundEventRow_MouseDoubleClick"/>
+                </Style>
+            </ListBox.ItemContainerStyle>
+        </ListBox>
+
+        <TextBlock x:Name="NoteText" Grid.Row="3" Text="{Binding Note}" TextWrapping="Wrap" Margin="0,8,0,0"
+                   Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}"/>
+
+        <Button x:Name="CloseButton" Grid.Row="4" Content="Close" MinWidth="85" Margin="0,10,0,0"
+                HorizontalAlignment="Right" Click="CloseButton_Click"/>
+    </Grid>
+</Window>

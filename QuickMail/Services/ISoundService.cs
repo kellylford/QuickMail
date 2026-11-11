@@ -40,13 +40,22 @@ public interface ISoundService : IDisposable
     /// <param name="volumePercent">A volume to hear it at, for one not saved yet.</param>
     /// <param name="pack">The pack to hear a built-in sound with no pack of its own in, for a scheme not saved yet.</param>
     /// <param name="schemeId">The scheme whose folder a custom sound is in; null for a rule's own sound (#948).</param>
-    void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null);
+    /// <param name="fallback">The built-in sound to play if a custom file is gone or won't play; null for the default rule sound.</param>
+    void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null, string? fallback = null);
 
     /// <summary>
     /// Previews what a rule with this sound would play now: for the default sound, the scheme in use's
     /// "A rule matched", which may be nothing (#932). Otherwise as <see cref="Preview"/>.
     /// </summary>
     void PreviewRule(string? storedSound);
+
+    /// <summary>
+    /// Plays what an event would play now, in the scheme in use and at the saved volume, because the
+    /// person asked to hear it: so even with event sounds off or muted. Replaces anything playing, and
+    /// an event with no sound just stops it. A custom file that's gone or won't play falls back to the
+    /// event's own built-in sound, as when the event really happens.
+    /// </summary>
+    void PreviewEvent(SoundEvent soundEvent);
 
     /// <summary>Stops what is playing and whatever is waiting.</summary>
     void StopAll();
