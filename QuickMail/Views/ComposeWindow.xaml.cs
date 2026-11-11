@@ -89,6 +89,7 @@ public partial class ComposeWindow : Window
         _contactService = contactService;
         _templateService = templateService;
         _configService = configService;
+        vm.ConfirmBeforeSend = configService.Load().ConfirmBeforeSend;
         _checkSpellingAsYouType = configService.Load().CheckSpellingAsYouType;
         _customDictionary = customDictionary;
         _themeService = themeService;
@@ -131,7 +132,8 @@ public partial class ComposeWindow : Window
 
         // Wire the View confirmation callback so the VM stays out of System.Windows.
         vm.ConfirmationRequested = (message, title) =>
-            MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
+            MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning,
+                MessageBoxResult.No)
             == MessageBoxResult.Yes;
 
         // Win32 file dialogs are View-layer (CLAUDE.md MVVM rules); the VM requests
@@ -604,7 +606,8 @@ public partial class ComposeWindow : Window
         if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.Control)
         {
             CommitAllAddressInputs();
-            _vm.SendCommand.Execute(null);
+            if (_vm.SendCommand.CanExecute(null))
+                _vm.SendCommand.Execute(null);
             e.Handled = true;
             return;
         }

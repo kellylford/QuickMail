@@ -1222,6 +1222,8 @@ Press `Ctrl+K` in the To, Cc, or Bcc field (anywhere outside the message body, w
 
 ### Sending
 
+To ask before each send, turn on **Confirm before sending a message** in **Settings → General → Composing**. It is off by default. The setting applies to compose windows opened afterwards. Send, **Alt+S**, **Ctrl+Enter**, and the command palette all ask the same question. Choose **Yes** to send, or **No** (the default) or **Escape** to keep editing. The confirmation also applies before a message is queued in the Outbox while offline; it is not repeated when the queued message goes out. Repeated send commands while confirmation or sending is underway do not send the message twice.
+
 | Shortcut | Action |
 |----------|--------|
 | `Alt+S` or `Ctrl+Enter` | Send |
@@ -2331,6 +2333,7 @@ Press **Ctrl+,** to open Settings. The **Sounds** tab has no access key, so reac
 - **Default compose mode** — Plain Text, Markdown, or HTML
 - **Check spelling as I type** — on by default. Turn it off if a message stalls, or your screen reader misreads lines, after you paste a long text. See [Turning off spell checking as you type](#turning-off-spell-checking-as-you-type).
 - **Auto-save drafts** — on/off and interval
+- **Confirm before sending a message** — off by default. Asks before sending or queuing mail; applies to compose windows opened afterwards.
 - **Read messages as plain text** — when on, display all messages as plain text instead of HTML
 - **Show pictures included in messages** — on by default. Shows pictures that travel with a message; nothing is fetched from the sender.
 - **Load pictures from the web automatically** — off by default. Loads the pictures a message links to on the web in every message, rather than only when you choose **Load Pictures**. See [Pictures](#pictures).

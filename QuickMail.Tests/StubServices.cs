@@ -113,14 +113,16 @@ sealed class StubSmtpService : ISendMailService
     /// <summary>Set to make a send fail, the way a rejected MAIL FROM or a refused login does.</summary>
     public Exception? SendFailure { get; set; }
 
+    public Func<Task>? SendWait { get; set; }
+
     /// <summary>Every message handed to SendAsync, so a test can assert a send never happened.</summary>
     public List<(ComposeModel Compose, AccountModel Account)> Sent { get; } = new();
 
-    public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default)
+    public async Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default)
     {
-        if (SendFailure is not null) return Task.FromException(SendFailure);
+        if (SendFailure is not null) throw SendFailure;
         Sent.Add((compose, account));
-        return Task.CompletedTask;
+        if (SendWait is not null) await SendWait();
     }
     public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,
         string organizerEmail, CancellationToken ct = default)
