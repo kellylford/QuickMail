@@ -48,6 +48,14 @@ public interface ISoundService : IDisposable
     /// </summary>
     void PreviewRule(string? storedSound);
 
+    /// <summary>
+    /// Plays what an event would play now, in the scheme in use and at the saved volume, because the
+    /// person asked to hear it: so even with event sounds off or muted. Replaces anything playing, and
+    /// an event with no sound just stops it. A custom file that's gone or won't play falls back to the
+    /// event's own built-in sound, as when the event really happens.
+    /// </summary>
+    void PreviewEvent(SoundEvent soundEvent);
+
     /// <summary>Stops what is playing and whatever is waiting.</summary>
     void StopAll();
 

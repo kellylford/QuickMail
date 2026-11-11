@@ -151,6 +151,29 @@ public sealed class SoundService : ISoundService
         }
     }
 
+    public void PreviewEvent(SoundEvent soundEvent)
+    {
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return;
+            StopAll();
+            var config = _config.Load();
+            var scheme = SoundCatalog.ActiveScheme(config);
+            var sound = SoundCatalog.Resolve(soundEvent, scheme);
+            if (sound.Kind == SoundRefKind.None) return;
+            var fallback = SoundCatalog.Info(soundEvent).BuiltInSound;
+            var schemePack = SoundCatalog.PackFor(SoundRef.None, scheme);
+            var clip = ToClip(sound, fallback, schemePack, scheme.Id);
+            if (clip is null) return;
+            var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(fallback), schemePack);
+            TryAdd(new Request(clip, IsPreview: true, Fallback: backup));
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Sound preview for {soundEvent} failed", ex);
+        }
+    }
+
     public void StopAll()
     {
         try

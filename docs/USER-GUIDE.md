@@ -2143,11 +2143,15 @@ If you delete or file a lot of mail in a row, you may prefer to set those three 
 
 1. In **Settings → Sounds**, arrow through **Sound events**. Each entry says the event and its sound, such as "New mail: Arrived".
 2. Choose a sound in **Sound for this event**, or choose **None** to silence that event.
-3. Choose **Preview** to hear it, at the volume showing. Preview plays even if sounds are muted, and stops when you close Settings or preview **None**.
+3. Choose **Preview** to hear it, at the volume showing, or press **Space** on an event in the list to hear that event's sound without leaving the list. Either one plays even if sounds are muted, and stops when you close Settings or preview **None**.
 4. To use a sound of your own, choose **Choose File…** and pick a WAV or MP3 file of up to 5 MB and 30 seconds. QuickMail keeps its own copy in the scheme showing, so you can move or delete the original. Focus moves to **Sound for this event**, which now names your file. Each scheme keeps its own sound files, and lists only those, so to use the same file in another scheme, choose it there as well.
 5. To delete one of your own sound files from a scheme, select an event that uses it and choose **Remove file…**. QuickMail first says how many of the scheme's events still use the file. Those play a built-in sound instead once the file is gone, and the file shows as "(missing)" in the list. Other schemes and rules keep their own copies. Removing a file takes effect at once, even if you then choose Cancel.
 
 Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to. It starts at 80%.
+
+### Sound Tutorial
+
+To learn what each sound means, choose **Help → Sound Tutorial**. It lists every event by name. Arrow to one and press **Space** or **Enter** to hear its sound in the scheme you use, at your saved volume, even if sounds are off or muted. If the event has no sound, QuickMail says "No sound." If the event uses a sound file of yours that has gone, QuickMail says so and plays the built-in sound. **Escape** or **Close** closes the window. It changes nothing; to choose sounds or another scheme, use **Settings → Sounds**.
 
 ### Sound Schemes
 

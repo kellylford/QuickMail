@@ -172,6 +172,8 @@ public class SelectorItemAccessibilityTests
             new SoundGalleryRow(galleryEntry, SoundGalleryState.Added).ToString());
         Assert.Equal($"Rain, by Pat. 3 of {SoundCatalog.Events.Count} events have a sound. Update available.",
             new SoundGalleryRow(galleryEntry, SoundGalleryState.UpdateAvailable).ToString());
+        // Sound Tutorial list.
+        Assert.Equal("New mail", new SoundTutorialRow(SoundCatalog.Info(SoundEvent.NewMail)).ToString());
         // Sound scheme combo (#932).
         Assert.Equal("My calm scheme", new SoundScheme("user-1", "My calm scheme", isBuiltIn: false).ToString());
         Assert.Equal("Wood", SoundCatalog.BuiltInScheme("wood").ToString());

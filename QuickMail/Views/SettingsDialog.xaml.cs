@@ -320,6 +320,18 @@ public partial class SettingsDialog : Window
     // text through, and in this dialog that would fire an access key without Alt (#418).
     internal TypeAheadPrefixTracker SoundEventTypeAhead { get; set; } = new();
 
+    // Space previews the event's sound, as the Preview button does, so someone can arrow through the
+    // list and hear each one. A held key plays once. The row it came from, which Ctrl+arrows can leave
+    // different from the selected one, is the one previewed.
+    private void SoundEventList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Space || Keyboard.Modifiers != ModifierKeys.None) return;
+        e.Handled = true;
+        if (e.IsRepeat) return;
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is SoundEventRow row) _vm.SelectedSoundEvent = row;
+        _vm.PreviewSoundCommand.Execute(null);
+    }
+
     private void SoundEventList_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(e.Text) || e.Text.Any(char.IsControl)) return;

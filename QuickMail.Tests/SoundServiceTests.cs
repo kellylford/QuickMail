@@ -86,6 +86,62 @@ public sealed class SoundServiceTests : IDisposable
     }
 
     [Fact]
+    public void PreviewingAnEventPlaysItWithSoundsOffAndMuted()
+    {
+        Settings().PlayEventSounds = false;
+        Settings().MuteSounds = true;
+        Service().PreviewEvent(SoundEvent.NewMail);
+        AssertPlayed("builtin:arrived");
+    }
+
+    [Fact]
+    public void PreviewingAnEventUsesTheSavedVolume()
+    {
+        Settings().SoundVolume = 30;
+        Service().PreviewEvent(SoundEvent.NewMail);
+        AssertPlayed("builtin:arrived");
+        Assert.Equal(0.3f, _output.Played.Single().Volume, 0.001f);
+    }
+
+    [Fact]
+    public void PreviewingAnEventWithNoSoundStopsWhatIsPlaying()
+    {
+        Settings().ActiveSoundEvents()["MessageSent"] = "none";
+        _output.Hold = new ManualResetEventSlim();
+        Service().PreviewEvent(SoundEvent.NewMail);
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        Service().PreviewEvent(SoundEvent.MessageSent);
+
+        Assert.True(_output.Cancelled.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        AssertPlayed("builtin:arrived");
+    }
+
+    [Fact]
+    public void PreviewingAnEventWhoseFileIsGonePlaysThatEventsBuiltInSound()
+    {
+        // Not the rule sound Preview falls back to: this has to sound as the event really would.
+        Settings().ActiveSoundEvents()["MessageSent"] = SoundRef.Custom("gone.wav").ToStored();
+        Service().PreviewEvent(SoundEvent.MessageSent);
+        AssertPlayed("builtin:sent");
+    }
+
+    [Fact]
+    public void PreviewingAnEventWhoseFileWontPlayFallsBackToItsBuiltInSound()
+    {
+        var stored = SoundRef.Custom("bad.wav").ToStored();
+        var folder = Path.Combine(_folder, SoundCatalog.DefaultPack);
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "bad.wav"), "not a sound");
+        Settings().ActiveSoundEvents()["MessageSent"] = stored;
+        _output.FailOnlyFor = stored;
+
+        Service().PreviewEvent(SoundEvent.MessageSent);
+
+        AssertPlayed(stored, "builtin:sent");
+    }
+
+    [Fact]
     public void EventSoundsAreSilentUntilTurnedOn()
     {
         Service().Play(SoundEvent.MessageSent);

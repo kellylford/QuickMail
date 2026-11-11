@@ -200,6 +200,7 @@ public partial class MainWindow : Window
     private ThemeManagerWindow? _themeManagerWindow;
 
     private TutorialViewModel? _tutorialVm;
+    private SoundTutorialWindow? _soundTutorialWindow;
 
     // Tracks open compose windows so they can be explicitly closed when the main window
     // closes. Independent (unowned) windows are not auto-closed by WPF on owner close.
@@ -397,6 +398,7 @@ public partial class MainWindow : Window
         vm.RulesManagerRequested += (_, _) => OpenRulesManager();
         vm.CreateRuleFromMessageRequested += (_, template) => OpenRulesManager(template);
         vm.TutorialRequested += (_, _) => ShowTutorial();
+        vm.SoundTutorialRequested += (_, _) => ShowSoundTutorial();
         vm.UpdateDialogRequested += (_, info) =>
         {
             var dialog = new UpdateDialog(info.Version, info.WhatsNewUrl, vm.RestartToUpdateAsync)
@@ -5169,6 +5171,29 @@ public partial class MainWindow : Window
         window.SetFocusRestoreTarget(previousFocus);
         window.Show();
     }
+
+    // Modeless for the same reason as Connection Diagnostics, and one at a time.
+    private void ShowSoundTutorial()
+    {
+        if (_soundTutorialWindow is not null)
+        {
+            _soundTutorialWindow.Activate();
+            return;
+        }
+        if (_vm.Sounds is not { } sounds) return;
+
+        var previousFocus = Keyboard.FocusedElement;
+        var window = new SoundTutorialWindow(new SoundTutorialViewModel(_configService, sounds)) { Owner = this };
+        window.Closed += (_, _) =>
+        {
+            _soundTutorialWindow = null;
+            previousFocus?.Focus();
+        };
+        _soundTutorialWindow = window;
+        window.Show();
+    }
+
+    private void MenuSoundTutorial_Click(object sender, RoutedEventArgs e) => ShowSoundTutorial();
 
     private void MenuConnectionDiagnostics_Click(object sender, RoutedEventArgs e)
     {

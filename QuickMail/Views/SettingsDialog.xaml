@@ -892,6 +892,7 @@
                                  SelectedItem="{Binding SelectedSoundEvent, Mode=TwoWay}"
                                  DisplayMemberPath="AccessibleName"
                                  IsTextSearchEnabled="False"
+                                 PreviewKeyDown="SoundEventList_PreviewKeyDown"
                                  PreviewTextInput="SoundEventList_PreviewTextInput">
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">

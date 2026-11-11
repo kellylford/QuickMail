@@ -75,6 +75,7 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `mail.declineInvite` | Decline Invitation |
 | *(unassigned)* | `mail.tentativeInvite` | Tentatively Accept Invitation |
 | *(unassigned)* | `help.keyboardTutorial` | Keyboard Tutorial |
+| *(unassigned)* | `help.soundTutorial` | Sound Tutorial |
 | Ctrl+Shift+T | `view.focusTabs` | Focus Tab Strip |
 | Alt+A | `view.focusAttachments` | Focus Attachment List (of the open message) |
 | Alt+Enter | `view.showProperties` | View Properties |

@@ -896,6 +896,9 @@
                 <MenuItem sc:CommandShortcut.Id="help.keyboardTutorial" Header="_Keyboard Tutorial"
                           AutomationProperties.Name="Keyboard Tutorial"
                           Click="MenuKeyboardTutorial_Click"/>
+                <MenuItem sc:CommandShortcut.Id="help.soundTutorial" Header="_Sound Tutorial"
+                          AutomationProperties.Name="Sound Tutorial"
+                          Click="MenuSoundTutorial_Click"/>
                 <Separator/>
                 <MenuItem sc:CommandShortcut.Id="help.reportBug" Header="_Report a Bug"
                           AutomationProperties.Name="Report a Bug"
