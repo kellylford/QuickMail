@@ -5193,7 +5193,10 @@ public partial class MainWindow : Window
         window.Show();
     }
 
-    private void MenuSoundTutorial_Click(object sender, RoutedEventArgs e) => ShowSoundTutorial();
+    // Once the menu has closed and given focus back, so that's the place the window returns to on
+    // closing, rather than a menu item that has gone.
+    private void MenuSoundTutorial_Click(object sender, RoutedEventArgs e) =>
+        Dispatcher.InvokeAsync(ShowSoundTutorial, System.Windows.Threading.DispatcherPriority.Background);
 
     private void MenuConnectionDiagnostics_Click(object sender, RoutedEventArgs e)
     {
