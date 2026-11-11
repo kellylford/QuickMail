@@ -345,6 +345,15 @@
                       AutomationProperties.Name="Clear Startup Folder"
                       Click="FolderContextMenu_ClearStartupFolder_Click"/>
             <Separator/>
+            <!-- #963. H is free; "Show All H_idden Folders" takes I, since S (Startup) and H are
+                 both taken by then. -->
+            <MenuItem sc:CommandShortcut.Id="folder.hide" Header="_Hide Folder"
+                      AutomationProperties.Name="Hide Folder"
+                      Click="FolderContextMenu_HideFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="folder.showHidden" Header="Show All H_idden Folders"
+                      AutomationProperties.Name="Show All Hidden Folders"
+                      Click="FolderContextMenu_ShowHiddenFolders_Click"/>
+            <Separator/>
             <MenuItem Header="_Delete Folder"
                       AutomationProperties.Name="Delete Folder"
                       sc:CommandShortcut.Id="folder.delete"
@@ -645,6 +654,14 @@
                 <MenuItem sc:CommandShortcut.Id="folder.collapseAll" Header="Collapse A_ll Folders"
                           Click="MenuCollapseAllFolders_Click"
                           AutomationProperties.Name="Collapse All Folders"/>
+                <Separator/>
+                <!-- #963. Same access keys as the folder tree's context menu. -->
+                <MenuItem sc:CommandShortcut.Id="folder.hide" Header="_Hide Folder"
+                          Click="MenuHideFolder_Click"
+                          AutomationProperties.Name="Hide Folder"/>
+                <MenuItem sc:CommandShortcut.Id="folder.showHidden" Header="Show All H_idden Folders"
+                          Click="MenuShowHiddenFolders_Click"
+                          AutomationProperties.Name="Show All Hidden Folders"/>
             </MenuItem>
 
             <!-- View -->

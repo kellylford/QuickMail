@@ -1422,6 +1422,17 @@ public partial class MainWindow : Window
             execute: () => SetAllFoldersExpanded(false, null),
             isAvailable: () => _vm.HasExpandableFolders));
 
+        // Hidden folders (#963). No default keys; reachable from the folder tree's context menu, the
+        // Folder menu and the Command Palette. Always available, so the palette never hides the way
+        // back: each says why when it cannot act ("No folders are hidden.").
+        _registry.Register(new CommandDefinition(
+            id: "folder.hide", category: "Mail", title: "Hide Folder",
+            execute: HideSelectedFolder));
+
+        _registry.Register(new CommandDefinition(
+            id: "folder.showHidden", category: "Mail", title: "Show All Hidden Folders",
+            execute: () => Report(_vm.ShowAllHiddenFolders())));
+
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(
             id: "view.focusAccounts", category: "View", title: "Focus Account List",
@@ -2624,7 +2635,7 @@ public partial class MainWindow : Window
             .ToDictionary(a => a.Id, a => MainViewModel.CreateAccountMailVirtualFolder(a));
         var picker = new FolderPickerWindow(
             _vm.Accounts,
-            _vm.CachedFolders,
+            _vm.VisibleCachedFolders,   // hidden folders stay out of navigation (#963)
             new[]
             {
                 MainViewModel.AllInboxesFolder, MainViewModel.AllMailFolder,
@@ -7307,6 +7318,52 @@ public partial class MainWindow : Window
     // (issue #250) — these are what the command palette and any user-assigned hotkey invoke.
     private void SetStartupFolderFromSelection()
         => Report(_vm.SetStartupFolder(FolderList.SelectedItem as FolderTreeNode));
+
+    // ── Hidden folders (#963) ────────────────────────────────────────────────
+
+    private void FolderContextMenu_HideFolder_Click(object sender, RoutedEventArgs e)
+        => HideFolderWithFocus(GetContextMenuFolderNode(sender), fromFolderTree: true);
+
+    private void FolderContextMenu_ShowHiddenFolders_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.ShowAllHiddenFolders());
+
+    private void MenuHideFolder_Click(object sender, RoutedEventArgs e) => HideSelectedFolder();
+
+    private void MenuShowHiddenFolders_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.ShowAllHiddenFolders());
+
+    // The Folder menu and Command Palette entry: the tree's selection, or the open folder. Whether
+    // focus is put back in the tree depends on whether the user was standing in it — the window's
+    // logical focus survives the menu bar and the palette taking keyboard focus for a moment.
+    private void HideSelectedFolder()
+    {
+        var inTree = FolderList.IsKeyboardFocusWithin ||
+                     (FocusManager.GetFocusedElement(this) is DependencyObject logical && IsDescendantOf(FolderList, logical));
+        HideFolderWithFocus(CurrentFolderNode(), inTree);
+    }
+
+    // Hides the folder and, when the user is in the tree, lands focus on the folder above it — the
+    // item that had focus is removed with the folder, the same situation as Delete Folder.
+    private void HideFolderWithFocus(FolderTreeNode? node, bool fromFolderTree)
+    {
+        if (_vm.HideFolderRefusal(node) is { } refusal)
+        {
+            Report(refusal);
+            return;
+        }
+
+        var above = FindVisibleFolderNodeAbove(node!);
+        // Where FolderList_GotKeyboardFocus lands if the removed item still held focus (#719).
+        if (_folderTreeSpot is { } spot && ReferenceEquals(spot.Node, node))
+            _folderTreeSpot = spot with { Above = above };
+
+        Report(_vm.HideFolder(node));
+
+        if (!fromFolderTree || above == null) return;
+        // Queued behind the menu or palette closing, which restores focus to where it was taken
+        // from: the item that no longer exists.
+        Dispatcher.InvokeAsync(() => FocusTreeItem(FolderList, above), DispatcherPriority.Input);
+    }
 
     // ── Calendar context menu handlers (issue #497) ──────────────────────────
 

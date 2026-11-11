@@ -5572,7 +5572,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (_cachedFolders.TryGetValue(account.Id, out var folders) && folders.Count > 0)
             {
-                var accountRoots = FolderTreeBuilder.Build(folders, account);
+                var accountRoots = FolderTreeBuilder.Build(folders, account, account.HiddenFolders);
 
                 // Inject a per-account "All Mail" virtual folder as the first child
                 // of the account header node so users can see all mail for that account.
