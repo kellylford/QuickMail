@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
@@ -26,12 +27,18 @@ public partial class SoundTutorialWindow : Window
         Activated += (_, _) => vm.Refresh();
         _localRegistry.Register(new CommandDefinition("soundTutorial.play", "Help", "Play Sound for Selected Event", () => _vm.PlaySelectedCommand.Execute(null)));
         _localRegistry.Register(new CommandDefinition("soundTutorial.close", "Help", "Close Sound Tutorial", Close));
-        Loaded += (_, _) =>
-        {
-            FocusSelectedRow();
-            // After focus, so the first row is read first and this follows it.
-            AccessibilityHelper.Announce(this, _vm.Intro, interrupt: false, AnnouncementCategory.Hint);
-        };
+        // Once everything else has settled: opened from the command palette, the palette puts focus back
+        // in the main window after this has been shown, which would leave this window open but unfocused.
+        Loaded += (_, _) => Dispatcher.InvokeAsync(TakeFocus, DispatcherPriority.ApplicationIdle);
+    }
+
+    private void TakeFocus()
+    {
+        if (!IsVisible) return;   // closed before it got this far
+        Activate();
+        FocusSelectedRow();
+        // After focus, so the first row is read first and this follows it.
+        AccessibilityHelper.Announce(this, _vm.Intro, interrupt: false, AnnouncementCategory.Hint);
     }
 
     private void OnNoteAnnounced(string note) =>
