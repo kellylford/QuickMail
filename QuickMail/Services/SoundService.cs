@@ -16,7 +16,13 @@ public sealed class SoundService : ISoundService
     /// <param name="IsPreview">Asked for by name, so mute doesn't apply.</param>
     /// <param name="Fallback">What to play instead if a custom file turns out not to play.</param>
     /// <param name="VolumePercent">A volume to use in place of the saved one.</param>
-    private sealed record Request(SoundClip Clip, bool IsPreview, SoundClip? Fallback = null, int? VolumePercent = null);
+    /// <param name="NavigationGeneration">For a key press's answer (<see cref="SoundOrigin.Navigation"/>), which
+    /// press it answers; a later press replaces it (#923). Zero for every other sound.</param>
+    private sealed record Request(SoundClip Clip, bool IsPreview, SoundClip? Fallback = null, int? VolumePercent = null,
+        long NavigationGeneration = 0)
+    {
+        public bool IsNavigation => NavigationGeneration != 0;
+    }
 
     private static readonly TimeSpan MuteCheckEvery = TimeSpan.FromMilliseconds(100);
 
@@ -34,7 +40,19 @@ public sealed class SoundService : ISoundService
     private readonly Thread _worker;
     private readonly object _currentGate = new();
     private CancellationTokenSource? _current;
+    private Request? _currentRequest;
     private int _disposed;
+
+    // Sounds queued or playing, and how many of them answer a key press (#923). Counted when one is
+    // queued, or claimed by TryPlayNow just before; counted down when it ends, is skipped, or is
+    // dropped from the queue. Both change together under _countGate, so TryPlayNow's "nothing else is
+    // playing, or only a key press's answer" and its claim of the slot are one step.
+    private readonly object _countGate = new();
+    private int _outstanding;
+    private int _outstandingNavigation;
+
+    /// <summary>The latest key press's answer; any earlier one still queued or playing is replaced by it.</summary>
+    private long _navigationGeneration;
 
     /// <param name="config">Settings, read at each sound so a change applies at once.</param>
     /// <param name="soundsFolder">The profile's folder of custom sounds.</param>
@@ -72,6 +90,89 @@ public sealed class SoundService : ISoundService
         catch (Exception ex)
         {
             LogService.Log($"Sound for {soundEvent} failed", ex);
+        }
+    }
+
+    public bool TryPlayNow(SoundEvent soundEvent)
+    {
+        var info = SoundCatalog.Info(soundEvent);
+        var isNavigation = info.Origin == SoundOrigin.Navigation;
+        var claimed = false;
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return false;
+            var config = _config.Load();
+            if (!config.PlayEventSounds || config.MuteSounds || config.SoundVolume <= 0) return false;
+            var scheme = SoundCatalog.ActiveScheme(config);
+            var sound = SoundCatalog.Resolve(soundEvent, scheme);
+            if (sound.Kind == SoundRefKind.None) return false;
+
+            // Claim the slot in the same step as checking it's free. A key press's answer may take it
+            // from an earlier one, a quick second press at the edge: that one is replaced, not waited for.
+            bool replacing;
+            lock (_countGate)
+            {
+                var onlyKeyPresses = isNavigation && _outstanding == _outstandingNavigation;
+                if (_outstanding > 0 && !onlyKeyPresses) return false;
+                replacing = _outstanding > 0;
+                Claim(isNavigation);
+                claimed = true;
+            }
+
+            if (!_policy.ShouldPlay(sound.ToStored(), info.Origin, config.MuteSounds, _isQuiet(), waiting: 0)) return false;
+            var generation = isNavigation ? Interlocked.Increment(ref _navigationGeneration) : 0;
+            if (replacing) CancelEarlierKeyPressSound(generation);
+
+            var schemePack = SoundCatalog.PackFor(SoundRef.None, scheme);
+            var clip = ToClip(sound, info.BuiltInSound, schemePack, scheme.Id);
+            if (clip is null) return false;
+            var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(info.BuiltInSound), schemePack);
+            if (!TryAdd(new Request(clip, false, backup, NavigationGeneration: generation), alreadyClaimed: true)) return false;
+            claimed = false;   // the queue has it now, and counts it down when it ends
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Sound for {soundEvent} failed", ex);
+            return false;
+        }
+        finally
+        {
+            if (claimed) Release(isNavigation);
+        }
+    }
+
+    /// <summary>A sound is playing or waiting to.</summary>
+    internal bool IsBusy
+    {
+        get { lock (_countGate) return _outstanding > 0; }
+    }
+
+    private void Claim(bool isNavigation)
+    {
+        lock (_countGate)
+        {
+            _outstanding++;
+            if (isNavigation) _outstandingNavigation++;
+        }
+    }
+
+    private void Release(bool isNavigation)
+    {
+        lock (_countGate)
+        {
+            _outstanding--;
+            if (isNavigation) _outstandingNavigation--;
+        }
+    }
+
+    /// <summary>Cuts off a key press's answer still playing, now a later press has its own.</summary>
+    private void CancelEarlierKeyPressSound(long generation)
+    {
+        lock (_currentGate)
+        {
+            if (_currentRequest is { IsNavigation: true } playing && playing.NavigationGeneration < generation)
+                _current?.Cancel();
         }
     }
 
@@ -173,7 +274,7 @@ public sealed class SoundService : ISoundService
         try
         {
             if (Volatile.Read(ref _disposed) != 0) return;
-            while (_queue.TryTake(out _)) { }
+            while (_queue.TryTake(out var dropped)) Release(dropped.IsNavigation);
             lock (_currentGate) _current?.Cancel();
         }
         catch (Exception ex)
@@ -408,33 +509,40 @@ public sealed class SoundService : ISoundService
         new FileInfo(a).Length == new FileInfo(b).Length && File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
 
     /// <param name="folderSchemeId">The scheme whose folder a custom file is in; null for a rule's own (#948).</param>
-    private void Enqueue(SoundRef sound, string fallback, SoundOrigin origin, ConfigModel config, SoundScheme scheme, string? folderSchemeId)
+    /// <returns>Whether the sound was queued to play.</returns>
+    private bool Enqueue(SoundRef sound, string fallback, SoundOrigin origin, ConfigModel config, SoundScheme scheme, string? folderSchemeId)
     {
-        if (Volatile.Read(ref _disposed) != 0) return;
-        if (sound.Kind == SoundRefKind.None || config.SoundVolume <= 0) return;
-        if (!_policy.ShouldPlay(sound.ToStored(), origin, config.MuteSounds, _isQuiet(), _queue.Count)) return;
-        AddRequest(sound, fallback, SoundCatalog.PackFor(SoundRef.None, scheme), folderSchemeId, isPreview: false);
+        if (Volatile.Read(ref _disposed) != 0) return false;
+        if (sound.Kind == SoundRefKind.None || config.SoundVolume <= 0) return false;
+        if (!_policy.ShouldPlay(sound.ToStored(), origin, config.MuteSounds, _isQuiet(), _queue.Count)) return false;
+        return AddRequest(sound, fallback, SoundCatalog.PackFor(SoundRef.None, scheme), folderSchemeId, isPreview: false);
     }
 
     /// <summary>Queues a sound, with the built-in sound to play instead if a custom file turns out not to play.</summary>
-    private void AddRequest(SoundRef sound, string fallback, string schemePack, string? folderSchemeId, bool isPreview, int? volumePercent = null)
+    private bool AddRequest(SoundRef sound, string fallback, string schemePack, string? folderSchemeId, bool isPreview, int? volumePercent = null)
     {
         var clip = ToClip(sound, fallback, schemePack, folderSchemeId);
-        if (clip is null) return;
+        if (clip is null) return false;
         var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(fallback), schemePack);
-        TryAdd(new Request(clip, isPreview, backup, volumePercent));
+        return TryAdd(new Request(clip, isPreview, backup, volumePercent));
     }
 
-    private void TryAdd(Request request)
+    /// <param name="alreadyClaimed">TryPlayNow has counted it already; on failure, it gives the claim back itself.</param>
+    private bool TryAdd(Request request, bool alreadyClaimed = false)
     {
-        if (Volatile.Read(ref _disposed) != 0) return;
+        if (Volatile.Read(ref _disposed) != 0) return false;
+        // Counted before it is added, so the worker can never finish it and count down first.
+        if (!alreadyClaimed) Claim(request.IsNavigation);
         try
         {
             _queue.Add(request);
+            return true;
         }
         catch (InvalidOperationException)
         {
             // Shutting down between the check and the add: nothing left to play it.
+            if (!alreadyClaimed) Release(request.IsNavigation);
+            return false;
         }
     }
 
@@ -473,7 +581,18 @@ public sealed class SoundService : ISoundService
         try
         {
             foreach (var request in _queue.GetConsumingEnumerable(_shutdown.Token))
-                PlayOne(request);
+            {
+                try
+                {
+                    // A key press's answer that a later press has replaced is skipped, not played late.
+                    if (!request.IsNavigation || request.NavigationGeneration == Interlocked.Read(ref _navigationGeneration))
+                        PlayOne(request);
+                }
+                finally
+                {
+                    Release(request.IsNavigation);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -484,7 +603,13 @@ public sealed class SoundService : ISoundService
     private void PlayOne(Request request)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
-        lock (_currentGate) _current = cts;
+        lock (_currentGate)
+        {
+            _current = cts;
+            _currentRequest = request;
+            // Replaced between being taken from the queue and starting: don't start it.
+            if (request.IsNavigation && request.NavigationGeneration != Interlocked.Read(ref _navigationGeneration)) cts.Cancel();
+        }
         try
         {
             var config = _config.Load();
@@ -516,7 +641,11 @@ public sealed class SoundService : ISoundService
         }
         finally
         {
-            lock (_currentGate) _current = null;
+            lock (_currentGate)
+            {
+                _current = null;
+                _currentRequest = null;
+            }
         }
     }
 

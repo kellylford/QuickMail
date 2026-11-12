@@ -96,6 +96,19 @@ public class SoundCatalogTests
         Assert.Equal(SoundRef.BuiltIn("arrived"), SoundCatalog.Resolve(SoundEvent.NewMail, Glass()));
 
     [Fact]
+    public void TheEndOfAListHasItsOwnSoundInEveryBuiltInSchemeAndNoneInAnOlderSchemeOfYourOwn()
+    {
+        // #923. A scheme of the person's own made before the event has no entry for it, so it plays
+        // nothing, and the message list speaks the edge instead.
+        Assert.All(SoundCatalog.Packs, pack =>
+            Assert.Equal(SoundRef.BuiltIn("edge"), SoundCatalog.Resolve(SoundEvent.ListEnd, SoundCatalog.BuiltInScheme(pack.Id))));
+        var older = new SoundScheme("user-older", "Older", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "builtin:arrived" });
+        Assert.Equal(SoundRef.None, SoundCatalog.Resolve(SoundEvent.ListEnd, older));
+        Assert.Equal(SoundOrigin.Navigation, SoundCatalog.Info(SoundEvent.ListEnd).Origin);
+    }
+
+    [Fact]
     public void AnEventCanBeTurnedOffOnItsOwn()
     {
         var stored = new Dictionary<string, string> { ["NewMail"] = "none" };

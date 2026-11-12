@@ -359,47 +359,44 @@
                                 <CheckBox Content="Enable custom _announcements"
                                           IsChecked="{Binding CustomAnnouncements, Mode=TwoWay}"
                                           FontWeight="SemiBold"
-                                          AutomationProperties.Name="Enable all custom screen reader announcements from QuickMail"/>
+                                          AutomationProperties.HelpText="All of QuickMail's own screen reader announcements. When off, only native control announcements are spoken."/>
                                 <TextBlock Text="When off, only native control announcements are spoken."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,2,0,8"/>
 
                                 <CheckBox Content="Announce _hints and instructions"
                                           IsChecked="{Binding AnnounceHints, Mode=TwoWay}"
                                           Margin="16,0,0,0"
-                                          AutomationProperties.Name="Announce instructional hints such as how to use the search box"/>
+                                          AutomationProperties.HelpText="Instructional hints, such as how to use the search box"/>
 
                                 <CheckBox Content="Announce loading and sync _status"
                                           IsChecked="{Binding AnnounceStatus, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce background loading and sync progress"/>
+                                          AutomationProperties.HelpText="Background loading and sync progress"/>
 
                                 <CheckBox Content="Announce action _results"
                                           IsChecked="{Binding AnnounceResults, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce outcomes such as search result counts and copy confirmations"/>
+                                          AutomationProperties.HelpText="Outcomes such as search result counts, copy confirmations, and reaching the top or bottom of the message list"/>
 
                                 <CheckBox Content="Announce _delete, archive and move actions"
                                           IsChecked="{Binding AnnounceMessageActions, Mode=TwoWay}"
-                                          Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce delete, archive and move actions"/>
+                                          Margin="16,4,0,0"/>
                                 <TextBlock Text="Turn off to stop delete, archive and move announcements from interrupting the next message."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,0,0,8"/>
 
                                 <CheckBox Content="Announce spelling errors _when typing"
                                           IsChecked="{Binding AnnounceSpellingWhileTyping, Mode=TwoWay}"
-                                          Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling errors when typing"/>
+                                          Margin="16,4,0,0"/>
 
                                 <CheckBox Content="Announce spelling errors while _navigating"
                                           IsChecked="{Binding AnnounceSpellingWhileNavigating, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling errors when the caret moves into a misspelled word during navigation"
-                                          AutomationProperties.HelpText="Ctrl+F7 and Ctrl+Shift+F7 always announce spelling regardless of this setting"/>
+                                          AutomationProperties.HelpText="When the caret moves into a misspelled word. Ctrl+F7 and Ctrl+Shift+F7 always announce spelling regardless of this setting"/>
 
                                 <CheckBox Content="Announce spelling _suggestions"
                                           IsChecked="{Binding AnnounceSpellingSuggestions, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling suggestions when a misspelling is announced"/>
+                                          AutomationProperties.HelpText="Suggestions are read when a misspelling is announced"/>
 
                                 <TextBlock Text="Spelling Suggestions Verbosity"
                                            Margin="32,6,0,2"/>
