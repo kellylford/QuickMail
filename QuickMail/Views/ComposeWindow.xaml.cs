@@ -1660,7 +1660,12 @@ public partial class ComposeWindow : Window
         var text = BodyBox.Text;
         if (string.IsNullOrEmpty(text)) return;
 
-        int foundIndex = SpellScan.FindReportableErrorIndex(BodyBox, BodyBox.CaretIndex, forward);
+        // TextBox.CaretIndex is the selection's START, so after Ctrl+F7 has selected a misspelling,
+        // searching forward from it found the same word again. Forward starts after the selection;
+        // backward from its start. With no selection both are the caret, which keeps a misspelling
+        // the caret sits inside as the one found.
+        int from = forward ? BodyBox.SelectionStart + BodyBox.SelectionLength : BodyBox.SelectionStart;
+        int foundIndex = SpellScan.FindReportableErrorIndex(BodyBox, from, forward);
 
         if (foundIndex >= 0)
         {

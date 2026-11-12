@@ -102,6 +102,13 @@ public class ComposeSpellingSpeechTests
             Drain();
             Assert.Equal("pacakge", rich.Selection.Text);
             Assert.Equal(1, Misspellings(heard));
+
+            // Previous Misspelling goes back to the one before, not the word already selected.
+            heard.Clear();
+            window.NavigateSpellingError(forward: false);
+            Drain();
+            Assert.Equal("recieve", rich.Selection.Text);
+            Assert.Equal(1, Misspellings(heard));
         }
         finally
         {

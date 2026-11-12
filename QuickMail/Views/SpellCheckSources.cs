@@ -227,7 +227,9 @@ internal static class SpellScan
     {
         var doc = box.Document;
         var direction = forward ? LogicalDirection.Forward : LogicalDirection.Backward;
-        var from = box.CaretPosition;
+        // From the selection's far edge in the direction of travel, so a misspelling the last
+        // Ctrl+F7 / Ctrl+Shift+F7 selected is not found again. With no selection both are the caret.
+        var from = forward ? box.Selection.End : box.Selection.Start;
         bool wrapped = false;
         TextPointer? firstSkipped = null;
 
