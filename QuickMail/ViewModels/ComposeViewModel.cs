@@ -167,9 +167,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public DraftSaveOutcome LastSaveOutcome { get; private set; } = DraftSaveOutcome.None;
 
     /// <summary>
-    /// Raised once when auto-save first has to keep the draft on this computer instead of the
-    /// server, so the window can say so (Status category) without nagging every interval. Reset by
-    /// the next server save.
+    /// Raised the first time auto-save has to keep the draft on this computer instead of the
+    /// server, so the window can say so (Status category) — at most once per compose window
+    /// (#901). Later local saves show only in <see cref="AutoSaveText"/>.
     /// </summary>
     public event Action<string>? AutoSaveNotice;
     private bool _localAutoSaveNoticed;
@@ -753,7 +753,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             await ForgetLocalCopyAsync();
             AutoSaveText = $"Auto-saved {DateTime.Now:t}";
             _autoSaveFailureAnnounced = false;
-            _localAutoSaveNoticed = false;
+            // _localAutoSaveNoticed is deliberately not reset (#901): on a connection that comes
+            // and goes it was said again after every server save, in the middle of editing.
         }
         catch (OperationCanceledException) when (_autoSaveCts.IsCancellationRequested)
         {

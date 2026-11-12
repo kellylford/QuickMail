@@ -166,6 +166,24 @@ public static class MessageBodyHtmlBuilder
         return new MessageDocument(html, webPictures, blockedWebPictures);
     }
 
+    /// <summary>The attribute on a message document's &lt;html&gt; that names the render it belongs to (issue #959).</summary>
+    public const string RenderTokenAttribute = "data-qm-render";
+
+    /// <summary>
+    /// Marks <paramref name="html"/> as the document of render <paramref name="token"/>, on its
+    /// &lt;html&gt; start tag, so the focus script can tell this render's page from the one still on
+    /// show while it loads (<see cref="Views.MessageBodyFocus.FocusScriptFor"/>). Every document the
+    /// builders write starts with QuickMail's own &lt;html&gt; tag; the sender's are removed, so the first
+    /// one is ours. A document with none is returned unchanged, and focus then gives up on it as stale.
+    /// </summary>
+    public static string WithRenderToken(string html, string token)
+    {
+        var at = html.IndexOf("<html", StringComparison.OrdinalIgnoreCase);
+        if (at < 0) return html;
+        return html.Insert(at + "<html".Length,
+            " " + RenderTokenAttribute + "=\"" + WebUtility.HtmlEncode(token) + "\"");
+    }
+
     /// <summary>Injects the event card HTML just after the opening &lt;body&gt; tag.</summary>
     private static string InjectEventCard(string html, string eventCardHtml)
     {
@@ -271,7 +289,7 @@ public static class MessageBodyHtmlBuilder
         if (pictures is { Count: > 0 })
             body = RestorePictures(body, pictures, p => p.Web
                 ? sources.WebBase + p.Src
-                : sources.EmbeddedBase + Uri.EscapeDataString(p.Src));
+                : sources.EmbeddedBase + Uri.EscapeDataString(p.Src), lazy: true);
         // Written after the passes, like the pictures: QuickMail's own markup, never the sender's.
         if (blockedWebPictures > 0 && sources.NoteBlockedWebPictures)
             body = WebPicturesNotice + body;
@@ -434,7 +452,18 @@ public static class MessageBodyHtmlBuilder
     /// The address to write for a picture, or null when it cannot be had — then its description
     /// is written as text in its place, as when pictures are not shown at all.
     /// </param>
-    private static string RestorePictures(string body, List<SetAsidePicture> pictures, Func<SetAsidePicture, string?> srcFor) =>
+    /// <param name="lazy">
+    /// Writes <c>loading="lazy" decoding="async"</c> (issue #959): for the reading pane and message
+    /// window, whose pictures are answered by the host and may wait on a download. An eager picture
+    /// delays the document's load event, and so NavigationCompleted, until it arrives; a lazy one does
+    /// not, as long as scripting is enabled, as it is in those WebView2s (HTML standard, "update the
+    /// image data": delay load event is true for the Eager state, or when scripting is disabled). A
+    /// picture in view still loads straight away.
+    /// Not for a saved or printed page, whose pictures are already in the file and must all be there
+    /// when it is printed.
+    /// </param>
+    private static string RestorePictures(string body, List<SetAsidePicture> pictures, Func<SetAsidePicture, string?> srcFor,
+        bool lazy = false) =>
         PictureMarker.Replace(body, m =>
         {
             if (!int.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.None,
@@ -464,6 +493,7 @@ public static class MessageBodyHtmlBuilder
             sb.Append(" alt=\"").Append(WebUtility.HtmlEncode(p.Alt?.Trim() ?? string.Empty)).Append('"');
             if (p.Width is { } w) sb.Append(" width=\"").Append(w).Append('"');
             if (p.Height is { } h) sb.Append(" height=\"").Append(h).Append('"');
+            if (lazy) sb.Append(" loading=\"lazy\" decoding=\"async\"");
             return sb.Append('>').ToString();
         });
 
