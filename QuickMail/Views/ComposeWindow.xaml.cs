@@ -737,7 +737,7 @@ public partial class ComposeWindow : Window
         var config = _configService.Load();
         AnnounceBlockTypeIfChanged(config);
 
-        if (!_caretMovedByTyping && config.AnnounceSpellingWhileNavigating)
+        if (!_suppressSpellingAnnouncement && !_caretMovedByTyping && config.AnnounceSpellingWhileNavigating)
             AnnounceSpellingAtCurrentPosition();
     }
 
@@ -876,6 +876,14 @@ public partial class ComposeWindow : Window
         while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd]))
             wordEnd++;
 
+        // The speller checks the pieces of a web or email address as words; they are not
+        // misspellings (#902), and must not leave suggestions for Alt+1/2/3 to apply either.
+        if (SpellingTokens.IsWebOrEmailAddress(text.Substring(wordStart, wordEnd - wordStart)))
+        {
+            ClearSpellingContext();
+            return;
+        }
+
         if (wordStart == _lastAnnouncedSpellingIndex) return;
         _lastAnnouncedSpellingIndex = wordStart;
 
@@ -907,6 +915,8 @@ public partial class ComposeWindow : Window
 
         var wordRange = RichBodyBox.GetSpellingErrorRange(pos);
         if (wordRange == null) { ClearSpellingContext(); return; }
+        // Not a misspelling: part of a web or email address (#902).
+        if (SpellScan.IsInAddress(wordRange)) { ClearSpellingContext(); return; }
 
         if (_richSpellingWordStart != null &&
             _richSpellingWordStart.CompareTo(wordRange.Start) == 0)
@@ -1599,17 +1609,26 @@ public partial class ComposeWindow : Window
         var text = BodyBox.Text;
         if (string.IsNullOrEmpty(text)) return;
 
-        int foundIndex = SpellScan.FindErrorIndex(BodyBox, BodyBox.CaretIndex, forward);
+        int foundIndex = SpellScan.FindReportableErrorIndex(BodyBox, BodyBox.CaretIndex, forward);
 
         if (foundIndex >= 0)
         {
             var (wordStart, wordEnd) = SpellScan.ExpandWord(text, foundIndex);
 
-            BodyBox.SelectionStart = wordStart;
-            BodyBox.SelectionLength = wordEnd - wordStart;
-            BodyBox.Focus();
-
+            // Selecting the word moves the caret into it, which would run the navigation
+            // announcement for the same misspelling just before the one below (#898).
+            // _lastAnnouncedSpellingIndex is set first too, so a SelectionChanged that arrives
+            // after the flag is lowered is still recognised as this word.
             _lastAnnouncedSpellingIndex = wordStart;
+            var wasSuppressed = _suppressSpellingAnnouncement;
+            _suppressSpellingAnnouncement = true;
+            try
+            {
+                BodyBox.SelectionStart = wordStart;
+                BodyBox.SelectionLength = wordEnd - wordStart;
+                BodyBox.Focus();
+            }
+            finally { _suppressSpellingAnnouncement = wasSuppressed; }
 
             var word = text.Substring(wordStart, wordEnd - wordStart);
             var suggestions = BodyBox.GetSpellingError(foundIndex)
@@ -1635,8 +1654,16 @@ public partial class ComposeWindow : Window
     {
         if (SpellScan.FindErrorRange(RichBodyBox, forward) is ({ } errorPos, { } wordRange))
         {
-            RichBodyBox.Selection.Select(wordRange.Start, wordRange.End);
-            RichBodyBox.Focus();
+            // As in plain text (#898): the selection change must not announce this word too.
+            _richSpellingWordStart = wordRange.Start;
+            var wasSuppressed = _suppressSpellingAnnouncement;
+            _suppressSpellingAnnouncement = true;
+            try
+            {
+                RichBodyBox.Selection.Select(wordRange.Start, wordRange.End);
+                RichBodyBox.Focus();
+            }
+            finally { _suppressSpellingAnnouncement = wasSuppressed; }
 
             var error = RichBodyBox.GetSpellingError(errorPos);
             var suggestions = error?.Suggestions.Take(3).ToList() ?? new List<string>();

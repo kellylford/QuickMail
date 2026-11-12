@@ -120,25 +120,102 @@ internal static class SpellScan
     }
 
     /// <summary>
+    /// True when the spelling error at <paramref name="index"/> lies inside a web or email address
+    /// (#902): the speller checks an address's pieces as words, which are not misspellings.
+    /// </summary>
+    internal static bool IsInAddress(string text, int index)
+    {
+        if (index < 0 || index >= text.Length) return false;
+        var (start, end) = ExpandWord(text, index);
+        return Helpers.SpellingTokens.IsWebOrEmailAddress(text[start..end]);
+    }
+
+    /// <summary>
+    /// The whitespace-delimited text around a rich-text spelling error — the error's own range
+    /// is only the piece the speller objects to ("contoso"), not the address it sits in.
+    /// </summary>
+    internal static string TokenAround(TextRange range)
+    {
+        var paragraph = range.Start.Paragraph;
+        if (paragraph == null) return range.Text;
+        var before = new TextRange(paragraph.ContentStart, range.Start).Text;
+        var after = new TextRange(range.End, paragraph.ContentEnd).Text;
+        int start = before.Length;
+        while (start > 0 && !char.IsWhiteSpace(before[start - 1])) start--;
+        int end = 0;
+        while (end < after.Length && !char.IsWhiteSpace(after[end])) end++;
+        return before[start..] + range.Text + after[..end];
+    }
+
+    /// <summary>True when a rich-text spelling error lies inside a web or email address (#902).</summary>
+    internal static bool IsInAddress(TextRange range)
+        => Helpers.SpellingTokens.IsWebOrEmailAddress(TokenAround(range));
+
+    /// <summary>
+    /// <see cref="FindErrorIndex"/>, passing over errors inside web and email addresses (#902).
+    /// Returns -1 when every error left in the text is in an address.
+    /// </summary>
+    internal static int FindReportableErrorIndex(TextBox box, int start, bool forward)
+    {
+        var text = box.Text;
+        int firstSkippedWord = -1;
+        // Each pass skips a whole address, so a full lap ends at the first one skipped; the cap
+        // is only a backstop against a speller that answers inconsistently.
+        for (int pass = 0; pass <= text.Length; pass++)
+        {
+            int idx = FindErrorIndex(box, start, forward);
+            if (idx < 0 || idx >= text.Length) return idx;
+            var (wordStart, wordEnd) = ExpandWord(text, idx);
+            if (!Helpers.SpellingTokens.IsWebOrEmailAddress(text[wordStart..wordEnd])) return idx;
+            if (wordStart == firstSkippedWord) return -1;
+            if (firstSkippedWord < 0) firstSkippedWord = wordStart;
+            start = forward ? wordEnd : wordStart;
+        }
+        return -1;
+    }
+
+    /// <summary>
     /// Finds the nearest spelling error in a RichTextBox from the caret in the
     /// given direction, wrapping once around the document. Returns the error
     /// position and its word range, or null when the document has no errors.
+    /// Errors inside web and email addresses are passed over (#902).
     /// </summary>
     internal static (TextPointer ErrorPos, TextRange Range)? FindErrorRange(RichTextBox box, bool forward)
     {
         var doc = box.Document;
         var direction = forward ? LogicalDirection.Forward : LogicalDirection.Backward;
-        var errorPos = box.GetNextSpellingErrorPosition(box.CaretPosition, direction);
+        var from = box.CaretPosition;
+        bool wrapped = false;
+        TextPointer? firstSkipped = null;
 
-        if (errorPos == null)
+        // Steps one error at a time, so a full lap comes back to the first error skipped; the
+        // cap is only a backstop against a speller that answers inconsistently.
+        for (int pass = 0; pass < 10_000; pass++)
         {
-            var wrapFrom = forward ? doc.ContentStart : doc.ContentEnd;
-            errorPos = box.GetNextSpellingErrorPosition(wrapFrom, direction);
-        }
+            var errorPos = box.GetNextSpellingErrorPosition(from, direction);
+            if (errorPos == null)
+            {
+                if (wrapped) return null;
+                wrapped = true;
+                from = forward ? doc.ContentStart : doc.ContentEnd;
+                continue;
+            }
 
-        if (errorPos == null) return null;
-        var range = box.GetSpellingErrorRange(errorPos);
-        return range == null ? null : (errorPos, range);
+            var range = box.GetSpellingErrorRange(errorPos);
+            if (range == null) return null;
+            if (!IsInAddress(range)) return (errorPos, range);
+
+            if (firstSkipped != null && firstSkipped.CompareTo(range.Start) == 0) return null;
+            firstSkipped ??= range.Start;
+            // Backward, start one position before the error so the search cannot return it again.
+            var next = forward
+                ? range.End
+                : range.Start.GetNextInsertionPosition(LogicalDirection.Backward) ?? doc.ContentStart;
+            // No progress means the speller keeps answering with the same error: stop.
+            if (next.CompareTo(from) == 0) return null;
+            from = next;
+        }
+        return null;
     }
 }
 
@@ -210,6 +287,15 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
                     // just handled at the end of the text.
                     if (errStart + errLen > _scanIndex)
                     {
+                        // A piece of a web or email address is not a misspelling (#902):
+                        // step past the whole address and keep scanning.
+                        if (SpellScan.IsInAddress(text, errStart))
+                        {
+                            _scanIndex = Math.Max(SpellScan.ExpandWord(text, errStart).WordEnd,
+                                                  errStart + errLen);
+                            continue;
+                        }
+
                         // After wrapping, a word straddling the session start was
                         // already presented in the pre-wrap pass — the scan is done.
                         if (_wrapped && errStart + errLen > limit) return null;
@@ -345,6 +431,14 @@ internal sealed class RichTextBoxSpellSource : ISpellCheckSource
                     // re-presenting it here would prompt for the same word twice.
                     if (_wrapped && _startPos != null && range.End.CompareTo(_startPos) > 0)
                         return null;
+
+                    // A piece of a web or email address is not a misspelling (#902).
+                    if (SpellScan.IsInAddress(range))
+                    {
+                        if (range.End.CompareTo(_scanPos!) <= 0) return null;   // no progress
+                        _scanPos = range.End;
+                        continue;
+                    }
 
                     _currentRange = range;
                     _scanPos = range.End;

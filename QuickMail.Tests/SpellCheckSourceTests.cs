@@ -191,4 +191,111 @@ public class SpellCheckSourceTests
         Assert.Equal("pacakge", source.MoveToNextError()!.Word);
         Assert.Null(source.MoveToNextError());   // wrap stops before re-presenting "recieve"
     }
+
+    // ── #902: web and email addresses are not misspellings ──────────────────────
+    //
+    // The addresses are built from misspelled words, so whether or not the speller checks inside
+    // an address on a given machine, a pass that did not skip them would land on one.
+
+    private const string AddressText =
+        "See https://recieve.example/pacakge or mail tomorow@pacakge.example and teh rest";
+
+    private static RichTextBox MakeSpellCheckedRichTextBox(string text)
+    {
+        var box = new RichTextBox();
+        box.SpellCheck.IsEnabled = true;
+        box.Document.Blocks.Clear();
+        box.Document.Blocks.Add(new Paragraph(new Run(text)));
+        box.Measure(new System.Windows.Size(800, 500));
+        box.Arrange(new System.Windows.Rect(0, 0, 800, 500));
+        box.CaretPosition = box.Document.ContentStart;
+        return box;
+    }
+
+    [StaFact]
+    public void SpellScan_FindReportableErrorIndex_SkipsAddresses_BothDirections()
+    {
+        var box = MakeSpellCheckedTextBox(AddressText);
+        if (!EngineAvailable(box)) return;
+        int teh = AddressText.IndexOf("teh", System.StringComparison.Ordinal);
+
+        Assert.Equal(teh, SpellScan.FindReportableErrorIndex(box, 0, forward: true));
+        Assert.Equal(teh, SpellScan.FindReportableErrorIndex(box, AddressText.Length, forward: false));
+        // From just past "teh", forward wraps round the addresses and comes back to it.
+        Assert.Equal(teh, SpellScan.FindReportableErrorIndex(box, teh + 3, forward: true));
+    }
+
+    [StaFact]
+    public void SpellScan_FindReportableErrorIndex_OnlyAddresses_FindsNothing()
+    {
+        var text = "Plan at https://recieve.example/pacakge and tomorow@pacakge.example";
+        var box = MakeSpellCheckedTextBox(text);
+        if (!EngineAvailable(box)) return;
+
+        Assert.Equal(-1, SpellScan.FindReportableErrorIndex(box, 0, forward: true));
+        Assert.Equal(-1, SpellScan.FindReportableErrorIndex(box, text.Length, forward: false));
+        Assert.Equal(-1, SpellScan.FindReportableErrorIndex(box, 12, forward: true));   // inside the URL
+    }
+
+    [StaFact]
+    public void SpellScan_FindErrorRange_SkipsAddresses_BothDirections()
+    {
+        var box = MakeSpellCheckedRichTextBox(AddressText);
+        if (box.GetNextSpellingErrorPosition(box.Document.ContentStart, LogicalDirection.Forward) == null)
+            return;   // engine unavailable on this runner
+
+        Assert.Equal("teh", SpellScan.FindErrorRange(box, forward: true)?.Range.Text);
+        box.CaretPosition = box.Document.ContentEnd;
+        Assert.Equal("teh", SpellScan.FindErrorRange(box, forward: false)?.Range.Text);
+    }
+
+    [StaFact]
+    public void SpellScan_FindErrorRange_OnlyAddresses_FindsNothing()
+    {
+        var box = MakeSpellCheckedRichTextBox("Plan at https://recieve.example/pacakge and tomorow@pacakge.example");
+        if (box.GetNextSpellingErrorPosition(box.Document.ContentStart, LogicalDirection.Forward) == null)
+            return;   // the speller does not look inside addresses here; nothing to skip
+
+        Assert.Null(SpellScan.FindErrorRange(box, forward: true));
+        box.CaretPosition = box.Document.ContentEnd;
+        Assert.Null(SpellScan.FindErrorRange(box, forward: false));
+    }
+
+    [StaFact]
+    public void TextBoxSource_SkipsAddresses()
+    {
+        var box = MakeSpellCheckedTextBox(AddressText);
+        if (!EngineAvailable(box)) return;
+
+        var source = new TextBoxSpellSource(box, "body");
+
+        Assert.Equal("teh", source.MoveToNextError()!.Word);
+        Assert.Null(source.MoveToNextError());
+    }
+
+    [StaFact]
+    public void RichTextBoxSource_SkipsAddresses()
+    {
+        var box = MakeSpellCheckedRichTextBox(AddressText);
+        if (box.GetNextSpellingErrorPosition(box.Document.ContentStart, LogicalDirection.Forward) == null)
+            return;   // engine unavailable on this runner
+
+        var source = new RichTextBoxSpellSource(box, "body");
+
+        Assert.Equal("teh", source.MoveToNextError()!.Word);
+        Assert.Null(source.MoveToNextError());
+    }
+
+    [StaFact]
+    public void SpellScan_TokenAround_IsTheWholeAddress()
+    {
+        var box = MakeSpellCheckedRichTextBox("See https://recieve.example/pacakge today");
+        var start = box.Document.ContentStart.GetPositionAtOffset(
+            "See https://".Length + 2, LogicalDirection.Forward)!;   // inside the Run, at "recieve"
+        var range = new TextRange(start, start.GetPositionAtOffset("recieve".Length)!);
+        Assert.Equal("recieve", range.Text);
+
+        Assert.Equal("https://recieve.example/pacakge", SpellScan.TokenAround(range));
+        Assert.True(SpellScan.IsInAddress(range));
+    }
 }
