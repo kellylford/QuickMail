@@ -882,6 +882,12 @@
                                     MinWidth="90" Margin="0,0,8,4" Click="BrowseSoundSchemesButton_Click"
                                     Visibility="{Binding HasSoundGallery, Converter={StaticResource BoolToVisibilityConverter}}"/>
                         </WrapPanel>
+                        <!-- #971. No access key: every letter in it is already this tab's or the dialog's (see above). -->
+                        <CheckBox x:Name="CheckSoundSchemeUpdatesCheck"
+                                  Content="Check for updates to sound schemes from the gallery"
+                                  AutomationProperties.Name="Check for updates to sound schemes from the gallery"
+                                  IsChecked="{Binding CheckSoundSchemeUpdates, Mode=TwoWay}" Margin="0,4,0,8"
+                                  Visibility="{Binding HasSoundGallery, Converter={StaticResource BoolToVisibilityConverter}}"/>
                         <TextBlock Text="{Binding SoundSchemeMessage}" TextWrapping="Wrap" Margin="0,0,0,8"
                                    Visibility="{Binding HasSoundSchemeMessage, Converter={StaticResource BoolToVisibilityConverter}}"/>
 

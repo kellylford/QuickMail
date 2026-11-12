@@ -332,6 +332,30 @@ public class ConfigService : IConfigService
                     case "soundscheme":
                         if (!string.IsNullOrWhiteSpace(value)) soundSchemeId = value;
                         break;
+                    case "checksoundschemeupdates": config.CheckSoundSchemeUpdates = ParseBool(value); break;
+                    case "lastsoundschemeupdatecheck":
+                        // Round-trip ("o") UTC; anything else is as if never checked, so the next check just happens.
+                        if (DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+                                System.Globalization.DateTimeStyles.RoundtripKind, out var lastCheck)
+                            && lastCheck.Kind == DateTimeKind.Utc)
+                            config.LastSoundSchemeUpdateCheck = lastCheck;
+                        break;
+                    case "announcedsoundschemeupdates":
+                        // "<gallery id>:<sha256>, …"; a malformed pair is dropped, so at worst it is said again.
+                    {
+                        var announced = new Dictionary<string, string>(StringComparer.Ordinal);
+                        foreach (var pair in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                        {
+                            var colon = pair.IndexOf(':');
+                            if (colon <= 0) continue;
+                            var announcedId = pair[..colon];
+                            var announcedSha = pair[(colon + 1)..];
+                            if (SoundGalleryService.IsValidId(announcedId) && SoundGalleryService.IsValidSha256(announcedSha))
+                                announced[announcedId] = announcedSha;
+                        }
+                        config.AnnouncedSoundSchemeUpdates = announced;
+                        break;
+                    }
                     case "soundpack":   // 0.8.67 and 0.8.68; see ApplySoundSections
                         if (!string.IsNullOrWhiteSpace(value)) legacySoundPack = value;
                         break;
@@ -453,6 +477,21 @@ public class ConfigService : IConfigService
     }
 
     /// <summary>
+    /// Starts a key in a <c>[sounds.user-…]</c> section that records the gallery version's sound for an
+    /// event (#971), such as <c>GallerySound.NewMail</c>. A QuickMail before 0.8.72 keeps such a key as
+    /// an event it doesn't know, so it survives a downgrade; <see cref="GallerySoundSha256Key"/> is what
+    /// then tells a stale record from a current one.
+    /// </summary>
+    internal const string GallerySoundPrefix = "GallerySound.";
+
+    /// <summary>
+    /// The SHA-256 of the gallery file the recorded sounds are from (#971). They are used only while it
+    /// equals <c>GallerySha256</c>: an older QuickMail updating the scheme changes that and keeps the
+    /// recorded sounds as unknown events, so after a downgrade and back they would be another version's.
+    /// </summary>
+    internal const string GallerySoundSha256Key = "GallerySoundSha256";
+
+    /// <summary>
     /// Builds the sound schemes from what the file holds (#932). A file from 0.8.67 or 0.8.68 has
     /// <c>SoundPack</c> and one <c>[sounds]</c> list for every style: the pack becomes the scheme in
     /// use, and the list moves into that scheme, so nobody loses a choice on upgrade. Only the new
@@ -502,8 +541,20 @@ public class ConfigService : IConfigService
                 var origin = galleryId is not null && gallerySha is not null
                     && SoundGalleryService.IsValidId(galleryId) && SoundGalleryService.IsValidSha256(gallerySha)
                     ? new SoundGalleryOrigin(galleryId, gallerySha) : null;
+                // The gallery version's sounds (#971), "GallerySound.<event> = <sound>": never events,
+                // and kept only with an origin, and only if they are that origin's file's sounds. Without
+                // both, the scheme is treated as never tracked, which is the safe way to update it.
+                entries.Remove(GallerySoundSha256Key, out var baselineSha);
+                var baselineIsCurrent = origin is not null && string.Equals(baselineSha, origin.Sha256, StringComparison.Ordinal);
+                var baseline = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var key in entries.Keys.Where(k => k.StartsWith(GallerySoundPrefix, StringComparison.OrdinalIgnoreCase)).ToList())
+                {
+                    entries.Remove(key, out var sound);
+                    if (key.Length > GallerySoundPrefix.Length) baseline[key[GallerySoundPrefix.Length..]] = sound!;
+                }
                 schemes[id] = new SoundScheme(id, string.IsNullOrWhiteSpace(name) ? id : name, isBuiltIn: false, events: entries,
-                    author: author, license: license, description: description, galleryOrigin: origin);
+                    author: author, license: license, description: description, galleryOrigin: origin,
+                    galleryBaseline: baselineIsCurrent && baseline.Count > 0 ? baseline : null);
             }
             else
             {
@@ -783,6 +834,26 @@ public class ConfigService : IConfigService
         sb.AppendLine("# your own, which has its own [sounds.user-...] section below.");
         sb.AppendLine();
 
+        sb.AppendLine($"CheckSoundSchemeUpdates = {(config.CheckSoundSchemeUpdates ? "on" : "off")}");
+        sb.AppendLine("# At most once a day, check the sound scheme gallery for updates to schemes you");
+        sb.AppendLine("# added from it, and say when one is waiting. Only done when you have one.");
+        sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        if (config.LastSoundSchemeUpdateCheck is { } lastSoundCheck)
+        {
+            sb.AppendLine($"LastSoundSchemeUpdateCheck = {lastSoundCheck.ToUniversalTime().ToString("o", System.Globalization.CultureInfo.InvariantCulture)}");
+            sb.AppendLine("# When QuickMail last checked the gallery for sound scheme updates (UTC).");
+            sb.AppendLine();
+        }
+
+        if (config.AnnouncedSoundSchemeUpdates.Count > 0)
+        {
+            sb.AppendLine($"AnnouncedSoundSchemeUpdates = {string.Join(", ", config.AnnouncedSoundSchemeUpdates.Select(a => $"{a.Key}:{a.Value}"))}");
+            sb.AppendLine("# The gallery updates QuickMail has already told you about, so each is said once.");
+            sb.AppendLine();
+        }
+
         sb.AppendLine($"CloseToTray = {(config.CloseToTray ? "on" : "off")}");
         sb.AppendLine("# When you close the main window, keep QuickMail running in the notification");
         sb.AppendLine("# area (system tray) instead of exiting, so new-mail notifications keep arriving.");
@@ -1057,6 +1128,13 @@ public class ConfigService : IConfigService
                     sb.AppendLine("# Where it came from in the sound scheme gallery, so the gallery can offer updates.");
                     sb.AppendLine($"GalleryId = {origin.Id}");
                     sb.AppendLine($"GallerySha256 = {origin.Sha256}");
+                    if (scheme.GalleryBaseline is { Count: > 0 } baseline)
+                    {
+                        sb.AppendLine("# The gallery version's sounds, so an update keeps the events you change.");
+                        sb.AppendLine($"{GallerySoundSha256Key} = {origin.Sha256}");
+                        foreach (var (eventKey, sound) in baseline)
+                            sb.AppendLine($"{GallerySoundPrefix}{eventKey} = {sound}");
+                    }
                 }
             }
             sb.AppendLine();

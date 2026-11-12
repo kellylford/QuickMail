@@ -201,6 +201,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _graphCalendarSyncTimer?.Dispose();
         _graphCalendarSyncTimer = null;
         DrainCts(ref _graphCalSyncCts);
+        DrainCts(ref _soundUpdateCheckCts);
         _reminderTimer?.Dispose();
         _reminderTimer = null;
         GC.SuppressFinalize(this);
@@ -1908,9 +1909,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ISoundService? soundService = null,
         IClipboardService? clipboard = null,
         ClipboardStaging? clipboardStaging = null,
-        OpenedMessageService? openedMessages = null)
+        OpenedMessageService? openedMessages = null,
+        ISoundGalleryService? soundGallery = null)
     {
         _openedMessages = openedMessages;
+        _soundGallery = soundGallery;
         _sounds = soundService;
         _clipboard = clipboard;
         _clipboardStaging = clipboardStaging;

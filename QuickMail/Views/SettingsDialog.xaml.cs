@@ -22,6 +22,7 @@ public partial class SettingsDialog : Window
         vm.DiagnosticsAnnouncementRequested += OnDiagnosticsAnnouncement;
         vm.SoundResultAnnounced += OnSoundResult;
         vm.ConfirmRequested ??= Confirm;
+        vm.UpdateChoiceRequested ??= AskAboutUpdate;
         Closing += (_, e) => _closing = !e.Cancel;
         Closed += (_, _) =>
         {
@@ -50,6 +51,22 @@ public partial class SettingsDialog : Window
     // A message box has no editable text, so a modal one is safe here (CLAUDE.md, Modal Dialog Rules).
     private bool Confirm(string question, string title) =>
         MessageBox.Show(this, question, title, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+
+    // A gallery update (#971). With the gallery version's sounds recorded, a message box, so its text is
+    // read as it opens, with OK or Cancel (YesNo alone would ignore Escape). Without, a small dialog whose
+    // buttons say what they do: Add only what's missing (focused), Replace everything, Cancel. Neither
+    // has editable text, so showing it modally over Settings is safe.
+    private SoundSchemeUpdateChoice AskAboutUpdate(SoundSchemeUpdateQuestion question)
+    {
+        if (question.OffersReplaceEverything)
+        {
+            var dialog = new SoundSchemeUpdateDialog(question) { Owner = this };
+            dialog.ShowDialog();
+            return dialog.Choice;
+        }
+        return MessageBox.Show(this, question.Text, question.Title, MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.OK)
+            == MessageBoxResult.OK ? SoundSchemeUpdateChoice.Apply : SoundSchemeUpdateChoice.Cancel;
+    }
 
     private void ChooseSoundFileButton_Click(object sender, RoutedEventArgs e)
     {

@@ -4,6 +4,7 @@
     "quickmail": {
       "name": "QuickMail",
       "extension": ".qmsounds",
+      "soundsFolder": "",
       "events": [
         { "key": "MessageSent", "label": "Message sent", "sound": "sent" },
         { "key": "MessageQueued", "label": "Message queued", "sound": "queued" },
@@ -25,22 +26,31 @@
     "thechatplace": {
       "name": "The Chat Place",
       "extension": ".tcpsounds",
+      "soundsFolder": "thechatplace",
       "events": [
-        { "key": "ToolRan", "label": "Tool ran", "sound": "tap" },
-        { "key": "FileChanged", "label": "File changed", "sound": "changed" },
-        { "key": "StillWorking", "label": "Still working", "sound": "pulse" },
-        { "key": "MessageSent", "label": "Message sent", "sound": "sent" },
-        { "key": "MessageQueued", "label": "Message queued", "sound": "queued" },
-        { "key": "MessageNotSent", "label": "Message not sent", "sound": "error" },
-        { "key": "ReplyFinished", "label": "Reply finished", "sound": "arrived" },
-        { "key": "OtherChatFinished", "label": "Another chat finished", "sound": "elsewhere" },
-        { "key": "NeedsYou", "label": "Needs you", "sound": "attention" },
-        { "key": "TurnFailed", "label": "Turn failed", "sound": "failed" },
-        { "key": "TurnStopped", "label": "You stopped a turn", "sound": "stopped" },
-        { "key": "ServiceTrouble", "label": "Service trouble", "sound": "disconnected" },
-        { "key": "Compacted", "label": "Conversation compacted", "sound": "filed" },
-        { "key": "UsageWarning", "label": "Usage or context warning", "sound": "reminder" },
-        { "key": "PeerMessage", "label": "Message from another session", "sound": "matched" }
+        { "key": "ToolRan", "label": "Tool ran", "sound": "tool" },
+        { "key": "FileChanged", "label": "File changed", "sound": "write" },
+        { "key": "StillWorking", "label": "Still working", "sound": "working" },
+        { "key": "MessageSent", "label": "Message sent", "sound": "send" },
+        { "key": "MessageQueued", "label": "Message queued", "sound": "queue" },
+        { "key": "MessageSteered", "label": "Message steered into the turn", "sound": "steer" },
+        { "key": "SteerTaken", "label": "Steered message taken", "sound": "steertaken" },
+        { "key": "QueuedMessageSent", "label": "Queued message sent", "sound": "queuesent" },
+        { "key": "QueuedMessageDeleted", "label": "Queued message removed", "sound": "queuedelete" },
+        { "key": "TurnStopped", "label": "You stopped a turn", "sound": "stop" },
+        { "key": "ReplyFinished", "label": "Reply finished", "sound": "reply" },
+        { "key": "OtherChatFinished", "label": "Another chat finished", "sound": "otherreply" },
+        { "key": "ReplyHandedOn", "label": "Agent reply handed on", "sound": "handon" },
+        { "key": "AsideAnswered", "label": "Ask Aside answered", "sound": "aside" },
+        { "key": "NeedsYou", "label": "Needs you", "sound": "needsyou" },
+        { "key": "AnswerSent", "label": "Answer sent", "sound": "answer" },
+        { "key": "TurnFailed", "label": "Turn failed", "sound": "turnfailed" },
+        { "key": "MessageNotSent", "label": "Message not sent", "sound": "notsent" },
+        { "key": "AsideNotAnswered", "label": "Ask Aside not answered", "sound": "asidefailed" },
+        { "key": "ServiceTrouble", "label": "Service trouble", "sound": "trouble" },
+        { "key": "UsageWarning", "label": "Usage or context warning", "sound": "warning" },
+        { "key": "Compacted", "label": "Conversation compacted", "sound": "compacted" },
+        { "key": "PeerMessage", "label": "Message from another session", "sound": "peer" }
       ]
     }
   }

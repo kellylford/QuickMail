@@ -751,7 +751,7 @@ public class SoundSchemeFolderSettingsTests
                 galleryOrigin: new SoundGalleryOrigin("rain", new string('1', 64)));
             var sounds = new RecordingSoundService();
             var vm = MakeSettings(config, sounds);
-            vm.ConfirmRequested = (_, _) => true;
+            vm.UpdateChoiceRequested = _ => SoundSchemeUpdateChoice.Apply;
 
             Assert.True(vm.ImportSchemeFrom(file, new SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('2', 64), null)));
             Assert.Equal("user-rain", vm.SelectedSoundScheme!.Id);   // the same scheme, so the same folder

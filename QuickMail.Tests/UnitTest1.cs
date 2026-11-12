@@ -244,6 +244,56 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void SoundSchemeUpdateDialog_XamlParsesAndItsButtonsSayWhatTheyDo()
+    {
+        EnsureApplication();
+        var question = new QuickMail.Services.SoundSchemeUpdateQuestion("Update Sound Scheme", "Update Rain with the gallery's newer version? …", OffersReplaceEverything: true);
+        var window = new SoundSchemeUpdateDialog(question);
+        Assert.Equal("Update Sound Scheme", window.Title);
+        var add = window.FindName("AddMissingButton") as System.Windows.Controls.Button;
+        var replace = window.FindName("ReplaceButton") as System.Windows.Controls.Button;
+        var cancel = window.FindName("CancelButton") as System.Windows.Controls.Button;
+        Assert.NotNull(add);
+        Assert.NotNull(replace);
+        Assert.NotNull(cancel);
+        // Short labels; the explanation is the help text, read with the focused first button.
+        Assert.Equal("Add only what's missing", System.Windows.Automation.AutomationProperties.GetName(add));
+        Assert.Equal("Replace everything", System.Windows.Automation.AutomationProperties.GetName(replace));
+        Assert.Equal("Cancel", System.Windows.Automation.AutomationProperties.GetName(cancel));
+        Assert.Equal(question.Text, System.Windows.Automation.AutomationProperties.GetHelpText(add));
+        // Only there, so it isn't read twice; the other buttons and the window carry none.
+        Assert.Equal(string.Empty, System.Windows.Automation.AutomationProperties.GetHelpText(window));
+        Assert.Equal(string.Empty, System.Windows.Automation.AutomationProperties.GetHelpText(replace));
+        Assert.Equal(string.Empty, System.Windows.Automation.AutomationProperties.GetHelpText(cancel));
+        // Sized to its text, and its buttons wrap rather than clip at large text sizes.
+        Assert.Equal(System.Windows.SizeToContent.WidthAndHeight, window.SizeToContent);
+        Assert.IsType<System.Windows.Controls.WrapPanel>(System.Windows.LogicalTreeHelper.GetParent(add));
+        Assert.Equal(question.Text, (window.FindName("ExplanationText") as System.Windows.Controls.TextBlock)?.Text);
+        Assert.True(add.IsDefault);
+        Assert.True(cancel.IsCancel);   // Escape cancels
+        // Nothing chosen is Cancel.
+        Assert.Equal(QuickMail.Services.SoundSchemeUpdateChoice.Cancel, window.Choice);
+        window.Close();
+    }
+
+    [StaFact]
+    public void SoundSchemeUpdateDialog_EachButtonGivesItsChoice()
+    {
+        EnsureApplication();
+        var question = new QuickMail.Services.SoundSchemeUpdateQuestion("Update Sound Scheme", "Text", OffersReplaceEverything: true);
+
+        var add = new SoundSchemeUpdateDialog(question);
+        (add.FindName("AddMissingButton") as System.Windows.Controls.Button)!
+            .RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Assert.Equal(QuickMail.Services.SoundSchemeUpdateChoice.Apply, add.Choice);
+
+        var replace = new SoundSchemeUpdateDialog(question);
+        (replace.FindName("ReplaceButton") as System.Windows.Controls.Button)!
+            .RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Assert.Equal(QuickMail.Services.SoundSchemeUpdateChoice.ReplaceEverything, replace.Choice);
+    }
+
+    [StaFact]
     public void SoundGalleryWindow_XamlParsesWithoutException()
     {
         EnsureApplication();

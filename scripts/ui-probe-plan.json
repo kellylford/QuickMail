@@ -305,6 +305,21 @@
       "surface": "row-fields",
       "theme": "parchment",
       "scale": 150
+    },
+    {
+      "surface": "sound-scheme-update",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "sound-scheme-update",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "sound-scheme-update",
+      "theme": "parchment",
+      "scale": 200
     }
   ]
 }

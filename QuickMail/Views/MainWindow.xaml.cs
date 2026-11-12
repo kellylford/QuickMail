@@ -1916,7 +1916,11 @@ public partial class MainWindow : Window
         var uiProbe = (Application.Current as App)?.UiProbe;
 
         if (uiProbe is null)
+        {
             _ = _vm.CheckForUpdateInBackgroundAsync();
+            // #971: waits for startup to settle first, then at most once a day; never blocks anything.
+            _ = _vm.WatchForSoundSchemeUpdatesAsync();
+        }
 
         var firstAccount = _vm.Accounts.FirstOrDefault();
         if (firstAccount == null)

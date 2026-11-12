@@ -108,8 +108,17 @@ public partial class SettingsViewModel
     // name, the saved scheme is back to missing it, as it was before.)
     private readonly Dictionary<string, HashSet<string>> _filesAddedByUpdate = new(StringComparer.OrdinalIgnoreCase);
 
+    // Schemes updated from the gallery keeping the person's changes (#971), and the files in each
+    // scheme's folder that the update may have left unused: the old version's, and the ones the
+    // update brought. On Save, those the saved scheme doesn't name are deleted; a file of the
+    // person's own is never among them, used or not.
+    private readonly Dictionary<string, HashSet<string>> _galleryFilesToTidy = new(StringComparer.OrdinalIgnoreCase);
+
     [ObservableProperty] private bool _playEventSounds;
     [ObservableProperty] private bool _muteSounds;
+
+    /// <summary>Settings → Sounds, "Check for updates to sound schemes from the gallery" (#971).</summary>
+    [ObservableProperty] private bool _checkSoundSchemeUpdates;
     [ObservableProperty] private SoundVolumeOption? _selectedSoundVolume;
 
     [ObservableProperty]
@@ -180,6 +189,12 @@ public partial class SettingsViewModel
     /// <summary>Set by the View: asks a yes-or-no question and returns true for Yes.</summary>
     public Func<string, string, bool>? ConfirmRequested { get; set; }
 
+    /// <summary>
+    /// Set by the View: asks whether to apply a gallery update, saying what it will change, and
+    /// returns the choice (#971). Null, or no answer, leaves the copy as it is.
+    /// </summary>
+    public Func<SoundSchemeUpdateQuestion, SoundSchemeUpdateChoice>? UpdateChoiceRequested { get; set; }
+
     /// <summary>Set by the owner: the sound scheme gallery (#937), or null where there is none, which hides Browse schemes.</summary>
     public ISoundGalleryService? SoundGallery
     {
@@ -203,6 +218,7 @@ public partial class SettingsViewModel
         _sounds = sounds;
         PlayEventSounds = cfg.PlayEventSounds;
         MuteSounds = cfg.MuteSounds;
+        CheckSoundSchemeUpdates = cfg.CheckSoundSchemeUpdates;
 
         for (var percent = 10; percent <= 100; percent += 10)
             SoundVolumeOptions.Add(new SoundVolumeOption(percent));
@@ -322,6 +338,7 @@ public partial class SettingsViewModel
     {
         cfg.PlayEventSounds = PlayEventSounds;
         cfg.MuteSounds = MuteSounds;
+        cfg.CheckSoundSchemeUpdates = CheckSoundSchemeUpdates;
         if (SelectedSoundVolume is not null) cfg.SoundVolume = SelectedSoundVolume.Percent;
         // Only if changed: a scheme this build doesn't have shows as Glass, and saving on another tab
         // shouldn't erase it, any more than an unknown section below.
@@ -361,7 +378,7 @@ public partial class SettingsViewModel
             }
             if (scheme.IsBuiltIn && events.Count == 0) continue;
             schemes[scheme.Id] = new SoundScheme(scheme.Id, scheme.Name, scheme.IsBuiltIn, scheme.Pack, events,
-                scheme.Author, scheme.License, scheme.Description, scheme.GalleryOrigin);
+                scheme.Author, scheme.License, scheme.Description, scheme.GalleryOrigin, scheme.GalleryBaseline);
         }
         cfg.SoundSchemes = schemes;
     }
@@ -537,8 +554,9 @@ public partial class SettingsViewModel
     /// <summary>
     /// Adds the scheme in a .qmsounds file as a scheme of the person's own, and shows it: from a file
     /// they chose, or one the gallery fetched and checked (#937). Says what happened either way.
-    /// From the gallery, it remembers where the scheme came from, and if that scheme is already here,
-    /// asks, then replaces the copy's sounds with the gallery's newer version, keeping its name.
+    /// From the gallery, it remembers where the scheme came from and the gallery version's sounds, and
+    /// if that scheme is already here, updates the copy keeping the person's changes, after saying what
+    /// will change (#971).
     /// </summary>
     /// <param name="fromGallery">The gallery's listing for the file, or null for a file the person chose.</param>
     /// <returns>True if a scheme was added or updated, so the View can put focus in its event list.</returns>
@@ -547,20 +565,13 @@ public partial class SettingsViewModel
         if (_sounds is null) return false;
         var replacing = fromGallery is null ? null
             : SoundSchemes.FirstOrDefault(s => !s.IsBuiltIn && s.GalleryOrigin?.Id == fromGallery.Id);
-        if (replacing is not null && ConfirmRequested?.Invoke(
-                $"Replace your copy of {replacing.Name} with the gallery's newer version? Any changes you made to it are lost, and its sound files the new version doesn't use are deleted when you save.",
-                "Update Sound Scheme") != true)
-            return false;
+        if (replacing is not null) return UpdateFromGallery(replacing, path, fromGallery!);
 
         // The scheme's id is chosen first, so its sounds go straight into its own folder (#948).
-        var schemeId = replacing?.Id ?? SoundCatalog.NewUserSchemeId();
-        // An update goes into a folder that's already in use, so what it adds is noted, to be taken
-        // out again if it fails or Settings is cancelled (#955). What was there is never touched.
-        var before = replacing is null ? null
-            : new HashSet<string>(_sounds.CustomSoundFiles(schemeId), StringComparer.OrdinalIgnoreCase);
+        var schemeId = SoundCatalog.NewUserSchemeId();
         // A new scheme's folder is written down before anything lands in it, so it goes even if
         // QuickMail stops before Save or Cancel (#955).
-        if (replacing is null) _sounds.NoteUnsavedSchemeFolders([schemeId]);
+        _sounds.NoteUnsavedSchemeFolders([schemeId]);
         SoundSchemeImport imported;
         try
         {
@@ -569,44 +580,14 @@ public partial class SettingsViewModel
         catch (SoundSchemeFileException ex)
         {
             LogService.Log("Importing a sound scheme failed", ex);
-            // Any sounds that landed before it failed belong to a scheme that was never made, or to
-            // an update that didn't happen.
-            if (replacing is null)
-            {
-                if (_sounds.TryDeleteSchemeSounds(schemeId)) _sounds.ForgetUnsavedSchemeFolders([schemeId]);
-            }
-            else
-            {
-                RemoveFiles(schemeId, AddedSince(schemeId, before!));
-            }
+            // Any sounds that landed before it failed belong to a scheme that was never made.
+            if (_sounds.TryDeleteSchemeSounds(schemeId)) _sounds.ForgetUnsavedSchemeFolders([schemeId]);
             ReportScheme(ex.Message);
             return false;
         }
-        if (before is not null)
-        {
-            NoteFilesAddedByUpdate(schemeId, AddedSince(schemeId, before));
-            // The old version's files it no longer names go on Save, as for a reset (#955).
-            _schemesReplacedHere.Add(schemeId);
-        }
 
         var origin = fromGallery is null ? null : new SoundGalleryOrigin(fromGallery.Id, fromGallery.Sha256);
-        var values = SoundCatalog.Events.ToDictionary(
-            i => i.ConfigKey,
-            i => imported.Events.TryGetValue(i.ConfigKey, out var v) ? v : SoundRef.None.ToStored(),
-            StringComparer.OrdinalIgnoreCase);
-
-        if (replacing is not null)
-        {
-            // Same id and name, so it stays where it is in the list and in config.ini; everything else is the gallery's.
-            var updated = new SoundScheme(replacing.Id, replacing.Name, isBuiltIn: false,
-                author: imported.Author, license: imported.License, description: imported.Description, galleryOrigin: origin);
-            _schemeValues[updated.Id] = values;
-            if (_shownSchemeId == updated.Id) _shownSchemeId = null;   // so the rows are filled again from the new values
-            SoundSchemes[SoundSchemes.IndexOf(replacing)] = updated;
-            SelectedSoundScheme = updated;
-            ReportScheme(ImportMessage($"Updated {updated.Name}", imported));
-            return true;
-        }
+        var values = AllEvents(imported);
 
         // Numbered rather than refused: the name is the file's, not one the person typed.
         var name = imported.Name;
@@ -619,13 +600,110 @@ public partial class SettingsViewModel
             name = stem + suffix;
         }
 
-        var scheme = new SoundScheme(schemeId, name, isBuiltIn: false,
-            author: imported.Author, license: imported.License, description: imported.Description, galleryOrigin: origin);
+        // From the gallery, the version's own sounds are kept with it, so a later update can tell the
+        // events the person changes from the ones they leave alone (#971).
+        var scheme = new SoundScheme(schemeId, name, isBuiltIn: false, events: values,
+            author: imported.Author, license: imported.License, description: imported.Description, galleryOrigin: origin,
+            galleryBaseline: origin is null ? null : values);
         _schemesMadeHere.Add(scheme.Id);
         _schemeValues[scheme.Id] = values;
         InsertUserScheme(scheme);
         SelectedSoundScheme = scheme;
         ReportScheme(ImportMessage($"Added the sound scheme {name}", imported));
+        return true;
+    }
+
+    /// <summary>Every event's stored sound in an imported scheme; one it doesn't list has none.</summary>
+    private static Dictionary<string, string> AllEvents(SoundSchemeImport imported) =>
+        SoundCatalog.Events.ToDictionary(
+            i => i.ConfigKey,
+            i => imported.Events.TryGetValue(i.ConfigKey, out var v) ? v : SoundRef.None.ToStored(),
+            StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Updates the copy of a gallery scheme already here to the gallery's newer version (#971). The
+    /// new version's sounds go into the scheme's folder first, so what will change can be worked out
+    /// exactly, under the names its files land as; then the person is told what will change and
+    /// chooses. Nothing changes in config.ini until Save, and Cancel takes out the files it brought.
+    /// With the gallery version's sounds recorded, an event they left alone takes the new version's
+    /// sound and one they changed keeps theirs; without, only missing events are added, unless they
+    /// choose to replace everything.
+    /// </summary>
+    private bool UpdateFromGallery(SoundScheme replacing, string path, SoundGalleryEntry fromGallery)
+    {
+        var schemeId = replacing.Id;
+        // The update goes into a folder that's already in use, so what it adds is noted, to be taken
+        // out again if it fails, is turned down, or Settings is cancelled (#955). What was there is
+        // never touched.
+        var before = new HashSet<string>(_sounds!.CustomSoundFiles(schemeId), StringComparer.OrdinalIgnoreCase);
+        SoundSchemeImport imported;
+        try
+        {
+            imported = SoundSchemeFile.Import(path, _sounds, schemeId, fromGallery: true);
+        }
+        catch (SoundSchemeFileException ex)
+        {
+            LogService.Log("Importing a sound scheme update failed", ex);
+            RemoveFiles(schemeId, AddedSince(schemeId, before));
+            ReportScheme(ex.Message);
+            return false;
+        }
+
+        var added = AddedSince(schemeId, before);
+        var incoming = AllEvents(imported);
+        var baseline = replacing.GalleryBaseline;
+        var copy = SoundSchemeUpdate.CopyEvents(SchemeValues(replacing), replacing.Events.Keys, baseline);
+        var plan = SoundSchemeUpdate.Plan(baseline, copy, incoming,
+            baseline is null ? SoundSchemeUpdateMode.AddMissingOnly : SoundSchemeUpdateMode.KeepChanges);
+        var replaceAll = SoundSchemeUpdate.Plan(baseline, copy, incoming, SoundSchemeUpdateMode.ReplaceEverything);
+
+        // The files this way of updating may leave unused: the old version's and the new ones, never
+        // a file of the person's own (#971). Replacing everything leaves any unused file, as a reset does.
+        var inFolder = _sounds.CustomSoundFiles(schemeId);
+        var tidyCandidates = new HashSet<string>(added, StringComparer.OrdinalIgnoreCase);
+        if (baseline is not null) tidyCandidates.UnionWith(SoundSchemeUpdate.CustomFiles(baseline.Values));
+        var question = SoundSchemeUpdate.Question(replacing.Name, plan,
+            SoundSchemeUpdate.FilesToDelete(tidyCandidates, inFolder, plan.Events).Count,
+            SoundSchemeUpdate.FilesToDelete(inFolder, inFolder, replaceAll.Events).Count);
+
+        var choice = UpdateChoiceRequested?.Invoke(question) ?? SoundSchemeUpdateChoice.Cancel;
+        if (choice == SoundSchemeUpdateChoice.ReplaceEverything && !question.OffersReplaceEverything)
+            choice = SoundSchemeUpdateChoice.Cancel;   // not something that was offered
+        if (choice == SoundSchemeUpdateChoice.Cancel)
+        {
+            RemoveFiles(schemeId, added);
+            return false;
+        }
+
+        NoteFilesAddedByUpdate(schemeId, added);
+        if (choice == SoundSchemeUpdateChoice.ReplaceEverything)
+        {
+            plan = replaceAll;
+            // The old version's files it no longer names go on Save, as for a reset (#955).
+            _schemesReplacedHere.Add(schemeId);
+        }
+        else
+        {
+            if (!_galleryFilesToTidy.TryGetValue(schemeId, out var noted))
+                _galleryFilesToTidy[schemeId] = noted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            noted.UnionWith(tidyCandidates);
+        }
+
+        // Same id and name, so it stays where it is in the list and in config.ini. Its credit and where
+        // it came from are the new version's. So are the sounds recorded for the next update, except after
+        // adding only what was missing: the copy's other sounds may be the person's or the old version's,
+        // so recording the new version would pass them off as unchanged ones, and the next update would
+        // replace them. Untracked, the next update offers the same choice again.
+        var events = new Dictionary<string, string>(plan.Events, StringComparer.OrdinalIgnoreCase);
+        var updated = new SoundScheme(replacing.Id, replacing.Name, isBuiltIn: false, events: events,
+            author: imported.Author, license: imported.License, description: imported.Description,
+            galleryOrigin: new SoundGalleryOrigin(fromGallery.Id, fromGallery.Sha256),
+            galleryBaseline: plan.Mode == SoundSchemeUpdateMode.AddMissingOnly ? null : incoming);
+        _schemeValues[updated.Id] = events;
+        if (_shownSchemeId == updated.Id) _shownSchemeId = null;   // so the rows are filled again from the new values
+        SoundSchemes[SoundSchemes.IndexOf(replacing)] = updated;
+        SelectedSoundScheme = updated;
+        ReportScheme(ImportMessage($"Updated {updated.Name}", imported));
         return true;
     }
 
@@ -784,6 +862,14 @@ public partial class SettingsViewModel
             else if (SoundCatalog.IsBuiltInSchemeId(id)) used = [];   // as it ships: no files of its own
             else continue;   // deleted since, so its whole folder has gone (or stays, if that failed)
             RemoveFiles(id, _sounds.CustomSoundFiles(id).Where(file => !used.Contains(file)).ToList());
+        }
+
+        // A gallery update that kept the person's changes (#971): of the old version's files and the
+        // ones it brought, those the saved scheme doesn't name. Files of their own stay, used or not.
+        foreach (var (id, candidates) in _galleryFilesToTidy)
+        {
+            if (_schemesReplacedHere.Contains(id) || !saved.SoundSchemes.TryGetValue(id, out var scheme)) continue;
+            RemoveFiles(id, SoundSchemeUpdate.FilesToDelete(candidates, _sounds.CustomSoundFiles(id), scheme.Events));
         }
 
         // Every scheme made here is now saved or deleted, so it isn't waiting any more. Then

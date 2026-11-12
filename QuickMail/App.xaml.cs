@@ -719,7 +719,8 @@ public partial class App : Application
                 soundService: _soundService,
                 clipboard: probeMode ? null : ClipboardService.Default,
                 clipboardStaging: _clipboardStaging,
-                openedMessages: probeMode ? null : _openedMessages);
+                openedMessages: probeMode ? null : _openedMessages,
+                soundGallery: probeMode ? null : SoundGallery);   // #971: the daily check for scheme updates
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
             // #31: a credential-less shared mailbox borrows its parent account's token. The resolver runs
             // on background sweep threads, so it goes through ResolveAccountById — a thread-safe snapshot
