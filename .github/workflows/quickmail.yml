@@ -654,3 +654,25 @@ jobs:
       contents: read
       pages: write
       id-token: write
+
+  # The winget manifest generator and its template, checked on every pull request and push
+  # so a change that would break the submission fails here, not after a release is out.
+  winget-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test scripts/winget-manifest.ps1 against the template
+        shell: pwsh
+        run: ./scripts/winget-manifest.tests.ps1
+
+  # Submit the release to the winget catalog (KellyLford.QuickMail). Like publish-guide, a
+  # direct call because a GITHUB_TOKEN-made release starts no workflow. It runs after the
+  # release is published (the Release step is in build), so the MSIs it hashes are the ones
+  # people download. A failure here leaves the release itself untouched; rerun the job, or
+  # run "Submit to winget" by hand with the version.
+  winget:
+    needs: [build, winget-manifest]
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/winget-submit.yml
+    permissions:
+      contents: read

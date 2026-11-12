@@ -161,6 +161,7 @@ environment**, and the environment's protection decides which runs get in:
 | `relay` | `main` only | `CLOUDFLARE_API_TOKEN`, `RELAY_GITHUB_APP_ID`, `RELAY_GITHUB_INSTALLATION_ID`, `RELAY_GITHUB_PRIVATE_KEY`, `BUG_REPORT_RELAY_KEY` | `deploy-relay.yml` `deploy` |
 | `live-smoke` | `main` only | `LIVE_IMAP_HOST`, `LIVE_IMAP_PORT`, `LIVE_IMAP_SSL`, `LIVE_SMTP_HOST`, `LIVE_SMTP_PORT`, `LIVE_SMTP_SSL`, `LIVE_USER`, `LIVE_PASSWORD` | `live-smoke.yml` |
 | `github-pages` | `main` and `v*` tags | none | `publish-user-guide.yml` |
+| `winget` | `main` and `v*` tags | `WINGET_TOKEN` (Kelly's classic PAT, `public_repo`: write to all his public repos, and his admin role bypasses the rulesets) | `winget-submit.yml`, called by `quickmail.yml`'s `winget` job after each release, or by hand (real submissions Kelly only) |
 
 These protections lean on two repository rules as well, and neither may be loosened: the
 **"Tags: admins only"** tag ruleset (otherwise a collaborator could push a `v*` tag and the

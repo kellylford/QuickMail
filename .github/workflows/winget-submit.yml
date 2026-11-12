@@ -1,0 +1,150 @@
+name: Submit to winget
+
+# Opens the winget-pkgs pull request that adds a QuickMail release to the Windows Package
+# Manager catalog (KellyLford.QuickMail, issue #536).
+#
+# The manifests come from scripts/winget-manifest.ps1, which fills the vetted template in
+# installer/winget/ and refuses to write one that breaks its rules. Deliberately not
+# wingetcreate, Komac or winget-releaser: they analyse the MSI and add an UpgradeCode and a
+# ProductCode, which make winget offer an upgrade that QuickMail's self-update applied long
+# ago. scripts/winget-submit.ps1 then opens the pull request through the GitHub API.
+#
+# A moderator at microsoft/winget-pkgs still reviews every pull request, so nothing reaches
+# the catalog from here alone.
+#
+# Secret: WINGET_TOKEN, a classic personal access token of Kelly's with the public_repo
+# scope, in the `winget` environment (deployment branches: main and v* tags only). The pull
+# request comes from his fork of winget-pkgs, so it is his, under the CLA he signed. A
+# fine-grained token cannot open a pull request on a repository its owner does not belong to.
+# public_repo is write access to every public repository he owns, QuickMail included, and
+# his admin role bypasses the main and tag rulesets, so treat this token like the others in
+# CLAUDE.md's "Secrets, environments and releasing".
+
+on:
+  # From quickmail.yml once a v* tag's release is published. GitHub starts no workflow
+  # from a release made with GITHUB_TOKEN, so a `release` trigger would never fire.
+  workflow_call:
+  # By hand: to submit a release whose automatic submission failed, or with dry_run on, to
+  # see the manifests a release would get without submitting anything. Only Kelly can run
+  # it for real: the pull request is opened in his name.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release to submit, e.g. 0.8.72 (must already be released)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Only generate and show the manifests; submit nothing'
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    environment: winget
+    permissions:
+      contents: read   # checkout, and download the release's MSIs
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PACKAGE_DIR: manifests/k/KellyLford/QuickMail
+    steps:
+      - uses: actions/checkout@v7
+
+      # Decided by the input, not the event: in a called workflow github.event_name is the
+      # caller's, and quickmail.yml can itself be dispatched on a tag, where there is no
+      # `version` input and the tag is the version.
+      - name: Work out the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          dry=false
+          if [ -n "$INPUT_VERSION" ]; then
+            v="$INPUT_VERSION"
+            [ "$INPUT_DRY_RUN" = "true" ] && dry=true
+            if [ "$dry" = "false" ] && [ "$ACTOR" != "$OWNER" ]; then
+              echo "::error::Only $OWNER can submit by hand: the pull request is opened in his name. Run it with dry_run on to see the manifests."
+              exit 1
+            fi
+          elif [ "$REF_TYPE" = "tag" ]; then
+            v="$REF_NAME"
+          else
+            echo "::error::No version: give one, or run on a v* tag."
+            exit 1
+          fi
+          v="${v#v}"
+          if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$v' is not a release version (X.Y.Z)."
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry" >> "$GITHUB_OUTPUT"
+
+      # A version already in the catalog, or already waiting in a pull request, is done: a
+      # second pull request would only be closed as a duplicate. Only a 404 counts as "not
+      # there"; a rate limit or an outage fails the step instead of submitting twice.
+      - name: Check winget-pkgs for this version
+        id: existing
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          if err=$(gh api "repos/microsoft/winget-pkgs/contents/$PACKAGE_DIR/$V" --silent 2>&1); then
+            echo "::notice::KellyLford.QuickMail $V is already in winget-pkgs; nothing to submit."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          elif [[ "$err" != *"HTTP 404"* ]]; then
+            echo "::error::Could not check winget-pkgs: $err"
+            exit 1
+          fi
+          # Search is fuzzy, so the title's last word must be exactly this version.
+          open=$(gh pr list -R microsoft/winget-pkgs --state open --search "KellyLford.QuickMail $V in:title" \
+              --json url,title --jq '.[] | "\(.title)\t\(.url)"' \
+            | awk -F'\t' -v v="$V" 'index($1, "KellyLford.QuickMail") { n = split($1, w, " "); if (w[n] == v) { print $2; exit } }')
+          if [ -n "$open" ]; then
+            echo "::notice::A pull request for KellyLford.QuickMail $V is already open: $open"
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Download the release's MSIs
+        if: steps.existing.outputs.skip != 'true'
+        id: release
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          gh release download "v$V" -R "$GITHUB_REPOSITORY" -D msi \
+            -p "QuickMail-$V-win.msi" -p "QuickMail-$V-win-arm64.msi"
+          echo "x64=$(sha256sum "msi/QuickMail-$V-win.msi" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "arm64=$(sha256sum "msi/QuickMail-$V-win-arm64.msi" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "date=$(gh release view "v$V" -R "$GITHUB_REPOSITORY" --json publishedAt --jq '.publishedAt[0:10]')" >> "$GITHUB_OUTPUT"
+
+      - name: Write the manifests
+        if: steps.existing.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          V: ${{ steps.version.outputs.version }}
+          X64: ${{ steps.release.outputs.x64 }}
+          ARM64: ${{ steps.release.outputs.arm64 }}
+          DATE: ${{ steps.release.outputs.date }}
+        run: |
+          ./scripts/winget-manifest.ps1 -Version $env:V -X64Sha256 $env:X64 -Arm64Sha256 $env:ARM64 -ReleaseDate $env:DATE -OutDir "out/$env:V"
+          Get-ChildItem "out/$env:V" | ForEach-Object { "----- $($_.Name)"; Get-Content $_.FullName }
+
+      - name: Open the winget-pkgs pull request
+        if: steps.existing.outputs.skip != 'true' && steps.version.outputs.dry_run != 'true'
+        shell: pwsh
+        env:
+          V: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:GH_TOKEN) {
+            "::error::WINGET_TOKEN is not set in the winget environment. See installer/winget/README.md, 'Every later release'."
+            exit 1
+          }
+          ./scripts/winget-submit.ps1 -Version $env:V -ManifestDir "out/$env:V"
