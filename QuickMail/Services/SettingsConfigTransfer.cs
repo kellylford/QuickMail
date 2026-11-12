@@ -35,6 +35,7 @@ public static class SettingsConfigTransfer
         nameof(ConfigModel.DesktopShortcutPrompted),
         nameof(ConfigModel.LastRunVersion),
         nameof(ConfigModel.NativeArmNoticeVersion),
+        nameof(ConfigModel.LastSoundSchemeUpdateCheck),   // when this install last asked the gallery (#971)
         // A credential. Never moved (Principle 1).
         nameof(ConfigModel.GoogleClientId),
         nameof(ConfigModel.GoogleClientSecret),
@@ -109,6 +110,7 @@ public static class SettingsConfigTransfer
         nameof(ConfigModel.SoundVolume),
         nameof(ConfigModel.SoundSchemeId),
         nameof(ConfigModel.SoundSchemes),
+        nameof(ConfigModel.CheckSoundSchemeUpdates),
         nameof(ConfigModel.CloseToTray),
         nameof(ConfigModel.TrayHintShown),
         nameof(ConfigModel.TutorialCompleted),
