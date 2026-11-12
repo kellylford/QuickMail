@@ -1422,6 +1422,17 @@ public partial class MainWindow : Window
             execute: () => SetAllFoldersExpanded(false, null),
             isAvailable: () => _vm.HasExpandableFolders));
 
+        // Hidden folders (#963). No default keys; reachable from the folder tree's context menu, the
+        // Folder menu and the Command Palette. Always available, so the palette never hides the way
+        // back: each says why when it cannot act ("No folders are hidden.").
+        _registry.Register(new CommandDefinition(
+            id: "folder.hide", category: "Mail", title: "Hide Folder",
+            execute: HideSelectedFolder));
+
+        _registry.Register(new CommandDefinition(
+            id: "folder.showHidden", category: "Mail", title: "Show All Hidden Folders",
+            execute: () => Report(_vm.ShowAllHiddenFolders())));
+
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(
             id: "view.focusAccounts", category: "View", title: "Focus Account List",
@@ -2624,7 +2635,7 @@ public partial class MainWindow : Window
             .ToDictionary(a => a.Id, a => MainViewModel.CreateAccountMailVirtualFolder(a));
         var picker = new FolderPickerWindow(
             _vm.Accounts,
-            _vm.CachedFolders,
+            _vm.VisibleCachedFolders,   // hidden folders stay out of navigation (#963)
             new[]
             {
                 MainViewModel.AllInboxesFolder, MainViewModel.AllMailFolder,
@@ -7307,6 +7318,83 @@ public partial class MainWindow : Window
     // (issue #250) — these are what the command palette and any user-assigned hotkey invoke.
     private void SetStartupFolderFromSelection()
         => Report(_vm.SetStartupFolder(FolderList.SelectedItem as FolderTreeNode));
+
+    // ── Hidden folders (#963) ────────────────────────────────────────────────
+
+    private void FolderContextMenu_HideFolder_Click(object sender, RoutedEventArgs e)
+        => HideFolderWithFocus(GetContextMenuFolderNode(sender), fromFolderTree: true);
+
+    private void FolderContextMenu_ShowHiddenFolders_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.ShowAllHiddenFolders());
+
+    private void MenuHideFolder_Click(object sender, RoutedEventArgs e) => HideSelectedFolder();
+
+    private void MenuShowHiddenFolders_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.ShowAllHiddenFolders());
+
+    // The Folder menu and Command Palette entry: the tree's selection, or the open folder. Whether
+    // focus is put back in the tree depends on whether the user was standing in it — the window's
+    // logical focus survives the menu bar and the palette taking keyboard focus for a moment.
+    private void HideSelectedFolder()
+    {
+        // The message body is checked first: while the WebView2 has focus WPF reports nothing focused,
+        // and the window's logical focus can still name the tree item the user left (#672).
+        var inTree = !IsMessageBodyFocused &&
+                     (FolderList.IsKeyboardFocusWithin ||
+                      (FocusManager.GetFocusedElement(this) is DependencyObject logical && IsDescendantOf(FolderList, logical)));
+        HideFolderWithFocus(CurrentFolderNode(), inTree);
+    }
+
+    // Hides the folder and, when the user is in the tree, lands focus on the folder above it — the
+    // item that had focus is removed with the folder, the same situation as Delete Folder.
+    private void HideFolderWithFocus(FolderTreeNode? node, bool fromFolderTree)
+    {
+        if (_vm.HideFolderRefusal(node) is { } refusal)
+        {
+            Report(refusal);
+            return;
+        }
+
+        var visibleBefore = FlattenVisibleFolderNodes(_vm.FolderTree).ToList();
+        var landing = HideLandingNode(visibleBefore, node!);
+        // Where FolderList_GotKeyboardFocus lands if the removed item still held focus (#719). Set
+        // before the hide, because the item goes during the rebuild.
+        if (_folderTreeSpot is { } spot && ReferenceEquals(spot.Node, node))
+            _folderTreeSpot = spot with { Above = landing };
+
+        Report(_vm.HideFolder(node));
+        AccessibilityHelper.Announce(this, MainViewModel.HiddenFoldersHint, category: AnnouncementCategory.Hint);
+
+        // A saved view's copy of the folder stays where it is, and so does focus.
+        if (!fromFolderTree || IsInFolderTree(node!)) return;
+
+        // The prediction can only miss toward something that is gone; walk on up if it did.
+        if (landing != null && !IsInFolderTree(landing))
+            landing = visibleBefore.Take(Math.Max(0, visibleBefore.FindIndex(n => ReferenceEquals(n, node))))
+                                   .LastOrDefault(IsInFolderTree);
+        if (landing == null) return;
+        // Queued behind the menu or palette closing, which restores focus to where it was taken
+        // from: the item that no longer exists.
+        Dispatcher.InvokeAsync(() => FocusTreeItem(FolderList, landing), DispatcherPriority.Input);
+    }
+
+    // The node above `node` that will still be in the tree once it is hidden. Path segments that hold
+    // `node` are skipped: the builder drops a segment that hiding leaves empty, and landing on one
+    // that is about to vanish loses focus entirely.
+    internal static FolderTreeNode? HideLandingNode(List<FolderTreeNode> visible, FolderTreeNode node)
+    {
+        var index = visible.FindIndex(n => ReferenceEquals(n, node));
+        for (int i = index - 1; i >= 0; i--)
+        {
+            var candidate = visible[i];
+            if (candidate.Folder == null && !candidate.IsHeader && ContainsNode(candidate, node)) continue;
+            return candidate;
+        }
+        return null;
+
+        static bool ContainsNode(FolderTreeNode parent, FolderTreeNode target) =>
+            parent.Children.Any(c => ReferenceEquals(c, target) || ContainsNode(c, target));
+    }
 
     // ── Calendar context menu handlers (issue #497) ──────────────────────────
 

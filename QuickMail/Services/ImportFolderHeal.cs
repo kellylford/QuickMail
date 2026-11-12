@@ -107,7 +107,18 @@ public static class ImportFolderHeal
             archiveChanged = true;
         }
 
-        return FolderReferenceRemapper.Remap(accountId, folders, rules, views, config);
+        // Hidden folders (#963): Graph ids differ between computers, so translate each to the path it had
+        // there; the remapper then matches it by name, or drops it.
+        List<string>? hidden = null;
+        if (account is { HiddenFolders.Count: > 0 })
+        {
+            hidden = account.HiddenFolders;
+            for (int i = 0; i < hidden.Count; i++)
+                hidden[i] = Translate(hidden[i]) ?? hidden[i];
+        }
+
+        // The caller saves the account when report.HiddenFoldersChanged, as it does for archiveChanged.
+        return FolderReferenceRemapper.Remap(accountId, folders, rules, views, config, hidden);
     }
 
     // The remapper's matching for the one reference it does not cover: the whole name, else a leaf

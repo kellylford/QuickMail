@@ -215,6 +215,16 @@ public partial class AccountModel : ObservableObject
     /// </summary>
     public string? ArchiveFolderFullName { get; set; }
 
+    /// <summary>
+    /// Full names of the folders the user hid from the folder tree and from Go to Folder (#963).
+    /// Hiding a folder hides every folder inside it too. Display only: a hidden folder still syncs,
+    /// still counts in the aggregate views, and is still offered as a Move/Copy destination.
+    /// Matched ordinally against <see cref="MailFolderModel.FullName"/>, which is exactly what the
+    /// server reported: Graph ids are case-sensitive, and an IMAP path comes back the same way each
+    /// time. Empty means nothing hidden.
+    /// </summary>
+    public List<string> HiddenFolders { get; set; } = [];
+
     // ── Shared mailbox linkage (#31) ─────────────────────────────────────────────
 
     /// <summary>
