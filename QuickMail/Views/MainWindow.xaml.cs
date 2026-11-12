@@ -1427,11 +1427,15 @@ public partial class MainWindow : Window
         // back: each says why when it cannot act ("No folders are hidden.").
         _registry.Register(new CommandDefinition(
             id: "folder.hide", category: "Mail", title: "Hide Folder",
-            execute: HideSelectedFolder));
+            execute: HideSelectedFolder,
+            description: "Hide the selected folder, and the folders inside it, from the folder list"));
 
+        // "Unhide" is the word people reach for (it is what the issue's reporter typed into the
+        // palette and found nothing); the palette searches descriptions, so it lives here.
         _registry.Register(new CommandDefinition(
             id: "folder.showHidden", category: "Mail", title: "Show All Hidden Folders",
-            execute: () => Report(_vm.ShowAllHiddenFolders())));
+            execute: () => Report(_vm.ShowAllHiddenFolders()),
+            description: "Unhide all hidden folders, in every account"));
 
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(

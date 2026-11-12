@@ -582,6 +582,34 @@ public class HiddenFoldersTests
     }
 
     [Theory]
+    [InlineData("unhide")]
+    [InlineData("unhide folders")]
+    [InlineData("show hidden")]
+    public void ThePaletteFindsShowAllHiddenFolders_ByTheWordsPeopleUse(string query)
+    {
+        // "unhide" is what a user typed and found nothing. The registration's description is what
+        // carries it; read it from the source so this test fails if the description is dropped.
+        var source = Source("Views/MainWindow.xaml.cs");
+        var registration = Regex.Match(source,
+            "id: \"folder\\.showHidden\".*?description: \"(?<d>[^\"]*)\"", RegexOptions.Singleline);
+        Assert.True(registration.Success, "folder.showHidden has no description to search.");
+        var hide = Regex.Match(source,
+            "id: \"folder\\.hide\".*?description: \"(?<d>[^\"]*)\"", RegexOptions.Singleline);
+        Assert.True(hide.Success);
+
+        var showAll = new Models.CommandDefinition("folder.showHidden", "Mail", "Show All Hidden Folders", () => { },
+            description: registration.Groups["d"].Value);
+        var hideFolder = new Models.CommandDefinition("folder.hide", "Mail", "Hide Folder", () => { },
+            description: hide.Groups["d"].Value);
+        var others = new[] { "Show Folder Pane", "Expand All Folders", "Unread Only", "Show Message Details" }
+            .Select(t => new Models.CommandDefinition("x." + t, "View", t, () => { }));
+
+        var ranked = QuickMail.Helpers.CommandMatcher.Rank([hideFolder, .. others, showAll], query);
+
+        Assert.Same(showAll, ranked[0]);
+    }
+
+    [Theory]
     [InlineData("folder.hide", "FolderContextMenu_HideFolder_Click", "MenuHideFolder_Click")]
     [InlineData("folder.showHidden", "FolderContextMenu_ShowHiddenFolders_Click", "MenuShowHiddenFolders_Click")]
     public void EachActionIsOnTheContextMenuAndTheFolderMenu(string commandId, string contextHandler, string menuHandler)
