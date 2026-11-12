@@ -347,6 +347,9 @@ public class ConfigModel
     /// <summary>Automatically save composes as drafts while editing.</summary>
     public bool AutoSaveDrafts { get; set; } = true;
 
+    /// <summary>Ask before sending or queuing a message. Off preserves the existing send workflow.</summary>
+    public bool ConfirmBeforeSend { get; set; }
+
     /// <summary>Seconds between automatic draft saves. Clamped to 30–600.</summary>
     public int AutoSaveIntervalSeconds { get; set; } = 120;
 

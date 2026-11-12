@@ -3,6 +3,11 @@
 ## New
 
 - **Hide folders you never use.** Choose **Hide Folder** on the folder tree's context menu, on the **Folder** menu, or in the Command Palette to take a folder, and everything inside it, out of the folder tree and **Go to Folder**. **Show All Hidden Folders**, in the same places, brings them all back. Hidden folders still sync, still count in All Mail and the other combined folders, and are still offered when you move or copy messages or set up a rule. The Inbox, accounts, calendars and saved views cannot be hidden. See [Hiding Folders](https://kellylford.github.io/QuickMail/) in the User Guide.
+- **Confirm before sending.** Turn on **Settings → General → Composing → Confirm before sending a message** for a safety check before sending or queuing mail. The setting is off by default and takes effect for open compose windows when you save Settings. **No** is selected initially; choose **Yes** to send, or **No**, **Cancel**, or **Escape** to keep editing.
+
+## Fixed
+
+- **Repeated Send commands cannot send the same compose twice.** QuickMail ignores another Send command while confirmation or sending is underway, and after the message has been sent or queued. This also protects messages when send confirmation is off. If a draft is still saving, Send tells you to try again in a moment.
 
 ---
 

@@ -296,6 +296,11 @@
                         <GroupBox Header="Com_posing" Padding="10" Margin="0,10,0,0"
                                   AutomationProperties.Name="Composing settings">
                             <StackPanel>
+                                <CheckBox x:Name="ConfirmBeforeSendCheckBox"
+                                          Content="Confirm _before sending a message"
+                                          IsChecked="{Binding ConfirmBeforeSend, Mode=TwoWay}"
+                                          Margin="0,0,0,8"
+                                          AutomationProperties.Name="Confirm before sending a message"/>
                                 <CheckBox Content="Automatically save _drafts while composing"
                                           IsChecked="{Binding AutoSaveDrafts, Mode=TwoWay}"
                                           AutomationProperties.Name="Automatically save the message as a draft while composing"/>

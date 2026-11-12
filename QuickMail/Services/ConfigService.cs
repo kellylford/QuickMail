@@ -362,6 +362,9 @@ public class ConfigService : IConfigService
                     case "checkspellingasyoutype":
                         config.CheckSpellingAsYouType = ParseBool(value);
                         break;
+                    case "confirmbeforesend":
+                        config.ConfirmBeforeSend = ParseBool(value);
+                        break;
                     case "autosavedrafts":
                         config.AutoSaveDrafts = ParseBool(value);
                         break;
@@ -882,6 +885,9 @@ public class ConfigService : IConfigService
         sb.AppendLine("# stalls after pasting long text. Values: on, off. Default on.");
         sb.AppendLine();
 
+        sb.AppendLine($"ConfirmBeforeSend = {(config.ConfirmBeforeSend ? "on" : "off")}");
+        sb.AppendLine("# Ask before sending or queuing a message.");
+        sb.AppendLine();
         sb.AppendLine($"AutoSaveDrafts = {(config.AutoSaveDrafts ? "on" : "off")}");
         sb.AppendLine("# Automatically save the message as a draft while composing.");
         sb.AppendLine("# Auto-save is quiet: success shows in the compose status row without an announcement;");

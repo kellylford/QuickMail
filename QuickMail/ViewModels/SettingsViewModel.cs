@@ -235,6 +235,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _autoSaveDrafts;
 
+    [ObservableProperty]
+    private bool _confirmBeforeSend;
+
     /// <summary>Bound to a ComboBox of fixed choices; values are seconds.</summary>
     [ObservableProperty]
     private int _autoSaveIntervalSeconds;
@@ -580,6 +583,7 @@ public partial class SettingsViewModel : ObservableObject
         GoogleSignIn                     = ReadFeature(cfg, FeatureFlag.GoogleAuth, false);
         OfferPop3                        = ReadFeature(cfg, FeatureFlag.Pop3Backend, false);
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
+        ConfirmBeforeSend                = cfg.ConfirmBeforeSend;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
         CheckSpellingAsYouType           = cfg.CheckSpellingAsYouType;
         DefaultComposeMode = cfg.DefaultComposeMode switch
@@ -697,6 +701,7 @@ public partial class SettingsViewModel : ObservableObject
             }
         }
         cfg.AutoSaveDrafts                   = AutoSaveDrafts;
+        cfg.ConfirmBeforeSend                = ConfirmBeforeSend;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
         cfg.CheckSpellingAsYouType           = CheckSpellingAsYouType;
         SaveSoundSettings(cfg);

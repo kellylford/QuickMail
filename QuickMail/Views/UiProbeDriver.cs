@@ -210,8 +210,22 @@ internal sealed class UiProbeDriver
                     w => w is SettingsDialog, path,
                     prepare: w => SelectTabByHeader((SettingsDialog)w, "Sounds"));
 
-            // #728. The General tab scrolled to Saving Messages: a combo box, a read-only field and a
-            // button row that sit below the fold of the tab, so no other capture shows them.
+            // General settings scrolled to Composing so the send preference is visible.
+            case "settings-composing":
+                return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
+                    w => w is SettingsDialog, path,
+                    prepare: w =>
+                    {
+                        SelectTabByHeader((SettingsDialog)w, "eneral");
+                        w.UpdateLayout();
+                        if (w.FindName("ConfirmBeforeSendCheckBox") is FrameworkElement checkbox)
+                        {
+                            checkbox.Focus();
+                            checkbox.BringIntoView();
+                        }
+                    });
+
+            // #728. Saving Messages sits below the fold of the General tab.
             case "settings-saving":
                 return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
                     w => w is SettingsDialog, path,
@@ -235,7 +249,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, reading-pane-attachment-selected, compose-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-sounds, settings-saving, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, reading-pane-attachment-selected, compose-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-sounds, settings-composing, settings-saving, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }

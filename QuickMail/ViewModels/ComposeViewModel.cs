@@ -194,6 +194,19 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public Func<string, string, bool>? ConfirmationRequested { get; set; }
 
+    /// <summary>Set by the View for the send confirmation; false includes No, Cancel, and Escape.</summary>
+    public Func<string, string, bool>? SendConfirmationRequested { get; set; }
+
+    /// <summary>Fallback for hosts without a live preference provider.</summary>
+    public bool ConfirmBeforeSend { get; set; }
+
+    /// <summary>Reads the current composing preference, including changes made while composing.</summary>
+    public Func<bool>? ConfirmBeforeSendProvider { get; set; }
+
+    // A modal confirmation runs a nested message loop before AsyncRelayCommand marks itself
+    // running. Guard that interval as well as the asynchronous send and post-send cleanup.
+    private bool _sendInProgress;
+
     /// <summary>
     /// The IAccountService this compose window was built with. Exposed so the address book
     /// opened from here (Ctrl+Shift+B) can name accounts in its account filter — without it
@@ -802,6 +815,25 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task SendAsync()
     {
+        if (_sendInProgress || _isSent) return;
+        if (IsBusy)
+        {
+            SetStatusOutcome("Still saving the draft. Try sending again in a moment.");
+            return;
+        }
+        _sendInProgress = true;
+        try
+        {
+            await SendCoreAsync();
+        }
+        finally
+        {
+            _sendInProgress = false;
+        }
+    }
+
+    private async Task SendCoreAsync()
+    {
         if (string.IsNullOrWhiteSpace(To))
         {
             SetStatusOutcome("Please enter at least one recipient.");
@@ -839,10 +871,16 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Deliberately busy before the modal prompt so auto-save cannot start in its nested loop.
         IsBusy = true;
-        SetProgress("Sending…");
         try
         {
+            if ((ConfirmBeforeSendProvider?.Invoke() ?? ConfirmBeforeSend) && SendConfirmationRequested?.Invoke(
+                    "Send this message now? If the account is offline, it will be queued to send when connected.",
+                    "Confirm Send") != true)
+                return;
+
+            SetProgress("Sending…");
             var compose = BuildComposeModel(account.Id);
 
             // A shared mailbox sends through its parent's sign-in (#31), so while it is disconnected
@@ -888,9 +926,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                     return;
                 throw;
             }
+            _isSent = true;
             SetStatusOutcome("Message sent.");
             _sounds?.Play(SoundEvent.MessageSent);
-            _isSent = true;
             await ForgetLocalCopyAsync();
 
             // Append to Sent folder (best-effort — fire and forget so it doesn't block the UI).
