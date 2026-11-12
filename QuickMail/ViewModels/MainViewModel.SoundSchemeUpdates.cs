@@ -9,7 +9,7 @@ namespace QuickMail.ViewModels;
 /// <summary>
 /// Saying when a sound scheme someone added from the gallery has an update waiting (#971). At most
 /// once a day, well after startup, and never in its way: a failure is only logged, and an update found
-/// goes in the status bar, announced once as Status.
+/// goes in the status bar, announced as a Result, once per newer version.
 /// </summary>
 public partial class MainViewModel
 {
@@ -56,6 +56,8 @@ public partial class MainViewModel
             LogService.Log("Sound scheme update check failed", ex);
             return;
         }
-        if (notice is not null) SetStatus(notice, AnnouncementCategory.Status);
+        // Result, not Status, as for QuickMail's own update notice: a one-time discovery that someone who
+        // silences background chatter should still hear. Said once per newer version (the checker's job).
+        if (notice is not null) SetStatus(notice, AnnouncementCategory.Result);
     }
 }

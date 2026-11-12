@@ -455,6 +455,12 @@ public class ConfigModel
     public DateTime? LastSoundSchemeUpdateCheck { get; set; }
 
     /// <summary>
+    /// The newer gallery versions already announced (#971): gallery id to the SHA-256 of the file last
+    /// said for it, so a waiting update is said once, not every day. Replaced as a whole, never changed in place.
+    /// </summary>
+    public Dictionary<string, string> AnnouncedSoundSchemeUpdates { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// The sound scheme in use (#932): a built-in pack's id ("glass", "softbell", "wood") or a scheme of
     /// the person's own ("user-&lt;guid&gt;"). Replaces 0.8.67's SoundPack, which is read when this is absent.
     /// An id this build doesn't have plays as Glass and is kept, as written, until someone chooses another.

@@ -52,20 +52,17 @@ public partial class SettingsDialog : Window
     private bool Confirm(string question, string title) =>
         MessageBox.Show(this, question, title, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
 
-    // A gallery update (#971): a message box, so its text is read as it opens, and with a Cancel
-    // button, so Escape leaves the copy as it is (YesNo alone ignores Escape). With the gallery
-    // version's sounds recorded it is OK or Cancel; without, Yes adds only what's missing and No
-    // replaces everything, as the text says. The first choice, the one that keeps the most, starts focused.
+    // A gallery update (#971). With the gallery version's sounds recorded, a message box, so its text is
+    // read as it opens, with OK or Cancel (YesNo alone would ignore Escape). Without, a small dialog whose
+    // buttons say what they do: Add only what's missing (focused), Replace everything, Cancel. Neither
+    // has editable text, so showing it modally over Settings is safe.
     private SoundSchemeUpdateChoice AskAboutUpdate(SoundSchemeUpdateQuestion question)
     {
         if (question.OffersReplaceEverything)
         {
-            return MessageBox.Show(this, question.Text, question.Title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Yes) switch
-            {
-                MessageBoxResult.Yes => SoundSchemeUpdateChoice.Apply,
-                MessageBoxResult.No => SoundSchemeUpdateChoice.ReplaceEverything,
-                _ => SoundSchemeUpdateChoice.Cancel,
-            };
+            var dialog = new SoundSchemeUpdateDialog(question) { Owner = this };
+            dialog.ShowDialog();
+            return dialog.Choice;
         }
         return MessageBox.Show(this, question.Text, question.Title, MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.OK)
             == MessageBoxResult.OK ? SoundSchemeUpdateChoice.Apply : SoundSchemeUpdateChoice.Cancel;

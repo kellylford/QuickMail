@@ -690,11 +690,15 @@ public partial class SettingsViewModel
         }
 
         // Same id and name, so it stays where it is in the list and in config.ini. Its credit and where
-        // it came from are the new version's, and so are the sounds recorded for the next update.
+        // it came from are the new version's. So are the sounds recorded for the next update, except after
+        // adding only what was missing: the copy's other sounds may be the person's or the old version's,
+        // so recording the new version would pass them off as unchanged ones, and the next update would
+        // replace them. Untracked, the next update offers the same choice again.
         var events = new Dictionary<string, string>(plan.Events, StringComparer.OrdinalIgnoreCase);
         var updated = new SoundScheme(replacing.Id, replacing.Name, isBuiltIn: false, events: events,
             author: imported.Author, license: imported.License, description: imported.Description,
-            galleryOrigin: new SoundGalleryOrigin(fromGallery.Id, fromGallery.Sha256), galleryBaseline: incoming);
+            galleryOrigin: new SoundGalleryOrigin(fromGallery.Id, fromGallery.Sha256),
+            galleryBaseline: plan.Mode == SoundSchemeUpdateMode.AddMissingOnly ? null : incoming);
         _schemeValues[updated.Id] = events;
         if (_shownSchemeId == updated.Id) _shownSchemeId = null;   // so the rows are filled again from the new values
         SoundSchemes[SoundSchemes.IndexOf(replacing)] = updated;

@@ -81,7 +81,10 @@ public sealed class SoundSchemeUpdateTests
 
         Assert.Equal(None, plan.Events["NewMail"]);                   // left alone: as the new version has it
         Assert.Equal("builtin:glass/sent", plan.Events["MessageSent"]); // changed: theirs
-        Assert.Equal((1, 0, 1), (plan.Updated, plan.Added, plan.Kept));
+        // Going silent is counted apart from getting the new version's sound.
+        Assert.Equal((0, 0, 1, 1), (plan.Updated, plan.Added, plan.Kept, plan.Silenced));
+        Assert.Equal("Update Rain with the gallery's newer version? 1 event the new version no longer has goes silent, 1 event you changed is kept. Nothing changes until you save Settings.",
+            SoundSchemeUpdate.Question("Rain", plan, 0).Text);
     }
 
     [Fact]
@@ -138,7 +141,7 @@ public sealed class SoundSchemeUpdateTests
 
         Assert.Equal("builtin:softbell/arrived", plan.Events["NewMail"]);
         Assert.Equal(None, plan.Events["TrashEmptied"]);
-        Assert.Equal((2, 0, 0), (plan.Updated, plan.Added, plan.Kept));
+        Assert.Equal((1, 0, 0, 1), (plan.Updated, plan.Added, plan.Kept, plan.Silenced));
     }
 
     [Fact]
@@ -171,8 +174,19 @@ public sealed class SoundSchemeUpdateTests
 
     // ── The question ────────────────────────────────────────────────────────────
 
-    private static SoundSchemeUpdatePlan Counts(int updated, int added, int kept, SoundSchemeUpdateMode mode = SoundSchemeUpdateMode.KeepChanges) =>
-        new(new Dictionary<string, string>(), updated, added, kept, mode);
+    private static SoundSchemeUpdatePlan Counts(int updated, int added, int kept, SoundSchemeUpdateMode mode = SoundSchemeUpdateMode.KeepChanges, int silenced = 0) =>
+        new(new Dictionary<string, string>(), updated, added, kept, mode, silenced);
+
+    [Theory]
+    [InlineData(1, "1 event the new version no longer has goes silent.")]
+    [InlineData(3, "3 events the new version no longer has go silent.")]
+    public void EventsGoingSilentAreSaidApart(int silenced, string expected)
+    {
+        Assert.Equal($"Update Rain with the gallery's newer version? {expected} Nothing changes until you save Settings.",
+            SoundSchemeUpdate.Question("Rain", Counts(0, 0, 0, silenced: silenced), 0).Text);
+        Assert.Equal($"Update Rain with the gallery's newer version? 2 events get the new version's sounds, {expected[..^1]}, 1 event you changed is kept. Nothing changes until you save Settings.",
+            SoundSchemeUpdate.Question("Rain", Counts(2, 0, 1, silenced: silenced), 0).Text);
+    }
 
     [Fact]
     public void TheQuestionSaysWhatChanges()
@@ -204,14 +218,14 @@ public sealed class SoundSchemeUpdateTests
         Assert.True(question.OffersReplaceEverything);
         Assert.Equal(
             "Update Rain with the gallery's newer version? You added it before QuickMail kept track of the changes you make, so it can't tell yours from the gallery's. "
-            + "Yes adds only what's missing from your copy: 1 event gets a sound, and nothing else changes. "
-            + "No replaces every sound with the new version's, so any changes you made are lost. 2 sound files it doesn't use are deleted when you save. "
+            + "Add only what's missing: 1 event your copy doesn't have gets a sound, and nothing else changes. "
+            + "Replace everything: every event gets the new version's sound, so any changes you made are lost. 2 sound files it doesn't use are deleted when you save. "
             + "Cancel leaves your copy as it is. Nothing changes until you save Settings.",
             question.Text);
 
-        Assert.Contains("Yes adds only what's missing from your copy: 3 events get a sound,",
+        Assert.Contains("Add only what's missing: 3 events your copy doesn't have get a sound,",
             SoundSchemeUpdate.Question("Rain", Counts(0, 3, 0, SoundSchemeUpdateMode.AddMissingOnly), 0).Text, StringComparison.Ordinal);
-        Assert.Contains("Yes changes none of its sounds, since nothing is missing from your copy;",
+        Assert.Contains("Add only what's missing: nothing is missing from your copy, so none of its sounds change.",
             SoundSchemeUpdate.Question("Rain", Counts(0, 0, 4, SoundSchemeUpdateMode.AddMissingOnly), 0).Text, StringComparison.Ordinal);
     }
 
@@ -336,6 +350,116 @@ public sealed class SoundSchemeUpdateTests
     }
 
     [Fact]
+    public async Task AWaitingUpdateIsSaidOncePerNewVersion()
+    {
+        var config = WithGalleryScheme();
+        var gallery = new MutableGallery { Entries = [Listed("wind", 'e')] };
+        var checker = new SoundSchemeUpdateChecker(config, gallery);
+
+        Assert.NotNull(await checker.CheckIfDueAsync(Now, TestContext.Current.CancellationToken));
+        Assert.Equal(new string('e', 64), config.Load().AnnouncedSoundSchemeUpdates["wind"]);
+
+        // The next day the same version is still waiting: checked, but not said again.
+        Assert.Null(await checker.CheckIfDueAsync(Now.AddDays(1), TestContext.Current.CancellationToken));
+        Assert.Equal(2, gallery.Loads);
+
+        // A newer version still: said again.
+        gallery.Entries = [Listed("wind", 'f')];
+        Assert.Equal("An update is available for the Wind sound scheme. Settings, Sounds, Browse schemes.",
+            await checker.CheckIfDueAsync(Now.AddDays(2), TestContext.Current.CancellationToken));
+        Assert.Equal(new string('f', 64), config.Load().AnnouncedSoundSchemeUpdates["wind"]);
+    }
+
+    [Fact]
+    public void OnlyUpdatesNotYetSaidAreSaid()
+    {
+        var found = new[]
+        {
+            new SoundSchemeUpdateFound("Bells", "bells", new string('b', 64)),
+            new SoundSchemeUpdateFound("Wind", "wind", new string('w', 64)),
+        };
+        var announced = new Dictionary<string, string> { ["bells"] = new string('b', 64), ["wind"] = new string('0', 64) };
+        Assert.Equal(["Wind"], SoundSchemeUpdateCheck.NotYetAnnounced(found, announced).Select(f => f.Name));
+        Assert.Equal(2, SoundSchemeUpdateCheck.NotYetAnnounced(found, new Dictionary<string, string>()).Count);
+    }
+
+    private sealed class MutableGallery : ISoundGalleryService
+    {
+        public IReadOnlyList<SoundGalleryEntry> Entries { get; set; } = [];
+
+        public int Loads { get; private set; }
+
+        public Task<IReadOnlyList<SoundGalleryEntry>> LoadAsync(CancellationToken ct)
+        {
+            Loads++;
+            return Task.FromResult(Entries);
+        }
+
+        public Task<string> DownloadAsync(SoundGalleryEntry entry, CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    // ── The main window's notice ────────────────────────────────────────────────
+
+    private static ViewModels.MainViewModel MakeMainVm(IConfigService config, ISoundGalleryService? gallery) =>
+        new(new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+            config, new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), new StubSmtpService(), soundGallery: gallery);
+
+    [Fact]
+    public async Task TheNoticeGoesInTheStatusBarAndIsSaidAsAResultOncePerVersion()
+    {
+        var config = WithGalleryScheme();
+        var gallery = new CountingGallery([Listed("wind", 'e')]);
+        var vm = MakeMainVm(config, gallery);
+        var said = new List<(string Text, AnnouncementCategory Category)>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            // As the View does: the category is read while StatusText's change is being raised.
+            if (e.PropertyName == nameof(ViewModels.MainViewModel.StatusText)) said.Add((vm.StatusText, vm.StatusAnnouncementCategory));
+        };
+        var checker = new SoundSchemeUpdateChecker(config, gallery);
+
+        await vm.CheckForSoundSchemeUpdatesAsync(checker, TestContext.Current.CancellationToken);
+
+        var notice = Assert.Single(said);
+        Assert.Equal("An update is available for the Wind sound scheme. Settings, Sounds, Browse schemes.", notice.Text);
+        Assert.Equal(AnnouncementCategory.Result, notice.Category);
+        Assert.Equal(notice.Text, vm.StatusText);
+
+        // Due again (as if a day had passed), the same version waiting: nothing more is said.
+        config.Load().LastSoundSchemeUpdateCheck = null;
+        await vm.CheckForSoundSchemeUpdatesAsync(checker, TestContext.Current.CancellationToken);
+        Assert.Single(said);
+        Assert.Equal(2, gallery.Loads);
+        vm.Dispose();
+    }
+
+    [Fact]
+    public async Task TheWatcherStopsWhenTheMainWindowGoes()
+    {
+        var gallery = new CountingGallery([Listed("wind", 'e')]);
+        var vm = MakeMainVm(WithGalleryScheme(), gallery);
+
+        var watching = vm.WatchForSoundSchemeUpdatesAsync();
+        Assert.False(watching.IsCompleted);   // waiting for startup to settle
+
+        vm.Dispose();
+        await watching.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        Assert.True(watching.IsCompletedSuccessfully);
+        Assert.Equal(0, gallery.Loads);   // never asked: it stopped before its first look
+    }
+
+    [Fact]
+    public void WithoutAGalleryThereIsNothingToWatch()
+    {
+        var vm = MakeMainVm(WithGalleryScheme(), gallery: null);
+        Assert.True(vm.WatchForSoundSchemeUpdatesAsync().IsCompletedSuccessfully);
+        vm.Dispose();
+    }
+
+    [Fact]
     public async Task NoUpdateMeansNothingToSay()
     {
         var checker = new SoundSchemeUpdateChecker(WithGalleryScheme('e'), new CountingGallery([Listed("wind", 'e')]));
@@ -440,6 +564,66 @@ public sealed class SoundSchemeUpdateTests
         Assert.False(config.Load().CheckSoundSchemeUpdates);
 
         Assert.False(new ViewModels.SettingsViewModel(config, new StubCommandRegistry()).CheckSoundSchemeUpdates);
+    }
+
+    [Fact]
+    public void TheUpdatesAlreadySaidSurviveARestartAndStayOnThisComputer()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+        var config = service.Load();
+        config.AnnouncedSoundSchemeUpdates = new Dictionary<string, string>
+        {
+            ["wind"] = new string('a', 64),
+            ["maya-voicing-glass"] = new string('b', 64),
+        };
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load().AnnouncedSoundSchemeUpdates;
+        Assert.Equal(2, reloaded.Count);
+        Assert.Equal(new string('b', 64), reloaded["maya-voicing-glass"]);
+
+        // About this install, like the last check's time: never carried by a settings file.
+        Assert.Contains(nameof(ConfigModel.AnnouncedSoundSchemeUpdates), SettingsConfigTransfer.Local);
+        Assert.Contains(nameof(ConfigModel.LastSoundSchemeUpdateCheck), SettingsConfigTransfer.Local);
+        Assert.Contains(nameof(ConfigModel.CheckSoundSchemeUpdates), SettingsConfigTransfer.Portable);
+    }
+
+    [Fact]
+    public void AMalformedAnnouncedPairIsDropped()
+    {
+        var config = ConfigService.ParseFile(["[global]",
+            $"AnnouncedSoundSchemeUpdates = wind:{new string('a', 64)}, Bad Id:{new string('a', 64)}, rain:short, nocolon"]);
+        Assert.Equal(["wind"], config.AnnouncedSoundSchemeUpdates.Keys);
+    }
+
+    [Fact]
+    public void RecordedSoundsFromAnotherVersionAreDropped()
+    {
+        // As a QuickMail before 0.8.72 leaves it after updating the scheme: the new GallerySha256, and
+        // the old recorded sounds kept as events it doesn't know, still naming the old file.
+        string[] Section(string soundsSha) =>
+        [
+            "[sounds.user-wind]",
+            "Name = Wind",
+            "GalleryId = wind",
+            "GallerySha256 = " + new string('b', 64),
+            "GallerySoundSha256 = " + soundsSha,
+            "GallerySound.NewMail = builtin:wood/arrived",
+            "NewMail = builtin:glass/arrived",
+        ];
+
+        var stale = ConfigService.ParseFile(Section(new string('a', 64))).SoundSchemes["user-wind"];
+        Assert.NotNull(stale.GalleryOrigin);
+        Assert.Null(stale.GalleryBaseline);                 // so the next update takes the untracked path
+        Assert.Equal(["NewMail"], stale.Events.Keys);       // and none of it is mistaken for an event
+
+        var current = ConfigService.ParseFile(Section(new string('b', 64))).SoundSchemes["user-wind"];
+        Assert.Equal("builtin:wood/arrived", current.GalleryBaseline!["NewMail"]);
+
+        // Recorded sounds with no record of which file they are from are not trusted either.
+        var unmarked = ConfigService.ParseFile([.. Section(new string('b', 64)).Where(l => !l.StartsWith("GallerySoundSha256", StringComparison.Ordinal))]);
+        Assert.Null(unmarked.SoundSchemes["user-wind"].GalleryBaseline);
     }
 
     [Fact]

@@ -44,12 +44,13 @@ public sealed record SoundSchemeUpdateQuestion(string Title, string Text, bool O
 
 /// <summary>What an update does to a copy, worked out before anything changes.</summary>
 /// <param name="Events">Every event's stored sound once the update is applied.</param>
-/// <param name="Updated">Events the copy had whose sound becomes the new version's.</param>
+/// <param name="Updated">Events the copy had whose sound becomes the new version's, a sound and not silence.</param>
 /// <param name="Added">Events the copy was missing that the new version gives a sound.</param>
 /// <param name="Kept">Events whose sound in the copy stays, though the new version has another.</param>
 /// <param name="Mode">How it was worked out.</param>
+/// <param name="Silenced">Events the copy had a sound for that go silent, because the new version has none for them.</param>
 public sealed record SoundSchemeUpdatePlan(
-    IReadOnlyDictionary<string, string> Events, int Updated, int Added, int Kept, SoundSchemeUpdateMode Mode);
+    IReadOnlyDictionary<string, string> Events, int Updated, int Added, int Kept, SoundSchemeUpdateMode Mode, int Silenced = 0);
 
 /// <summary>
 /// Updating a gallery scheme without losing the person's changes (#971): the merge, and the words that
@@ -111,7 +112,7 @@ public static class SoundSchemeUpdate
         IReadOnlyDictionary<string, string> incoming, SoundSchemeUpdateMode mode)
     {
         var events = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        int updated = 0, added = 0, kept = 0;
+        int updated = 0, added = 0, kept = 0, silenced = 0;
         foreach (var info in SoundCatalog.Events)
         {
             var key = info.ConfigKey;
@@ -132,10 +133,12 @@ public static class SoundSchemeUpdate
             };
             events[key] = takeNew ? next : current;
             if (Same(current, next)) continue;
-            if (takeNew) updated++;
+            // Taking the new version's silence isn't getting its sound: said apart, so it isn't a surprise.
+            if (takeNew && IsNone(next)) silenced++;
+            else if (takeNew) updated++;
             else kept++;
         }
-        return new SoundSchemeUpdatePlan(events, updated, added, kept, mode);
+        return new SoundSchemeUpdatePlan(events, updated, added, kept, mode, silenced);
     }
 
     /// <summary>The custom sound files among some stored sounds.</summary>
@@ -182,6 +185,8 @@ public static class SoundSchemeUpdate
                 parts.Add(plan.Updated == 1 ? "1 event gets the new version's sound" : $"{plan.Updated} events get the new version's sounds");
             if (plan.Added > 0)
                 parts.Add(plan.Added == 1 ? "1 new event is added" : $"{plan.Added} new events are added");
+            if (plan.Silenced > 0)
+                parts.Add(plan.Silenced == 1 ? "1 event the new version no longer has goes silent" : $"{plan.Silenced} events the new version no longer has go silent");
             if (plan.Kept > 0)
                 parts.Add(plan.Kept == 1 ? "1 event you changed is kept" : $"{plan.Kept} events you changed are kept");
             var what = parts.Count > 0 ? string.Join(", ", parts) + "." : "Your copy already has the new version's sounds, so none of them change.";
@@ -189,16 +194,17 @@ public static class SoundSchemeUpdate
             return new SoundSchemeUpdateQuestion(Title, $"{start} {what}{files} {untilSave}", OffersReplaceEverything: false);
         }
 
+        // Worded for the dialog's buttons, which say what they do (#971).
         var missing = plan.Added switch
         {
-            0 => "Yes changes none of its sounds, since nothing is missing from your copy; only its details are updated.",
-            1 => "Yes adds only what's missing from your copy: 1 event gets a sound, and nothing else changes.",
-            _ => $"Yes adds only what's missing from your copy: {plan.Added} events get a sound, and nothing else changes.",
+            0 => "Add only what's missing: nothing is missing from your copy, so none of its sounds change.",
+            1 => "Add only what's missing: 1 event your copy doesn't have gets a sound, and nothing else changes.",
+            _ => $"Add only what's missing: {plan.Added} events your copy doesn't have get a sound, and nothing else changes.",
         };
         var replaceFiles = filesDeletedIfReplaced > 0 ? " " + FilesSentence(filesDeletedIfReplaced, "it doesn't use") : string.Empty;
         var text = $"{start} You added it before QuickMail kept track of the changes you make, so it can't tell yours from the gallery's. "
             + missing
-            + $" No replaces every sound with the new version's, so any changes you made are lost.{replaceFiles}"
+            + $" Replace everything: every event gets the new version's sound, so any changes you made are lost.{replaceFiles}"
             + $" Cancel leaves your copy as it is. {untilSave}";
         return new SoundSchemeUpdateQuestion(Title, text, OffersReplaceEverything: true);
     }
@@ -243,15 +249,34 @@ public static class SoundSchemeUpdateCheck
     /// The names of the gallery schemes here that the gallery now lists a different file for, in order
     /// of name: the same test the gallery window uses to say "Update available."
     /// </summary>
-    public static List<string> WithUpdates(IEnumerable<SoundScheme> schemes, IEnumerable<SoundGalleryEntry> entries)
+    public static List<string> WithUpdates(IEnumerable<SoundScheme> schemes, IEnumerable<SoundGalleryEntry> entries) =>
+        [.. Updates(schemes, entries).Select(u => u.Name)];
+
+    /// <summary>
+    /// The gallery schemes here that the gallery now lists a different file for, in order of name, each
+    /// with its gallery id and the SHA-256 of the newer file.
+    /// </summary>
+    public static List<SoundSchemeUpdateFound> Updates(IEnumerable<SoundScheme> schemes, IEnumerable<SoundGalleryEntry> entries)
     {
         var listed = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var entry in entries) listed.TryAdd(entry.Id, entry.Sha256);
-        return [.. GallerySchemes(schemes)
-            .Where(s => listed.TryGetValue(s.GalleryOrigin!.Id, out var sha) && !string.Equals(sha, s.GalleryOrigin.Sha256, StringComparison.Ordinal))
-            .Select(s => s.Name)
-            .Order(StringComparer.CurrentCultureIgnoreCase)];
+        var found = new List<SoundSchemeUpdateFound>();
+        foreach (var scheme in GallerySchemes(schemes))
+        {
+            var origin = scheme.GalleryOrigin!;
+            if (listed.TryGetValue(origin.Id, out var sha) && !string.Equals(sha, origin.Sha256, StringComparison.Ordinal))
+                found.Add(new SoundSchemeUpdateFound(scheme.Name, origin.Id, sha));
+        }
+        return [.. found.OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)];
     }
+
+    /// <summary>
+    /// Of the updates found, the ones not said yet: a scheme is announced once per newer version, so the
+    /// same waiting update isn't said again every day. <paramref name="announced"/> is gallery id to the
+    /// SHA-256 last announced for it.
+    /// </summary>
+    public static List<SoundSchemeUpdateFound> NotYetAnnounced(IEnumerable<SoundSchemeUpdateFound> found, IReadOnlyDictionary<string, string> announced) =>
+        [.. found.Where(f => !announced.TryGetValue(f.GalleryId, out var sha) || !string.Equals(sha, f.Sha256, StringComparison.Ordinal))];
 
     /// <summary>What the status bar shows, and a screen reader hears, when updates are waiting.</summary>
     public static string Notice(IReadOnlyList<string> names) => names.Count switch
@@ -261,6 +286,12 @@ public static class SoundSchemeUpdateCheck
         _ => $"Updates are available for the {string.Join(", ", names.Take(names.Count - 1))} and {names[^1]} sound schemes. Settings, Sounds, Browse schemes.",
     };
 }
+
+/// <summary>A gallery scheme here with a newer version in the gallery.</summary>
+/// <param name="Name">The copy's name here.</param>
+/// <param name="GalleryId">Its id in the gallery.</param>
+/// <param name="Sha256">The SHA-256 of the newer file the gallery lists.</param>
+public sealed record SoundSchemeUpdateFound(string Name, string GalleryId, string Sha256);
 
 /// <summary>
 /// Checks the gallery for updates to the schemes someone added (#971), through the same signed,
@@ -273,9 +304,10 @@ public sealed class SoundSchemeUpdateChecker(IConfigService config, ISoundGaller
 {
     /// <summary>
     /// If a check is due, checks, and returns what to tell the person, or null when there's nothing to
-    /// say: not due, nothing newer, or the gallery couldn't be read. The time is recorded before the
-    /// gallery is asked, so a gallery that fails is not asked again until tomorrow either.
-    /// Call on the UI thread: it saves config.ini.
+    /// say: not due, nothing newer, nothing newer than what was already said, or the gallery couldn't be
+    /// read. The time is recorded before the gallery is asked, so a gallery that fails is not asked again
+    /// until tomorrow either. Call on the UI thread: it saves config.ini, before and after the gallery is
+    /// read, and resumes on the caller's thread to do so.
     /// </summary>
     public async Task<string?> CheckIfDueAsync(DateTime nowUtc, CancellationToken ct)
     {
@@ -291,7 +323,8 @@ public sealed class SoundSchemeUpdateChecker(IConfigService config, ISoundGaller
         IReadOnlyList<SoundGalleryEntry> entries;
         try
         {
-            entries = await gallery.LoadAsync(ct).ConfigureAwait(false);
+            // Back on the caller's thread: config.ini is saved again below.
+            entries = await gallery.LoadAsync(ct);
         }
         catch (SoundGalleryException ex)
         {
@@ -300,8 +333,17 @@ public sealed class SoundSchemeUpdateChecker(IConfigService config, ISoundGaller
         }
 
         // The schemes as they are now: Settings may have saved while the gallery was being read.
-        var names = SoundSchemeUpdateCheck.WithUpdates(config.Load().SoundSchemes.Values, entries);
-        LogService.Log($"Sound scheme update check: {names.Count} of the gallery schemes here have an update.");
-        return names.Count > 0 ? SoundSchemeUpdateCheck.Notice(names) : null;
+        cfg = config.Load();
+        var found = SoundSchemeUpdateCheck.Updates(cfg.SoundSchemes.Values, entries);
+        var fresh = SoundSchemeUpdateCheck.NotYetAnnounced(found, cfg.AnnouncedSoundSchemeUpdates);
+        LogService.Log($"Sound scheme update check: {found.Count} of the gallery schemes here have an update, {fresh.Count} not yet said.");
+        if (fresh.Count == 0) return null;
+
+        // Remembered before it is said, so it is said once per newer version, not every day.
+        var announced = new Dictionary<string, string>(cfg.AnnouncedSoundSchemeUpdates, StringComparer.Ordinal);
+        foreach (var update in fresh) announced[update.GalleryId] = update.Sha256;
+        cfg.AnnouncedSoundSchemeUpdates = announced;
+        config.Save(cfg);
+        return SoundSchemeUpdateCheck.Notice([.. fresh.Select(f => f.Name)]);
     }
 }
