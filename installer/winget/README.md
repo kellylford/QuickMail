@@ -2,9 +2,9 @@
 
 > [!IMPORTANT]
 > **Published.** microsoft/winget-pkgs#447170 merged on 2026-11-05 with 0.8.65, so
-> `KellyLford.QuickMail` (moniker `quickmail`) is in the catalog. Nothing in this repository
-> submits anything automatically; each later version is its own winget-pkgs PR (see
-> [Every later release](#every-later-release)).
+> `KellyLford.QuickMail` (moniker `quickmail`) is in the catalog. Every release since is
+> submitted automatically by the release workflow (see
+> [Every later release](#every-later-release)); a winget moderator still approves each one.
 
 Reference copy of the three manifests that describe QuickMail to the
 [Windows Package Manager community repository](https://github.com/microsoft/winget-pkgs)
@@ -116,9 +116,34 @@ Prerequisite: Kelly's go. Any release from 0.8.48 on qualifies; use the newest.
 
 ## Every later release
 
-Nothing publishes automatically yet. Once the first version is in the catalog, plan Phase 4
-describes the per-release workflow (winget-releaser on the `released` event, a classic PAT
-as `WINGET_TOKEN`), now matching the two `.msi` assets instead of `Setup.exe`. Until then a
-new version is the same steps 1, 2 and 4 by hand — or `wingetcreate update
-KellyLford.QuickMail --version <v> --urls <x64-msi-url> <arm64-msi-url> --submit`, checking
-the same two fields afterwards.
+Automatic. When a `v*` tag's release is published, the `winget` job in `quickmail.yml` calls
+`.github/workflows/winget-submit.yml`, which:
+
+1. skips the version if winget-pkgs already has it or a pull request for it is open;
+2. downloads the release's two MSIs and hashes them;
+3. writes the manifests with `scripts/winget-manifest.ps1`, which fills these templates,
+   strips their comments, and refuses to write a manifest with an `UpgradeCode`, an
+   installer-level `ProductCode`, `Setup.exe`, or `RequireExplicitUpgrade` off;
+4. syncs Kelly's fork of winget-pkgs, pushes a branch with the three files, and opens the
+   pull request as `Update: KellyLford.QuickMail to <version>`.
+
+A moderator then approves it; 0.8.71's took about five hours. A failed submission leaves the
+release untouched. Rerun the job, or run **Submit to winget** by hand with the version (with
+**dry_run** on, it only shows the manifests it would submit).
+
+Deliberately not winget-releaser, Komac or `wingetcreate update`: they analyse the MSI and
+add the `UpgradeCode` and `ProductCode` this package must not have (see above). The script is
+the only way manifests are made, by hand or in CI:
+
+```
+pwsh scripts/winget-manifest.ps1 -Version <v> -X64Sha256 <hash> -Arm64Sha256 <hash> -ReleaseDate <YYYY-MM-DD> -OutDir <folder>
+winget validate --manifest <folder>
+```
+
+Filled with 0.8.71's values, it writes manifests byte-identical to the ones merged for 0.8.71.
+
+**Setup (once).** The workflow needs `WINGET_TOKEN` in the `winget` environment (deployment
+branches `main` and `v*` tags): a classic personal access token of Kelly's with only the
+`public_repo` scope. A fine-grained token cannot open a pull request on microsoft/winget-pkgs.
+Classic tokens expire; when it does, the job fails with GitHub's "Bad credentials" and needs a
+new token in the same place.

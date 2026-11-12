@@ -1,0 +1,168 @@
+name: Submit to winget
+
+# Opens the winget-pkgs pull request that adds a QuickMail release to the Windows Package
+# Manager catalog (KellyLford.QuickMail, issue #536).
+#
+# The manifests come from scripts/winget-manifest.ps1, which fills the vetted template in
+# installer/winget/ and refuses to write one that breaks its rules. Deliberately not
+# wingetcreate, Komac or winget-releaser: they analyse the MSI and add an UpgradeCode and a
+# ProductCode, which make winget offer an upgrade that QuickMail's self-update applied long
+# ago. The pull request is opened with git and gh, the same way it is done by hand.
+#
+# A moderator at microsoft/winget-pkgs still reviews every pull request, so nothing reaches
+# the catalog from here alone.
+#
+# Secret: WINGET_TOKEN, a classic personal access token of Kelly's with the public_repo
+# scope, in the `winget` environment (deployment branches: main and v* tags only). It pushes
+# a branch to his fork of winget-pkgs and opens the pull request from it, so the pull
+# request is his, under the CLA he signed. A fine-grained token cannot open a pull request
+# on a repository its owner does not belong to.
+
+on:
+  # From quickmail.yml once a v* tag's release is published. GitHub starts no workflow
+  # from a release made with GITHUB_TOKEN, so a `release` trigger would never fire.
+  workflow_call:
+    inputs:
+      dry_run:
+        type: boolean
+        default: false
+  # By hand: to submit a release whose automatic submission failed, or with dry_run on, to
+  # see the manifests a release would get without submitting anything.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release to submit, e.g. 0.8.72 (must already be released)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Only generate and show the manifests; submit nothing'
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    environment: winget
+    permissions:
+      contents: read   # checkout, and download the release's MSIs
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PACKAGE_DIR: manifests/k/KellyLford/QuickMail
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Work out the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then v="$INPUT_VERSION"; else v="$REF_NAME"; fi
+          v="${v#v}"
+          if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$v' is not a release version (X.Y.Z)."
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      # A version already in the catalog, or already waiting in a pull request, is done:
+      # a second pull request for it would only be closed as a duplicate.
+      - name: Check winget-pkgs for this version
+        id: existing
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          if gh api "repos/microsoft/winget-pkgs/contents/$PACKAGE_DIR/$V" --silent 2>/dev/null; then
+            echo "::notice::KellyLford.QuickMail $V is already in winget-pkgs; nothing to submit."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          open=$(gh pr list -R microsoft/winget-pkgs --state open --search "KellyLford.QuickMail $V in:title" --json url --jq '.[0].url // empty')
+          if [ -n "$open" ]; then
+            echo "::notice::A pull request for KellyLford.QuickMail $V is already open: $open"
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Download the release's MSIs
+        id: release
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          gh release download "v$V" -R "$GITHUB_REPOSITORY" -D msi \
+            -p "QuickMail-$V-win.msi" -p "QuickMail-$V-win-arm64.msi"
+          echo "x64=$(sha256sum "msi/QuickMail-$V-win.msi" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "arm64=$(sha256sum "msi/QuickMail-$V-win-arm64.msi" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "date=$(gh release view "v$V" -R "$GITHUB_REPOSITORY" --json publishedAt --jq '.publishedAt[0:10]')" >> "$GITHUB_OUTPUT"
+
+      - name: Write the manifests
+        shell: pwsh
+        env:
+          V: ${{ steps.version.outputs.version }}
+          X64: ${{ steps.release.outputs.x64 }}
+          ARM64: ${{ steps.release.outputs.arm64 }}
+          DATE: ${{ steps.release.outputs.date }}
+        run: |
+          ./scripts/winget-manifest.ps1 -Version $env:V -X64Sha256 $env:X64 -Arm64Sha256 $env:ARM64 -ReleaseDate $env:DATE -OutDir "out/$env:V"
+          Get-ChildItem "out/$env:V" | ForEach-Object { "----- $($_.Name)"; Get-Content $_.FullName }
+
+      - name: Open the winget-pkgs pull request
+        if: ${{ !inputs.dry_run && steps.existing.outputs.skip != 'true' }}
+        env:
+          V: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::WINGET_TOKEN is not set in the winget environment. See installer/winget/README.md, 'Every later release'."
+            exit 1
+          fi
+          login=$(gh api user --jq .login)
+          id=$(gh api user --jq .id)
+
+          # The fork the pull request comes from: made if missing, then brought level with
+          # upstream so the branch holds nothing but this version's three files.
+          gh repo view "$login/winget-pkgs" --json name >/dev/null 2>&1 \
+            || gh repo fork microsoft/winget-pkgs --clone=false --default-branch-only
+          gh repo sync "$login/winget-pkgs" -b master
+
+          gh auth setup-git
+          gh repo clone "$login/winget-pkgs" fork -- --filter=blob:none --no-checkout --depth 1 -b master
+          cd fork
+          git sparse-checkout set --cone "$PACKAGE_DIR"
+          git checkout -q master
+          branch="KellyLford.QuickMail-$V"
+          git checkout -q -b "$branch"
+          mkdir -p "$PACKAGE_DIR/$V"
+          cp "../out/$V/"*.yaml "$PACKAGE_DIR/$V/"
+          git add "$PACKAGE_DIR/$V"
+          git -c user.name="$login" -c user.email="$id+$login@users.noreply.github.com" \
+            commit -q -m "New version: KellyLford.QuickMail version $V"
+          # --force: a branch of this name can only be left over from an earlier run for
+          # the same version that failed before opening its pull request.
+          git push -q --force -u origin "$branch"
+
+          cat > ../pr-body.md <<EOF
+          ## 📖 Description
+
+          Update KellyLford.QuickMail to $V. Submitted by QuickMail's release workflow from the same template as every earlier version, changing only the version, the release date, the two MSI URLs and their SHA256 hashes, and ReleaseNotesUrl.
+
+          ## ✅ Checklist
+
+          - [x] Signed the [Contributor License Agreement](https://cla.opensource.microsoft.com)
+          - [ ] Linked to an issue (if applicable)
+
+          ## 📦 Manifest Checklist
+
+          - [x] Checked that there aren't other open [pull requests](https://github.com/microsoft/winget-pkgs/pulls) for the same manifest update/change
+          - [x] This PR only modifies one (1) manifest
+          - [ ] Validated manifest locally with \`winget validate --manifest <path>\`: the workflow runs on Linux; the template it fills passes \`winget validate\`.
+          - [ ] Tested manifest locally with \`winget install --manifest <path>\`: not for this version.
+          - [x] Manifest conforms to the [1.28 schema](https://github.com/microsoft/winget-pkgs/tree/master/doc/manifest/schema/1.28.0)
+          EOF
+
+          url=$(gh pr create -R microsoft/winget-pkgs --base master --head "$login:$branch" \
+            --title "Update: KellyLford.QuickMail to $V" --body-file ../pr-body.md)
+          echo "::notice::Opened $url"
+          echo "winget pull request: $url" >> "$GITHUB_STEP_SUMMARY"
