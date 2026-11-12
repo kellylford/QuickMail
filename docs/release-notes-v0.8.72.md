@@ -9,6 +9,7 @@
 ## Fixed
 
 - **Repeated Send commands cannot send the same compose twice.** QuickMail ignores another Send command while confirmation or sending is underway, and after the message has been sent or queued. This also protects messages when send confirmation is off. If a draft is still saving, Send tells you to try again in a moment.
+- **QuickMail builds from a fresh clone of the source.** `build.bat` and `dotnet build` failed with four "does not exist in the current context" errors until two credential files were written by hand. The build now writes empty placeholders for them when they are missing. ([#859](https://github.com/kellylford/QuickMail/issues/859))
 
 ---
 

@@ -20,6 +20,8 @@ build.bat run      # build + launch
 build.bat publish  # self-contained win-x64 exe
 ```
 
+A fresh clone builds with no setup step. The first build writes `QuickMail/Services/GoogleOAuthService.Credentials.cs` and `BugReportService.Credentials.cs` with empty placeholders (they are gitignored), so Google sign-in and in-app bug reports do not work in your build. Your own copies of those files are never overwritten.
+
 Run the full test suite before submitting:
 
 ```bat
