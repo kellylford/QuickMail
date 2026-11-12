@@ -788,6 +788,16 @@ moves and QuickMail says "No unread messages below" or "No unread messages above
 out is never mistaken for a key that did not register. (That is a **Result** announcement — see
 [Screen Reader Announcements](#screen-reader-announcements) if you have those switched off.)
 
+### Reaching the Top or Bottom of the List
+
+**Up** and **Down** move one message at a time, and **Home** and **End** go to the first and last
+message, in every view. When you are already on the first message, **Up** and **Home** have nowhere
+to go, and on the last, neither do **Down** and **End**. QuickMail then plays the **Reached the end
+of a list** sound, or, when sounds are off or your sound scheme has none for it, says "Top of list"
+or "Bottom of list". In **Conversations**, **From** and **To**, the bottom is the last row you can
+reach, which is a message when the last group is open. See
+[The Top and Bottom of the Message List](#the-top-and-bottom-of-the-message-list) for the details.
+
 ### Each Folder Remembers How You Left It
 
 Folders do not all want the same treatment. An inbox reads well grouped into **Conversations**; a
@@ -2178,9 +2188,21 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 - Calendar reminder, if you have turned on calendar reminders
 - Message deleted, archived and moved
 - Trash emptied
+- Reached the end of a list: pressing **Up** or **Home** when the first message is already selected, or **Down** or **End** at the last (see [The Top and Bottom of the Message List](#the-top-and-bottom-of-the-message-list))
 - A rule matched, which is the sound a [rule](mail-rules.html) set to **Default sound** plays
 
-If you delete or file a lot of mail in a row, you may prefer to set those three message sounds to **None**. Repeats of the same sound within a second are dropped.
+If you delete or file a lot of mail in a row, you may prefer to set those three message sounds to **None**. Repeats of the same sound within a second are dropped, except the end-of-list sound, which plays each time you press a key at the end of the list.
+
+### The Top and Bottom of the Message List
+
+When the first message is already selected, **Up** and **Home** have nowhere to go, and when the last is selected, neither do **Down** and **End**. The selection stays where it is, so nothing else tells you that you have reached the end. QuickMail does:
+
+- If sounds are on and the scheme in use has a sound for **Reached the end of a list**, you hear that sound, a short, soft note, and nothing is said.
+- Otherwise, QuickMail says "Top of list" or "Bottom of list". That is a hint, so you hear it only while **Announce hints and instructions** is on, under **Screen Reader Announcements** in **Settings → General**.
+
+This works in every message list view: the plain message list, Conversations, and the From and To groups, where the end is the last row you can reach, which is a message when the last group is expanded. Each press at the end tells you again. Holding a key down tells you once, when it gets to the end, rather than on every repeat. **Page Up** and **Page Down** are unchanged.
+
+**Glass**, **Soft bell** and **Wood** have the new sound. Schemes you made yourself, or added from the Sound Scheme Gallery, have no sound for it until you choose one in **Settings → Sounds** (or the gallery offers an update for that scheme), and until then QuickMail says "Top of list" or "Bottom of list" instead.
 
 ### Choosing a Sound
 
@@ -2200,7 +2222,7 @@ To learn what each sound means, choose **Help → Sound Tutorial**. It lists eve
 
 A sound scheme is a set of choices, one sound for each event. **Sound scheme** chooses the one in use. QuickMail comes with three: **Glass**, **Soft bell** and **Wood**. They have the same sounds with the same melodies, so a sound means the same thing whichever you choose. The tone changes, and **Wood** is also a little quieter. To compare them, select an event, change the scheme and choose **Preview**, all before saving.
 
-Each scheme keeps its own choices. Changing an event while **Glass** is chosen changes Glass only, and switching to **Wood** shows Wood's own choices. Changes you make to several schemes are all kept until you choose **Save** or **Cancel**, so you can switch back and forth while you decide. The line above **Sound events** says how many events in the scheme have a sound, such as "4 of 14 events have a sound".
+Each scheme keeps its own choices. Changing an event while **Glass** is chosen changes Glass only, and switching to **Wood** shows Wood's own choices. Changes you make to several schemes are all kept until you choose **Save** or **Cancel**, so you can switch back and forth while you decide. The line above **Sound events** says how many events in the scheme have a sound, such as "4 of 15 events have a sound".
 
 **Make your own scheme.** Choose **New scheme…**, type a name and press Enter. The new scheme starts with every event set to **None**, so it is silent until you give events a sound. Focus moves to **Sound events**, ready for you to pick sounds. A scheme of your own can use the built-in sounds in any tone, listed as, for example, "Arrived (Soft bell)", as well as your own sound files. **Copy scheme…** does the same, but starts from the sounds of the scheme showing, which is the quickest way to make, say, Glass with your own new-mail sound.
 

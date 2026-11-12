@@ -33,7 +33,10 @@ public sealed class SoundPolicy(Func<DateTime> utcNow)
     public bool ShouldPlay(string soundKey, SoundOrigin origin, bool muted, bool quiet, int waiting)
     {
         if (muted) return false;
-        if (quiet && origin != SoundOrigin.Direct) return false;
+        if (quiet && origin is not (SoundOrigin.Direct or SoundOrigin.Navigation)) return false;
+
+        // A key press's answer (#923): every press gets one, so no same-sound gap, but never late.
+        if (origin == SoundOrigin.Navigation) return waiting == 0;
 
         lock (_gate)
         {

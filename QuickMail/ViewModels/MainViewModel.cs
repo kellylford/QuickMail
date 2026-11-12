@@ -8674,6 +8674,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _configService.Save(cfg);
     }
 
+    /// <summary>
+    /// A key press in the message list met its top or bottom (issue #923), where the selection
+    /// doesn't move and so nothing else says so. Plays the "Reached the end of a list" sound when it
+    /// would be heard; otherwise, with sounds off or muted, or a scheme with no sound for it (any
+    /// scheme of the person's own made before this event existed), says "Top of list" or "Bottom of
+    /// list" as a hint. Never both: the sound is the cue when there is one.
+    /// </summary>
+    public void SignalListEdge(ListEdge edge)
+    {
+        if (edge == ListEdge.None) return;
+        if (_sounds?.IsAudible(SoundEvent.ListEnd) == true)
+        {
+            _sounds.Play(SoundEvent.ListEnd);
+            return;
+        }
+        Announce(edge == ListEdge.Top ? "Top of list" : "Bottom of list", AnnouncementCategory.Hint);
+    }
+
     private void Announce(string text, AnnouncementCategory category = AnnouncementCategory.Result)
     {
         if (!string.IsNullOrEmpty(text))

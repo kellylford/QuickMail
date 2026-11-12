@@ -3627,10 +3627,42 @@ public partial class MainWindow : Window
     // Shift+Up/Down: extend consecutive selection without opening the reading pane.
     private int _messageListKeyPresses;
 
+    // Issue #923: Up/Home at the top of the message list, or Down/End at the bottom, leaves the
+    // selection where it is, so nothing is reported. These hand the key and the focused row's place
+    // to ListEdgeCue, which decides; the VM plays the sound or announces the hint. Every key press
+    // in the list goes through, so one that moves ends a held key's single cue.
+    private readonly ListEdgeCue _listEdgeCue = new();
+
+    private void CueListEdge(KeyEventArgs e, Func<(int Index, int Count)> position)
+    {
+        var modifiers = Keyboard.Modifiers;
+        var (index, count) = e.Key is Key.Up or Key.Down or Key.Home or Key.End && modifiers == ModifierKeys.None
+            ? position()
+            : (-1, 0);
+        _vm.SignalListEdge(_listEdgeCue.Next(e.Key, modifiers, index, count, e.IsRepeat));
+    }
+
+    // Only a focused row counts: with focus on the list itself, the keys go to a row rather than nowhere.
+    private (int Index, int Count) MessageListPosition() =>
+        Keyboard.FocusedElement is ListViewItem row
+            ? (MessageList.ItemContainerGenerator.IndexFromContainer(row), MessageList.Items.Count)
+            : (-1, MessageList.Items.Count);
+
+    // A tree's rows in arrow order: each group, then its messages when it is expanded.
+    private static (int Index, int Count) TreePosition(TreeView tree, List<object> visible)
+    {
+        if (Keyboard.FocusedElement is not TreeViewItem row || !IsDescendantOf(tree, row)) return (-1, visible.Count);
+        var item = row.DataContext;
+        for (var i = 0; i < visible.Count; i++)
+            if (ReferenceEquals(visible[i], item)) return (i, visible.Count);
+        return (-1, visible.Count);
+    }
+
     private async void MessageList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         _messageListKeyPresses++;
         LogService.Debug($"MessageList_PreviewKeyDown key={e.Key} mod={Keyboard.Modifiers} focused={Keyboard.FocusedElement?.GetType().Name}");
+        CueListEdge(e, MessageListPosition);
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;
@@ -5437,6 +5469,7 @@ public partial class MainWindow : Window
     private async void ConversationTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] ConvTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={ConversationTree.Items.Count} selected={ConversationTree.SelectedItem?.GetType().Name ?? "null"}");
+        CueListEdge(e, () => TreePosition(ConversationTree, GetVisibleConversationItems(_vm.Conversations).ToList()));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;
@@ -6070,6 +6103,7 @@ public partial class MainWindow : Window
     private async void SenderGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] SenderTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={SenderGroupTree.Items.Count} selected={SenderGroupTree.SelectedItem?.GetType().Name ?? "null"}");
+        CueListEdge(e, () => TreePosition(SenderGroupTree, GetVisibleSenderItems(_vm.SenderGroups).ToList()));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;
@@ -6247,6 +6281,7 @@ public partial class MainWindow : Window
     private async void ToGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] ToTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={ToGroupTree.Items.Count} selected={ToGroupTree.SelectedItem?.GetType().Name ?? "null"}");
+        CueListEdge(e, () => TreePosition(ToGroupTree, GetVisibleSenderItems(_vm.ToGroups).ToList()));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;

@@ -21,6 +21,9 @@ public enum SoundEvent
     MessageMoved,
     TrashEmptied,
 
+    /// <summary>Up or Home at the top of the message list, or Down or End at the bottom (#923).</summary>
+    ListEnd,
+
     /// <summary>A rule set to the default sound matched new mail (#932). Played through <c>PlayRule</c>, not <c>Play</c>.</summary>
     RuleMatched,
 }
@@ -39,6 +42,13 @@ public enum SoundOrigin
 
     /// <summary>A rule's own sound. Background, and holds back the arrival sound that follows it.</summary>
     Rule,
+
+    /// <summary>
+    /// Answers a key press while moving around (#923), so it plays even in a presentation, as Direct
+    /// does. A second press a moment later cues again rather than being dropped as a repeat, but it
+    /// never waits behind another sound: late, it would answer a key press already gone.
+    /// </summary>
+    Navigation,
 }
 
 /// <summary>One event's place in Settings and config.ini.</summary>
@@ -111,6 +121,7 @@ public static class SoundCatalog
         new(SoundEvent.MessageArchived,    "MessageArchived",    "Message archived",           "filed",        SoundOrigin.Direct),
         new(SoundEvent.MessageMoved,       "MessageMoved",       "Message moved",              "moved",        SoundOrigin.Direct),
         new(SoundEvent.TrashEmptied,       "TrashEmptied",       "Trash emptied",              "emptied",      SoundOrigin.Direct),
+        new(SoundEvent.ListEnd,            "ListEnd",            "Reached the end of a list",  "edge",         SoundOrigin.Navigation),
         new(SoundEvent.RuleMatched,        "RuleMatched",        "A rule matched",             DefaultRuleSound, SoundOrigin.Rule),
     ];
 
