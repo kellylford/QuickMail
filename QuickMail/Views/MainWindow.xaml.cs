@@ -1435,7 +1435,7 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "folder.showHidden", category: "Mail", title: "Show All Hidden Folders",
             execute: () => Report(_vm.ShowAllHiddenFolders()),
-            description: "Unhide every hidden folder, in every account"));
+            description: "Unhide all hidden folders, in every account"));
 
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(
