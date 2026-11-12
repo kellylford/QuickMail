@@ -136,16 +136,49 @@ public class ComposeSendConfirmationTests
     }
 
     [Fact]
-    public async Task BusyDraftSave_AndInvalidMessage_DoNotPromptOrSend()
+    public async Task BusyDraftSave_AnnouncesWhySendDidNotProceed_AndCanBeRetried()
     {
         var h = new Harness();
+        var status = StatusAnnouncementRecorder.Watch(h.Vm);
         h.Vm.SendConfirmationRequested = (_, _) => throw new InvalidOperationException("Must not prompt");
         h.Vm.IsBusy = true;
         await h.Vm.SendCommand.ExecuteAsync(null);
+        await h.Vm.SendCommand.ExecuteAsync(null);
+        Assert.Equal(("Still saving the draft. Try sending again in a moment.", AnnouncementCategory.Result), status.Last);
+        Assert.Equal(2, status.Announced.Count);
+        Assert.Empty(h.Smtp.Sent);
+
         h.Vm.IsBusy = false;
+        h.Vm.SendConfirmationRequested = (_, _) => true;
+        await h.Vm.SendCommand.ExecuteAsync(null);
+        Assert.Single(h.Smtp.Sent);
+    }
+
+    [Fact]
+    public async Task InvalidMessage_DoesNotPromptOrSend()
+    {
+        var h = new Harness();
+        h.Vm.SendConfirmationRequested = (_, _) => throw new InvalidOperationException("Must not prompt");
         h.Vm.To = "";
         await h.Vm.SendCommand.ExecuteAsync(null);
         Assert.Empty(h.Smtp.Sent);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LivePreference_DeterminesWhetherConfirmationIsRequired(bool enabled)
+    {
+        var h = new Harness();
+        h.Vm.ConfirmBeforeSend = !enabled;
+        h.Vm.ConfirmBeforeSendProvider = () => enabled;
+        var asked = false;
+        h.Vm.SendConfirmationRequested = (_, _) => { asked = true; return false; };
+
+        await h.Vm.SendCommand.ExecuteAsync(null);
+
+        Assert.Equal(enabled, asked);
+        Assert.Equal(enabled ? 0 : 1, h.Smtp.Sent.Count);
     }
 
     [Theory]

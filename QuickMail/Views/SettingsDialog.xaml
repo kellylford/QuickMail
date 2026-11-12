@@ -297,7 +297,7 @@
                                   AutomationProperties.Name="Composing settings">
                             <StackPanel>
                                 <CheckBox x:Name="ConfirmBeforeSendCheckBox"
-                                          Content="Confirm before sending a message"
+                                          Content="Confirm _before sending a message"
                                           IsChecked="{Binding ConfirmBeforeSend, Mode=TwoWay}"
                                           Margin="0,0,0,8"
                                           AutomationProperties.Name="Confirm before sending a message"/>

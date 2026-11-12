@@ -197,8 +197,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// <summary>Set by the View for the send confirmation; false includes No, Cancel, and Escape.</summary>
     public Func<string, string, bool>? SendConfirmationRequested { get; set; }
 
-    /// <summary>Set by the View from the composing preference when this window opens.</summary>
+    /// <summary>Fallback for hosts without a live preference provider.</summary>
     public bool ConfirmBeforeSend { get; set; }
+
+    /// <summary>Reads the current composing preference, including changes made while composing.</summary>
+    public Func<bool>? ConfirmBeforeSendProvider { get; set; }
 
     // A modal confirmation runs a nested message loop before AsyncRelayCommand marks itself
     // running. Guard that interval as well as the asynchronous send and post-send cleanup.
@@ -812,7 +815,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task SendAsync()
     {
-        if (_sendInProgress || IsBusy || _isSent) return;
+        if (_sendInProgress || _isSent) return;
+        if (IsBusy)
+        {
+            SetStatusOutcome("Still saving the draft. Try sending again in a moment.");
+            return;
+        }
         _sendInProgress = true;
         try
         {
@@ -863,10 +871,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Deliberately busy before the modal prompt so auto-save cannot start in its nested loop.
         IsBusy = true;
         try
         {
-            if (ConfirmBeforeSend && SendConfirmationRequested?.Invoke(
+            if ((ConfirmBeforeSendProvider?.Invoke() ?? ConfirmBeforeSend) && SendConfirmationRequested?.Invoke(
                     "Send this message now? If the account is offline, it will be queued to send when connected.",
                     "Confirm Send") != true)
                 return;

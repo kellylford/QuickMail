@@ -89,7 +89,7 @@ public partial class ComposeWindow : Window
         _contactService = contactService;
         _templateService = templateService;
         _configService = configService;
-        vm.ConfirmBeforeSend = configService.Load().ConfirmBeforeSend;
+        vm.ConfirmBeforeSendProvider = () => configService.Load().ConfirmBeforeSend;
         _checkSpellingAsYouType = configService.Load().CheckSpellingAsYouType;
         _customDictionary = customDictionary;
         _themeService = themeService;

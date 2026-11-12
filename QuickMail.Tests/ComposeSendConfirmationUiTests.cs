@@ -38,7 +38,7 @@ public class ComposeSendConfirmationUiTests
     [StaTheory]
     [InlineData(false)]
     [InlineData(true)]
-    public void ComposeWindow_ReadsTheSavedPreference(bool enabled)
+    public void ComposeWindow_ReadsPreferenceChangesWhileAlreadyOpen(bool enabled)
     {
         var config = new StubConfigService();
         config.Save(new ConfigModel { ConfirmBeforeSend = enabled });
@@ -51,7 +51,10 @@ public class ComposeSendConfirmationUiTests
         try
         {
             window.Show();
-            Assert.Equal(enabled, vm.ConfirmBeforeSend);
+            Assert.NotNull(vm.ConfirmBeforeSendProvider);
+            Assert.Equal(enabled, vm.ConfirmBeforeSendProvider());
+            config.Save(new ConfigModel { ConfirmBeforeSend = !enabled });
+            Assert.Equal(!enabled, vm.ConfirmBeforeSendProvider());
         }
         finally { window.Close(); }
     }
