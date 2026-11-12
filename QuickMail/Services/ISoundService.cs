@@ -20,6 +20,16 @@ public interface ISoundService : IDisposable
     void Play(SoundEvent soundEvent, bool background = false);
 
     /// <summary>
+    /// Plays an event's sound only if it can start now: event sounds on, not muted, a volume, a sound
+    /// for it in the scheme in use, and nothing else playing or waiting (#923). Returns whether it was
+    /// started, so the caller can say in words what the sound would have. A sound that would wait
+    /// behind another, a long custom one perhaps, would answer a key press already gone. The one
+    /// exception: a key press's answer (<see cref="SoundOrigin.Navigation"/>) replaces an earlier key
+    /// press's answer still playing or waiting, so a quick second press at the edge of a list sounds too.
+    /// </summary>
+    bool TryPlayNow(SoundEvent soundEvent);
+
+    /// <summary>
     /// Plays a rule's sound, given as stored in <see cref="MailRule"/>. Does not depend on event sounds
     /// being on, since adding a sound to a rule already asks for it, but mute still silences it. A
     /// missing or unreadable value plays the default rule sound rather than nothing.

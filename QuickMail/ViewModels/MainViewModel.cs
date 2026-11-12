@@ -8573,6 +8573,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public event Func<bool>? MessageListFocusNowRequested;
     public event EventHandler<(string Text, AnnouncementCategory Category)>? AnnouncementRequested;
+
+    /// <summary>
+    /// As <see cref="AnnouncementRequested"/>, but the View raises it without asking to interrupt
+    /// speech. Used where the screen reader is likely to be reading something the person needs, such
+    /// as the row an arrow key just reached (#923). A separate event
+    /// rather than a flag on the first, which a great many tests and windows already take as it is.
+    /// </summary>
+    public event EventHandler<(string Text, AnnouncementCategory Category)>? QueuedAnnouncementRequested;
+
     public event EventHandler? RulesManagerRequested;
     public event EventHandler<MailRule>? CreateRuleFromMessageRequested;
     public event EventHandler? TutorialRequested;
@@ -8672,6 +8681,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var cfg = _configService.Load();
         cfg.DesktopShortcutPrompted = true;
         _configService.Save(cfg);
+    }
+
+    /// <summary>
+    /// A key press in the message list met its top or bottom (issue #923), where the selection
+    /// doesn't move and so nothing else says so. Plays the "Reached the end of a list" sound when it
+    /// can start at once; otherwise says "Top of list" or "Bottom of list". That covers sounds off or
+    /// muted, a scheme with no sound for it (any scheme of the person's own made before this event
+    /// existed), and another sound still playing or waiting. Never both: the sound is the cue when
+    /// there is one. Said as a result, like "No unread messages below", and raised without asking to
+    /// interrupt, so as not to cut off the screen reader reading the row a held arrow key has just reached.
+    /// </summary>
+    public void SignalListEdge(ListEdge edge)
+    {
+        if (edge == ListEdge.None) return;
+        if (_sounds?.TryPlayNow(SoundEvent.ListEnd) == true) return;
+        QueuedAnnouncementRequested?.Invoke(this,
+            (edge == ListEdge.Top ? "Top of list" : "Bottom of list", AnnouncementCategory.Result));
     }
 
     private void Announce(string text, AnnouncementCategory category = AnnouncementCategory.Result)

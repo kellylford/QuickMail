@@ -281,6 +281,23 @@ Stepping and free-text parsing live in `Helpers/DateTimeFieldParser.cs` (pure, u
 
 In **Help → Sound Tutorial**, Space and Enter on an event play its sound. In **Settings → Sounds**, Space on an event previews it; Enter stays with the dialog. These are in-list keys, like the arrows inside the same list, and meaningless outside it, so they are not registry commands. The Tutorial's local command palette (`Ctrl+Shift+P`) has **Play Sound for Selected Event** and **Close Sound Tutorial**.
 
+## Message list: Up, Down, Home and End at the ends (#923)
+
+In the message list and the Conversations, From and To trees, a plain Up or Home with the first row
+focused, or Down or End with the last, moves nothing, so the platform reports nothing. The list's
+`PreviewKeyDown` hands each key press to `Helpers/ListEdgeCue.cs` (a pure decision, unit-tested in
+`ListEdgeCueTests`; the focused row's place comes from `Views/ListEdgePosition.cs`, tested in
+`ListEdgePositionTests`) and then to `MainViewModel.SignalListEdge`. That plays the **Reached the end
+of a list** sound (`ListEnd`) through `ISoundService.TryPlayNow`, which refuses unless the sound can
+start at once (sounds on, not muted, a volume, a sound in the scheme, and nothing else playing or
+queued, apart from an earlier edge sound, which it replaces). Otherwise it announces "Top of list" /
+"Bottom of list" as a `Result`, through `QueuedAnnouncementRequested`, which the window raises with
+`interrupt: false` (`MostRecent` rather than `ImportantMostRecent`), so as not to cut off the row
+being read. How that sounds with each screen reader is still to be confirmed by ear. For a tree, the last row is the last *visible* one: a message when the last group is
+expanded. The handler never marks the key handled and changes no navigation; it only listens, so these
+are still the controls' own keys and not registry commands. A held key cues once, not on every
+auto-repeat; modified keys (Shift, Ctrl, Alt) and Page Up / Page Down never cue.
+
 ## Tab strips
 
 Left, Right, Home and End on a tab header move through the tabs of any `TabControl` in the app, in

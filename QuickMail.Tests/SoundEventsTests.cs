@@ -36,6 +36,16 @@ internal sealed class RecordingSoundService : ISoundService
         Background.Add(background);
     }
 
+    /// <summary>Something is playing or waiting, so <see cref="TryPlayNow"/> refuses.</summary>
+    public bool Busy { get; set; }
+
+    public bool TryPlayNow(SoundEvent soundEvent)
+    {
+        if (Busy || !Audible.Contains(soundEvent)) return false;
+        Play(soundEvent);
+        return true;
+    }
+
     public void StopAll() => Stops++;
     public List<string?> RuleSounds { get; } = [];
     public HashSet<string> RuleSoundedKeys { get; } = [];

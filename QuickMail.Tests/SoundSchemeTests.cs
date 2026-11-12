@@ -805,6 +805,49 @@ public sealed class SoundSchemeServiceTests : IDisposable
     }
 
     [Fact]
+    public void AnExportedSchemeCarriesTheEndOfAListSound()
+    {
+        // #923's event travels like the rest: a built-in scheme's sound goes out with its pack.
+        var file = Path.Combine(_root, "Edge.qmsounds");
+        using (var service = Service(Folder("edge-here")))
+            SoundSchemeFile.Export(file, "Mine", SoundSchemeFile.Portable(SoundCatalog.BuiltInScheme("softbell")), service, Scheme);
+
+        using var other = Service(Folder("edge-there"));
+        var imported = SoundSchemeFile.Import(file, other, Scheme);
+
+        Assert.Equal("builtin:softbell/edge", imported.Events["ListEnd"]);
+    }
+
+    [Fact]
+    public void ASchemeFileFromBeforeTheEndOfAListSoundHasNoSoundForIt()
+    {
+        // Made before #923: no ListEnd key. Not a newer format, and nothing in it is refused; the
+        // event is just silent in the scheme it becomes, which is when QuickMail speaks the edge instead.
+        var file = SchemeZip("old.qmsounds", """{"format":1,"app":"quickmail","name":"Old","events":{"NewMail":"builtin:arrived","MessageSent":"builtin:wood/sent"}}""");
+        using var service = Service(Folder("old"));
+
+        var imported = SoundSchemeFile.Import(file, service, Scheme);
+
+        Assert.Equal("Old", imported.Name);
+        Assert.False(imported.Events.ContainsKey("ListEnd"));
+        var scheme = new SoundScheme("user-old", imported.Name, isBuiltIn: false, events: imported.Events);
+        Assert.Equal(SoundRef.None, SoundCatalog.Resolve(SoundEvent.ListEnd, scheme));
+        Assert.Equal(SoundRef.BuiltIn("arrived"), SoundCatalog.Resolve(SoundEvent.NewMail, scheme));
+    }
+
+    [Fact]
+    public void AnEventThisQuickMailDoesNotKnowIsSkippedNotRefused()
+    {
+        // What an older QuickMail does with a newer file's ListEnd: the same as with any key it hasn't heard of.
+        var file = SchemeZip("newer.qmsounds", """{"format":1,"app":"quickmail","name":"Newer","events":{"NewMail":"builtin:arrived","ListEndOfTheFuture":"builtin:edge"}}""");
+        using var service = Service(Folder("newer"));
+
+        var imported = SoundSchemeFile.Import(file, service, Scheme);
+
+        Assert.Equal(new Dictionary<string, string> { ["NewMail"] = "builtin:arrived" }, imported.Events);
+    }
+
+    [Fact]
     public void ASoundThatWillNotPlayIsDroppedOnImportAndCounted()
     {
         var here = Folder("here2");
