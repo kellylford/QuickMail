@@ -23,6 +23,7 @@ public class SoundPolicyTests
     [InlineData(SoundOrigin.Background)]
     [InlineData(SoundOrigin.Arrival)]
     [InlineData(SoundOrigin.Rule)]
+    [InlineData(SoundOrigin.Navigation)]
     public void MuteSilencesEveryOrigin(SoundOrigin origin) =>
         Assert.False(Ask(NewPolicy(), origin: origin, muted: true));
 
@@ -33,9 +34,30 @@ public class SoundPolicyTests
     public void QuietHoldsBackWhatTheyDidNotJustDo(SoundOrigin origin) =>
         Assert.False(Ask(NewPolicy(), origin: origin, quiet: true));
 
+    [Theory]
+    [InlineData(SoundOrigin.Direct)]
+    [InlineData(SoundOrigin.Navigation)]
+    public void QuietStillAnswersWhatTheyJustDid(SoundOrigin origin) =>
+        Assert.True(Ask(NewPolicy(), origin: origin, quiet: true));
+
+    // ── A key press's answer (#923) ───────────────────────────────────────────
+
     [Fact]
-    public void QuietStillAnswersWhatTheyJustDid() =>
-        Assert.True(Ask(NewPolicy(), origin: SoundOrigin.Direct, quiet: true));
+    public void ANavigationSoundAnswersEveryPressWithNoGap()
+    {
+        var policy = NewPolicy();
+        Assert.True(Ask(policy, key: "builtin:edge", origin: SoundOrigin.Navigation));
+        _now += TimeSpan.FromMilliseconds(150);
+        Assert.True(Ask(policy, key: "builtin:edge", origin: SoundOrigin.Navigation));
+        Assert.True(Ask(policy, key: "builtin:edge", origin: SoundOrigin.Navigation));
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(SoundPolicy.MaxWaiting, false)]
+    public void ANavigationSoundNeverWaitsBehindAnother(int waiting, bool plays) =>
+        Assert.Equal(plays, Ask(NewPolicy(), key: "builtin:edge", origin: SoundOrigin.Navigation, waiting: waiting));
 
     [Theory]
     [InlineData(SoundPolicy.MaxWaiting - 1, true)]

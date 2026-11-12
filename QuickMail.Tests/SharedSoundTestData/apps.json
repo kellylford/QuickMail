@@ -18,6 +18,7 @@
         { "key": "MessageArchived", "label": "Message archived", "sound": "filed" },
         { "key": "MessageMoved", "label": "Message moved", "sound": "moved" },
         { "key": "TrashEmptied", "label": "Trash emptied", "sound": "emptied" },
+        { "key": "ListEnd", "label": "Reached the end of a list", "sound": "edge" },
         { "key": "RuleMatched", "label": "A rule matched", "sound": "matched" }
       ]
     },
