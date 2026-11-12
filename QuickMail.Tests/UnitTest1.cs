@@ -261,6 +261,13 @@ public class XamlParseTests
         Assert.Equal("Replace everything", System.Windows.Automation.AutomationProperties.GetName(replace));
         Assert.Equal("Cancel", System.Windows.Automation.AutomationProperties.GetName(cancel));
         Assert.Equal(question.Text, System.Windows.Automation.AutomationProperties.GetHelpText(add));
+        // Only there, so it isn't read twice; the other buttons and the window carry none.
+        Assert.Equal(string.Empty, System.Windows.Automation.AutomationProperties.GetHelpText(window));
+        Assert.Equal(string.Empty, System.Windows.Automation.AutomationProperties.GetHelpText(replace));
+        Assert.Equal(string.Empty, System.Windows.Automation.AutomationProperties.GetHelpText(cancel));
+        // Sized to its text, and its buttons wrap rather than clip at large text sizes.
+        Assert.Equal(System.Windows.SizeToContent.WidthAndHeight, window.SizeToContent);
+        Assert.IsType<System.Windows.Controls.WrapPanel>(System.Windows.LogicalTreeHelper.GetParent(add));
         Assert.Equal(question.Text, (window.FindName("ExplanationText") as System.Windows.Controls.TextBlock)?.Text);
         Assert.True(add.IsDefault);
         Assert.True(cancel.IsCancel);   // Escape cancels

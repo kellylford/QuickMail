@@ -383,6 +383,40 @@ public sealed class SoundSchemeUpdateTests
         Assert.Equal(2, SoundSchemeUpdateCheck.NotYetAnnounced(found, new Dictionary<string, string>()).Count);
     }
 
+    [Fact]
+    public void WhatIsRememberedKeepsOnlySchemesStillHere()
+    {
+        var schemes = new[] { FromGallery("user-1", "Wind", "wind", 'a') };
+        var announced = new Dictionary<string, string>
+        {
+            ["wind"] = new string('e', 64),
+            ["deleted-one"] = new string('d', 64),
+        };
+        var saying = new[] { new SoundSchemeUpdateFound("Wind", "wind", new string('f', 64)) };
+
+        var remembered = SoundSchemeUpdateCheck.Remember(announced, schemes, saying);
+
+        Assert.Equal(["wind"], remembered.Keys);
+        Assert.Equal(new string('f', 64), remembered["wind"]);
+        Assert.Equal(["wind"], SoundSchemeUpdateCheck.Remember(announced, schemes, []).Keys);
+    }
+
+    [Fact]
+    public async Task ACheckLetsGoOfADeletedSchemesEntryEvenWithNothingToSay()
+    {
+        var config = WithGalleryScheme('e');   // up to date: nothing to say
+        config.Load().AnnouncedSoundSchemeUpdates = new Dictionary<string, string>
+        {
+            ["wind"] = new string('e', 64),
+            ["deleted-one"] = new string('d', 64),
+        };
+        var checker = new SoundSchemeUpdateChecker(config, new CountingGallery([Listed("wind", 'e')]));
+
+        Assert.Null(await checker.CheckIfDueAsync(Now, TestContext.Current.CancellationToken));
+
+        Assert.Equal(["wind"], config.Load().AnnouncedSoundSchemeUpdates.Keys);
+    }
+
     private sealed class MutableGallery : ISoundGalleryService
     {
         public IReadOnlyList<SoundGalleryEntry> Entries { get; set; } = [];

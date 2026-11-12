@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Update Sound Scheme"
-        Width="460" SizeToContent="Height"
-        MinWidth="340"
+        SizeToContent="WidthAndHeight"
+        MinWidth="340" MaxWidth="720"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
@@ -15,21 +15,22 @@
     <!-- #971: asked before updating a gallery scheme added before QuickMail kept track of changes.
          Shown with ShowDialog: it has no editable text, so the nested loop is safe (CLAUDE.md, Modal
          Dialog Rules). The explanation is also the first button's help text, so it is read with the
-         button that has focus when the dialog opens. -->
+         button that has focus when the dialog opens. The window sizes to its content up to MaxWidth,
+         so the text wraps, and the buttons sit in a WrapPanel that breaks onto a second line at large
+         text sizes rather than clipping (as ComposeWindow's do since #450). -->
     <DockPanel Margin="14">
 
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
-                    HorizontalAlignment="Right" Margin="0,14,0,0">
+        <WrapPanel DockPanel.Dock="Bottom" HorizontalAlignment="Right" Margin="0,8,0,0">
             <Button x:Name="AddMissingButton" Content="_Add only what's missing" IsDefault="True"
                     AutomationProperties.Name="Add only what's missing"
-                    MinWidth="90" Padding="10,2" Margin="0,0,6,0" Click="AddMissingButton_Click"/>
+                    MinWidth="90" Padding="10,2" Margin="6,6,0,0" Click="AddMissingButton_Click"/>
             <Button x:Name="ReplaceButton" Content="_Replace everything"
                     AutomationProperties.Name="Replace everything"
-                    MinWidth="90" Padding="10,2" Margin="0,0,6,0" Click="ReplaceButton_Click"/>
+                    MinWidth="90" Padding="10,2" Margin="6,6,0,0" Click="ReplaceButton_Click"/>
             <Button x:Name="CancelButton" Content="Cancel" IsCancel="True"
                     AutomationProperties.Name="Cancel"
-                    MinWidth="75" Padding="10,2"/>
-        </StackPanel>
+                    MinWidth="75" Padding="10,2" Margin="6,6,0,0"/>
+        </WrapPanel>
 
         <TextBlock x:Name="ExplanationText" TextWrapping="Wrap"/>
 

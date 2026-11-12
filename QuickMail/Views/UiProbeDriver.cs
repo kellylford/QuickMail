@@ -210,6 +210,18 @@ internal sealed class UiProbeDriver
                     w => w is SettingsDialog, path,
                     prepare: w => SelectTabByHeader((SettingsDialog)w, "Sounds"));
 
+            // #971. The question for a gallery scheme added before changes were tracked: the longest
+            // text and the longest button row of any small dialog, so the one to check at 200%.
+            case "sound-scheme-update":
+                return await CaptureChildWindowAsync(() =>
+                    {
+                        var plan = new SoundSchemeUpdatePlan(new System.Collections.Generic.Dictionary<string, string>(),
+                            0, 1, 4, SoundSchemeUpdateMode.AddMissingOnly);
+                        new SoundSchemeUpdateDialog(SoundSchemeUpdate.Question("Maya Voicing Glass", plan, 0, filesDeletedIfReplaced: 2))
+                        { Owner = _window }.ShowDialog();
+                    },
+                    w => w is SoundSchemeUpdateDialog, path);
+
             // General settings scrolled to Composing so the send preference is visible.
             case "settings-composing":
                 return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),

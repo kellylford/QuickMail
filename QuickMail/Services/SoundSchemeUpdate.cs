@@ -278,6 +278,23 @@ public static class SoundSchemeUpdateCheck
     public static List<SoundSchemeUpdateFound> NotYetAnnounced(IEnumerable<SoundSchemeUpdateFound> found, IReadOnlyDictionary<string, string> announced) =>
         [.. found.Where(f => !announced.TryGetValue(f.GalleryId, out var sha) || !string.Equals(sha, f.Sha256, StringComparison.Ordinal))];
 
+    /// <summary>
+    /// What to remember as announced after a check: what was remembered, for gallery schemes still here
+    /// only (so a deleted scheme's entry goes), plus the updates about to be said.
+    /// </summary>
+    public static Dictionary<string, string> Remember(IReadOnlyDictionary<string, string> announced,
+        IEnumerable<SoundScheme> schemes, IEnumerable<SoundSchemeUpdateFound> saying)
+    {
+        var here = new HashSet<string>(GallerySchemes(schemes).Select(s => s.GalleryOrigin!.Id), StringComparer.Ordinal);
+        var kept = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (id, sha) in announced)
+        {
+            if (here.Contains(id)) kept[id] = sha;
+        }
+        foreach (var update in saying) kept[update.GalleryId] = update.Sha256;
+        return kept;
+    }
+
     /// <summary>What the status bar shows, and a screen reader hears, when updates are waiting.</summary>
     public static string Notice(IReadOnlyList<string> names) => names.Count switch
     {
@@ -337,13 +354,18 @@ public sealed class SoundSchemeUpdateChecker(IConfigService config, ISoundGaller
         var found = SoundSchemeUpdateCheck.Updates(cfg.SoundSchemes.Values, entries);
         var fresh = SoundSchemeUpdateCheck.NotYetAnnounced(found, cfg.AnnouncedSoundSchemeUpdates);
         LogService.Log($"Sound scheme update check: {found.Count} of the gallery schemes here have an update, {fresh.Count} not yet said.");
-        if (fresh.Count == 0) return null;
 
-        // Remembered before it is said, so it is said once per newer version, not every day.
-        var announced = new Dictionary<string, string>(cfg.AnnouncedSoundSchemeUpdates, StringComparer.Ordinal);
-        foreach (var update in fresh) announced[update.GalleryId] = update.Sha256;
-        cfg.AnnouncedSoundSchemeUpdates = announced;
-        config.Save(cfg);
-        return SoundSchemeUpdateCheck.Notice([.. fresh.Select(f => f.Name)]);
+        // Remembered before it is said, so it is said once per newer version, not every day; and the
+        // entries of schemes no longer here are let go, so the list doesn't only ever grow.
+        var announced = SoundSchemeUpdateCheck.Remember(cfg.AnnouncedSoundSchemeUpdates, cfg.SoundSchemes.Values, fresh);
+        if (!SameEntries(announced, cfg.AnnouncedSoundSchemeUpdates))
+        {
+            cfg.AnnouncedSoundSchemeUpdates = announced;
+            config.Save(cfg);
+        }
+        return fresh.Count == 0 ? null : SoundSchemeUpdateCheck.Notice([.. fresh.Select(f => f.Name)]);
     }
+
+    private static bool SameEntries(Dictionary<string, string> a, Dictionary<string, string> b) =>
+        a.Count == b.Count && a.All(e => b.TryGetValue(e.Key, out var v) && string.Equals(v, e.Value, StringComparison.Ordinal));
 }

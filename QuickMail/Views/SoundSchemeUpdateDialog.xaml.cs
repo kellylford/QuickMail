@@ -17,8 +17,8 @@ public partial class SoundSchemeUpdateDialog : Window
         InitializeComponent();
         Title = question.Title;
         ExplanationText.Text = question.Text;
-        // Read with the window, and with the button that has focus as it opens.
-        AutomationProperties.SetHelpText(this, question.Text);
+        // Read with the button that has focus as it opens. Only there: on the window as well, it could
+        // be read twice in a row.
         AutomationProperties.SetHelpText(AddMissingButton, question.Text);
         Loaded += (_, _) => AddMissingButton.Focus();
     }
