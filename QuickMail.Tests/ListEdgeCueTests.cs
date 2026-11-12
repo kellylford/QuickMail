@@ -321,6 +321,24 @@ public sealed class ListEdgeCueTests
     }
 
     [Fact]
+    public void AQuickSecondPressAtTheEdgeSoundsAgainAndNothingIsSaid()
+    {
+        using var sounds = new RealSounds(c => c.SoundSchemeId = "glass");
+        sounds.Output.Hold = new ManualResetEventSlim();   // the first edge sound is still "playing"
+        var (vm, heard) = MakeVm(sounds.Service);
+
+        vm.SignalListEdge(ListEdge.Top);
+        Assert.True(sounds.Output.Entered.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken), "the first edge sound never started");
+        vm.SignalListEdge(ListEdge.Top);
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (sounds.Output.Played.Count < 2 && DateTime.UtcNow < deadline) Thread.Sleep(5);
+        Assert.Equal(["builtin:edge", "builtin:edge"], sounds.Output.Played);
+        Assert.Empty(heard.Queued);
+        Assert.Empty(heard.Interrupting);
+    }
+
+    [Fact]
     public void OnceTheOtherSoundHasEndedTheEdgeSoundPlaysAgain()
     {
         using var sounds = new RealSounds(c => c.SoundSchemeId = "glass");

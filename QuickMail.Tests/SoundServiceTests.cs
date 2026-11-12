@@ -743,4 +743,135 @@ public sealed class SoundServiceTests : IDisposable
 
         Assert.Equal(expected, Service().IsAudible(SoundEvent.NewMail));
     }
+
+    // ── TryPlayNow and what counts as busy (#923) ──────────────────────────────
+
+    private static void WaitUntil(Func<bool> condition, string what)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition() && DateTime.UtcNow < deadline) Thread.Sleep(5);
+        Assert.True(condition(), what);
+    }
+
+    [Fact]
+    public void TryPlayNowPlaysWhenNothingElseIs()
+    {
+        Settings().PlayEventSounds = true;
+        Assert.True(Service().TryPlayNow(SoundEvent.ListEnd));
+        AssertPlayed("builtin:edge");
+        WaitUntil(() => !Service().IsBusy, "the edge sound was still counted after it ended");
+    }
+
+    [Fact]
+    public void TryPlayNowRefusesWhileAnotherSoundPlaysAndQueuesNothing()
+    {
+        Settings().PlayEventSounds = true;
+        _output.Hold = new ManualResetEventSlim();
+        Service().Play(SoundEvent.NewMail);
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        Assert.False(Service().TryPlayNow(SoundEvent.ListEnd));
+
+        _output.Hold.Set();
+        AssertPlayed("builtin:arrived");
+    }
+
+    [Fact]
+    public void ASecondEdgePressReplacesTheFirstRatherThanWaitingOrBeingRefused()
+    {
+        Settings().PlayEventSounds = true;
+        _output.Hold = new ManualResetEventSlim();
+        Assert.True(Service().TryPlayNow(SoundEvent.ListEnd));
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        Assert.True(Service().TryPlayNow(SoundEvent.ListEnd));   // the first is still "playing"
+
+        Assert.True(_output.Cancelled.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken), "the first edge sound was not cut off");
+        WaitUntil(() => _output.Played.Count == 2, "the second edge sound never started");
+        _output.Hold.Set();
+        AssertPlayed("builtin:edge", "builtin:edge");
+        WaitUntil(() => !Service().IsBusy, "an edge sound was still counted after both ended");
+    }
+
+    [Fact]
+    public void AnEdgePressNeverReplacesAnyOtherSound()
+    {
+        Settings().PlayEventSounds = true;
+        _output.Hold = new ManualResetEventSlim();
+        Assert.True(Service().TryPlayNow(SoundEvent.ListEnd));
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Service().Play(SoundEvent.NewMail);   // now something other than an edge sound is waiting
+
+        Assert.False(Service().TryPlayNow(SoundEvent.ListEnd));
+        Assert.False(_output.Cancelled.IsSet);
+
+        _output.Hold.Set();
+        AssertPlayed("builtin:edge", "builtin:arrived");
+    }
+
+    [Fact]
+    public void ACustomSoundThatFailsWithAFallbackThatFailsTooLeavesNothingBusy()
+    {
+        File.WriteAllBytes(Path.Combine(Directory.CreateDirectory(Path.Combine(_folder, "glass")).FullName, "Bad.wav"), [1]);
+        Settings().PlayEventSounds = true;
+        Settings().ActiveSoundEvents()["NewMail"] = "custom:Bad.wav";
+        _output.Failure = new InvalidOperationException("no audio device");   // the file and its fallback both fail
+
+        Service().Play(SoundEvent.NewMail);
+        AssertPlayed("custom:Bad.wav", "builtin:arrived");
+        WaitUntil(() => !Service().IsBusy, "a sound that failed twice was still counted");
+
+        _output.Failure = null;
+        Assert.True(Service().TryPlayNow(SoundEvent.ListEnd));
+    }
+
+    [Fact]
+    public void ASoundMutedWhileItWaitedLeavesNothingBusy()
+    {
+        Settings().PlayEventSounds = true;
+        _output.Hold = new ManualResetEventSlim();
+        Service().Play(SoundEvent.NewMail);
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Service().Play(SoundEvent.MessageSent);   // waits behind it
+
+        Settings().MuteSounds = true;   // cuts off the one playing; the one waiting never starts
+        WaitUntil(() => !Service().IsBusy, "a sound muted while it waited was still counted");
+        Assert.Equal(["builtin:arrived"], _output.Played.Select(p => p.Clip.Key));
+
+        Settings().MuteSounds = false;
+        Assert.True(Service().TryPlayNow(SoundEvent.ListEnd));
+    }
+
+    [Fact]
+    public void APreviewCountsAsPlaying()
+    {
+        _output.Hold = new ManualResetEventSlim();
+        Service().PreviewEvent(SoundEvent.NewMail);
+        Assert.True(_output.Entered.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Settings().PlayEventSounds = true;
+
+        Assert.True(Service().IsBusy);
+        Assert.False(Service().TryPlayNow(SoundEvent.ListEnd));
+
+        _output.Hold.Set();
+        WaitUntil(() => !Service().IsBusy, "a preview was still counted after it ended");
+        Assert.True(Service().TryPlayNow(SoundEvent.ListEnd));
+    }
+
+    [Theory]
+    [InlineData(false, false, 80, null)]     // event sounds off
+    [InlineData(true, true, 80, null)]       // muted
+    [InlineData(true, false, 0, null)]       // no volume
+    [InlineData(true, false, 80, "none")]    // no sound for it in the scheme
+    public void TryPlayNowRefusesWhatWouldNotBeHeardAndLeavesNothingBusy(bool on, bool muted, int volume, string? choice)
+    {
+        Settings().PlayEventSounds = on;
+        Settings().MuteSounds = muted;
+        Settings().SoundVolume = volume;
+        if (choice is not null) Settings().ActiveSoundEvents()["ListEnd"] = choice;
+
+        Assert.False(Service().TryPlayNow(SoundEvent.ListEnd));
+        Assert.False(Service().IsBusy);
+        AssertPlayed();
+    }
 }

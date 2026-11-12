@@ -290,9 +290,10 @@ focused, or Down or End with the last, moves nothing, so the platform reports no
 `ListEdgePositionTests`) and then to `MainViewModel.SignalListEdge`. That plays the **Reached the end
 of a list** sound (`ListEnd`) through `ISoundService.TryPlayNow`, which refuses unless the sound can
 start at once (sounds on, not muted, a volume, a sound in the scheme, and nothing else playing or
-queued). Otherwise it announces "Top of list" / "Bottom of list" as a `Result`, through
-`QueuedAnnouncementRequested`, which the window sends without interrupting so it doesn't cut off the
-row being read. For a tree, the last row is the last *visible* one: a message when the last group is
+queued, apart from an earlier edge sound, which it replaces). Otherwise it announces "Top of list" /
+"Bottom of list" as a `Result`, through `QueuedAnnouncementRequested`, which the window raises with
+`interrupt: false` (`MostRecent` rather than `ImportantMostRecent`), so as not to cut off the row
+being read. How that sounds with each screen reader is still to be confirmed by ear. For a tree, the last row is the last *visible* one: a message when the last group is
 expanded. The handler never marks the key handled and changes no navigation; it only listens, so these
 are still the controls' own keys and not registry commands. A held key cues once, not on every
 auto-repeat; modified keys (Shift, Ctrl, Alt) and Page Up / Page Down never cue.

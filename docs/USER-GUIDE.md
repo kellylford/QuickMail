@@ -2197,8 +2197,8 @@ If you delete or file a lot of mail in a row, you may prefer to set those three 
 
 When the first message is already selected, **Up** and **Home** have nowhere to go, and when the last is selected, neither do **Down** and **End**. The selection stays where it is, so nothing else tells you that you have reached the end. QuickMail does:
 
-- If sounds are on and the scheme in use has a sound for **Reached the end of a list**, you hear that sound, a short, soft note, and nothing is said.
-- Otherwise, QuickMail says "Top of list" or "Bottom of list". It also says so, rather than playing the sound late, when another sound is still playing. It waits for your screen reader to finish what it is saying, so you still hear the row you are on. It is an action result, like "No unread messages below", so you hear it while **Announce action results** is on, under **Screen Reader Announcements** in **Settings → General**.
+- If sounds are on and the scheme in use has a sound for **Reached the end of a list**, you hear that sound, a short, soft note, and nothing is said. Pressing again quickly plays it again, cutting off the one before.
+- Otherwise, QuickMail says "Top of list" or "Bottom of list". It also says so, rather than playing the sound late, when another sound is still playing. QuickMail doesn't interrupt what your screen reader is saying to say it. It is an action result, like "No unread messages below", so you hear it while **Announce action results** is on, under **Screen Reader Announcements** in **Settings → General**.
 
 This works in every message list view: the plain message list, Conversations, and the From and To groups, where the end is the last row you can reach, which is a message when the last group is expanded. Each press at the end tells you again. Holding a key down tells you once, when it gets to the end, rather than on every repeat. **Page Up** and **Page Down** are unchanged.
 
