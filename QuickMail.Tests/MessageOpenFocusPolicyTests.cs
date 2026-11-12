@@ -1,22 +1,29 @@
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using QuickMail.Helpers;
 using Xunit;
 
 namespace QuickMail.Tests;
 
 /// <summary>
-/// When a newly opened message is focused (#959, #851): only once the page on show is this render's,
-/// for as long as the budget allows, and only this render's own NavigationCompleted counts.
+/// When a newly opened message is focused (#959, #851): only once the page on show is this render's
+/// and loaded, never fewer than five tries however slow each is, and only this render's own
+/// NavigationCompleted counts.
 /// </summary>
 public class MessageOpenFocusPolicyTests
 {
     private static TimeSpan Ms(int ms) => TimeSpan.FromMilliseconds(ms);
+
+    private const int Min = MessageOpenFocusPolicy.MaxUnfocusedAttempts;
 
     [Theory]
     [InlineData("true", FocusScriptResult.Focused)]
     [InlineData(" true ", FocusScriptResult.Focused)]
     [InlineData("false", FocusScriptResult.NotFocused)]
     [InlineData("\"stale\"", FocusScriptResult.Stale)]
+    [InlineData("\"loading\"", FocusScriptResult.Loading)]
+    [InlineData("\"ready\"", FocusScriptResult.Ready)]
     [InlineData("null", FocusScriptResult.Error)]
     [InlineData("", FocusScriptResult.Error)]
     [InlineData(null, FocusScriptResult.Error)]
@@ -34,26 +41,36 @@ public class MessageOpenFocusPolicyTests
     }
 
     /// <summary>
-    /// A stale page is waited for well past the five attempts the old loop allowed: that loop gave up
-    /// after half a second, which is what left focus outside a page still arriving.
+    /// A stale or loading page is waited for until the budget is spent: the old loop gave up after
+    /// half a second, which is what left focus outside a page still arriving.
     /// </summary>
-    [Fact]
-    public void Stale_IsRetriedUntilTheBudgetRunsOut()
+    [Theory]
+    [InlineData(FocusScriptResult.Stale)]
+    [InlineData(FocusScriptResult.Loading)]
+    public void NotReady_IsRetriedUntilTheBudgetRunsOut(FocusScriptResult result)
     {
-        Assert.Equal(FocusDecision.Retry, MessageOpenFocusPolicy.Next(FocusScriptResult.Stale, 20, 0, Ms(2500)));
         Assert.Equal(FocusDecision.Retry,
-            MessageOpenFocusPolicy.Next(FocusScriptResult.Stale, 20, 0, MessageOpenFocusPolicy.Budget - Ms(1)));
+            MessageOpenFocusPolicy.Next(result, 20, 0, MessageOpenFocusPolicy.Budget - Ms(1)));
         Assert.Equal(FocusDecision.GiveUp,
-            MessageOpenFocusPolicy.Next(FocusScriptResult.Stale, 21, 0, MessageOpenFocusPolicy.Budget));
+            MessageOpenFocusPolicy.Next(result, 21, 0, MessageOpenFocusPolicy.Budget));
     }
 
-    [Fact]
-    public void Timeout_GivesUpWhateverTheResult()
+    /// <summary>
+    /// On a busy UI thread, which is when #959 happens, one attempt can take longer than the whole
+    /// budget. It must not end the loop: there are always at least five tries.
+    /// </summary>
+    [Theory]
+    [InlineData(FocusScriptResult.Stale)]
+    [InlineData(FocusScriptResult.Loading)]
+    [InlineData(FocusScriptResult.NotFocused)]
+    [InlineData(FocusScriptResult.Error)]
+    public void SlowFirstAttempt_DoesNotEndIt(FocusScriptResult result)
     {
-        var over = MessageOpenFocusPolicy.Budget + Ms(1);
-        Assert.Equal(FocusDecision.GiveUp, MessageOpenFocusPolicy.Next(FocusScriptResult.Stale, 3, 0, over));
-        Assert.Equal(FocusDecision.GiveUp, MessageOpenFocusPolicy.Next(FocusScriptResult.NotFocused, 3, 1, over));
-        Assert.Equal(FocusDecision.GiveUp, MessageOpenFocusPolicy.Next(FocusScriptResult.Error, 3, 1, over));
+        var late = MessageOpenFocusPolicy.Budget + TimeSpan.FromSeconds(5);
+        var unfocused = result is FocusScriptResult.NotFocused or FocusScriptResult.Error ? 1 : 0;
+        Assert.Equal(FocusDecision.Retry, MessageOpenFocusPolicy.Next(result, 0, unfocused, late));
+        Assert.Equal(FocusDecision.Retry, MessageOpenFocusPolicy.Next(result, Min - 2, Min - 1, late));
+        Assert.Equal(FocusDecision.GiveUp, MessageOpenFocusPolicy.Next(result, Min - 1, Min, late));
     }
 
     /// <summary>Focus that lands is taken, however late, rather than thrown away at the deadline.</summary>
@@ -63,17 +80,17 @@ public class MessageOpenFocusPolicyTests
             MessageOpenFocusPolicy.Next(FocusScriptResult.Focused, 40, 0, MessageOpenFocusPolicy.Budget + Ms(500)));
 
     /// <summary>
-    /// This render's own page refusing focus (the window is in the background, say) gives up after
-    /// five tries, as before, so the announcement after it is not held back for the whole budget.
+    /// This render's own ready page refusing focus (the window is in the background, say) gives up
+    /// after five tries, as before, so the announcement after it is not held back.
     /// </summary>
     [Fact]
     public void ThisPageRefusingFocus_GivesUpAfterFiveTries()
     {
-        for (var unfocused = 1; unfocused < MessageOpenFocusPolicy.MaxUnfocusedAttempts; unfocused++)
+        for (var unfocused = 1; unfocused < Min; unfocused++)
             Assert.Equal(FocusDecision.Retry,
                 MessageOpenFocusPolicy.Next(FocusScriptResult.NotFocused, unfocused + 3, unfocused, Ms(400)));
         Assert.Equal(FocusDecision.GiveUp,
-            MessageOpenFocusPolicy.Next(FocusScriptResult.NotFocused, 9, MessageOpenFocusPolicy.MaxUnfocusedAttempts, Ms(900)));
+            MessageOpenFocusPolicy.Next(FocusScriptResult.NotFocused, 9, Min, Ms(900)));
     }
 
     [Fact]
@@ -81,10 +98,160 @@ public class MessageOpenFocusPolicyTests
         Assert.Equal(FocusDecision.GiveUp,
             MessageOpenFocusPolicy.Next(FocusScriptResult.Stale, MessageOpenFocusPolicy.MaxAttempts - 1, 0, Ms(10)));
 
-    /// <summary>The grace before focusing a page still loading is inside the budget, leaving time to retry after it.</summary>
+    /// <summary>
+    /// A page of this render's still loading is waited for, then focused anyway before the budget
+    /// ends, rather than never.
+    /// </summary>
     [Fact]
-    public void LoadGrace_LeavesTimeToRetry() =>
-        Assert.True(MessageOpenFocusPolicy.LoadGrace + TimeSpan.FromSeconds(1) <= MessageOpenFocusPolicy.Budget);
+    public void WaitForLoad_UntilShortlyBeforeTheBudgetEnds()
+    {
+        Assert.True(MessageOpenFocusPolicy.WaitForLoad(TimeSpan.Zero));
+        Assert.True(MessageOpenFocusPolicy.WaitForLoad(MessageOpenFocusPolicy.FocusAnywayAfter - Ms(1)));
+        Assert.False(MessageOpenFocusPolicy.WaitForLoad(MessageOpenFocusPolicy.FocusAnywayAfter));
+        Assert.True(MessageOpenFocusPolicy.FocusAnywayAfter + Ms(500) <= MessageOpenFocusPolicy.Budget);
+    }
+
+    /// <summary>The wait for NavigationCompleted is what it was before #959.</summary>
+    [Fact]
+    public void LoadGrace_IsFourSeconds() =>
+        Assert.Equal(TimeSpan.FromSeconds(4), MessageOpenFocusPolicy.LoadGrace);
+
+    // ── The loop, with a fake page and clock ─────────────────────────────────
+
+    /// <summary>A page whose answers are scripted, with a clock that only moves when told.</summary>
+    private sealed class FakePage
+    {
+        public readonly Queue<string> Readiness = new();
+        public readonly Queue<string> Focus = new();
+        public readonly List<string> Calls = [];
+        public TimeSpan Now;
+        public TimeSpan ReadinessCost;   // how long each readiness check "takes"
+        public bool Current = true;
+
+        public Task<FocusScriptResult> RunAsync() => MessageOpenFocusPolicy.RunAsync(
+            () => Current,
+            () => { Calls.Add("host"); return Task.CompletedTask; },
+            wait =>
+            {
+                Calls.Add(wait ? "ready?" : "ready-now?");
+                Now += ReadinessCost;
+                return Task.FromResult<string?>(Readiness.Count > 0 ? Readiness.Dequeue() : "\"stale\"");
+            },
+            wait =>
+            {
+                Calls.Add(wait ? "focus" : "focus-now");
+                return Task.FromResult<string?>(Focus.Count > 0 ? Focus.Dequeue() : "false");
+            },
+            () => Now,
+            pause => { Now += pause; return Task.CompletedTask; },
+            "test");
+    }
+
+    /// <summary>
+    /// While the previous message's page is on show, nothing moves focus: the host's own focus step
+    /// (TabInto) runs only once the page is ready, and then before the focus script, as always.
+    /// </summary>
+    [Fact]
+    public async Task Loop_StaleThenFocused_FocusesTheHostOnlyWhenReady()
+    {
+        var page = new FakePage();
+        page.Readiness.Enqueue("\"stale\"");
+        page.Readiness.Enqueue("\"loading\"");
+        page.Readiness.Enqueue("\"ready\"");
+        page.Focus.Enqueue("true");
+
+        var result = await page.RunAsync();
+
+        Assert.Equal(FocusScriptResult.Focused, result);
+        Assert.Equal(["ready?", "ready?", "ready?", "host", "focus"], page.Calls);
+    }
+
+    /// <summary>One attempt slowed past the whole budget by a busy UI thread still leaves time for focus to land.</summary>
+    [Fact]
+    public async Task Loop_SlowFirstAttempt_StillFocuses()
+    {
+        var page = new FakePage { ReadinessCost = MessageOpenFocusPolicy.Budget + TimeSpan.FromSeconds(2) };
+        page.Readiness.Enqueue("\"stale\"");
+        page.Readiness.Enqueue("\"ready\"");
+        page.Focus.Enqueue("true");
+
+        var result = await page.RunAsync();
+
+        Assert.Equal(FocusScriptResult.Focused, result);
+        // Past the point of waiting for the load, the page is asked whether it is merely there.
+        Assert.Equal(["ready?", "ready-now?", "host", "focus-now"], page.Calls);
+    }
+
+    /// <summary>A page still loading near the end of the budget is focused anyway.</summary>
+    [Fact]
+    public async Task Loop_PageThatNeverFinishesLoading_IsFocusedAnyway()
+    {
+        var page = new FakePage();
+        var waits = (int)(MessageOpenFocusPolicy.FocusAnywayAfter / MessageOpenFocusPolicy.RetryDelay);
+        for (var i = 0; i < waits; i++) page.Readiness.Enqueue("\"loading\"");
+        page.Readiness.Enqueue("\"ready\"");   // what the page says once not waiting for the load
+        page.Focus.Enqueue("true");
+
+        var result = await page.RunAsync();
+
+        Assert.Equal(FocusScriptResult.Focused, result);
+        Assert.Equal("ready-now?", page.Calls[^3]);
+        Assert.Equal(["host", "focus-now"], page.Calls.GetRange(page.Calls.Count - 2, 2));
+        Assert.DoesNotContain("focus", page.Calls);
+    }
+
+    /// <summary>A page that never becomes this render's is given up on, and focus is never moved into it.</summary>
+    [Fact]
+    public async Task Loop_AlwaysStale_GivesUpWithoutTouchingIt()
+    {
+        var page = new FakePage();
+
+        var result = await page.RunAsync();
+
+        Assert.Equal(FocusScriptResult.Stale, result);
+        Assert.DoesNotContain("host", page.Calls);
+        Assert.True(page.Now >= MessageOpenFocusPolicy.Budget);
+        Assert.True(page.Calls.Count >= Min);
+    }
+
+    /// <summary>This render's page refusing focus gives up after five tries, each with the host step first.</summary>
+    [Fact]
+    public async Task Loop_RefusingFocus_GivesUpAfterFiveTries()
+    {
+        var page = new FakePage();
+        for (var i = 0; i < 10; i++) page.Readiness.Enqueue("\"ready\"");
+
+        var result = await page.RunAsync();
+
+        Assert.Equal(FocusScriptResult.NotFocused, result);
+        Assert.Equal(Min, page.Calls.FindAll(c => c == "host").Count);
+        Assert.Equal(Min, page.Calls.FindAll(c => c == "focus").Count);
+    }
+
+    /// <summary>A newer render, or closing the message, stops the loop at once.</summary>
+    [Fact]
+    public async Task Loop_NoLongerCurrent_StopsQuietly()
+    {
+        var page = new FakePage { Current = false };
+
+        await page.RunAsync();
+
+        Assert.Empty(page.Calls);
+    }
+
+    [Fact]
+    public async Task Loop_ScriptThrowing_CountsAsAFailedTry()
+    {
+        var calls = 0;
+        var result = await MessageOpenFocusPolicy.RunAsync(
+            () => true, () => Task.CompletedTask,
+            _ => { calls++; throw new InvalidOperationException("gone"); },
+            _ => Task.FromResult<string?>("true"),
+            () => TimeSpan.Zero, _ => Task.CompletedTask, "test");
+
+        Assert.Equal(FocusScriptResult.Error, result);
+        Assert.Equal(Min, calls);
+    }
 
     // ── NavigationMatcher ────────────────────────────────────────────────────
 

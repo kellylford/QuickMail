@@ -67,15 +67,30 @@ public class MessageOpenDocumentTests
         Assert.Single(Regex.Matches(html, "data-qm-render="));
     }
 
-    /// <summary>Plain text, reader mode and the plain-text view are all documents a message opens in.</summary>
+    public enum DocumentKind { Html, PlainTextView, ReaderMode, NoHtml }
+
+    /// <summary>HTML, the plain-text view, reader mode and a plain-text-only message are all documents a message opens in.</summary>
     [Theory]
-    [InlineData(false, "<p>Hello</p>")]
-    [InlineData(true, "<p>Hello</p>")]
-    [InlineData(false, "")]
-    public void RenderToken_IsCarriedByEveryKindOfMessageDocument(bool plainText, string htmlBody)
+    [InlineData(DocumentKind.Html)]
+    [InlineData(DocumentKind.PlainTextView)]
+    [InlineData(DocumentKind.ReaderMode)]
+    [InlineData(DocumentKind.NoHtml)]
+    public void RenderToken_IsCarriedByEveryKindOfMessageDocument(DocumentKind kind)
     {
+        var htmlBody = kind switch
+        {
+            // More tables than the reading pane renders richly: shown as a simplified body instead.
+            DocumentKind.ReaderMode => "<p>Hello</p>" + string.Concat(
+                System.Linq.Enumerable.Repeat("<table><tr><td>x</td></tr></table>", MessageBodyHtmlBuilder.MaxRichHtmlTableCount + 1)),
+            DocumentKind.NoHtml => "",
+            _ => "<p>Hello</p>",
+        };
+        Assert.Equal(kind == DocumentKind.ReaderMode, MessageBodyHtmlBuilder.ShouldUseReaderMode(htmlBody));
         var detail = new MailMessageDetail { Subject = "s", HtmlBody = htmlBody, PlainTextBody = "Hello" };
-        var document = MessageBodyHtmlBuilder.BuildMessageDocument(detail, null, plainText, null, PictureSources.None);
+        var document = MessageBodyHtmlBuilder.BuildMessageDocument(
+            detail, null, kind == DocumentKind.PlainTextView, null, PictureSources.None);
+        if (kind == DocumentKind.ReaderMode)
+            Assert.Contains("simplified body", document.Html);
 
         var html = MessageBodyHtmlBuilder.WithRenderToken(document.Html, "3");
 

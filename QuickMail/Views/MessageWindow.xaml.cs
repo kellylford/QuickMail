@@ -779,10 +779,10 @@ public partial class MessageWindow : Window
                 (Application.Current as App)?.ScreenshotCapture?.Capture(this, $"MessageWindow-{detail.Subject}");
             });
 
-        await FocusMessageBodyAsync(version, detail.Subject, navigation.Clock);
+        await FocusMessageBodyAsync(version, detail.Subject);
     }
 
-    private async Task FocusMessageBodyAsync(int version, string? subject, System.Diagnostics.Stopwatch clock)
+    private async Task FocusMessageBodyAsync(int version, string? subject)
     {
         var focusLabel = MessageBodyFocus.Label(subject);
 
@@ -792,13 +792,12 @@ public partial class MessageWindow : Window
             Keyboard.Focus(MessageBody);
         }, DispatcherPriority.Input);
 
-        var token = RenderToken(version);
         await MessageBodyFocus.FocusUntilReadyAsync(
             Dispatcher,
             () => version == _renderVersion,
             FocusMessageBodyHost,
-            () => RunFocusScriptAsync(token),
-            clock,
+            ExecuteInMessageBodyAsync,
+            RenderToken(version),
             "MessageWindow.FocusMessageBody");
 
         if (version != _renderVersion) return;
@@ -904,18 +903,20 @@ public partial class MessageWindow : Window
         _ = TryFocusDocumentAsync();
     }
 
+    // The user moved here themselves: a page still loading is focused, only an earlier one is not (#959).
     private async Task<bool> TryFocusDocumentAsync() =>
-        MessageOpenFocusPolicy.Parse(await RunFocusScriptAsync(RenderToken(_renderVersion))) == FocusScriptResult.Focused;
+        MessageOpenFocusPolicy.Parse(await ExecuteInMessageBodyAsync(
+            MessageBodyFocus.FocusScriptFor(RenderToken(_renderVersion), waitForLoad: false))) == FocusScriptResult.Focused;
 
     /// <summary>
-    /// Runs the focus script for render <paramref name="renderToken"/>; it answers "stale", touching
-    /// nothing, while another page is on show (#959).
+    /// Runs a script in the message body. Focus goes to the message's first text so reading starts on
+    /// open; see MessageBodyFocus. The scripts carry the render's token, so they touch nothing while
+    /// another page is on show (#959).
     /// </summary>
-    private async Task<string?> RunFocusScriptAsync(string renderToken)
+    private async Task<string?> ExecuteInMessageBodyAsync(string script)
     {
         if (MessageBody.CoreWebView2 == null) return null;
-        // Focus goes to the message's first text so reading starts on open; see MessageBodyFocus.
-        return await MessageBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor(renderToken));
+        return await MessageBody.CoreWebView2.ExecuteScriptAsync(script);
     }
 
     /// <summary>The token a document of render <paramref name="version"/> carries (#959).</summary>
@@ -1019,6 +1020,10 @@ public partial class MessageWindow : Window
             _themeService.ThemeChanged -= OnThemeChanged;
         _loadCts.Cancel();
         _loadCts.Dispose();
+        // A message still opening stops quietly (no "focus did not land", no announcement on a closed
+        // window), and the picture requests it was waiting on are answered now (#959).
+        Interlocked.Increment(ref _renderVersion);
+        _pictureHost?.End();
     }
 
     private void AttachmentList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)

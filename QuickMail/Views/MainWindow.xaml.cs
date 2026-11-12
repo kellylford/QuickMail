@@ -4458,14 +4458,10 @@ public partial class MainWindow : Window
                 MessageBodyRendered?.Invoke();
             });
 
-        await FocusMessageBodyAsync(renderVersion, detail.Subject, navigation.Clock);
+        await FocusMessageBodyAsync(renderVersion, detail.Subject);
     }
 
-    /// <param name="clock">
-    /// Started when the document was handed to the WebView2; null when returning to a message that
-    /// is already showing (F6), which then gets the whole budget from now.
-    /// </param>
-    private async Task FocusMessageBodyAsync(int renderVersion, string? subject, System.Diagnostics.Stopwatch? clock = null)
+    private async Task FocusMessageBodyAsync(int renderVersion, string? subject)
     {
         if (renderVersion != _messageBodyRenderVersion || !_webViewReady || !_vm.IsMessageOpen)
             return;
@@ -4478,13 +4474,12 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Input);
 
         var focusLabel = MessageBodyFocus.Label(subject);
-        var token = RenderToken(renderVersion);
         await MessageBodyFocus.FocusUntilReadyAsync(
             Dispatcher,
             () => renderVersion == _messageBodyRenderVersion && _vm.IsMessageOpen,
             FocusMessageBodyHost,
-            () => TryFocusMessageBodyDocumentAsync(token),
-            clock ?? System.Diagnostics.Stopwatch.StartNew(),
+            ExecuteInMessageBodyAsync,
+            RenderToken(renderVersion),
             "FocusMessageBody");
 
         if (renderVersion != _messageBodyRenderVersion || !_vm.IsMessageOpen)
@@ -4517,13 +4512,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<string?> TryFocusMessageBodyDocumentAsync(string renderToken)
-    {
-        // Focus goes to the message's first text, so a screen reader starts reading as soon as the
-        // message opens without the body becoming an object that cuts Ctrl+A short; see MessageBodyFocus.
-        // The token makes it answer "stale", touching nothing, while an earlier page is still on show (#959).
-        return await MessageBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor(renderToken));
-    }
+    // Focus goes to the message's first text, so a screen reader starts reading as soon as the
+    // message opens without the body becoming an object that cuts Ctrl+A short; see MessageBodyFocus.
+    // The scripts carry the render's token, so they touch nothing while an earlier page is on show (#959).
+    private async Task<string?> ExecuteInMessageBodyAsync(string script) =>
+        await MessageBody.CoreWebView2.ExecuteScriptAsync(script);
 
     /// <summary>Handles quickmail: pseudo-URIs from the event card buttons.</summary>
     // Update the open invite card's aria-live status region in place (#329). Because the region lives
@@ -4630,7 +4623,9 @@ public partial class MainWindow : Window
         {
             try
             {
-                await TryFocusMessageBodyDocumentAsync(RenderToken(_messageBodyRenderVersion));
+                // The user moved here themselves: a page still loading is focused, only an earlier one is not.
+                await ExecuteInMessageBodyAsync(
+                    MessageBodyFocus.FocusScriptFor(RenderToken(_messageBodyRenderVersion), waitForLoad: false));
             }
             catch (Exception ex)
             {
@@ -4745,6 +4740,8 @@ public partial class MainWindow : Window
     {
         ReleaseLinkMenuClaim();
         Interlocked.Increment(ref _messageBodyRenderVersion);
+        // Picture requests the closed message was still waiting on are answered now (#959).
+        _pictureHost?.End();
 
         if (_webViewReady)
         {

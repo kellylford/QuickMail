@@ -11,7 +11,7 @@ namespace QuickMail.Views;
 /// One message document handed to a WebView2 with NavigateToString, and its own NavigationCompleted
 /// (issue #959). Matching by NavigationId means a completion left over from a navigation this one
 /// stopped can no longer release the wait early; see <see cref="NavigationMatcher"/>. The clock starts
-/// when the document is handed over, and is what the focus loop's budget is measured against.
+/// when the document is handed over, and is what the grace for its completion is measured against.
 /// </summary>
 internal sealed class MessageBodyNavigation : IDisposable
 {

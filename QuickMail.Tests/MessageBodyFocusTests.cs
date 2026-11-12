@@ -76,6 +76,31 @@ public class MessageBodyFocusTests
         Assert.Contains(MessageBodyFocus.FocusScript, script);
     }
 
+    /// <summary>
+    /// A page whose load event has not fired is not ready (#959: that is the state that left the reader
+    /// on the title), until the loop stops waiting for the load; then only an unparsed page is.
+    /// </summary>
+    [Fact]
+    public void Scripts_WaitForTheLoad_UnlessTold()
+    {
+        foreach (var script in new[] { MessageBodyFocus.FocusScriptFor("1"), MessageBodyFocus.ReadinessScriptFor("1") })
+        {
+            Assert.Contains("document.readyState!=='complete')return 'loading'", script);
+            Assert.Contains("return 'stale'", script);
+        }
+        foreach (var script in new[]
+                 {
+                     MessageBodyFocus.FocusScriptFor("1", waitForLoad: false),
+                     MessageBodyFocus.ReadinessScriptFor("1", waitForLoad: false),
+                 })
+        {
+            Assert.DoesNotContain("'complete'", script);
+            Assert.Contains("document.readyState==='loading')return 'loading'", script);
+        }
+        Assert.DoesNotContain(MessageBodyFocus.FocusScript, MessageBodyFocus.ReadinessScriptFor("1"));
+        Assert.Contains("return 'ready'", MessageBodyFocus.ReadinessScriptFor("1"));
+    }
+
     [Fact]
     public void FocusScriptFor_EncodesTheToken() =>
         Assert.Contains("const want=\"a\\u0027b\\u0022\";", MessageBodyFocus.FocusScriptFor("a'b\""));
@@ -90,9 +115,12 @@ public class MessageBodyFocusTests
         var html = MessageBodyHtmlBuilder.WithRenderToken(
             MessageBodyHtmlBuilder.BuildPlainTextHtmlDocument("Lunch", "Hello Kelly,\nSecond line.", note: null), "5");
         string? previous = null, previousActive = null, wrapped = null, current = null, active = null;
+        string? readyPrevious = null, readyCurrent = null;
 
         WithWebView2(html, async core =>
         {
+            readyPrevious = await core.ExecuteScriptAsync(MessageBodyFocus.ReadinessScriptFor("4"));
+            readyCurrent = await core.ExecuteScriptAsync(MessageBodyFocus.ReadinessScriptFor("5"));
             previous = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor("4"));
             previousActive = await core.ExecuteScriptAsync("document.activeElement===document.body||document.activeElement===null");
             wrapped = await core.ExecuteScriptAsync("document.body.querySelectorAll('span').length");
@@ -100,6 +128,8 @@ public class MessageBodyFocusTests
             active = await core.ExecuteScriptAsync("document.activeElement.textContent");
         });
 
+        Assert.Equal("\"stale\"", readyPrevious);
+        Assert.Equal("\"ready\"", readyCurrent);
         Assert.Equal("\"stale\"", previous);
         Assert.Equal("true", previousActive);
         Assert.Equal("0", wrapped);

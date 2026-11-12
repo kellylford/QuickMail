@@ -262,11 +262,11 @@ public class EmbeddedPictureWebViewTests
     }
 
     /// <summary>
-    /// #959: the wait for a render's pictures is bounded. When it runs out, the request is answered
+    /// #959: the wait for a picture is bounded. When it runs out, the request is answered
     /// "not found" and the picture shows as missing, rather than holding its request open.
     /// </summary>
     [StaFact]
-    public void APictureThatNeverArrives_IsGivenUpOnAtTheRendersBound()
+    public void APictureThatNeverArrives_IsGivenUpOnAtItsBound()
     {
         string? pictures = null;
         WithPictureHost(async (core, env, host) =>
@@ -287,6 +287,93 @@ public class EmbeddedPictureWebViewTests
         });
 
         Assert.Equal("\"true:0\"", pictures);
+    }
+
+    /// <summary>
+    /// #959 review: the bound on a picture's wait runs from its own request, not from when the message
+    /// opened. A lazy picture far down a long message is asked for only when the reader scrolls to it,
+    /// well after the limit; it must still load.
+    /// </summary>
+    [StaFact]
+    public void APictureFarDown_RequestedAfterTheLimit_StillLoads()
+    {
+        string? pictures = null, visibility = null;
+        var askedBeforeScroll = true;
+        WithPictureHost(async (core, env, host) =>
+        {
+            var asked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            IReadOnlyDictionary<string, AttachmentModel> found =
+                new Dictionary<string, AttachmentModel>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["far@x"] = new() { ContentId = "far@x", ContentType = "image/png", Content = Png(37, 21) },
+                };
+            var detail = new MailMessageDetail
+            {
+                Subject = "Newsletter",
+                HtmlBody = string.Concat(System.Linq.Enumerable.Repeat("<p>A paragraph of the newsletter.</p>", 400)) +
+                           "<p><img src=\"cid:far@x\" alt=\"Far down\" width=\"37\" height=\"21\"></p>",
+            };
+            var sources = host.BeginMessage(embedded: true, web: false, plainText: false, detail, async () =>
+            {
+                asked.TrySetResult();
+                await Task.Delay(300);   // quicker than the limit, once asked
+                return found;
+            }, TimeSpan.FromSeconds(1));
+            var html = MessageBodyHtmlBuilder.WithRenderToken(
+                MessageBodyHtmlBuilder.BuildMessageDocument(detail, null, false, null, sources).Html, "1");
+
+            using (var navigation = MessageBodyNavigation.Navigate(core, html, "test"))
+                await navigation.WaitAsync(TimeSpan.FromSeconds(10));
+            visibility = await core.ExecuteScriptAsync("document.visibilityState");
+
+            await Task.Delay(2000);   // twice the limit, with the picture out of view
+            askedBeforeScroll = asked.Task.IsCompleted;
+            await core.ExecuteScriptAsync("document.images[0].scrollIntoView()");
+
+            var until = DateTime.UtcNow.AddSeconds(10);
+            do
+            {
+                pictures = await core.ExecuteScriptAsync(
+                    "Array.from(document.images).map(i => i.complete + ':' + i.naturalWidth).join('|')");
+                if (pictures == "\"true:37\"") break;
+                await Task.Delay(100);
+            } while (DateTime.UtcNow < until);
+        });
+
+        Assert.False(askedBeforeScroll, "The picture far down was asked for before it was scrolled to, so this proves nothing.");
+        Assert.True(pictures == "\"true:37\"", $"Pictures: {pictures} (visibility {visibility}).");
+    }
+
+    /// <summary>Closing the message (<see cref="EmbeddedPictureHost.End"/>) answers a picture still waiting, at once.</summary>
+    [StaFact]
+    public void End_ReleasesAWaitingPicture()
+    {
+        string? pictures = null;
+        long releasedMs = -1;
+        WithPictureHost(async (core, env, host) =>
+        {
+            var asked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var never = new TaskCompletionSource<IReadOnlyDictionary<string, AttachmentModel>>();
+            var html = Document(host, "stuck@x", "Closing.", "1", () => { asked.TrySetResult(); return never.Task; });
+            using (var navigation = MessageBodyNavigation.Navigate(core, html, "test"))
+                await navigation.WaitAsync(TimeSpan.FromSeconds(10));
+            await Task.WhenAny(asked.Task, Task.Delay(5000));
+
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            host.End();
+            var until = DateTime.UtcNow.AddSeconds(10);
+            do
+            {
+                pictures = await core.ExecuteScriptAsync(
+                    "Array.from(document.images).map(i => i.complete + ':' + i.naturalWidth).join('|')");
+                if (pictures == "\"true:0\"") break;
+                await Task.Delay(50);
+            } while (DateTime.UtcNow < until);
+            releasedMs = clock.ElapsedMilliseconds;
+        });
+
+        Assert.Equal("\"true:0\"", pictures);
+        Assert.True(releasedMs < 5000, $"Released after {releasedMs} ms; the picture's own wait was 60 s.");
     }
 
     private static readonly string[] TrueOrFalse = ["true", "false"];

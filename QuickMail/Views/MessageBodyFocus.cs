@@ -1,7 +1,6 @@
 using System;
 using System.Threading.Tasks;
 using System.Windows.Threading;
-using QuickMail.Services;
 
 namespace QuickMail.Views;
 
@@ -88,67 +87,56 @@ public static class MessageBodyFocus
         "})()";
 
     /// <summary>
-    /// <see cref="FocusScript"/> for one render (issue #959): evaluates to the string "stale", and
-    /// touches nothing, when the document on show is not the one carrying <paramref name="renderToken"/>
-    /// (see <see cref="Helpers.MessageBodyHtmlBuilder.WithRenderToken"/>) or has not been parsed yet.
-    /// Run against the previous message's page, which is still on show for a moment after
-    /// NavigateToString, the plain script would report focus that landed in the wrong document.
+    /// The check that opens both scripts below (issue #959): "stale" when the document on show is not
+    /// the one carrying <paramref name="renderToken"/> (see
+    /// <see cref="Helpers.MessageBodyHtmlBuilder.WithRenderToken"/>), "loading" when it is but has not
+    /// finished loading — or, with <paramref name="waitForLoad"/> off, has not even been parsed. The
+    /// previous message's page is still on show for a moment after NavigateToString, and a page whose
+    /// load event has not fired is exactly what left the reader on the title.
     /// </summary>
-    public static string FocusScriptFor(string renderToken) =>
-        "(() => {" +
+    private static string NotReadyCheck(string renderToken, bool waitForLoad) =>
         "const want=" + System.Text.Json.JsonSerializer.Serialize(renderToken) + ";" +
         "const root=document.documentElement;" +
-        "if(!root||root.getAttribute('" + Helpers.MessageBodyHtmlBuilder.RenderTokenAttribute + "')!==want" +
-        "||document.readyState==='loading')return 'stale';" +
-        "return " + FocusScript + ";" +
-        "})()";
+        "if(!root||root.getAttribute('" + Helpers.MessageBodyHtmlBuilder.RenderTokenAttribute + "')!==want)return 'stale';" +
+        (waitForLoad
+            ? "if(document.readyState!=='complete')return 'loading';"
+            : "if(document.readyState==='loading')return 'loading';");
 
     /// <summary>
-    /// Runs the focus script until focus lands in this render's document or the time allowed runs
-    /// out (issue #959). Each attempt is the same pair as before: the host's own focus step, then the
-    /// script. Logs every attempt's result under <c>/debug</c>, and always logs giving up.
+    /// Evaluates to "ready" when render <paramref name="renderToken"/>'s page is on show and loaded,
+    /// else "stale" or "loading" (see <see cref="NotReadyCheck"/>). Touches nothing, so it can be asked
+    /// again and again while the page arrives without focus moving anywhere.
     /// </summary>
-    /// <param name="isCurrent">False once a newer render (or closing the message) has taken over.</param>
-    /// <param name="focusHost">The window's host focus step (<c>TabInto</c>), run on the UI thread.</param>
-    /// <param name="runScript">Runs the script for this render and returns ExecuteScriptAsync's JSON.</param>
-    /// <param name="clock">Started when the document was handed to the WebView2.</param>
-    internal static async Task<Helpers.FocusScriptResult> FocusUntilReadyAsync(
-        Dispatcher dispatcher, Func<bool> isCurrent, Action focusHost, Func<Task<string?>> runScript,
-        System.Diagnostics.Stopwatch clock, string where)
+    public static string ReadinessScriptFor(string renderToken, bool waitForLoad = true) =>
+        "(() => {" + NotReadyCheck(renderToken, waitForLoad) + "return 'ready';})()";
+
+    /// <summary>
+    /// <see cref="FocusScript"/> for one render (issue #959): answers "stale" or "loading", touching
+    /// nothing, when the page is not ready (see <see cref="NotReadyCheck"/>); otherwise runs the shared
+    /// script. Run against the previous message's page, the plain script would report focus that landed
+    /// in the wrong document.
+    /// </summary>
+    public static string FocusScriptFor(string renderToken, bool waitForLoad = true) =>
+        "(() => {" + NotReadyCheck(renderToken, waitForLoad) + "return " + FocusScript + ";})()";
+
+    /// <summary>
+    /// Focuses render <paramref name="renderToken"/>'s page once it is ready; see
+    /// <see cref="Helpers.MessageOpenFocusPolicy.RunAsync"/>. The time allowed runs from now.
+    /// </summary>
+    /// <param name="execute">Runs a script in the window's WebView2 and returns its JSON.</param>
+    internal static Task<Helpers.FocusScriptResult> FocusUntilReadyAsync(
+        Dispatcher dispatcher, Func<bool> isCurrent, Action focusHost, Func<string, Task<string?>> execute,
+        string renderToken, string where)
     {
-        var result = Helpers.FocusScriptResult.Error;
-        var unfocused = 0;
-        for (var attempt = 0; ; attempt++)
-        {
-            if (!isCurrent()) return result;
-
-            await dispatcher.InvokeAsync(focusHost, DispatcherPriority.Input);
-
-            try
-            {
-                result = Helpers.MessageOpenFocusPolicy.Parse(await runScript());
-            }
-            catch (Exception ex)
-            {
-                result = Helpers.FocusScriptResult.Error;
-                LogService.Debug($"[FOCUS] {where}: attempt {attempt} threw: {ex.Message}");
-            }
-
-            if (result is Helpers.FocusScriptResult.NotFocused or Helpers.FocusScriptResult.Error)
-                unfocused++;
-            LogService.Debug($"[FOCUS] {where}: attempt {attempt}, {clock.ElapsedMilliseconds} ms: {result}");
-            switch (Helpers.MessageOpenFocusPolicy.Next(result, attempt, unfocused, clock.Elapsed))
-            {
-                case Helpers.FocusDecision.Focus:
-                    return result;
-                case Helpers.FocusDecision.GiveUp:
-                    LogService.Log($"{where}: focus did not land in the message after {attempt + 1} attempts " +
-                                   $"and {clock.ElapsedMilliseconds} ms (last result {result}).");
-                    return result;
-            }
-
-            await Task.Delay(Helpers.MessageOpenFocusPolicy.RetryDelay);
-        }
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        return Helpers.MessageOpenFocusPolicy.RunAsync(
+            isCurrent,
+            () => dispatcher.InvokeAsync(focusHost, DispatcherPriority.Input).Task,
+            waitForLoad => execute(ReadinessScriptFor(renderToken, waitForLoad)),
+            waitForLoad => execute(FocusScriptFor(renderToken, waitForLoad)),
+            () => clock.Elapsed,
+            pause => Task.Delay(pause),
+            where);
     }
 
     /// <summary>
