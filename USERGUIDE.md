@@ -1100,7 +1100,7 @@ With a message selected in the list or open in the reading pane:
 
 These are also available as buttons in the toolbar.
 
-For a safety check before sending, turn on **Confirm before sending a message** under **Settings → General → Composing**. It is off by default and applies to compose windows opened afterwards. Every Send action then asks for confirmation, including sending offline to the Outbox. **No** is selected initially; choose **Yes** to send, or **No** or **Escape** to keep editing. A queued message is confirmed once, when you queue it. Repeated send commands while confirmation or sending is in progress cannot send the compose twice.
+For a safety check before sending, turn on **Confirm before sending a message** under **Settings → General → Composing**. It is off by default and applies to compose windows opened afterwards. Every Send action then asks for confirmation, including sending offline to the Outbox. **No** is selected initially; choose **Yes** to send, or **No**, **Cancel**, or **Escape** to keep editing. A queued message is confirmed once, when you queue it. Repeated send commands while confirmation or sending is in progress cannot send the compose twice.
 
 ### Compose window shortcuts
 

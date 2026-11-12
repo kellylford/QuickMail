@@ -38,7 +38,7 @@ public class ComposeSendConfirmationTests
     {
         var h = new Harness();
         h.Vm.SetMode(mode);
-        h.Vm.ConfirmationRequested = (_, title) => { Assert.Equal("Confirm Send", title); return false; };
+        h.Vm.SendConfirmationRequested = (_, title) => { Assert.Equal("Confirm Send", title); return false; };
         var closes = 0;
         h.Vm.CloseRequested += () => closes++;
 
@@ -67,7 +67,7 @@ public class ComposeSendConfirmationTests
     {
         var h = new Harness();
         var confirmations = 0;
-        h.Vm.ConfirmationRequested = (_, _) =>
+        h.Vm.SendConfirmationRequested = (_, _) =>
         {
             confirmations++;
             Assert.True(h.Vm.IsBusy);
@@ -108,11 +108,11 @@ public class ComposeSendConfirmationTests
     {
         var h = new Harness();
         h.Connectivity.SetAccount(h.Vm.SenderAccount!.Id, false);
-        h.Vm.ConfirmationRequested = (_, _) => false;
+        h.Vm.SendConfirmationRequested = (_, _) => false;
         await h.Vm.SendCommand.ExecuteAsync(null);
         Assert.Empty(h.Outbox.Enqueued);
 
-        h.Vm.ConfirmationRequested = (_, _) => true;
+        h.Vm.SendConfirmationRequested = (_, _) => true;
         await h.Vm.SendCommand.ExecuteAsync(null);
         await h.Vm.SendCommand.ExecuteAsync(null);
         Assert.Single(h.Outbox.Enqueued);
@@ -125,7 +125,7 @@ public class ComposeSendConfirmationTests
     {
         var h = new Harness();
         var confirmations = 0;
-        h.Vm.ConfirmationRequested = (_, _) => { confirmations++; return true; };
+        h.Vm.SendConfirmationRequested = (_, _) => { confirmations++; return true; };
         h.Smtp.SendFailure = new InvalidOperationException("Rejected");
         await h.Vm.SendCommand.ExecuteAsync(null);
         Assert.False(h.Vm.IsSent);
@@ -139,7 +139,7 @@ public class ComposeSendConfirmationTests
     public async Task BusyDraftSave_AndInvalidMessage_DoNotPromptOrSend()
     {
         var h = new Harness();
-        h.Vm.ConfirmationRequested = (_, _) => throw new InvalidOperationException("Must not prompt");
+        h.Vm.SendConfirmationRequested = (_, _) => throw new InvalidOperationException("Must not prompt");
         h.Vm.IsBusy = true;
         await h.Vm.SendCommand.ExecuteAsync(null);
         h.Vm.IsBusy = false;

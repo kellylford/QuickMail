@@ -1222,7 +1222,7 @@ Press `Ctrl+K` in the To, Cc, or Bcc field (anywhere outside the message body, w
 
 ### Sending
 
-To ask before each send, turn on **Confirm before sending a message** in **Settings → General → Composing**. It is off by default. The setting applies to compose windows opened afterwards. Send, **Alt+S**, **Ctrl+Enter**, and the command palette all ask the same question. Choose **Yes** to send, or **No** (the default) or **Escape** to keep editing. The confirmation also applies before a message is queued in the Outbox while offline; it is not repeated when the queued message goes out. Repeated send commands while confirmation or sending is underway do not send the message twice.
+To ask before each send, turn on **Confirm before sending a message** in **Settings → General → Composing**. It is off by default. The setting applies to compose windows opened afterwards. Send, **Alt+S**, **Ctrl+Enter**, and the command palette all ask the same question. Choose **Yes** to send, or **No** (the default), **Cancel**, or **Escape** to keep editing. The confirmation also applies before a message is queued in the Outbox while offline; it is not repeated when the queued message goes out. Repeated send commands while confirmation or sending is underway do not send the message twice.
 
 | Shortcut | Action |
 |----------|--------|

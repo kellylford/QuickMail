@@ -194,6 +194,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public Func<string, string, bool>? ConfirmationRequested { get; set; }
 
+    /// <summary>Set by the View for the send confirmation; false includes No, Cancel, and Escape.</summary>
+    public Func<string, string, bool>? SendConfirmationRequested { get; set; }
+
     /// <summary>Set by the View from the composing preference when this window opens.</summary>
     public bool ConfirmBeforeSend { get; set; }
 
@@ -863,7 +866,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         IsBusy = true;
         try
         {
-            if (ConfirmBeforeSend && ConfirmationRequested?.Invoke(
+            if (ConfirmBeforeSend && SendConfirmationRequested?.Invoke(
                     "Send this message now? If the account is offline, it will be queued to send when connected.",
                     "Confirm Send") != true)
                 return;

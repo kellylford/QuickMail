@@ -132,7 +132,13 @@ public partial class ComposeWindow : Window
 
         // Wire the View confirmation callback so the VM stays out of System.Windows.
         vm.ConfirmationRequested = (message, title) =>
-            MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning,
+            MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
+            == MessageBoxResult.Yes;
+
+        // YesNo alone ignores Escape in a native message box. Cancel makes Escape leave
+        // the compose intact, while No remains the initial choice for accidental key presses.
+        vm.SendConfirmationRequested = (message, title) =>
+            MessageBox.Show(this, message, title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question,
                 MessageBoxResult.No)
             == MessageBoxResult.Yes;
 

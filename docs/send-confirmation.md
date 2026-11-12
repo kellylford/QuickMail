@@ -2,7 +2,7 @@
 
 The optional **Confirm before sending a message** preference lives under **Settings → General → Composing**. It defaults off, applies to compose windows opened afterwards, persists in `config.ini`, and travels with exported preferences.
 
-When enabled, every compose Send action asks before sending or queuing the message. The native Yes/No dialog defaults to No. Declining leaves the compose open and its contents intact. An accepted offline message is confirmed when queued, with no second prompt when the Outbox sends it.
+When enabled, every compose Send action asks before sending or queuing the message. The native Yes/No/Cancel dialog defaults to No. No, Cancel, and Escape leave the compose open and its contents intact. An accepted offline message is confirmed when queued, with no second prompt when the Outbox sends it.
 
 Send ignores a repeated invocation while a confirmation or send is running, while another save is busy, or after the compose has already been sent or queued. A rejected send can be retried. These protections also apply when confirmation is disabled.
 
