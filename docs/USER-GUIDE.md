@@ -67,6 +67,28 @@ The two versions are otherwise identical: same features, same settings, same dat
 2. The setup wizard walks through a welcome page, the license agreement, and installation. QuickMail installs for the current user only — no administrator permission is needed. If the WebView2 component QuickMail uses to display mail is missing from your PC, setup adds it automatically.
 3. A Start Menu entry is created. The first time QuickMail starts, it asks whether to also add a desktop shortcut — either answer is remembered, and you can change your mind anytime in **Settings → General** under **Desktop Shortcut**.
 
+### Installing with winget
+
+QuickMail is also in the Windows Package Manager, usually called **winget**. winget is a program built into Windows 10 and 11 that installs other programs from a single typed command: no web page to find, no file to download, and no setup wizard to step through. It downloads the same installer as the releases page, picks the right version for your computer, whether it has an Intel, AMD or ARM processor, and installs it for your account with no administrator permission needed.
+
+If you have never used winget, here is the whole process, start to finish.
+
+1. **Open a command window.** Press the Windows key, type `terminal`, and press Enter. That opens Windows Terminal, and focus is on a line waiting for a command. (Typing `cmd` or `powershell` instead works just as well. So does pressing Windows+X and then I.) You do not need to run it as administrator.
+2. **Type the command and press Enter:**
+
+   ```
+   winget install quickmail
+   ```
+
+   You can also copy the command from here and paste it with Ctrl+V. `winget install KellyLford.QuickMail` is the package's full name and does the same thing.
+3. **Agree to the terms, the first time only.** The first time you use winget, it shows a few lines about the Microsoft Store's terms and then waits at `Do you agree to all the source agreements terms?`, on a line reading `[Y] Yes  [N] No:`. Type `Y` and press Enter. winget remembers your answer and never asks again. To skip the question, run `winget install quickmail --accept-source-agreements` instead.
+4. **Wait for it to finish.** winget says it found QuickMail, notes that the program is licensed to you by its owner, then downloads and installs it, which takes a minute or so. A small installer progress window, titled **Windows Installer** and then **QuickMail**, appears briefly and closes on its own; it needs nothing from you. It is done when the last line says `Successfully installed` and the command prompt returns. A screen reader may not read the progress as it changes; reading the window's text once the prompt is back shows the result.
+5. **Start QuickMail** from the Start menu, like any other program, and close the command window with Alt+F4 or by typing `exit`.
+
+If Windows says `winget` is not recognized, your copy of Windows is missing it. Install **App Installer** from the Microsoft Store, which is the program that provides winget, and try again. If winget says it found no package, check the spelling of `quickmail`.
+
+You only need winget once. After that, QuickMail updates itself exactly as described in [How updating works](#how-updating-works), so the version winget lists can be older than the one you are running. That is expected, and `winget upgrade --all` leaves QuickMail alone for that reason. To remove it, use **Settings → Apps** or `winget uninstall quickmail`; either way you are asked about your data as described in [Uninstalling](#uninstalling).
+
 ### If you already have QuickMail installed
 
 Versions before 0.8.0 used a different installer, so moving onto the self-updating track takes one manual step:

@@ -1,9 +1,10 @@
 # winget manifest for `KellyLford.QuickMail`
 
 > [!IMPORTANT]
-> **Submitted, not yet merged** (microsoft/winget-pkgs#447170). The first submission is a manual
-> step that waits for Kelly's go: it publishes to a public catalog, and the identifier is
-> permanent once merged. Nothing in this repository submits anything automatically.
+> **Published.** microsoft/winget-pkgs#447170 merged on 2026-11-05 with 0.8.65, so
+> `KellyLford.QuickMail` (moniker `quickmail`) is in the catalog. Nothing in this repository
+> submits anything automatically; each later version is its own winget-pkgs PR (see
+> [Every later release](#every-later-release)).
 
 Reference copy of the three manifests that describe QuickMail to the
 [Windows Package Manager community repository](https://github.com/microsoft/winget-pkgs)

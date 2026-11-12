@@ -8,6 +8,14 @@ QuickMail is built to work correctly out of the box with any screen reader, with
 
 Get the latest version from the [Releases page](https://github.com/kellylford/QuickMail/releases/latest). Most people should take the `.msi` installer; it installs without administrator rights and keeps QuickMail up to date automatically. ARM builds and portable executables are also available.
 
+Or install it with the Windows Package Manager:
+
+```
+winget install quickmail
+```
+
+winget picks the right version for your computer, whether it has an Intel, AMD or ARM processor. You only need it once: from then on QuickMail keeps itself up to date.
+
 The [User Guide](https://kellylford.github.io/QuickMail/) covers everything QuickMail does. In the app, press **F1** to open it.
 
 ## Features
