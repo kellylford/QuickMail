@@ -784,31 +784,56 @@ public partial class MessageWindow : Window
 
     private async Task FocusMessageBodyAsync(int version, string? subject)
     {
-        var focusLabel = MessageBodyFocus.Label(subject);
-
-        await Dispatcher.InvokeAsync(() =>
-        {
-            MessageBody.Focus();
-            Keyboard.Focus(MessageBody);
-        }, DispatcherPriority.Input);
-
-        await MessageBodyFocus.FocusUntilReadyAsync(
-            Dispatcher,
-            () => version == _renderVersion,
-            FocusMessageBodyHost,
-            ExecuteInMessageBodyAsync,
-            RenderToken(version),
-            "MessageWindow.FocusMessageBody");
-
-        if (version != _renderVersion) return;
-
-        await Dispatcher.InvokeAsync(() =>
+        // One loop per render: a second would announce twice (#959 review).
+        if (!_openFocus.TryBegin(version))
         {
             FocusMessageBodyHost();
-            _f6FocusStop = 2; // body is now focused
-            AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
-        }, DispatcherPriority.Input);
+            return;
+        }
+        try
+        {
+            var focusLabel = MessageBodyFocus.Label(subject);
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                MessageBody.Focus();
+                Keyboard.Focus(MessageBody);
+            }, DispatcherPriority.Input);
+
+            // Stops quietly if the user moves focus elsewhere while the page arrives.
+            var result = await MessageBodyFocus.FocusUntilReadyAsync(
+                Dispatcher,
+                () => version == _renderVersion && MessageBodyHoldsFocus,
+                FocusMessageBodyHost,
+                ExecuteInMessageBodyAsync,
+                RenderToken(version),
+                "MessageWindow.FocusMessageBody");
+
+            if (version != _renderVersion) return;
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                // Not into another message's page, and not pulling back a user who moved on.
+                if (!MessageOpenFocusPolicy.ShouldFinish(result, MessageBodyHoldsFocus)) return;
+                FocusMessageBodyHost();
+                _f6FocusStop = 2; // body is now focused
+                AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
+            }, DispatcherPriority.Input);
+        }
+        finally
+        {
+            _openFocus.End(version);
+        }
     }
+
+    /// <summary>The render whose open focus loop is running, if any (#959 review); see <see cref="MessageOpenFocusGate"/>.</summary>
+    private readonly MessageOpenFocusGate _openFocus = new();
+
+    /// <summary>
+    /// True while keyboard focus is on the message body or its host. A null focused element counts:
+    /// it is what WPF reports while the WebView2's own window holds focus.
+    /// </summary>
+    private bool MessageBodyHoldsFocus => MessageBody.IsKeyboardFocusWithin || Keyboard.FocusedElement is null;
 
     /// <summary>Set when the menu bar was entered by an Alt pressed in the message body.</summary>
     private bool _menuEnteredFromBody;
@@ -899,6 +924,10 @@ public partial class MessageWindow : Window
     private void MessageBody_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         _f6FocusStop = 2;
+
+        // While a message is opening, its own focus loop raised this (moving focus to the host) and
+        // decides when the page is ready; focusing it here would land in a page still loading (#959).
+        if (_openFocus.IsRunning(_renderVersion)) return;
 
         _ = TryFocusDocumentAsync();
     }

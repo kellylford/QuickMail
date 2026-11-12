@@ -913,6 +913,11 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        // A message still opening in the reading pane stops quietly (no focus attempt, log line or
+        // announcement after close), and the picture requests it was waiting on are answered now (#959).
+        // OnClosed, not OnClosing: closing to the tray cancels the close and the message stays open.
+        Interlocked.Increment(ref _messageBodyRenderVersion);
+        _pictureHost?.End();
         foreach (var w in _openComposeWindows.ToList())
             w.Close();
         // Standalone message windows (MessageOpenMode = Window) are unowned, so WPF keeps the
@@ -4469,33 +4474,59 @@ public partial class MainWindow : Window
         if (renderVersion != _messageBodyRenderVersion || !_webViewReady || !_vm.IsMessageOpen)
             return;
 
-        await Dispatcher.InvokeAsync(() =>
+        // F6 back into the body while this render is still opening: the loop already running brings
+        // focus in and announces; a second loop would announce twice (#959 review).
+        if (!_openFocus.TryBegin(renderVersion))
         {
-            if (!_vm.IsMessageOpen) return;
-            MessageBody.Focus();
-            Keyboard.Focus(MessageBody);
-        }, DispatcherPriority.Input);
-
-        var focusLabel = MessageBodyFocus.Label(subject);
-        await MessageBodyFocus.FocusUntilReadyAsync(
-            Dispatcher,
-            () => renderVersion == _messageBodyRenderVersion && _vm.IsMessageOpen,
-            FocusMessageBodyHost,
-            ExecuteInMessageBodyAsync,
-            RenderToken(renderVersion),
-            "FocusMessageBody");
-
-        if (renderVersion != _messageBodyRenderVersion || !_vm.IsMessageOpen)
-            return;
-
-        await Dispatcher.InvokeAsync(() =>
-        {
-            if (!_vm.IsMessageOpen) return;
             FocusMessageBodyHost();
-            AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
-            AccessibilityHelper.Announce(this, "Press Escape to return to message list.", interrupt: false, category: AnnouncementCategory.Hint);
-        }, DispatcherPriority.Input);
+            return;
+        }
+        try
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (!_vm.IsMessageOpen) return;
+                MessageBody.Focus();
+                Keyboard.Focus(MessageBody);
+            }, DispatcherPriority.Input);
+
+            var focusLabel = MessageBodyFocus.Label(subject);
+            // Stops quietly if the user moves focus elsewhere while the page arrives.
+            var result = await MessageBodyFocus.FocusUntilReadyAsync(
+                Dispatcher,
+                () => renderVersion == _messageBodyRenderVersion && _vm.IsMessageOpen && MessageBodyHoldsFocus,
+                FocusMessageBodyHost,
+                ExecuteInMessageBodyAsync,
+                RenderToken(renderVersion),
+                "FocusMessageBody");
+
+            if (renderVersion != _messageBodyRenderVersion || !_vm.IsMessageOpen)
+                return;
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (!_vm.IsMessageOpen) return;
+                // Not into another message's page, and not pulling back a user who moved on.
+                if (!MessageOpenFocusPolicy.ShouldFinish(result, MessageBodyHoldsFocus)) return;
+                FocusMessageBodyHost();
+                AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
+                AccessibilityHelper.Announce(this, "Press Escape to return to message list.", interrupt: false, category: AnnouncementCategory.Hint);
+            }, DispatcherPriority.Input);
+        }
+        finally
+        {
+            _openFocus.End(renderVersion);
+        }
     }
+
+    /// <summary>The render whose open focus loop is running, if any (#959 review); see <see cref="MessageOpenFocusGate"/>.</summary>
+    private readonly MessageOpenFocusGate _openFocus = new();
+
+    /// <summary>
+    /// True while keyboard focus is on the message body or its host. A null focused element counts:
+    /// it is what WPF reports while the WebView2's own window holds focus.
+    /// </summary>
+    private bool MessageBodyHoldsFocus => IsMessageBodyFocused || Keyboard.FocusedElement is null;
 
     private void FocusMessageBodyHost()
     {
@@ -4621,6 +4652,9 @@ public partial class MainWindow : Window
     // push focus into the HTML document body so the user can read/navigate content.
     private async void MessageBody_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
+        // While a message is opening, its own focus loop raised this (moving focus to the host) and
+        // decides when the page is ready; focusing it here would land in a page still loading (#959).
+        if (_openFocus.IsRunning(_messageBodyRenderVersion)) return;
 
         if (_webViewReady)
         {

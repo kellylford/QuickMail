@@ -253,6 +253,66 @@ public class MessageOpenFocusPolicyTests
         Assert.Equal(Min, calls);
     }
 
+    // ── Finishing, and the one-loop-per-render gate ──────────────────────────
+
+    /// <summary>
+    /// After the loop: no "Message body. Subject" when focus never reached this render's page, and no
+    /// pulling focus back from wherever the user moved it during the wait.
+    /// </summary>
+    [Theory]
+    [InlineData(FocusScriptResult.Focused, true, true)]
+    [InlineData(FocusScriptResult.NotFocused, true, true)]
+    [InlineData(FocusScriptResult.Loading, true, true)]
+    [InlineData(FocusScriptResult.Error, true, true)]
+    [InlineData(FocusScriptResult.Stale, true, false)]
+    [InlineData(FocusScriptResult.Focused, false, false)]
+    [InlineData(FocusScriptResult.Stale, false, false)]
+    public void ShouldFinish(FocusScriptResult result, bool focusStillOnBody, bool expected) =>
+        Assert.Equal(expected, MessageOpenFocusPolicy.ShouldFinish(result, focusStillOnBody));
+
+    /// <summary>F6 back into a message still opening does not start a second loop that would announce again.</summary>
+    [Fact]
+    public void Gate_OneLoopPerRender()
+    {
+        var gate = new MessageOpenFocusGate();
+
+        Assert.True(gate.TryBegin(3));
+        Assert.True(gate.IsRunning(3));
+        Assert.False(gate.TryBegin(3));   // F6 during the open
+        gate.End(3);
+        Assert.False(gate.IsRunning(3));
+        Assert.True(gate.TryBegin(3));    // F6 later: a loop of its own
+    }
+
+    /// <summary>A newer render takes over; the older loop ending leaves the newer one marked running.</summary>
+    [Fact]
+    public void Gate_ANewerRender_IsNotEndedByTheOlderLoop()
+    {
+        var gate = new MessageOpenFocusGate();
+        Assert.True(gate.TryBegin(3));
+        Assert.True(gate.TryBegin(4));
+
+        gate.End(3);
+
+        Assert.True(gate.IsRunning(4));
+        Assert.False(gate.IsRunning(3));
+    }
+
+    /// <summary>
+    /// The host's GotKeyboardFocus stands aside while the loop runs (its own focus step raised it),
+    /// and acts again once the loop is over, for the user's own Tab or F6.
+    /// </summary>
+    [Fact]
+    public void Gate_GotKeyboardFocus_StandsAsideOnlyDuringTheLoop()
+    {
+        var gate = new MessageOpenFocusGate();
+        Assert.False(gate.IsRunning(7));      // user's Tab before anything opens
+        gate.TryBegin(7);
+        Assert.True(gate.IsRunning(7));       // the loop's own MessageBody.Focus()
+        gate.End(7);
+        Assert.False(gate.IsRunning(7));      // user's Tab afterwards
+    }
+
     // ── NavigationMatcher ────────────────────────────────────────────────────
 
     /// <summary>

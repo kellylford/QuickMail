@@ -63,6 +63,71 @@ public class MessageBodyFocusTests
         Assert.DoesNotContain("NavigationCompleted +=", code);
     }
 
+    /// <summary>The text of the method whose declaration contains <paramref name="signature"/>, up to its closing brace.</summary>
+    private static string Method(string code, string signature)
+    {
+        var start = code.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"No method {signature}.");
+        var end = code.IndexOf("\n    }", start, StringComparison.Ordinal);
+        Assert.True(end > start, $"No end to {signature}.");
+        return code[start..end];
+    }
+
+    private static string View(string file) =>
+        File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "Views", file));
+
+    /// <summary>
+    /// #959 review: the open loop's own first step (focus to the host) raises the host's
+    /// GotKeyboardFocus, whose handler focuses the page without waiting for the load. It must stand
+    /// aside while the loop for the current render runs, before it reaches the focus script.
+    /// </summary>
+    [Theory]
+    [InlineData("MainWindow.xaml.cs", "void MessageBody_GotKeyboardFocus(", "FocusScriptFor(", "_messageBodyRenderVersion")]
+    [InlineData("MessageWindow.xaml.cs", "void MessageBody_GotKeyboardFocus(", "TryFocusDocumentAsync()", "_renderVersion")]
+    public void GotKeyboardFocus_StandsAsideWhileTheOpenLoopRuns(string file, string handler, string focuses, string version)
+    {
+        var body = Method(View(file), handler);
+        var guard = body.IndexOf($"_openFocus.IsRunning({version})) return;", StringComparison.Ordinal);
+        Assert.True(guard >= 0, "The handler does not check the open loop.");
+        Assert.True(guard < body.IndexOf(focuses, StringComparison.Ordinal), "The check comes after the focus script.");
+    }
+
+    /// <summary>
+    /// One loop per render (F6 during an open must not start a second that announces again), always
+    /// released in a finally, and the loop stops when the user moves focus away; after it, the host
+    /// step and the announcement only when <c>ShouldFinish</c> says so.
+    /// </summary>
+    [Theory]
+    [InlineData("MainWindow.xaml.cs")]
+    [InlineData("MessageWindow.xaml.cs")]
+    public void OpenLoop_IsGatedAndFinishesOnlyWhenItShould(string file)
+    {
+        var body = Method(View(file), "private async Task FocusMessageBodyAsync(");
+        Assert.Contains("_openFocus.TryBegin(", body);
+        Assert.Contains("finally", body);
+        Assert.Contains("_openFocus.End(", body);
+        Assert.Contains("MessageBodyHoldsFocus", body);
+        var finish = body.IndexOf("MessageOpenFocusPolicy.ShouldFinish(result, MessageBodyHoldsFocus)", StringComparison.Ordinal);
+        Assert.True(finish >= 0);
+        Assert.True(finish < body.IndexOf("AccessibilityHelper.Announce(", StringComparison.Ordinal));
+        Assert.True(finish < body.LastIndexOf("FocusMessageBodyHost();", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Closing a window, or the reading pane, mid-open ends the render: the loop stops (no log line,
+    /// no announcement on a closed window) and picture requests still waiting are released.
+    /// </summary>
+    [Theory]
+    [InlineData("MessageWindow.xaml.cs", "private void OnClosing(", "Interlocked.Increment(ref _renderVersion)")]
+    [InlineData("MainWindow.xaml.cs", "protected override void OnClosed(", "Interlocked.Increment(ref _messageBodyRenderVersion)")]
+    [InlineData("MainWindow.xaml.cs", "private void CloseReadingPane(", "Interlocked.Increment(ref _messageBodyRenderVersion)")]
+    public void Closing_EndsTheRender(string file, string method, string advance)
+    {
+        var body = Method(View(file), method);
+        Assert.Contains(advance, body);
+        Assert.Contains("_pictureHost?.End();", body);
+    }
+
     private static readonly string[] TrueOrFalse = ["true", "false"];
 
     [Fact]

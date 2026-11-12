@@ -376,6 +376,43 @@ public class EmbeddedPictureWebViewTests
         Assert.True(releasedMs < 5000, $"Released after {releasedMs} ms; the picture's own wait was 60 s.");
     }
 
+    /// <summary>
+    /// After <see cref="EmbeddedPictureHost.End"/> (the reading pane closed), the next message opened
+    /// shows its pictures: End answers what was waiting, it does not leave the host refusing everything.
+    /// </summary>
+    [StaFact]
+    public void AfterEnd_TheNextMessage_ShowsItsPictures()
+    {
+        string? pictures = null;
+        WithPictureHost(async (core, env, host) =>
+        {
+            host.End();
+            IReadOnlyDictionary<string, AttachmentModel> found =
+                new Dictionary<string, AttachmentModel>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["next@x"] = new() { ContentId = "next@x", ContentType = "image/png", Content = Png(37, 21) },
+                };
+            var html = Document(host, "next@x", "Next message.", "2", async () =>
+            {
+                await Task.Delay(200);
+                return found;
+            });
+            using (var navigation = MessageBodyNavigation.Navigate(core, html, "test"))
+                await navigation.WaitAsync(TimeSpan.FromSeconds(10));
+
+            var until = DateTime.UtcNow.AddSeconds(10);
+            do
+            {
+                pictures = await core.ExecuteScriptAsync(
+                    "Array.from(document.images).map(i => i.complete + ':' + i.naturalWidth).join('|')");
+                if (pictures == "\"true:37\"") break;
+                await Task.Delay(100);
+            } while (DateTime.UtcNow < until);
+        });
+
+        Assert.Equal("\"true:37\"", pictures);
+    }
+
     private static readonly string[] TrueOrFalse = ["true", "false"];
 
     private CoreWebView2Controller? controller;

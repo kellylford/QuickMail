@@ -99,12 +99,23 @@ public static class MessageOpenFocusPolicy
             return FocusDecision.GiveUp;
         if (result is FocusScriptResult.NotFocused or FocusScriptResult.Error)
             return unfocusedAttempts >= MaxUnfocusedAttempts ? FocusDecision.GiveUp : FocusDecision.Retry;
-        // Stale or still loading: waited for until the budget is spent, but never fewer than the
-        // minimum attempts, so one attempt slowed by a busy UI thread cannot end it.
+        // Stale or still loading (or "ready" from the focus script, which never says it): waited for
+        // until the budget is spent, but never fewer than the minimum attempts, so one attempt slowed
+        // by a busy UI thread cannot end it.
         return elapsed >= Budget && attempt + 1 >= MaxUnfocusedAttempts
             ? FocusDecision.GiveUp
             : FocusDecision.Retry;
     }
+
+    /// <summary>
+    /// Whether, once the loop is over, the window should run its host focus step and announce
+    /// "Message body. Subject". Not when focus never reached this render's page (the last answer was
+    /// "stale": the page on show is another message's), and not when the user has moved focus away
+    /// from the message body during the wait — Tab to a header, Ctrl+1 to the folders — since pulling
+    /// them back would undo what they chose.
+    /// </summary>
+    public static bool ShouldFinish(FocusScriptResult result, bool focusStillOnBody) =>
+        result != FocusScriptResult.Stale && focusStillOnBody;
 
     /// <summary>Reads the JSON <c>ExecuteScriptAsync</c> returned for the readiness or focus script.</summary>
     public static FocusScriptResult Parse(string? json) => json?.Trim() switch
@@ -158,11 +169,8 @@ public static class MessageOpenFocusPolicy
             }
             if (!isCurrent()) return result;
 
-            if (result is FocusScriptResult.NotFocused or FocusScriptResult.Error or FocusScriptResult.Ready)
-            {
-                result = result == FocusScriptResult.Ready ? FocusScriptResult.Error : result;
+            if (result is FocusScriptResult.NotFocused or FocusScriptResult.Error)
                 unfocused++;
-            }
             var now = elapsed();
             LogService.Debug($"[FOCUS] {where}: attempt {attempt}, {now.TotalMilliseconds:0} ms: {result}" +
                              (waitForLoad ? string.Empty : " (not waiting for the load)"));
